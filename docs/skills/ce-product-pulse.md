@@ -120,7 +120,7 @@ Skip `ce-product-pulse` when:
 
 - You're doing deep investigation of a specific issue → use the native tools (Sentry, PostHog, etc.)
 - You need real-time alerting → that's monitoring, not pulse
-- You want to know "what shipped" → that's git log + PR list, not the pulse (the pulse is about user experience and system performance, not changelog content)
+- You want to know "what shipped" -> that's version-control history + PR list, not the pulse (the pulse is about user experience and system performance, not changelog content)
 
 ---
 

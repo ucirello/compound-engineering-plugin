@@ -128,9 +128,9 @@ The `compound-engineering` plugin currently ships 27 skills and 0 standalone age
 | [`/ce-product-pulse`](docs/skills/ce-product-pulse.md) | Generate time-windowed product pulse reports |
 | [`/ce-riffrec-feedback-analysis`](docs/skills/ce-riffrec-feedback-analysis.md) | Convert Riffrec recordings or notes into structured feedback |
 | [`/ce-resolve-pr-feedback`](docs/skills/ce-resolve-pr-feedback.md) | Resolve PR review feedback |
-| [`/ce-commit`](docs/skills/ce-commit.md) | Create a git commit with a clear message |
+| [`/ce-commit`](docs/skills/ce-commit.md) | Create a JJ-backed commit with a clear message |
 | [`/ce-commit-push-pr`](docs/skills/ce-commit-push-pr.md) | Commit, push, and open a PR with related work references preserved |
-| [`/ce-worktree`](docs/skills/ce-worktree.md) | Ensure work happens in an isolated git worktree |
+| [`/ce-worktree`](docs/skills/ce-worktree.md) | Ensure work happens in an isolated workspace |
 | [`/ce-promote`](docs/skills/ce-promote.md) | Draft user-facing announcement copy |
 | [`/ce-test-browser`](docs/skills/ce-test-browser.md) | Run browser tests on PR-affected pages |
 | [`/ce-test-xcode`](docs/skills/ce-test-xcode.md) | Build and test iOS apps on simulator |

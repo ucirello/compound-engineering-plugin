@@ -19,6 +19,7 @@ bun run release:validate  # check plugin/marketplace consistency
 ## Working Agreement
 
 - **Branching:** Create a feature branch for any non-trivial change. If already on the correct branch for the task, keep using it; do not create additional branches or worktrees unless explicitly requested.
+- **VCS workflow:** Prefer Jujutsu (`jj`) for local version-control operations. Use `jj st` instead of `git status`, `jj diff --git` for patch/hunk output, `jj diff --name-only` or `jj diff --summary` for file lists/summaries, `jj log` instead of `git log`, `jj commit` instead of `git add` + `git commit`, and `jj bookmark` / `jj git push` instead of local branch/push commands. Use `gh` for GitHub-facing operations such as PR metadata, PR diffs, cloning, and other remote GitHub API work. Use raw `git` only when the operation is explicitly Git-specific, such as tests that intentionally exercise Git behavior.
 - **Merge policy:** All changes to `main` go through pull requests. Direct pushes and direct merges are not allowed; branch protection on `main` enforces this by requiring the `test` status check to pass. The direct path bypasses `release:validate`, the test suite, and PR title validation — past direct merges have caused version drift requiring multi-PR recovery (see `docs/solutions/workflow/release-please-version-drift-recovery.md`).
 - **Safety:** Do not delete or overwrite user data. Avoid destructive commands.
 - **Testing:** Run `bun test` after changes that affect parsing, conversion, or output.

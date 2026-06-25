@@ -94,7 +94,7 @@ When current code differs from a learning, the skill updates the learning to ref
 
 ### 9. Delete, don't archive
 
-Deleted docs are deleted, not moved to `_archived/`. Git history preserves every deleted file (`git log --diff-filter=D -- docs/solutions/`). A dedicated archive directory accumulates and pollutes search results. If an `_archived/` directory exists from before this convention, the skill flags it for cleanup in the report.
+Deleted docs are deleted, not moved to `_archived/`. Version-control history preserves every deleted file. A dedicated archive directory accumulates and pollutes search results. If an `_archived/` directory exists from before this convention, the skill flags it for cleanup in the report.
 
 ### 10. Discoverability check carries over
 
@@ -192,7 +192,7 @@ For periodic sweeps, scheduled maintenance runs, or large-scope reviews where st
 In interactive mode, you'll see the recommendation with evidence before deletion. Decline and the doc stays. In autofix mode, the auto-delete safety conditions are conservative — substantive citations downgrade to stale-marking automatically.
 
 **Why delete instead of archive?**
-Archive folders accumulate and pollute search results, nobody reads them, and they create the illusion of "we'll come back to this" without actually doing it. Git history preserves every deleted file. `git log --diff-filter=D -- docs/solutions/` finds anything you need to recover.
+Archive folders accumulate and pollute search results, nobody reads them, and they create the illusion of "we'll come back to this" without actually doing it. Version-control history preserves every deleted file.
 
 **Does it handle pattern docs differently from learning docs?**
 Yes — pattern docs are derived guidance, not incident-level learnings. The five outcomes apply, but with different evidence: Keep means underlying learnings still support the rule; Replace means the synthesis is misleading and a different generalization is needed based on refreshed learnings.

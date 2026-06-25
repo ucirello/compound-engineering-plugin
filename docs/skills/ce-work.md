@@ -57,7 +57,7 @@ Asking an agent "implement this plan" goes wrong in predictable ways:
 
 ### 1. Plan-aware execution — honors the WHAT/HOW separation
 
-`ce-work` reads the plan as a decision artifact, not a script. For unified plans, it first checks metadata and refuses `artifact_readiness: requirements-only` artifacts until `ce-plan` enriches them. Scope, decisions, U-IDs, files, test scenarios, and verification criteria are authoritative — the agent figures out the actual implementation itself. The plan body stays read-only during execution; progress lives in git commits and the task tracker.
+`ce-work` reads the plan as a decision artifact, not a script. For unified plans, it first checks metadata and refuses `artifact_readiness: requirements-only` artifacts until `ce-plan` enriches them. Scope, decisions, U-IDs, files, test scenarios, and verification criteria are authoritative — the agent figures out the actual implementation itself. The plan body stays read-only during execution; progress lives in commits and the task tracker.
 
 ### 2. Idempotent re-execution
 
@@ -65,7 +65,7 @@ Before each task, `ce-work` checks whether the unit's work is already present an
 
 ### 3. Worktree-isolated parallelism — explicit conflicts, not silent data loss
 
-For independent units that can run in parallel, `ce-work` defaults to per-subagent worktree isolation when the harness supports it: each subagent on its own branch in its own directory. Predicted overlaps surface as merge conflicts the orchestrator handles explicitly. When isolation isn't available, subagents are barred from staging or committing and the orchestrator merges the batch serially. Either way, **no silent overwrites.**
+For independent units that can run in parallel, `ce-work` defaults to per-subagent worktree isolation when the harness supports it: each subagent on its own bookmark/branch in its own directory. Predicted overlaps surface as merge conflicts the orchestrator handles explicitly. When isolation isn't available, subagents are barred from committing and the orchestrator merges the batch serially. Either way, **no silent overwrites.**
 
 ### 4. U-ID anchoring across execution
 
@@ -180,7 +180,7 @@ Because the plan deliberately doesn't have exact signatures — it has decisions
 Bare-prompt mode triages by complexity. Trivial goes straight to implementation; small/medium builds a task list; large surfaces a recommendation to plan first.
 
 **What's the difference between worktree-isolated and shared-directory parallel mode?**
-Worktree isolation gives each subagent its own branch in its own directory — overlapping writes surface as merge conflicts the orchestrator handles explicitly. Shared-directory mode bars subagents from staging, committing, or running the test suite (the orchestrator does those after the batch). Both are safe; worktree isolation is the cleaner experience.
+Worktree isolation gives each subagent its own bookmark/branch in its own directory — overlapping writes surface as merge conflicts the orchestrator handles explicitly. Shared-directory mode bars subagents from committing or running the test suite (the orchestrator does those after the batch). Both are safe; worktree isolation is the cleaner experience.
 
 **Why does it check whether work is already done before each task?**
 Resuming after context compaction, picking up someone else's branch, or returning to a partly-shipped plan are all common. Idempotency ensures `ce-work` doesn't silently reimplement what's already there.

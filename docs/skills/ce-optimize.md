@@ -14,7 +14,7 @@ Inspired by Karpathy's autoresearch, generalized for multi-file code changes and
 |----------|--------|
 | What does it do? | Defines an optimization spec, establishes a baseline, runs parallel experiments measured against gates and/or an LLM judge, keeps the best, iterates until a stopping criterion fires |
 | When to use it | Clustering, search, prompts, build performance — any measurable outcome where the right change isn't obvious and many approaches are worth trying |
-| What it produces | A `optimize/<spec-name>` git branch with kept experiments merged in, plus an experiment log and strategy digest in `.context/compound-engineering/ce-optimize/<spec-name>/` |
+| What it produces | A `optimize/<spec-name>` bookmark with kept experiments merged in, plus an experiment log and strategy digest in `.context/compound-engineering/ce-optimize/<spec-name>/` |
 | What's next | `/ce-code-review` on the cumulative diff; `/ce-compound` to capture the winning strategy; create a PR |
 
 ---

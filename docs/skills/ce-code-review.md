@@ -201,7 +201,7 @@ Interactive is the human-facing mode: a markdown report, and the review applies 
 A caller-owned step (not part of the review skill): in `mode:agent`, the caller (typically `/ce-work`) applies what it can, then presents the findings it didn't apply and asks the user: apply now, file tickets, accept with durable sink, or stop. "Accept" requires a real durable record (Known Residuals in PR description, or `docs/residual-review-findings/<sha>.md`) — findings can't disappear into chat.
 
 **Why does it never switch the checkout?**
-The skill never runs `git checkout`/`switch` — passing a PR/branch selects review *scope*, not permission to mutate the tree (it diffs remote/local refs without checking out). Interactive mode may *apply* fixes to the current checkout (a reversible edit), but it never switches branches. To review the current checkout against a different ref, pass `base:<ref>`.
+The skill never runs branch-switch commands — passing a PR/branch selects review *scope*, not permission to mutate the tree (it diffs remote/local refs without checking out). Interactive mode may *apply* fixes to the current checkout (a reversible edit), but it never switches branches. To review the current checkout against a different ref, pass `base:<ref>`.
 
 **Can it run concurrently with browser tests?**
 `mode:agent` is report-only and never mutates, so it's safe alongside concurrent tests. Interactive mode may apply fixes to the working tree, so avoid running it against a checkout another agent is actively using.

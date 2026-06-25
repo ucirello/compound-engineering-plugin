@@ -70,42 +70,38 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    - If anything is unclear or ambiguous, ask clarifying questions now
    - If clarifying questions were needed above, get user approval on the resolved answers. If no clarifications were needed, proceed without a separate approval step — plan scope is the plan's authority, not something to renegotiate
    - **Do not skip this** - better to ask questions now than build the wrong thing
-   - **Do not edit the plan body during execution.** The plan is a decision artifact; progress lives in git commits and the task tracker, not the plan. `ce-work` does not mutate the plan — whether it shipped is derived from git, not recorded in the doc. Legacy plans may contain `- [ ]` / `- [x]` marks on unit headings or a `status:` field — ignore them as state; per-unit completion is determined during execution by reading the current file state.
+   - **Do not edit the plan body during execution.** The plan is a decision artifact; progress lives in commits and the task tracker, not the plan. `ce-work` does not mutate the plan — whether it shipped is derived from version-control history, not recorded in the doc. Legacy plans may contain `- [ ]` / `- [x]` marks on unit headings or a `status:` field — ignore them as state; per-unit completion is determined during execution by reading the current file state.
 
 2. **Setup Environment**
 
-   First, check the current branch:
+   First, check the current bookmark:
 
    ```bash
-   current_branch=$(git branch --show-current)
-   default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
-
-   # Fallback if remote HEAD isn't set
-   if [ -z "$default_branch" ]; then
-     default_branch=$(git rev-parse --verify origin/main >/dev/null 2>&1 && echo "main" || echo "master")
-   fi
+   current_bookmark=$(jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'bookmarks.join(" ") ++ "\n"' 2>/dev/null || true)
+   default_branch=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo "main")
    ```
 
-   **If already on a feature branch** (not the default branch):
+   **If already on a feature bookmark** (not the default branch/bookmark):
 
-   First, check whether the branch name is **meaningful** — a name like `feat/crowd-sniff` or `fix/email-validation` tells future readers what the work is about. Auto-generated worktree names (e.g., `worktree-jolly-beaming-raven`) or other opaque names do not.
+   First, check whether the bookmark name is **meaningful** — a name like `feat/crowd-sniff` or `fix/email-validation` tells future readers what the work is about. Auto-generated worktree names (e.g., `worktree-jolly-beaming-raven`) or other opaque names do not.
 
-   If the branch name is meaningless or auto-generated, suggest renaming it before continuing:
+   If the bookmark name is meaningless or auto-generated, suggest renaming it before continuing:
    ```bash
-   git branch -m <meaningful-name>
+   jj bookmark rename <old-name> <meaningful-name>
    ```
    Derive the new name from the plan title or work description (e.g., `feat/crowd-sniff`). Present the rename as a recommended option alongside continuing as-is.
 
-   Then ask: "Continue working on `[current_branch]`, or create a new branch?"
+   Then ask: "Continue working on `[current_bookmark]`, or create a new bookmark?"
    - If continuing (with or without rename), proceed to step 3
    - If creating new, follow Option A or B below
 
    **If on the default branch**, choose how to proceed:
 
-   **Option A: Create a new branch**
+   **Option A: Create a new bookmark**
    ```bash
-   git pull origin [default_branch]
-   git checkout -b feature-branch-name
+   jj git fetch --remote origin --branch [default_branch]
+   jj new [default_branch]@origin
+   jj bookmark create feature-bookmark-name -r @
    ```
    Use a meaningful name based on the work (e.g., `feat/user-authentication`, `fix/email-validation`).
 
@@ -119,7 +115,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **Option C: Continue on the default branch**
    - Requires explicit user confirmation
    - Only proceed after user explicitly says "yes, commit to [default_branch]"
-   - Never commit directly to the default branch without explicit permission
+   - Never commit directly to the default bookmark without explicit permission
 
    **Recommendation**: Use worktree if:
    - You want to work on multiple features simultaneously
@@ -161,7 +157,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    6. **Cap concurrency** at a bounded batch (~3-5 workers) even when more units are independent; over-parallelizing costs more in contention, merge, and integration than it saves.
    7. **Abort criteria:** if a batch produces broad unplanned edits, out-of-scope test failures, or repeated conflicts, stop parallelizing and finish the rest serially.
 
-   **Isolation is the harness's job, never ce-work's** — never run `git worktree add` yourself. Probe what your subagent mechanism provides and pick the parallel path:
+   **Isolation is the harness's job, never ce-work's** — never create unmanaged worktrees/workspaces yourself. Probe what your subagent mechanism provides and pick the parallel path:
    - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: Claude Code `Agent` tool (`isolation: "worktree"` + `run_in_background: true`; worktree under a gitignored `.claude/worktrees/`), Codex `spawn_agent` (a coding **worker** edits its forked workspace), Cursor `best-of-n-runner`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's merge-cost judgment). This works even when you are *already* inside a worktree — harness worktrees are peers of one repo, not nested, branched from your current HEAD.
    - **Shared workspace only** — subagents run in your working directory (Cursor `Task` default, or any harness without isolation). Parallelize **disjoint-file units only**, under the shared-workspace constraints below; contending units run serial.
    - **No subagent mechanism:** run inline.
@@ -174,7 +170,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    - **Instruction to report, in its final message, both (a) the file paths it changed and (b) the unit's verification evidence** — `behavior_changed`, existing tests inspected, tests added/changed or used unchanged, the red failure or characterization observed (when applicable), the verification run and result, and any deliberate no-test exception with its reason. The handoff is a text summary on most harnesses with no guaranteed diff, so reported paths are the orchestrator's starting hint (it still verifies the actual tree); the evidence fields are **not** reconstructable from the tree afterward, so a worker that omits them forces the orchestrator to re-derive or leave `verification_evidence` incomplete.
    - **Do not commit.** Workers implement and may run their *own unit's* focused tests in isolation as a self-check, but the **orchestrator owns staging, committing, and the authoritative test runs**. (Capability note: a harness that *reaps* the isolated workspace on worker completion — none of our current targets do — would instead require the worker to commit to its branch; confirm before assuming it.)
 
-   **Shared-workspace constraints** — when subagents share your working directory (no isolation): they must not `git add`, commit, or run the full test suite concurrently (index corruption + test interference); the orchestrator does all of that after the batch. A worker may run a single focused unit test only if it touches no shared state.
+   **Shared-workspace constraints** — when subagents share your working directory (no isolation): they must not write version-control metadata, commit, or run the full test suite concurrently (version-control write contention + test interference); the orchestrator does all of that after the batch. A worker may run a single focused unit test only if it touches no shared state.
 
    **Permission mode:** Omit the `mode` parameter when dispatching subagents so the user's configured permission settings apply. Do not pass `mode: "auto"` — it overrides user-level settings like `bypassPermissions`.
 
@@ -182,15 +178,15 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
    **After a parallel batch — the orchestrator integrates; never trust the handoff summary alone:**
    1. Wait for every worker in the batch to finish.
-   2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (`git status`/diff in its workspace or the shared dir). Reported paths are a hint; declared `Files:` are often incomplete — workers create/modify files the plan didn't anticipate.
+   2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (status/diff in its workspace or the shared dir). Reported paths are a hint; declared `Files:` are often incomplete — workers create/modify files the plan didn't anticipate.
    3. **Detect real collisions** — 2+ workers that actually modified the same file. In a shared workspace only the last writer survived: commit the non-colliding work first, then re-run the colliding units serially so each builds on the other's committed result. With harness-native isolation the collision surfaces as a merge conflict at integration instead (see the per-harness note).
-   4. **Review, test, and commit each unit in dependency order — the orchestrator owns commits.** Stage only that unit's files, commit with a message derived from its Goal, run the relevant tests, and fix before the next. Capture each worker's returned verification evidence into the run's `verification_evidence` roll-up — if a worker omitted it, re-derive what the tree allows and mark the rest as unverified rather than fabricating a red-before-implementation observation the worker never reported.
+   4. **Review, test, and commit each unit in dependency order — the orchestrator owns commits.** Commit only that unit's files with a message derived from its Goal, run the relevant tests, and fix before the next. Capture each worker's returned verification evidence into the run's `verification_evidence` roll-up — if a worker omitted it, re-derive what the tree allows and mark the rest as unverified rather than fabricating a red-before-implementation observation the worker never reported.
    5. Update the task list (progress lives in the commits).
-   6. **Release the workers** — close/clean up each worker handle so it stops holding a concurrency slot or leaving orphans (e.g., Codex `close_agent`; for a Claude per-worker worktree: `git worktree unlock <path>` → `git worktree remove <path>` → `git branch -d <branch>`). These isolated worktrees are peers invisible to any outer orchestrator (e.g., Orca), so cleanup is entirely ce-work's.
+   6. **Release the workers** — close/clean up each worker handle so it stops holding a concurrency slot or leaving orphans (e.g., Codex `close_agent`; for a JJ workspace: leave the workspace directory, remove it, then run `jj workspace forget <workspace-name>` and delete any no-longer-needed bookmark with `jj bookmark delete <bookmark-name>`). These isolated worktrees are peers invisible to any outer orchestrator (e.g., Orca), so cleanup is entirely ce-work's.
    7. Dispatch the next dependency layer.
 
    **Per-harness integration (examples — the universal flow above is the contract):**
-   - **Claude `Agent` `isolation:"worktree"`:** each worker is on its own branch. Integrate by merging each branch into the orchestrator's branch in dependency order; on conflict, `git merge --abort` and re-run that unit serially against the merged tree (hand-resolving silently discards one unit's intent).
+   - **Claude `Agent` `isolation:"worktree"`:** each worker is on its own isolated workspace/bookmark. Integrate each worker's changes into the orchestrator workspace in dependency order; on conflict, abandon the attempted integration and re-run that unit serially against the integrated tree (hand-resolving silently discards one unit's intent).
    - **Codex `spawn_agent` worker:** integrate the worker's "uploaded changes," then `close_agent`.
    - **Cursor `Task` (shared workspace):** edits are already in your tree — review and commit per step 4; **`best-of-n-runner`:** integrate its worktree.
 
@@ -285,11 +281,9 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    # 1. Verify tests pass (use project's test command)
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-   # 2. Stage only files related to this logical unit (not `git add .`)
-   git add <files related to this logical unit>
+   # 2. Commit only files related to this logical unit (not `.` or `all()`)
 
-   # 3. Commit with conventional message
-   git commit -m "feat(scope): description of this unit"
+   jj commit <files related to this logical unit> -m "feat(scope): description of this unit"
    ```
 
    **Handling merge conflicts:** If conflicts arise during rebasing or merging, resolve them immediately. Incremental commits make conflict resolution easier since each commit is small and focused.
@@ -297,8 +291,8 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 commit/PR includes the full attribution.
 
    **Parallel subagent mode:** Commit ownership is split by isolation mode (see Phase 1 Step 4):
-   - **Worktree-isolated:** subagents may stage and commit inside their own worktree branch; the orchestrator merges those branches in dependency order after the batch.
-   - **Shared-directory fallback:** subagents do not commit; the orchestrator stages and commits each unit after the entire parallel batch completes.
+   - **Worktree-isolated:** subagents may commit inside their own isolated workspace; the orchestrator merges those branches/bookmarks in dependency order after the batch.
+   - **Shared-directory fallback:** subagents do not commit; the orchestrator commits each unit after the entire parallel batch completes.
 
 3. **Follow Existing Patterns**
 

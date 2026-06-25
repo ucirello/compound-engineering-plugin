@@ -1,10 +1,10 @@
 # `ce-commit-push-pr`
 
-> Go from working changes to an open PR with an adaptive, value-first description that scales in depth with the change. Or rewrite an existing PR description. Or generate a description without touching git.
+> Go from working changes to an open PR with an adaptive, value-first description that scales in depth with the change. Or rewrite an existing PR description. Or generate a description without touching version-control state.
 
 `ce-commit-push-pr` is the **shipping** skill. Three modes — full workflow, description update on existing PR, description-only generation — handle the common shapes of "I want to ship" without forcing you through unnecessary steps. PR descriptions adapt to the change's complexity (not cookie-cutter templates) and cover the **full PR commit range**, not just the working-tree diff at invocation time.
 
-The skill is opinionated about a few specific things that have burned past contributors: it never `git add -A`, it splits naturally distinct concerns into separate commits when present, preserves related work references with correct close-vs-link intent, and writes PR bodies via temp files (never via stdin pipes, which can silently produce empty PR bodies while `gh` still exits 0).
+The skill is opinionated about a few specific things that have burned past contributors: it never commits broad file sets, it splits naturally distinct concerns into separate commits when present, preserves related work references with correct close-vs-link intent, and writes PR bodies via temp files (never via stdin pipes, which can silently produce empty PR bodies while `gh` still exits 0).
 
 The compound-engineering ideation chain is `/ce-ideate → /ce-brainstorm → /ce-plan → /ce-work`. `ce-commit-push-pr` is `/ce-work`'s Phase 4 handoff target — it produces the PR with summary, testing notes, evidence (when behavior is observable), and the operational validation section. It's also commonly invoked directly when you've already written the code and want to ship.
 
@@ -14,7 +14,7 @@ The compound-engineering ideation chain is `/ce-ideate → /ce-brainstorm → /c
 
 | Question | Answer |
 |----------|--------|
-| What does it do? | Commits, pushes, and opens a PR — or just rewrites the description of an existing PR — or just generates a description without touching git |
+| What does it do? | Commits, pushes, and opens a PR — or just rewrites the description of an existing PR — or just generates a description without touching version-control state |
 | When to use it | Anytime you want commits + PR; rewriting an existing PR description; drafting a description for a branch |
 | What it produces | An open PR (URL returned) — or an updated PR description — or a printed description for you to apply yourself |
 | What's next | Review the PR; merge when ready |
@@ -26,12 +26,12 @@ The compound-engineering ideation chain is `/ce-ideate → /ce-brainstorm → /c
 Going from "code written" to "PR open" is supposed to be a one-step move, but it tends to fail in predictable ways:
 
 - **Cookie-cutter PR descriptions** that don't scale with complexity — a one-line bug fix and a 2,000-line refactor get the same Summary / Test Plan / Notes shape
-- **`git add -A`** sweeps in unintended files (`.env`, build artifacts, generated files)
+- **Broad commits** sweep in unintended files (`.env`, build artifacts, generated files)
 - **Description covers only the working-tree diff** at invocation time, missing the commits already pushed
 - **Related work gets dropped or closed accidentally** — issue, incident, performance, and logging references need the right tracker syntax, not best-effort memory
 - **Empty PR bodies via stdin pipes** — `--body-file -`, heredoc-to-stdin, or `--body "$(cat ...)"` can silently produce an empty PR body while `gh` still exits 0 and returns a URL
 - **Convention detection done wrong** — falling back to a default convention even when the repo has its own clearly-established style
-- **Branch state surprises** — committing on the default branch, creating commits on a detached HEAD, pushing to a stale base
+- **Bookmark/branch state surprises** — committing on the default bookmark, creating unnamed commits, pushing to a stale base
 
 ## The Solution
 
@@ -39,8 +39,8 @@ Going from "code written" to "PR open" is supposed to be a one-step move, but it
 
 - **Three-mode dispatch** — full workflow / description update / description-only generation
 - **Adaptive PR descriptions** — depth scales with the change; one-line fixes get a tight description, large refactors get the structure they warrant
-- **Smart commit splitting at file level** — naturally distinct concerns become separate commits (2-3 max), with no `git add -p`
-- **Branch state decision tree** — handles detached HEAD, default branch, unpushed commits, no upstream, and existing PR cases explicitly
+- **Smart commit splitting at file level** — naturally distinct concerns become separate commits (2-3 max), with no `jj commit -i`
+- **Bookmark state decision tree** — handles unnamed changes, default bookmarks, unpushed commits, and existing PR cases explicitly
 - **Body-file safety** — every PR description is written to a temp file and passed via `--body-file <path>`, never via stdin
 - **Convention detection** — repo conventions in context > recent commit history > conventional-commits default
 - **Full PR commit-range resolution** — descriptions cover all commits in the PR, not just the working-tree diff
@@ -55,7 +55,7 @@ Going from "code written" to "PR open" is supposed to be a one-step move, but it
 The skill detects intent up front and follows the matching path:
 
 - **Full workflow** — commit any pending work, push, and open a PR. The default for "ship this" / "create a PR" / "commit push PR".
-- **Description update on existing PR** — refresh, rewrite, or refocus an existing PR's description without touching git state.
+- **Description update on existing PR** — refresh, rewrite, or refocus an existing PR's description without touching version-control state.
 - **Description-only generation** — produce a PR description and print it back without committing or pushing or applying. Triggered by "draft a PR description", "describe this PR", or by pasting a PR URL alone.
 
 Skipping commit/push/edit steps when they're not wanted matches what people actually mean when they ask, instead of forcing the full workflow every time.
@@ -71,18 +71,18 @@ PR descriptions aren't rendered from a fixed template. The composition step pick
 
 ### 3. Smart commit splitting at file level
 
-When changes touch naturally distinct concerns (e.g., backend models + frontend components + docs), the skill creates separate commits — typically 2-3 max — grouped at the file level. No `git add -p` (interactive hunk-level staging that can split hunks across commits and break atomicity). When the split is ambiguous, one commit is fine.
+When changes touch naturally distinct concerns (e.g., backend models + frontend components + docs), the skill creates separate commits — typically 2-3 max — grouped at the file level. No `jj commit -i` (interactive hunk-level splitting that can split hunks across commits and break atomicity). When the split is ambiguous, one commit is fine.
 
-### 4. Branch state decision tree
+### 4. Bookmark state decision tree
 
-Every weird branch state has an explicit branch in the decision tree:
+Every weird bookmark state has an explicit branch in the decision tree:
 
-- Detached HEAD → automatically create a feature branch from current `HEAD`
-- On default branch with work to do → automatically create a feature branch, asking only when unpushed local commits create a real carry-forward decision
-- On default branch, all pushed, no PR → "no feature branch work" and stop
-- Feature branch, no upstream → push and continue
-- Feature branch, all pushed, no open PR → skip commit/push, generate description, open PR
-- Feature branch, all pushed, open PR → report up to date
+- No bookmark -> automatically create a feature bookmark for the current change
+- On default bookmark with work to do -> automatically create a feature bookmark, asking only when unpushed local commits create a real carry-forward decision
+- On default bookmark, all pushed, no PR -> "no feature work" and stop
+- Feature bookmark, not pushed -> push and continue
+- Feature bookmark, all pushed, no open PR -> skip commit/push, generate description, open PR
+- Feature bookmark, all pushed, open PR -> report up to date
 
 No silent commits to default, no surprise re-pushes, no missing-upstream errors mid-flow.
 
@@ -110,9 +110,9 @@ When the skill runs on a branch with an open PR and you want the description rew
 
 ## Quick Example
 
-You finish a notification-mute feature on a feature branch. You invoke `/ce-commit-push-pr`.
+You finish a notification-mute feature on a feature bookmark. You invoke `/ce-commit-push-pr`.
 
-The skill detects you're on a meaningfully-named feature branch with no upstream and four uncommitted files spanning a database migration, a model change, a controller update, and a UI component. It picks up your repo's convention from recent commits (conventional commits with scope) and splits the work into two commits (data layer; UI), grouped at the file level — no interactive hunk staging. It pushes with `-u`.
+The skill detects you're on a meaningfully-named feature bookmark with four uncommitted files spanning a database migration, a model change, a controller update, and a UI component. It picks up your repo's convention from recent commits (conventional commits with scope) and splits the work into two commits (data layer; UI), grouped at the file level — no interactive hunk splitting. It pushes the bookmark with `jj git push --bookmark`.
 
 It resolves the PR commit range, reads the diff over all commits (not just the working-tree diff), and detects the change has observable UI behavior. You provide an existing GIF URL from your harness's capture flow, and the skill includes it as a `## Demo` section.
 
@@ -136,7 +136,7 @@ Skip `ce-commit-push-pr` when:
 
 - You want only commits without pushing or PR → `/ce-commit`
 - You're on the default branch and want to actually commit there → handle manually (this skill won't push to default without explicit feature-branch creation)
-- The PR shape is unusual enough that hand-crafted git work is needed (interactive rebase, complex history rewrite)
+- The PR shape is unusual enough that hand-crafted JJ work is needed (interactive history editing, complex history rewrite)
 
 ---
 
@@ -154,7 +154,7 @@ Skip `ce-commit-push-pr` when:
 
 The skill is invoked directly more often than as part of the chain:
 
-- **Full ship** — `/ce-commit-push-pr` from a feature branch with uncommitted or unpushed work
+- **Full ship** — `/ce-commit-push-pr` from a feature bookmark with uncommitted or unpushed work
 - **Refresh an existing PR's description** — `/ce-commit-push-pr "update the PR description"` or `/ce-commit-push-pr "include the benchmarking results"` (focus is honored)
 - **Draft a description without applying** — `/ce-commit-push-pr "draft a PR description for this branch"` prints the description for you to copy or apply manually
 - **Describe a different PR** — `/ce-commit-push-pr <PR URL>` resolves that PR's commit range
@@ -167,7 +167,7 @@ When the skill's mode detection picks the wrong path, you can prompt explicitly 
 
 | Argument | Effect |
 |----------|--------|
-| _(empty)_ | Full workflow on the current branch |
+| _(empty)_ | Full workflow on the current bookmark |
 | `"draft a PR description"` / `"describe this PR"` | Description-only generation; printed back, not applied |
 | `"update the PR description"` / `"refresh the PR description"` | Description update on the existing PR |
 | `<PR URL or number>` | Operates on that PR (description-only or update, depending on intent) |
@@ -184,13 +184,13 @@ Cookie-cutter templates make trivial PRs feel ceremonial and large PRs feel unde
 Wrappers and stdin handling can silently produce an empty PR body while `gh` still exits 0 and returns a URL. The skill writes every body to a temp file with a quoted heredoc sentinel and passes via `--body-file <path>`. The quoted sentinel prevents `$VAR`, backticks, and literal `EOF` markers inside the body from being expanded.
 
 **What's the difference between description-only and description update?**
-Description-only generates a description and prints it back without touching anything (no `gh pr edit`, no commit, no push). Description update finds an existing open PR for the current branch, generates a new description, previews it, asks for confirmation, then applies via `gh pr edit`.
+Description-only generates a description and prints it back without touching anything (no `gh pr edit`, no commit, no push). Description update finds an existing open PR for the current bookmark, generates a new description, previews it, asks for confirmation, then applies via `gh pr edit`.
 
 **Does it support different commit message conventions?**
 Yes. Repo conventions in `AGENTS.md`/`CLAUDE.md` win first; recent commit history is the next signal; conventional commits is the fallback default. When using conventional commits, `fix:` vs `feat:` defaults to `fix:` when ambiguous.
 
 **What about commit signing or hooks?**
-The skill respects your git config and pre-commit hooks. It never passes `--no-verify`, `--no-gpg-sign`, or similar flags to skip them. If a hook fails, the skill investigates and surfaces the underlying issue.
+The skill respects configured signing and pre-commit hooks. It never passes `--no-verify`, `--no-gpg-sign`, or similar flags to skip them. If a hook fails, the skill investigates and surfaces the underlying issue.
 
 **Can I get a draft PR?**
 Use the description-only mode to generate the body, then apply yourself with `gh pr create --draft --title "..." --body-file "..."`. The skill doesn't currently expose a draft flag in the full workflow.

@@ -28,28 +28,26 @@ gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,
 
 If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-branch mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) → `git rev-parse --abbrev-ref origin/HEAD` (strip `origin/`) → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `git rev-parse --verify origin/<candidate>`. If none resolve, ask the user. `<head>` is `HEAD`.
+For current-branch mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> `main`. If none resolve, ask the user. `<head>` is the current JJ working-copy stack.
 
-**Base remote:** `origin` for current-branch mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `git remote -v`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
+**Current-branch mode:** fetch the base bookmark when possible, then use JJ for local history and diff context:
 
 ```bash
-git fetch --no-tags <base-remote> <base>
-git fetch --no-tags <base-remote> <head>   # PR mode only: <head> is headRefOid and may not be local
-git log  --oneline "<base-remote>/<base>..<head>"
-git log  --format=fuller "<base-remote>/<base>..<head>"   # full commit messages for related-reference discovery
-git diff           "<base-remote>/<base>...<head>"
+jj git fetch --remote origin --branch <base>
+jj log -r "<base>@origin::@" --no-graph -T 'commit_id.short() ++ "\n" ++ description ++ "\n\n"'
+jj diff --git --from "<base>@origin"
 ```
 
 If the commit list is empty, report "No commits to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local git can't reach the refs (fork PR with no matching remote, shallow clone, offline, merge-base on unrelated histories). For GHES configurations that reject SHA fetch but allow `refs/pull/`:
+**PR mode:** use GitHub APIs so fork PRs and remote-only PR heads are described without checkout:
 
 ```bash
-git fetch --no-tags <base-remote> "refs/pull/<number>/head"
-PR_HEAD_SHA=$(awk '/refs\/pull\/[0-9]+\/head/ {print $1; exit}' "$(git rev-parse --git-dir)/FETCH_HEAD")
+gh pr view <ref> --json commits
+gh pr diff <ref> --color=never
 ```
 
-Note in the user-facing summary when the API fallback was used.
+Note in the user-facing summary when PR mode used GitHub API data rather than a local JJ diff.
 
 ---
 

@@ -212,13 +212,13 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 
 ### 0.4 Run Identity Detection
 
-Check if `optimize/<spec-name>` branch already exists:
+Check if `optimize/<spec-name>` bookmark already exists:
 
 ```bash
-git rev-parse --verify "optimize/<spec-name>" 2>/dev/null
+jj bookmark list "optimize/<spec-name>"
 ```
 
-**If branch exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
+**If the bookmark exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
 - **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning worktree directories for `result.yaml` markers. Continue from the last iteration number in the log.
@@ -227,7 +227,7 @@ Present the user with a choice via the platform question tool:
 ### 0.5 Create Optimization Branch and Scratch Space
 
 ```bash
-git checkout -b "optimize/<spec-name>"  # or switch to existing if resuming
+jj bookmark create "optimize/<spec-name>" -r @  # or continue on existing if resuming
 ```
 
 Create scratch directory:
@@ -253,7 +253,7 @@ bash "$SKILL_DIR/scripts/<name>"
 Verify no uncommitted changes to files within `scope.mutable` or `scope.immutable`:
 
 ```bash
-git status --porcelain
+jj st
 ```
 
 Filter the output against the scope paths. If any in-scope files have uncommitted changes:

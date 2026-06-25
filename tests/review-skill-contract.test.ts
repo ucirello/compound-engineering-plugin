@@ -580,7 +580,7 @@ describe("ce-code-review contract", () => {
   test("PR mode uses gh pr diff without checkout; branch/standalone fail closed on missing base", async () => {
     const content = await readRepoFile("skills/ce-code-review/SKILL.md")
 
-    // No scope path should fall back to `git diff HEAD` or `git diff --cached` — those only
+    // No scope path should fall back to a base-less current-change diff — those only
     // show uncommitted changes and silently produce empty diffs on clean feature branches.
     expect(content).not.toContain("git diff --name-only HEAD")
     expect(content).not.toContain("git diff -U10 HEAD")
@@ -591,7 +591,7 @@ describe("ce-code-review contract", () => {
     expect(content).toMatch(/Do not fall back to checkout/i)
 
     // Branch and standalone modes must stop when no base can be resolved
-    const stopGuardMatches = content.match(/Do not fall back to `git diff HEAD`/g)
+    const stopGuardMatches = content.match(/Do not fall back to `jj diff --git` alone/g)
     expect(stopGuardMatches?.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -689,7 +689,7 @@ describe("ce-code-review contract", () => {
     expect(lfg).toContain("docs/residual-review-findings/<branch-or-head-sha>.md")
     expect(lfg).toContain("prefer `origin` when present")
     expect(lfg).toContain("choose the first configured remote")
-    expect(lfg).toContain("git push --set-upstream <remote> HEAD")
+    expect(lfg).toContain("jj git push --bookmark <bookmark> --remote <remote>")
     expect(lfg).not.toContain("git push --set-upstream origin HEAD")
     expect(lfg).toContain("Do not output DONE until the residual findings are durable")
 

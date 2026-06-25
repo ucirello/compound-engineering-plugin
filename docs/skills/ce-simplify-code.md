@@ -58,9 +58,9 @@ A single "review and improve" prompt collapses into the agent's most-trained dir
 - **Quality** — redundant state, parameter sprawl, copy-paste with variation, leaky abstractions, stringly-typed code, unnecessary wrappers (in component-tree UI frameworks), deeply nested conditionals, unnecessary comments, dead code / unused imports / unused exports
 - **Efficiency** — unnecessary work (redundant computations, repeat reads), missed concurrency, hot-path bloat, recurring no-op updates, TOCTOU pre-checks, memory issues, overly broad operations
 
-### 2. Smart scope detection — user-named > git diff > recent edits
+### 2. Smart scope detection — user-named > JJ diff > recent edits
 
-The skill resolves the simplification scope in priority order: explicit user-named scope (a file, "the function I just wrote") is authoritative; otherwise the git diff between the current branch and its base; otherwise recent edits; otherwise it asks rather than guessing. **User-named scope is never widened.**
+The skill resolves the simplification scope in priority order: explicit user-named scope (a file, "the function I just wrote") is authoritative; otherwise the JJ diff between the current bookmark and its base; otherwise recent edits; otherwise it asks rather than guessing. **User-named scope is never widened.**
 
 ### 3. Behavior preservation verification
 

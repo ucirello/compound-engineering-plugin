@@ -41,12 +41,12 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj diff --name-only --from main
 ```
 
 **If branch name provided:**
 ```bash
-git diff --name-only main...[branch]
+jj diff --name-only --from main --to [branch]
 ```
 
 ### 3. Map Changed Files to Routes

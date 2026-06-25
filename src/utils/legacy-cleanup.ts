@@ -271,10 +271,10 @@ const LEGACY_SKILL_DESCRIPTION_ALIASES: Record<string, string[]> = {
     "Structured code review using tiered persona agents, confidence-gated findings, and a merge/dedup pipeline. In interactive mode it applies safe, verified fixes and commits them when the working tree is clean (it never pushes); in mode:agent it reports only and the caller applies. Use when reviewing code changes before creating a PR.",
   ],
   "ce-commit": [
-    "Create a git commit with a clear, value-communicating message. Use when the user says \"commit\", \"commit this\", \"save my changes\", \"create a commit\", or wants to commit staged or unstaged work. Produces well-structured commit messages that follow repo conventions when they exist, and defaults to conventional commit format otherwise.",
+    "Create a jj-backed commit with a clear, value-communicating message. Use when the user says \"commit\", \"commit this\", \"save my changes\", \"create a commit\", or wants to commit current work. Produces well-structured commit messages that follow repo conventions when they exist, and defaults to conventional commit format otherwise.",
   ],
   "git-commit": [
-    "Create a git commit with a clear, value-communicating message. Use when the user says \"commit\", \"commit this\", \"save my changes\", \"create a commit\", or wants to commit staged or unstaged work. Produces well-structured commit messages that follow repo conventions when they exist, and defaults to conventional commit format otherwise.",
+    "Create a jj-backed commit with a clear, value-communicating message. Use when the user says \"commit\", \"commit this\", \"save my changes\", \"create a commit\", or wants to commit current work. Produces well-structured commit messages that follow repo conventions when they exist, and defaults to conventional commit format otherwise.",
   ],
   "ce-plan": [
     "Create structured plans for multi-step tasks -- software features, research workflows, events, study plans, or any goal that benefits from breakdown. Also deepens existing plans with interactive sub-agent review. Use when the user says 'plan this', 'create a plan', 'how should we build', 'break this down', or when a brainstorm doc is ready for planning. Use 'deepen the plan' or 'deepening pass' for the deepening flow. For exploratory requests, prefer ce-brainstorm first.",
@@ -358,10 +358,10 @@ const LEGACY_SKILL_DESCRIPTION_ALIASES: Record<string, string[]> = {
     "[BETA] Execute work with external delegate support. Same as ce-work but includes experimental Codex delegation mode for token-conserving code implementation.",
   ],
   "ce-worktree": [
-    "Ensure work happens in an isolated git worktree without disturbing the current checkout. Use when starting work that should stay isolated, or when `ce-work` or `ce-code-review` offers a worktree option. Detects existing isolation first, prefers the harness's native worktree tool, and falls back to plain git.",
+    "Ensure work happens in an isolated workspace without disturbing the current checkout. Use when starting work that should stay isolated, or when `ce-work` or `ce-code-review` offers a worktree option. Detects existing isolation first, prefers the harness's native worktree/workspace tool, and falls back to Git-compatible worktrees when needed.",
   ],
   "git-worktree": [
-    "Ensure work happens in an isolated git worktree without disturbing the current checkout. Use when starting work that should stay isolated, or when `ce-work` or `ce-code-review` offers a worktree option. Detects existing isolation first, prefers the harness's native worktree tool, and falls back to plain git.",
+    "Ensure work happens in an isolated workspace without disturbing the current checkout. Use when starting work that should stay isolated, or when `ce-work` or `ce-code-review` offers a worktree option. Detects existing isolation first, prefers the harness's native worktree/workspace tool, and falls back to Git-compatible worktrees when needed.",
   ],
   "test-browser": [
     "Run browser tests on pages affected by current PR or branch",

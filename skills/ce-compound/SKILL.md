@@ -40,13 +40,13 @@ Headless mode is intended for automations and skill-to-skill invocation where no
 
 ## Pre-resolved context
 
-**Git branch (pre-resolved):** !`git rev-parse --abbrev-ref HEAD 2>/dev/null || true`
+**Current bookmark (pre-resolved):** !`jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'bookmarks.join(" ") ++ "\n"' 2>/dev/null || true`
 
-If the line above resolved to a plain branch name (like `feat/my-branch`), use it in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving it. If it still contains a backtick command string or is empty, derive the branch at runtime.
+If the line above resolved to a plain bookmark name (like `feat/my-work`), use it in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving it. If it still contains a backtick command string or is empty, derive the bookmark at runtime.
 
-**Repo root (pre-resolved):** !`git rev-parse --show-toplevel 2>/dev/null || pwd`
+**Repo root (pre-resolved):** !`jj workspace root 2>/dev/null || pwd`
 
-If the line above resolved to an absolute path, use it as the session-history repo filter in Phase 1. If it still contains a backtick command string or is empty, derive the repo root at runtime with `git rev-parse --show-toplevel 2>/dev/null || pwd`.
+If the line above resolved to an absolute path, use it as the session-history repo filter in Phase 1. If it still contains a backtick command string or is empty, derive the repo root at runtime with `jj workspace root 2>/dev/null || pwd`.
 
 ## Support Files
 
@@ -244,7 +244,7 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
 
    **Session-history payload — keep tight.** A long, keyword-rich payload licenses widening. Use this shape:
 
-   - **Pre-resolved context** (only if values resolved cleanly above; otherwise omit): repo name, current git branch.
+   - **Pre-resolved context** (only if values resolved cleanly above; otherwise omit): repo name, current bookmark.
    - **Time window**: explicit `7 days` unless the documented problem clearly spans a longer arc.
    - **Problem topic**: one sentence naming the concrete issue — error message, module name, what broke and how it was fixed. Not a paragraph; not a bullet list of related topics.
    - **Filter rule (one line)**: "Only surface findings directly relevant to this specific problem. Ignore unrelated work from the same sessions or branches."
@@ -268,7 +268,7 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
 
    ```bash
    if [ -n "${CLAUDE_SKILL_DIR}" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/session-history/discover-sessions.sh" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/session-history/extract-metadata.py" ]; then
-     REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+      REPO_ROOT=$(jj workspace root 2>/dev/null || pwd)
      REPO_NAME=$(basename "$REPO_ROOT")
      SCAN_DAYS="7"
      bash "${CLAUDE_SKILL_DIR}/scripts/session-history/discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS" --cwd "$REPO_ROOT" | tr '\n' '\0' | xargs -0 python3 "${CLAUDE_SKILL_DIR}/scripts/session-history/extract-metadata.py" --cwd-filter "$REPO_ROOT"

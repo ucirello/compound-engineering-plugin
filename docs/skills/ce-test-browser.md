@@ -135,7 +135,7 @@ Suitable for pasting into a PR description as test evidence.
 
 You finish a notification settings page and a layout change. You invoke `/ce-test-browser`.
 
-The skill verifies `agent-browser` is installed. Asks whether to run headed or headless — you pick headed (you want to watch). Determines test scope from `git diff --name-only main...HEAD`: `app/views/layouts/application.html.erb`, `app/views/settings/notifications.html.erb`, `app/javascript/controllers/notification_toggle_controller.js`.
+The skill verifies `agent-browser` is installed. Asks whether to run headed or headless — you pick headed (you want to watch). Determines test scope from `jj diff --name-only --from main`: `app/views/layouts/application.html.erb`, `app/views/settings/notifications.html.erb`, `app/javascript/controllers/notification_toggle_controller.js`.
 
 Maps to routes: `/` (layout change affects every page; test homepage), `/settings/notifications` (the new page), and other pages that render the toggle controller. Detects port 3000 from `bin/dev` config; verifies the user's dev server is running on that port.
 

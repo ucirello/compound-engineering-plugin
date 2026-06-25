@@ -77,13 +77,13 @@ Invoked when a specific need arises — not part of any chain.
 
 ---
 
-## Git Workflow
+## Version-Control Workflow
 
 | Skill | Description |
 |-------|-------------|
-| [`/ce-commit`](./ce-commit.md) | Create a single, well-crafted git commit — convention-aware, sensitive-file-safe, file-level logical splitting |
+| [`/ce-commit`](./ce-commit.md) | Create a single, well-crafted JJ-backed commit — convention-aware, sensitive-file-safe, file-level logical splitting |
 | [`/ce-commit-push-pr`](./ce-commit-push-pr.md) | Go from working changes to an open PR with adaptive descriptions, related-reference handling, and three modes (full workflow / description update / description-only generation) |
-| [`/ce-worktree`](./ce-worktree.md) | Ensure work happens in an isolated git worktree — detect existing isolation, prefer the harness's native worktree tool, fall back to plain git |
+| [`/ce-worktree`](./ce-worktree.md) | Ensure work happens in an isolated workspace — detect existing isolation, prefer the harness's native worktree/workspace tool, fall back to Git-compatible worktrees when needed |
 
 ---
 

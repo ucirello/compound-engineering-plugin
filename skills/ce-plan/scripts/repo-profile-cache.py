@@ -13,9 +13,9 @@ Usage:
 `get` prints exactly one of:
     HIT\\n<profile-json>     a valid entry exists for the current repo state;
                             the profile JSON follows on subsequent lines
-    MISS\\n<write-path>      git repo, no valid entry — caller derives the
+    MISS\\n<write-path>      JJ workspace, no valid entry — caller derives the
                             profile and calls `put <write-path-or-any-file>`
-    NO-CACHE                no git repo or no writable cache — caller derives
+    NO-CACHE                no JJ workspace or no writable cache — caller derives
                             the profile fresh and skips `put`
 
 `put <file>` reads the profile JSON from <file>, wraps it with a validity
@@ -24,28 +24,29 @@ on success, `NO-CACHE` when the repo/cache is unavailable.
 
 Cache path:
     /tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json
-  root-sha = lexicographically-first `git rev-list --max-parents=0 HEAD`
+  root-revision = lexicographically-first JJ root ancestor commit ID
              (deterministic even for multi-root histories) — the repo identity,
-             shared across worktrees and clones.
-  head-sha = `git rev-parse HEAD` — the working state.
+             shared across JJ workspaces.
+  current-revision = `jj log -r @- -T commit_id` — the parent commit.
 
 Validity (HIT) requires ALL of:
   - the cache file exists and parses as JSON,
-  - stored `head_sha` == current HEAD,
+  - stored `head_sha` == current revision,
   - stored `profile_schema_version` == PROFILE_SCHEMA_VERSION,
-  - no profile-input path is dirty or newly-added per `git status --porcelain`
+  - no profile-input path is dirty or newly-added per `jj status`
     (the schema-derived superset in `is_profile_input`, which also catches
-    untracked `??` files — a newly-added manifest or AGENTS.md must invalidate).
+    new files — a newly-added manifest or AGENTS.md must invalidate).
 
 Cardinal rule: this cache is an optimization, never a correctness dependency.
-Every failure mode (not a git repo, unreadable/malformed cache, no writable
-/tmp, git errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
+Every failure mode (not a JJ workspace, unreadable/malformed cache, no writable
+/tmp, JJ errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
 never serves a profile it cannot prove fresh.
 
 Pure stdlib. No third-party dependencies.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -174,11 +175,11 @@ def is_profile_input(path: str) -> bool:
     return False
 
 
-def git(*args: str) -> "str | None":
-    """Run a git command; return stripped stdout, or None on any failure."""
+def run_vcs(*args: str) -> "str | None":
+    """Run a VCS command; return stripped stdout, or None on any failure."""
     try:
         result = subprocess.run(
-            ["git", *args], capture_output=True, text=True, check=False
+            [*args], capture_output=True, text=True, check=False
         )
     except OSError:
         return None
@@ -187,64 +188,72 @@ def git(*args: str) -> "str | None":
     return result.stdout.strip()
 
 
-def root_sha() -> "str | None":
-    out = git("rev-list", "--max-parents=0", "HEAD")
+def jj_root_sha() -> "str | None":
+    out = run_vcs(
+        "jj",
+        "log",
+        "-r",
+        "roots(::@ & ~root())",
+        "--no-graph",
+        "-T",
+        'commit_id ++ "\\n"',
+    )
     if not out:
         return None
-    # Multi-root histories print several SHAs; pick a deterministic one.
+    # Multi-root histories print several commit IDs; pick a deterministic one.
     return sorted(out.split("\n"))[0]
 
 
-def changed_paths() -> "list[str] | None":
-    """Paths from `git status --porcelain`, or None if it could not run.
+def current_revision() -> "str | None":
+    return run_vcs("jj", "log", "-r", "@-", "--no-graph", "-T", 'commit_id ++ "\\n"')
 
-    Includes untracked (`??`) entries so a newly-added profile input is seen.
+
+def changed_paths() -> "list[str] | None":
+    """Paths from VCS status, or None if it could not run.
+
+    Includes untracked entries so a newly-added profile input is seen.
     None signals "could not determine cleanliness" — the caller treats that
     conservatively as a miss rather than serving an unverified profile.
     """
-    # --untracked-files=all lists individual untracked files; without it git
-    # collapses a fully-untracked new directory to a single `?? dir/` entry,
-    # which would hide a newly-added manifest inside it.
-    #
-    # Call subprocess directly rather than via git(): porcelain's status
-    # columns include a significant LEADING space (e.g. " M path"), and
-    # git()'s .strip() would eat it and shift the path slice.
+    jj_paths = jj_changed_paths()
+    if jj_paths is not None:
+        return jj_paths
+
+    return None
+
+
+def jj_changed_paths() -> "list[str] | None":
     try:
         result = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=all"],
-            capture_output=True,
-            text=True,
-            check=False,
+            ["jj", "status"], capture_output=True, text=True, check=False
         )
     except OSError:
         return None
     if result.returncode != 0:
         return None
-    def clean(token: str) -> str:
-        token = token.strip()
-        # git quotes paths containing special characters.
-        if len(token) >= 2 and token[0] == '"' and token[-1] == '"':
-            token = token[1:-1]
-        return token
 
     paths: list[str] = []
     for line in result.stdout.split("\n"):
-        if not line.strip():
+        if not line or line.startswith(("Working copy ", "Parent commit ", "The working copy ")):
             continue
-        rest = line[3:]
-        # Rename/copy entries are "old -> new"; BOTH endpoints changed. A
-        # profile input renamed *away* (e.g. `package.json -> pkg.json`) must
-        # still invalidate, so keep the source path, not just the destination.
-        if " -> " in rest:
-            for token in rest.split(" -> ", 1):
-                p = clean(token)
-                if p:
-                    paths.append(p)
+        if len(line) < 3 or line[1] != " ":
             continue
-        p = clean(rest)
-        if p:
-            paths.append(p)
+        path = line[2:].strip()
+        if path:
+            paths.extend(expand_jj_status_path(path))
     return paths
+
+
+def expand_jj_status_path(path: str) -> "list[str]":
+    """Expand JJ rename syntax so both endpoints participate in input checks."""
+    if " => " not in path:
+        return [path]
+    braced = re.match(r"^(.*)\{([^{}]+) => ([^{}]+)\}(.*)$", path)
+    if braced:
+        prefix, old, new, suffix = braced.groups()
+        return [f"{prefix}{old}{suffix}", f"{prefix}{new}{suffix}"]
+    old, new = path.split(" => ", 1)
+    return [old.strip("{}"), new.strip("{}")]
 
 
 def cache_path(root: str, head: str) -> str:
@@ -252,9 +261,9 @@ def cache_path(root: str, head: str) -> str:
 
 
 def resolve_keys() -> "tuple[str, str] | None":
-    """The (root-sha, head-sha) cache key, or None if not a usable git repo."""
-    root = root_sha()
-    head = git("rev-parse", "HEAD")
+    """The (root-revision, current-revision) cache key, or None if VCS metadata is unavailable."""
+    root = jj_root_sha()
+    head = current_revision()
     if not root or not head:
         return None
     return root, head

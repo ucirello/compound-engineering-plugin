@@ -114,9 +114,9 @@ describe("html-rendering.md reference content invariants", () => {
     expect(/Active-recall/i.test(REFERENCE)).toBe(true)
   })
 
-  test("DESIGN.md discovery paths in worktree-root order", () => {
+  test("DESIGN.md discovery paths in workspace-root order", () => {
     expect(/DESIGN\.md discovery/i.test(REFERENCE)).toBe(true)
-    expect(/worktree root|git rev-parse --show-toplevel/i.test(REFERENCE)).toBe(true)
+    expect(/workspace root|jj root/i.test(REFERENCE)).toBe(true)
     expect(/docs\/DESIGN\.md/.test(REFERENCE)).toBe(true)
     expect(/\.compound-engineering\/DESIGN\.md/.test(REFERENCE)).toBe(true)
   })
@@ -228,8 +228,8 @@ describe("html-rendering.md reference content invariants", () => {
       "Reference must require hyperlinking entries in the Sources & References section.",
     ).toBe(true)
     expect(
-      /git remote get-url origin/.test(REFERENCE),
-      "Reference must name `git remote get-url origin` as the way to resolve the repo's GitHub URL at compose time.",
+      /jj git remote list/.test(REFERENCE),
+      "Reference must name `jj git remote list` as the way to resolve the repo's remote URL at compose time.",
     ).toBe(true)
     expect(
       /blob\/main/.test(REFERENCE),

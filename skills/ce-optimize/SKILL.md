@@ -51,7 +51,7 @@ For a friendly overview of what this skill is for, when to use hard metrics vs L
 
 **CRITICAL: The experiment log on disk is the single source of truth. The conversation context is NOT durable storage. Results that exist only in the conversation WILL be lost.**
 
-The files under `.context/compound-engineering/ce-optimize/<spec-name>/` are local scratch state. They are ignored by git, so they survive local resumes on the same machine but are not preserved by commits, branches, or pushes unless the user exports them separately.
+The files under `.context/compound-engineering/ce-optimize/<spec-name>/` are local scratch state. They are ignored by the project's VCS rules, so they survive local resumes on the same machine but are not preserved by commits, bookmarks, or pushes unless the user exports them separately.
 
 Every piece of state that matters MUST live on disk, not in the agent's memory.
 
@@ -215,7 +215,7 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 Check if `optimize/<spec-name>` branch already exists:
 
 ```bash
-git rev-parse --verify "optimize/<spec-name>" 2>/dev/null
+jj log -r "optimize/<spec-name>" --no-graph >/dev/null 2>&1
 ```
 
 **If branch exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
@@ -227,7 +227,7 @@ Present the user with a choice via the platform question tool:
 ### 0.5 Create Optimization Branch and Scratch Space
 
 ```bash
-git checkout -b "optimize/<spec-name>"  # or switch to existing if resuming
+jj bookmark create "optimize/<spec-name>" -r @  # or continue on existing if resuming
 ```
 
 Create scratch directory:
@@ -253,7 +253,7 @@ bash "$SKILL_DIR/scripts/<name>"
 Verify no uncommitted changes to files within `scope.mutable` or `scope.immutable`:
 
 ```bash
-git status --porcelain
+jj status
 ```
 
 Filter the output against the scope paths. If any in-scope files have uncommitted changes:
@@ -468,13 +468,13 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 1. Check environment guard -- do NOT delegate if already inside a Codex sandbox:
    ```bash
    # If these exist, we're already in Codex -- fall back to subagent
-   test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .git
+   test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .jj
    ```
 2. Fill the experiment prompt template
 3. Write the filled prompt to a temp file
 4. Dispatch via Codex:
    ```bash
-   cat /tmp/optimize-exp-XXXXX.txt | codex exec --skip-git-repo-check - 2>&1
+   cat /tmp/optimize-exp-XXXXX.txt | codex exec - 2>&1
    ```
 5. Security posture: use the user's selection (ask once per session if not set in spec)
 

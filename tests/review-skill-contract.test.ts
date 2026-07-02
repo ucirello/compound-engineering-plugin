@@ -333,7 +333,7 @@ describe("ce-code-review contract", () => {
     expect(content).toMatch(/there is no apply \*?mode\*?/i)
   })
 
-  test("findings use terse cell + keyed detail line, mirror the template, stay consistent across severities", async () => {
+  test("findings presentation is action-shaped and enforces hard constraints, mirrors the template", async () => {
     const content = await readRepoFile("skills/ce-code-review/SKILL.md")
     const template = await readRepoFile(
       "skills/ce-code-review/references/review-output-template.md",
@@ -343,20 +343,32 @@ describe("ce-code-review contract", () => {
     expect(content).toContain("load `references/review-output-template.md` and mirror")
     expect(template).toContain("canonical skeleton")
 
-    // Terse cell + keyed detail line is the sanctioned home for depth
-    expect(content).toMatch(/keyed detail line/i)
-    expect(template).toMatch(/Detail line \(per finding/i)
-    expect(template).toMatch(/\*\*#N\*\*/)
+    // Per-finding clarity: the four things an actor needs (what/why/response/confidence)
+    expect(content).toMatch(/what response it needs/i)
+    expect(content).toMatch(/why it matters/i)
 
-    // Terse-cell discipline carries a concrete named test (not just "terse")
-    expect(content).toMatch(/one short clause/i)
-    expect(template).toMatch(/one short clause/i)
+    // Group by unit of work/decision: decisions a human must make vs mechanical work
+    expect(content).toMatch(/decision/i)
+    expect(content).toMatch(/mechanical/i)
 
-    // Consistency across severities is enforced (the failure seen in the wild: P1 blocks vs P2/P3 tables)
-    expect(content).toMatch(/Inconsistent treatment across severities/i)
+    // Economy is about expression, not coverage: no file pasting / diff restating
+    expect(content).toMatch(/do not paste file contents/i)
 
-    // Multi-file applied fix is one row with one number (no duplicate #)
+    // Long output: the closing (verdict + actionable list) stands alone
+    expect(content).toMatch(/stand alone without scrolling/i)
+    expect(content).toMatch(/Actionable list are present, last, and self-sufficient/i)
+
+    // Shape serves the finding type, but consistent within a section
+    expect(content).toMatch(/consistent within (a |the )?section/i)
+
+    // Hard constraint: ASCII-safe, no box-drawing (skill + template)
+    expect(content).toMatch(/box-drawing/i)
+    expect(template).toMatch(/box-drawing/i)
+
+    // Stable numbering reused; multi-file applied fix is one row; keyed detail line is the home for depth
+    expect(content).toMatch(/reuse the same `#`/i)
     expect(template).toMatch(/one row with one `#`/i)
+    expect(template).toMatch(/\*\*#N\*\*/)
   })
 
   test("PR-mode skip-condition pre-check stops without dispatching reviewers", async () => {
@@ -384,8 +396,8 @@ describe("ce-code-review contract", () => {
     // Skip cleanly without dispatching reviewers
     expect(content).toMatch(/stop without dispatching reviewers/)
 
-    // Standalone, base:, and branch-remote paths unaffected by PR skip rules
-    expect(content).toMatch(/Standalone.*`base:`.*branch-remote/)
+    // Standalone, base:, and bookmark-remote paths unaffected by PR skip rules
+    expect(content).toMatch(/Standalone.*`base:`.*bookmark-remote/)
   })
 
   test("remote scope modes forbid workspace inspection on wrong tree", async () => {
@@ -397,16 +409,16 @@ describe("ce-code-review contract", () => {
       "skills/ce-code-review/references/validator-template.md",
     )
 
-    expect(skill).toContain("<pr-scope-mode>branch-remote</pr-scope-mode>")
+    expect(skill).toContain("<pr-scope-mode>bookmark-remote</pr-scope-mode>")
     expect(skill).toContain("<branch-head-ref>")
     expect(skill).toMatch(/local-aligned.*local tree diff/i)
     expect(skill).not.toMatch(/append.*`DIFF:`.*unpushed/i)
     expect(skill).toMatch(/Do \*\*not\*\* call `gh pr diff` or append remote hunks/)
 
-    expect(diffScope).toContain("branch-remote")
+    expect(diffScope).toContain("bookmark-remote")
     expect(diffScope).toContain("pr-remote")
 
-    expect(validator).toContain("branch-remote")
+    expect(validator).toContain("bookmark-remote")
   })
 
   test("mode-aware demotion routes weak general-quality findings to soft buckets", async () => {
@@ -568,7 +580,7 @@ describe("ce-code-review contract", () => {
   test("PR mode uses gh pr diff without checkout; branch/standalone fail closed on missing base", async () => {
     const content = await readRepoFile("skills/ce-code-review/SKILL.md")
 
-    // No scope path should fall back to `git diff HEAD` or `git diff --cached` — those only
+    // No scope path should fall back to unbased local diffs — those only
     // show uncommitted changes and silently produce empty diffs on clean feature branches.
     expect(content).not.toContain("git diff --name-only HEAD")
     expect(content).not.toContain("git diff -U10 HEAD")
@@ -579,7 +591,7 @@ describe("ce-code-review contract", () => {
     expect(content).toMatch(/Do not fall back to checkout/i)
 
     // Branch and standalone modes must stop when no base can be resolved
-    const stopGuardMatches = content.match(/Do not fall back to `git diff HEAD`/g)
+    const stopGuardMatches = content.match(/Do not fall back to `jj diff`/g)
     expect(stopGuardMatches?.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -613,7 +625,6 @@ describe("ce-code-review contract", () => {
   test("ce-work shipping-workflow enforces a residual-work gate after Tier 2 review", async () => {
     for (const path of [
       "skills/ce-work/references/shipping-workflow.md",
-      "skills/ce-work-beta/references/shipping-workflow.md",
     ]) {
       const workflow = await readRepoFile(path)
       await expect(readRepoFile(path.replace("shipping-workflow.md", "tracker-defer.md"))).resolves.toContain(
@@ -635,7 +646,7 @@ describe("ce-code-review contract", () => {
 
       // Accept-and-proceed path threads findings into the PR description.
       expect(workflow).toContain("Known Residuals")
-      expect(workflow).toContain("docs/residual-review-findings/<branch-or-head-sha>.md")
+      expect(workflow).toContain("docs/residual-review-findings/<bookmark-or-change-id>.md")
       expect(workflow).toContain("If the user later chooses the no-PR `ce-commit` path")
       expect(workflow).toContain("must not live only in the transient session")
     }
@@ -675,12 +686,15 @@ describe("ce-code-review contract", () => {
     expect(lfg).toContain("do not load any confirmation-driven PR update skill")
     expect(lfg).toContain("gh pr edit PR_NUMBER --body-file BODY_FILE")
     expect(lfg).toContain("## Residual Review Findings")
-    expect(lfg).toContain("docs/residual-review-findings/<branch-or-head-sha>.md")
-    expect(lfg).toContain("prefer `origin` when present")
-    expect(lfg).toContain("choose the first configured remote")
-    expect(lfg).toContain("git push --set-upstream <remote> HEAD")
+    expect(lfg).toContain("docs/residual-review-findings/<bookmark-or-change-id>.md")
+    expect(lfg).toContain("jj git push --bookmark <bookmark>")
     expect(lfg).not.toContain("git push --set-upstream origin HEAD")
-    expect(lfg).toContain("Do not output DONE until either the existing PR body has been updated or this fallback file commit has been pushed.")
+    expect(lfg).toContain("Do not output DONE until the residual findings are durable")
+
+    // Shipping precondition: a remote-less repo (e.g. a sandbox/throwaway checkout)
+    // finishes locally instead of deadlocking on an impossible push.
+    expect(lfg).toContain("Shipping precondition")
+    expect(lfg).toContain("skip every push, PR create/edit, and CI-watch action")
 
     // Autopilot contract: never prompt, but require a durable sink before DONE.
     expect(lfg).toContain("Do not prompt the user")
@@ -710,7 +724,7 @@ describe("ce-code-review contract", () => {
 
     const stage6 = content.split("### Headless output format")[0].split("### Stage 6: Synthesize and present")[1]
     expect(stage6).toContain("Finding numbers come from the stable assignment in Stage 5")
-    expect(stage6).toContain("never re-derive them per severity table")
+    expect(stage6).toContain("never re-derive them per severity section")
     expect(template).toContain("Stable sequential finding numbers")
     expect(template).toContain("reuse those same numbers when findings are repeated in Actionable Findings")
 
@@ -796,11 +810,13 @@ describe("ce-code-review contract", () => {
     )
     const fixture = await readRepoFile("tests/fixtures/ce-code-review-stable-numbering.md")
 
-    // Stage 6 renders groups as a pipe table that supplements, never replaces, severity tables
+    // Stage 6 renders groups as a compact table that supplements, never replaces, the findings,
+    // and marks each group as an apply-queue or a decision-gate for downstream actors
     const stage6 = content.split("### Stage 6: Synthesize and present")[1].split("## Quality Gates")[0]
-    expect(stage6).toMatch(/render a `### Triage Groups` section before the severity tables/)
+    expect(stage6).toMatch(/render a `### Triage Groups` section before the findings/)
     expect(stage6).toContain("| Group | Findings | Context | Preferred Resolution | Why |")
-    expect(stage6).toMatch(/Groups supplement the severity tables, never replace them/)
+    expect(stage6).toMatch(/groups supplement the findings, never replace them/i)
+    expect(stage6).toMatch(/apply-queue or a decision-gate/i)
 
     // Template carries the canonical skeleton and formatting rule
     expect(template).toContain("### Triage Groups")

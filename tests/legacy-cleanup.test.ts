@@ -160,6 +160,35 @@ describe("cleanupStaleSkillDirs", () => {
     expect(await exists(path.join(root, "ce-document-review"))).toBe(false)
   })
 
+  test("removes promoted-from-beta skill dirs via their last-shipped beta description (ce-dogfood-beta, ce-polish-beta)", async () => {
+    // Regression: a beta->stable rename only sweeps the stale flat-install dir if
+    // currentSkillNameForLegacy maps the beta name to the shipping stable skill.
+    // Without that mapping, loadLegacyFingerprints leaves the description undefined
+    // and isLegacyPluginOwned bails before consulting the alias. The on-disk dirs
+    // below still carry the OLD beta description, matched via LEGACY_SKILL_DESCRIPTION_ALIASES.
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "cleanup-beta-promoted-"))
+    await createDir(
+      path.join(root, "ce-dogfood-beta"),
+      skillContent(
+        "ce-dogfood-beta",
+        "[BETA] Hands-off end-to-end branch dogfood pass with browser testing, auto-fixes, regression tests, and fix commits.",
+      ),
+    )
+    await createDir(
+      path.join(root, "ce-polish-beta"),
+      skillContent(
+        "ce-polish-beta",
+        "Start the dev server, open the feature in a browser, and iterate on improvements together. Manual invocation only — type /ce-polish to run it.",
+      ),
+    )
+
+    const removed = await cleanupStaleSkillDirs(root)
+
+    expect(removed).toBe(2)
+    expect(await exists(path.join(root, "ce-dogfood-beta"))).toBe(false)
+    expect(await exists(path.join(root, "ce-polish-beta"))).toBe(false)
+  })
+
   test("removes raw colon workflow skill directories", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "cleanup-colon-workflows-"))
     await createDir(
@@ -223,6 +252,24 @@ describe("cleanupStaleSkillDirs", () => {
     expect(await exists(path.join(root, "workflows-brainstorm"))).toBe(false)
     expect(await exists(path.join(root, "workflows-plan"))).toBe(false)
     expect(await exists(path.join(root, "workflows:plan"))).toBe(false)
+  })
+
+  test("removes a retired ce-work-beta skill dir via its last-shipped description", async () => {
+    // Regression: once ce-work-beta is removed from the plugin, loadLegacyFingerprints
+    // can no longer read its (deleted) SKILL.md, so the fingerprint comes from
+    // LEGACY_ONLY_SKILL_DESCRIPTIONS. Without that entry, skills.get("ce-work-beta")
+    // stays undefined and isLegacyPluginOwned returns false before deleting, leaving
+    // the stale install dir behind on upgrade.
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "cleanup-retired-skill-"))
+    await createDir(
+      path.join(root, "ce-work-beta"),
+      skillContent("ce-work-beta", "[BETA] Execute ce-work with external delegate support."),
+    )
+
+    const removed = await cleanupStaleSkillDirs(root)
+
+    expect(removed).toBe(1)
+    expect(await exists(path.join(root, "ce-work-beta"))).toBe(false)
   })
 
   test("returns 0 when directory does not exist", async () => {
@@ -621,10 +668,10 @@ describe("cleanupStalePrompts", () => {
       ),
     )
     await createFile(
-      path.join(root, "ce-work-beta.md"),
+      path.join(root, "ce-work.md"),
       legacyWorkflowPromptContent(
-        "ce:work-beta",
-        (await pluginDescription("skills/ce-work-beta/SKILL.md"))
+        "ce:work",
+        (await pluginDescription("skills/ce-work/SKILL.md"))
           .replaceAll("ce-", "ce:"),
       ),
     )
@@ -633,7 +680,7 @@ describe("cleanupStalePrompts", () => {
 
     expect(removed).toBe(2)
     expect(await exists(path.join(root, "ce-plan.md"))).toBe(false)
-    expect(await exists(path.join(root, "ce-work-beta.md"))).toBe(false)
+    expect(await exists(path.join(root, "ce-work.md"))).toBe(false)
   })
 
   test("removes wrappers whose description has drifted (matches a known historical alias)", async () => {
@@ -693,6 +740,27 @@ describe("cleanupStalePrompts", () => {
     expect(await exists(path.join(root, "ce-work.md"))).toBe(false)
     expect(await exists(path.join(root, "ce-work-beta.md"))).toBe(false)
     expect(await exists(path.join(root, "ce-brainstorm.md"))).toBe(false)
+  })
+
+  test("removes a retired ce-work-beta prompt wrapper built from the last shipped skill", async () => {
+    // Regression: a ce-work-beta.md wrapper generated from the final live skill
+    // carried the description "[BETA] Execute ce-work with external delegate
+    // support." After the skill is deleted, that exact description must still be
+    // recognized (seeded from LEGACY_PROMPT_DESCRIPTION_ALIASES) or the retired
+    // slash prompt is classified foreign and left behind on upgrade.
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "cleanup-retired-prompt-"))
+    await createFile(
+      path.join(root, "ce-work-beta.md"),
+      promptWrapperContent(
+        "ce-work-beta",
+        "[BETA] Execute ce-work with external delegate support.",
+      ),
+    )
+
+    const removed = await cleanupStalePrompts(root)
+
+    expect(removed).toBe(1)
+    expect(await exists(path.join(root, "ce-work-beta.md"))).toBe(false)
   })
 
   test("preserves wrappers whose description was never shipped by compound-engineering", async () => {

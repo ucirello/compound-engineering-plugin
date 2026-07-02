@@ -27,14 +27,15 @@ You produce up to two outputs depending on whether a run ID was provided:
    If no Run ID is provided (the field is empty or absent), skip this step entirely -- do not attempt any file write.
 
 2. **Compact return (always).** RETURN compact JSON to the parent with ONLY merge-tier fields per finding:
-   title, severity, file, line, confidence, autofix_class, owner, requires_verification, pre_existing, suggested_fix.
-   Do NOT include why_it_matters or evidence in the returned JSON.
+   title, severity, file, line, confidence, autofix_class, owner, requires_verification, pre_existing, suggested_fix, first_evidence.
+   Do NOT include why_it_matters or the full evidence array in the returned JSON.
+   `first_evidence` is the ONE exception to "no evidence in the compact return": it is the verbatim motivating line with `file:line` (the same string you put first in the `evidence` array). It is **REQUIRED for every finding at anchor 75 or 100** — the orchestrator enforces the quote-the-line gate from this field, and a 75/100 finding without it is demoted to anchor 50 at merge. Omit it only for anchor-50 findings. Keep it to that single line; the rest of `evidence` stays in the artifact file.
    Include reviewer, residual_risks, and testing_gaps at the top level.
 
 The full file preserves detail for downstream consumers (agent-mode output, debugging).
 The compact return keeps the orchestrator's context lean for merge and synthesis.
 
-The schema below describes the **full artifact file format** (all fields required). For the compact return, follow the field list above -- omit why_it_matters and evidence even though the schema marks them as required.
+The schema below describes the **full artifact file format** (all fields required). For the compact return, follow the field list above -- omit why_it_matters and the full evidence array (but include `first_evidence`) even though the schema marks evidence as required.
 
 {schema}
 
@@ -43,7 +44,7 @@ The schema below describes the **full artifact file format** (all fields require
 - `severity`: one of `"P0"`, `"P1"`, `"P2"`, `"P3"` — use these exact strings. Do NOT use `"high"`, `"medium"`, `"low"`, `"critical"`, or any other vocabulary, even if your persona's prose discusses priorities in those terms conceptually.
 - `autofix_class`: one of `"gated_auto"`, `"manual"`, `"advisory"`.
 - `owner`: one of `"downstream-resolver"`, `"human"`, `"release"`.
-- `evidence`: an ARRAY of strings with at least one element. A single string value is a validation failure — wrap every quote in `["..."]` even when there is only one.
+- `evidence`: an ARRAY of strings with at least one element. A single string value is a validation failure — wrap every quote in `["..."]` even when there is only one. **For any finding at anchor `75` or `100`, the first evidence item MUST be the verbatim motivating line(s) with `file:line`** — the exact code text that makes the finding true (see "Quote-the-line gate" below).
 - `pre_existing`: boolean, never null.
 - `requires_verification`: boolean, never null.
 - `confidence`: one of exactly `0`, `25`, `50`, `75`, or `100` — a discrete anchor, NOT a continuous number. Any other value (e.g., `72`, `0.85`, `"high"`) is a validation failure. Pick the anchor whose behavioral criterion you can honestly self-apply to this finding (see "Confidence rubric" below).
@@ -53,7 +54,7 @@ If your persona description uses severity vocabulary like "high-priority" or "cr
 **Confidence rubric — use these exact behavioral anchors.** Pick the single anchor whose criterion you can honestly self-apply. Do not pick a value between anchors; only `0`, `25`, `50`, `75`, and `100` are valid. The rubric is anchored on behavior you performed, not on a vague sense of certainty — if you cannot truthfully attach the behavioral claim to the finding, step down to the next anchor.
 
 - **`0` — Not confident at all.** A false positive that does not stand up to light scrutiny, or a pre-existing issue this PR did not introduce. **Do not emit — suppress silently.** This anchor exists in the enum only so synthesis can explicitly track the drop; personas never produce it.
-- **`25` — Somewhat confident.** Might be a real issue but could also be a false positive; you could not verify from the diff and surrounding code alone. **Do not emit — suppress silently.** This anchor, like `0`, exists in the enum only so synthesis can track the drop; personas never produce it. If your domain is genuinely uncertain, either gather more evidence (read related files, check call sites, inspect git blame) until you can honestly anchor at `50` or higher, or suppress entirely.
+- **`25` — Somewhat confident.** Might be a real issue but could also be a false positive; you could not verify from the diff and surrounding code alone. **Do not emit — suppress silently.** This anchor, like `0`, exists in the enum only so synthesis can track the drop; personas never produce it. If your domain is genuinely uncertain, either gather more evidence (read related files, check call sites, inspect `jj file annotate`) until you can honestly anchor at `50` or higher, or suppress entirely.
 - **`50` — Moderately confident.** You verified this is a real issue but it is a nitpick, narrow edge case, or has minimal practical impact. Style preferences and subjective improvements land here. Surfaces only when synthesis routes weak findings to advisory / residual_risks / testing_gaps soft buckets, or when the finding is P0 (critical-but-uncertain issues are not silently dropped).
 - **`75` — Highly confident.** You double-checked the diff and surrounding code and confirmed the issue will affect users, downstream callers, or runtime behavior in normal usage. The bug, vulnerability, or contract violation is clearly present and actionable.
 
@@ -61,6 +62,15 @@ If your persona description uses severity vocabulary like "high-priority" or "cr
 - **`100` — Absolutely certain.** The issue is verifiable from the code itself — compile error, type mismatch, definitive logic bug (off-by-one in a tested algorithm, wrong return type, swapped arguments), or an explicit project-standards violation with a quotable rule. No interpretation required.
 
 Anchor and severity are independent axes. A P2 finding can be anchor `100` if the evidence is airtight; a P0 finding can be anchor `50` if it is an important concern you could not fully verify. Anchor gates where the finding surfaces (drop / soft bucket / actionable); severity orders it within the actionable surface.
+
+**Quote-the-line gate (kills the "field/symbol doesn't exist" false-positive class).** Before you anchor a finding at `75` or `100`, quote the verbatim line(s) that make it true, with `file:line`, as the first `evidence` item:
+
+- "field X doesn't exist on model Y" → quote the class/`Meta`/migration where X would be defined.
+- "`dict.get()` may return None" → quote the dict's initialization.
+- "race between A and B" → quote both A and B.
+- "swapped argument / wrong return" → quote the call site and the signature.
+
+**If you cannot quote the motivating line, you cannot claim `75`+ — step down to `50` (suppressed from primary findings).** When the symbol is generated by a framework metaclass, ORM `Meta`, decorator, or migration history (Rails `has_many`/`scope`, Django `Meta`, SQLAlchemy `Column`/`relationship`, Prisma client, TypeORM/Sequelize decorators), quote the meta-construct that creates it — reading the source that generates the symbol satisfies the gate; a failed `grep` for the literal name does not.
 
 Synthesis suppresses anchors `0` and `25` silently. Anchor `50` is dropped from primary findings unless the severity is P0 (P0+50 survives) or synthesis routes it to a soft bucket (testing_gaps, residual_risks, advisory) per mode-aware demotion. Anchors `75` and `100` enter the actionable tier.
 
@@ -133,8 +143,8 @@ Rules:
 - Suppress any finding you cannot honestly anchor at `50` or higher (the actionable floor is `50`; anchors `0` and `25` are suppressed by synthesis anyway, so emitting them only adds noise). If your persona's domain description sets a stricter floor (e.g., anchor `75` minimum), honor it.
 - Every finding in the full artifact file MUST include at least one evidence item grounded in the actual code. The compact return omits evidence -- the evidence requirement applies to the disk artifact only.
 - Set `pre_existing` to true ONLY for issues in unchanged code that are unrelated to this diff. If the diff makes the issue newly relevant, it is NOT pre-existing.
-- You are operationally read-only. The one permitted exception is writing your full analysis to the `.context/` artifact path when a run ID is provided. You may also use non-mutating inspection commands, including read-oriented `git` / `gh` commands, to gather evidence. Do not edit project files, change branches, commit, push, create PRs, or otherwise mutate the checkout or repository state.
-- Set `autofix_class` and `owner` per `references/action-class-rubric.md`. This skill does not apply fixes — classify for caller routing only.
+- You are operationally read-only. The one permitted exception is writing your full analysis to the `/tmp/compound-engineering/ce-code-review/{run_id}/` artifact path when a run ID is provided. You may also use non-mutating inspection commands, including read-oriented `jj` / `gh` commands, to gather evidence. Do not edit project files, move bookmarks, commit, push, create PRs, or otherwise mutate the checkout or repository state.
+- Set `autofix_class` and `owner` per `references/action-class-rubric.md`; if that file is not reachable from your working directory, the same `gated_auto` / `manual` / `advisory` and owner semantics are already in the schema above and this template's guidance. This skill does not apply fixes — classify for caller routing only.
 - Default `owner` to `downstream-resolver` for actionable findings unless the item is genuinely human-only or release-owned.
 - Set `requires_verification` to true whenever the likely fix needs targeted tests, a focused re-review, or operational validation before it should be trusted.
 - **Propose a `suggested_fix` whenever any defensible code change is reachable from the diff and surrounding code.** This is the persona's commitment that "I, the reviewer with the diff and evidence in front of me, can articulate what the fix looks like." The suggested fix becomes the authoritative signal that downstream surfaces use to decide whether the agent can act on the finding. Three rules:

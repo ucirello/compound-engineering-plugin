@@ -17,7 +17,7 @@ For user-facing bugs, run an extra before/after pass before writing the mechanis
 
 Two modes:
 
-- **Current-branch mode** (default) — describe HEAD vs the repo's default base.
+- **Current-bookmark mode** (default) — describe the current change/stack vs the repo's default base.
 - **PR mode** — describe a specific PR. Triggered when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
@@ -28,25 +28,20 @@ gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,
 
 If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-branch mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) → `git rev-parse --abbrev-ref origin/HEAD` (strip `origin/`) → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `git rev-parse --verify origin/<candidate>`. If none resolve, ask the user. `<head>` is `HEAD`.
+For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> try `main@origin`/`master@origin`/`develop@origin` via `jj log -r <candidate>`. If none resolve, ask the user. `<head>` is `@`.
 
-**Base remote:** `origin` for current-branch mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `git remote -v`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
-
-```bash
-git fetch --no-tags <base-remote> <base>
-git fetch --no-tags <base-remote> <head>   # PR mode only: <head> is headRefOid and may not be local
-git log  --oneline "<base-remote>/<base>..<head>"
-git diff           "<base-remote>/<base>...<head>"
-```
-
-If the commit list is empty, report "No commits to describe" and stop.
-
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local git can't reach the refs (fork PR with no matching remote, shallow clone, offline, merge-base on unrelated histories). For GHES configurations that reject SHA fetch but allow `refs/pull/`:
+**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `jj git remote list` output. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
 
 ```bash
-git fetch --no-tags <base-remote> "refs/pull/<number>/head"
-PR_HEAD_SHA=$(awk '/refs\/pull\/[0-9]+\/head/ {print $1; exit}' "$(git rev-parse --git-dir)/FETCH_HEAD")
+jj git fetch --remote <base-remote>
+jj log -r '<base>@<base-remote>..<head>' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+jj log -r '<base>@<base-remote>..<head>' --no-graph -T 'commit_id.short() ++ " " ++ description ++ "\n"'   # full messages for related-reference discovery
+jj diff --from '<base>@<base-remote>' --to '<head>'
 ```
+
+If the change list is empty, report "No commits to describe" and stop.
+
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local JJ cannot reach the refs (fork PR with no matching remote, shallow clone, offline, unrelated histories). For GHES configurations that reject SHA fetch but allow `refs/pull/`, prefer a temporary JJ bookmark if the remote exposes that ref; otherwise stay on the `gh` fallback.
 
 Note in the user-facing summary when the API fallback was used.
 
@@ -81,9 +76,41 @@ For small + non-trivial bugfixes, the 3-5 sentence target still needs a user-vis
 
 ---
 
+## Step B1: Resolve related work references
+
+Before writing the body, make an explicit related-reference pass. Gather candidate work-item references from the user prompt, caller handoff, branch name, full commit messages, existing PR body, PR template, plan/debug notes, and visible URLs or IDs already in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
+
+Classify each candidate as:
+
+- **closing reference** — the PR fully resolves the item and the tracker's closing syntax is known.
+- **non-closing reference** — the PR is related, partial, investigative, follow-up, validation-only, or the tracker semantics are unknown.
+- **uncertain** — the change clearly came from a tracked bug, incident, performance investigation, alert, or log trace, but the exact ID/link or close-vs-link intent is missing. Ask the user for the reference or intent; in non-interactive flows, use a non-closing reference or omit rather than pretending to close it.
+
+Do not invent a closing keyword. Magic words are workflow actions, not decoration. If the candidate is ambiguous, put a neutral related reference in the related-reference sentence/block or omit it; do not scatter the ID through the summary.
+
+Do not put a non-closing reference next to close/fix/resolve/address/report wording in prose. For partial or related work, write the behavioral scope in one sentence and put the tracker ID separately. Use the table's non-closing reference labels exactly; do not substitute synonyms like `Refs`, `References`, or `Toward` unless the project's documented tracker convention requires one of those labels. For a non-closing reference, the tracker ID appears only in that related-reference sentence or block, never in the summary/opening/body prose. This avoids both accidental automation and reviewer confusion.
+
+- Bad: "closing one corruption path from #123"
+- Bad: "partial fix for #123"
+- Bad: "This addresses the retry-related corruption path reported in #123."
+- Good: "This covers the duplicate-row retry path; concurrent cancellation remains follow-up work."
+- Good: "Related: #123"
+
+Common syntax examples:
+
+| Tracker | Closing reference | Non-closing reference | Notes |
+|---|---|---|---|
+| GitHub Issues | `Fixes #123`; cross-repo: `Fixes owner/repo#123` | `Related: #123`; cross-repo: `Related: owner/repo#123` | Closing keywords are `close(s/d)`, `fix(es/ed)`, and `resolve(s/d)`. Use closing syntax only when the PR targets the default branch and truly resolves the issue; otherwise use a non-closing reference. Repeat the keyword for multiple closing issues. |
+| Linear | `Fixes ENG-123` | `Related to ENG-123` | Linear supports closing and non-closing magic words. Put magic words in the PR description, not a PR comment. Multiple issues can follow one magic word when they share the same intent, e.g. `Fixes ENG-123, DES-5 and ENG-256`. |
+| Other trackers | Use the project's documented closing keyword only when known. | Prefer a full URL or tracker ID under `Related`. | Some trackers parse commit messages, PR descriptions, or both. Follow project docs or tracker integration docs when present; otherwise never guess a closing action. |
+
+Closing references can live in the opening paragraph when the body is tiny. Non-closing references always get their own sentence or `## Related` block before validation/evidence. For one item that truly closes, a single line like `Fixes ENG-123.` can be enough; for mixed items, separate closing and non-closing bullets.
+
+---
+
 ## Step C: Assemble the body
 
-In order: opening → body sections that earn their keep → test plan if non-obvious → evidence block if one exists → Compound Engineering badge after a `---` rule.
+In order: opening → body sections that earn their keep → related references when they need their own block → test plan if non-obvious → evidence block if one exists → Compound Engineering badge after a `---` rule.
 
 The opening goes under `## Summary` if the body uses any `##` headings; bare paragraph otherwise. No orphaned opening paragraphs above the first heading.
 

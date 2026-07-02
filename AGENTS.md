@@ -23,7 +23,7 @@ bun run release:validate  # check plugin/marketplace consistency
 - **Safety:** Do not delete or overwrite user data. Avoid destructive commands.
 - **Testing:** Run `bun test` after changes that affect parsing, conversion, or output.
 - **Release versioning:** Releases are prepared by release automation, not normal feature PRs. The repo has one root plugin/package release component (`compound-engineering`) plus marketplace components (`marketplace`, `cursor-marketplace`). GitHub release PRs and GitHub Releases are the canonical release-notes surface for new releases; root `CHANGELOG.md` is only a pointer to that history. Use conventional titles such as `feat:` and `fix:` so release automation can classify change intent, but do not hand-bump release-owned versions or hand-author release notes in routine PRs.
-- **Output Paths:** Keep OpenCode output at `opencode.json` and `.opencode/{agents,skills,plugins}`. For OpenCode, command go to `~/.config/opencode/commands/<name>.md`; `opencode.json` is deep-merged (never overwritten wholesale).
+- **Output Paths:** Keep OpenCode output at `opencode.json` and `.opencode/{agents,skills,plugins}`. For OpenCode, commands go to `~/.config/opencode/commands/<name>.md`; `opencode.json` is deep-merged (never overwritten wholesale).
 - **Scratch Space:** Default to OS temp. Use `.context/` only when explicitly justified by the rules below.
   - **Default: OS temp** — covers most scratch, including per-run throwaway AND cross-invocation reusable, regardless of whether a repo is present or whether other skills may read the files. A stable OS-temp prefix handles cross-skill and cross-invocation coordination equally well as an in-repo path; repo-adjacency is rarely the relevant property.
     - **Per-run throwaway**: `mktemp -d -t <prefix>-XXXXXX` (OS handles cleanup). Use for files consumed once and discarded — captured screenshots, stitched GIFs, intermediate build outputs, recordings, delegation prompts/results, single-run checkpoints. The resulting path is opaque (on macOS it resolves under `$TMPDIR`/`/var/folders/...`) — that is appropriate for throwaway files users are not meant to access.
@@ -70,6 +70,7 @@ Do not assume a repo change is "just CLI" or "just plugin" without checking whic
 When changing plugin content:
 
 - Update substantive docs like `README.md` when the plugin behavior, inventory, or usage changes.
+- When adding a user-facing skill, document it: create a `docs/skills/<skill-name>.md` page (purpose, novel mechanics, when to use, chain position — follow the shape of the existing pages) and add a catalog row under the right category in `docs/skills/README.md`, alongside the root `README.md` inventory row and the skill-count bump in `tests/release-metadata.test.ts`. Keep these in sync when a skill's purpose or inventory changes. This is convention, not yet validated by a test, so it is easy to miss — most skills have a page; the few that don't (e.g. `lfg`, `ce-dogfood-beta`) are the exception, not the rule.
 - Do not hand-bump release-owned versions in plugin or marketplace manifests.
 - Do not hand-add release entries to `CHANGELOG.md` or treat it as the canonical source for new releases.
 - Run `bun run release:validate` if agents, commands, skills, MCP servers, or release-owned descriptions/counts may have changed.
@@ -129,6 +130,23 @@ A line earns its place when it does one of these:
 - Supplies domain knowledge the agent would not otherwise have.
 
 An adjective is fine **only** when immediately operationalized by a concrete rule (e.g., "keep outputs concise — only enough detail to support the next decision"). The adjective alone is framing; the operationalization is the instruction. Do not append motivational rationale ("the quality of everything depends on this") to a directive that already stands on its own, and do not restate an instruction the same file already gives unless it is deliberate spaced repetition placed where drift occurs.
+
+### Inline the Trigger, Not the Content
+
+SKILL.md loads at session start; references load on demand. That asymmetry sets what belongs where, and the resolution is *what* you inline, not *how much*.
+
+A **load-bearing instruction** — one that MUST fire reliably: the action, the bare routing that invokes the next step, the instruction to load the reference itself — belongs inline at the top of its phase, because an agent that never opened the reference would otherwise stop or guess (`docs/solutions/skill-design/post-menu-routing-belongs-inline.md`).
+
+But do **not** inline a *summary of what the reference contains*. It backfires twice:
+
+- **Drift.** The two copies diverge silently and the agent follows whichever one loaded. When a load-bearing block genuinely must appear in two always-loaded places, guard the copies with a parity test rather than trusting them to stay in sync.
+- **Suppressed load.** A paraphrase suppresses the very load it sits beside — an agent that already has a workable inline version judges it "has enough" and never opens the file, so the reference's templates, shaping rules, and examples never reach it. For a reference that should always load, keep the inline alternative strictly load-instruction-only.
+
+Test: if the inline text is complete enough to act on without the reference, the agent will — so inline only what is incomplete by design ("act, then read X"). The inline part should create demand for the reference, not substitute for it.
+
+### Extract Conditional and Late-Sequence Blocks
+
+Skill content carried from trigger time rides in every subsequent message — every tool call, agent dispatch, and response — so the cost compounds across a session, and more for skills that orchestrate many calls. Extract a block to `references/` when it is **conditional** (executes only under specific conditions) or **late-sequence** (needed only after many prior calls) *and* is a meaningful share of the skill (~20%+). Replace it with a 1-3 line stub stating the condition and a backtick path (e.g., "Read `references/deepening-workflow.md`"). Never use `@` for an extracted block — `@` inlines at load time and defeats the extraction. The always-on trigger from "Inline the Trigger, Not the Content" stays inline; only the conditional substance moves.
 
 ## Coding Conventions
 
@@ -202,36 +220,50 @@ If two skills need the same supporting file, duplicate it into each skill's dire
 
 > **Note (March 2026):** This constraint reflects current Claude Code skill resolution behavior and known path-resolution bugs ([#11011](https://github.com/anthropics/claude-code/issues/11011), [#17741](https://github.com/anthropics/claude-code/issues/17741), [#12541](https://github.com/anthropics/claude-code/issues/12541)). If Anthropic introduces a shared-files mechanism or cross-skill imports in the future, this guidance should be revisited with supporting documentation.
 
+## Shared Repo-Grounding Profile Cache
+
+Repo-grounding skills (`ce-pov`, `ce-plan`, `ce-optimize`, `ce-ideate`, `ce-brainstorm`, `ce-code-review`, plus lighter consumers `ce-compound` — which still derives **and persists** on a miss — and `ce-debug`, which only opportunistically reads `conventions.testing` and never derives/persists) reuse one cached **question-agnostic project profile** (stack, deps, conventions, structure) instead of each re-deriving it. The profile is git-keyed and stored at `/tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json`.
+
+The mechanism is three **byte-duplicated** assets per consuming skill (the plugin has no cross-skill import — see "File References in Skills"):
+
+- `references/repo-profile-cache.md` — the schema + protocol (authoritative; read it before wiring a new consumer).
+- `scripts/repo-profile-cache.py` — deterministic `get`/`put`, invoked via the `SKILL_DIR` anchor (never the legacy `${CLAUDE_SKILL_DIR}` guard).
+- `references/agents/repo-profiler.md` — the persona that derives the profile on a miss.
+
+Rules:
+
+- A consumer resolves the agnostic profile through the cache (`get` → HIT load / MISS derive-and-`put` / NO-CACHE derive-fresh), then runs **only its question-specific grounding fresh**. The cache is an optimization, never a correctness dependency, and must never let a stale profile change an output.
+- **Always re-globbed fresh, never cached:** the `docs/solutions/` enumeration and subdirectory-scoped instruction files. Caching them would risk serving a stale match (e.g. a just-written learning), and re-globbing is ~free.
+- **Adding a consumer:** drop byte-identical copies of the three assets into the skill, add its name to `CONSUMER_SKILLS` in `tests/repo-profile-cache-parity.test.ts`, and wire its grounding phase. The parity test guards *file* drift; the per-consumer `skill-creator` eval (agnostic-from-cache, question-specific-fresh) guards *integration* drift.
+- Any change to the schema or protocol must be edited in **all** copies (the parity test fails otherwise) and bump `PROFILE_SCHEMA_VERSION` in the helper so older cache entries invalidate. Renaming or moving a profile **field** additionally requires updating every consumer `SKILL.md` that reads a named field path (grep the consumers for it, e.g. `conventions.testing`, `vocabulary`) — those per-skill field reads are not byte-duplicated, so the parity test does not guard them.
+
 ## Platform-Specific Variables in Skills
 
 This plugin is authored once and converted for multiple agent platforms (Claude Code, Codex, Gemini CLI, etc.). Do not use platform-specific environment variables or string substitutions (e.g., `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_SKILL_DIR}`, `${CLAUDE_SESSION_ID}`, `CODEX_SANDBOX`, `CODEX_SESSION_ID`) in skill content without a graceful fallback that works when the variable is unavailable or unresolved.
 
-Whether a relative path resolves against the skill directory depends on *who* resolves it, so the two cases below must be handled differently. Do not assume a bare `scripts/…` path works in both.
+How a bundled-file reference resolves depends on *who* resolves it and whether a shell is involved, so references fall into three tiers. Do not assume a bare `scripts/…` path behaves the same in all three.
 
-**Read-time file references — resolve against the skill directory:** When skill *content* points the agent at a co-located file to read (e.g., "read `references/schema.yaml`"), use a relative path from the skill root. The skill loader resolves these against the skill's own directory on all major platforms — no variable prefix needed. This is the rule in *File References in Skills* above.
+**Tier 1 — Read-time file references (relative, no anchor):** When skill *content* points the agent at a co-located file to read (e.g., "read `references/schema.yaml`"), use a relative path from the skill root. The skill loader resolves these against the skill's own directory on all major platforms — no variable prefix needed. This is the rule in *File References in Skills* above.
 
-**Runtime script invocations via the Bash tool — resolve against the project CWD:** When skill content tells the agent to *execute* a bundled script through the Bash tool, a bare relative path does **not** work on Claude Code. The Bash tool's working directory is the user's project, not the skill directory, so `bash scripts/my-script.sh` resolves to `<project>/scripts/…`, finds nothing, and the step is silently skipped. This is a recurring bug class — see #764 (`ce-worktree`), #811 (`ce-code-review`), and #898 (`ce-compound`). Wrap the invocation in a file-existence guard on `${CLAUDE_SKILL_DIR}` so it runs on Claude Code and degrades **visibly** elsewhere:
+**Tier 2 — Prose pointers to a bundled file the agent acts on (relative + a "from this skill's directory" cue):** When skill prose names a bundled file the agent will use but does *not* put it in an executed shell command (e.g., "drive the loop with `scripts/hitl-loop.template.sh`" or "generate the package with `scripts/review-package BASE HEAD`"), use a relative path plus an explicit "from this skill's directory" phrase. The cue tells the agent what to resolve against without the verbosity of an anchor.
+
+**Tier 3 — Executed shell commands (the `SKILL_DIR` anchor):** When skill content puts a bundled script in a command the agent runs through the Bash tool — a fenced ` ```bash ` block **or** an inline `bash …` / `python …` — anchor it to the skill dir. The Bash tool's working directory is the user's **project**, not the skill directory, on Claude Code, Codex, and Cursor alike, so a bare `bash scripts/my-script.sh` resolves to `<project>/scripts/…`. Relative paths here *often still work* — a capable agent resolves them against the skill dir it loaded (which is how the agentskills.io spec and other ecosystems ship them) — but that relies on the agent translating the path, and the failure mode is a fenced block copied **verbatim** into a Bash call, which runs literally and misses (`exit 127`; recovery is a wasted round-trip that weaker models / mid-tier subagents botch). Anchoring bakes the resolution into the command, so it is **deterministic**. Use the anchor for executed shell as the house default — a conservative choice, not a claim that bare relative *cannot* work (recurring bug class: #764 `ce-worktree`, #811 `ce-code-review`, #898 `ce-compound`):
 
 ```
-if [ -n "${CLAUDE_SKILL_DIR}" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/my-script.sh" ]; then
-  bash "${CLAUDE_SKILL_DIR}/scripts/my-script.sh" ARG
-else
-  echo "<this step's bundled script is unavailable on this platform; do X instead>"
-fi
+# set inline in the SAME command (shell state does not persist between Bash calls):
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+bash "$SKILL_DIR/scripts/my-script.sh" ARG
 ```
 
-(The `[ -n "${CLAUDE_SKILL_DIR}" ]` guard keeps an unset variable from probing a root-level `/scripts/…` path.)
+An existence guard (`if [ -f "$SKILL_DIR/scripts/my-script.sh" ]; then … else echo "not found — re-check the SKILL.md path"; fi`) is optional — useful when there's a real fallback, but see the permission caveat below before guarding a pinned call.
 
-`${CLAUDE_SKILL_DIR}` is substituted into SKILL.md content by Claude Code, covering both marketplace-cached installs and `claude --plugin-dir` local dev; it resolves to the skill's own directory, so the `then` branch runs there. Note `${CLAUDE_SKILL_DIR}` is a SKILL.md *content* substitution, not an environment variable available inside the executed process — a script that needs its own directory should derive it from `BASH_SOURCE` rather than reading `$CLAUDE_SKILL_DIR`. `ce-compound`'s `validate-frontmatter.py` invocation is the canonical example of this guard pattern.
+`SKILL_DIR` is a **model-filled** value, not a harness variable: every harness loads SKILL.md from a real absolute path the agent knows, so the skill instructs the agent to set `SKILL_DIR` to that directory. This works identically on Claude Code, Codex, and Cursor precisely because it depends on no host-specific variable — `SKILL_DIR`, `CLAUDE_SKILL_DIR`, `CODEX_SKILL_DIR`, `AGENT_SKILL_DIR` are **not** env vars on any of them, yet the script runs because the agent supplies the path. This is the production pattern used by widely-installed cross-host skills (e.g. `last30days`). Two constraints: (1) shell state does **not** persist between separate Bash-tool calls, so `SKILL_DIR` cannot be set once and reused — each invocation must carry the absolute path (set it inline in the same command). (2) A script that needs its *own* directory (to read a sibling file) derives it from `BASH_SOURCE`, not `SKILL_DIR`, since `SKILL_DIR` is the orchestrator's shell var and is not exported to the child process — see `skills/ce-code-review/scripts/cross-model-adversarial-review.sh` for the reference implementation. `last30days` adopted this anchor for its critical multi-host engine after a path-resolution regression; it is the right tool when a script must run *reliably*, which is why it is the tier-3 default — but tiers 1 and 2 deliberately stay lighter.
 
-**Why the guard, and why not the old `${CLAUDE_SKILL_DIR:-.}` shell default (issue #943).** On other targets (Codex, Gemini CLI, etc.) `${CLAUDE_SKILL_DIR}` is unset. The earlier `:-.` form degraded to a project-CWD-relative `./scripts/…` — *syntactically* valid, but resolving to a path that does not exist: the bundled script lives in that runtime's own skill store (e.g. `~/.codex/skills/<plugin>/<skill>/scripts/…`), so the call silently missed. The existence guard makes that case explicit — the `then` branch never fires, and the `else` branch tells the agent what to do instead of running a broken path or claiming success. Two facts make this a real product gap, not a converter bug:
+**Avoid `${CLAUDE_SKILL_DIR}` here — in this cross-agent plugin it is a footgun, not a neutral alternative.** Every skill in this repo is authored once and installed across Claude Code, Codex, Cursor, and Gemini, and `${CLAUDE_SKILL_DIR}` is a Claude-Code-only SKILL.md *content* substitution (not an env var) that is **empty on every other host**. So a `${CLAUDE_SKILL_DIR}`-guarded call's `then` branch quietly never fires off-Claude — the **genuine silent skip** — and a Claude-only mechanism breaks on Codex/Cursor because the converter doesn't rewrite these paths and the native Codex install loads raw `SKILL.md` (no `ce_platforms` filtering). The model-filled `SKILL_DIR` anchor works on every host, so it is the right replacement wherever a `${CLAUDE_SKILL_DIR}`-guarded executed-shell call exists today (tier 3). Do not reach for `${CLAUDE_SKILL_DIR}` as a "portable" option — it isn't. Reach for it only for behavior that is genuinely Claude-Code-only and will *never* run on another harness — which, given this plugin's cross-host install model, is essentially never; treat any new use as a smell to justify or remove. (Existing guarded uses such as `ce-compound`'s `validate-frontmatter.py` survive off-Claude only via an inline `else` fallback and should migrate to the anchor.)
 
-- The converter does not rewrite these paths (`src/utils/codex-content.ts` has no `CLAUDE_SKILL_DIR` case), and in the default `--to codex` mode skills are not emitted by the converter at all.
-- **This plugin also ships as a *native* Codex plugin** (installed via Codex's `/plugins` TUI marketplace). That path never runs the converter — Codex loads the raw `SKILL.md` verbatim. The `ce_platforms` frontmatter is honored only by the converter's `filterSkillsByPlatform`, so it does **not** keep a Claude-only skill out of a native Codex install. The only protection both install paths respect is the SKILL.md content itself.
+So: a skill's *core* behavior **can** live in a bundled script across hosts — invoke it via the `SKILL_DIR`-from-read-path anchor. You no longer need to avoid bundled scripts for portability; anchor them instead. Read-time references (`references/*.md`) still resolve against the skill dir on all targets and need no anchor.
 
-So: do not gate a skill's *core* behavior on a runtime bundled-script call when portability matters. The existence guard above suits an **optional** guard script (e.g. `ce-compound`'s `validate-frontmatter.py`), where the `else` branch runs an equivalent inline check so the protection still fires off-Claude instead of silently skipping. For a skill whose *entire* behavior is a bundled script, a guard does not make it work off-Claude — prefer logic the agent can perform inline, or content the agent reads (read-time references resolve against the skill dir on all targets).
-
-**Permission caveat (Claude Code).** Claude Code's permission checker evaluates every subcommand of a compound command, and a bare `[ -f … ]` test is not pre-approved — so wrapping a pinned `bash "…sh"` call in an `if … then … fi` guard defeats a narrow `Bash(bash *…sh)` allow-rule and prompts on every run. If a bundled-script call must stay auto-approved via such a pin, keep it a single pinned command rather than guarding it inline.
+**Permission caveat (Claude Code).** Claude Code's permission checker evaluates every subcommand of a compound command, and a bare `[ -f … ]` test is not pre-approved — so wrapping a pinned `bash "…sh"` call in an `if … then … fi` guard defeats a narrow `Bash(bash *…sh)` allow-rule and prompts on every run. If a bundled-script call must stay auto-approved via such a pin, keep it a single pinned command rather than guarding it inline. Note the model-filled `SKILL_DIR` anchor produces a *dynamic* absolute path that won't match a static `Bash(bash /…/scripts/x.sh)` pin regardless of guarding — so for the anchor, expect a one-time approval prompt per distinct command (or use a broader allow-rule); the static-pin trick mainly applies to the fixed `${CLAUDE_SKILL_DIR}` form.
 
 **When a platform variable is unavoidable:** Use the pre-resolution pattern (`!` backtick syntax) and include explicit fallback instructions in the skill content, so the agent knows what to do if the value is empty, literal, or an error:
 
@@ -247,8 +279,8 @@ This applies equally to any platform's variables — a skill converted from Code
 
 ## Repository Docs Convention
 
-- **Requirements** live in `docs/brainstorms/` — requirements exploration and ideation.
-- **Plans** live in `docs/plans/` — implementation plans and progress tracking.
+- **Plans** live in `docs/plans/` — unified plan artifacts. New `ce-brainstorm` outputs are requirements-only unified plans (`artifact_readiness: requirements-only`); `ce-plan` enriches them to implementation-ready plans (`artifact_readiness: implementation-ready`). Historical `docs/brainstorms/*-requirements.*` files remain readable legacy inputs and should not be migrated just because a new plan is created.
+- **Brainstorm evidence / legacy requirements** may live in `docs/brainstorms/` — historical requirements docs and specialized analysis artifacts such as `docs/brainstorms/riffrec-feedback/`. Do not treat this as the canonical output path for new `ce-brainstorm` artifacts.
 - **Solutions** live in `docs/solutions/` — documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
 - **Specs** live in `docs/specs/` — target platform format specifications.
 

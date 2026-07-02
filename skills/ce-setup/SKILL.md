@@ -28,13 +28,14 @@ Before running the script, display:
 Compound Engineering -- checking your environment...
 ```
 
-Run the bundled check script when the skill directory can be resolved:
+Run the bundled check script. Set `SKILL_DIR` to the absolute directory you loaded this `ce-setup` SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, so a bare `scripts/` path will not resolve:
 
 ```bash
-if [ -n "${CLAUDE_SKILL_DIR}" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/check-health" ]; then
-  bash "${CLAUDE_SKILL_DIR}/scripts/check-health" --version VERSION
+SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
+if [ -f "$SKILL_DIR/scripts/check-health" ]; then
+  bash "$SKILL_DIR/scripts/check-health" --version VERSION
 else
-  echo "Bundled health script is unavailable on this platform; run the inline checks from ce-setup instead."
+  echo "Bundled health script not found at $SKILL_DIR/scripts/check-health; run the inline checks from ce-setup instead."
 fi
 ```
 
@@ -43,9 +44,9 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 If the script is unavailable, perform the inline equivalent:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a git repo, resolve the repo root with `git rev-parse --show-toplevel`.
+2. If inside a JJ workspace, resolve the repo root with `jj root`.
 3. Check for obsolete `compound-engineering.local.md` at the repo root.
-4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether `git check-ignore -q .compound-engineering/config.local.yaml` succeeds.
+4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether `jj file list .compound-engineering/config.local.yaml` does not list it as tracked.
 5. Compare `.compound-engineering/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
 Display the diagnostic output to the user. Missing optional tools are not setup failures.
@@ -73,7 +74,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 ## Phase 2: Fix Repo-Local Issues
 
-Resolve the repository root (`git rev-parse --show-toplevel`). All paths below are relative to the repo root, not the current working directory.
+Resolve the repository root (`jj root`). All paths below are relative to the repo root, not the current working directory.
 
 ### Step 4: Remove Obsolete Local Config
 

@@ -8,8 +8,7 @@
 #
 # Arguments:
 #   path (optional) — directory to inspect. When omitted, defaults to the
-#                     repo root via `jj workspace root`, or the current
-#                     directory when no JJ workspace is present.
+#                     repo root via `jj root`, then the current directory.
 #
 # Output contract (two lines on stdout):
 #   Line 1: package-manager binary token (`npm` | `pnpm` | `yarn` | `bun`)
@@ -33,22 +32,23 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          invalid
+#                          positional path is invalid
 
 set -u
 
 TARGET_PATH="${1:-}"
 
-# Resolve target directory: positional arg or JJ workspace root.
+# Resolve target directory: positional arg or JJ repo root.
 if [ -n "$TARGET_PATH" ]; then
   if [ ! -d "$TARGET_PATH" ]; then
     echo "ERROR: path does not exist or is not a directory: $TARGET_PATH" >&2
     exit 1
   fi
 else
-  TARGET_PATH=$(jj workspace root 2>/dev/null)
+  TARGET_PATH=$(jj root 2>/dev/null || pwd)
   if [ -z "$TARGET_PATH" ]; then
-    TARGET_PATH=$(pwd)
+    echo "ERROR: could not resolve target path" >&2
+    exit 1
   fi
 fi
 

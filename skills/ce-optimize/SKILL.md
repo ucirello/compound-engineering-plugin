@@ -105,7 +105,7 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 
 When Phase 0.4 detects an existing run:
 1. Read the experiment log from disk — this is the ground truth
-2. Scan workspace directories for `result.yaml` markers not yet in the log
+2. Scan experiment workspace directories for `result.yaml` markers not yet in the log
 3. Recover any measured-but-unlogged experiments
 4. Continue from where the log left off
 
@@ -212,22 +212,22 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 
 ### 0.4 Run Identity Detection
 
-Check if `optimize/<spec-name>` bookmark already exists:
+Check if the `optimize/<spec-name>` bookmark already exists:
 
 ```bash
-jj log -r "optimize/<spec-name>" --no-graph >/dev/null 2>&1
+jj bookmark list "optimize/<spec-name>"
 ```
 
-**If bookmark exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
+**If the bookmark exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
-- **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning workspace directories for `result.yaml` markers. Continue from the last iteration number in the log.
-- **Fresh start**: archive the old bookmark to `optimize-archive/<spec-name>/archived-<timestamp>`, clear the experiment log, start from scratch
+- **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning experiment workspace directories for `result.yaml` markers. Continue from the last iteration number in the log.
+- **Fresh start**: move the old bookmark to `optimize-archive/<spec-name>/archived-<timestamp>`, clear the experiment log, start from scratch
 
 ### 0.5 Create Optimization Bookmark and Scratch Space
 
 ```bash
-jj bookmark create "optimize/<spec-name>" -r @  # or `jj edit optimize/<spec-name>` if resuming
+jj bookmark create "optimize/<spec-name>"  # or move to the existing bookmark if resuming
 ```
 
 Create scratch directory:
@@ -241,24 +241,24 @@ mkdir -p .context/compound-engineering/ce-optimize/<spec-name>/
 
 **This phase is a HARD GATE. The user must approve baseline and parallel readiness before Phase 2.**
 
-**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `parallel-probe.sh`, `experiment-worktree.sh`). The experiment script name is a compatibility surface; it creates JJ workspaces. The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it); just replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from before running. The shape:
+**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `parallel-probe.sh`, `experiment-worktree.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it); just replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from before running. `experiment-worktree.sh` is retained as a deprecated compatibility guard and fails clearly for create/cleanup; use JJ workspace commands for experiment isolation. The shape:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
 bash "$SKILL_DIR/scripts/<name>"
 ```
 
-### 1.1 Clean Working-Copy Gate
+### 1.1 Clean-Tree Gate
 
-Verify no working-copy changes to files within `scope.mutable` or `scope.immutable`:
+Verify no uncommitted changes to files within `scope.mutable` or `scope.immutable`:
 
 ```bash
 jj st
 ```
 
-Filter the output against the scope paths. If any in-scope files have working-copy changes:
+Filter the output against the scope paths. If any in-scope files have uncommitted changes:
 - Report which files are dirty
-- Ask the user to `jj commit` or `jj restore` the in-scope changes before proceeding
+- Ask the user to commit or shelve before proceeding
 - Do NOT continue until the working copy is clean for in-scope files
 
 ### 1.2 Build or Validate Measurement Harness
@@ -347,7 +347,7 @@ Present to the user via the platform question tool:
 - **Baseline metrics**: all gate values, diagnostic values, and judge scores (if applicable)
 - **Experiment log location**: show the file path so the user knows where results are saved
 - **Parallel readiness**: probe results, any blockers, mitigations applied
-- **Clean working-copy status**: confirmed clean
+- **Clean-tree status**: confirmed clean
 - **Workspace budget**: current count and projected usage
 - **Judge budget**: estimated per-experiment judge cost and configured `max_total_cost_usd` cap (or an explicit note that spend is uncapped)
 
@@ -452,7 +452,8 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 1. Create experiment workspace:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
-   WORKSPACE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates .worktrees/optimize-<spec>-exp-<NNN>
+   jj workspace add "../optimize-<spec_name>-exp-<NNN>" -r "optimize/<spec_name>"
+   jj bookmark create "optimize-exp/<spec_name>/exp-<NNN>"
    ```
 2. Apply port parameterization if configured (set env vars for the measurement script)
 3. Fill the experiment prompt template (`references/experiment-prompt-template.md`) with:
@@ -468,7 +469,7 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 1. Check environment guard -- do NOT delegate if already inside a Codex sandbox:
    ```bash
    # If these exist, we're already in Codex -- fall back to subagent
-   test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .jj
+    test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w "$(jj root 2>/dev/null)/.jj"
    ```
 2. Fill the experiment prompt template
 3. Write the filled prompt to a temp file
@@ -487,7 +488,7 @@ For each completed experiment, **immediately**:
 1. **Run measurement** in the experiment's workspace:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
-   bash "$SKILL_DIR/scripts/measure.sh" "<measurement.command>" <timeout_seconds> "<workspace_path>/<measurement.working_directory or .>" <env_vars...>
+    bash "$SKILL_DIR/scripts/measure.sh" "<measurement.command>" <timeout_seconds> "<workspace_path>/<measurement.working_directory or .>" <env_vars...>
    ```
    - If stability mode is `repeat`, run the measurement harness `repeat_count` times in that working directory and aggregate the results exactly as in Phase 1 before evaluating gates or ranking the experiment.
    - Use the aggregated metrics as the experiment's score; if variance exceeds `noise_threshold`, record that in learnings so the operator knows the result is noisy.
@@ -506,7 +507,7 @@ For each completed experiment, **immediately**:
    - Apply stratified sampling per `metric.judge.stratification` config (using `sample_seed`)
    - Group samples into batches of `metric.judge.batch_size`
    - Fill the judge prompt template (`references/judge-prompt-template.md`) for each batch
-   - Dispatch the `ceil(sample_size / batch_size)` judge sub-agents using the same bounded dispatch as Phase 3.2 — queue them, dispatch to whatever concurrency the host accepts, and treat a capacity error as backpressure (retry the queued batch after a slot frees) rather than a scoring failure. These judge sub-agents are a separate budget from the experiment workspaces.
+   - Dispatch the `ceil(sample_size / batch_size)` judge sub-agents using the same bounded dispatch as Phase 3.2 — queue them, dispatch to whatever concurrency the host accepts, and treat a capacity error as backpressure (retry the queued batch after a slot frees) rather than a scoring failure. These judge sub-agents are a separate budget from the experiment worktrees.
    - Each sub-agent returns structured JSON scores
    - Aggregate scores: compute the configured primary judge field from `metric.judge.scoring.primary` (which should match `metric.primary.name`) plus any `scoring.secondary` values
    - If `singleton_sample > 0`: also dispatch singleton evaluation sub-agents
@@ -531,24 +532,24 @@ After all experiments in the batch have been measured:
 2. **Identify the best experiment** that passes all gates and improves the primary metric
 
 3. **If best improves on current best: KEEP**
-   - Run `jj commit` on the experiment bookmark first so the winning diff exists as a real commit before integration
-   - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and discard it with `jj restore` or `jj abandon`
-   - Squash the committed experiment bookmark into the optimization bookmark with `jj squash`
+   - Commit the experiment workspace first so the winning diff exists as a real JJ change before any integration
+   - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and revert it
+   - Integrate the committed experiment change into the optimization bookmark
    - Use the message `optimize(<spec-name>): <hypothesis description>` for the experiment commit
-   - After the squash succeeds, clean up the winner's experiment workspace and bookmark; the integrated commit on the optimization bookmark is the durable artifact
+   - After integration succeeds, clean up the winner's experiment workspace and bookmark; the integrated change on the optimization bookmark is the durable artifact
    - This is now the new baseline for subsequent batches
 
 4. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
-   - If disjoint: use `jj duplicate`/`jj squash` to apply the runner-up onto the new baseline, re-run full measurement
-   - If combined measurement is strictly better: keep the squashed runner-up (outcome: `runner_up_kept`), then clean up that runner-up's experiment workspace and bookmark
-   - Otherwise: discard the runner-up changes with `jj restore` or `jj abandon`, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment workspace and bookmark
+   - If disjoint: integrate the runner-up change onto the new baseline, re-run full measurement
+   - If combined measurement is strictly better: keep the integrated change (outcome: `runner_up_kept`), then clean up that runner-up's experiment workspace and bookmark
+   - Otherwise: abandon the integrated change, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment workspace and bookmark
    - Stop after first failed combination
 
 5. **Handle deferred deps**: experiments that need unapproved dependencies get outcome `deferred_needs_approval`
 
-6. **Discard all others**: cleanup experiment workspaces, log as `reverted`
+6. **Revert all others**: clean up experiment workspaces, log as `reverted`
 
 ### 3.5 Update State (CP-4)
 
@@ -597,7 +598,7 @@ If no stopping criterion is met, proceed to the next batch (step 3.1).
 
 **Error handling**: If an experiment's measurement command crashes, times out, or produces malformed output:
 - Log as outcome `error` or `timeout` with the error message
-- Discard the experiment (cleanup workspace)
+- Revert the experiment (cleanup workspace)
 - The loop continues with remaining experiments in the batch
 
 **Progress reporting**: After each batch, report:
@@ -649,7 +650,7 @@ Key improvements:
 ### 4.3 Preserve and Offer Next Steps
 
 The optimization bookmark (`optimize/<spec-name>`) is preserved with all commits from kept experiments.
-The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the bookmark because `.context/` is ignored by VCS.
+The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with pushed changes because `.context/` is ignored.
 
 Present post-completion options via the platform question tool:
 

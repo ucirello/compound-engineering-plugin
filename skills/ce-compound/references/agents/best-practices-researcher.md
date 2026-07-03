@@ -28,7 +28,7 @@ Before going online, check if curated knowledge already exists in skills:
    - TypeScript/React → `react-best-practices`
    - AI/Agents → available agent-architecture guidance, repo conventions, and active examples
    - Documentation → available durable-learning, documentation, or writing guidance
-   - File operations → available file-operation or workspace guidance
+   - File operations → available file-operation or worktree guidance
    - Image generation → the platform's image-generation capability when available
 
 3. **Extract Patterns from Skills**:

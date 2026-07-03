@@ -157,8 +157,8 @@ vs. genuine skip cases:
   bump introduces breaking changes that warrant unit-by-unit migration).
 
 When skipping the plan doc, the work proceeds directly to `ce-work` or to
-implementation, and any decisions made along the way land in the JJ change
-description or `docs/solutions/` if they're worth carrying forward.
+implementation, and any decisions made along the way land in the change description
+message or `docs/solutions/` if they're worth carrying forward.
 
 ## Implementation-ready hard floor
 
@@ -338,12 +338,12 @@ plan.
   carries that classification.
 - **`type`** — conventional-commit-prefix-aligned classification (`feat`,
   `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual JJ change description should reflect.
+  intent the eventual change description should reflect.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from JJ, not stored in the doc. Do not
+whether a plan shipped is derived from JJ history, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -383,10 +383,10 @@ These apply regardless of rendering format.
 - **Plain prefix.** `R1.`, `U1.` as bullet prefixes. Do not bold; the prefix
   is visually distinctive on its own.
 - **Repo-relative paths.** Always. Never absolute paths in plan content;
-  they break portability across machines, workspaces, teammates.
+  they break portability across machines, worktrees, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
-  metadata belongs in JJ change descriptions and tool output, not the artifact.
+  metadata belongs in change descriptions and tool output, not the artifact.
 - **Group Requirements by concern when they span distinct logical areas.**
   The trigger is distinct concerns, not item count — even four requirements
   benefit from grouping if they cover three different topics. Skip grouping

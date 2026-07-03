@@ -6,8 +6,7 @@
 #   resolve-port.sh [path] [--type <type>] [--port <n>]
 #
 # Arguments:
-#   path   (optional) -- project root directory. Defaults to the JJ workspace root,
-#                       or the current directory when no JJ workspace is present.
+#   path   (optional) -- project root directory. Defaults to the JJ repo root.
 #   --type (optional) -- framework type to scope probes (rails|next|vite|nuxt|
 #                        astro|remix|sveltekit|procfile). Unset runs all probes.
 #   --port (optional) -- explicit port override. Emitted immediately when present.
@@ -70,11 +69,15 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Default to JJ workspace root when no positional path is given.
+# Default to JJ repo root, with a colocated-repo fallback, when no positional path is given.
 if [ -z "$PROJECT_ROOT" ]; then
-  PROJECT_ROOT=$(jj workspace root 2>/dev/null)
-  if [ -z "$PROJECT_ROOT" ]; then
+  PROJECT_ROOT=$(jj root 2>/dev/null)
+  if [ -z "$PROJECT_ROOT" ] && [ -e ".git" ]; then
     PROJECT_ROOT=$(pwd)
+  fi
+  if [ -z "$PROJECT_ROOT" ]; then
+    echo "ERROR: could not resolve project root" >&2
+    exit 1
   fi
 fi
 

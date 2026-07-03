@@ -41,9 +41,13 @@
 
 set -u
 
-REPO_ROOT=$(jj workspace root 2>/dev/null)
-if [ -z "$REPO_ROOT" ]; then
+REPO_ROOT=$(jj root 2>/dev/null)
+if [ -z "$REPO_ROOT" ] && [ -e ".git" ]; then
   REPO_ROOT=$(pwd)
+fi
+if [ -z "$REPO_ROOT" ]; then
+  echo "ERROR: could not resolve project root" >&2
+  exit 1
 fi
 
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }

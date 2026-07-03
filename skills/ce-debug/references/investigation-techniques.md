@@ -78,23 +78,28 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ## JJ Binary Search for Regressions
 
-When a bug is a regression ("it worked before"), use binary search over JJ revisions to find the breaking change:
+When a bug is a regression ("it worked before"), use binary search to find the breaking change:
 
 ```bash
-ORIGINAL=$(jj log --no-graph -r @ -T 'change_id ++ "\n"')
-GOOD=<known-good-rev>             # a revision where it worked
-BAD=@                             # current revision is broken
-# Repeatedly inspect a midpoint from `jj log -r "$GOOD..$BAD"`, move there with
-# `jj new <midpoint>`, test it, then narrow GOOD or BAD until one change remains.
-jj new "$ORIGINAL"               # return to the original change when done
+ORIGINAL=$(jj log -r @ --no-graph -T change_id)
+BAD=$(jj log -r @ --no-graph -T commit_id)
+GOOD=<known-good-ref>
+
+# Pick a midpoint between GOOD and BAD, move there, and test it.
+MID=$(jj log -r "latest(ancestors($BAD) & descendants($GOOD) ~ $GOOD ~ $BAD)" --no-graph -T commit_id)
+jj edit "$MID"
+# Run the reproducer; if good, set GOOD=$MID. If bad, set BAD=$MID. Repeat until adjacent.
+
+jj edit "$ORIGINAL"              # return to the original change when done
 ```
 
-For automated bisection, script the same loop with a test command that exits 0 for good and non-zero for bad:
+For automated bisection with a test script, use the same loop and make the test command decide which boundary to move:
 
 ```bash
-jj log -r '<known-good-rev>..@' --no-graph
-<test-command>
+<test-command>                   # exit 0 for good, non-zero for bad
 ```
+
+The test command should exit 0 for good, non-zero for bad.
 
 ---
 

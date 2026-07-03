@@ -202,7 +202,7 @@ experiment_entry:
 
     commit:
       type: string
-      description: "JJ commit ID on the optimization bookmark (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "JJ change or commit id on the optimization bookmark (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string
@@ -231,7 +231,7 @@ experiment_entry:
 #           -> persist raw metrics   -> outcome: measured
 #           -> judge evaluated (if type: judge)
 #             -> best in batch, improved  -> outcome: kept
-#             -> runner-up, file-disjoint -> cherry-pick + re-measure
+#             -> runner-up, file-disjoint -> integrate + re-measure
 #               -> combined better        -> outcome: runner_up_kept
 #               -> combined not better    -> outcome: runner_up_reverted
 #             -> not improved             -> outcome: reverted

@@ -40,23 +40,8 @@ detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(jj workspace root >/dev/null 2>&1 && echo "yes" || echo "no")
-
-is_local_config_ignored() {
-  root="$1"
-  root_ignore="$root/.gitignore"
-  nested_ignore="$root/.compound-engineering/.gitignore"
-
-  if [ -f "$root_ignore" ] && grep -Eq '^[[:space:]]*/?\.compound-engineering/(\*\.local\.yaml|config\.local\.yaml)([[:space:]]|$)' "$root_ignore"; then
-    return 0
-  fi
-
-  if [ -f "$nested_ignore" ] && grep -Eq '^[[:space:]]*(\*\.local\.yaml|config\.local\.yaml)([[:space:]]|$)' "$nested_ignore"; then
-    return 0
-  fi
-
-  return 1
-}
+repo_root=$(jj root 2>/dev/null)
+in_repo=$([ -n "$repo_root" ] && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -84,23 +69,22 @@ done
 # =====================================================
 
 legacy_cfg="skip"
-repo_cfg_ignore="skip"
+repo_cfg_gitignore="skip"
 local_cfg="skip"
 example_cfg="skip"
 project_issues=0
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(jj workspace root 2>/dev/null)
   legacy_cfg="missing"
   [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$repo_root/.compound-engineering/config.local.yaml" ]; then
     local_cfg="present"
-    if is_local_config_ignored "$repo_root"; then
-      repo_cfg_ignore="ok"
+    if [ -f "$repo_root/.gitignore" ] && grep -Eq '^\.compound-engineering/\*\.local\.yaml$|^\.compound-engineering/config\.local\.yaml$' "$repo_root/.gitignore"; then
+      repo_cfg_gitignore="ok"
     else
-      repo_cfg_ignore="missing"
+      repo_cfg_gitignore="missing"
     fi
   fi
 
@@ -154,10 +138,10 @@ if [ "$in_repo" = "yes" ]; then
 
   if [ "$local_cfg" = "present" ]; then
     ok ".compound-engineering/config.local.yaml exists"
-    if [ "$repo_cfg_ignore" = "ok" ]; then
-      ok "Local config is ignored by .gitignore"
+    if [ "$repo_cfg_gitignore" = "ok" ]; then
+      ok "Local config is ignored by repository rules"
     else
-      warn "Local config is not safely ignored by .gitignore"
+      warn "Local config is not safely ignored by repository rules"
       project_issues=$((project_issues + 1))
     fi
   else
@@ -175,7 +159,7 @@ if [ "$in_repo" = "yes" ]; then
   fi
 else
   section "Project config"
-  skip "Not inside a JJ workspace"
+  skip "Not inside a JJ repository"
 fi
 
 echo ""

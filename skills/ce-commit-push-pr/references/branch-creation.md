@@ -1,55 +1,48 @@
-# Branch creation from default branch
+# Bookmark Creation From Default Bookmark
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+Local `<base>` may be stale (another session/workspace advanced it) or may carry changes the user authored intending to build from later. JJ can show the graph, but intent is still a product decision — ask when local commits are present.
 
-## Decision flow
+## Decision Flow
 
-### 1. Fetch fresh remote base
+### 1. Fetch Fresh Remote Base
 
 ```bash
-git fetch --no-tags origin <base>
+jj git fetch --remote origin
 ```
 
 If fetch fails (network, auth, no remote), use the fallback at the bottom.
 
-### 2. Check for unpushed local commits on `<base>`
+### 2. Check For Local Commits On `<base>`
 
 ```bash
-git log origin/<base>..HEAD --oneline
+jj log -r '<base>@origin..@' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
 ```
 
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
+- **Empty output:** set `BASE_REF=<base>@origin` and proceed to step 3.
 - **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
 
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
+  > "Local `<base>` has N commits not on `<base>@origin`. Carry them onto the new feature bookmark, or leave them on local `<base>`?"
 
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
+  - **Carry forward** -> `BASE_REF=@`. The new bookmark starts from the current change, preserving the commits.
+  - **Leave on `<base>`** -> `BASE_REF=<base>@origin`. The new bookmark starts clean; commits remain on local `<base>`.
 
   Never default silently — carrying foreign commits into a PR is worse than asking again.
 
-### 3. Create the feature branch
+### 3. Create The Feature Bookmark
 
 ```bash
-git checkout -b <branch-name> "$BASE_REF"
+jj new "$BASE_REF"
+jj bookmark create <bookmark-name> -r @
 ```
 
-If checkout fails because uncommitted changes would be overwritten, stash and retry:
+If creating the new change reports conflicts with current working-copy changes, surface the JJ conflict output to the user — do not auto-resolve.
+
+## Fetch Failure Fallback
+
+If `jj git fetch` fails, create the bookmark from the current local `@`:
 
 ```bash
-git stash push -u -m "ce-commit-push-pr: pre-branch <branch-name>"
-git checkout -b <branch-name> "$BASE_REF"
-git stash pop
+jj bookmark create <bookmark-name> -r @
 ```
 
-If `git stash pop` reports conflicts, surface the conflict output and the stash ref to the user — do not auto-resolve.
-
-## Fetch failure fallback
-
-If `git fetch` fails, branch from current local HEAD:
-
-```bash
-git checkout -b <branch-name>
-```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+Note in the user-facing summary that base freshness was not verified. Skip the local-vs-remote check — without a fresh `<base>@origin`, the answer is unreliable.

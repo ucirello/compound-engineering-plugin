@@ -1,32 +1,32 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communication message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate, value-communicating message.
+description: Create a JJ change with a clear, value-communication description. Use when the user asks to commit/save working-copy changes with a repo-appropriate, value-communicating message.
 ---
 
-# Git Commit
+# JJ Commit
 
-Create a single, well-crafted git commit from the current working tree changes.
+Create a single, well-crafted JJ commit from the current working-copy changes.
 
 ## Context
 
 **On platforms other than Claude Code**, skip to the "Context fallback" section below and run the command there to gather context.
 
-**In Claude Code**, the five labeled sections below (Git status, Working tree diff, Current branch, Recent commits, Remote default branch) contain pre-populated data. Use them directly throughout this skill -- do not re-run these commands.
+**In Claude Code**, the five labeled sections below (JJ status, Working-copy diff, Current bookmark/change, Recent commits, Remote default bookmark) contain pre-populated data. Use them directly throughout this skill -- do not re-run these commands.
 
-**Git status:**
-!`git status`
+**JJ status:**
+!`jj st`
 
 **Working tree diff:**
-!`git diff HEAD`
+!`jj diff`
 
-**Current branch:**
-!`git branch --show-current`
+**Current bookmark/change:**
+!`jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ " " ++ change_id.short()'`
 
 **Recent commits:**
-!`git log --oneline -10`
+!`jj log -r 'ancestors(@, 10)' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'`
 
-**Remote default branch:**
-!`git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'`
+**Remote default bookmark:**
+!`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo '__DEFAULT_BOOKMARK_UNRESOLVED__'`
 
 ### Context fallback
 
@@ -35,7 +35,7 @@ Create a single, well-crafted git commit from the current working tree changes.
 Run this single command to gather all context:
 
 ```bash
-printf '=== STATUS ===\n'; git status; printf '\n=== DIFF ===\n'; git diff HEAD; printf '\n=== BRANCH ===\n'; git branch --show-current; printf '\n=== LOG ===\n'; git log --oneline -10; printf '\n=== DEFAULT_BRANCH ===\n'; git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'
+printf '=== STATUS ===\n'; jj st; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK_CHANGE ===\n'; jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ " " ++ change_id.short() ++ "\n"'; printf '\n=== LOG ===\n'; jj log -r 'ancestors(@, 10)' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'; printf '\n=== DEFAULT_BOOKMARK ===\n'; gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo '__DEFAULT_BOOKMARK_UNRESOLVED__'
 ```
 
 ---
@@ -44,9 +44,9 @@ printf '=== STATUS ===\n'; git status; printf '\n=== DIFF ===\n'; git diff HEAD;
 
 ### Step 1: Gather context
 
-Use the context above (git status, working tree diff, current branch, recent commits, remote default branch). All data needed for this step is already available -- do not re-run those commands.
+Use the context above (JJ status, working-copy diff, current bookmark/change, recent commits, remote default bookmark). All data needed for this step is already available -- do not re-run those commands.
 
-The remote default branch value returns something like `origin/main`. Strip the `origin/` prefix to get the branch name. If it returned `__DEFAULT_BRANCH_UNRESOLVED__` or a bare `HEAD`, try:
+If the remote default bookmark returned `__DEFAULT_BOOKMARK_UNRESOLVED__`, try:
 
 ```bash
 gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
@@ -54,12 +54,12 @@ gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
 
 If both fail, fall back to `main`.
 
-If the git status from the context above shows a clean working tree (no staged, modified, or untracked files), report that there is nothing to commit and stop.
+If the JJ status from the context above shows a clean working copy, report that there is nothing to commit and stop.
 
-If the current branch from the context above is empty, the repository is in detached HEAD state. Explain that a branch is required before committing if the user wants this work attached to a branch. Ask whether to create a feature branch now. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+If the current context has no bookmark, explain that a bookmark is recommended before pushing or opening a PR. Ask whether to create a feature bookmark now. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
-- If the user chooses to create a branch, derive the name from the change content, create it with `git checkout -b <branch-name>`, then run `git branch --show-current` again and use that result as the current branch name for the rest of the workflow.
-- If the user declines, continue with the detached HEAD commit.
+- If the user chooses to create a bookmark, derive the name from the change content, create it with `jj bookmark create <bookmark-name> -r @`, then use that result as the current bookmark name for the rest of the workflow.
+- If the user declines, continue with the unbookmarked JJ commit.
 
 ### Step 2: Determine commit message convention
 
@@ -73,25 +73,25 @@ When using conventional commits, choose the type that most precisely describes t
 
 ### Step 3: Consider logical commits
 
-Before staging everything together, scan the changed files for naturally distinct concerns. If modified files clearly group into separate logical changes (e.g., a refactor in one directory and a new feature in another, or test files for a different change than source files), create separate commits for each group.
+Before committing everything together, scan the changed files for naturally distinct concerns. If modified files clearly group into separate logical changes (e.g., a refactor in one directory and a new feature in another, or test files for a different change than source files), create separate commits for each group.
 
 Keep this lightweight:
-- Group at the **file level only** -- do not use `git add -p` or try to split hunks within a file.
+- Group at the **file level only** -- do not use interactive partial selection unless explicitly requested.
 - If the separation is obvious (different features, unrelated fixes), split. If it's ambiguous, one commit is fine.
 - Two or three logical commits is the sweet spot. Do not over-slice into many tiny commits.
 
-### Step 4: Stage and commit
+### Step 4: Commit
 
-If the current branch from the context above is `main`, `master`, or the resolved default branch from Step 1, automatically create a feature branch before committing. Derive the branch name from the change content, create it with `git checkout -b <branch-name>`, run `git branch --show-current` to confirm, and use the new branch as the current branch for the rest of the workflow. Do not ask whether to branch — committing on the default branch is not an option here.
+If the current bookmark from the context above is `main`, `master`, or the resolved default bookmark from Step 1, automatically create a feature bookmark before committing. Derive the bookmark name from the change content, run `jj new <default-bookmark>` when the working copy is directly on the default line, then `jj bookmark create <bookmark-name> -r @`. Do not ask whether to create a bookmark — committing on the default line is not an option here.
 
 Write the commit message:
 - **Subject line**: Concise, imperative mood, focused on *why* not *what*. Follow the convention determined in Step 2.
 - **Body** (when needed): Add a body separated by a blank line for non-trivial changes. Explain motivation, trade-offs, or anything a future reader would need. Omit the body for obvious single-purpose changes.
 
-For each commit group, stage and commit in a single call. Prefer staging specific files by name over `git add -A` or `git add .` to avoid accidentally including sensitive files (.env, credentials) or unrelated changes. Use a heredoc to preserve formatting:
+For each commit group, commit selected files with JJ path arguments. Prefer specific files over broad pathsets to avoid accidentally including sensitive files (.env, credentials) or unrelated changes. Use a heredoc to preserve formatting:
 
 ```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
+jj commit file1 file2 file3 -m "$(cat <<'EOF'
 type(scope): subject line here
 
 Optional body explaining why this change was made,
@@ -102,4 +102,4 @@ EOF
 
 ### Step 5: Confirm
 
-Run `git status` after the commit to verify success. Report the commit hash(es) and subject line(s).
+Run `jj st` after the commit to verify success. Report the commit ID(s) and subject line(s).

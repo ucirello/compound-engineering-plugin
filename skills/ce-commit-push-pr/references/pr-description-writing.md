@@ -17,7 +17,7 @@ For user-facing bugs, run an extra before/after pass before writing the mechanis
 
 Two modes:
 
-- **Current-branch mode** (default) — describe HEAD vs the repo's default base.
+- **Current-bookmark mode** (default) — describe `@` vs the repo's default base.
 - **PR mode** — describe a specific PR. Triggered when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
@@ -28,26 +28,20 @@ gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,
 
 If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-branch mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) → `git rev-parse --abbrev-ref origin/HEAD` (strip `origin/`) → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `git rev-parse --verify origin/<candidate>`. If none resolve, ask the user. `<head>` is `HEAD`.
+For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> try `main`/`master`/`develop` as JJ bookmarks. If none resolve, ask the user. `<head>` is `@`.
 
-**Base remote:** `origin` for current-branch mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `git remote -v`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
+**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `jj git remote list`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
 
 ```bash
-git fetch --no-tags <base-remote> <base>
-git fetch --no-tags <base-remote> <head>   # PR mode only: <head> is headRefOid and may not be local
-git log  --oneline "<base-remote>/<base>..<head>"
-git log  --format=fuller "<base-remote>/<base>..<head>"   # full commit messages for related-reference discovery
-git diff           "<base-remote>/<base>...<head>"
+jj git fetch --remote <base-remote>
+jj log -r '<base>@<base-remote>..<head>' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+jj log -r '<base>@<base-remote>..<head>' --no-graph -T 'commit_id ++ "\n" ++ description ++ "\n"'   # full descriptions for related-reference discovery
+jj diff --from '<base>@<base-remote>' --to '<head>'
 ```
 
 If the commit list is empty, report "No commits to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local git can't reach the refs (fork PR with no matching remote, shallow clone, offline, merge-base on unrelated histories). For GHES configurations that reject SHA fetch but allow `refs/pull/`:
-
-```bash
-git fetch --no-tags <base-remote> "refs/pull/<number>/head"
-PR_HEAD_SHA=$(awk '/refs\/pull\/[0-9]+\/head/ {print $1; exit}' "$(git rev-parse --git-dir)/FETCH_HEAD")
-```
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when JJ cannot reach the refs (fork PR with no matching remote, shallow clone, offline, unrelated histories).
 
 Note in the user-facing summary when the API fallback was used.
 

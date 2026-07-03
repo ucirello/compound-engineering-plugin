@@ -2,18 +2,18 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, branch name, or blank for current branch]"
+argument-hint: "[PR number, bookmark/rev name, or blank for current change]"
 ---
 
 # Polish
 
 Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
 
-## Phase 0: Get on the right branch
+## Phase 0: Get on the Right Change
 
-1. If a PR number or branch name was provided, check it out (probe for existing worktrees first).
-2. If blank, use the current branch.
-3. Verify the current branch is not main/master.
+1. If a PR number or bookmark/rev name was provided, move to that review target using JJ or `gh` for PR checkout.
+2. If blank, use the current change.
+3. Verify the current change is not the trunk baseline.
 
 ## Phase 1: Start the dev server
 

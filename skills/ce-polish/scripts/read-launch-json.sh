@@ -27,15 +27,15 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, git root not found).
+# genuine operational failures (missing `jq`, JJ root not found).
 
 set -u
 
 REQUESTED_NAME="${1:-}"
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+REPO_ROOT=$(jj root 2>/dev/null || { if [ -e .jj ] || [ -e .git ]; then pwd; else false; fi; })
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a git repository" >&2
+  echo "ERROR: not in a JJ repository" >&2
   exit 1
 fi
 

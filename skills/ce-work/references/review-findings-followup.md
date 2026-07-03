@@ -27,7 +27,7 @@ ce-code-review mode:agent plan:<plan-path> base:<merge-base-or-ref>
 
 - `mode:agent` — JSON output (`review.json` + primary JSON response) for programmatic parsing; same review pipeline as default.
 - `plan:` — when Phase 1 used a plan file (requirements completeness).
-- `base:` — when the diff base is already resolved on the current checkout; omit when reviewing a PR number/URL or standalone current branch.
+- `base:` — when the diff base is already resolved on the current checkout; omit when reviewing a PR number/URL or standalone current bookmark/workspace.
 - Do **not** pass deprecated `mode:autofix`.
 
 For human / interactive shipping, invoke `ce-code-review` without `mode:agent` if markdown tables are preferred. Capture the same JSON / Actionable Findings and artifact dir listed above before applying.
@@ -82,9 +82,9 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Work through assigned `#` in severity order; at each `file:line`, skip with a one-line reason if evidence no longer matches
 - Apply the mechanical bar from § What to apply / What not to apply — skip anything that needs design judgment
 - Do not re-run `ce-code-review`
-- Shared-directory fallback: do not stage or commit — return which `#` were applied or skipped and which files changed
+- Shared-directory fallback: do not commit — return which `#` were applied or skipped and which files changed
 
-**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless workspace-isolated subagents merge per Phase 1. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

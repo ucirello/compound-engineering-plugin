@@ -75,7 +75,7 @@ For each candidate artifact, classify it into one of five outcomes:
 | **Update** | Core solution is still correct, but references drifted | Apply evidence-backed in-place edits |
 | **Consolidate** | Two or more docs overlap heavily but are both correct | Merge unique content into the canonical doc, delete the subsumed doc |
 | **Replace** | The old artifact is now misleading, but there is a known better replacement | Create a trustworthy successor, then delete the old artifact |
-| **Delete** | No longer useful, applicable, or distinct | Delete the file — git history preserves it if anyone needs to recover it later |
+| **Delete** | No longer useful, applicable, or distinct | Delete the file — VCS history preserves it if anyone needs to recover it later |
 
 ## Core Rules
 
@@ -92,7 +92,7 @@ For each candidate artifact, classify it into one of five outcomes:
    - newer docs, pattern docs, PRs, or issues provide strong successor evidence.
 8. **Delete when the code is gone, and only after checking for inbound links.** If the referenced code, controller, or workflow no longer exists in the codebase and no successor can be found, delete the file — don't default to Keep just because the general advice is still "sound." When in doubt between Keep and Delete, ask the user (in interactive mode) or mark as stale (in headless mode). Inbound links inform classification, not cleanup: cleanup is always mechanical, but **decorative** citations (principle stated inline) allow Delete, while **substantive** citations (citing doc relies on the cited doc) signal Replace. The auto-delete case is missing code, no matching successor, and citations absent or decorative.
 9. **Evaluate document-set design, not just accuracy.** In addition to checking whether each doc is accurate, evaluate whether it is still the right unit of knowledge. If two or more docs overlap heavily, determine whether they should remain separate, be cross-scoped more clearly, or be consolidated into one canonical document. Redundant docs are dangerous because they drift silently — two docs saying the same thing will eventually say different things.
-10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. Git history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `git log --diff-filter=D -- docs/solutions/` will find it.
+10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. VCS history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `jj log -- docs/solutions/` plus the operation log can help find it.
 
 ## Scope Selection
 
@@ -323,7 +323,7 @@ Choose **Consolidate** when Phase 1.75 identified docs that overlap heavily but 
 
 **Consolidate vs Delete:** If the subsumed doc has unique content worth preserving (edge cases, alternative approaches, extra prevention rules), use Consolidate to merge that content first. If the subsumed doc adds nothing the canonical doc doesn't already say, skip straight to Delete.
 
-The Consolidate action is: merge unique content from the subsumed doc into the canonical doc, then delete the subsumed doc. Not archive — delete. Git history preserves it.
+The Consolidate action is: merge unique content from the subsumed doc into the canonical doc, then delete the subsumed doc. Not archive — delete. VCS history preserves it.
 
 ### Replace
 
@@ -350,7 +350,7 @@ Choose **Delete** when:
 - The learning is fully redundant with another doc (use Consolidate if there is unique content to merge first)
 - There is no meaningful successor evidence suggesting it should be replaced instead
 
-Action: delete the file. No archival directory, no metadata — just delete it. Git history preserves every deleted file if recovery is ever needed.
+Action: delete the file. No archival directory, no metadata — just delete it. VCS history preserves every deleted file if recovery is ever needed.
 
 ### Before deleting: check if the problem domain is still active
 
@@ -550,7 +550,7 @@ Then for EVERY file processed, list:
 - What action was taken (or recommended)
 - For Consolidate: which doc was canonical, what unique content was merged, what was deleted
 
-For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating git churn.
+For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating VCS churn.
 
 ### Headless mode report
 
@@ -578,10 +578,10 @@ If all writes succeed, the Recommended section is empty. If no writes succeed (e
 
 After all actions are executed and the report is generated, handle committing the changes. Skip this phase if no files were modified (all Keep, or all writes failed).
 
-### Detect git context
+### Detect JJ context
 
 Before offering options, check:
-1. Which branch is currently checked out (main/master vs feature branch)
+1. Which bookmark/change is current (main/master vs feature work)
 2. Whether the working tree has other uncommitted changes beyond what compound-refresh modified
 3. Recent commit messages to match the repo's commit style
 
@@ -593,13 +593,13 @@ Use sensible defaults — no user to ask:
 |---------|---------------|
 | On main/master | Create a branch named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), commit, attempt to open a PR. If PR creation fails, report the branch name. |
 | On a feature branch | Commit as a separate commit on the current branch |
-| Git operations fail | Include the recommended git commands in the report and continue |
+| JJ operations fail | Include the recommended JJ commands in the report and continue |
 
 Stage only the files that compound-refresh modified — not other dirty files in the working tree.
 
 ### Interactive mode
 
-First, run `git branch --show-current` to determine the current branch. Then present the correct options based on the result. Stage only compound-refresh files regardless of which option the user picks.
+First, run `jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ "\n"'` to determine the current bookmark. Then present the correct options based on the result. Isolate only compound-refresh files regardless of which option the user picks.
 
 **If the current branch is main, master, or the repo's default branch:**
 
@@ -622,7 +622,7 @@ First, run `git branch --show-current` to determine the current branch. Then pre
 
 Write a descriptive commit message that:
 - Summarizes what was refreshed (e.g., "update 3 stale learnings, consolidate 2 overlapping docs, delete 1 obsolete doc")
-- Follows the repo's existing commit conventions (check recent git log for style)
+- Follows the repo's existing commit conventions (check recent `jj log` descriptions for style)
 - Is succinct — the details are in the changed files themselves
 
 ## Relationship to ce-compound

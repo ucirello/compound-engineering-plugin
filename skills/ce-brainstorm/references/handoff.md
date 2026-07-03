@@ -96,7 +96,7 @@ autonomously — plan, implement (`ce-work` in `return-to-caller` mode), simplif
 independent code review and applied fixes, commit/push/open PR, and CI watch to
 green. Do not also start a `/goal` or load `ce-work` directly — `lfg`
 orchestrates them. Unlike a goal tool, `lfg` is host-agnostic: it works wherever
-skills run (plus `git`/`gh` for the PR/CI tail, which it guards when absent).
+skills run (plus `jj`/`gh` for the PR/CI tail, which it guards when absent).
 
 Where the host exposes no skill-invocation primitive, print the `lfg <plan-path>`
 invocation for the user to run and note that it will plan, build, review, and

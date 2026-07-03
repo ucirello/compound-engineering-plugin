@@ -8,7 +8,7 @@
 #
 # Arguments:
 #   path (optional) — directory to inspect. When omitted, defaults to the
-#                     repo root via `git rev-parse --show-toplevel`.
+#                     repo root via `jj root`.
 #
 # Output contract (two lines on stdout):
 #   Line 1: package-manager binary token (`npm` | `pnpm` | `yarn` | `bun`)
@@ -32,22 +32,22 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          no positional arg and not inside a git repo
+#                          no positional arg and not inside a JJ repo
 
 set -u
 
 TARGET_PATH="${1:-}"
 
-# Resolve target directory: positional arg or git repo root.
+# Resolve target directory: positional arg or JJ repo root.
 if [ -n "$TARGET_PATH" ]; then
   if [ ! -d "$TARGET_PATH" ]; then
     echo "ERROR: path does not exist or is not a directory: $TARGET_PATH" >&2
     exit 1
   fi
 else
-  TARGET_PATH=$(git rev-parse --show-toplevel 2>/dev/null)
+  TARGET_PATH=$(jj root 2>/dev/null || pwd)
   if [ -z "$TARGET_PATH" ]; then
-    echo "ERROR: not in a git repository and no path argument provided" >&2
+    echo "ERROR: not in a JJ repository and no path argument provided" >&2
     exit 1
   fi
 fi

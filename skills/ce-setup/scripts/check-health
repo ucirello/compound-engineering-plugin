@@ -40,7 +40,7 @@ detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "yes" || echo "no")
+in_repo=$(jj root >/dev/null 2>&1 && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -74,17 +74,17 @@ example_cfg="skip"
 project_issues=0
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
+  repo_root=$(jj root 2>/dev/null)
   legacy_cfg="missing"
   [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$repo_root/.compound-engineering/config.local.yaml" ]; then
     local_cfg="present"
-    if git check-ignore -q "$repo_root/.compound-engineering/config.local.yaml" 2>/dev/null; then
-      repo_cfg_gitignore="ok"
-    else
+    if (cd "$repo_root" && jj file list .compound-engineering/config.local.yaml 2>/dev/null | grep -qx '.compound-engineering/config.local.yaml'); then
       repo_cfg_gitignore="missing"
+    else
+      repo_cfg_gitignore="ok"
     fi
   fi
 
@@ -139,9 +139,9 @@ if [ "$in_repo" = "yes" ]; then
   if [ "$local_cfg" = "present" ]; then
     ok ".compound-engineering/config.local.yaml exists"
     if [ "$repo_cfg_gitignore" = "ok" ]; then
-      ok "Local config is gitignored"
+      ok "Local config is ignored by repository rules"
     else
-      warn "Local config is not safely gitignored"
+      warn "Local config is not safely ignored by repository rules"
       project_issues=$((project_issues + 1))
     fi
   else
@@ -159,7 +159,7 @@ if [ "$in_repo" = "yes" ]; then
   fi
 else
   section "Project config"
-  skip "Not inside a git repository"
+  skip "Not inside a JJ repository"
 fi
 
 echo ""

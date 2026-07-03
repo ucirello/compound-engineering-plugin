@@ -581,7 +581,7 @@ After all actions are executed and the report is generated, handle committing th
 ### Detect JJ context
 
 Before offering options, check:
-1. Which bookmark currently points at `@` (main/master vs feature bookmark)
+1. Which bookmark currently points at `@` (default bookmark vs feature bookmark)
 2. Whether the working copy has other uncommitted changes beyond what compound-refresh modified
 3. Recent change descriptions to match the repo's message style
 
@@ -591,7 +591,7 @@ Use sensible defaults — no user to ask:
 
 | Context | Default action |
 |---------|---------------|
-| On main/master | Create a bookmark named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), commit, attempt to open a PR. If PR creation fails, report the bookmark name. |
+| On the default bookmark | Create a bookmark named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), commit, attempt to open a PR. If PR creation fails, report the bookmark name. |
 | On a feature bookmark | Commit as a separate change on the current bookmark |
 | JJ operations fail | Include the recommended JJ commands in the report and continue |
 

@@ -26,7 +26,7 @@ Cache path:
     /tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json
   root-sha = lexicographically-first `jj log -r 'root()+ & ::@' --no-graph -T 'commit_id ++ "\\n"'`
               (deterministic even for multi-root histories) — the repo identity,
-              shared across worktrees and clones.
+              shared across workspaces and clones.
   head-sha = `jj log -r @ --no-graph -T 'commit_id ++ "\\n"'` — the working state.
 
 Validity (HIT) requires ALL of:

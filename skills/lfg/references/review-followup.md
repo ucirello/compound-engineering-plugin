@@ -16,7 +16,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the working tree only when **all** of the following hold:
+Apply a finding in the working copy only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -35,7 +35,7 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
+2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
 4. If `jj st` shows changes, commit only review-driven files with `jj commit <review-driven-files> -m "fix(review): apply review findings"`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). Before pushing, ensure the bookmark points at the committed change (`jj bookmark set <bookmark> -r @-`, or `jj bookmark create <bookmark> -r @-` if it does not exist). Resolve a writable remote dynamically (prefer `origin` when present, otherwise choose the first configured remote from `jj git remote list`), then run `jj git push --bookmark <bookmark> --remote <remote>`. If there is no remote at all, do not push — the local commit suffices. If no eligible fixes were applied, note explicitly and skip commit.
 

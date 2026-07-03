@@ -269,7 +269,7 @@ Run this tail after Phase 3 ran and before the bookmark-based commit/PR handoff.
 
 **Handle residual findings before shipping.** Inspect the review's Actionable Findings. Do not auto-open a PR with unresolved P0/P1 findings, or with findings whose fix needs a product/design decision. Ask the user whether to fix now, accept/defer durably, or stop. For lower-severity residuals the user accepts, preserve them before any outward handoff: if a PR will be opened, pass them as "Known Residuals" context to `/ce-commit-push-pr`; if the user chooses commit-only or stop, create `docs/residual-review-findings/<bookmark-or-change-id>.md` with the accepted findings and source review context, include it with the fix when committing, and mention the file path in the final summary. Accepted residuals must not live only in the session.
 
-**Re-verify after tail edits.** If simplification or review changed code, rerun the bug's regression test and any targeted checks the tail identified. Never proceed to commit or PR with a red tree.
+**Re-verify after tail edits.** If simplification or review changed code, rerun the bug's regression test and any targeted checks the tail identified. Never proceed to commit or PR with failing checks.
 
 **Post-fix quality summary.** After the tail, append this block below the Debug Summary before the commit/PR decision:
 

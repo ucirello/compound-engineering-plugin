@@ -110,8 +110,8 @@ these locations, first match wins:
 Read once at compose time. Absent → fall through to the fallback default.
 
 Workspace-root only — do not fall through to a main workspace. Users
-working from a worktree who want HTML defaults can add DESIGN.md to the
-worktree.
+working from a JJ workspace who want HTML defaults can add DESIGN.md to
+that workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are

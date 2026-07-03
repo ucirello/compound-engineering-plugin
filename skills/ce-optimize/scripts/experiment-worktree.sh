@@ -25,7 +25,7 @@ JJ_ROOT=$(jj workspace root 2>/dev/null) || {
   exit 1
 }
 
-WORKTREE_DIR="$JJ_ROOT/.worktrees"
+WORKSPACE_DIR="$JJ_ROOT/.worktrees"
 
 experiment_bookmark_name() {
   local spec_name="${1:?Error: spec_name required}"
@@ -57,7 +57,7 @@ reset_workspace_to_base() {
   jj -R "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
 }
 
-create_worktree() {
+create_workspace() {
   local spec_name="${1:?Error: spec_name required}"
   local exp_index="${2:?Error: exp_index required}"
   local base_bookmark="${3:?Error: base_bookmark required}"
@@ -68,7 +68,7 @@ create_worktree() {
   local workspace_name="optimize-${spec_name}-exp-${padded_index}"
   local bookmark_name
   bookmark_name=$(experiment_bookmark_name "$spec_name" "$padded_index")
-  local workspace_path="$WORKTREE_DIR/$workspace_name"
+  local workspace_path="$WORKSPACE_DIR/$workspace_name"
 
   if [[ -d "$workspace_path" ]]; then
     if ! jj -R "$workspace_path" workspace root >/dev/null 2>&1 || \
@@ -81,7 +81,7 @@ create_worktree() {
     echo -e "${YELLOW}Workspace already exists: $workspace_path${NC}" >&2
     reset_workspace_to_base "$workspace_path" "$bookmark_name" "$base_bookmark"
   else
-    mkdir -p "$WORKTREE_DIR"
+    mkdir -p "$WORKSPACE_DIR"
     jj workspace add --name "$workspace_name" --revision "$base_bookmark" "$workspace_path" >/dev/null
     jj -R "$workspace_path" describe -m "$bookmark_name" >/dev/null
     jj -R "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
@@ -117,7 +117,7 @@ create_worktree() {
   echo "$workspace_path"
 }
 
-cleanup_worktree() {
+cleanup_workspace() {
   local spec_name="${1:?Error: spec_name required}"
   local exp_index="${2:?Error: exp_index required}"
 
@@ -126,7 +126,7 @@ cleanup_worktree() {
   local workspace_name="optimize-${spec_name}-exp-${padded_index}"
   local bookmark_name
   bookmark_name=$(experiment_bookmark_name "$spec_name" "$padded_index")
-  local workspace_path="$WORKTREE_DIR/$workspace_name"
+  local workspace_path="$WORKSPACE_DIR/$workspace_name"
 
   if [[ -d "$workspace_path" ]]; then
     jj workspace forget "$workspace_name" >/dev/null 2>&1 || true
@@ -143,12 +143,12 @@ cleanup_all() {
   local prefix="optimize-${spec_name}-exp-"
   local count=0
 
-  if [[ ! -d "$WORKTREE_DIR" ]]; then
+  if [[ ! -d "$WORKSPACE_DIR" ]]; then
     echo -e "${YELLOW}No workspaces directory found${NC}" >&2
     return 0
   fi
 
-  for workspace_path in "$WORKTREE_DIR"/${prefix}*; do
+  for workspace_path in "$WORKSPACE_DIR"/${prefix}*; do
     if [[ -d "$workspace_path" ]]; then
       local workspace_name
       workspace_name=$(basename "$workspace_path")
@@ -165,17 +165,17 @@ cleanup_all() {
     fi
   done
 
-  if [[ -d "$WORKTREE_DIR" ]] && [[ -z "$(ls -A "$WORKTREE_DIR" 2>/dev/null)" ]]; then
-    rmdir "$WORKTREE_DIR" 2>/dev/null || true
+  if [[ -d "$WORKSPACE_DIR" ]] && [[ -z "$(ls -A "$WORKSPACE_DIR" 2>/dev/null)" ]]; then
+    rmdir "$WORKSPACE_DIR" 2>/dev/null || true
   fi
 
   echo -e "${GREEN}Cleaned up $count experiment workspace(s) for $spec_name${NC}" >&2
 }
 
-count_worktrees() {
+count_workspaces() {
   local count=0
-  if [[ -d "$WORKTREE_DIR" ]]; then
-    for workspace_path in "$WORKTREE_DIR"/*; do
+  if [[ -d "$WORKSPACE_DIR" ]]; then
+    for workspace_path in "$WORKSPACE_DIR"/*; do
       if [[ -d "$workspace_path" ]] && [[ -d "$workspace_path/.jj" ]]; then
         count=$((count + 1))
       fi
@@ -190,18 +190,18 @@ main() {
   case "$command" in
     create)
       shift
-      create_worktree "$@"
+      create_workspace "$@"
       ;;
     cleanup)
       shift
-      cleanup_worktree "$@"
+      cleanup_workspace "$@"
       ;;
     cleanup-all)
       shift
       cleanup_all "$@"
       ;;
     count)
-      count_worktrees
+      count_workspaces
       ;;
     help)
       cat << 'EOF'

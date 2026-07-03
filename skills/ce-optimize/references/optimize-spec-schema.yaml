@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmark names and workspace paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
     example: "improve-issue-clustering"
 
   description:

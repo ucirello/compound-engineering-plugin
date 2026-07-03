@@ -5,7 +5,7 @@
 # Each experiment gets an isolated workspace with copied shared resources.
 #
 # Usage:
-#   experiment-worktree.sh create <spec_name> <exp_index> <base_bookmark_or_rev> [shared_file ...]
+#   experiment-worktree.sh create <spec_name> <exp_index> <base_bookmark> [shared_file ...]
 #   experiment-worktree.sh cleanup <spec_name> <exp_index>
 #   experiment-worktree.sh cleanup-all <spec_name>
 #   experiment-worktree.sh count
@@ -20,7 +20,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-JJ_ROOT=$(jj root 2>/dev/null) || {
+JJ_ROOT=$(jj workspace root 2>/dev/null) || {
   echo -e "${RED}Error: Not in a JJ repository${NC}" >&2
   exit 1
 }
@@ -36,24 +36,31 @@ experiment_bookmark_name() {
   echo "optimize-exp/${spec_name}/exp-${padded_index}"
 }
 
-ensure_workspace_exclude() {
-  local ignore_file="$JJ_ROOT/.gitignore"
-
-  if ! grep -q '^\.worktrees/$' "$ignore_file" 2>/dev/null; then
-    printf '\n.worktrees/\n' >> "$ignore_file"
-  fi
-}
-
-forget_workspace() {
+is_registered_workspace() {
   local workspace_name="${1:?Error: workspace_name required}"
-  jj workspace forget "$workspace_name" >/dev/null 2>&1 || true
+
+  jj workspace list | awk -v target="$workspace_name:" '
+    $1 == target { found = 1 }
+    END { exit(found ? 0 : 1) }
+  '
 }
 
-# Create an experiment workspace.
+reset_workspace_to_base() {
+  local workspace_path="${1:?Error: workspace_path required}"
+  local bookmark_name="${2:?Error: bookmark_name required}"
+  local base_bookmark="${3:?Error: base_bookmark required}"
+
+  echo -e "${YELLOW}Resetting existing experiment workspace to base: $bookmark_name -> $base_bookmark${NC}" >&2
+  jj -R "$workspace_path" restore >/dev/null 2>&1 || true
+  jj -R "$workspace_path" abandon @ >/dev/null 2>&1 || true
+  jj -R "$workspace_path" new "$base_bookmark" -m "$bookmark_name" >/dev/null
+  jj -R "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
+}
+
 create_worktree() {
   local spec_name="${1:?Error: spec_name required}"
   local exp_index="${2:?Error: exp_index required}"
-  local base_rev="${3:?Error: base_bookmark_or_rev required}"
+  local base_bookmark="${3:?Error: base_bookmark required}"
   shift 3
 
   local padded_index
@@ -64,18 +71,23 @@ create_worktree() {
   local workspace_path="$WORKTREE_DIR/$workspace_name"
 
   if [[ -d "$workspace_path" ]]; then
-    echo -e "${YELLOW}Recreating existing experiment workspace: $workspace_path${NC}" >&2
-    forget_workspace "$workspace_name"
-    rm -rf "$workspace_path"
+    if ! jj -R "$workspace_path" workspace root >/dev/null 2>&1 || \
+       ! is_registered_workspace "$workspace_name"; then
+      echo -e "${RED}Error: Existing path is not a valid registered JJ workspace: $workspace_path${NC}" >&2
+      echo -e "${RED}Remove or repair that directory before rerunning the experiment.${NC}" >&2
+      return 1
+    fi
+
+    echo -e "${YELLOW}Workspace already exists: $workspace_path${NC}" >&2
+    reset_workspace_to_base "$workspace_path" "$bookmark_name" "$base_bookmark"
+  else
+    mkdir -p "$WORKTREE_DIR"
+    jj workspace add --name "$workspace_name" --revision "$base_bookmark" "$workspace_path" >/dev/null
+    jj -R "$workspace_path" describe -m "$bookmark_name" >/dev/null
+    jj -R "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
   fi
 
-  mkdir -p "$WORKTREE_DIR"
-  ensure_workspace_exclude
-
-  jj workspace add --name "$workspace_name" --revision "$base_rev" "$workspace_path" >/dev/null
-  jj --repository "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
-
-  # Copy .env files from the main workspace.
+  # Copy .env files from main repo.
   for f in "$JJ_ROOT"/.env*; do
     if [[ -f "$f" ]]; then
       local basename
@@ -105,7 +117,6 @@ create_worktree() {
   echo "$workspace_path"
 }
 
-# Clean up a single experiment workspace.
 cleanup_worktree() {
   local spec_name="${1:?Error: spec_name required}"
   local exp_index="${2:?Error: exp_index required}"
@@ -117,14 +128,16 @@ cleanup_worktree() {
   bookmark_name=$(experiment_bookmark_name "$spec_name" "$padded_index")
   local workspace_path="$WORKTREE_DIR/$workspace_name"
 
-  forget_workspace "$workspace_name"
-  rm -rf "$workspace_path" 2>/dev/null || true
+  if [[ -d "$workspace_path" ]]; then
+    jj workspace forget "$workspace_name" >/dev/null 2>&1 || true
+    rm -rf "$workspace_path" 2>/dev/null || true
+  fi
+
   jj bookmark delete "$bookmark_name" >/dev/null 2>&1 || true
 
   echo -e "${GREEN}Cleaned up: $workspace_name${NC}" >&2
 }
 
-# Clean up all experiment workspaces for a spec.
 cleanup_all() {
   local spec_name="${1:?Error: spec_name required}"
   local prefix="optimize-${spec_name}-exp-"
@@ -140,11 +153,12 @@ cleanup_all() {
       local workspace_name
       workspace_name=$(basename "$workspace_path")
       local index_str="${workspace_name#$prefix}"
+
+      jj workspace forget "$workspace_name" >/dev/null 2>&1 || true
+      rm -rf "$workspace_path" 2>/dev/null || true
+
       local bookmark_name
       bookmark_name=$(experiment_bookmark_name "$spec_name" "$index_str")
-
-      forget_workspace "$workspace_name"
-      rm -rf "$workspace_path" 2>/dev/null || true
       jj bookmark delete "$bookmark_name" >/dev/null 2>&1 || true
 
       count=$((count + 1))
@@ -158,12 +172,11 @@ cleanup_all() {
   echo -e "${GREEN}Cleaned up $count experiment workspace(s) for $spec_name${NC}" >&2
 }
 
-# Count total experiment workspaces (for budget check).
 count_worktrees() {
   local count=0
   if [[ -d "$WORKTREE_DIR" ]]; then
     for workspace_path in "$WORKTREE_DIR"/*; do
-      if [[ -d "$workspace_path" ]] && jj --repository "$workspace_path" status >/dev/null 2>&1; then
+      if [[ -d "$workspace_path" ]] && [[ -d "$workspace_path/.jj" ]]; then
         count=$((count + 1))
       fi
     done
@@ -195,7 +208,7 @@ main() {
 Experiment Workspace Manager
 
 Usage:
-  experiment-worktree.sh create <spec_name> <exp_index> <base_bookmark_or_rev> [shared_file ...]
+  experiment-worktree.sh create <spec_name> <exp_index> <base_bookmark> [shared_file ...]
   experiment-worktree.sh cleanup <spec_name> <exp_index>
   experiment-worktree.sh cleanup-all <spec_name>
   experiment-worktree.sh count
@@ -204,7 +217,7 @@ Commands:
   create       Create an experiment workspace with copied shared files
   cleanup      Remove a single experiment workspace and its bookmark
   cleanup-all  Remove all experiment workspaces for a spec
-  count        Count total active experiment workspaces (for budget checking)
+  count        Count total active workspaces (for budget checking)
 
 Workspaces: .worktrees/optimize-<spec>-exp-<NNN>/
 Bookmarks:  optimize-exp/<spec>/exp-<NNN>

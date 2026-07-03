@@ -68,9 +68,9 @@ Determine `OUTPUT_FORMAT` for the ideation artifact this run might persist. Outp
 Unlike `ce-plan` and `ce-brainstorm` (which default to `md`), ce-ideate defaults to **`html`** — ideation artifacts are read mainly by humans weighing candidate directions, and a rich self-contained HTML file (with illustrative diagrams for the top candidates) makes the ideas easier to approach.
 
 **Read config.** The repo root is pre-resolved at skill load:
-!`jj root 2>/dev/null || true`
+!`jj workspace root 2>/dev/null || true`
 
-If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `jj root` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a JJ repo) or the file does not exist, fall through to the defaults below.
+If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `jj workspace root` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a JJ repo) or the file does not exist, fall through to the defaults below.
 
 Resolution steps:
 

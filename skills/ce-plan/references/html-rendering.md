@@ -103,7 +103,7 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj root`).
+1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
 3. `.compound-engineering/DESIGN.md`.
 
@@ -227,7 +227,7 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time:
+Resolve the repo's GitHub URL once at compose time by reading the `origin` row:
 
 ```bash
 jj git remote list

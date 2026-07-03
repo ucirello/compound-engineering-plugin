@@ -13,9 +13,9 @@ Usage:
 `get` prints exactly one of:
     HIT\\n<profile-json>     a valid entry exists for the current repo state;
                             the profile JSON follows on subsequent lines
-    MISS\\n<write-path>      JJ repo, no valid entry — caller derives the
+    MISS\\n<write-path>      jj repo, no valid entry — caller derives the
                             profile and calls `put <write-path-or-any-file>`
-    NO-CACHE                no JJ repo or no writable cache — caller derives
+    NO-CACHE                no jj repo or no writable cache — caller derives
                             the profile fresh and skips `put`
 
 `put <file>` reads the profile JSON from <file>, wraps it with a validity
@@ -24,22 +24,22 @@ on success, `NO-CACHE` when the repo/cache is unavailable.
 
 Cache path:
     /tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json
-  root-sha = lexicographically-first JJ root commit in `::@`
-             (deterministic even for multi-root histories) — the repo identity,
-             shared across worktrees and clones.
-  head-sha = `jj log -r @ -T 'commit_id'` — the working state.
+  root-sha = lexicographically-first `jj log -r 'root()+ & ::@' --no-graph -T 'commit_id ++ "\\n"'`
+              (deterministic even for multi-root histories) — the repo identity,
+              shared across worktrees and clones.
+  head-sha = `jj log -r @ --no-graph -T 'commit_id ++ "\\n"'` — the working state.
 
 Validity (HIT) requires ALL of:
   - the cache file exists and parses as JSON,
-  - stored `head_sha` == current `@` commit ID,
+  - stored `head_sha` == current working-copy commit,
   - stored `profile_schema_version` == PROFILE_SCHEMA_VERSION,
-  - no profile-input path is dirty or newly-added per `jj diff --name-only -r @`
+  - no profile-input path is changed per `jj diff --name-only -r @`
     (the schema-derived superset in `is_profile_input`, which also catches
     untracked `??` files — a newly-added manifest or AGENTS.md must invalidate).
 
 Cardinal rule: this cache is an optimization, never a correctness dependency.
-Every failure mode (not a JJ repo, unreadable/malformed cache, no writable
-/tmp, JJ errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
+Every failure mode (not a jj repo, unreadable/malformed cache, no writable
+/tmp, jj errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
 never serves a profile it cannot prove fresh.
 
 Pure stdlib. No third-party dependencies.
@@ -65,7 +65,7 @@ CACHE_ROOT = "/tmp/compound-engineering/repo-profile"
 # Dependency manifests + lockfiles. Matched by basename at ANY depth so a
 # monorepo workspace's manifest also invalidates. The profiler derives
 # stack/deps for ANY language, so this list must span ecosystems, not just JS —
-# an omitted manifest means a dirty dep bump at unchanged HEAD serves a stale
+# an omitted manifest means a dirty dep bump at unchanged working state serves a stale
 # profile (a cardinal-rule break).
 _MANIFEST_LOCKFILE = {
     # JavaScript / TypeScript / Deno
@@ -188,7 +188,7 @@ def jj(*args: str) -> "str | None":
 
 
 def root_sha() -> "str | None":
-    out = jj("log", "-r", "roots(::@ ~ root())", "--no-graph", "-T", "commit_id ++ '\n'")
+    out = jj("log", "-r", "root()+ & ::@", "--no-graph", "-T", 'commit_id ++ "\\n"')
     if not out:
         return None
     # Multi-root histories print several SHAs; pick a deterministic one.
@@ -198,14 +198,21 @@ def root_sha() -> "str | None":
 def changed_paths() -> "list[str] | None":
     """Paths from `jj diff --name-only -r @`, or None if it could not run.
 
-    Includes newly-added files in JJ's working-copy change.
+    Jujutsu snapshots non-ignored working-copy files into `@`, so newly-added
+    profile inputs appear in the working-copy diff.
     None signals "could not determine cleanliness" — the caller treats that
     conservatively as a miss rather than serving an unverified profile.
     """
     out = jj("diff", "--name-only", "-r", "@")
     if out is None:
         return None
-    return [line for line in out.split("\n") if line]
+    paths: list[str] = []
+    for line in out.split("\n"):
+        path = line.strip()
+        if not path:
+            continue
+        paths.append(path)
+    return paths
 
 
 def cache_path(root: str, head: str) -> str:
@@ -213,9 +220,9 @@ def cache_path(root: str, head: str) -> str:
 
 
 def resolve_keys() -> "tuple[str, str] | None":
-    """The (root-sha, head-sha) cache key, or None if not a usable JJ repo."""
+    """The (root-sha, head-sha) cache key, or None if not a usable jj repo."""
     root = root_sha()
-    head = jj("log", "-r", "@", "--no-graph", "-T", "commit_id")
+    head = jj("log", "-r", "@", "--no-graph", "-T", 'commit_id ++ "\\n"')
     if not root or not head:
         return None
     return root, head
@@ -308,9 +315,9 @@ def do_put(profile_file: str) -> int:
         print("NO-CACHE")
         return 0
 
-    # Do not cache a profile derived from dirty profile inputs: it reflects
-    # edits that would be stored under the current @ commit key and later served
-    # stale after those edits are reverted.
+    # Do not cache a profile derived from changed profile inputs: it reflects
+    # edits that could later be reverted while leaving the same clean key
+    # — stale. Only persist a profile that matches the current JJ state.
     changed = changed_paths()
     if changed is None or any(is_profile_input(p) for p in changed):
         sys.stderr.write(

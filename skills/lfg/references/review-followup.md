@@ -37,7 +37,7 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `jj status` shows changes, commit only review-driven files with `jj commit <files> -m "fix(review): apply review findings"`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). Resolve a writable remote dynamically: prefer `origin` when present, otherwise use `jj git remote list` and choose the first configured remote. Then run `jj git push --remote <remote> --bookmark <bookmark-name>`. If there is no remote at all, do not push — the local commit suffices. If no eligible fixes were applied, note explicitly and skip commit.
+4. If `jj st` shows changes, commit only review-driven files with `jj commit <review-driven-files> -m "fix(review): apply review findings"`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). Before pushing, ensure the bookmark points at the committed change (`jj bookmark set <bookmark> -r @-`, or `jj bookmark create <bookmark> -r @-` if it does not exist). Resolve a writable remote dynamically (prefer `origin` when present, otherwise choose the first configured remote from `jj git remote list`), then run `jj git push --bookmark <bookmark> --remote <remote>`. If there is no remote at all, do not push — the local commit suffices. If no eligible fixes were applied, note explicitly and skip commit.
 
 ## Step 6 — residual handoff
 

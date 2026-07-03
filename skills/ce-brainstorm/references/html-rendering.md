@@ -103,13 +103,13 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj root`).
+1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
 3. `.compound-engineering/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Worktree-root only — do not fall through to a main checkout. Users
+Workspace-root only — do not fall through to a main workspace. Users
 working from a worktree who want HTML defaults can add DESIGN.md to the
 worktree.
 

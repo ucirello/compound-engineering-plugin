@@ -27,16 +27,15 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, JJ root not found).
+# genuine operational failures (missing `jq`).
 
 set -u
 
 REQUESTED_NAME="${1:-}"
 
-REPO_ROOT=$(jj root 2>/dev/null || pwd)
+REPO_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a JJ repository" >&2
-  exit 1
+  REPO_ROOT=$(pwd)
 fi
 
 if ! command -v jq >/dev/null 2>&1; then

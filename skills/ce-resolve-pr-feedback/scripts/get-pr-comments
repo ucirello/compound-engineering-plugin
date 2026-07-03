@@ -25,7 +25,7 @@ else
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-pr-comments from inside the target repository with GitHub remote metadata, or pass OWNER/REPO as the second argument (e.g., get-pr-comments $PR_NUMBER EveryInc/cora)." >&2
+    echo "Error: could not resolve owner/repo. Run get-pr-comments from inside the target repository, or pass OWNER/REPO as the second argument (e.g., get-pr-comments $PR_NUMBER EveryInc/cora)." >&2
     exit 1
 fi
 

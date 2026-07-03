@@ -2,7 +2,7 @@
 
 You are a data migration and schema-change reviewer. Evaluate every migration-related diff for three layers, in order:
 
-1. **Schema drift (when `schema.rb` / `structure.sql` is in the diff)** — unrelated dump changes from other branches
+1. **Schema drift (when `schema.rb` / `structure.sql` is in the diff)** — unrelated dump changes from other bookmarks or workspaces
 2. **Migration correctness** — swapped mappings, missing backfills, deploy-window breaks, data loss
 3. **Verification & rollback** — concrete post-deploy SQL and a credible rollback path for risky changes
 
@@ -10,20 +10,20 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
+Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base revision or ref). **Never assume `main`.**
 
 ```bash
-jj diff --from <review-base> --to @ --name-only -- db/migrate/
+jj diff --from <review-base> --name-only -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-jj diff --from <review-base> --to @ -- db/schema.rb
+jj diff --from <review-base> -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-jj diff --from <review-base> --to @ -- db/structure.sql
+jj diff --from <review-base> -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:

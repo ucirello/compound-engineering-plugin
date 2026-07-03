@@ -37,7 +37,7 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only in the temp dir and are discarded by the OS.
+- Do not include `raw/` or `frames/` in JJ changes — they live only in the temp dir and are discarded by the OS.
 - No source-mapping pass across the codebase.
 
 ## Escalation

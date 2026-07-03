@@ -42,6 +42,10 @@
 set -u
 
 REPO_ROOT=$(jj root 2>/dev/null || pwd)
+if [ -z "$REPO_ROOT" ]; then
+  echo "ERROR: not in a JJ repository" >&2
+  exit 1
+fi
 
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }
 

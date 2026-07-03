@@ -32,28 +32,23 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          no positional arg and not inside a JJ workspace
+#                          no positional arg and not inside a JJ repo
 
 set -u
 
 TARGET_PATH="${1:-}"
 
-# Resolve target directory: positional arg or JJ workspace root.
+# Resolve target directory: positional arg or JJ repo root.
 if [ -n "$TARGET_PATH" ]; then
   if [ ! -d "$TARGET_PATH" ]; then
     echo "ERROR: path does not exist or is not a directory: $TARGET_PATH" >&2
     exit 1
   fi
 else
-  TARGET_PATH=$(jj root 2>/dev/null || true)
+  TARGET_PATH=$(jj root 2>/dev/null || pwd)
   if [ -z "$TARGET_PATH" ]; then
-    legacy_vcs_dir=".$(printf '\147\151\164')"
-    if [ -f "package.json" ] || [ -d "$legacy_vcs_dir" ]; then
-      TARGET_PATH=$(pwd)
-    else
-      echo "ERROR: not in a JJ workspace and no path argument provided" >&2
-      exit 1
-    fi
+    echo "ERROR: not in a JJ repository and no path argument provided" >&2
+    exit 1
   fi
 fi
 

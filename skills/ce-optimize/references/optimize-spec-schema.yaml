@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmark names and workspace paths)"
     example: "improve-issue-clustering"
 
   description:
@@ -272,7 +272,7 @@ optional_fields:
       backend:
         type: enum
         values:
-          - workspace  # JJ workspaces for isolation (default)
+          - worktree  # JJ workspaces for isolation (default)
           - codex     # Codex sandboxes for isolation
         default: worktree
       max_concurrent:

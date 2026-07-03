@@ -13,9 +13,9 @@ Usage:
 `get` prints exactly one of:
     HIT\\n<profile-json>     a valid entry exists for the current repo state;
                             the profile JSON follows on subsequent lines
-    MISS\\n<write-path>      JJ workspace, no valid entry — caller derives the
+    MISS\\n<write-path>      JJ repo, no valid entry — caller derives the
                             profile and calls `put <write-path-or-any-file>`
-    NO-CACHE                no JJ workspace or no writable cache — caller derives
+    NO-CACHE                no JJ repo or no writable cache — caller derives
                             the profile fresh and skips `put`
 
 `put <file>` reads the profile JSON from <file>, wraps it with a validity
@@ -24,21 +24,21 @@ on success, `NO-CACHE` when the repo/cache is unavailable.
 
 Cache path:
     /tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json
-  root-revision = lexicographically-first JJ root ancestor commit ID
+  root-sha = lexicographically-first JJ root commit in `::@`
              (deterministic even for multi-root histories) — the repo identity,
-             shared across JJ workspaces.
-  current-revision = `jj log -r @- -T commit_id` — the parent commit.
+             shared across worktrees and clones.
+  head-sha = `jj log -r @ -T 'commit_id'` — the working state.
 
 Validity (HIT) requires ALL of:
   - the cache file exists and parses as JSON,
-  - stored `head_sha` == current revision,
+  - stored `head_sha` == current `@` commit ID,
   - stored `profile_schema_version` == PROFILE_SCHEMA_VERSION,
-  - no profile-input path is dirty or newly-added per `jj status`
+  - no profile-input path is dirty or newly-added per `jj diff --name-only -r @`
     (the schema-derived superset in `is_profile_input`, which also catches
-    new files — a newly-added manifest or AGENTS.md must invalidate).
+    untracked `??` files — a newly-added manifest or AGENTS.md must invalidate).
 
 Cardinal rule: this cache is an optimization, never a correctness dependency.
-Every failure mode (not a JJ workspace, unreadable/malformed cache, no writable
+Every failure mode (not a JJ repo, unreadable/malformed cache, no writable
 /tmp, JJ errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
 never serves a profile it cannot prove fresh.
 
@@ -46,7 +46,6 @@ Pure stdlib. No third-party dependencies.
 """
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -175,11 +174,11 @@ def is_profile_input(path: str) -> bool:
     return False
 
 
-def run_vcs(*args: str) -> "str | None":
-    """Run a VCS command; return stripped stdout, or None on any failure."""
+def jj(*args: str) -> "str | None":
+    """Run a jj command; return stripped stdout, or None on any failure."""
     try:
         result = subprocess.run(
-            [*args], capture_output=True, text=True, check=False
+            ["jj", *args], capture_output=True, text=True, check=False
         )
     except OSError:
         return None
@@ -188,72 +187,25 @@ def run_vcs(*args: str) -> "str | None":
     return result.stdout.strip()
 
 
-def jj_root_sha() -> "str | None":
-    out = run_vcs(
-        "jj",
-        "log",
-        "-r",
-        "roots(::@ & ~root())",
-        "--no-graph",
-        "-T",
-        'commit_id ++ "\\n"',
-    )
+def root_sha() -> "str | None":
+    out = jj("log", "-r", "roots(::@ ~ root())", "--no-graph", "-T", "commit_id ++ '\n'")
     if not out:
         return None
-    # Multi-root histories print several commit IDs; pick a deterministic one.
+    # Multi-root histories print several SHAs; pick a deterministic one.
     return sorted(out.split("\n"))[0]
 
 
-def current_revision() -> "str | None":
-    return run_vcs("jj", "log", "-r", "@-", "--no-graph", "-T", 'commit_id ++ "\\n"')
-
-
 def changed_paths() -> "list[str] | None":
-    """Paths from VCS status, or None if it could not run.
+    """Paths from `jj diff --name-only -r @`, or None if it could not run.
 
-    Includes untracked entries so a newly-added profile input is seen.
+    Includes newly-added files in JJ's working-copy change.
     None signals "could not determine cleanliness" — the caller treats that
     conservatively as a miss rather than serving an unverified profile.
     """
-    jj_paths = jj_changed_paths()
-    if jj_paths is not None:
-        return jj_paths
-
-    return None
-
-
-def jj_changed_paths() -> "list[str] | None":
-    try:
-        result = subprocess.run(
-            ["jj", "status"], capture_output=True, text=True, check=False
-        )
-    except OSError:
+    out = jj("diff", "--name-only", "-r", "@")
+    if out is None:
         return None
-    if result.returncode != 0:
-        return None
-
-    paths: list[str] = []
-    for line in result.stdout.split("\n"):
-        if not line or line.startswith(("Working copy ", "Parent commit ", "The working copy ")):
-            continue
-        if len(line) < 3 or line[1] != " ":
-            continue
-        path = line[2:].strip()
-        if path:
-            paths.extend(expand_jj_status_path(path))
-    return paths
-
-
-def expand_jj_status_path(path: str) -> "list[str]":
-    """Expand JJ rename syntax so both endpoints participate in input checks."""
-    if " => " not in path:
-        return [path]
-    braced = re.match(r"^(.*)\{([^{}]+) => ([^{}]+)\}(.*)$", path)
-    if braced:
-        prefix, old, new, suffix = braced.groups()
-        return [f"{prefix}{old}{suffix}", f"{prefix}{new}{suffix}"]
-    old, new = path.split(" => ", 1)
-    return [old.strip("{}"), new.strip("{}")]
+    return [line for line in out.split("\n") if line]
 
 
 def cache_path(root: str, head: str) -> str:
@@ -261,9 +213,9 @@ def cache_path(root: str, head: str) -> str:
 
 
 def resolve_keys() -> "tuple[str, str] | None":
-    """The (root-revision, current-revision) cache key, or None if VCS metadata is unavailable."""
-    root = jj_root_sha()
-    head = current_revision()
+    """The (root-sha, head-sha) cache key, or None if not a usable JJ repo."""
+    root = root_sha()
+    head = jj("log", "-r", "@", "--no-graph", "-T", "commit_id")
     if not root or not head:
         return None
     return root, head
@@ -356,10 +308,9 @@ def do_put(profile_file: str) -> int:
         print("NO-CACHE")
         return 0
 
-    # Do not cache a profile derived from a DIRTY tree: it reflects uncommitted
-    # edits to profile inputs, yet it would be stored under the clean HEAD key
-    # and served as a HIT after those edits are reverted (same HEAD, clean tree)
-    # — stale. Only persist a profile that matches the committed HEAD.
+    # Do not cache a profile derived from dirty profile inputs: it reflects
+    # edits that would be stored under the current @ commit key and later served
+    # stale after those edits are reverted.
     changed = changed_paths()
     if changed is None or any(is_profile_input(p) for p in changed):
         sys.stderr.write(

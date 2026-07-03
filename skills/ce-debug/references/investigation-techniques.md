@@ -76,22 +76,19 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## JJ Bisect for Regressions
+## JJ Bisection for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-jj bisect run --range <known-good-ref>..@ -- <test-command>
-# JJ edits candidate revisions directly while bisecting; keep unrelated work out of the workspace.
-# mark as good or bad, repeat until the breaking commit is found
-jj edit @                         # return to the desired working-copy revision when done, if needed
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), use binary search over JJ revisions to find the breaking commit:
 
 ```bash
-jj bisect run --range <known-good-ref>..@ -- <test-command>
+ORIGINAL=$(jj log -r @ --no-graph -T 'change_id ++ "\n"')
+jj log -r '<known-good-rev>::@'    # inspect the candidate range
+jj new <candidate-rev>             # test a midpoint candidate in a new change
+# run the reproducer; mark the candidate good/bad in your notes
+jj edit "$ORIGINAL"                # return to the original change when done
 ```
+
+For automation, drive the same candidate loop from a small script that exits 0 for good and non-zero for bad, and have the orchestrator choose midpoint revisions from `jj log` output.
 
 The test command should exit 0 for good, non-zero for bad.
 

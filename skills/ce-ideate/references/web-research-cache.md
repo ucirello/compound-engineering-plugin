@@ -44,9 +44,9 @@ After a fresh dispatch, append the new result to the current run's cache file at
 The topic surface is the user-supplied content the web research is grounded on:
 - **Elsewhere modes (`elsewhere-software`, `elsewhere-non-software`):** the user's topic prompt plus any Phase 0.4 intake answers (the actual subject the agent is researching). The two sub-modes are keyed separately — a reclassification between software and non-software for the same topic hash must force a fresh dispatch, since the research domain differs.
 - **Repo mode:** the focus hint plus a stable repo discriminator. This keeps the cache key meaningful when focus is empty — two bare-prompt invocations in the same repo legitimately share research, but the key still differentiates repos. Since cache files from every repo's runs now live under the shared OS-temp root, a bare basename like `app` or `frontend` would collide across unrelated repos. Resolve the discriminator with this fallback chain and hash the result (first 8 hex chars of sha256 is sufficient):
-    1. `jj git remote list` — stable across machines when a remote is configured.
-    2. `jj root` — absolute repo path; machine-local but always available in a JJ workspace.
-    3. The current working directory's absolute path — last resort when not in a JJ workspace.
+    1. `jj git remote list` — stable across machines when a shared remote exists.
+    2. `jj root` — absolute repo path; machine-local but available in a JJ checkout.
+    3. The current working directory's absolute path — last resort when not in a JJ repo.
 
 Normalize before hashing: lowercase, collapse whitespace. (The repo discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
 

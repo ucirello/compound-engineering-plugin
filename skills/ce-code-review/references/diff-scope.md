@@ -7,10 +7,10 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working copy changes.** If `jj diff` is non-empty, review those.
-3. **Unpushed commits vs base bookmark.** If the working copy is clean, review `jj diff --from <base> --to @` where `<base>` is the default bookmark (main or master).
+2. **Working copy changes.** If `jj diff -r @` is non-empty, review those.
+3. **Unpublished commits vs base bookmark.** If the working copy is clean, review `jj diff --from 'heads(::@ & ::<base>)' --to @` where `<base>` is the default bookmark.
 
-The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run JJ commands yourself unless PR scope mode requires it (below).
+The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run VCS commands yourself unless PR scope mode requires it (below).
 
 ## Remote scope (`pr-remote` and `bookmark-remote`)
 

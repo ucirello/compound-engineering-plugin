@@ -34,6 +34,10 @@ set -u
 REQUESTED_NAME="${1:-}"
 
 REPO_ROOT=$(jj root 2>/dev/null || pwd)
+if [ -z "$REPO_ROOT" ]; then
+  echo "ERROR: not in a JJ repository" >&2
+  exit 1
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2

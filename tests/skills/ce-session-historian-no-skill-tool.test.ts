@@ -65,7 +65,7 @@ describe("session-historian prompt no-Skill-tool regression guard", () => {
   })
 
   test("ce-compound resolves repo filter before running session discovery", () => {
-    expect(COMPOUND_SKILL_BODY).toContain("REPO_ROOT=$(jj root")
+    expect(COMPOUND_SKILL_BODY).toContain("REPO_ROOT=$(jj root 2>/dev/null || pwd)")
     expect(COMPOUND_SKILL_BODY).toContain('REPO_NAME=$(basename "$REPO_ROOT")')
     expect(COMPOUND_SKILL_BODY).toContain('discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS"')
     expect(COMPOUND_SKILL_BODY).toContain('--cwd-filter "$REPO_ROOT"')

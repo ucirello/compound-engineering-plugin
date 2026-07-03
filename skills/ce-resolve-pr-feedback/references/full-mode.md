@@ -137,15 +137,14 @@ Record the validation outcome (command run, pass/fail counts, any pre-existing f
 1. Stage only files reported by fixers and commit with a message referencing the PR:
 
 ```bash
-jj split [files from fixer summaries]
-jj commit -m "Address PR review feedback (#PR_NUMBER)
+jj commit [files from fixer summaries] -m "Address PR review feedback (#PR_NUMBER)
 
 - [list changes from fixer summaries]"
 ```
 
 2. Push to remote:
 ```bash
-jj git push --bookmark <bookmark>
+jj git push --bookmark <bookmark-name>
 ```
 
 ## 7. Reply and Resolve

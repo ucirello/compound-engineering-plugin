@@ -92,7 +92,7 @@ For each candidate artifact, classify it into one of five outcomes:
    - newer docs, pattern docs, PRs, or issues provide strong successor evidence.
 8. **Delete when the code is gone, and only after checking for inbound links.** If the referenced code, controller, or workflow no longer exists in the codebase and no successor can be found, delete the file — don't default to Keep just because the general advice is still "sound." When in doubt between Keep and Delete, ask the user (in interactive mode) or mark as stale (in headless mode). Inbound links inform classification, not cleanup: cleanup is always mechanical, but **decorative** citations (principle stated inline) allow Delete, while **substantive** citations (citing doc relies on the cited doc) signal Replace. The auto-delete case is missing code, no matching successor, and citations absent or decorative.
 9. **Evaluate document-set design, not just accuracy.** In addition to checking whether each doc is accurate, evaluate whether it is still the right unit of knowledge. If two or more docs overlap heavily, determine whether they should remain separate, be cross-scoped more clearly, or be consolidated into one canonical document. Redundant docs are dangerous because they drift silently — two docs saying the same thing will eventually say different things.
-10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. VCS history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `jj log -- docs/solutions/` will find it.
+10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. VCS history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `jj log -- docs/solutions/` plus the operation log can help find it.
 
 ## Scope Selection
 
@@ -581,7 +581,7 @@ After all actions are executed and the report is generated, handle committing th
 ### Detect JJ context
 
 Before offering options, check:
-1. Which branch is currently checked out (main/master vs feature branch)
+1. Which bookmark/change is current (main/master vs feature work)
 2. Whether the working tree has other uncommitted changes beyond what compound-refresh modified
 3. Recent commit messages to match the repo's commit style
 
@@ -599,7 +599,7 @@ Stage only the files that compound-refresh modified — not other dirty files in
 
 ### Interactive mode
 
-First, run `jj bookmark list -r @` to determine the current bookmark/change. Then present the correct options based on the result. Commit only compound-refresh files regardless of which option the user picks.
+First, run `jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ "\n"'` to determine the current bookmark. Then present the correct options based on the result. Isolate only compound-refresh files regardless of which option the user picks.
 
 **If the current branch is main, master, or the repo's default branch:**
 
@@ -622,7 +622,7 @@ First, run `jj bookmark list -r @` to determine the current bookmark/change. The
 
 Write a descriptive commit message that:
 - Summarizes what was refreshed (e.g., "update 3 stale learnings, consolidate 2 overlapping docs, delete 1 obsolete doc")
-- Follows the repo's existing commit conventions (check recent `jj log` for style)
+- Follows the repo's existing commit conventions (check recent `jj log` descriptions for style)
 - Is succinct — the details are in the changed files themselves
 
 ## Relationship to ce-compound

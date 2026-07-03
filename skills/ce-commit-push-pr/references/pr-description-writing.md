@@ -17,7 +17,7 @@ For user-facing bugs, run an extra before/after pass before writing the mechanis
 
 Two modes:
 
-- **Current-bookmark mode** (default) — describe the current change/stack vs the repo's default base.
+- **Current-bookmark mode** (default) — describe the current JJ change/bookmark vs the repo's default base.
 - **PR mode** — describe a specific PR. Triggered when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
@@ -28,20 +28,20 @@ gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,
 
 If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> try `main@origin`/`master@origin`/`develop@origin` via `jj log -r <candidate>`. If none resolve, ask the user. `<head>` is `@`.
+For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<rev>`) → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` by checking for `<candidate>@origin` with `jj log -r '<candidate>@origin' --no-graph -T 'commit_id'`. If none resolve, ask the user. `<head>` is `@` or the current bookmark/revision.
 
-**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `jj git remote list` output. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
+**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `jj git remote list`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
 
 ```bash
-jj git fetch --remote <base-remote>
+jj git fetch --remote <base-remote> --branch <base>
 jj log -r '<base>@<base-remote>..<head>' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
-jj log -r '<base>@<base-remote>..<head>' --no-graph -T 'commit_id.short() ++ " " ++ description ++ "\n"'   # full messages for related-reference discovery
+jj log -r '<base>@<base-remote>..<head>' --no-graph -T 'commit_id.short() ++ " " ++ description ++ "\n"'   # full descriptions for related-reference discovery
 jj diff --from '<base>@<base-remote>' --to '<head>'
 ```
 
-If the change list is empty, report "No commits to describe" and stop.
+If the commit list is empty, report "No commits to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local JJ cannot reach the refs (fork PR with no matching remote, shallow clone, offline, unrelated histories). For GHES configurations that reject SHA fetch but allow `refs/pull/`, prefer a temporary JJ bookmark if the remote exposes that ref; otherwise stay on the `gh` fallback.
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local JJ/GitHub metadata can't reach the refs (fork PR with no matching remote, shallow clone, offline, or unrelated histories).
 
 Note in the user-facing summary when the API fallback was used.
 
@@ -49,7 +49,7 @@ Note in the user-facing summary when the API fallback was used.
 
 ## Step A: Size the description
 
-Match weight to weight. When in doubt, shorter wins. Subtract fix-up commits (review fixes, lint, rebase resolutions) when sizing — they're invisible to the reader. Large PRs need more selectivity, not more content.
+Match weight to weight. When in doubt, shorter wins. Subtract fix-up commits (review fixes, lint, rebase/evolution resolutions) when sizing — they're invisible to the reader. Large PRs need more selectivity, not more content.
 
 | Change profile | Description approach |
 |---|---|

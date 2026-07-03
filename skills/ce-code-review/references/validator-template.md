@@ -36,7 +36,7 @@ The diff above is the full change being reviewed. The finding is about file {fin
 
 When `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>` is in context, do **not** Read/Grep the workspace copy of {finding_file}. Inspect via `jj file show -r <pr-head-ref> {finding_file}` or `jj file show -r <branch-head-ref> {finding_file}` when a remote head ref is set; otherwise use diff hunks only.
 
-When scope is local-aligned (default), use read tools (Read, Grep, Glob, `jj file annotate`) to inspect the cited code and its callers, guards, middleware, or framework defaults that might handle the concern elsewhere.
+When scope is local-aligned (default), use read tools (Read, Grep, Glob, JJ file annotation) to inspect the cited code and its callers, guards, middleware, or framework defaults that might handle the concern elsewhere.
 </scope-context>
 
 Your task is to answer three questions:

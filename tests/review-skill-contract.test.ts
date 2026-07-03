@@ -22,7 +22,7 @@ describe("ce-code-review contract", () => {
     expect(content).toContain("/tmp/compound-engineering/ce-code-review/<run-id>/")
     expect(content).toMatch(/Never push, open PRs, or file tickets/i)
     expect(content).toContain("run artifact")
-    expect(content).toMatch(/check out the PR branch/i)
+    expect(content).toMatch(/without checkout/i)
     expect(content).toMatch(/Never run `gh pr checkout`/i)
     expect(content).not.toContain("Which severities should I fix?")
   })
@@ -59,7 +59,7 @@ describe("ce-code-review contract", () => {
 
     // Never checkout — explicit mutations only
     expect(content).toMatch(/Never run `gh pr checkout`/i)
-    expect(content).toMatch(/Do \*\*not\*\* check out/i)
+    expect(content).toMatch(/Do \*\*not\*\* edit or switch/i)
 
     // Conflicting arguments
     expect(content).toContain("**Conflicting arguments:**")
@@ -580,7 +580,7 @@ describe("ce-code-review contract", () => {
   test("PR mode uses gh pr diff without checkout; branch/standalone fail closed on missing base", async () => {
     const content = await readRepoFile("skills/ce-code-review/SKILL.md")
 
-    // No scope path should fall back to unbased local diffs — those only
+    // No scope path should fall back to a base-less current-change diff — that only
     // show uncommitted changes and silently produce empty diffs on clean feature branches.
     expect(content).not.toContain("git diff --name-only HEAD")
     expect(content).not.toContain("git diff -U10 HEAD")
@@ -591,7 +591,7 @@ describe("ce-code-review contract", () => {
     expect(content).toMatch(/Do not fall back to checkout/i)
 
     // Branch and standalone modes must stop when no base can be resolved
-    const stopGuardMatches = content.match(/Do not fall back to `jj diff`/g)
+    const stopGuardMatches = content.match(/Do not fall back to `jj diff -r @`/g)
     expect(stopGuardMatches?.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -687,7 +687,9 @@ describe("ce-code-review contract", () => {
     expect(lfg).toContain("gh pr edit PR_NUMBER --body-file BODY_FILE")
     expect(lfg).toContain("## Residual Review Findings")
     expect(lfg).toContain("docs/residual-review-findings/<bookmark-or-change-id>.md")
-    expect(lfg).toContain("jj git push --bookmark <bookmark>")
+    expect(lfg).toContain("prefer `origin` when present")
+    expect(lfg).toContain("choose the first configured remote")
+    expect(lfg).toContain("jj git push --remote <remote> --bookmark <bookmark-name>")
     expect(lfg).not.toContain("git push --set-upstream origin HEAD")
     expect(lfg).toContain("Do not output DONE until the residual findings are durable")
 

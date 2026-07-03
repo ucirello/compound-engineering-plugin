@@ -55,12 +55,12 @@ Parse `$ARGUMENTS`: a PR number, a branch name, or blank (use current branch). S
 
 1. **Identify the target — keep PR identity; do not switch the working tree yet.**
    - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, checkout). Read its head only for display (`gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare branch name: a fork PR's head can even be named `main`/`master`. Do not check out yet.
-   - **Branch name:** the target is that branch.
-   - **Blank:** the target is the current branch.
-2. **Refuse to run on the trunk — branch/blank targets only.** If a *branch-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse `/ce-dogfood <number>` just because the PR's head branch happens to be named `main`.
-3. **Decide isolation by what you're testing; let `ce-worktree` own the worktree mechanics.** Do not re-derive worktree detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, attaching to a ref, and the "already checked out" constraint, and reports its decision back. The only call this skill makes is *whether to ask for isolation at all*:
-   - **Blank / current-bookmark target:** do **not** isolate — dogfood in place. You are already on the bookmark/change under test, and the fix commits belong on it. (If you happen to already be in an isolated workspace, that is fine — you are simply dogfooding here.)
-   - **A PR or a different named bookmark:** this is an existing ref to test without disturbing your current checkout. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` to isolate **that target ref** — it attaches a JJ workspace to the ref (or, if already isolated, works in place). Act on `ce-worktree`'s verdict; the primary checkout is never switched. On **no**, move to the target in place only after confirming current changes will not be disturbed.
+   - **Bookmark name:** the target is that bookmark.
+   - **Blank:** the target is the current bookmark/change.
+2. **Refuse to run on the trunk — bookmark/blank targets only.** If a *bookmark-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse `/ce-dogfood <number>` just because the PR's head branch happens to be named `main`.
+3. **Decide isolation by what you're testing; let `ce-worktree` own the workspace mechanics.** Do not re-derive workspace detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, and attaching to a ref. The only call this skill makes is *whether to ask for isolation at all*:
+   - **Blank / current-bookmark target:** do **not** isolate — dogfood in place. You are already on the change under test, and fix commits belong there. (If you happen to already be in an isolated workspace, that is fine — you are simply dogfooding here.)
+   - **A PR or a different named bookmark:** this is an existing ref to test without disturbing your current checkout. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` to isolate **that target ref**. Act on `ce-worktree`'s verdict; the primary checkout is never switched. On **no**, switch in place only after confirming in-progress changes would not be disturbed (`gh pr checkout <number>` for a PR when appropriate, `jj edit <bookmark-or-rev>` or `jj new <bookmark-or-rev>` depending on whether fixes should amend or layer on top).
 4. **Resume if a prior run exists.** Look for an existing report at `docs/dogfood-reports/*-<branch-slug>-dogfood.md` (see the branch-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, re-hydrate the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
 
 ### Resumability (stop and return at any point)
@@ -77,28 +77,21 @@ Because tasks are session-scoped but the report doc is on disk, the report is th
 Derive the trunk ref once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default branch is `master` (or anything else) would fail with `fatal: ambiguous argument 'main...HEAD'`.
 
 ```bash
-# Resolve the trunk to a ref that actually exists. Start from the detected
-# default name (origin/HEAD, then gh), then fall back to common names. For each
-# candidate prefer a local branch; else use the remote-tracking ref QUALIFIED as
-# origin/<branch> — an unqualified name resolves via refs/remotes/<name>, NOT
-# refs/remotes/origin/<name>, so a remote-only trunk would otherwise miss. This
-# qualification applies to the detected default too (PR/CI checkouts often have
-# only origin/main, no local main).
-DEFAULT=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo main)
-DEFAULT=${DEFAULT:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)}
+# Resolve the trunk to a JJ revset that actually exists.
+DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || true)
 TRUNK=""
 for cand in "$DEFAULT" main master; do
   [ -n "$cand" ] || continue
-  if jj log -r "$cand" --no-graph >/dev/null 2>&1; then
-    TRUNK=$cand; break
-  elif jj log -r "$cand@origin" --no-graph >/dev/null 2>&1; then
-    TRUNK="origin/$cand"; break
+  if jj log -r "$cand@origin" --no-graph -T 'commit_id' >/dev/null 2>&1; then
+    TRUNK="$cand@origin"; break
+  elif jj log -r "$cand" --no-graph -T 'commit_id' >/dev/null 2>&1; then
+    TRUNK="$cand"; break
   fi
 done
 TRUNK=${TRUNK:-main}
 
-jj diff --summary --from "$TRUNK" --to @   # what changed
-jj diff --from "$TRUNK" --to @             # how it changed
+jj diff --name-only --from "$TRUNK" --to @   # what changed
+jj diff --from "$TRUNK" --to @               # how it changed
 ```
 
 Build a mental model of every change: new features, modified behavior, new routes/views/components, touched data flows. Note anything that produces user-visible behavior — that is what the matrix must cover.

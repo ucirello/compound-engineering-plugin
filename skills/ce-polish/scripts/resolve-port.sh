@@ -72,9 +72,6 @@ done
 # Default to JJ repo root, with a colocated-repo fallback, when no positional path is given.
 if [ -z "$PROJECT_ROOT" ]; then
   PROJECT_ROOT=$(jj root 2>/dev/null)
-  if [ -z "$PROJECT_ROOT" ] && [ -e ".git" ]; then
-    PROJECT_ROOT=$(pwd)
-  fi
   if [ -z "$PROJECT_ROOT" ]; then
     echo "ERROR: could not resolve project root" >&2
     exit 1

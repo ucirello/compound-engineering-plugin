@@ -105,13 +105,13 @@ If the user approves, copy `references/config-template.yaml` to `<repo-root>/.co
 
 ### Step 7: Ensure Local Config Is Gitignored
 
-If `.compound-engineering/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
+If `.compound-engineering/config.local.yaml` exists and is not covered by `repo ignore file`, offer to add:
 
 ```text
 .compound-engineering/*.local.yaml
 ```
 
-Append the entry to the repo-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
+Append the entry to the repo-root `repo ignore file` only if the user approves. Do not overwrite unrelated `repo ignore file` content.
 
 ## Phase 3: Summary
 

@@ -34,9 +34,6 @@ set -u
 REQUESTED_NAME="${1:-}"
 
 REPO_ROOT=$(jj root 2>/dev/null)
-if [ -z "$REPO_ROOT" ] && [ -e ".git" ]; then
-  REPO_ROOT=$(pwd)
-fi
 if [ -z "$REPO_ROOT" ]; then
   echo "ERROR: could not resolve project root" >&2
   exit 1

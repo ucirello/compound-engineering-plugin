@@ -116,7 +116,7 @@ The project's institutional memory often already holds the bug, its cause, or a 
 Skip on the trivial fast-path. Run for non-trivial bugs; treat regression signals ("it worked before", a reopened or recurring symptom) as the strongest trigger.
 
 **Find the tracker and code-review surface from repo signals** — do not assume a specific tool exists, and do not treat a missing CLI/MCP as proof the capability is absent:
-- The JJ/Git remote (a GitHub origin implies GitHub Issues + PRs; `gh` if available).
+- The JJ/JJ remote (a GitHub origin implies GitHub Issues + PRs; `gh` if available).
 - Issue-key patterns in recent commit messages, bookmark names, and PR titles (`ABC-123` -> Jira/Linear).
 - The issue tracker named in the project's active instructions and conventions already in your context.
 

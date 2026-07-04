@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Deprecated experiment isolation helper.
-# The old implementation used Git isolation commands. ce-optimize now
+# The old implementation used JJ workspace isolation commands. ce-optimize now
 # requires JJ workspace semantics, so this script fails clearly instead of
-# creating Git worktrees behind the user's back.
+# creating JJ workspaces behind the user's back.
 
 set -euo pipefail
 

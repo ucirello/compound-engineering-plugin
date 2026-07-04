@@ -103,7 +103,7 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Worktree root (resolve via `git rev-parse --show-toplevel`).
+1. Worktree root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
 3. `.compound-engineering/DESIGN.md`.
 
@@ -230,7 +230,7 @@ every entry into a browser or IDE.
 Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-git remote get-url origin
+jj git remote list
 ```
 
 Apply linking to three reference shapes:
@@ -243,6 +243,8 @@ Apply linking to three reference shapes:
   link only when the workspace URL is established in loaded context
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
+
+Use the `origin` line from `jj git remote list` when present.
 
 **Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
 Bitbucket, internal host) and the equivalent main-tree URL pattern

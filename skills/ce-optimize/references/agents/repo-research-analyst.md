@@ -42,7 +42,7 @@ Phase 0 is designed to be fast and cheap. The goal is signal, not exhaustive enu
 
 **0.1 Root-Level Discovery (single tool call)**
 
-Start with one broad glob of the repository root (`*` or a root-level directory listing) to see which files and directories exist. Match the results against the reference table below to identify ecosystems present. Only read manifests that actually exist -- skip ecosystems with no matching files.
+Start with one broad glob of the JJ workspace root (`*` or a root-level directory listing) to see which files and directories exist. Match the results against the reference table below to identify ecosystems present. Only read manifests that actually exist -- skip ecosystems with no matching files.
 
 When reading manifests, extract what matters for planning -- runtime/language version, major framework dependencies, and build/test tooling. Skip transitive dependency lists and lock files.
 

@@ -65,7 +65,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -134,18 +134,19 @@ Record the validation outcome (command run, pass/fail counts, any pre-existing f
 
 ## 6. Commit and Push
 
-1. Stage only files reported by fixers and commit with a message referencing the PR:
+1. Ensure the JJ change contains only files reported by fixers, then describe it with a message referencing the PR. JJ has no staging area, so inspect the current diff and restore unrelated paths before describing:
 
 ```bash
-git add [files from fixer summaries]
-git commit -m "Address PR review feedback (#PR_NUMBER)
+jj diff --summary
+jj restore --from @- -- [unrelated files, if any]
+jj describe -m "Address PR review feedback (#PR_NUMBER)
 
 - [list changes from fixer summaries]"
 ```
 
-2. Push to remote:
+2. Push the bookmark associated with the current change:
 ```bash
-git push
+jj git push --bookmark <current-bookmark>
 ```
 
 ## 7. Reply and Resolve

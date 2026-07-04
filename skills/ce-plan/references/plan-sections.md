@@ -338,12 +338,12 @@ plan.
   carries that classification.
 - **`type`** — conventional-commit-prefix-aligned classification (`feat`,
   `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual commit message should reflect.
+  intent the eventual change description should reflect.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from git, not stored in the doc. Do not
+whether a plan shipped is derived from Jujutsu history, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -386,7 +386,7 @@ These apply regardless of rendering format.
   they break portability across machines, worktrees, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
-  metadata belongs in commit messages and tool output, not the artifact.
+  metadata belongs in change descriptions and tool output, not the artifact.
 - **Group Requirements by concern when they span distinct logical areas.**
   The trigger is distinct concerns, not item count — even four requirements
   benefit from grouping if they cover three different topics. Skip grouping

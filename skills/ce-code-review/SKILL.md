@@ -50,9 +50,9 @@ Emit a one-line failure reason. In `mode:agent`, return JSON: `{"status":"failed
 
 Same pipeline for default and `mode:agent`:
 
-- **Apply locally; never push.** Never push, open PRs, or file tickets in any mode — push is the outward step the user owns. In **default (interactive)** mode the review applies safe, verified fixes and commits them when the pre-review tree was clean (Stage 5c owns the full rule). In **`mode:agent`** it never mutates the tree — it reports and the caller applies.
+- **Apply locally; never push.** Never push, open PRs, or file tickets in any mode — push is the outward step the user owns. In **default (interactive)** mode the review applies safe, verified fixes and commits them when the pre-review working copy was clean (Stage 5c owns the full rule). In **`mode:agent`** it never mutates the working copy — it reports and the caller applies.
 - **No blocking prompts.** Never use `AskUserQuestion`, `request_user_input`, `ask_user`, or other blocking question tools. Infer intent, plan, and scope from explicit tokens, JJ state, PR metadata, and conversation. Note uncertainty in Coverage or the verdict — do not stop to ask.
-- **Explicit mutations only.** Never run `gh pr checkout`, `jj edit`, `jj new`, or similar bookmark/workspace-switch commands. Passing a PR number, URL, or bookmark name selects **review scope**, not permission to mutate the working tree. Do **not** edit or switch the working copy as part of scope detection. To review local uncommitted work on a feature bookmark, move to that bookmark yourself (or stay on it) and pass `base:` or no target.
+- **Explicit mutations only.** Never run `gh pr checkout`, `jj edit`, `jj new`, or similar bookmark/workspace-switch commands. Passing a PR number, URL, or bookmark name selects **review scope**, not permission to mutate the working copy. Do **not** edit or switch the working copy as part of scope detection. To review local working-copy changes on a feature bookmark, move to that bookmark yourself (or stay on it) and pass `base:` or no target.
 - **Smart defaults.** Untracked files: review tracked changes only and list excluded paths in Coverage. Plan: use `plan:` when passed; otherwise discover conservatively from PR body or bookmark keywords. Weak advisory P2/P3 from testing/maintainability alone: demote to `testing_gaps` / `residual_risks` per Stage 5.
 - **Report outcomes, not machinery.** What you show the user is about the review: what's being examined (the PR/bookmark), which coverage is included and the one-line reason for each conditional lens, the independent cross-model pass and which model runs it, and the findings. Keep the skill's internals out of user-facing text — model-tier assignments, raw scope-mode codenames (`local-aligned`/`pr-remote`), writing the diff to a temp file, loading persona files, parallel-dispatch bookkeeping, and step-by-step narration of your own setup. Name what the user would recognize (a PR number, a reviewer's concern, a peer model), not the plumbing. This governs *what* you surface and suppress; it does not script the wording — use your own voice.
 
@@ -92,7 +92,7 @@ All reviewers use P0-P3:
 
 ## Action Routing
 
-Severity answers **urgency**. `autofix_class` and `owner` are **signal** describing follow-up shape for callers — **not apply permission or an apply gate.** The apply decision is judgment (Stage 5c), not a function of `autofix_class`: default mode applies; in `mode:agent` this skill does not mutate the checkout — the caller applies. See `references/action-class-rubric.md` for persona guidance.
+Severity answers **urgency**. `autofix_class` and `owner` are **signal** describing follow-up shape for callers — **not apply permission or an apply gate.** The apply decision is judgment (Stage 5c), not a function of `autofix_class`: default mode applies; in `mode:agent` this skill does not mutate the working copy — the caller applies. See `references/action-class-rubric.md` for persona guidance.
 
 | `autofix_class` | Default owner | Meaning |
 |-----------------|---------------|---------|
@@ -180,13 +180,13 @@ The caller already knows the diff base. Skip all base-bookmark detection, remote
 
 ```
 BASE_ARG="{base_arg}"
-BASE=20 20 12 61 79 80 81 701 33 98 100 204 250 395 398 399 400jj log -r "latest(ancestors(@) & ancestors())" --no-graph -T commit_id 2>/dev/null) || BASE=""
+BASE="$BASE_ARG"
 ```
 
 Then produce the same output as the other paths:
 
 ```
-echo "BASE:$BASE" && echo "FILES:" && jj diff --from "" --to @ --name-only && echo "DIFF:" && jj diff --from "" --to @ --context 10 && echo "UNTRACKED:" && jj file list
+echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --to @ --name-only && echo "DIFF:" && jj diff --from "$BASE" --to @ --context 10 && echo "UNTRACKED:" && jj file list
 ```
 
 This path works with any ref — a SHA, `main@origin`, a bookmark name. Callers reviewing the current working copy should pass explicit `base:` when auto-detection is unnecessary. **Do not combine `base:` with a PR number or bookmark target.** If both are present, stop with an error: "Cannot use `base:` with a PR number or bookmark target — `base:` implies the current working copy is already the correct bookmark. Pass `base:` alone, or pass the target alone and let scope detection resolve the base."
@@ -220,14 +220,14 @@ Set `BASE:` to `pr:<number-or-url>` (logical marker — not a JJ commit ID). Set
 
 1. `jj log -r @ --no-graph -T 'bookmarks.join(" ")'` equals `headRefName`.
 2. The PR is **not** cross-repository (`isCrossRepository` is false).
-3. The PR head commit is contained in the local working copy: `jj log -r '<headRefOid> & ancestors(@)' --no-graph --no-pager` exits 0. This confirms the working tree actually carries the PR head (allowing unpushed local fixes layered on top) rather than an unrelated same-named bookmark.
+3. The PR head commit is contained in the local working copy: `jj log -r '<headRefOid> & ancestors(@)' --no-graph --no-pager` exits 0. This confirms the working copy actually carries the PR head (allowing unpushed local fixes layered on top) rather than an unrelated same-named bookmark.
 
 - **`local-aligned`** — all three checks pass. Local Read/Grep/JJ annotation against workspace files are valid for PR changed paths.
-- **`pr-remote`** — any check fails. The working tree is **not** the PR head; workspace file contents for changed paths may be stale or unrelated.
+- **`pr-remote`** — any check fails. The working copy is **not** the PR head; workspace file contents for changed paths may be stale or unrelated.
 
 **Diff by scope mode** (do not mix remote and local diffs — contradictory hunks cause false positives):
 
-- **`local-aligned`:** Resolve `<resolved-base-ref>` from `baseRefName` (fetch if needed). Compute `BASE=$(jj log -r "latest(ancestors(@) & ancestors(<resolved-base-ref>))" --no-graph -T commit_id)`, then set `FILES:` from `jj diff --from "$BASE" --to @ --name-only` and `DIFF:` from `jj diff --from "$BASE" --to @ --context 10` (includes committed and working-copy changes on the PR bookmark). Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local tree is canonical. Note in Coverage: `scope: local-aligned (PR; local tree diff)`.
+- **`local-aligned`:** Resolve `<resolved-base-ref>` from `baseRefName` (fetch if needed). Compute `BASE=$(jj log -r "latest(ancestors(@) & ancestors(<resolved-base-ref>))" --no-graph -T commit_id)`, then set `FILES:` from `jj diff --from "$BASE" --to @ --name-only` and `DIFF:` from `jj diff --from "$BASE" --to @ --context 10` (includes committed and working-copy changes on the PR bookmark). Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local working copy is canonical. Note in Coverage: `scope: local-aligned (PR; local working-copy diff)`.
 - **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `gh pr diff <number-or-url> --color=never`. If `gh pr diff` fails, stop with an actionable error. Do not fall back to checkout or moving the working copy.
 
 When **`pr-remote`**, before Stage 4:
@@ -252,7 +252,7 @@ Otherwise diff the remote/local ref **without moving the working copy**:
 3. Resolve the default base bookmark (same logic as standalone). Compute `BASE=$(jj log -r "latest(ancestors(<base-ref>) & ancestors(<bookmark-ref>))" --no-graph -T commit_id)` and `jj diff --from "$BASE" --to <bookmark-ref> --context 10`.
 4. If `<bookmark-ref>` cannot be resolved locally, stop: "Cannot diff bookmark `<bookmark>` without moving to it. Move to that bookmark, pass its open PR URL/number, or review the current bookmark with `base:`."
 
-On success for remote bookmark diff, set **bookmark-remote scope**. The working tree is **not** `<bookmark>`. Include `<pr-scope-mode>bookmark-remote</pr-scope-mode>` and `<bookmark-head-ref><bookmark-ref></bookmark-head-ref>` in the Stage 4 review context bundle. Reviewers and Stage 5b validators must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `jj file show -r <bookmark-ref> <path>` or diff hunks only.
+On success for remote bookmark diff, set **bookmark-remote scope**. The working copy is **not** `<bookmark>`. Include `<pr-scope-mode>bookmark-remote</pr-scope-mode>` and `<bookmark-head-ref><bookmark-ref></bookmark-head-ref>` in the Stage 4 review context bundle. Reviewers and Stage 5b validators must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `jj file show -r <bookmark-ref> <path>` or diff hunks only.
 
 Produce:
 
@@ -281,12 +281,12 @@ Using `jj diff --from "$BASE" --to @` diffs the base against the working-copy ch
 Derive deterministic signals from the resolved diff once, so reviewer selection (Stage 3) and the small-diff fast path (Stage 3c) do not each re-reason over the whole diff. **These signals only ever shrink the roster via Stage 3c, and that gate fails closed (Stage 3c) — so any failure here (unresolved base, count failure, an uncounted file type) must surface as `UNKNOWN`/non-zero `UNCOUNTED_FILES`, never as a silent `0` that reads as "trivial."**
 
 **Set `DIFF_A`/`DIFF_B` to the two endpoints to diff, by Stage 1 scope mode:**
-- **`local-aligned` / standalone / `base:`** — `DIFF_A="$BASE"` (a real SHA/ref), `DIFF_B` empty (diffs base vs working tree).
-- **`pr-remote` / `branch-remote`** — `DIFF_A=<PR_BASE_REF>`, `DIFF_B=<PR_HEAD_REF>` (or `<branch-head-ref>`) — the **fetched** refs from Stage 1. Do **not** model-count from hunks (it drifts per host/model). If either ref was not fetched, skip the block and emit `EXEC_LINES:UNKNOWN` + `UNCOUNTED_FILES:1` so Stage 3c forces the full roster.
+- **`local-aligned` / standalone / `base:`** — `DIFF_A="$BASE"` (a real SHA/ref), `DIFF_B` empty (diffs base vs working copy).
+- **`pr-remote` / `bookmark-remote`** — `DIFF_A=<PR_BASE_REF>`, `DIFF_B=<PR_HEAD_REF>` (or `<bookmark-head-ref>`) — the **fetched** refs from Stage 1. Do **not** model-count from hunks (it drifts per host/model). If either ref was not fetched, skip the block and emit `EXEC_LINES:UNKNOWN` + `UNCOUNTED_FILES:1` so Stage 3c forces the full roster.
 
 ```
 # Fail closed: an unresolved/invalid endpoint must NOT become a silent EXEC_LINES:0.
-# Validate BOTH endpoints — a set-but-unfetched DIFF_B (pr-remote/branch-remote head ref)
+# Validate BOTH endpoints — a set-but-unfetched DIFF_B (pr-remote/bookmark-remote head ref)
 # would otherwise make `jj diff` fail, awk print 0, and the lite gate clear on the wrong tree.
 if [ -z "${DIFF_A:-}" ] || ! jj log -r "${DIFF_A}^{commit}" >/dev/null 2>&1 \
    || { [ -n "${DIFF_B:-}" ] && ! jj log -r "${DIFF_B}^{commit}" >/dev/null 2>&1; }; then
@@ -299,7 +299,11 @@ else
   # variable-held glob would be expanded against the CWD before JJ ever sees it).
   EXEC_LINES=$(jj diff --summary --from "$DIFF_A" $DIFF_B -- '*.rb' '*.py' '*.js' '*.jsx' '*.ts' '*.tsx' '*.go' '*.rs' '*.java' '*.swift' '*.kt' '*.c' '*.cc' '*.cpp' '*.cs' '*.php' '*.ex' '*.exs' '*.scala' 2>/dev/null | awk '{s+=$1+$2} END{print s+0}')
   echo "EXEC_LINES:$EXEC_LINES"
-  FILES=$(jj diff --from "" --to "" --name-only 2>/dev/null)
+  if [ -n "${DIFF_B:-}" ]; then
+    FILES=$(jj diff --from "$DIFF_A" --to "$DIFF_B" --name-only 2>/dev/null)
+  else
+    FILES=$(jj diff --from "$DIFF_A" --to @ --name-only 2>/dev/null)
+  fi
   # UNCOUNTED_FILES = changed files NOT in the counted code set (skill prose, schemas, configs,
   # scripts, lockfiles, unknown extensions). Any >0 disqualifies the lite path (fail closed).
   UNCOUNTED=$(printf '%s\n' "$FILES" | awk 'NF && $0 !~ /\.(rb|py|js|jsx|ts|tsx|go|rs|java|swift|kt|c|cc|cpp|cs|php|ex|exs|scala)$/ {n++} END{print n+0}')
@@ -319,14 +323,14 @@ fi
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with JJ change descriptions from the PR if the body is sparse.
 
 **Bookmark mode:** Run `jj log -r "$BASE..<bookmark-ref>" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved common ancestor and resolved bookmark ref from Stage 1. Use `<bookmark-ref>` (the resolved `origin/<bookmark>` or fetched ref), not the raw `<bookmark>` argument — a remote-only bookmark has no matching local ref, so the raw name would fail or read a stale same-named local bookmark.
 
 **Standalone (current bookmark):** Run:
 
 ```
-echo "BOOKMARK:" && jj log -r @ --no-graph -T 'bookmarks.join(" ")' && echo "COMMITS:" && jj log -r "$BASE..@" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+echo "BOOKMARK:" && jj log -r @ --no-graph -T 'bookmarks.join(" ")' && echo "CHANGES:" && jj log -r "$BASE..@" --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:
@@ -365,7 +369,7 @@ SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read
 python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 ```
 
-**Only resolve the cache when the working tree is the reviewed tree** — `local-aligned`, standalone, or `base:` scope (Stage 1). In `pr-remote` or `branch-remote` scope, **skip Stage 2c entirely**: the helper keys and derives from the local `@`, which is *not* the reviewed ref, so its profile would describe the wrong tree (e.g. `main`'s stack while reviewing a PR that changes manifests); reviewers work from the fetched refs/diff as those modes already require.
+**Only resolve the cache when the working copy is the reviewed head** — `local-aligned`, standalone, or `base:` scope (Stage 1). In `pr-remote` or `bookmark-remote` scope, **skip Stage 2c entirely**: the helper keys and derives from the local `@`, which is *not* the reviewed ref, so its profile would describe the wrong tree (e.g. `main`'s stack while reviewing a PR that changes manifests); reviewers work from the fetched refs/diff as those modes already require.
 
 On `HIT`, load the profile JSON as the agnostic project orientation. On `MISS`, dispatch a generic subagent with `references/agents/repo-profiler.md` to derive the profile, write its JSON to a file, then persist with `python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <file>` (re-set `SKILL_DIR` in that call — shell vars don't persist between Bash invocations). On `NO-CACHE` (no JJ repo or no writable cache), skip the cache entirely — do not derive a profile and do not run `put`; reviewers fall back to deriving stack/conventions from the diff exactly as before. The cache is an optimization, never a correctness dependency; if anything about it fails, degrade to the no-profile path.
 
@@ -501,14 +505,14 @@ For each selected reviewer, read the corresponding local prompt asset from `refe
 2. Shared diff-scope rules from `references/diff-scope.md`
 3. The JSON output contract from `references/findings-schema.json`
 4. PR metadata: title, body, and URL when reviewing a PR (empty string otherwise). Passed in a `<pr-context>` block so reviewers can verify code against stated intent
-5. Review context: intent summary, file list, diff, scope mode (`local-aligned` | `pr-remote` | `branch-remote`), and remote head ref (`PR_HEAD_REF` or `<branch-head-ref>`) when set
+5. Review context: intent summary, file list, diff, scope mode (`local-aligned` | `pr-remote` | `bookmark-remote`), and remote head ref (`PR_HEAD_REF` or `<bookmark-head-ref>`) when set
 6. Run ID and reviewer name for the artifact file path
 7. **For `project-standards` only:** the standards file path list from Stage 3b, wrapped in a `<standards-paths>` block appended to the review context
 8. **For `data-migration` only:** the resolved review base ref from Stage 1 (`BASE:` marker), wrapped in `<review-base>` inside the review context so schema drift checks never assume `main`
 
 Persona sub-agents are **read-only** with respect to the project: they review and return structured JSON. They do not edit project files or propose refactors. The one permitted write is saving their full analysis to the run-artifact path specified in the output contract (under `/tmp/compound-engineering/ce-code-review/<run-id>/`).
 
-Read-only here means **non-mutating**, not "no shell access." Reviewer sub-agents may use non-mutating inspection commands when needed to gather evidence or verify scope, including read-oriented `jj` / `gh` usage such as `jj diff`, `jj file show`, `jj file annotate`, `jj log`, and `gh pr view`. In **`pr-remote`** or **`branch-remote`** scope (see Stage 1), inspect changed files via `jj file show -r <remote-head-ref> <path>` or diff hunks — do not Read/Grep workspace paths for files in scope. They must not edit project files, change bookmarks, commit, push, create PRs, or otherwise mutate the checkout or repository state.
+Read-only here means **non-mutating**, not "no shell access." Reviewer sub-agents may use non-mutating inspection commands when needed to gather evidence or verify scope, including read-oriented `jj` / `gh` usage such as `jj diff`, `jj file show`, `jj file annotate`, `jj log`, and `gh pr view`. In **`pr-remote`** or **`bookmark-remote`** scope (see Stage 1), inspect changed files via `jj file show -r <remote-head-ref> <path>` or diff hunks — do not Read/Grep workspace paths for files in scope. They must not edit project files, change bookmarks, commit, push, create PRs, or otherwise mutate the working copy or repository state.
 
 Each persona sub-agent writes full JSON (all schema fields) to `/tmp/compound-engineering/ce-code-review/{run_id}/{reviewer_name}.json` and returns compact JSON with merge-tier fields only:
 
@@ -547,7 +551,7 @@ The artifact file **must** carry the full detail-tier fields (`why_it_matters`, 
 
 When `adversarial-reviewer` was selected (Stage 3) **and** scope is `local-aligned` or standalone, also run the same adversarial brief through a different model family in a separate process — genuine independence the in-process subagent cannot provide. **Launch it in parallel with the persona reviewers, not after them:** the peer call is a CLI shell-out (a background Bash process, not a subagent), so it does not consume the subagent concurrency budget and its ~2-5 min runtime overlaps the in-process reviews instead of adding to them. Kick it off as a background shell process in the same dispatch wave as the Stage 4 reviewers, then collect its result before Stage 5. (If the harness cannot background a shell command, run it inline before awaiting the reviewers — correctness is unaffected, only wall-clock.) Load `references/cross-model-review.md` and follow it: it self-identifies the host at runtime (Claude, Codex, or Cursor), shells out to the peer CLI (Codex when host is Claude or Cursor; Claude when host is Codex) read-only, and writes a `findings-schema.json`-shaped return to `/tmp/compound-engineering/ce-code-review/{run_id}/adversarial-<peer>.json`.
 
-That return enters Stage 5 as reviewer `adversarial-<peer>`, like any persona artifact. The pass is **non-blocking** — skip silently when no peer is identified, the peer CLI is missing/unauthed, or it errors/times out. Skip it entirely in `pr-remote` / `branch-remote` scope (the peer would review the local tree, not the reviewed head). Announce per that reference's announce rules — interactive hosts (Claude or Cursor) in default mode only; silent under Codex and in `mode:agent`.
+That return enters Stage 5 as reviewer `adversarial-<peer>`, like any persona artifact. The pass is **non-blocking** — skip silently when no peer is identified, the peer CLI is missing/unauthed, or it errors/times out. Skip it entirely in `pr-remote` / `bookmark-remote` scope (the peer would review the local working copy, not the reviewed head). Announce per that reference's announce rules — interactive hosts (Claude or Cursor) in default mode only; silent under Codex and in `mode:agent`.
 
 ### Stage 5: Merge findings
 
@@ -611,8 +615,8 @@ Independent verification gate. Spawn one validator sub-agent per surviving findi
    - The finding's title, severity, file, line, suggested_fix, original reviewer name, and confidence anchor
    - `why_it_matters` when available — loaded from the per-agent artifact file at `/tmp/compound-engineering/ce-code-review/{run_id}/{reviewer_name}.json`; omit when the file is absent or the artifact write failed. The validator proceeds without it, using the diff and cited code directly.
    - The full diff
-   - The scope mode and remote head ref, mirroring the Stage 4 reviewer bundle: inject `<pr-scope-mode>local-aligned | pr-remote | branch-remote</pr-scope-mode>` and, when set, `<pr-head-ref>...</pr-head-ref>` or `<branch-head-ref>...</branch-head-ref>`. The validator template defaults to local-aligned workspace inspection when these are absent, so omitting them in `pr-remote`/`branch-remote` makes validators verify findings against the stale working tree — dropping valid findings or confirming false ones on the wrong tree.
-   - Inspection access scoped by mode: in `local-aligned`, Read/Grep/JJ annotation the cited code, callers, guards, framework defaults, and history; in `pr-remote`/`branch-remote`, inspect via `jj file show <remote-head-ref>:<path>` or the provided diff hunks only — do not Read/Grep workspace paths for files in scope.
+   - The scope mode and remote head ref, mirroring the Stage 4 reviewer bundle: inject `<pr-scope-mode>local-aligned | pr-remote | bookmark-remote</pr-scope-mode>` and, when set, `<pr-head-ref>...</pr-head-ref>` or `<bookmark-head-ref>...</bookmark-head-ref>`. The validator template defaults to local-aligned workspace inspection when these are absent, so omitting them in `pr-remote`/`bookmark-remote` makes validators verify findings against the stale working copy — dropping valid findings or confirming false ones on the wrong tree.
+   - Inspection access scoped by mode: in `local-aligned`, Read/Grep/JJ annotation the cited code, callers, guards, framework defaults, and history; in `pr-remote`/`bookmark-remote`, inspect via `jj file show <remote-head-ref>:<path>` or the provided diff hunks only — do not Read/Grep workspace paths for files in scope.
 4. **Collect verdicts.** Each validator returns `{ "validated": true | false, "reason": "<one sentence>" }`.
    - `validated: true` -> finding survives unchanged into Stage 6
    - `validated: false` -> finding is dropped; record the validator's reason in Coverage
@@ -641,9 +645,9 @@ Independent verification gate. Spawn one validator sub-agent per surviving findi
 
 Severity, confidence, and cross-reviewer agreement tell you what to do first and what to flag loudly — they do not gate the decision. There is no deny-list: downside is controlled after the fact (revert + visible diff + the commit checkpoint), not by a precondition.
 
-**Scope invariant.** Apply only when the working tree *is* what was reviewed — `local-aligned` or standalone. In `pr-remote` / `branch-remote` the working tree is not the reviewed head; do not apply — report instead.
+**Scope invariant.** Apply only when the working copy *is* what was reviewed — `local-aligned` or standalone. In `pr-remote` / `bookmark-remote` the working copy is not the reviewed head; do not apply — report instead.
 
-**Verify, then keep.** After applying, run the affected tests and lint (targeted by default; broaden when fixes span files). If they fail, revert that fix and report it as a finding instead — an unverified fix is not finished. Never leave the tree red.
+**Verify, then keep.** After applying, run the affected tests and lint (targeted by default; broaden when fixes span files). If they fail, revert that fix and report it as a finding instead — an unverified fix is not finished. Never leave the working copy red.
 
 **Review the autofix diff before finishing.** Before committing or reporting applied fixes, diff only the changes introduced during Stage 5c against the pre-apply checkpoint. Run one self-review pass over that diff:
 - If the same helper, policy, or guard was added to multiple parallel surfaces, extract it or explain in the Applied section why duplication is intentional.
@@ -651,9 +655,9 @@ Severity, confidence, and cross-reviewer agreement tell you what to do first and
 - If a reviewer item is pure information (no defect, no code contract change, no test gap), classify it as advisory/non-actionable in Coverage or residual risks; do not patch it or describe it as a missed defect.
 If this self-review changes files, rerun the affected tests or lint for those follow-up edits before committing or reporting; the earlier validation only covers the original autofix diff.
 
-**Commit when the pre-review tree was clean.** Before applying, note whether the working tree already had uncommitted changes (`jj st`). The permanence gate is the **push**, not the commit — a local commit is private and reversible (`jj undo`).
+**Commit when the pre-review working copy was clean.** Before applying, note whether the working copy already had changes (`jj st`). The permanence gate is the **push**, not the commit — a local commit is private and reversible (`jj undo`).
 
-- **Clean before the review:** after applying and verifying, commit the fixes as one isolated, review-labeled fix commit — `fix(review): <summary>`, or the repo's nearest convention if `review` isn't an allowed scope. Labeled and reversible, returning the tree to a known state.
+- **Clean before the review:** after applying and verifying, commit the fixes as one isolated, review-labeled fix change — `fix(review): <summary>`, or the repo's nearest convention if `review` isn't an allowed scope. Labeled and reversible, returning the working copy to a known state.
 - **Dirty before the review:** apply but do **not** commit — the fixes interleave with the user's in-flight work and ride along with the commit they were already going to make. The Applied section lists what changed.
 - **Never push, open a PR, or file tickets** — that's the outward-facing step the user owns.
 
@@ -682,7 +686,7 @@ Assemble the final report. **Default:** human-readable markdown. **`mode:agent`:
 - **The Verdict and Actionable list are present, last, and self-sufficient.** This is satisfied by the closing, not the section skeleton: the Verdict is the final report section, immediately followed by the post-report prioritized Actionable recap (default mode — see *Emit actionable findings summary* below). The in-report `Actionable Findings` section keeps its skeleton position (5) as the detailed table; the recap is the self-sufficient last word the reader sees without scrolling. (If for some layout you cannot emit the recap, move the Actionable list itself to just after the Verdict.)
 
 1. **Header.** Scope, intent, mode, reviewer team with per-conditional justifications.
-2. **Applied (default mode only).** When Stage 5c applied fixes, list them first — before the findings — in an Applied section (see review output template); each entry carries `#`, file, the fix, and reviewer (a multi-file fix is one row with one `#`), then a one-line validation outcome (e.g. "pin tests 4 -> 6; suite 94 pass, lint clean") and commit status (committed on a clean tree as `fix(review): …` or the repo's nearest convention, or left uncommitted for the user on a dirty one). Flag green-but-unverifiable edits (auth/contract/concurrency) prominently. Omit this section in `mode:agent` and when nothing was applied. Applied findings appear here, not in the severity tables.
+2. **Applied (default mode only).** When Stage 5c applied fixes, list them first — before the findings — in an Applied section (see review output template); each entry carries `#`, file, the fix, and reviewer (a multi-file fix is one row with one `#`), then a one-line validation outcome (e.g. "pin tests 4 -> 6; suite 94 pass, lint clean") and commit status (committed on a clean working copy as `fix(review): …` or the repo's nearest convention, or left for the user's existing dirty work). Flag green-but-unverifiable edits (auth/contract/concurrency) prominently. Omit this section in `mode:agent` and when nothing was applied. Applied findings appear here, not in the severity tables.
 2b. **Triage Groups.** When finalized `triage_groups` exist (post-validation, post-apply — Stage 5b step 7 / Stage 5c), render a `### Triage Groups` section before the findings as a compact table (`| Group | Findings | Context | Preferred Resolution | Why |`) — a table fits this content well. The `Findings` cell lists the stable `#`s it covers; the resolution names the order/dependency. **Mark whether each group is an apply-queue or a decision-gate** (so an automated fixer applies the mechanical groups and stops at the design calls). Every referenced `#` must appear in the findings below; groups supplement the findings, never replace them. Omit the section when `grouping:off` is active or no groups survived. In `mode:agent` this section is carried by the `triage_groups` JSON field instead.
 3. **Findings.** Grouped by severity (`### P0 -- Critical`, `### P1 -- High`, `### P2 -- Moderate`, `### P3 -- Low`), rendered per the per-finding direction above and consistent within the section. Surface the decision-vs-mechanical split where it helps the actor (flag the design calls). Omit empty severity levels. Finding numbers come from the stable assignment in Stage 5 -- never re-derive them per severity section or triage group.
 4. **Requirements Completeness.** Include only when a plan was found in Stage 2b. For each requirement (R1, R2, etc.) and implementation unit in the plan, report whether corresponding work appears in the diff. Use a simple checklist: met / not addressed / partially addressed. Routing depends on `plan_source`:
@@ -715,8 +719,8 @@ Minimum shape:
   "verdict": "Ready to merge | Ready with fixes | Not ready",
   "scope": {
     "base": "<merge-base sha, pr:NNN marker, or base: ref>",
-    "branch": "<current bookmark name>",
-    "head_sha": "<jj log -r @ --no-graph -T commit_id>",
+  "bookmark": "<current bookmark name>",
+  "head_commit_id": "<jj log -r @ --no-graph -T commit_id>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },
@@ -785,7 +789,7 @@ Do not run post-review triage (no per-finding walk-through, bulk ticket filing, 
 | **Default** | Markdown tables + Actionable Findings summary. |
 | **`mode:agent`** | JSON object + `review.json` in run artifact dir. |
 
-Do not offer push/PR/create-branch next steps from this skill.
+Do not offer push/PR/create-bookmark next steps from this skill.
 
 #### Run artifacts
 
@@ -802,14 +806,14 @@ Always write run artifacts under `/tmp/compound-engineering/ce-code-review/<run-
 ```json
 {
   "run_id": "<run-id>",
-  "branch": "<jj bookmarks on @ at dispatch time>",
-  "head_sha": "<jj log -r @ --no-graph -T commit_id at dispatch time>",
+  "bookmark": "<jj bookmarks on @ at dispatch time>",
+  "head_commit_id": "<jj log -r @ --no-graph -T commit_id at dispatch time>",
   "verdict": "<Ready to merge | Ready with fixes | Not ready>",
   "completed_at": "<ISO 8601 UTC timestamp>"
 }
 ```
 
-Capture `branch` and `head_sha` at dispatch time (no in-skill fixes will land afterward).
+Capture `bookmark` and `head_commit_id` at dispatch time (no in-skill fixes will land afterward).
 
 ## Fallback
 

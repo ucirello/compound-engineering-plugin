@@ -115,7 +115,7 @@ Before creating PR, verify:
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
 - [ ] Validation/evidence context passed to `ce-commit-push-pr` when the change has observable behavior
-- [ ] Commit messages follow conventional format
+- [ ] JJ change descriptions follow the conventional format
 - [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
 - [ ] Simplify: `ce-simplify-code` when diff >=30 lines (or skipped with reason)
 - [ ] Code review: `ce-code-review` ran (self-sized), or skipped (mechanical diff / unavailable — noted in summary); residuals handled via the Residual Work Gate

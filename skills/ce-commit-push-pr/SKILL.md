@@ -10,7 +10,7 @@ description: Commit JJ changes, push, and open a PR. Use when asked to ship/open
 ## Mode
 
 - **Description-only** — user wants *just* a description ("write/draft a PR description", "describe this PR", or pasted a PR URL/number alone). Run Step 4 only; print the result. Apply only if the user asks. If a PR ref was pasted, pass it to Step 4 so Pre-A resolves the right range.
-- **Description update** — user wants to refresh/rewrite an existing PR's description with no commit/push intent. If no open PR, report and stop. Otherwise run Step 4 (PR mode using the existing PR's URL), then Step 5 to preview, confirm, and apply via `gh pr edit`.
+- **Description update** — user wants to refresh/rewrite an existing PR's description with no JJ commit/push intent. If no open PR, report and stop. Otherwise run Step 4 (PR mode using the existing PR's URL), then Step 5 to preview, confirm, and apply via `gh pr edit`.
 - **Full workflow** — otherwise. Run Steps 1-5 in order.
 
 ## Context
@@ -20,14 +20,14 @@ description: Commit JJ changes, push, and open a PR. Use when asked to ship/open
 **JJ status:**
 !`jj st`
 
-**Working tree diff:**
+**Working-copy diff:**
 !`jj diff`
 
 **Current bookmark/change:**
 !`jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ " " ++ change_id.short()'`
 
-**Recent commits:**
-!`jj log -r 'ancestors(@, 10)' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'`
+**Recent changes:**
+!`jj log -r 'ancestors(@, 10)' --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'`
 
 **Remote default bookmark:**
 !`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'`
@@ -50,7 +50,7 @@ If the remote default bookmark returned `DEFAULT_BOOKMARK_UNRESOLVED`, try `gh r
 Bookmark routing:
 
 - **No current bookmark** — automatically create a feature bookmark from the current `@` before continuing. Derive the bookmark name from the change content, run `jj bookmark create <bookmark-name> -r @`, and use that result for the rest of the workflow. Do not ask whether to create the bookmark — invoking the full commit/push/PR workflow is already confirmation that the work should become bookmark-backed. If the derived bookmark name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
-- **On default bookmark with work to do** (uncommitted, unpushed, or no remote bookmark) — automatically create a feature bookmark (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles bookmark creation safely. Do not ask whether to create a bookmark — committing on the default is not an option here.
+- **On default bookmark with work to do** (working-copy changes, unpushed changes, or no remote bookmark) — automatically create a feature bookmark (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles bookmark creation safely. Do not ask whether to create a bookmark — saving work directly on the default bookmark is not an option here.
 - **On default bookmark with no work** — report no feature bookmark work and stop.
 - **Feature bookmark** — continue.
 
@@ -58,19 +58,19 @@ Note the existing PR URL and body from the PR check if `state: OPEN`. Step 5 use
 
 ## Step 2: Determine conventions
 
-Match repo style for commit messages and PR titles (project instructions in context > recent commits > conventional commits as default). With conventional commits, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
+Match repo style for JJ change descriptions and PR titles (project instructions in context > recent changes > Conventional Commits-style descriptions as default). With Conventional Commits-style descriptions, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
 
 ## Step 3: Commit and push
 
 If on the default bookmark, bookmark creation needs to handle stale local `<base>`, local changes on `<base>`, and working-copy changes that collide with the fresh remote base. Read `references/bookmark-creation.md` and follow its decision flow before continuing.
 
-Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate commits (2-3 max). Group at file level only — no interactive partial selection unless explicitly requested. When ambiguous, one commit is fine.
+Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate JJ changes (2-3 max). Group at file level only — no interactive partial selection unless explicitly requested. When ambiguous, one change is fine.
 
 Commit each group with JJ path arguments. **Avoid broad pathsets** — they sweep in `.env`, build artifacts, and generated files:
 
 ```bash
 jj commit file1 file2 file3 -m "$(cat <<'EOF'
-commit message here
+change description here
 EOF
 )"
 ```
@@ -91,7 +91,7 @@ If the working copy is clean and all bookmark changes are already pushed, this s
 
 1. **User supplied evidence** (URL, markdown image/embed, local artifact path they want referenced) — incorporate it into the PR body as `## Demo`, `## Screenshots`, or `## Evidence`, matching the artifact type. Do not invent or upload evidence.
 2. **User explicitly asks to include evidence but has not supplied it** — ask for the URL/markdown/path, or tell them to use the current harness's capture flow and return with the artifact. Do not launch another CE skill.
-3. **Agent judgment on authored changes** — if you authored the commits and know the change is non-observable (internal plumbing, type-only, backend refactor without user-facing effect, docs/markdown/changelog/CI/test-only, pure refactors), skip evidence handling without asking.
+3. **Agent judgment on authored changes** — if you authored the JJ changes and know the change is non-observable (internal plumbing, type-only, backend refactor without user-facing effect, docs/markdown/changelog/CI/test-only, pure refactors), skip evidence handling without asking.
 
 Otherwise, if the bookmark diff changes observable behavior (UI, CLI output, API behavior with runnable code, generated artifacts, workflow output), include a concise validation note in the PR body describing what was exercised and how it behaved. If no real run was possible because of unavailable credentials, paid services, deploy-only infrastructure, hardware, or missing local setup, say that plainly in the validation section.
 

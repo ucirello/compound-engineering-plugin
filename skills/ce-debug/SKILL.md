@@ -43,7 +43,7 @@ Read the full conversation — the original description AND every comment, with 
 
 **Everything else** (stack traces, test paths, error messages, descriptions of broken behavior): the problem statement is the input itself.
 
-**Trivial-bug fast-path:** Once the problem is clear, decide whether the framework is needed at all. If the cause is immediately readable from the input (single-file typo, missing import, obvious null deref or off-by-one with a one-line fix) and verification doesn't require deep tracing, present the cause and the proposed one-line fix and run Phase 2's **Fix it now / Diagnosis only** user-choice gate before editing — the fast-path saves investigation ceremony, not the user's choice over whether to apply a fix. If the user picks fix, run Phase 3's **Workspace and branch check** (uncommitted-work confirmation and default-branch branch-creation prompt), apply the fix, leave a one-line note explaining the cause, and skip to Phase 4's structured summary. If diagnosis only, write the summary and stop. When in doubt, run the full framework; getting the wrong root cause costs more than the few minutes of ceremony.
+**Trivial-bug fast-path:** Once the problem is clear, decide whether the framework is needed at all. If the cause is immediately readable from the input (single-file typo, missing import, obvious null deref or off-by-one with a one-line fix) and verification doesn't require deep tracing, present the cause and the proposed one-line fix and run Phase 2's **Fix it now / Diagnosis only** user-choice gate before editing — the fast-path saves investigation ceremony, not the user's choice over whether to apply a fix. If the user picks fix, run Phase 3's **Workspace and bookmark check** (working-copy change confirmation and default-bookmark bookmark-creation prompt), apply the fix, leave a one-line note explaining the cause, and skip to Phase 4's structured summary. If diagnosis only, write the summary and stop. When in doubt, run the full framework; getting the wrong root cause costs more than the few minutes of ceremony.
 
 **Otherwise**, proceed to Phase 1.
 
@@ -79,11 +79,11 @@ Confirm the bug exists and understand its behavior. Run the test, trigger the er
 
 Before deep code tracing, confirm the environment is what you think it is:
 
-- Correct branch checked out; no unintended uncommitted changes
+- Correct bookmark/current `@` selected; no unintended working-copy changes
 - Dependencies installed and up to date (`bun install`, `npm install`, `bundle install`, etc.) — stale `node_modules`/`vendor` is a frequent false lead
 - Expected interpreter or runtime version (check `.tool-versions`, `.nvmrc`, `Gemfile`, etc. against what's actually active)
 - Required env vars present and non-empty
-- No stale build artifacts (`dist/`, `.next/`, compiled binaries from an earlier branch)
+- No stale build artifacts (`dist/`, `.next/`, compiled binaries from an earlier bookmark/change)
 - Dependent local services (database, cache, queue) running at expected versions *when the bug plausibly involves them*
 
 #### 1.3 Trace the code path
@@ -116,8 +116,8 @@ The project's institutional memory often already holds the bug, its cause, or a 
 Skip on the trivial fast-path. Run for non-trivial bugs; treat regression signals ("it worked before", a reopened or recurring symptom) as the strongest trigger.
 
 **Find the tracker and code-review surface from repo signals** — do not assume a specific tool exists, and do not treat a missing CLI/MCP as proof the capability is absent:
-- The JJ/JJ remote (a GitHub origin implies GitHub Issues + PRs; `gh` if available).
-- Issue-key patterns in recent commit messages, bookmark names, and PR titles (`ABC-123` -> Jira/Linear).
+- The JJ remote (a GitHub remote implies GitHub Issues + PRs; `gh` if available).
+- Issue-key patterns in recent change descriptions, bookmark names, and PR titles (`ABC-123` -> Jira/Linear).
 - The issue tracker named in the project's active instructions and conventions already in your context.
 
 Use whatever interface that tracker or forge exposes — connector/MCP, documented API, or a documented CLI.
@@ -166,7 +166,7 @@ Once the root cause is confirmed, present:
 - The proposed fix and which files would change
 - Which tests to use, add, modify, or strengthen to prevent recurrence (specific test file, test case description, what the assertion should verify)
 - Whether existing tests should have caught this and why they did not
-- Any related ticket or PR surfaced in Phase 1.4 — an open duplicate, an existing fix on another branch or open PR, a regression's original fix, or a prior merged attempt that failed — and how it shapes the recommendation. If an open PR already fixes this, lead with that link instead of a fresh fix; if a prior merged attempt took the same approach you were about to, say so and explain what that rules out.
+- Any related ticket or PR surfaced in Phase 1.4 — an open duplicate, an existing fix on another bookmark or open PR, a regression's original fix, or a prior merged attempt that failed — and how it shapes the recommendation. If an open PR already fixes this, lead with that link instead of a fresh fix; if a prior merged attempt took the same approach you were about to, say so and explain what that rules out.
 
 Then offer next steps.
 
@@ -213,20 +213,20 @@ If the user chose "Diagnosis only" at the end of Phase 2, skip this phase and go
 
 **Workspace and bookmark check:** Before editing files:
 
-- Check for uncommitted changes (`jj st`). If the user has working-copy changes in files that need modification, confirm before editing — do not overwrite in-progress changes.
+- Check for working-copy changes (`jj st`). If the user has working-copy changes in files that need modification, confirm before editing — do not overwrite in-progress changes.
 - If the current bookmark is the default bookmark, ask whether to create a feature bookmark first using the platform's blocking question tool (see Phase 2 for the per-platform names). To detect the default bookmark, compare against `main`, `master`, or the remote default bookmark from `jj log -r 'latest(remote_bookmarks())' --no-graph -T 'remote_bookmarks.join(" ")'` when available. Default to creating one; derive a name from the bug and run `jj new && jj bookmark create <name> -r @`. On any other bookmark, proceed.
-- Record the pre-fix scope before editing: current `@`, whether `jj st` is clean, and any pre-existing changed files. During Phase 3, keep a list of fix-owned files (the tests and implementation files changed for this bug). Phase 4 uses this to keep simplify/review from touching unrelated branch work.
+- Record the pre-fix scope before editing: current `@`, whether `jj st` is clean, and any pre-existing changed files. During Phase 3, keep a list of fix-owned files (the tests and implementation files changed for this bug). Phase 4 uses this to keep simplify/review from touching unrelated bookmark/change work.
 
 **Test-first:**
 1. Inspect existing tests for the affected behavior before adding coverage.
 2. Choose the right regression home: use an existing failing test, update an existing test that owns the contract but has the wrong expectation, narrowly strengthen an over-mocked test that should have caught the bug, or add a new focused test when no existing test fits.
 3. Verify the chosen test fails for the right reason — the root cause, not unrelated setup.
-4. Implement the minimal fix — address the root cause and nothing else. Do not bundle drive-by refactors, formatting, or unrelated cleanup into a bug-fix change; those belong in separate commits.
+4. Implement the minimal fix — address the root cause and nothing else. Do not bundle drive-by refactors, formatting, or unrelated cleanup into a bug-fix change; those belong in separate JJ changes.
 5. Verify the test passes.
 6. Run the broader test suite for regressions.
 7. Self-review the diff before declaring the root-cause fix done: read every changed line and check for style violations, missed edge cases, regressions in adjacent behavior, and missing test coverage for the fix. Do not run the broader polish/review/PR tail here; Phase 4 owns it after the debug summary so the user can see the root-cause result before shipping work begins.
 
-**On a failed fix:** return to Phase 2 and *explicitly invalidate the current hypothesis* before forming a new one. State out loud what evidence ruled out the prior hypothesis, then form a new one with its own grounding observation and prediction. Do not retry variants of the same theory ("maybe it was the other branch", "let me also catch this case") — that is the rationalization spiral, not iteration.
+**On a failed fix:** return to Phase 2 and *explicitly invalidate the current hypothesis* before forming a new one. State out loud what evidence ruled out the prior hypothesis, then form a new one with its own grounding observation and prediction. Do not retry variants of the same theory ("maybe it was the other bookmark/change", "let me also catch this case") — that is the rationalization spiral, not iteration.
 
 **3 failed fix attempts = smart escalation.** Diagnose using the same table from Phase 2. If fixes keep failing, the root cause identification was likely wrong. Return to Phase 2.
 
@@ -286,7 +286,7 @@ Run this tail after Phase 3 ran and before the bookmark-based commit/PR handoff.
 
 1. **Check for contextual overrides first.** Look at the user's original prompt, loaded memories, and the project's active instructions already in your context for preferences that conflict with auto commit-and-PR — for example, "always review before pushing", "open PRs as drafts", or "don't open PRs from skills". A signal must be an explicit instruction or a clearly applicable rule, not a vague tonal cue. If any apply, honor them — switch to the pre-existing-bookmark menu below, or skip the PR step entirely, whichever matches the user's stated preference.
 2. **Briefly preview what will happen** — what will be committed, on what bookmark, and that a PR will be opened — then proceed without waiting for confirmation. The preview exists so the user can interrupt; it is not a blocking question. Format and length are your call; keep it scannable.
-3. **Run `/ce-commit-push-pr`.** When the entry came from an issue tracker, include the appropriate auto-close syntax for that tracker in the location it requires — most trackers parse PR descriptions (e.g., `Fixes #N` for GitHub, `Closes ABC-123` for Linear), but some only parse commit messages (e.g., Jira Smart Commits) — so the diagnosis and fix flow back to the issue and it closes on merge. Surface the resulting PR URL.
+3. **Run `/ce-commit-push-pr`.** When the entry came from an issue tracker, include the appropriate auto-close syntax for that tracker in the location it requires — most trackers parse PR descriptions (e.g., `Fixes #N` for GitHub, `Closes ABC-123` for Linear), but some only parse VCS descriptions exported from JJ change descriptions (e.g., Jira Smart Commits) — so the diagnosis and fix flow back to the issue and it closes on merge. Surface the resulting PR URL.
 
 #### Pre-existing bookmark (skill did not create it): ask the user
 

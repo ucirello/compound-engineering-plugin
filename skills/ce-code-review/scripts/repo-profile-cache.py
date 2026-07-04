@@ -328,7 +328,7 @@ def do_put(profile_file: str) -> int:
         print("NO-CACHE")
         return 0
 
-    # Do not cache a profile derived from a DIRTY tree: it reflects uncommitted
+    # Do not cache a profile derived from a DIRTY tree: it reflects working-copy
     # edits to profile inputs, yet it would be stored under the clean commit-id key
     # and served as a HIT after those edits are reverted (same commit ID, clean tree)
     # — stale. Only persist a profile that matches the current committed change.

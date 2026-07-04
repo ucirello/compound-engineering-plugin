@@ -5,7 +5,7 @@ description: Set up isolated JJ workspaces — create a new bookmark/workspace f
 
 # JJ Workspace Isolation
 
-Ensure the current work happens in an isolated workspace, without disturbing the user's main checkout. Most coding harnesses now create isolation by default at session start, so the common case is that **isolation already exists** — detect that first and do not create a redundant one.
+Ensure the current work happens in an isolated workspace, without disturbing the user's main workspace. Most coding harnesses now create isolation by default at session start, so the common case is that **isolation already exists** — detect that first and do not create a redundant one.
 
 Order of operations: **detect existing isolation -> prefer a native workspace tool -> fall back to `jj workspace add`**. Never create isolation the harness cannot see when a native tool exists.
 

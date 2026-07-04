@@ -25,7 +25,7 @@ When invoking any skill referenced below, resolve its name against the available
 
    This runs before review so the code-review in step 4 covers the simplified code. **Skip** this step when the change is docs-only (only markdown/docs paths changed) or trivial (roughly under 10 changed lines). Otherwise let `ce-simplify-code` resolve the JJ diff scope itself; it preserves behavior and runs the test suite.
 
-   Do not commit in this step. `ce-simplify-code` leaves its changes in the working tree; step 4's review scopes the working tree (uncommitted changes included), and step 8's `ce-commit-push-pr` commits whatever remains. Committing here would sweep any still-uncommitted `ce-work` edits into a misleading `refactor` commit and could stall on a tree that never goes clean.
+   Do not commit in this step. `ce-simplify-code` leaves its changes in the working copy; step 4's review scopes the working copy (not-yet-committed changes included), and step 8's `ce-commit-push-pr` commits whatever remains. Committing here would sweep any still-not-yet-committed `ce-work` edits into a misleading `refactor` change and could stall on a working copy that never goes clean.
 
 4. Invoke the `ce-code-review` skill with `mode:agent plan:<plan-path-from-step-1>`.
 
@@ -37,7 +37,7 @@ When invoking any skill referenced below, resolve its name against the available
 
 5. **Apply and persist review fixes** (REQUIRED after step 4, before residual handoff)
 
-   Load `references/review-followup.md` and execute its apply step (mechanical apply + commit/push when changes exist). Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working tree uncommitted.
+   Load `references/review-followup.md` and execute its apply step (mechanical apply + commit/push when changes exist). Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working copy and not yet committed.
 
 6. **Autonomous residual handoff** (only when step 4 reported one or more actionable `downstream-resolver` findings not applied in step 5; skip when it reported `Actionable findings: none.`)
 
@@ -69,7 +69,7 @@ When invoking any skill referenced below, resolve its name against the available
 
 8. Invoke the `ce-commit-push-pr` skill.
 
-   This commits any remaining changes, pushes the current bookmark, and opens a pull request. If step 6 already opened a PR (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still commit and push any uncommitted changes. **Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` if it would push unconditionally. Instead commit any remaining changes locally yourself with `jj commit <files> -m "<message>"` and skip the push and PR creation entirely.**
+   This commits any remaining changes, pushes the current bookmark, and opens a pull request. If step 6 already opened a PR (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still commit and push any working-copy changes. **Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` if it would push unconditionally. Instead commit any remaining changes locally yourself with `jj commit <files> -m "<message>"` and skip the push and PR creation entirely.**
 
 9. **CI watch and autofix loop** (only when an open PR exists for the current change)
 
@@ -99,7 +99,7 @@ When invoking any skill referenced below, resolve its name against the available
 
       where `<run-id>` is parsed from the check's details URL or workflow run.
 
-   3. Read the failure logs, identify the root cause, and apply a fix in the working tree. Do NOT weaken, skip, or mock the failing assertion to make it pass — repair the actual issue. If the failure is a flaky test that has no fix path, document that as the residual outcome below rather than retrying without a code change.
+   3. Read the failure logs, identify the root cause, and apply a fix in the working copy. Do NOT weaken, skip, or mock the failing assertion to make it pass — repair the actual issue. If the failure is a flaky test that has no fix path, document that as the residual outcome below rather than retrying without a code change.
 
    4. Commit only the files you changed, then push:
 

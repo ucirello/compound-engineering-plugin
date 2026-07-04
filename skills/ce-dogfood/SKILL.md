@@ -32,9 +32,9 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 
 | When | Skill | Why |
 |------|-------|-----|
-| Phase 0 isolation | `ce-worktree` | Run the dogfood in an isolated worktree so the main checkout stays clean. |
+| Phase 0 isolation | `ce-worktree` | Run the dogfood in an isolated JJ workspace so the main workspace stays clean. |
 | A failure's root cause is non-obvious | `ce-debug` | Systematic root-cause analysis instead of guess-and-check. |
-| Committing each fix | `ce-commit` | Consistent, well-scoped commit messages. |
+| Describing each fix | `ce-commit` | Consistent, well-scoped change descriptions. |
 | A bug reveals a reusable lesson | `ce-compound` | Capture the learning so the team compounds knowledge. |
 
 ## Workflow
@@ -53,14 +53,14 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 
 Parse `$ARGUMENTS`: a PR number, a bookmark name, or blank (use current change). Strip `--port PORT` if present.
 
-1. **Identify the target — keep PR identity; do not switch the working tree yet.**
-   - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, checkout). Read its head only for display (`gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare bookmark name: a fork PR's head can even be named `main`/`master`. Do not check out yet.
+1. **Identify the target — keep PR identity; do not move the current JJ workspace yet.**
+   - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, workspace/edit target). Read its head only for display (`gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare bookmark name: a fork PR's head can even be named `main`/`master`. Do not create or edit a workspace for it yet.
    - **Bookmark name:** the target is that bookmark.
    - **Blank:** the target is the current change/bookmark.
 2. **Refuse to run on the trunk — bookmark/blank targets only.** If a *bookmark-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse `/ce-dogfood <number>` just because the PR's head happens to be named `main`.
-3. **Decide isolation by what you're testing; let `ce-worktree` own the worktree mechanics.** Do not re-derive worktree detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, attaching to a ref, and the "already checked out" constraint, and reports its decision back. The only call this skill makes is *whether to ask for isolation at all*:
+3. **Decide isolation by what you're testing; let `ce-worktree` own the JJ workspace mechanics.** Do not re-derive workspace detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, attaching to a revision, and the "already active in another workspace" constraint, and reports its decision back. The only call this skill makes is *whether to ask for isolation at all*:
    - **Blank / current-change target:** do **not** isolate — dogfood in place. You are already on the change under test, the fix commits belong on it, and there is no need for a second workspace. (If you happen to already be in a workspace, that is fine — you are simply dogfooding here.)
-   - **A PR or a different named bookmark:** this is an existing ref to test without disturbing your current checkout. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` to isolate **that target ref** — it attaches a workspace to the ref (or, if already isolated, checks it out in place; or reports "already checked out at `<path>` — work there" when the ref is live elsewhere). Act on `ce-worktree`'s verdict; the primary checkout is never switched. On **no**, check the target out in place (`gh pr checkout <number>` for a PR, `jj new <bookmark>` for a bookmark), confirming first if `jj status` shows changes that would be disturbed.
+   - **A PR or a different named bookmark:** this is an existing target to test without disturbing your current workspace. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` to isolate **that target revision** — it attaches a workspace to the target (or, if already isolated, uses it in place; or reports "already active at `<path>` — work there" when the target is live elsewhere). Act on `ce-worktree`'s verdict; the primary workspace is never switched. On **no**, create/use a working-copy change based on the target (`jj new <bookmark>` for a bookmark; for a PR, fetch/identify the PR head with `gh` or `jj git` interop, then `jj new <pr-head-revision>`), confirming first if `jj status` shows changes that would be disturbed.
 4. **Resume if a prior run exists.** Look for an existing report at `docs/dogfood-reports/*-<bookmark-slug>-dogfood.md` (see the bookmark-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, re-hydrate the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
 
 ### Resumability (stop and return at any point)
@@ -74,7 +74,7 @@ Because tasks are session-scoped but the report doc is on disk, the report is th
 
 ### Phase 1: Analyze Changes
 
-Derive the trunk ref once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default branch is `master` (or anything else) may not have a `main` bookmark to diff against.
+Derive the trunk ref once, then compute and read the full diff against it. Do not hard-code `main` — a repo whose default GitHub branch / trunk bookmark is `master` (or anything else) may not have a `main` bookmark to diff against.
 
 ```bash
 # Resolve the trunk to a JJ revision that actually exists. Start from the
@@ -189,4 +189,4 @@ Keep iterating until every task is `completed` or in a terminal `Blocked` state 
 
 The report doc was created at the end of Phase 2 and updated incrementally throughout (see Resumability). When the matrix is green (or every remaining item is explicitly blocked), **finalize** it at `docs/dogfood-reports/<YYYY-MM-DD>-<bookmark-slug>-dogfood.md` in the repo under test, then surface a short summary in chat with the file path.
 
-**Finalize against `references/dogfood-report-template.md`** — the same template the Phase 2 checkpoint was instantiated from, which owns the required sections and what each must carry. Confirm every template-owned section is present and complete; do not reconstruct the section list from memory, as that drifts from the template. Carry forward the cross-phase obligations this skill produced: the Mermaid flowcharts from Phase 2a, a matrix row per scenario with its commit SHA, each fix's root cause and the regression test added (or why none was meaningful), paper cuts attributed by persona, learnings worth feeding to `ce-compound`, and a final readiness verdict that records the Phase 5 automated-suite result.
+**Finalize against `references/dogfood-report-template.md`** — the same template the Phase 2 checkpoint was instantiated from, which owns the required sections and what each must carry. Confirm every template-owned section is present and complete; do not reconstruct the section list from memory, as that drifts from the template. Carry forward the cross-phase obligations this skill produced: the Mermaid flowcharts from Phase 2a, a matrix row per scenario with its JJ change ID or commit ID, each fix's root cause and the regression test added (or why none was meaningful), paper cuts attributed by persona, learnings worth feeding to `ce-compound`, and a final readiness verdict that records the Phase 5 automated-suite result.

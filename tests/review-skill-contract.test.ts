@@ -22,7 +22,7 @@ describe("ce-code-review contract", () => {
     expect(content).toContain("/tmp/compound-engineering/ce-code-review/<run-id>/")
     expect(content).toMatch(/Never push, open PRs, or file tickets/i)
     expect(content).toContain("run artifact")
-    expect(content).toMatch(/without checkout/i)
+    expect(content).toMatch(/without moving the working copy|without moving the workspace/i)
     expect(content).toMatch(/Never run `gh pr checkout`/i)
     expect(content).not.toContain("Which severities should I fix?")
   })
@@ -76,7 +76,7 @@ describe("ce-code-review contract", () => {
 
     // Action Routing: autofix_class is signal only; mode:agent never mutates, default applies
     expect(content).toContain("## Action Routing")
-    expect(content).toMatch(/this skill does not mutate the checkout/i)
+    expect(content).toMatch(/this skill does not mutate the JJ workspace/i)
     expect(content).toContain("references/action-class-rubric.md")
 
     // No post-review triage — report is the complete handoff
@@ -396,8 +396,8 @@ describe("ce-code-review contract", () => {
     // Skip cleanly without dispatching reviewers
     expect(content).toMatch(/stop without dispatching reviewers/)
 
-    // Standalone, base:, and bookmark-remote paths unaffected by PR skip rules
-    expect(content).toMatch(/Standalone.*`base:`.*bookmark-remote/)
+    // Standalone, base:, and remote-bookmark paths unaffected by PR skip rules
+    expect(content).toMatch(/Standalone.*`base:`.*remote-bookmark/)
   })
 
   test("remote scope modes forbid workspace inspection on wrong tree", async () => {
@@ -409,16 +409,16 @@ describe("ce-code-review contract", () => {
       "skills/ce-code-review/references/validator-template.md",
     )
 
-    expect(skill).toContain("<pr-scope-mode>bookmark-remote</pr-scope-mode>")
-    expect(skill).toContain("<branch-head-ref>")
+    expect(skill).toContain("<pr-scope-mode>remote-bookmark</pr-scope-mode>")
+    expect(skill).toContain("<remote-head-revision>")
     expect(skill).toMatch(/local-aligned.*local tree diff/i)
     expect(skill).not.toMatch(/append.*`DIFF:`.*unpushed/i)
     expect(skill).toMatch(/Do \*\*not\*\* call `gh pr diff` or append remote hunks/)
 
-    expect(diffScope).toContain("bookmark-remote")
+    expect(diffScope).toContain("remote-bookmark")
     expect(diffScope).toContain("pr-remote")
 
-    expect(validator).toContain("bookmark-remote")
+    expect(validator).toContain("remote-bookmark")
   })
 
   test("mode-aware demotion routes weak general-quality findings to soft buckets", async () => {
@@ -577,7 +577,7 @@ describe("ce-code-review contract", () => {
     expect(skill).not.toContain("ce-data-migrations-reviewer")
   })
 
-  test("PR mode uses gh pr diff without checkout; branch/standalone fail closed on missing base", async () => {
+  test("PR mode uses gh pr diff without moving the workspace; bookmark/standalone fail closed on missing base", async () => {
     const content = await readRepoFile("skills/ce-code-review/SKILL.md")
 
     // No scope path should fall back to a base-less current-change diff — that only
@@ -586,11 +586,11 @@ describe("ce-code-review contract", () => {
     expect(content).not.toContain("git diff -U10 HEAD")
     expect(content).not.toContain("git diff --cached")
 
-    // PR mode uses remote diff API, not checkout
+    // PR mode uses remote diff API, not moving the workspace
     expect(content).toContain("gh pr diff")
-    expect(content).toMatch(/Do not fall back to checkout/i)
+    expect(content).toMatch(/do not fall back to moving the working copy/i)
 
-    // Branch and standalone modes must stop when no base can be resolved
+    // Bookmark and standalone modes must stop when no base can be resolved
     const stopGuardMatches = content.match(/Do not fall back to `jj diff -r @`/g)
     expect(stopGuardMatches?.length).toBeGreaterThanOrEqual(1)
   })

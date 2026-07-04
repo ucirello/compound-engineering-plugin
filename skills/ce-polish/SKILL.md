@@ -11,9 +11,9 @@ Start the dev server, open the feature in a browser, and iterate. You use the fe
 
 ## Phase 0: Get on the right bookmark
 
-1. If a PR number or bookmark name was provided, move to it (probe for existing JJ workspaces first).
+1. If a PR number or bookmark name was provided, attach/create a JJ workspace or change for that target (probe for existing JJ workspaces first).
 2. If blank, use the current bookmark/change.
-3. Verify the current bookmark is not main/master.
+3. Verify the current bookmark is not the detected trunk/default bookmark (`gh repo view --json defaultBranchRef` when available, else `main`/`master`).
 
 ## Phase 1: Start the dev server
 
@@ -85,7 +85,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → commit the fixes and stop
+- When the user says they're done → describe/commit the current JJ change, then stop
 
 No checklist. No envelope. Just conversation.
 

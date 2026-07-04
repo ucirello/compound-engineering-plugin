@@ -109,7 +109,7 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to a main checkout. Users
+Workspace-root only — do not fall through to a main workspace. Users
 working from a JJ workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 
@@ -236,7 +236,7 @@ jj git remote list
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/<default-branch>/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →

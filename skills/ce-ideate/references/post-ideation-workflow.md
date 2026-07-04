@@ -136,7 +136,7 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a JJ repo:** offer to describe only the ideation doc in the current change (do not create a bookmark, do not push; if the user declines, leave it undescribed).
+- **Inside a JJ repo:** offer to describe only the ideation doc in the current change (do not create or publish/push a JJ bookmark; if the user declines, leave it undescribed).
 - **Temp-area or non-repo file:** skip the describe offer.
 
 Then narrate the path and end the session — do not return to the menu.

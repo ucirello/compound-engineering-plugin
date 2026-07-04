@@ -7,11 +7,11 @@
 # (references/personas/adversarial-reviewer.md) so it is genuinely "the adversarial
 # persona, on a different model."
 #
-# Usage:  cross-model-adversarial-review.sh <peer: codex|claude> <base-ref> <run-dir>
+# Usage:  cross-model-adversarial-review.sh <peer: codex|claude> <base-revision> <run-dir>
 #   <peer>     codex  -> use Codex (when the host is Claude or Cursor)
 #              claude -> use Claude (when the host is Codex)
-#   <base-ref> the diff base (e.g. a merge-base revision or branch); the peer reviews
-#              only `jj diff --from <base-ref> --to @` in the current repository
+#   <base-revision> the diff base (e.g. a JJ common-ancestor revision or bookmark); the peer reviews
+#                   only `jj diff --from <base-revision> --to @` in the current repository
 #   <run-dir>  an existing dir; output is written to <run-dir>/adversarial-<peer>.json
 #
 # Self-locates its sibling reference files via BASH_SOURCE (NOT the CWD, which is
@@ -33,7 +33,7 @@ skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no o
 
 # --- validate inputs -------------------------------------------------------
 case "$PEER" in codex|claude) ;; *) skip "invalid peer '${PEER:-<empty>}' (want codex|claude); skipping cross-model pass" ;; esac
-[ -n "$BASE" ]                  || skip "no base ref given; skipping"
+[ -n "$BASE" ]                  || skip "no base revision given; skipping"
 [ -n "$RUN_DIR" ] && [ -d "$RUN_DIR" ] || skip "run-dir '${RUN_DIR:-<empty>}' is not a directory; skipping"
 command -v "$PEER" >/dev/null 2>&1 || skip "$PEER CLI not installed; skipping"
 command -v jq      >/dev/null 2>&1 || skip "jq not installed; skipping"

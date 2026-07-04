@@ -581,7 +581,7 @@ After all actions are executed and the report is generated, handle describing th
 ### Detect JJ context
 
 Before offering options, check:
-1. Which bookmark/change is current (main/master/default bookmark vs feature bookmark)
+1. Which bookmark/change is current (trunk/default bookmark vs topic bookmark/current change)
 2. Whether the working copy has other changes beyond what compound-refresh modified
 3. Recent change descriptions to match the repo's description style
 
@@ -591,31 +591,31 @@ Use sensible defaults — no user to ask:
 
 | Context | Default action |
 |---------|---------------|
-| On main/master/default bookmark | Create a bookmark named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), describe the change, attempt to open a PR. If PR creation fails, report the bookmark name. |
-| On a feature bookmark | Describe as a separate JJ change on the current bookmark |
+| On the trunk/default bookmark | Create a bookmark named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), describe the change, attempt to open a PR. If PR creation fails, report the bookmark name. |
+| On a topic bookmark | Describe as a separate JJ change on the current bookmark |
 | JJ operations fail | Include the recommended JJ commands in the report and continue |
 
-Include only the files that compound-refresh modified — not other dirty files in the working copy.
+Include only the files that compound-refresh modified — not other changed files in the working copy.
 
 ### Interactive mode
 
 First, run `jj log -r @ --no-graph -T 'bookmarks'` to determine the current bookmark(s). Then present the correct options based on the result. Include only compound-refresh files regardless of which option the user picks.
 
-**If the current bookmark is main, master, or the repo's default bookmark:**
+**If the current bookmark is the trunk/default bookmark:**
 
 1. Create a bookmark, describe the change, and open a PR (recommended) — the bookmark name should be specific to what was refreshed, not generic (e.g., `docs/refresh-auth-learnings` not `docs/compound-refresh`)
 2. Describe directly on `{current bookmark name}`
 3. Don't describe — I'll handle it
 
-**If the current bookmark is a feature bookmark, clean working copy:**
+**If the current bookmark is a topic bookmark, clean working copy:**
 
 1. Describe on `{current bookmark name}` as a separate JJ change (recommended)
 2. Create a separate bookmark and describe there
 3. Don't describe
 
-**If the current bookmark is a feature bookmark, dirty working copy (other changes):**
+**If the current bookmark is a topic bookmark and the working copy has other changes:**
 
-1. Describe only the compound-refresh changes on `{current bookmark name}` (use file-scoped JJ operations so other dirty files stay untouched)
+1. Describe only the compound-refresh changes on `{current bookmark name}` (use file-scoped JJ operations so other changed files stay untouched)
 2. Don't describe
 
 ### Change description

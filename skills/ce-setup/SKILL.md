@@ -103,7 +103,7 @@ Everything starts commented out -- you only enable what you need.
 
 If the user approves, copy `references/config-template.yaml` to `<repo-root>/.compound-engineering/config.local.yaml`.
 
-### Step 7: Ensure Local Config Is Gitignored
+### Step 7: Ensure Local Config Is Ignored
 
 If `.compound-engineering/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
 

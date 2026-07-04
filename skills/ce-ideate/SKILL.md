@@ -246,7 +246,7 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** When Phase 0.2 routed to surprise-me mode, Phase 1 must produce richer material than specified mode — Phase 2 sub-agents will discover their own subjects from what Phase 1 returns, so texture matters:
 
-- **Repo mode surprise-me:** the codebase-scan sub-agent samples a few representative files per top-level area (not just reads the top-level layout + AGENTS.md), surfaces recent PR/commit activity as signal about what's actively being worked on, and — when issue intelligence runs — passes issue themes as first-class input rather than footnote. Keep the scan bounded: representative, not exhaustive.
+- **Repo mode surprise-me:** the codebase-scan sub-agent samples a few representative files per top-level area (not just reads the top-level layout + AGENTS.md), surfaces recent PR/change activity as signal about what's actively being worked on, and — when issue intelligence runs — passes issue themes as first-class input rather than footnote. Keep the scan bounded: representative, not exhaustive.
 - **Elsewhere mode surprise-me:** user-context synthesis extracts themes, recurring language, tensions, and omissions from whatever the user supplied, rather than just restating it. Web research broadens beyond narrow prior-art for a single subject toward the domain's landscape.
 - Specified mode keeps the current shallower scan — the user's named subject anchors what's relevant, so broader exploration is unnecessary.
 
@@ -266,7 +266,7 @@ Run grounding agents in parallel in the **foreground** (do not background — re
 
 **Repo mode dispatch:**
 
-**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, top-level layout, conventions, root instruction files) is identical for every run at this commit, so reuse it instead of re-deriving it in the codebase scan. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
+**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, top-level layout, conventions, root instruction files) is identical for every run at this JJ working-copy commit, so reuse it instead of re-deriving it in the codebase scan. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
@@ -277,7 +277,7 @@ On `HIT`, load the profile JSON — that is your agnostic project shape (stack, 
 
 1. **Quick context scan** — dispatch a general-purpose subagent using the platform's cheapest capable model when the harness exposes a known override; otherwise inherit. Before dispatching, apply the routing test from "User-Supplied Research Artifacts" below to any root-level `*.md` file the focus hint names: research artifacts (evidence) take that subsection's distillation path, so list them on the prompt's research-artifacts line to keep the scan from duplicating them into `User-named references`. Dispatch with this prompt:
 
-   > **Project profile handling (read first):** if a project profile is supplied at the end of this prompt, its agnostic shape — stack/language/framework, top-level directory layout, conventions, and root instruction-file content — is already established; do **not** re-derive it. Skip reading the instruction files and globbing the layout for those facts, and run only the question-specific slice (notable patterns bearing on the focus, pain points, leverage points; in surprise-me mode also sample a few representative files per area and surface recent PR/commit activity). If no profile is supplied, derive the full shape as described below.
+   > **Project profile handling (read first):** if a project profile is supplied at the end of this prompt, its agnostic shape — stack/language/framework, top-level directory layout, conventions, and root instruction-file content — is already established; do **not** re-derive it. Skip reading the instruction files and globbing the layout for those facts, and run only the question-specific slice (notable patterns bearing on the focus, pain points, leverage points; in surprise-me mode also sample a few representative files per area and surface recent PR/change activity). If no profile is supplied, derive the full shape as described below.
    >
    > Read the project's root agent-instruction file for this harness (e.g., `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or `.cursor/rules`) and `README.md` when present, then discover the top-level directory layout using the native file-search/glob tool (e.g., `Glob` with pattern `*` or `*/*` in Claude Code). Also read `STRATEGY.md` if it exists — it captures the product's target problem, approach, persona, metrics, and tracks.
    >

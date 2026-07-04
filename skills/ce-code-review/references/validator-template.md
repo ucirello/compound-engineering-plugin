@@ -34,7 +34,7 @@ Confidence anchor: {finding_confidence}
 <scope-context>
 The diff above is the full change being reviewed. The finding is about file {finding_file} around line {finding_line}. (If the `<diff>` block contains a file path rather than inline hunks — large-diff path-staging — Read that file first to get the full diff.)
 
-When `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>branch-remote</pr-scope-mode>` is in context, do **not** Read/Grep the workspace copy of {finding_file}. Inspect via `jj file show -r <pr-head-ref> {finding_file}` or `jj file show -r <branch-head-ref> {finding_file}` when a remote head ref is set; otherwise use diff hunks only.
+When `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>remote-bookmark</pr-scope-mode>` is in context, do **not** Read/Grep the workspace copy of {finding_file}. Inspect via `jj file show -r <pr-head-revision> {finding_file}` or `jj file show -r <remote-head-revision> {finding_file}` when a remote head revision is set; otherwise use diff hunks only.
 
 When scope is local-aligned (default), use read tools (Read, Grep, Glob, `jj file annotate`) to inspect the cited code and its callers, guards, middleware, or framework defaults that might handle the concern elsewhere.
 </scope-context>

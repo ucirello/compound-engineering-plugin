@@ -125,7 +125,7 @@ write the plan.
 
 **Skip implementation-ready plan creation only when ALL of these hold:**
 
-- The work is **atomic** — fits in one commit, no meaningful unit boundaries
+- The work is **atomic** — fits in one JJ change, no meaningful unit boundaries
   to break out independently.
 - There are **no design choices that constrain implementation** — no
   Key Technical Decisions worth recording. If the work needs the implementer
@@ -157,8 +157,8 @@ vs. genuine skip cases:
   bump introduces breaking changes that warrant unit-by-unit migration).
 
 When skipping the plan doc, the work proceeds directly to `ce-work` or to
-implementation, and any decisions made along the way land in the commit
-message or `docs/solutions/` if they're worth carrying forward.
+implementation, and any decisions made along the way land in the change
+description or `docs/solutions/` if they're worth carrying forward.
 
 ## Implementation-ready hard floor
 
@@ -362,7 +362,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the branch/test/commit/CI lifecycle); absent or `code` routes
+  skipping the workspace/bookmark/test/describe/`jj git push`/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.
@@ -383,7 +383,7 @@ These apply regardless of rendering format.
 - **Plain prefix.** `R1.`, `U1.` as bullet prefixes. Do not bold; the prefix
   is visually distinctive on its own.
 - **Repo-relative paths.** Always. Never absolute paths in plan content;
-  they break portability across machines, worktrees, teammates.
+  they break portability across machines, workspaces, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
   metadata belongs in change descriptions and tool output, not the artifact.

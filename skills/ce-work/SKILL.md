@@ -86,7 +86,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    fi
    ```
 
-   **If already on a feature bookmark** (not the default bookmark):
+   **If already on a topic bookmark** (not the default bookmark):
 
    First, check whether the bookmark name is **meaningful** — a name like `feat/crowd-sniff` or `fix/email-validation` tells future readers what the work is about. Auto-generated workspace names (e.g., `workspace-jolly-beaming-raven`) or other opaque names do not.
 
@@ -125,7 +125,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **Recommendation**: Use a JJ workspace if:
    - You want to work on multiple features simultaneously
    - You want to keep the default bookmark clean while experimenting
-   - You plan to switch between bookmarks frequently
+   - You plan to move between bookmarked lines of work frequently
 
 3. **Create Task List** _(skip if Phase 0 already built one, or if Phase 0 routed as Trivial)_
    - Use the platform's task tracking tool (`TaskCreate`/`TaskUpdate`/`TaskList` in Claude Code, `update_plan` in Codex, or the equivalent on other harnesses) to break the plan into actionable tasks
@@ -163,7 +163,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    7. **Abort criteria:** if a batch produces broad unplanned edits, out-of-scope test failures, or repeated conflicts, stop parallelizing and finish the rest serially.
 
    **Isolation is the harness's job, never ce-work's** — never create a VCS workspace yourself. Probe what your subagent mechanism provides and pick the parallel path:
-   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: Claude Code `Agent` tool (`isolation: "worktree"` + `run_in_background: true`; workspace under an ignored `.claude/worktrees/` path), Codex `spawn_agent` (a coding **worker** edits its forked workspace), Cursor `best-of-n-runner`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's integration-cost judgment). This works even when you are *already* inside a workspace — harness workspaces are peers of one repo, not nested, based on your current HEAD/change.
+   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: Claude Code `Agent` tool (`isolation: "worktree"` + `run_in_background: true`; workspace under an ignored `.claude/worktrees/` path), Codex `spawn_agent` (a coding **worker** edits its forked workspace), Cursor `best-of-n-runner`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's integration-cost judgment). This works even when you are *already* inside a workspace — harness workspaces are peers of one repo, not nested, based on your current `@` change.
    - **Shared workspace only** — subagents run in your working directory (Cursor `Task` default, or any harness without isolation). Parallelize **disjoint-file units only**, under the shared-workspace constraints below; contending units run serial.
    - **No subagent mechanism:** run inline.
 
@@ -275,11 +275,11 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    | Logical unit complete (model, service, component) | Small part of a larger unit |
    | Tests pass + meaningful progress | Tests failing |
    | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-   | About to attempt risky/uncertain changes | Would need a "WIP" commit message |
+   | About to attempt risky/uncertain changes | Would need a "WIP" change description |
 
-   **Heuristic:** "Can I write a commit message that describes a complete, valuable change? If yes, commit. If the message would be 'WIP' or 'partial X', wait."
+   **Heuristic:** "Can I write a change description that describes a complete, valuable change? If yes, describe/commit. If the message would be 'WIP' or 'partial X', wait."
 
-   If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
+   If the plan has Implementation Units, use them as a starting guide for JJ change boundaries — but adapt based on what you find during implementation. A unit might need multiple changes if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the change description.
 
    **JJ commit workflow:**
    ```bash
@@ -357,7 +357,7 @@ When all Phase 2 tasks are complete and execution transitions to quality check, 
 
 **Code review: one portable path.** Review with `ce-code-review`, which self-sizes (lite roster for small low-risk code-only diffs, full roster otherwise). No harness-native review detection and no escalation tiers — the size/sensitive-surface judgment lives inside `ce-code-review`. Skip dedicated review only for a purely mechanical diff (formatting, dep-bumps, lint-only, generated). Full rules (autonomous Residual Gate, infra fallback) in `shipping-workflow.md`.
 
-**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the checkout, commits, or applies fixes.
+**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the working copy, describes changes, or applies fixes.
 
 1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<ref>` when the diff base is known, and `depth:full` when a deep/thorough review was explicitly requested.
 2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator merges diffs, runs tests, and commits — it does not pre-investigate findings.

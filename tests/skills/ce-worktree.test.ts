@@ -64,25 +64,25 @@ describe("ce-worktree SKILL.md", () => {
     ).toBe(true)
   })
 
-  test("documents an inline JJ fallback under .worktrees with ignore safety", () => {
+  test("documents an inline JJ fallback under .workspaces with ignore safety", () => {
     expect(
       SKILL_BODY.includes("jj workspace add"),
       "ce-worktree/SKILL.md must document the inline `jj workspace add` fallback.",
     ).toBe(true)
     expect(
-      SKILL_BODY.includes(".worktrees/"),
-      "ce-worktree/SKILL.md must ensure `.worktrees/` is ignored before creating a fallback workspace.",
+      SKILL_BODY.includes(".workspaces/"),
+      "ce-worktree/SKILL.md must ensure `.workspaces/` is ignored before creating a fallback workspace.",
     ).toBe(true)
   })
 
-  // PR #948 review: the fallback's relative `.worktrees/` and ignore-file
+  // PR #948 review: the fallback's relative `.workspaces/` and ignore-file
   // paths resolve against the agent's CWD, which may be a subdirectory — so the
-  // skill must anchor at the repo root first, or it creates `src/.worktrees/...`
+  // skill must anchor at the repo root first, or it creates `src/.workspaces/...`
   // and edits a subdirectory ignore file instead of the repo-root one.
   test("anchors the JJ fallback at the repo root before using relative paths", () => {
     expect(
       SKILL_BODY.includes('cd "$(jj root)"'),
-      "ce-worktree/SKILL.md must `cd \"$(jj root)\"` in the JJ fallback so relative `.worktrees` and ignore paths resolve at the repo root, not a subdirectory CWD.",
+      "ce-worktree/SKILL.md must `cd \"$(jj root)\"` in the JJ fallback so relative `.workspaces` and ignore paths resolve at the repo root, not a subdirectory CWD.",
     ).toBe(true)
     expect(
       /run from the repo root/i.test(SKILL_BODY),

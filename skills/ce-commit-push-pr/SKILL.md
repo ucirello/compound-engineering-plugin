@@ -29,7 +29,7 @@ description: Commit, push, and open a PR. Use when asked to ship/open a PR, or f
 **Recent commits:**
 !`jj log -r 'latest(::@, 10)' --no-graph --template 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'`
 
-**Remote default branch:**
+**Remote default base:**
 !`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo 'DEFAULT_BRANCH_UNRESOLVED'`
 
 **Existing PR check:**
@@ -45,24 +45,24 @@ printf '=== STATUS ===\n'; jj status; printf '\n=== DIFF ===\n'; jj diff; printf
 
 ## Step 1: Resolve bookmark and PR state
 
-The remote default branch returns a branch name like `main`. If it returned `DEFAULT_BRANCH_UNRESOLVED`, try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If both fail, fall back to `main`.
+The remote default base returns a bookmark/base name like `main`. If it returned `DEFAULT_BRANCH_UNRESOLVED`, try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If both fail, fall back to `main`.
 
 Bookmark routing:
 
-- **No local bookmark at `@`** — automatically create a feature bookmark for the current change before continuing. Derive the bookmark name from the change content, run `jj bookmark create <bookmark-name>` or `jj bookmark set <bookmark-name>`, and use that bookmark for the rest of the workflow. Do not ask whether to create the bookmark — invoking the full commit/push/PR workflow is already confirmation that the work should become bookmark-backed. If the derived bookmark name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
-- **On default bookmark with work to do** (uncommitted, unpushed, or no upstream) — automatically create a feature bookmark (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles bookmark creation safely. Do not ask whether to create a bookmark — committing on the default bookmark is not an option here.
-- **On default bookmark with no work** — report no feature bookmark work and stop.
+- **No local bookmark at `@`** — automatically create a topic bookmark for the current change before continuing. Derive the bookmark name from the change content, run `jj bookmark create <bookmark-name>` or `jj bookmark set <bookmark-name>`, and use that bookmark for the rest of the workflow. Do not ask whether to create the bookmark — invoking the full commit/push/PR workflow is already confirmation that the work should become bookmark-backed. If the derived bookmark name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
+- **On default bookmark with work to do** (undescribed, unpushed, or no upstream) — automatically create a topic bookmark (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles bookmark creation safely. Do not ask whether to create a bookmark — describing on the default bookmark is not an option here.
+- **On default bookmark with no work** — report no topic-bookmark work and stop.
 - **Feature bookmark** — continue.
 
 Note the existing PR URL and body from the PR check if `state: OPEN`. Step 5 uses the URL to route between new-PR and existing-PR application. Step 4 uses the existing body as preservation context when rewriting.
 
 ## Step 2: Determine conventions
 
-Match repo style for commit messages and PR titles (project instructions in context > recent commits > conventional commits as default). With conventional commits, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
+Match repo style for change descriptions and PR titles (project instructions in context > recent changes > conventional commits as default). With conventional commits, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
 
 ## Step 3: Commit and push
 
-If on the default bookmark, feature bookmark creation needs to handle stale local `<base>`, unpushed commits on local `<base>`, and working-copy changes that collide with the fresh remote base. Read `references/branch-creation.md` and follow its decision flow before continuing.
+If on the default bookmark, topic bookmark creation needs to handle stale local `<base>`, unpublished changes on local `<base>`, and working-copy changes that collide with the fresh remote base. Read `references/bookmark-creation.md` and follow its decision flow before continuing.
 
 Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate commits (2-3 max). Group at file level only — do not split hunks. When ambiguous, one commit is fine.
 
@@ -70,7 +70,7 @@ Commit each group by explicit path. **Avoid whole-working-copy commits unless in
 
 ```bash
 jj commit file1 file2 file3 -m "$(cat <<'EOF'
-commit message here
+change description here
 EOF
 )"
 ```

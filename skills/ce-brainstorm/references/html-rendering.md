@@ -109,8 +109,8 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to a main workspace. Users
-working from a workspace who want HTML defaults can add DESIGN.md to the
+Workspace-root only — do not fall through to a main checkout. Users
+working from a JJ workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
@@ -231,13 +231,12 @@ Resolve the repo's GitHub URL once at compose time:
 
 ```bash
 jj git remote list
-gh repo view --json url --jq .url
 ```
 
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/<default-branch>/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -245,7 +244,7 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If the resolved repository URL isn't a GitHub URL (GitLab,
+**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
 Bitbucket, internal host) and the equivalent main-tree URL pattern
 isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or

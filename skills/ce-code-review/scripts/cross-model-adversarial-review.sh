@@ -10,7 +10,7 @@
 # Usage:  cross-model-adversarial-review.sh <peer: codex|claude> <base-ref> <run-dir>
 #   <peer>     codex  -> use Codex (when the host is Claude or Cursor)
 #              claude -> use Claude (when the host is Codex)
-#   <base-ref> the diff base (e.g. a common-ancestor SHA or bookmark); the peer reviews
+#   <base-ref> the diff base (e.g. a merge-base revision or branch); the peer reviews
 #              only `jj diff --from <base-ref> --to @` in the current repository
 #   <run-dir>  an existing dir; output is written to <run-dir>/adversarial-<peer>.json
 #
@@ -69,7 +69,7 @@ trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 } > "$PROMPT_FILE"
 # Per-peer diff delivery (composed below): codex fetches its own diff inside its
 # read-only sandbox; claude is hard-denied shell (see below), so it gets the diff
-# embedded and needs no JJ shell access.
+# embedded and needs no JJ.
 if [ "$PEER" = codex ]; then
   printf '\nRun: jj diff --from %q --to @ — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
 else

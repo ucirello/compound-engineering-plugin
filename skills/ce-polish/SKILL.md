@@ -2,18 +2,18 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, bookmark/rev name, or blank for current change]"
+argument-hint: "[PR number, bookmark name, or blank for current bookmark]"
 ---
 
 # Polish
 
 Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
 
-## Phase 0: Get on the Right Change
+## Phase 0: Get on the right bookmark
 
-1. If a PR number or bookmark/rev name was provided, move to that review target using JJ or `gh` for PR checkout.
-2. If blank, use the current change.
-3. Verify the current change is not the trunk baseline.
+1. If a PR number or bookmark name was provided, move to it (probe for existing JJ workspaces first).
+2. If blank, use the current bookmark/change.
+3. Verify the current bookmark is not main/master.
 
 ## Phase 1: Start the dev server
 

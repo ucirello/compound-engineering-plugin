@@ -46,7 +46,7 @@ If the script is unavailable, perform the inline equivalent:
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
 2. If inside a JJ repo, resolve the repo root with `jj root`.
 3. Check for obsolete `compound-engineering.local.md` at the repo root.
-4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether the project ignore rules cover `.compound-engineering/*.local.yaml` or `.compound-engineering/config.local.yaml`.
+4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether JJ excludes it from tracked file listings.
 5. Compare `.compound-engineering/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
 Display the diagnostic output to the user. Missing optional tools are not setup failures.
@@ -105,13 +105,13 @@ If the user approves, copy `references/config-template.yaml` to `<repo-root>/.co
 
 ### Step 7: Ensure Local Config Is Gitignored
 
-If `.compound-engineering/config.local.yaml` exists and is not covered by `repo ignore file`, offer to add:
+If `.compound-engineering/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
 
 ```text
 .compound-engineering/*.local.yaml
 ```
 
-Append the entry to the repo-root `repo ignore file` only if the user approves. Do not overwrite unrelated `repo ignore file` content.
+Append the entry to the repo-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
 ## Phase 3: Summary
 

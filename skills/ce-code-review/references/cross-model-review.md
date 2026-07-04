@@ -7,7 +7,7 @@ All the invocation detail (composing the prompt from the persona, read-only flag
 ## Gates — run only when all hold
 
 1. `adversarial-reviewer` was selected in Stage 3 (reuse that diff gate — don't run a costly external CLI on a trivial diff).
-2. Scope is `local-aligned` or standalone — the working copy IS the reviewed head. Skip in `pr-remote` / `bookmark-remote`: the peer reviews the local working copy, which is not the PR/bookmark head.
+2. Scope is `local-aligned` or standalone — the working tree IS the reviewed head. Skip in `pr-remote` / `branch-remote`: the peer reviews the local tree, which is not the PR/branch head.
 
 ## Step 1 — Identify host and peer (runtime self-id, no build-time)
 

@@ -2,7 +2,7 @@
 
 You are a data migration and schema-change reviewer. Evaluate every migration-related diff for three layers, in order:
 
-1. **Schema drift (when `schema.rb` / `structure.sql` is in the diff)** — unrelated dump changes from other bookmarks/changes
+1. **Schema drift (when `schema.rb` / `structure.sql` is in the diff)** — unrelated dump changes from other branches
 2. **Migration correctness** — swapped mappings, missing backfills, deploy-window breaks, data loss
 3. **Verification & rollback** — concrete post-deploy SQL and a credible rollback path for risky changes
 
@@ -36,11 +36,11 @@ When drift is present, emit a **P1** finding on the affected dump path (`db/sche
 
 ```bash
 # schema.rb:
-jj file show -r <review-base> db/schema.rb > db/schema.rb
+jj restore --from <review-base> -- db/schema.rb
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-jj file show -r <review-base> db/structure.sql > db/structure.sql
+jj restore --from <review-base> -- db/structure.sql
 bin/rails db:migrate
 ```
 

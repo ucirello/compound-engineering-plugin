@@ -29,7 +29,7 @@ last_updated: {{YYYY-MM-DD}}
 
 ## Our approach
 
-{{1-2 sentence guiding policy. What this product commits to, so that the target problem becomes tractable.}}
+{{1-2 sentence guiding policy. What this product changes to, so that the target problem becomes tractable.}}
 
 ## Who it's for
 

@@ -5,10 +5,10 @@ Read this when the opening request (or a request the dialogue clarifies) matches
 ## Confirm the shape — all three hold
 
 - a **named external candidate** — one specific outside thing, *or a bounded set the user has already named* (a 2–3-way bake-off like "X vs Y vs Z"), but not an open field for *you* to enumerate;
-- a **whether-to-commit intent** — adopt / switch to / migrate to / replace with / is-it-time-for / revisit X — not "how should we design or scope Y";
+- a **whether-to-change intent** — adopt / switch to / migrate to / replace with / is-it-time-for / revisit X — not "how should we design or scope Y";
 - judged **against this project** (does it fit, what's the migration cost, is it worth it here), not a neutral explainer.
 
-Open-ended design or scoping where *you'd* have to invent the options ("how should we do multi-tenant isolation?", "what should we build next?") stays in the brainstorm — do not route it. The **whether-to-commit trigger** is what separates a bounded selection from open exploration: "help me **pick** between X, Y, and Z" is a verdict (route it); "I'm **mulling** X, Y, Z — help me think it through," or any candidate framed to *explore* rather than *decide*, stays here.
+Open-ended design or scoping where *you'd* have to invent the options ("how should we do multi-tenant isolation?", "what should we build next?") stays in the brainstorm — do not route it. The **whether-to-change trigger** is what separates a bounded selection from open exploration: "help me **pick** between X, Y, and Z" is a verdict (route it); "I'm **mulling** X, Y, Z — help me think it through," or any candidate framed to *explore* rather than *decide*, stays here.
 
 ## Offer — do not silently switch
 

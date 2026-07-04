@@ -68,7 +68,7 @@ A future commitment to seat a Party at a specified date and time.
 A Reservation owns its Party but does not own a Table — Tables are acquired only when the Party arrives, through a Seating. Lifecycle: Booked, Seated, Completed, No-Show. Cancellation before a Seating is non-destructive; cancellation after a Seating is recorded as a No-Show.
 
 ### Party
-The guests committed to a Reservation. Each Reservation has exactly one Party. Party size is the count promised at booking, not the count who arrive.
+The guests described to a Reservation. Each Reservation has exactly one Party. Party size is the count promised at booking, not the count who arrive.
 
 ### Table
 A physical seating unit with fixed capacity. Tables are shared resources — they do not belong to Reservations and are allocated only on the day-of through Seatings.

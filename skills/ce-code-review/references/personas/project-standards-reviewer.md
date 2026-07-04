@@ -12,7 +12,7 @@ If no `<standards-paths>` block is present (standalone usage), discover the path
 2. For each changed file, check its ancestor directories up to the repo root for standards files. A file like root `AGENTS.md` applies to the whole checkout, while `skills/AGENTS.md` applies to all changes under `skills/`.
 3. Read each relevant standards file found.
 
-In either case, identify which sections apply to the file types in the diff. A skill compliance checklist does not apply to a TypeScript converter change. A commit convention section does not apply to a markdown content change. Match rules to the files they govern.
+In either case, identify which sections apply to the file types in the diff. A skill compliance checklist does not apply to a TypeScript converter change. A change convention section does not apply to a markdown content change. Match rules to the files they govern.
 
 ## What you're hunting for
 

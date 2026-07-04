@@ -2,7 +2,7 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, branch name, or blank for current branch]"
+argument-hint: "[PR number, branch name, or blank for current bookmark]"
 ---
 
 # Polish
@@ -12,8 +12,8 @@ Start the dev server, open the feature in a browser, and iterate. You use the fe
 ## Phase 0: Get on the right branch
 
 1. If a PR number or branch name was provided, check it out (probe for existing worktrees first).
-2. If blank, use the current branch.
-3. Verify the current branch is not main/master.
+2. If blank, use the current bookmark.
+3. Verify the current bookmark is not main/master.
 
 ## Phase 1: Start the dev server
 
@@ -85,7 +85,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → commit the fixes and stop
+- When the user says they're done → change the fixes and stop
 
 No checklist. No envelope. Just conversation.
 

@@ -125,7 +125,7 @@ write the plan.
 
 **Skip implementation-ready plan creation only when ALL of these hold:**
 
-- The work is **atomic** — fits in one commit, no meaningful unit boundaries
+- The work is **atomic** — fits in one change, no meaningful unit boundaries
   to break out independently.
 - There are **no design choices that constrain implementation** — no
   Key Technical Decisions worth recording. If the work needs the implementer
@@ -334,16 +334,16 @@ plan.
   (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
   across readiness states (it is a plan at every stage). Do not put a
-  conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
+  conventional-change prefix (`feat:`/`fix:`) in the title — the `type` field
   carries that classification.
 - **`type`** — conventional-commit-prefix-aligned classification (`feat`,
   `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual commit message should reflect.
+  intent the eventual change message should reflect.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from git, not stored in the doc. Do not
+whether a plan shipped is derived from Jujutsu, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -386,7 +386,7 @@ These apply regardless of rendering format.
   they break portability across machines, worktrees, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
-  metadata belongs in commit messages and tool output, not the artifact.
+  metadata belongs in change messages and tool output, not the artifact.
 - **Group Requirements by concern when they span distinct logical areas.**
   The trigger is distinct concerns, not item count — even four requirements
   benefit from grouping if they cover three different topics. Skip grouping

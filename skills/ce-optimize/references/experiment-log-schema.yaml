@@ -200,9 +200,9 @@ experiment_entry:
       type: string
       description: "What was learned from this experiment. The agent reads these to avoid re-trying similar approaches and to inform new hypothesis generation."
 
-    commit:
+    change:
       type: string
-      description: "Git commit SHA on the optimization branch (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "Jujutsu change SHA on the optimization branch (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string
@@ -237,7 +237,7 @@ experiment_entry:
 #             -> not improved             -> outcome: reverted
 #       -> needs unapproved dep    -> outcome: deferred_needs_approval
 #
-# Only 'kept' and 'runner_up_kept' produce a commit on the optimization branch.
+# Only 'kept' and 'runner_up_kept' produce a change on the optimization branch.
 # Only 'deferred_needs_approval' items are re-presented at wrap-up for approval.
 
 # ============================================================================

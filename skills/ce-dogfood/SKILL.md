@@ -34,7 +34,7 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 |------|-------|-----|
 | Phase 0 isolation | `ce-worktree` | Run the dogfood in harness isolation so the main workspace stays clean. |
 | A failure's root cause is non-obvious | `ce-debug` | Systematic root-cause analysis instead of guess-and-check. |
-| Committing each fix | `ce-commit` | Consistent, well-scoped commit messages. |
+| Committing each fix | `ce-commit` | Consistent, well-scoped change descriptions. |
 | A bug reveals a reusable lesson | `ce-compound` | Capture the learning so the team compounds knowledge. |
 
 ## Workflow
@@ -53,7 +53,7 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 
 Parse `$ARGUMENTS`: a PR number, a bookmark/rev name, or blank (use current change). Strip `--port PORT` if present.
 
-1. **Identify the target — keep PR identity; do not switch the working tree yet.**
+1. **Identify the target — keep PR identity; do not switch the working copy yet.**
    - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, checkout). Read its head only for display (`gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare bookmark name. Do not check out yet.
    - **Bookmark/rev name:** the target is that JJ revset or bookmark.
    - **Blank:** the target is the current change.

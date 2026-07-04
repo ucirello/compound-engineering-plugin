@@ -26,7 +26,7 @@ def try_claude(lines):
             if obj.get("type") == "user" and "gitBranch" in obj:
                 return {
                     "platform": "claude",
-                    "branch": obj["gitBranch"],
+                    "bookmark": obj["gitBranch"],
                     "ts": obj.get("timestamp", ""),
                     "session": obj.get("sessionId", ""),
                 }
@@ -117,7 +117,7 @@ def _pi_active_path_objects(objects):
     """Return only entries on Pi's active leaf-to-root path.
 
     Pi session files are append-only trees. The final non-session entry is the
-    active leaf; abandoned branches remain in the file but are not in context.
+    active leaf; abandoned conversation paths remain in the file but are not in context.
     """
     by_id = {
         obj.get("id"): obj

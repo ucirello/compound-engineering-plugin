@@ -264,22 +264,22 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **When this matters most:** Any change that touches models with callbacks, error handling with fallback/retry, or functionality exposed through multiple interfaces.
 
 
-2. **Incremental Commits**
+2. **Incremental JJ Changes**
 
-   After completing each task, evaluate whether to create an incremental commit:
+   After completing each task, evaluate whether to create an incremental JJ change:
 
    | Commit when... | Don't commit when... |
    |----------------|---------------------|
    | Logical unit complete (model, service, component) | Small part of a larger unit |
    | Tests pass + meaningful progress | Tests failing |
    | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-   | About to attempt risky/uncertain changes | Would need a "WIP" commit message |
+   | About to attempt risky/uncertain changes | Would need a "WIP" change description |
 
-   **Heuristic:** "Can I write a commit message that describes a complete, valuable change? If yes, commit. If the message would be 'WIP' or 'partial X', wait."
+   **Heuristic:** "Can I write a change description that describes a complete, valuable change? If yes, commit. If the description would be 'WIP' or 'partial X', wait."
 
-   If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
+   If the plan has Implementation Units, use them as a starting guide for change boundaries — but adapt based on what you find during implementation. A unit might need multiple JJ changes if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the change description.
 
-   **Commit workflow:**
+   **JJ commit workflow:**
    ```bash
    # 1. Verify tests pass (use project's test command)
    # Examples: bin/rails test, npm test, pytest, go test, etc.
@@ -291,9 +291,9 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    # 3. Continue work in the new working-copy change that JJ created on top.
    ```
 
-   **Handling conflicts:** If conflicts arise during `jj rebase` or workspace integration, resolve them immediately. Incremental commits make conflict resolution easier since each commit is small and focused.
+   **Handling conflicts:** If conflicts arise during `jj rebase` or workspace integration, resolve them immediately. Incremental JJ changes make conflict resolution easier since each change is small and focused.
 
-   **Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 commit/PR includes the full attribution.
+   **Note:** Incremental JJ changes use clean conventional descriptions without attribution footers. The final Phase 4 commit/PR includes the full attribution.
 
    **Parallel subagent mode:** Commit ownership is split by isolation mode (see Phase 1 Step 4):
    - **Workspace-isolated:** subagents may commit inside their own workspace; the orchestrator integrates those revisions in dependency order after the batch.
@@ -353,7 +353,7 @@ When all Phase 2 tasks are complete and execution transitions to quality check, 
 
 **Code review: one portable path.** Review with `ce-code-review`, which self-sizes (lite roster for small low-risk code-only diffs, full roster otherwise). No harness-native review detection and no escalation tiers — the size/sensitive-surface judgment lives inside `ce-code-review`. Skip dedicated review only for a purely mechanical diff (formatting, dep-bumps, lint-only, generated). Full rules (autonomous Residual Gate, infra fallback) in `shipping-workflow.md`.
 
-**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the checkout, commits, or applies fixes.
+**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the working copy, commits, or applies fixes.
 
 1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<ref>` when the merge base is known, and `depth:full` when a deep/thorough review was explicitly requested.
 2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator merges diffs, runs tests, and commits — it does not pre-investigate findings.

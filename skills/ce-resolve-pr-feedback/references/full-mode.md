@@ -126,15 +126,15 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 2. **Green** -> proceed to step 6.
 
-3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
+3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** record/finalize the JJ change.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the change description: `Note: pre-existing failure in <test> not addressed by this PR.`
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Commit and Push
+## 6. Describe Change and Push Bookmark
 
-1. Commit only files reported by fixers with a message referencing the PR:
+1. Commit only files reported by fixers with a change description referencing the PR:
 
 ```bash
 jj commit [files from fixer summaries] -m "Address PR review feedback (#PR_NUMBER)

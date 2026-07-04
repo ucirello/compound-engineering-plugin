@@ -250,15 +250,15 @@ bash "$SKILL_DIR/scripts/<name>"
 
 ### 1.1 Clean-Tree Gate
 
-Verify no uncommitted changes to files within `scope.mutable` or `scope.immutable`:
+Verify no working-copy changes to files within `scope.mutable` or `scope.immutable`:
 
 ```bash
 jj st
 ```
 
-Filter the output against the scope paths. If any in-scope files have uncommitted changes:
+Filter the output against the scope paths. If any in-scope files have working-copy changes:
 - Report which files are dirty
-- Ask the user to commit or shelve before proceeding
+- Ask the user to commit or move the changes to another JJ change before proceeding
 - Do NOT continue until the working copy is clean for in-scope files
 
 ### 1.2 Build or Validate Measurement Harness

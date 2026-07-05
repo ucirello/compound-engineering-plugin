@@ -8,7 +8,7 @@
 #
 # Arguments:
 #   path (optional) — directory to inspect. When omitted, defaults to the
-#                     repo root via `jj root`, then the current directory.
+#                     JJ repo root, or the current directory outside JJ.
 #
 # Output contract (two lines on stdout):
 #   Line 1: package-manager binary token (`npm` | `pnpm` | `yarn` | `bun`)
@@ -32,13 +32,13 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          path does not exist or is not a directory
+#                          no positional arg and current directory is unreadable
 
 set -u
 
 TARGET_PATH="${1:-}"
 
-# Resolve target directory: positional arg, JJ repo root, or current directory.
+# Resolve target directory: positional arg or JJ repo root/current directory.
 if [ -n "$TARGET_PATH" ]; then
   if [ ! -d "$TARGET_PATH" ]; then
     echo "ERROR: path does not exist or is not a directory: $TARGET_PATH" >&2

@@ -18,20 +18,20 @@ A single JSON object, versioned by `profile_schema_version`:
 
 Never read from the cache — recompute every run:
 
-- The `docs/solutions/` enumeration (a new or changed learning in the working-copy change must be visible — re-globbing it is ~free and the match reads files fresh anyway).
+- The `docs/solutions/` enumeration (a new learning, even uncommitted, must be visible — re-globbing it is ~free and the match reads files fresh anyway).
 - Subdirectory-scoped instruction files (area-scoped `CLAUDE.md`/`AGENTS.md`).
-- All question-specific grounding: a candidate's call-sites/footprint, prior-decision matches, feature patterns, JJ/VCS history of touched files, tracker/PR activity, external research.
+- All question-specific grounding: a candidate's call-sites/footprint, prior-decision matches, feature patterns, JJ history of touched files, tracker/PR activity, external research.
 
 ## Cache location & key
 
 ```
-/tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json
+/tmp/compound-engineering/repo-profile/<root-id>/<current-id>.json
 ```
 
-- `<root-sha>` = lexicographically-first root commit in `::@ & ~root()` — the repo identity (stable, shared across workspaces and clones).
-- `<head-sha>` = the `@-` commit id from `jj log` — the latest committed parent of the working state.
+- `<root-id>` = lexicographically-first initial commit id from `jj log -r 'root()+ ~ root()' --no-graph -T 'commit_id ++ "\n"'` — the repo identity (stable, shared across workspaces and clones).
+- `<current-id>` = `jj log -r @ --no-graph -T commit_id` — the working-copy commit id.
 
-Two workspaces at the same commit share the same entry. Lookup is JJ metadata only; on a hit, only this one file is read.
+Two workspaces at the same working-copy commit id share the same entry. Lookup is JJ metadata only; on a hit, only this one file is read.
 
 ## Protocol — how a skill uses it
 
@@ -50,14 +50,14 @@ python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
   SKILL_DIR="<absolute path of this skill's directory>"
   python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <profile-json-file>
   ```
-- `NO-CACHE` → no JJ repo or no writable cache. Derive the profile fresh for this run and **skip** `put` (nothing to persist).
+- `NO-CACHE` → no JJ workspace or no writable cache. Derive the profile fresh for this run and **skip** `put` (nothing to persist).
 
 In all three cases, after the agnostic profile is in hand, run **this skill's question-specific grounding fresh** on top of it.
 
 ## Freshness (delta-aware)
 
-A cached entry is a `HIT` only when, at the current `@` commit, its `profile_schema_version` matches and **no profile-input path** is changed or newly-added. Freshness is checked with `jj diff --name-only -r @`, so new files in the JJ working-copy commit invalidate too. The profile-input set is a conservative **superset** of every file the schema derives from — dependency manifests + lockfiles (any depth), license, root instruction/doc files, `CONCEPTS.md`/`STRATEGY.md`, topology sources (`Dockerfile`, `.github/workflows/`, `.cursor/rules`). A changed source file, `docs/plans/*`, or other non-input path does **not** invalidate. Completeness of this set is the cardinal-rule safety requirement: over-invalidating costs a re-derive; under-invalidating would serve a stale profile.
+A cached entry is a `HIT` only when, at the current working-copy commit id, its `profile_schema_version` matches and **no profile-input path** is dirty or newly-added. Freshness is checked with `jj status`, so untracked (`?`) new inputs invalidate too. The profile-input set is a conservative **superset** of every file the schema derives from — dependency manifests + lockfiles (any depth), license, root instruction/doc files, `CONCEPTS.md`/`STRATEGY.md`, topology sources (`Dockerfile`, `.github/workflows/`, `.cursor/rules`). A dirty source file, `docs/plans/*`, or other non-input path does **not** invalidate. Completeness of this set is the cardinal-rule safety requirement: over-invalidating costs a re-derive; under-invalidating would serve a stale profile.
 
 ## Degradation
 
-The cache is an optimization, never a correctness dependency. Outside a JJ repo, with no writable `/tmp`, or on an unreadable/malformed entry, the helper returns `NO-CACHE`/`MISS` (exit 0) and the skill derives fresh. It never blocks and never serves a profile it cannot prove fresh. And if the helper *invocation itself* fails — a non-zero exit, empty output, or an unresolved `SKILL_DIR` so the script isn't found — treat it exactly like `NO-CACHE`: derive the profile fresh this run and proceed. Never stall waiting on the cache.
+The cache is an optimization, never a correctness dependency. Outside a JJ workspace, with no writable `/tmp`, or on an unreadable/malformed entry, the helper returns `NO-CACHE`/`MISS` (exit 0) and the skill derives fresh. It never blocks and never serves a profile it cannot prove fresh. And if the helper *invocation itself* fails — a non-zero exit, empty output, or an unresolved `SKILL_DIR` so the script isn't found — treat it exactly like `NO-CACHE`: derive the profile fresh this run and proceed. Never stall waiting on the cache.

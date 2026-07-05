@@ -11,7 +11,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 ```markdown
 ## Code Review Results
 
-**Scope:** merge-base with the review base bookmark -> working tree (14 files, 342 lines)
+**Scope:** resolved JJ base revset -> working tree (14 files, 342 lines)
 **Intent:** Add order export endpoint with CSV and JSON format support
 **Mode:** interactive
 

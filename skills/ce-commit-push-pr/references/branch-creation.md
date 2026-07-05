@@ -1,56 +1,54 @@
-# Feature bookmark creation from the default bookmark
+# Bookmark creation from default bookmark
 
-Local `<base>` may have stale changes (another session/workspace advanced it) or unpublished changes the user authored intending to build on. JJ local and remote bookmarks can diverge, so ask before carrying local-only base changes into a feature line.
+Local `<base>` may have stale commits (another session/workspace advanced it) or commits the user authored intending to branch from later. Local JJ metadata can't distinguish these — ask when unpushed commits are present.
 
-## Decision Flow
+## Decision flow
 
 ### 1. Fetch fresh remote base
 
 ```bash
-jj git fetch --remote origin
+jj git fetch --remote origin --branch <base>
 ```
 
 If fetch fails (network, auth, no remote), use the fallback at the bottom.
 
-### 2. Check for unpublished local changes on `<base>`
+### 2. Check for unpushed local commits on `<base>`
 
 ```bash
-jj log -r "<base>@origin..<base>" --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+jj log --no-graph -r 'remote_bookmarks(<base>, origin)..@' -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
 ```
 
-- **Empty output:** set `BASE_REV=<base>@origin` and proceed to step 3.
-- **Non-empty output:** show the change list and ask (per the "Asking the user" convention in `SKILL.md`):
+- **Empty output:** set `BASE_REF=remote_bookmarks(<base>, origin)` and proceed to step 3.
+- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
 
-  > "Local `<base>` has N unpublished changes not on `<base>@origin`. Carry them onto the new feature bookmark, or leave them on local `<base>`?"
+  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature bookmark, or leave them on local `<base>`?"
 
-  - **Carry forward** -> `BASE_REV=@`. The new feature bookmark starts from the current change, preserving the local changes.
-  - **Leave on `<base>`** -> `BASE_REV=<base>@origin`. The new feature bookmark starts clean; local changes remain on local `<base>`.
+  - **Carry forward** -> `BASE_REF=@`. The new bookmark starts from the current change, preserving the commits.
+  - **Leave on `<base>`** -> `BASE_REF=remote_bookmarks(<base>, origin)`. The new bookmark starts clean; commits remain on local `<base>`.
 
-Never default silently; carrying unrelated local changes into a PR is worse than asking again.
+  Never default silently — carrying foreign commits into a PR is worse than asking again.
 
 ### 3. Create the feature bookmark
 
-If the current workspace change already contains the work, attach the bookmark to it:
-
 ```bash
-jj bookmark set <bookmark-name> -r @
+jj new "$BASE_REF"
+jj bookmark create <branch-name> -r @
 ```
 
-If the work should start from the selected base first, create a new workspace change from that base, then set the bookmark:
+If moving to the fresh remote base would conflict with current working-copy changes, stop and ask whether to carry the current change forward instead. Do not hide the conflict with a stash-like workaround; JJ has already snapshotted the working copy.
+
+If the user chooses to carry the current change forward:
 
 ```bash
-jj new "$BASE_REV"
-jj bookmark set <bookmark-name> -r @
+jj bookmark create <branch-name> -r @
 ```
 
-If current changes conflict with moving to the selected base, keep the current work as its own JJ change, create the new change from `BASE_REV`, then rebase or squash the saved work onto the feature line. Surface JJ conflicts to the user; do not auto-resolve them.
+## Fetch failure fallback
 
-## Fetch Failure Fallback
-
-If `jj git fetch` fails, create the bookmark at the current JJ change:
+If `jj git fetch` fails, create the bookmark at the current change:
 
 ```bash
-jj bookmark set <bookmark-name> -r @
+jj bookmark create <branch-name> -r @
 ```
 
-Note in the user-facing summary that base freshness was not verified. Skip the unpublished-base check; without a fresh `<base>@origin`, the answer is unreliable.
+Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.

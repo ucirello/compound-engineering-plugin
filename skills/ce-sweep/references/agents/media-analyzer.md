@@ -23,7 +23,7 @@ You are a media-analysis specialist inside an already-running ce-sweep pass. You
 
 2. **View the extracted frames.** Open the PNG frames the analyzer wrote and read `analysis.md` / `problem-analysis.md`. The analyzer's candidate findings are scaffolding, not conclusions -- your job is to look at the actual frames and transcript and name what is really wrong.
 
-3. **Check whether the issue already appears fixed on the main branch.** Once you know the affected surface, use read-only `jj log` / `gh` on that area (files, routes, components the symptom touches) to see whether a recent commit or merged PR already addresses it. Report this as a field in your finding so the orchestrator does not re-file resolved work.
+3. **Check whether the issue already appears fixed on the main bookmark.** Once you know the affected surface, use read-only `jj log` / `gh` on that area (files, routes, components the symptom touches) to see whether a recent commit or merged PR already addresses it. Report this as a field in your finding so the orchestrator does not re-file resolved work.
 
 ## Output: a bug-report-shaped finding
 

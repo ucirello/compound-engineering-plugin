@@ -10,7 +10,7 @@
 # Usage:  cross-model-adversarial-review.sh <peer: codex|claude> <base-ref> <run-dir>
 #   <peer>     codex  -> use Codex (when the host is Claude or Cursor)
 #              claude -> use Claude (when the host is Codex)
-#   <base-ref> the diff base (e.g. a merge-base SHA or branch); the peer reviews
+#   <base-ref> the diff base (e.g. a JJ revset or bookmark); the peer reviews
 #              only `jj diff --from <base-ref> --to @` in the current repository
 #   <run-dir>  an existing dir; output is written to <run-dir>/adversarial-<peer>.json
 #
@@ -69,12 +69,12 @@ trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 } > "$PROMPT_FILE"
 # Per-peer diff delivery (composed below): codex fetches its own diff inside its
 # read-only sandbox; claude is hard-denied shell (see below), so it gets the diff
-# embedded and needs no JJ shell access.
+# embedded and needs no JJ.
 if [ "$PEER" = codex ]; then
   printf '\nRun: jj diff --from %q --to @ — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
 else
   { printf '\nReview ONLY the change below (the output of `jj diff --from %q --to @`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
-    printf '\n=== BEGIN DIFF ===\n'; jj -R "$REPO_ROOT" diff --from "$BASE" --to @; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
+    printf '\n=== BEGIN DIFF ===\n'; jj --repository "$REPO_ROOT" diff --from "$BASE" --to @; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
 fi
 
 # --- run the peer: idle-timeout for streaming codex, hard cap for claude ----

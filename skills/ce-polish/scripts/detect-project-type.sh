@@ -43,7 +43,7 @@ set -u
 
 REPO_ROOT=$(jj root 2>/dev/null || pwd)
 
-cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }
+cd "$REPO_ROOT" || { echo "ERROR: cannot cd to project root" >&2; exit 1; }
 
 MATCHES=()
 

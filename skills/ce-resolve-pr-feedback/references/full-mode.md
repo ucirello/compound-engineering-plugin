@@ -6,7 +6,7 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current bookmark/PR context:
+If no PR number was provided, detect from the current bookmark's PR:
 ```bash
 gh pr view --json number -q .number
 ```
@@ -132,20 +132,29 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Commit and Push
+## 6. Describe and Push
 
-1. Isolate only files reported by fixers into the current JJ change and commit with a message referencing the PR:
+1. Inspect the working-copy status and diff. Only files reported by fixers should be changed; if other files appear, stop and reconcile before proceeding:
 
 ```bash
-jj split/squash explicit files into the current change, then [files from fixer summaries]
-jj commit -m "Address PR review feedback (#PR_NUMBER)
+jj status
+jj diff -- [files from fixer summaries]
+```
+
+2. Describe the current JJ change with a message referencing the PR:
+
+```bash
+jj describe -m "Address PR review feedback (#PR_NUMBER)
 
 - [list changes from fixer summaries]"
 ```
 
-2. Push to remote:
+3. Ensure the PR bookmark points at the described change, then push that bookmark:
+
 ```bash
-jj git push
+jj bookmark list
+jj bookmark set BOOKMARK_NAME -r @
+jj git push --bookmark BOOKMARK_NAME
 ```
 
 ## 7. Reply and Resolve

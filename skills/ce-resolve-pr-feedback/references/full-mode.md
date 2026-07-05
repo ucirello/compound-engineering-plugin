@@ -6,7 +6,7 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current branch:
+If no PR number was provided, detect from the current bookmark's PR:
 ```bash
 gh pr view --json number -q .number
 ```
@@ -65,7 +65,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -132,20 +132,29 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Commit and Push
+## 6. Describe and Push
 
-1. Stage only files reported by fixers and commit with a message referencing the PR:
+1. Inspect the working-copy status and diff. Only files reported by fixers should be changed; if other files appear, stop and reconcile before proceeding:
 
 ```bash
-git add [files from fixer summaries]
-git commit -m "Address PR review feedback (#PR_NUMBER)
+jj status
+jj diff -- [files from fixer summaries]
+```
+
+2. Describe the current JJ change with a message referencing the PR:
+
+```bash
+jj describe -m "Address PR review feedback (#PR_NUMBER)
 
 - [list changes from fixer summaries]"
 ```
 
-2. Push to remote:
+3. Ensure the PR bookmark points at the described change, then push that bookmark:
+
 ```bash
-git push
+jj bookmark list
+jj bookmark set BOOKMARK_NAME -r @
+jj git push --bookmark BOOKMARK_NAME
 ```
 
 ## 7. Reply and Resolve

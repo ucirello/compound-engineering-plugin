@@ -336,14 +336,14 @@ plan.
   across readiness states (it is a plan at every stage). Do not put a
   conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
   carries that classification.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
+- **`type`** — conventional-change-prefix-aligned classification (`feat`,
   `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual commit message should reflect.
+  intent the eventual change description should reflect.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from git, not stored in the doc. Do not
+whether a plan shipped is derived from JJ, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -362,7 +362,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the branch/test/commit/CI lifecycle); absent or `code` routes
+  skipping the bookmark/test/change/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.

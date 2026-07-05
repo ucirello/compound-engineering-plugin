@@ -23,15 +23,15 @@ stamp, and writes it atomically to the computed cache path. Prints the path
 on success, `NO-CACHE` when the repo/cache is unavailable.
 
 Cache path:
-    /tmp/compound-engineering/repo-profile/<root-id>/<current-id>.json
+    /tmp/compound-engineering/repo-profile/<root-id>/<input-state-id>.json
   root-id = lexicographically-first initial commit id from `jj log -r 'root()+ ~ root()'`
             (deterministic even for multi-root histories) — the repo identity,
             shared across workspaces and clones.
-  current-id = `jj log -r @ -T commit_id` — the working-copy commit id.
+  input-state-id = sha256 of profile-input file paths and contents at `@`.
 
 Validity (HIT) requires ALL of:
   - the cache file exists and parses as JSON,
-  - stored `head_sha` == current working-copy commit id,
+  - stored `head_sha` == current profile-input state id,
   - stored `profile_schema_version` == PROFILE_SCHEMA_VERSION,
   - no profile-input path is dirty or newly-added per `jj status`
     (the schema-derived superset in `is_profile_input`, which also catches
@@ -45,6 +45,7 @@ never serves a profile it cannot prove fresh.
 Pure stdlib. No third-party dependencies.
 """
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -247,6 +248,25 @@ def changed_paths(root: str) -> "list[str] | None":
     return paths
 
 
+def profile_input_state(root: str) -> "str | None":
+    """Deterministic id for only the files that feed the agnostic profile."""
+    out = jj("file", "list", cwd=root)
+    if out is None:
+        return None
+    h = hashlib.sha256()
+    for rel in sorted(p for p in out.split("\n") if p and is_profile_input(p)):
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        try:
+            with open(os.path.join(root, rel), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            # A conflicted/deleted input is not cacheable.
+            return None
+        h.update(b"\0")
+    return h.hexdigest()
+
+
 def cache_path(root: str, head: str) -> str:
     return os.path.join(CACHE_ROOT, root, f"{head}.json")
 
@@ -257,7 +277,7 @@ def resolve_keys() -> "tuple[str, str] | None":
     if not workspace:
         return None
     root = root_sha(workspace)
-    head = jj("log", "-r", "@", "--no-graph", "-T", "commit_id", cwd=workspace)
+    head = profile_input_state(workspace)
     if not root or not head:
         return None
     return root, head

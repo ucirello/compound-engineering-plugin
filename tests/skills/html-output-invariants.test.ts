@@ -114,9 +114,9 @@ describe("html-rendering.md reference content invariants", () => {
     expect(/Active-recall/i.test(REFERENCE)).toBe(true)
   })
 
-  test("DESIGN.md discovery paths in worktree-root order", () => {
+  test("DESIGN.md discovery paths in workspace-root order", () => {
     expect(/DESIGN\.md discovery/i.test(REFERENCE)).toBe(true)
-    expect(/worktree root|git rev-parse --show-toplevel/i.test(REFERENCE)).toBe(true)
+    expect(/workspace root|jj workspace root/i.test(REFERENCE)).toBe(true)
     expect(/docs\/DESIGN\.md/.test(REFERENCE)).toBe(true)
     expect(/\.compound-engineering\/DESIGN\.md/.test(REFERENCE)).toBe(true)
   })

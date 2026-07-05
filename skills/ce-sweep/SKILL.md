@@ -1,6 +1,6 @@
 ---
 name: ce-sweep
-description: "Sweep configured feedback sources (Slack, GitHub Issues; email experimental) for new items: acknowledge at source, analyze recordings, verify fixes merged to main, and emit an /lfg-ready plan. First run sets up sources; supports mode:headless for scheduled runs."
+description: "Sweep configured feedback sources (Slack, GitHub Issues; email experimental) for new items: acknowledge at source, analyze recordings, verify fixes merged to the default bookmark, and emit an /lfg-ready plan. First run sets up sources; supports mode:headless for scheduled runs."
 disable-model-invocation: true
 argument-hint: "[setup|reconfigure] [mode:headless]"
 allowed-tools:
@@ -53,7 +53,7 @@ If the line above is an absolute path, use it as `<repo-root>`. If it is empty o
 - `feedback_sources` — list of source entries; each carries a `type` (`slack`, `github-issues`, `email`), its target, the standing-approved ack action, an optional close-out action, and an optional `sensitive: true`. Presence of this key means the skill is configured.
 - `sweep_state_path` — path to the state file, established at setup; fallback `docs/feedback-sweep/state.yml`. A repo-internal path means committed mode (the state file is committed each run and must not be gitignored); a path outside the repo (e.g. under `/tmp`) means machine-local mode (the state file is never committed — only the plan is).
 - `sweep_lease_ttl_minutes` — single-writer lease staleness threshold; default `60`. Passed to `lease-acquire` in 2a.
-- `sweep_shared_branch` — `true` when the state file lives on a shared bookmark multiple checkouts push to (see 2a topology); default `false`.
+- `sweep_shared_bookmark` — `true` when the state file lives on a shared bookmark multiple workspaces push to (see 2a topology); default `false`.
 - `sweep_ack_cap` — integer circuit-breaker threshold; default `25`.
 
 ### Phase 1: First-Run Setup
@@ -83,7 +83,7 @@ Run the phases in order.
 - `STALE-RECLAIMED` — an expired lease was taken over; proceed, and note the takeover in the final summary.
 - `OK` — proceed.
 
-**Shared-bookmark topology** (`sweep_shared_branch: true`): before any source-side write, commit the state file with JJ and push the current bookmark with `jj git push`. A rejected push means another writer won the bookmark — `jj git fetch`, rebase the sweep change onto the fetched bookmark, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Only once your lease is pushed and confirmed do you touch a source.
+**Shared-bookmark topology** (`sweep_shared_bookmark: true`): before any source-side write, commit the state file with JJ and push the current bookmark with `jj git push`. A rejected push means another writer won the bookmark — `jj git fetch`, rebase the sweep change onto the fetched bookmark, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Only once your lease is pushed and confirmed do you touch a source.
 
 Then `validate --state <state>` (a lease-agnostic repair): note in the summary any ids it downgrades from `closed` to `fix_pending`.
 
@@ -145,7 +145,7 @@ Interactive only. For items needing a product call, ask the user — grouped by 
 
 #### 2i. Wrap-up
 
-- **Commit.** Commit ONLY `docs/plans/feedback-sweep-plan.md` plus `<state>` when it is repo-internal (never unrelated workspace changes; machine-local state under `/tmp` is never committed), using `jj commit -m "docs(sweep): feedback sweep <date>"`. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-bookmark mode (`sweep_shared_branch: true`), `jj git fetch`, rebase as needed, and `jj git push` the final commit.
+- **Commit.** Commit ONLY `docs/plans/feedback-sweep-plan.md` plus `<state>` when it is repo-internal (never unrelated workspace changes; machine-local state under `/tmp` is never committed), using `jj commit -m "docs(sweep): feedback sweep <date>"`. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-bookmark mode (`sweep_shared_bookmark: true`), `jj git fetch`, rebase as needed, and `jj git push` the final commit.
 - **Record the run.** `run-record --state <state> --writer <writer> --outcome <completed|partial|failed> --counts '<per-source JSON>' --timestamp <ISO now>`.
 - **Release.** `lease-release --state <state> --writer <writer>`.
 - **Summary** (always emit): new items by source; recordings analyzed, each with its one-line finding; closed items with their fix evidence; the `ack_deferred` / `manual_stuck` / needs-attention list; any circuit-breaker or stale-reclaim note; and always the plan path with the handoff line:

@@ -41,12 +41,14 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-jj diff --from main --to @ --name-only
+TRUNK=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || printf 'main')
+jj diff --from "$TRUNK" --to @ --name-only
 ```
 
 **If bookmark name provided:**
 ```bash
-jj diff --from main --to [bookmark] --name-only
+TRUNK=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || printf 'main')
+jj diff --from "$TRUNK" --to [bookmark] --name-only
 ```
 
 ### 3. Map Changed Files to Routes

@@ -39,7 +39,7 @@ describe("ce-commit-push-pr contract", () => {
     expect(content).toContain("GitHub Issues")
     expect(content).toContain("Fixes #123")
     expect(content).toContain("Fixes owner/repo#123")
-    expect(content).toMatch(/target.+default branch/i)
+    expect(content).toMatch(/target.+default ref/i)
 
     expect(content).toContain("Linear")
     expect(content).toContain("Fixes ENG-123")

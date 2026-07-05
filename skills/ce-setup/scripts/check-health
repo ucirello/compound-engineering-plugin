@@ -139,9 +139,9 @@ if [ "$in_repo" = "yes" ]; then
   if [ "$local_cfg" = "present" ]; then
     ok ".compound-engineering/config.local.yaml exists"
     if [ "$repo_cfg_gitignore" = "ok" ]; then
-      ok "Local config is VCS-ignored"
+      ok "Local config is ignored (VCS-ignored)"
     else
-      warn "Local config is not safely VCS-ignored"
+      warn "Local config is not safely ignored (not safely VCS-ignored)"
       project_issues=$((project_issues + 1))
     fi
   else

@@ -249,7 +249,7 @@ SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
 bash "$SKILL_DIR/scripts/<name>"
 ```
 
-### 1.1 Clean-Tree Gate
+### 1.1 Working-Copy Cleanliness Gate
 
 Verify no uncommitted changes to files within `scope.mutable` or `scope.immutable`:
 
@@ -260,7 +260,7 @@ jj diff --name-only
 Filter the output against the scope paths. If any in-scope files have working-copy changes:
 - Report which files are dirty
 - Ask the user to commit with `jj commit` or move the changes to another JJ change before proceeding
-- Do NOT continue until the working tree is clean for in-scope files
+- Do NOT continue until the working copy is clean for in-scope files
 
 ### 1.2 Build or Validate Measurement Harness
 
@@ -348,7 +348,7 @@ Present to the user via the platform question tool:
 - **Baseline metrics**: all gate values, diagnostic values, and judge scores (if applicable)
 - **Experiment log location**: show the file path so the user knows where results are saved
 - **Parallel readiness**: probe results, any blockers, mitigations applied
-- **Clean-tree status**: confirmed clean
+- **Working-copy status**: confirmed clean
 - **Workspace budget**: current count and projected usage
 - **Judge budget**: estimated per-experiment judge cost and configured `max_total_cost_usd` cap (or an explicit note that spend is uncapped)
 
@@ -658,7 +658,7 @@ Present post-completion options via the platform question tool:
 
    **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not commit or push from this step — leave the diff on the optimization bookmark for the Create PR option.
 2. **Run `/ce-compound`** to document the winning strategy as an institutional learning.
-3. **Create PR** from the optimization bookmark to the default branch.
+3. **Create PR** from the optimization bookmark to the default bookmark.
 4. **Continue** with more experiments: re-enter Phase 3 with the current state. State re-read first.
 5. **Done** -- leave the optimization bookmark for manual review.
 

@@ -582,7 +582,7 @@ After all actions are executed and the report is generated, handle committing th
 
 Before offering options, check:
 1. Which bookmark/change is current (default bookmark vs feature bookmark/change)
-2. Whether the working tree has other uncommitted changes beyond what compound-refresh modified
+2. Whether the working copy has other uncommitted changes beyond what compound-refresh modified
 3. Recent commit messages to match the repo's commit style
 
 ### Headless mode
@@ -595,7 +595,7 @@ Use sensible defaults — no user to ask:
 | On a feature bookmark/change | Commit as a separate change on the current bookmark/change |
 | JJ operations fail | Include the recommended JJ commands in the report and continue |
 
-Commit only the files that compound-refresh modified — not other dirty files in the working tree.
+Commit only the files that compound-refresh modified — not other dirty files in the working copy.
 
 ### Interactive mode
 
@@ -607,13 +607,13 @@ First, run `jj log -r @ --no-graph -T 'separate(" ", bookmarks, change_id.short(
 2. Commit directly to `{current bookmark/change}`
 3. Don't commit — I'll handle it
 
-**If the current bookmark/change is feature work and the working tree has no unrelated changes:**
+**If the current bookmark/change is feature work and the working copy has no unrelated changes:**
 
 1. Commit to `{current bookmark/change}` as a separate change (recommended)
 2. Create a separate bookmark and commit
 3. Don't commit
 
-**If the current bookmark/change is feature work and the working tree has unrelated changes:**
+**If the current bookmark/change is feature work and the working copy has unrelated changes:**
 
 1. Commit only the compound-refresh changes to `{current bookmark/change}` (selective file selection — other dirty files stay untouched)
 2. Don't commit
@@ -676,4 +676,4 @@ After the refresh report is generated, check whether the project's instruction f
 
    **Skip this step entirely if `CONCEPTS.md` does not exist** — never nag for an artifact the project has not adopted. When skipped, this step produces no output and no edit.
 
-6. **Amend or create a follow-up commit when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, include the newly edited file and either amend the existing change (if still on the same bookmark/change and no push has occurred) or create a small follow-up commit (e.g., `docs: add docs/solutions/ discoverability to AGENTS.md`, or `docs: add CONCEPTS.md discoverability to AGENTS.md`, or a combined message when both edits landed). If Phase 5 already pushed the bookmark to a remote (e.g., the bookmark+PR path), push the follow-up commit as well so the open PR includes the discoverability change. This keeps the working tree clean and the remote in sync at the end of the run. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits uncommitted alongside the other uncommitted refresh changes — no separate commit logic needed.
+6. **Describe the existing change or create a follow-up commit when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, include the newly edited file and either describe/squash into the existing JJ change (if still on the same bookmark/change and no push has occurred) or create a small follow-up commit (e.g., `docs: add docs/solutions/ discoverability to AGENTS.md`, or `docs: add CONCEPTS.md discoverability to AGENTS.md`, or a combined message when both edits landed). If Phase 5 already pushed the bookmark to a remote (e.g., the bookmark+PR path), push the follow-up commit as well so the open PR includes the discoverability change. This keeps the working copy clean and the remote in sync at the end of the run. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits uncommitted alongside the other uncommitted refresh changes — no separate commit logic needed.

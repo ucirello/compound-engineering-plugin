@@ -11,9 +11,9 @@ Start the dev server, open the feature in a browser, and iterate. You use the fe
 
 ## Phase 0: Get on the right bookmark/change
 
-1. If a PR number or bookmark name was provided, check it out (probe for existing worktrees first).
+1. If a PR number or bookmark name was provided, move to that ref safely (probe for existing worktrees first).
 2. If blank, use the current JJ change.
-3. Verify the current bookmark/change is not main/master.
+3. Verify the current bookmark/change is not the default trunk bookmark (`main`, `master`, or the forge default).
 
 ## Phase 1: Start the dev server
 

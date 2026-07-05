@@ -30,8 +30,8 @@ If the user gave a free-form description of the feature, use it as the source of
 
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
-- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current branch). The title and body usually state the user-facing value.
-- **The diff** — `jj diff --from main --to @ --summary` and skim notable changes to ground the claim in what actually changed.
+- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current bookmark/change when associated with a PR). The title and body usually state the user-facing value.
+- **The diff** — resolve the default trunk bookmark (`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, fallback `main`/`master` via `jj bookmark list --all-remotes`), then run `jj diff --from <trunk-ref> --to @ --summary` and skim notable changes to ground the claim in what actually changed.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
 - **Recent changes** — `jj log -r 'ancestors(@, 15)' --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'` for the arc of the change.
 

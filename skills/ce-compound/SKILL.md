@@ -44,9 +44,9 @@ Headless mode is intended for automations and skill-to-skill invocation where no
 
 If the line above resolved to a plain bookmark or change ID, use it in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving it. If it still contains a backtick command string or is empty, derive the current bookmark/change at runtime.
 
-**Repo root (pre-resolved):** !`jj workspace root 2>/dev/null || pwd`
+**Repo root (pre-resolved):** !`jj root 2>/dev/null || pwd`
 
-If the line above resolved to an absolute path, use it as the session-history repo filter in Phase 1. If it still contains a backtick command string or is empty, derive the repo root at runtime with `jj workspace root 2>/dev/null || pwd`.
+If the line above resolved to an absolute path, use it as the session-history repo filter in Phase 1. If it still contains a backtick command string or is empty, derive the repo root at runtime with `jj root 2>/dev/null || pwd`.
 
 ## Support Files
 
@@ -268,7 +268,7 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
 
    ```bash
    if [ -n "${CLAUDE_SKILL_DIR}" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/session-history/discover-sessions.sh" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/session-history/extract-metadata.py" ]; then
-      REPO_ROOT=$(jj workspace root 2>/dev/null || pwd)
+      REPO_ROOT=$(jj root 2>/dev/null || pwd)
      REPO_NAME=$(basename "$REPO_ROOT")
      SCAN_DAYS="7"
      bash "${CLAUDE_SKILL_DIR}/scripts/session-history/discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS" --cwd "$REPO_ROOT" | tr '\n' '\0' | xargs -0 python3 "${CLAUDE_SKILL_DIR}/scripts/session-history/extract-metadata.py" --cwd-filter "$REPO_ROOT"
@@ -635,7 +635,7 @@ Subagent Results:
   ✓ Context Analyzer: Identified performance_issue in brief_system, category: performance-issues/
   ✓ Solution Extractor: 3 code fixes, prevention strategies
   ✓ Related Docs Finder: 2 related issues
-  ✓ Session History: 3 prior sessions on same branch, 2 failed approaches surfaced
+   ✓ Session History: 3 prior sessions on same bookmark/work context, 2 failed approaches surfaced
 
 Specialized Agent Reviews (Auto-Triggered):
   ✓ performance-oracle: Validated query optimization approach

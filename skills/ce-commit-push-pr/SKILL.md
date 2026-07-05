@@ -29,7 +29,7 @@ description: Commit, push, and open a PR. Use when asked to ship/open a PR, or f
 **Recent commits:**
 !`jj log --no-graph -n 10 -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'`
 
-**Remote default branch:**
+**Remote default bookmark:**
 !`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo 'DEFAULT_BRANCH_UNRESOLVED'`
 
 **Existing PR check:**
@@ -43,15 +43,15 @@ printf '=== STATUS ===\n'; jj status; printf '\n=== DIFF ===\n'; jj diff; printf
 
 ---
 
-## Step 1: Resolve branch and PR state
+## Step 1: Resolve bookmark and PR state
 
-The remote default branch should be a branch name such as `main`. If it returned `DEFAULT_BRANCH_UNRESOLVED`, try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If both fail, fall back to `main`.
+The remote default bookmark is usually the forge's default ref name, such as `main`. If it returned `DEFAULT_BRANCH_UNRESOLVED`, try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If both fail, fall back to `main`.
 
-Branch routing:
+Bookmark routing:
 
-- **No current bookmark** — automatically create a feature bookmark at `@` before continuing. Derive the bookmark name from the change content, run `jj bookmark create <branch-name> -r @`, re-read `jj bookmark list --revisions @`, and use that result for the rest of the workflow. Do not ask whether to create the bookmark — invoking the full commit/push/PR workflow is already confirmation that the work should become branch-backed. If the derived bookmark name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
-- **On default bookmark with work to do** (uncommitted, unpushed, or no upstream) — automatically create a feature bookmark (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles bookmark creation safely. Do not ask whether to branch — committing on the default bookmark is not an option here.
-- **On default bookmark with no work** — report no feature branch work and stop.
+- **No current bookmark** — automatically create a feature bookmark at `@` before continuing. Derive the bookmark name from the change content, run `jj bookmark create <bookmark-name> -r @`, re-read `jj bookmark list --revisions @`, and use that result for the rest of the workflow. Do not ask whether to create the bookmark — invoking the full commit/push/PR workflow is already confirmation that the work should become bookmark-backed. If the derived bookmark name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
+- **On default bookmark with work to do** (uncommitted, unpushed, or no upstream) — automatically create a feature bookmark (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles bookmark creation safely. Do not ask whether to create a separate bookmark — committing on the default bookmark is not an option here.
+- **On default bookmark with no work** — report no feature-bookmark work and stop.
 - **Feature bookmark** — continue.
 
 Note the existing PR URL and body from the PR check if `state: OPEN`. Step 5 uses the URL to route between new-PR and existing-PR application. Step 4 uses the existing body as preservation context when rewriting.
@@ -78,7 +78,7 @@ EOF
 Then push:
 
 ```bash
-jj git push --bookmark <branch-name>
+jj git push --bookmark <bookmark-name>
 ```
 
 If the working copy is clean and all commits are already pushed, this step is a no-op.
@@ -93,7 +93,7 @@ If the working copy is clean and all commits are already pushed, this step is a 
 2. **User explicitly asks to include evidence but has not supplied it** — ask for the URL/markdown/path, or tell them to use the current harness's capture flow and return with the artifact. Do not launch another CE skill.
 3. **Agent judgment on authored changes** — if you authored the commits and know the change is non-observable (internal plumbing, type-only, backend refactor without user-facing effect, docs/markdown/changelog/CI/test-only, pure refactors), skip evidence handling without asking.
 
-Otherwise, if the branch diff changes observable behavior (UI, CLI output, API behavior with runnable code, generated artifacts, workflow output), include a concise validation note in the PR body describing what was exercised and how it behaved. If no real run was possible because of unavailable credentials, paid services, deploy-only infrastructure, hardware, or missing local setup, say that plainly in the validation section.
+Otherwise, if the bookmark diff changes observable behavior (UI, CLI output, API behavior with runnable code, generated artifacts, workflow output), include a concise validation note in the PR body describing what was exercised and how it behaved. If no real run was possible because of unavailable credentials, paid services, deploy-only infrastructure, hardware, or missing local setup, say that plainly in the validation section.
 
 Do not block PR creation solely because no visual artifact exists. Test output and manual validation notes are acceptable validation evidence, but do not label test output as "Demo" or "Screenshots."
 

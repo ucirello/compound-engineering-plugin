@@ -228,8 +228,8 @@ describe("html-rendering.md reference content invariants", () => {
       "Reference must require hyperlinking entries in the Sources & References section.",
     ).toBe(true)
     expect(
-      /git remote get-url origin/.test(REFERENCE),
-      "Reference must name `git remote get-url origin` as the way to resolve the repo's GitHub URL at compose time.",
+      /jj git remote list/.test(REFERENCE),
+      "Reference must name `jj git remote list` as the way to resolve the repo's GitHub URL at compose time.",
     ).toBe(true)
     expect(
       /blob\/main/.test(REFERENCE),

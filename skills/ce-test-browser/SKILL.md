@@ -30,7 +30,7 @@ command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 
 If not installed, tell the user: "`agent-browser` is not installed. Run `/ce-setup` for the current install command, then install agent-browser and retry." Then stop — this skill cannot function without it.
 
-This also requires a git repository with changes to test.
+This also requires a JJ repository with changes to test.
 
 ### 2. Determine Test Scope
 
@@ -41,12 +41,12 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj diff --name-only main...HEAD
 ```
 
 **If branch name provided:**
 ```bash
-git diff --name-only main...[branch]
+jj diff --name-only main...[branch]
 ```
 
 ### 3. Map Changed Files to Routes

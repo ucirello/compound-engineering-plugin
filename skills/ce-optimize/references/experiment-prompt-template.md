@@ -57,7 +57,7 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 4. Do NOT run the measurement harness (the orchestrator handles this)
 5. Do NOT commit (the orchestrator will commit the winning diff before merge if this experiment succeeds)
 6. Do NOT modify files outside the mutable scope
-7. When done, run `jj diff --summary` so the orchestrator can see your changes
+7. When done, run `jj diff --stat` so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.

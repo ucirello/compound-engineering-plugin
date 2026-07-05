@@ -7,18 +7,18 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working copy changes.** If there are working-copy changes (`jj diff --from @- --to @` is non-empty), review those.
-3. **Unpublished changes vs base bookmark/revision.** If the working copy is clean, review `jj diff --from 'latest(ancestors(@) & ancestors(<base>))' --to @` where `<base>` is the default bookmark/revision.
+2. **Working copy changes.** If there are unstaged or staged changes (`jj diff` is non-empty), review those.
+3. **Unpublished changes vs base bookmark.** If the working copy is clean, review `jj diff --from <common-ancestor> --to @`, where `<common-ancestor>` is the latest shared ancestor of `@` and the default bookmark.
 
 The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run JJ commands yourself unless PR scope mode requires it (below).
 
-## Remote scope (`pr-remote` and `remote-bookmark`)
+## Remote scope (`pr-remote` and `bookmark-remote`)
 
-When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>remote-bookmark</pr-scope-mode>`, the working copy is **not** the reviewed head. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark/revision or PR under review.
+When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>`, the working tree is **not** the reviewed head. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the branch or PR under review.
 
 Instead:
 
-- Prefer `jj file show -r <remote-head-revision> <path>` when `<pr-head-revision>` or `<remote-head-revision>` is provided in context.
+- Prefer `jj file show -r <remote-head-ref> <path>` when `<pr-head-ref>` or `<bookmark-head-ref>` is provided in context.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 

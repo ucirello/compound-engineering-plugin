@@ -80,8 +80,8 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 
 | field | meaning |
 | --- | --- |
-| `fix_ref` | Reference to the fix (PR/JJ change/issue link). |
-| `verified_landed_commit_id` | JJ change/commit ID verified on the trunk/default bookmark. |
+| `fix_ref` | Reference to the fix (PR/commit/issue link). |
+| `verified_merge_sha` | The merge commit SHA the fix landed on. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
 `validate` scans every item and downgrades any `closed` item missing (or with a
@@ -145,8 +145,8 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-commit mode (default) | Single writer **per JJ workspace**. | The lease serializes overlapping sweeps in the same working copy (e.g. a cron sweep and a manual one). The file is written in-tree (and may be committed locally). No cross-machine guarantee. |
-| pushed-shared-bookmark | One writer **per repo**. | The state file lives on a shared bookmark multiple workspaces/clones push to. `lease-acquire` must be committed, pushed with `jj git push`, and confirmed (`jj git fetch` back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
+| local-commit mode (default) | Single writer **per checkout**. | The lease serializes overlapping sweeps in the same working tree (e.g. a cron sweep and a manual one). The file is written in-tree (and may be committed locally). No cross-machine guarantee. |
+| pushed-shared-branch | One writer **per repo**. | The state file lives on a shared branch multiple checkouts push to. `lease-acquire` must be committed, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.

@@ -17,7 +17,7 @@ For user-facing bugs, run an extra before/after pass before writing the mechanis
 
 Two modes:
 
-- **Current-bookmark mode** (default) — describe `@` vs the repo's default base.
+- **Current-bookmark mode** (default) — describe the current JJ change/bookmark stack vs the repo's default base.
 - **PR mode** — describe a specific PR. Triggered when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
@@ -26,22 +26,22 @@ For PR mode, fetch metadata first:
 gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
 ```
 
-If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>`. Prefer the `gh` fallback below for the PR diff and changes because the PR head commit ID/OID may not be directly fetchable through JJ.
+If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<revision-or-bookmark>`) -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> try default bookmark candidates from `jj bookmark list`. If none resolve, ask the user. `<head>` is `@`.
+For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> JJ tracked default bookmark (`main@origin`, `master@origin`, or `develop@origin`) -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` mapped to `<name>@origin` or `<name>`. If none resolve, ask the user. `<head>` is `@` or the current feature bookmark.
 
 **Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `jj git remote list`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
 
 ```bash
-jj git fetch --remote <base-remote> --branch <base>
-jj log  -r '<base>@<base-remote>..<head>' --no-graph --template 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
-jj log  -r '<base>@<base-remote>..<head>' --no-graph --template 'commit_id.short() ++ " " ++ description ++ "\n"'   # full descriptions for related-reference discovery
-jj diff --from '<base>@<base-remote>' --to '<head>'
+jj git fetch --remote <base-remote>
+jj log -r "<base>..<head>" --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+jj log -r "<base>..<head>" --no-graph -T 'description ++ "\n"'   # full descriptions for related-reference discovery
+jj diff --from <base> --to <head>
 ```
 
 If the change list is empty, report "No changes to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local JJ remote interop can't reach the remote bookmarks/PR commits (fork PR with no matching remote, shallow clone, offline, or histories with no JJ common ancestor). For GHES configurations that reject direct commit fetches but allow PR API access, use the `gh` fallback rather than local remote plumbing.
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local JJ cannot reach the refs (fork PR with no matching remote, shallow clone, offline, or unrelated histories).
 
 Note in the user-facing summary when the API fallback was used.
 
@@ -49,7 +49,7 @@ Note in the user-facing summary when the API fallback was used.
 
 ## Step A: Size the description
 
-Match weight to weight. When in doubt, shorter wins. Subtract fix-up commits (review fixes, lint, rebase resolutions) when sizing — they're invisible to the reader. Large PRs need more selectivity, not more content.
+Match weight to weight. When in doubt, shorter wins. Subtract fix-up changes (review fixes, lint, rebase resolutions) when sizing — they're invisible to the reader. Large PRs need more selectivity, not more content.
 
 | Change profile | Description approach |
 |---|---|
@@ -71,14 +71,14 @@ For small + non-trivial bugfixes, the 3-5 sentence target still needs a user-vis
 - Type by intent, not file extension. When `fix` and `feat` both seem to fit, default to `fix` — adding code to remedy missing behavior is `fix`. Reserve `feat` for capabilities the user could not previously accomplish. Use `refactor`/`docs`/`chore`/`perf`/`test` when more precise.
 - Scope (optional): narrowest useful label. Omit when no single label adds clarity.
 - Description: imperative, lowercase, under 72 chars, no trailing period.
-- Match repo conventions visible in recent commits.
+- Match repo conventions visible in recent JJ change history.
 - **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation** — they trigger automated major-version bumps.
 
 ---
 
 ## Step B1: Resolve related work references
 
-Before writing the body, make an explicit related-reference pass. Gather candidate work-item references from the user prompt, caller handoff, bookmark name, full change descriptions (surfaced by GitHub/JJ interop), existing PR body, PR template, plan/debug notes, and visible URLs or IDs already in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
+Before writing the body, make an explicit related-reference pass. Gather candidate work-item references from the user prompt, caller handoff, bookmark name, full change descriptions, existing PR body, PR template, plan/debug notes, and visible URLs or IDs already in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
 
 Classify each candidate as:
 

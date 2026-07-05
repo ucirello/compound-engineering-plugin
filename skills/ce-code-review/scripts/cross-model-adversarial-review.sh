@@ -7,11 +7,11 @@
 # (references/personas/adversarial-reviewer.md) so it is genuinely "the adversarial
 # persona, on a different model."
 #
-# Usage:  cross-model-adversarial-review.sh <peer: codex|claude> <base-revision> <run-dir>
+# Usage:  cross-model-adversarial-review.sh <peer: codex|claude> <base-ref> <run-dir>
 #   <peer>     codex  -> use Codex (when the host is Claude or Cursor)
 #              claude -> use Claude (when the host is Codex)
-#   <base-revision> the diff base (e.g. a JJ common-ancestor revision or bookmark); the peer reviews
-#                   only `jj diff --from <base-revision> --to @` in the current repository
+#   <base-ref> the diff base (e.g. a merge-base SHA or branch); the peer reviews
+#              only `jj diff --from <base-ref> --to @` in the current repository
 #   <run-dir>  an existing dir; output is written to <run-dir>/adversarial-<peer>.json
 #
 # Self-locates its sibling reference files via BASH_SOURCE (NOT the CWD, which is
@@ -33,7 +33,7 @@ skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no o
 
 # --- validate inputs -------------------------------------------------------
 case "$PEER" in codex|claude) ;; *) skip "invalid peer '${PEER:-<empty>}' (want codex|claude); skipping cross-model pass" ;; esac
-[ -n "$BASE" ]                  || skip "no base revision given; skipping"
+[ -n "$BASE" ]                  || skip "no base ref given; skipping"
 [ -n "$RUN_DIR" ] && [ -d "$RUN_DIR" ] || skip "run-dir '${RUN_DIR:-<empty>}' is not a directory; skipping"
 command -v "$PEER" >/dev/null 2>&1 || skip "$PEER CLI not installed; skipping"
 command -v jq      >/dev/null 2>&1 || skip "jq not installed; skipping"
@@ -69,12 +69,12 @@ trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 } > "$PROMPT_FILE"
 # Per-peer diff delivery (composed below): codex fetches its own diff inside its
 # read-only sandbox; claude is hard-denied shell (see below), so it gets the diff
-# embedded and needs no JJ.
+# embedded and needs no JJ shell access.
 if [ "$PEER" = codex ]; then
   printf '\nRun: jj diff --from %q --to @ — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
 else
   { printf '\nReview ONLY the change below (the output of `jj diff --from %q --to @`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
-    printf '\n=== BEGIN DIFF ===\n'; jj --repository "$REPO_ROOT" diff --from "$BASE" --to @; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
+    printf '\n=== BEGIN DIFF ===\n'; jj -R "$REPO_ROOT" diff --from "$BASE" --to @; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
 fi
 
 # --- run the peer: idle-timeout for streaming codex, hard cap for claude ----

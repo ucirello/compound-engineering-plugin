@@ -19,7 +19,7 @@ const SCRIPT = path.join(
 )
 
 function jj(cwd: string, ...args: string[]): string {
-  const r = spawnSync("jj", args, { cwd, encoding: "utf8" })
+  const r = spawnSync("jj", ["--no-pager", ...args], { cwd, encoding: "utf8" })
   if (r.status !== 0) {
     throw new Error(`jj ${args.join(" ")} failed: ${r.stderr}`)
   }
@@ -38,16 +38,18 @@ function run(
   }
 }
 
-/** Fresh JJ repo with a manifest + README, one commit. Unique root SHA. */
+/** Fresh JJ repo with a manifest + README committed, then an empty @. */
 function makeRepo(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "repo-profile-"))
-  jj(dir, "git", "init", "--quiet")
+  jj(dir, "git", "init")
+  jj(dir, "config", "set", "--repo", "user.email", "test@example.com")
+  jj(dir, "config", "set", "--repo", "user.name", "Test")
   writeFileSync(
     path.join(dir, "package.json"),
     '{"name":"x","version":"1.0.0"}\n',
   )
   writeFileSync(path.join(dir, "README.md"), "# x\n")
-  jj(dir, "commit", "--quiet", "-m", "init")
+  jj(dir, "commit", "-m", "init")
   return dir
 }
 
@@ -94,13 +96,13 @@ describe("repo-profile-cache helper", () => {
     expect(getHitProfile(res.stdout)).toEqual(VALID_PROFILE)
   })
 
-  test("dirty NON-input file (untracked source) safely misses under JJ @ key", () => {
+  test("dirty NON-input file (untracked source) stays HIT", () => {
     const dir = makeRepo()
     putProfile(dir)
     mkdirSync(path.join(dir, "src"))
     writeFileSync(path.join(dir, "src", "app.js"), "console.log(1)\n")
     const res = run(dir, "get")
-    expect(res.stdout.startsWith("MISS\n")).toBe(true)
+    expect(res.stdout.startsWith("HIT\n")).toBe(true)
   })
 
   test("modified manifest → MISS (cardinal-rule input guard)", () => {
@@ -153,20 +155,19 @@ describe("repo-profile-cache helper", () => {
     expect(res.stdout.startsWith("MISS\n")).toBe(true)
   })
 
-  test("non-git directory → NO-CACHE", () => {
+  test("non-JJ directory → NO-CACHE", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "repo-profile-nogit-"))
     const res = run(dir, "get")
     expect(res.code).toBe(0)
     expect(res.stdout.trim()).toBe("NO-CACHE")
   })
 
-  test("root history yields a deterministic single-root path", () => {
+  test("JJ root history yields a deterministic single-root path", () => {
     const dir = makeRepo()
     const res = run(dir, "get")
     expect(res.code).toBe(0)
     const writePath = res.stdout.split("\n")[1]
-    // The <root-sha> path component must be a single 40-hex SHA, not a
-    // newline-joined pair from multiple roots.
+    // The <root-sha> path component must be a single 40-hex SHA.
     const rootComponent = writePath.split("/repo-profile/")[1].split("/")[0]
     expect(rootComponent).toMatch(/^[0-9a-f]{40}$/)
   })
@@ -209,7 +210,7 @@ describe("repo-profile-cache helper", () => {
 })
 
 describe("repo-profile-cache helper — review-driven invalidation cases", () => {
-  test("renaming a profile input AWAY → MISS", () => {
+  test("renaming a profile input AWAY → MISS (both rename endpoints count)", () => {
     const dir = makeRepo()
     putProfile(dir)
     renameSync(path.join(dir, "package.json"), path.join(dir, "pkg.json"))
@@ -217,22 +218,22 @@ describe("repo-profile-cache helper — review-driven invalidation cases", () =>
     expect(res.stdout.startsWith("MISS\n")).toBe(true)
   })
 
-  test("renaming a NON-input file → safely misses under JJ @ key", () => {
+  test("renaming a NON-input file → stays HIT", () => {
     const dir = makeRepo()
     mkdirSync(path.join(dir, "src"))
     writeFileSync(path.join(dir, "src", "lib.js"), "export const x = 1\n")
-    jj(dir, "commit", "--quiet", "-m", "add lib")
+    jj(dir, "commit", "-m", "add lib")
     putProfile(dir)
     renameSync(path.join(dir, "src", "lib.js"), path.join(dir, "src", "lib2.js"))
-    expect(run(dir, "get").stdout.startsWith("MISS\n")).toBe(true)
+    expect(run(dir, "get").stdout.startsWith("HIT\n")).toBe(true)
   })
 
-  test("nested (subdir) instruction file safely misses under JJ @ key", () => {
+  test("nested (subdir) instruction file stays HIT; only root invalidates", () => {
     const dir = makeRepo()
     putProfile(dir)
     mkdirSync(path.join(dir, "sub"))
     writeFileSync(path.join(dir, "sub", "AGENTS.md"), "# nested\n")
-    expect(run(dir, "get").stdout.startsWith("MISS\n")).toBe(true)
+    expect(run(dir, "get").stdout.startsWith("HIT\n")).toBe(true)
   })
 
   test("CI/config prefixes invalidate; non-workflow .github file does not", () => {
@@ -244,13 +245,12 @@ describe("repo-profile-cache helper — review-driven invalidation cases", () =>
       writeFileSync(path.join(dir, p), "x\n")
       expect(run(dir, "get").stdout.startsWith("MISS\n")).toBe(true)
     }
-    // a .github file NOT under workflows/ is not an input, but the JJ @ key
-    // still changes, so the helper safely misses instead of serving stale data.
+    // a .github file NOT under workflows/ is not an input (HIT)
     const dir = makeRepo()
     putProfile(dir)
     mkdirSync(path.join(dir, ".github"))
     writeFileSync(path.join(dir, ".github", "ISSUE_TEMPLATE.md"), "x\n")
-    expect(run(dir, "get").stdout.startsWith("MISS\n")).toBe(true)
+    expect(run(dir, "get").stdout.startsWith("HIT\n")).toBe(true)
   }, 30000)
 
   test("non-JS ecosystem + monorepo + IaC + deploy inputs invalidate", () => {
@@ -278,14 +278,14 @@ describe("repo-profile-cache helper — review-driven invalidation cases", () =>
     }
   }, 30000)
 
-  test("revert of a dirtied input safely misses under JJ @ key", () => {
+  test("revert of a dirtied input restores the HIT (recompute determinism)", () => {
     const dir = makeRepo()
     const orig = '{"name":"x","version":"1.0.0"}\n'
     putProfile(dir)
     writeFileSync(path.join(dir, "package.json"), '{"name":"x","version":"9"}\n')
     expect(run(dir, "get").stdout.startsWith("MISS\n")).toBe(true)
-    writeFileSync(path.join(dir, "package.json"), orig) // revert content, new JJ @ identity
-    expect(run(dir, "get").stdout.startsWith("MISS\n")).toBe(true)
+    writeFileSync(path.join(dir, "package.json"), orig) // revert → clean again
+    expect(run(dir, "get").stdout.startsWith("HIT\n")).toBe(true)
   })
 
   test("cached doc with a non-object profile → MISS (get-side shape guard)", () => {

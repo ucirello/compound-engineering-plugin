@@ -103,15 +103,15 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj root`).
+1. Worktree root (resolve via `jj root`).
 2. `docs/DESIGN.md`.
 3. `.compound-engineering/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to a main workspace. Users
-working from a JJ workspace who want HTML defaults can add DESIGN.md to the
-workspace.
+Worktree-root only — do not fall through to a main checkout. Users
+working from a worktree who want HTML defaults can add DESIGN.md to the
+worktree.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -230,7 +230,7 @@ every entry into a browser or IDE.
 Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-jj git remote list
+jj git remote list | awk '$1 == "origin" {print $2; exit}'
 ```
 
 Apply linking to three reference shapes:

@@ -6,7 +6,7 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current bookmark:
+If no PR number was provided, detect from the current branch:
 ```bash
 gh pr view --json number -q .number
 ```
@@ -128,25 +128,24 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the change description: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
 ## 6. Commit and Push
 
-1. Ensure the JJ change contains only files reported by fixers, then describe it with a message referencing the PR. JJ has no staging area, so inspect the current diff and isolate fixer files with `jj split <files_changed>` when unrelated edits are present; never discard unrelated edits to emulate staging:
+1. Stage only files reported by fixers and commit with a message referencing the PR:
 
 ```bash
-jj diff --summary
-jj split [files_changed, if unrelated edits are present]
-jj describe -m "Address PR review feedback (#PR_NUMBER)
+jj split/squash explicit files into the current change, then [files from fixer summaries]
+jj commit -m "Address PR review feedback (#PR_NUMBER)
 
 - [list changes from fixer summaries]"
 ```
 
-2. Push the bookmark associated with the current change:
+2. Push to remote:
 ```bash
-jj git push --bookmark <bookmark-name>
+jj git push
 ```
 
 ## 7. Reply and Resolve

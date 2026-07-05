@@ -27,7 +27,7 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, project root not readable).
+# genuine operational failures (missing `jq`, unreadable current directory).
 
 set -u
 

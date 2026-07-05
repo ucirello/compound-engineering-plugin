@@ -179,8 +179,9 @@ describe("resolve-package-manager.sh", () => {
 
   // --- Error cases ---
 
-  test("plain directory without package.json -> __NO_PACKAGE_JSON__, exit 0", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ce-polish-pkgmgr-nojj-"))
+  test("plain directory with no positional arg -> current directory fallback", async () => {
+    // Create a plain directory (not a JJ repo)
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ce-polish-pkgmgr-nogit-"))
     const result = await runCommand(["bash", resolvePackageManager], dir)
     expect(result.exitCode).toBe(0)
     expect(result.stdout.trim()).toBe("__NO_PACKAGE_JSON__")

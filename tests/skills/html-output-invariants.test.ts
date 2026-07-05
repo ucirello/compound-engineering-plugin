@@ -116,7 +116,7 @@ describe("html-rendering.md reference content invariants", () => {
 
   test("DESIGN.md discovery paths in worktree-root order", () => {
     expect(/DESIGN\.md discovery/i.test(REFERENCE)).toBe(true)
-    expect(/workspace root|jj root/i.test(REFERENCE)).toBe(true)
+    expect(/worktree root|git rev-parse --show-toplevel/i.test(REFERENCE)).toBe(true)
     expect(/docs\/DESIGN\.md/.test(REFERENCE)).toBe(true)
     expect(/\.compound-engineering\/DESIGN\.md/.test(REFERENCE)).toBe(true)
   })

@@ -9,7 +9,7 @@ The orchestrator passes a `<standards-paths>` block listing the file paths of al
 If no `<standards-paths>` block is present (standalone usage), discover the paths yourself:
 
 1. Use the native file-search/glob tool to find all `CLAUDE.md` and `AGENTS.md` files in the repository.
-2. For each changed file, check its ancestor directories up to the repo root for standards files. A file like root `AGENTS.md` applies to the whole workspace, while `skills/AGENTS.md` applies to all changes under `skills/`.
+2. For each changed file, check its ancestor directories up to the repo root for standards files. A file like root `AGENTS.md` applies to the whole checkout, while `skills/AGENTS.md` applies to all changes under `skills/`.
 3. Read each relevant standards file found.
 
 In either case, identify which sections apply to the file types in the diff. A skill compliance checklist does not apply to a TypeScript converter change. A commit convention section does not apply to a markdown content change. Match rules to the files they govern.

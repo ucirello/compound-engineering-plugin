@@ -40,8 +40,19 @@ detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-repo_root=$(jj workspace root 2>/dev/null || true)
+repo_root=$(jj root 2>/dev/null || true)
 in_repo=$([ -n "$repo_root" ] && echo "yes" || echo "no")
+
+is_local_config_ignored() {
+  local root="$1"
+  for ignore_file in "$root/.ignore" "$root/.gitignore"; do
+    [ -f "$ignore_file" ] || continue
+    if grep -Eq '^[[:space:]]*\.compound-engineering/(\*\.local\.yaml|config\.local\.yaml)[[:space:]]*$' "$ignore_file"; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 # =====================================================
 #  Check optional capabilities
@@ -81,12 +92,10 @@ if [ "$in_repo" = "yes" ]; then
   local_cfg="missing"
   if [ -e "$repo_root/.compound-engineering/config.local.yaml" ]; then
     local_cfg="present"
-    if jj --repository "$repo_root" file list .compound-engineering/config.local.yaml 2>/dev/null | grep -qx '.compound-engineering/config.local.yaml'; then
-      repo_cfg_gitignore="missing"
-    elif jj --repository "$repo_root" status .compound-engineering/config.local.yaml 2>/dev/null | grep -q '^?'; then
-      repo_cfg_gitignore="missing"
-    else
+    if is_local_config_ignored "$repo_root"; then
       repo_cfg_gitignore="ok"
+    else
+      repo_cfg_gitignore="missing"
     fi
   fi
 
@@ -141,9 +150,9 @@ if [ "$in_repo" = "yes" ]; then
   if [ "$local_cfg" = "present" ]; then
     ok ".compound-engineering/config.local.yaml exists"
     if [ "$repo_cfg_gitignore" = "ok" ]; then
-      ok "Local config is ignored by repository rules"
+      ok "Local config is ignored"
     else
-      warn "Local config is not safely ignored by repository rules"
+      warn "Local config is not safely ignored"
       project_issues=$((project_issues + 1))
     fi
   else

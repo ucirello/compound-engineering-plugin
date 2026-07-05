@@ -6,7 +6,7 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current branch:
+If no PR number was provided, detect from the current bookmark/PR context:
 ```bash
 gh pr view --json number -q .number
 ```
@@ -134,7 +134,7 @@ Record the validation outcome (command run, pass/fail counts, any pre-existing f
 
 ## 6. Commit and Push
 
-1. Stage only files reported by fixers and commit with a message referencing the PR:
+1. Isolate only files reported by fixers into the current JJ change and commit with a message referencing the PR:
 
 ```bash
 jj split/squash explicit files into the current change, then [files from fixer summaries]

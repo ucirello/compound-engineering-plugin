@@ -18,7 +18,7 @@ A single JSON object, versioned by `profile_schema_version`:
 
 Never read from the cache — recompute every run:
 
-- The `docs/solutions/` enumeration (a new learning, even uncommitted, must be visible — re-globbing it is ~free and the match reads files fresh anyway).
+- The `docs/solutions/` enumeration (a new or changed learning in the working-copy change must be visible — re-globbing it is ~free and the match reads files fresh anyway).
 - Subdirectory-scoped instruction files (area-scoped `CLAUDE.md`/`AGENTS.md`).
 - All question-specific grounding: a candidate's call-sites/footprint, prior-decision matches, feature patterns, JJ/VCS history of touched files, tracker/PR activity, external research.
 

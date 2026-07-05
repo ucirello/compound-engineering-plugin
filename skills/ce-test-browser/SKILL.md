@@ -1,7 +1,7 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current JJ change/bookmark or PR.
+argument-hint: "[PR number, bookmark name, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
@@ -41,10 +41,10 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-jj diff --name-only main...HEAD
+jj diff --name-only --from <default-bookmark-or-merge-base> --to @
 ```
 
-**If branch name provided:**
+**If bookmark/ref name provided:**
 ```bash
 jj diff --name-only main...[branch]
 ```
@@ -221,7 +221,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [bookmark-or-ref] / current change
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -249,7 +249,7 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test current bookmark/change changes (auto-detects port)
 /ce-test-browser
 
 # Test specific PR

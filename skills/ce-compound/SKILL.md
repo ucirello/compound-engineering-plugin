@@ -42,7 +42,7 @@ Headless mode is intended for automations and skill-to-skill invocation where no
 
 **JJ bookmark (pre-resolved):** !`jj log -r @ --no-graph -T 'bookmarks ++ "\n"' 2>/dev/null || true`
 
-If the line above resolved to a plain branch name (like `feat/my-branch`), use it in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving it. If it still contains a backtick command string or is empty, derive the branch at runtime.
+If the line above resolved to a plain bookmark name (like `feat/my-bookmark`), use it in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving it. If it still contains a backtick command string or is empty, derive the current bookmark at runtime.
 
 **Repo root (pre-resolved):** !`jj root 2>/dev/null || pwd`
 

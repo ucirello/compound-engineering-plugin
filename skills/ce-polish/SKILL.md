@@ -2,7 +2,7 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, branch name, or blank for current branch]"
+argument-hint: "[PR number, bookmark name, or blank for current bookmark/change]"
 ---
 
 # Polish
@@ -11,9 +11,9 @@ Start the dev server, open the feature in a browser, and iterate. You use the fe
 
 ## Phase 0: Get on the right branch
 
-1. If a PR number or branch name was provided, check it out (probe for existing worktrees first).
-2. If blank, use the current branch.
-3. Verify the current branch is not main/master.
+1. If a PR number or bookmark name was provided, target that PR/bookmark in an appropriate JJ workspace (probe for existing workspaces first).
+2. If blank, use the current bookmark/change.
+3. Verify the current bookmark is not the default bookmark (`main`/`master` or repo default).
 
 ## Phase 1: Start the dev server
 

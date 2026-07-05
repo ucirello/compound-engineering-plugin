@@ -8,7 +8,7 @@ Literal-prefix tokens are consumed and stripped; everything else is the request 
 
 | Token | Example | Effect |
 |-------|---------|--------|
-| `diff:<ref-or-range>` | `diff:abc1234`, `diff:main..HEAD`, `diff:PR#42` | Forces diff mode on that change |
+| `diff:<ref-or-range>` | `diff:abc1234`, `diff:main..@`, `diff:PR#42` | Forces diff mode on that change |
 | `since:<window-or-ref>` | `since:monday`, `since:7d`, `since:v2.1.0` | Forces recap mode over that window |
 | `output:<md\|html>` | `output:md` | Overrides the artifact format (default `html`) |
 

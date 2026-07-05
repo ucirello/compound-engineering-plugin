@@ -86,13 +86,13 @@ jj bisect bad                    # current commit is broken
 jj bisect good <known-good-ref> # a commit where it worked
 # jj bisect will checkout a middle commit — test it
 # mark as good or bad, repeat until the breaking commit is found
-jj bisect reset                  # return to original branch when done
+jj bisect reset                  # return to original JJ workspace/bookmark when done
 ```
 
 For automated bisection with a test script:
 
 ```bash
-jj bisect start HEAD <known-good-ref>
+jj bisect start @ <known-good-ref>
 jj bisect run <test-command>
 ```
 

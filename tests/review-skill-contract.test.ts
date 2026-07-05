@@ -22,7 +22,7 @@ describe("ce-code-review contract", () => {
     expect(content).toContain("/tmp/compound-engineering/ce-code-review/<run-id>/")
     expect(content).toMatch(/Never push, open PRs, or file tickets/i)
     expect(content).toContain("run artifact")
-    expect(content).toMatch(/check out the PR branch/i)
+    expect(content).toMatch(/move to the PR head/i)
     expect(content).toMatch(/Never run `gh pr checkout`/i)
     expect(content).not.toContain("Which severities should I fix?")
   })
@@ -57,9 +57,9 @@ describe("ce-code-review contract", () => {
     expect(content).toMatch(/never mutates the tree/i)
     expect(content).toMatch(/default \(interactive\).{0,4}mode the review applies/i)
 
-    // Never checkout — explicit mutations only
+    // Never mutate workspace/bookmark selection — explicit mutations only
     expect(content).toMatch(/Never run `gh pr checkout`/i)
-    expect(content).toMatch(/Do \*\*not\*\* check out/i)
+    expect(content).toMatch(/Do \*\*not\*\* move to the PR head/i)
 
     // Conflicting arguments
     expect(content).toContain("**Conflicting arguments:**")
@@ -76,7 +76,7 @@ describe("ce-code-review contract", () => {
 
     // Action Routing: autofix_class is signal only; mode:agent never mutates, default applies
     expect(content).toContain("## Action Routing")
-    expect(content).toMatch(/this skill does not mutate the checkout/i)
+    expect(content).toMatch(/it never mutates the tree/i)
     expect(content).toContain("references/action-class-rubric.md")
 
     // No post-review triage — report is the complete handoff
@@ -106,7 +106,7 @@ describe("ce-code-review contract", () => {
     expect(subagentTemplate).toMatch(/observable behavior/i)
     expect(subagentTemplate).toMatch(/required/i)
 
-    expect(content).toContain("Do not offer push/PR/create-branch next steps from this skill.")
+    expect(content).toContain("Do not offer push/PR/create-bookmark next steps from this skill.")
   })
 
   test("keeps findings schema and downstream docs aligned", async () => {
@@ -645,7 +645,7 @@ describe("ce-code-review contract", () => {
 
       // Accept-and-proceed path threads findings into the PR description.
       expect(workflow).toContain("Known Residuals")
-      expect(workflow).toContain("docs/residual-review-findings/<branch-or-head-sha>.md")
+      expect(workflow).toContain("docs/residual-review-findings/<bookmark-or-jj-change-id>.md")
       expect(workflow).toContain("If the user later chooses the no-PR `ce-commit` path")
       expect(workflow).toContain("must not live only in the transient session")
     }
@@ -685,7 +685,7 @@ describe("ce-code-review contract", () => {
     expect(lfg).toContain("do not load any confirmation-driven PR update skill")
     expect(lfg).toContain("gh pr edit PR_NUMBER --body-file BODY_FILE")
     expect(lfg).toContain("## Residual Review Findings")
-    expect(lfg).toContain("docs/residual-review-findings/<branch-or-head-sha>.md")
+    expect(lfg).toContain("docs/residual-review-findings/<bookmark-or-jj-change-id>.md")
     expect(lfg).toContain("prefer `origin` when present")
     expect(lfg).toContain("choose the first configured remote")
     expect(lfg).toContain("jj git push --remote <remote> --bookmark <current-bookmark>")

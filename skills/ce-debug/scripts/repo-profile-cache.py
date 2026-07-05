@@ -26,7 +26,7 @@ Cache path:
     /tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json
   root-sha = lexicographically-first `jj log -r roots(::@ & ~root())`
              (deterministic even for multi-root histories) — the repo identity,
-             shared across worktrees and clones.
+             shared across JJ workspaces and clones.
   head-sha = `jj log -r @-` — the latest committed parent of the working state.
 
 Validity (HIT) requires ALL of:
@@ -65,7 +65,7 @@ CACHE_ROOT = "/tmp/compound-engineering/repo-profile"
 # Dependency manifests + lockfiles. Matched by basename at ANY depth so a
 # monorepo workspace's manifest also invalidates. The profiler derives
 # stack/deps for ANY language, so this list must span ecosystems, not just JS —
-# an omitted manifest means a dirty dep bump at unchanged HEAD serves a stale
+# an omitted manifest means a dirty dep bump at unchanged @- serves a stale
 # profile (a cardinal-rule break).
 _MANIFEST_LOCKFILE = {
     # JavaScript / TypeScript / Deno
@@ -335,10 +335,10 @@ def do_put(profile_file: str) -> int:
         print("NO-CACHE")
         return 0
 
-    # Do not cache a profile derived from a DIRTY tree: it reflects uncommitted
-    # edits to profile inputs, yet it would be stored under the clean HEAD key
-    # and served as a HIT after those edits are reverted (same HEAD, clean tree)
-    # — stale. Only persist a profile that matches the committed HEAD.
+    # Do not cache a profile derived from a dirty working-copy change: it reflects
+    # edits to profile inputs, yet it would be stored under the committed-parent key
+    # and served as a HIT after those edits are reverted (same @-, clean tree)
+    # — stale. Only persist a profile that matches the committed parent.
     changed = changed_paths()
     if changed is None or any(is_profile_input(p) for p in changed):
         sys.stderr.write(

@@ -68,9 +68,9 @@ Determine `OUTPUT_FORMAT` for the ideation artifact this run might persist. Outp
 Unlike `ce-plan` and `ce-brainstorm` (which default to `md`), ce-ideate defaults to **`html`** — ideation artifacts are read mainly by humans weighing candidate directions, and a rich self-contained HTML file (with illustrative diagrams for the top candidates) makes the ideas easier to approach.
 
 **Read config.** The repo root is pre-resolved at skill load:
-!`git rev-parse --show-toplevel 2>/dev/null || true`
+!`jj workspace root 2>/dev/null || true`
 
-If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `git rev-parse --show-toplevel` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a git repo) or the file does not exist, fall through to the defaults below.
+If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `jj workspace root` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a JJ workspace) or the file does not exist, fall through to the defaults below.
 
 Resolution steps:
 
@@ -152,14 +152,14 @@ Ask via the platform's blocking question tool per Interaction Method above — n
 Routing:
 
 - **Specify** → accept the user's follow-up as the subject. Re-apply the identifiability check once. If still ambiguous, ask once more with "Surprise me" still on the menu. Do not cascade toward specificity about *how* to solve — only about *what* the subject is.
-- **Surprise me** → mark the run as **surprise-me mode**. The agent will discover subjects from Phase 1 material rather than carry a user-specified subject. This is a first-class mode — it changes how Phase 1 scans and how Phase 2 sub-agents operate (see those phases). **Dispatch routing for surprise-me is deterministic:** if CWD is inside a git repo, route to repo-grounded (the codebase supplies substance); otherwise route to elsewhere-software and require Phase 0.4 to collect at least one piece of substance (URL, description, draft, or paste) before dispatching — "surprise me" outside a repo is only viable once the user has supplied something to surprise them about. Skip Decision 1/2 in Phase 0.3: with no user subject there is no prompt content to weigh, and surprise-me never routes to elsewhere-non-software (no way to infer naming/narrative/personal intent without a subject). The user can correct by interrupting and re-invoking with a named subject.
+- **Surprise me** → mark the run as **surprise-me mode**. The agent will discover subjects from Phase 1 material rather than carry a user-specified subject. This is a first-class mode — it changes how Phase 1 scans and how Phase 2 sub-agents operate (see those phases). **Dispatch routing for surprise-me is deterministic:** if CWD is inside a JJ workspace, route to repo-grounded (the codebase supplies substance); otherwise route to elsewhere-software and require Phase 0.4 to collect at least one piece of substance (URL, description, draft, or paste) before dispatching — "surprise me" outside a repo is only viable once the user has supplied something to surprise them about. Skip Decision 1/2 in Phase 0.3: with no user subject there is no prompt content to weigh, and surprise-me never routes to elsewhere-non-software (no way to infer naming/narrative/personal intent without a subject). The user can correct by interrupting and re-invoking with a named subject.
 - **Cancel** → exit cleanly. Narrate that the user can rephrase and re-invoke.
 
 #### 0.3 Mode Classification
 
 Classify the **subject of ideation** (settled in 0.2) into one of three modes for dispatch routing. A user inside any repo can ideate about something unrelated to that repo; a user in `/tmp` can ideate about code they hold in their head.
 
-**Surprise-me short-circuit.** When Phase 0.2 routed to surprise-me mode, skip the two-decision classification below and use the deterministic rule stated in 0.2: repo-grounded when CWD is inside a git repo, elsewhere-software otherwise. The ambiguity-confirmation step at the end of this section also does not fire for surprise-me — there is no user subject to be ambiguous about. State the chosen mode in one sentence and proceed to 0.4.
+**Surprise-me short-circuit.** When Phase 0.2 routed to surprise-me mode, skip the two-decision classification below and use the deterministic rule stated in 0.2: repo-grounded when CWD is inside a JJ workspace, elsewhere-software otherwise. The ambiguity-confirmation step at the end of this section also does not fire for surprise-me — there is no user subject to be ambiguous about. State the chosen mode in one sentence and proceed to 0.4.
 
 For specified subjects, make two sequential binary decisions, enumerating negative signals at each:
 

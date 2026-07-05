@@ -27,7 +27,7 @@ ce-code-review mode:agent plan:<plan-path> base:<merge-base-or-ref>
 
 - `mode:agent` — JSON output (`review.json` + primary JSON response) for programmatic parsing; same review pipeline as default.
 - `plan:` — when Phase 1 used a plan file (requirements completeness).
-- `base:` — when the diff base is already resolved on the current checkout; omit when reviewing a PR number/URL or standalone current branch.
+- `base:` — when the diff base is already resolved on the current checkout; omit when reviewing a PR number/URL or standalone current bookmark/change.
 - Do **not** pass deprecated `mode:autofix`.
 
 For human / interactive shipping, invoke `ce-code-review` without `mode:agent` if markdown tables are preferred. Capture the same JSON / Actionable Findings and artifact dir listed above before applying.

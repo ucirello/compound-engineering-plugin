@@ -54,7 +54,7 @@ If your persona description uses severity vocabulary like "high-priority" or "cr
 **Confidence rubric — use these exact behavioral anchors.** Pick the single anchor whose criterion you can honestly self-apply. Do not pick a value between anchors; only `0`, `25`, `50`, `75`, and `100` are valid. The rubric is anchored on behavior you performed, not on a vague sense of certainty — if you cannot truthfully attach the behavioral claim to the finding, step down to the next anchor.
 
 - **`0` — Not confident at all.** A false positive that does not stand up to light scrutiny, or a pre-existing issue this PR did not introduce. **Do not emit — suppress silently.** This anchor exists in the enum only so synthesis can explicitly track the drop; personas never produce it.
-- **`25` — Somewhat confident.** Might be a real issue but could also be a false positive; you could not verify from the diff and surrounding code alone. **Do not emit — suppress silently.** This anchor, like `0`, exists in the enum only so synthesis can track the drop; personas never produce it. If your domain is genuinely uncertain, either gather more evidence (read related files, check call sites, inspect `jj file annotate`) until you can honestly anchor at `50` or higher, or suppress entirely.
+- **`25` — Somewhat confident.** Might be a real issue but could also be a false positive; you could not verify from the diff and surrounding code alone. **Do not emit — suppress silently.** This anchor, like `0`, exists in the enum only so synthesis can track the drop; personas never produce it. If your domain is genuinely uncertain, either gather more evidence (read related files, check call sites, inspect JJ file annotation) until you can honestly anchor at `50` or higher, or suppress entirely.
 - **`50` — Moderately confident.** You verified this is a real issue but it is a nitpick, narrow edge case, or has minimal practical impact. Style preferences and subjective improvements land here. Surfaces only when synthesis routes weak findings to advisory / residual_risks / testing_gaps soft buckets, or when the finding is P0 (critical-but-uncertain issues are not silently dropped).
 - **`75` — Highly confident.** You double-checked the diff and surrounding code and confirmed the issue will affect users, downstream callers, or runtime behavior in normal usage. The bug, vulnerability, or contract violation is clearly present and actionable.
 
@@ -143,7 +143,7 @@ Rules:
 - Suppress any finding you cannot honestly anchor at `50` or higher (the actionable floor is `50`; anchors `0` and `25` are suppressed by synthesis anyway, so emitting them only adds noise). If your persona's domain description sets a stricter floor (e.g., anchor `75` minimum), honor it.
 - Every finding in the full artifact file MUST include at least one evidence item grounded in the actual code. The compact return omits evidence -- the evidence requirement applies to the disk artifact only.
 - Set `pre_existing` to true ONLY for issues in unchanged code that are unrelated to this diff. If the diff makes the issue newly relevant, it is NOT pre-existing.
-- You are operationally read-only. The one permitted exception is writing your full analysis to the `/tmp/compound-engineering/ce-code-review/{run_id}/` artifact path when a run ID is provided. You may also use non-mutating inspection commands, including read-oriented `jj` / `gh` commands, to gather evidence. Do not edit project files, change bookmarks, describe changes, push, create PRs, or otherwise mutate the workspace or repository state.
+- You are operationally read-only. The one permitted exception is writing your full analysis to the `/tmp/compound-engineering/ce-code-review/{run_id}/` artifact path when a run ID is provided. You may also use non-mutating inspection commands, including read-oriented `jj` / `gh` commands, to gather evidence. Do not edit project files, change bookmarks/workspaces, commit, push, create PRs, or otherwise mutate the checkout or repository state.
 - Set `autofix_class` and `owner` per `references/action-class-rubric.md`; if that file is not reachable from your working directory, the same `gated_auto` / `manual` / `advisory` and owner semantics are already in the schema above and this template's guidance. This skill does not apply fixes — classify for caller routing only.
 - Default `owner` to `downstream-resolver` for actionable findings unless the item is genuinely human-only or release-owned.
 - Set `requires_verification` to true whenever the likely fix needs targeted tests, a focused re-review, or operational validation before it should be trusted.
@@ -180,7 +180,7 @@ Changed files: {file_list}
 Diff:
 {diff}
 
-(For a large staged review, `{file_list}` and `{diff}` may be **file paths** rather than inline content. When a value above is a path, Read that file to get the full list/diff before reviewing — never treat the path string itself as the content to review.)
+(For a large review, `{file_list}` and `{diff}` may be **artifact file paths** rather than inline content. When a value above is a path, Read that file to get the full list/diff before reviewing — never treat the path string itself as the content to review.)
 </review-context>
 ```
 
@@ -192,8 +192,8 @@ Diff:
 | `{diff_scope_rules}` | `references/diff-scope.md` content | Primary/secondary/pre-existing tier rules |
 | `{schema}` | `references/findings-schema.json` content | The JSON schema reviewers must conform to |
 | `{intent_summary}` | Stage 2 output | 2-3 line description of what the change is trying to accomplish |
-| `{pr_metadata}` | Stage 1 output | PR title, body, and URL when reviewing a PR. Empty string when reviewing a bookmark or standalone workspace |
-| `{file_list}` | Stage 1 output | Changed-file list — inline, or a staged file path to Read for a large review |
-| `{diff}` | Stage 1 output | The diff to review — inline hunks, or a staged file path to Read for a large review |
+| `{pr_metadata}` | Stage 1 output | PR title, body, and URL when reviewing a PR. Empty string when reviewing a bookmark or standalone checkout |
+| `{file_list}` | Stage 1 output | Changed-file list — inline, or an artifact file path to Read for a large review |
+| `{diff}` | Stage 1 output | The diff to review — inline hunks, or an artifact file path to Read for a large review |
 | `{run_id}` | Stage 4 output | Unique review run identifier for the artifact directory |
 | `{reviewer_name}` | Stage 3 output | Persona or agent name used as the artifact filename stem |

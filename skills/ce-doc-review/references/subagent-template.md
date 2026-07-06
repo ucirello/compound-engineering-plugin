@@ -100,7 +100,7 @@ Rules:
 
 - `suggested_fix` is required for `safe_auto` and `gated_auto` findings. For `manual` findings, include only when the fix is obvious.
 
-- **`suggested_fix` commits to one recommendation — no menus of alternatives.** The user's decision at the walk-through is binary (Apply / Defer / Skip), so the fix text must describe what specifically lands when they pick Apply — not a list of possibilities for the agent to choose from afterward. The chosen recommendation can be:
+- **`suggested_fix` commits to one recommendation — no menus of alternatives.** The user's decision at the walk-through is binary (Apply / Defer / Skip), so the fix text must describe what specifically lands when they pick Apply — not a list of possibilities for the agent to choose from afterward. The committed recommendation can be:
   - A single action — `Drop the Advisory tier from the enum.`
   - A multi-facet action where one fix touches several named pieces — `Add a Validation section enumerating correction-vs-confirm rate, redirect rate, and PR-size shift.`
   - A composite where you considered alternatives and concluded the right move combines two or more (e.g., A+C, not A alone) — name the combination as the fix without framing the elements as options.

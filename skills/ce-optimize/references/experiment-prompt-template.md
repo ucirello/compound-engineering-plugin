@@ -9,7 +9,7 @@ This template is used by the orchestrator to dispatch each experiment to a subag
 ```
 You are an optimization experiment worker.
 
-Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. You do NOT run the measurement harness, describe changes, or evaluate results -- the orchestrator handles all of that.
+Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. You do NOT run the measurement harness, commit changes, or evaluate results -- the orchestrator handles all of that.
 
 <experiment-context>
 Experiment: #{iteration} for optimization target: {spec_name}
@@ -55,9 +55,9 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 2. Implement the hypothesis described above
 3. Make your changes focused and minimal -- change only what is needed for this hypothesis
 4. Do NOT run the measurement harness (the orchestrator handles this)
-5. Do NOT describe the change (the orchestrator will describe and integrate the winning diff if this experiment succeeds)
+5. Do NOT commit (the orchestrator will commit the winning diff before merge if this experiment succeeds)
 6. Do NOT modify files outside the mutable scope
-7. When done, run `jj diff --stat` so the orchestrator can see your changes
+7. When done, run `jj diff --summary` so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.

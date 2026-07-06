@@ -1,4 +1,5 @@
 import { copyFile, mkdir, mkdtemp, rm, writeFile } from "fs/promises"
+import { spawnSync } from "child_process"
 import os from "os"
 import path from "path"
 import { describe, expect, test } from "bun:test"
@@ -6,8 +7,8 @@ import { describe, expect, test } from "bun:test"
 const repoRoot = path.join(import.meta.dir, "..", "..")
 const checkHealthScript = path.join(repoRoot, "skills", "ce-setup", "scripts", "check-health")
 const configTemplate = path.join(repoRoot, "skills", "ce-setup", "references", "config-template.yaml")
-const jjBin = Bun.which("jj")
-const minimalPathWithJj = jjBin ? `${path.dirname(jjBin)}:/usr/bin:/bin` : "/usr/bin:/bin"
+const jjBin = spawnSync("bash", ["-lc", "command -v jj"], { encoding: "utf8" }).stdout.trim()
+const testPath = `${path.dirname(jjBin)}:/usr/bin:/bin`
 
 type RunResult = {
   exitCode: number
@@ -37,7 +38,7 @@ async function runCheckHealth(cwd: string, pathValue: string): Promise<RunResult
 }
 
 async function initJjRepo(root: string): Promise<void> {
-  await Bun.$`jj git init`.cwd(root).quiet()
+  await Bun.$`jj git init --colocate .`.cwd(root).quiet()
 }
 
 describe("ce-setup check-health", () => {
@@ -45,7 +46,7 @@ describe("ce-setup check-health", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "ce-setup-health-"))
 
     try {
-      const result = await runCheckHealth(root, minimalPathWithJj)
+      const result = await runCheckHealth(root, testPath)
 
       expect(result.exitCode).toBe(0)
       expect(result.stdout).toContain("Optional capabilities")
@@ -65,11 +66,11 @@ describe("ce-setup check-health", () => {
       await copyFile(configTemplate, path.join(root, ".compound-engineering", "config.local.yaml"))
       await writeFile(path.join(root, ".gitignore"), ".compound-engineering/*.local.yaml\n")
 
-      const result = await runCheckHealth(root, minimalPathWithJj)
+      const result = await runCheckHealth(root, testPath)
 
       expect(result.exitCode).toBe(0)
       expect(result.stdout).toContain("Project config")
-      expect(result.stdout).toContain("Local config is ignored")
+      expect(result.stdout).toContain("Local config is ignored by workspace rules")
       expect(result.stdout).toContain("Project config healthy")
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -85,10 +86,10 @@ describe("ce-setup check-health", () => {
       await copyFile(configTemplate, path.join(root, ".compound-engineering", "config.local.example.yaml"))
       await copyFile(configTemplate, path.join(root, ".compound-engineering", "config.local.yaml"))
 
-      const result = await runCheckHealth(root, minimalPathWithJj)
+      const result = await runCheckHealth(root, testPath)
 
       expect(result.exitCode).toBe(0)
-      expect(result.stdout).toContain("Local config is not safely ignored")
+      expect(result.stdout).toContain("Local config is not safely ignored by workspace rules")
       expect(result.stdout).toContain("1 project issue(s) found")
     } finally {
       await rm(root, { recursive: true, force: true })

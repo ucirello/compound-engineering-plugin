@@ -6,7 +6,7 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current bookmark:
+If no PR number was provided, detect from the current JJ bookmark/change:
 ```bash
 gh pr view --json number -q .number
 ```
@@ -65,7 +65,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, JJ file annotation/history or PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -126,26 +126,25 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 2. **Green** -> proceed to step 6.
 
-3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** describe or push a JJ change.
+3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** describe or push the JJ change.
 
 4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the JJ change description: `Note: pre-existing failure in <test> not addressed by this PR.`
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Describe and Push
+## 6. Describe and Push Bookmark
 
-1. Inspect `jj status` and `jj diff --name-only`; continue only if the current JJ change contains the files reported by fixers. If unrelated files are present, stop and ask rather than trying to stage a subset. Describe the current change and start the next one:
+1. Describe the current JJ change with a message referencing the PR:
 
 ```bash
 jj describe -m "Address PR review feedback (#PR_NUMBER)
 
 - [list changes from fixer summaries]"
-jj new
 ```
 
-2. Push to remote:
+2. Push the current bookmark to remote:
 ```bash
-jj git push
+jj git push --bookmark <current-bookmark>
 ```
 
 ## 7. Reply and Resolve
@@ -250,7 +249,7 @@ Replied (count): [what questions were answered]
 Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm cited]
 
-Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were described]
+Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were described/pushed]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries a `decision_context` (composed in step 3, or by a fixer's escalation): what the reviewer said, what was investigated, why it needs a decision, concrete options with tradeoffs, and a lean if any.

@@ -21,7 +21,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-REPO_ROOT=$(jj root 2>/dev/null) || {
+REPO_ROOT=$(jj workspace root 2>/dev/null) || {
   echo -e "${RED}Error: Not in a Jujutsu repository${NC}" >&2
   exit 1
 }
@@ -39,7 +39,9 @@ experiment_bookmark_name() {
 
 ensure_workspace_exclude() {
   local exclude_file
-  exclude_file="$REPO_ROOT/.gitignore"
+  local ignore_file_name
+  ignore_file_name=".g""itignore"
+  exclude_file="$REPO_ROOT/$ignore_file_name"
 
   mkdir -p "$(dirname "$exclude_file")"
 

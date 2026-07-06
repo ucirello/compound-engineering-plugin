@@ -40,7 +40,7 @@ bash "$SKILL_DIR/scripts/cross-model-adversarial-review.sh" "<peer>" "<base-ref>
 ```
 
 - `<peer>` = `XPEER` from Step 1 (`codex` or `claude`).
-- `<base-ref>` = the Stage 1 `BASE` (the diff base the peer reviews via `jj diff --from <base-ref> --to @`).
+- `<base-ref>` = the Stage 1 `BASE` (the diff base the peer reviews via `jj diff <base-ref>`).
 - `<run-dir>` = the Stage 4 run dir (`/tmp/compound-engineering/ce-code-review/<run-id>/`). The script writes `adversarial-<peer>.json` there.
 
 Set the Bash tool `timeout` to `660000` (11 min) — the script self-bounds (codex idle-timeout, default-180s stall with reasoning forced on for liveness; hard backstop `CROSS_MODEL_HARD_SECS`, default 600s) and exits cleanly. If the harness can't background a shell command, run it inline before awaiting the reviewers; correctness is unaffected, only wall-clock. The script needs no prompt or schema passed in — it reads the persona brief and `findings-schema.json` itself from the skill dir.
@@ -55,7 +55,7 @@ Set the Bash tool `timeout` to `660000` (11 min) — the script self-bounds (cod
 ## What the script does (for maintainers — you don't invoke this directly)
 
 `scripts/cross-model-adversarial-review.sh <peer> <base-ref> <run-dir>`:
-- Self-locates the persona + schema via `BASH_SOURCE` (works from any CWD); derives the repo root from `jj`.
+- Self-locates the persona + schema via `BASH_SOURCE` (works from any CWD); derives the repo root from JJ.
 - Composes the peer prompt from the canonical persona brief + a JSON-only contract. Codex fetches its own diff with read-only `jj` inside its sandbox; Claude (which has no sandbox) is hard-denied `Bash`, so it gets the diff embedded and needs no shell. After capture, the script forces `reviewer = adversarial-<peer>` (the persona's example name `adversarial` would otherwise collide with the in-process reviewer and erase the cross-model agreement signal).
 - Codex peer: `codex exec - -s read-only -o <out>` at high reasoning effort. No `--output-schema` (Codex strict mode rejects the permissive draft-07 schema); the full schema embedded in the prompt is its only contract, which produces complete schema-shaped findings (verified). The `-o` write is done by the codex CLI *outside* the model's sandbox, so it succeeds under `-s read-only` (verified); if it ever fails to materialize, the script recovers the same JSON from codex's captured stdout (belt-and-suspenders, no data lost).
 - Claude peer: `claude -p --permission-mode dontAsk --disallowedTools Edit Write NotebookEdit --json-schema … --output-format json` (disallowed tools passed as separate variadic args, not one quoted string), captured from stdout (it can't write a file under those permissions), parsed via `.structured_output` with a `.result` fallback.

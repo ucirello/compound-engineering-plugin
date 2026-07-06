@@ -13,7 +13,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
    # Run linting (per the project's configured lint command / active instructions)
-   # Use linting-agent before `jj git push` to the selected remote
+   # Use linting-agent before pushing to origin
    ```
 
 2. **Simplify** (conditional — separate from code review)
@@ -34,7 +34,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
    **3a. Review (read-only).** Invoke `ce-code-review` with `mode:agent` (add `plan:<path>` when known; `base:<ref>` when the diff base is resolved). Pass **`depth:full`** when the plan, the task, or the user explicitly asked for a full / deep / thorough review — that is the one escalation signal `ce-code-review` cannot infer from the diff alone. Do not pass `mode:autofix`. Parse the JSON.
 
-   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, dispatch fix subagents. Orchestrator integrates, tests, and describes JJ changes. Then proceed to the Residual Work Gate.
+   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, dispatch fix subagents. Orchestrator merges, tests, commits. Then proceed to the Residual Work Gate.
 
    **If `ce-code-review` cannot run at all** — subagent dispatch unavailable, unauthenticated, or hard-capped, returning `status: failed`/`degraded` with no coverage even after its own sequential Fallback: in an **interactive** session, run the harness-native review if one exists (e.g. `/review`) and fix inline; in a **non-interactive** session (autonomous pipeline, or no native review available), skip the dedicated step, note `Code review: skipped (ce-code-review unavailable)`, and add an explicit manual diff scan to Final Validation. Never silently ship a non-mechanical change with no review of any kind.
 
@@ -49,9 +49,9 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    Stem: `Code review left N actionable finding(s) not yet fixed. How should the agent proceed?`
 
    Options (four or fewer, self-contained labels):
-    - `Apply/fix now` — load `references/review-findings-followup.md`, dispatch batched fix subagents for remaining eligible findings, run tests, describe a JJ change if needed; optionally re-run `ce-code-review` only after the diff changed materially.
+   - `Apply/fix now` — load `references/review-findings-followup.md`, dispatch batched fix subagents for remaining eligible findings, run tests, commit if needed; optionally re-run `ce-code-review` only after the diff changed materially.
    - `File tickets via project tracker` — load `references/tracker-defer.md` in Interactive mode; the agent files tickets in the project's detected tracker (or `gh` fallback, or leaves them in the report if no sink exists) and proceeds to Final Validation.
-   - `Accept and proceed` — record the residual findings verbatim in a durable "Known Residuals" sink before shipping. If a PR will be created or updated in Phase 4, include them in the PR description's "Known Residuals" section (the agent owns this when calling `ce-commit-push-pr`). If the user later chooses the no-PR `ce-commit` path, create `docs/residual-review-findings/<bookmark-or-change-id>.md`, include the accepted findings and source review-run context, include it in the implementation change, and mention the file path in the final summary. The user has acknowledged the risk, but the findings must not live only in the transient session.
+   - `Accept and proceed` — record the residual findings verbatim in a durable "Known Residuals" sink before shipping. If a PR will be created or updated in Phase 4, include them in the PR description's "Known Residuals" section (the agent owns this when calling `ce-commit-push-pr`). If the user later chooses the no-PR `ce-commit` path, create `docs/residual-review-findings/<bookmark-or-change-id>.md`, include the accepted findings and source review-run context, include it in the implementation JJ change, and mention the file path in the final summary. The user has acknowledged the risk, but the findings must not live only in the transient session.
    - `Stop — do not ship` — abort the shipping workflow. The user will handle findings manually before re-invoking.
 
    Skip this gate entirely when the review reported `Actionable findings: none.` (and followup applied everything mechanical), or when dedicated review was skipped (mechanical diff or `ce-code-review` unavailable). Do not proceed past this gate on an `Accept and proceed` decision (including the autonomous auto-accept above) until the agent has recorded whether the durable sink is `PR Known Residuals` or `docs/residual-review-findings/<bookmark-or-change-id>.md`.
@@ -84,9 +84,9 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
    Note whether the completed work has observable behavior (UI rendering, CLI output, API/library behavior with a runnable example, generated artifacts, or workflow output), and summarize any manual validation performed. If the user supplied evidence (URL, markdown embed, local artifact path), pass it to `ce-commit-push-pr` as PR-description context.
 
-2. **Describe Changes and Create Pull Request**
+2. **Describe, Push, and Create Pull Request**
 
-   Load the `ce-commit-push-pr` skill to handle describing changes, pushing, and PR creation. The skill handles convention detection, bookmark safety, logical change splitting, adaptive PR descriptions, and attribution badges.
+   Load the `ce-commit-push-pr` skill to handle describing JJ changes, pushing the bookmark, and PR creation. The skill handles convention detection, default-bookmark safety, logical change splitting, adaptive PR descriptions, and attribution badges.
 
    When providing context for the PR description, include:
    - The plan's summary and key decisions
@@ -96,7 +96,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    - The Post-Deploy Monitoring & Validation section (see Phase 3 Step 6)
    - Any "Known Residuals" accepted in the Phase 3 Residual Work Gate, rendered as a dedicated section in the PR body with severity, file:line, and title per finding
 
-   If the user prefers to describe the JJ change without creating a PR, load the `ce-commit` skill instead.
+   If the user prefers to commit without creating a PR, load the `ce-commit` skill instead.
 
 3. **Notify User**
    - Summarize what was completed
@@ -115,7 +115,7 @@ Before creating PR, verify:
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
 - [ ] Validation/evidence context passed to `ce-commit-push-pr` when the change has observable behavior
-- [ ] JJ change descriptions follow conventional format
+- [ ] Commit messages follow conventional format
 - [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
 - [ ] Simplify: `ce-simplify-code` when diff >=30 lines (or skipped with reason)
 - [ ] Code review: `ce-code-review` ran (self-sized), or skipped (mechanical diff / unavailable — noted in summary); residuals handled via the Residual Work Gate

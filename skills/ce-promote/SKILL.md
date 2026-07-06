@@ -31,9 +31,9 @@ If the user gave a free-form description of the feature, use it as the source of
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
 - **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current bookmark/change). The title and body usually state the user-facing value.
-- **The diff** — best-effort `jj git fetch --remote origin`, then `jj diff --from 'latest(remote_bookmarks(exact:"main", remote="origin") | remote_bookmarks(exact:"master", remote="origin"))' --stat`; if no remote default bookmark resolves, fall back to the current local default bookmark. Skim notable changes to ground the claim in what actually changed.
+- **The diff** — `jj diff --from main --summary` and skim notable changes to ground the claim in what actually changed.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
-- **Recent commits** — `jj log --no-graph -r 'ancestors(@, 15)'` for the arc of the change.
+- **Recent changes** — `jj log -n 15` for the arc of the change.
 
 Then write a 1–3 sentence summary of the **user-facing value** — what a user can now do that they couldn't before, and why they'd care. Describe the outcome, not the implementation. ("You can now export any report to CSV in one click" — not "Added a CsvSerializer and an export endpoint.")
 

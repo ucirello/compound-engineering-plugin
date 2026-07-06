@@ -40,13 +40,13 @@ Headless mode is intended for automations and skill-to-skill invocation where no
 
 ## Pre-resolved context
 
-**JJ bookmark/change (pre-resolved):** !`jj log -r @ --no-graph --template 'bookmarks.join(", ") ++ if(bookmarks.is_empty(), change_id.short(), "")' 2>/dev/null || true`
+**JJ bookmark/change (pre-resolved):** !`jj log -r @ --no-graph --template 'bookmarks' 2>/dev/null || jj log -r @ --no-graph --template 'change_id.short()' 2>/dev/null || true`
 
-If the line above resolved to a plain bookmark name (like `feat/my-change`) or a short change id, use it in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving it. If it still contains a backtick command string or is empty, derive the bookmark/change at runtime.
+If the line above resolved to a plain bookmark name (like `feat/my-change`) or change ID, use it in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving it. If it still contains a backtick command string or is empty, derive the bookmark/change at runtime.
 
-**Repo root (pre-resolved):** !`jj root 2>/dev/null || pwd`
+**Workspace root (pre-resolved):** !`jj workspace root 2>/dev/null || pwd`
 
-If the line above resolved to an absolute path, use it as the session-history repo filter in Phase 1. If it still contains a backtick command string or is empty, derive the repo root at runtime with `jj root 2>/dev/null || pwd`.
+If the line above resolved to an absolute path, use it as the session-history repo filter in Phase 1. If it still contains a backtick command string or is empty, derive the workspace root at runtime with `jj workspace root 2>/dev/null || pwd`.
 
 ## Support Files
 
@@ -148,11 +148,11 @@ python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 
 - On `HIT`: load the profile JSON and use its `vocabulary` (CONCEPTS canonical terms) and `conventions` (root instruction/convention digests) as the agnostic orientation; do not re-derive them.
 - On `MISS`: dispatch a generic subagent seeded with `references/agents/repo-profiler.md` to derive the profile, write its JSON to a file, then persist with `python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <file>` (re-set `SKILL_DIR` in that call — shell vars don't persist between Bash invocations).
-- On `NO-CACHE` (no usable VCS repo or no writable cache): derive the orientation inline this run and skip `put`.
+- On `NO-CACHE` (no JJ workspace or no writable cache): derive the orientation inline this run and skip `put`.
 
 The cache is an optimization, never a correctness dependency — if the helper errors or returns nothing usable, fall back to deriving the orientation inline and continue. Pass the resolved vocabulary/conventions into the Context Analyzer (for vocabulary and instruction-file convention grounding) so it does not re-derive them.
 
-**CRITICAL — the `docs/solutions/` enumeration is NEVER cached; the Related Docs Finder must glob it FRESH every run.** `ce-compound` *writes* new learnings into `docs/solutions/`, so a cached index would miss a doc added moments ago (even one newly added in the working-copy change). The cached profile supplies only the agnostic orientation above; the `docs/solutions/` search in step 3 always runs against the live tree.
+**CRITICAL — the `docs/solutions/` enumeration is NEVER cached; the Related Docs Finder must glob it FRESH every run.** `ce-compound` *writes* new learnings into `docs/solutions/`, so a cached index would miss a doc added moments ago (even an uncommitted one). The cached profile supplies only the agnostic orientation above; the `docs/solutions/` search in step 3 always runs against the live tree.
 
 Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent prompt. Each subagent **writes its full structured output** to its own file under `/tmp/compound-engineering/ce-compound/{run_id}/`, **confirms the write succeeded** (the file exists and is non-empty), and then **returns only a one-line confirmation containing the artifact path** — not the prose body inline. Artifact filenames by subagent:
 
@@ -239,7 +239,7 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
 
 #### 4. **Session History** (internal flow after launching the parallel block — only if the user opted in)
    - **Skip entirely** if the user declined session history in the follow-up question, if running in lightweight mode, or if running in headless mode.
-   - Run session discovery, bookmark-or-change/keyword filtering, scan-window selection, deep-dive selection, and per-session extraction directly inside this skill using `scripts/session-history/`.
+   - Run session discovery, bookmark/keyword filtering, scan-window selection, deep-dive selection, and per-session extraction directly inside this skill using `scripts/session-history/`.
    - Read the skill-local synthesis prompt at `references/agents/session-historian.md`, then dispatch a generic subagent using that prompt content. Do not dispatch a standalone agent by type/name.
 
    **Session-history payload — keep tight.** A long, keyword-rich payload licenses widening. Use this shape:
@@ -268,7 +268,7 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
 
    ```bash
    if [ -n "${CLAUDE_SKILL_DIR}" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/session-history/discover-sessions.sh" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/session-history/extract-metadata.py" ]; then
-      REPO_ROOT=$(jj root 2>/dev/null || pwd)
+     REPO_ROOT=$(jj workspace root 2>/dev/null || pwd)
      REPO_NAME=$(basename "$REPO_ROOT")
      SCAN_DAYS="7"
      bash "${CLAUDE_SKILL_DIR}/scripts/session-history/discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS" --cwd "$REPO_ROOT" | tr '\n' '\0' | xargs -0 python3 "${CLAUDE_SKILL_DIR}/scripts/session-history/extract-metadata.py" --cwd-filter "$REPO_ROOT"
@@ -277,7 +277,7 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
    fi
    ```
 
-   Pi sessions are included when present under `~/.pi/agent/sessions/`; they carry `cwd` like Codex but no VCS bookmark/change metadata. If `_meta.files_processed` is `0`, return `no relevant prior sessions`. If the first pass finds no relevant bookmark/change matches, or if processing Codex or Pi sessions, derive 2-4 keywords from the topic and re-run metadata extraction with `--keyword K1,K2,...`. Keep at most 5 sessions across Claude Code, Codex, Cursor, and Pi, ranked by bookmark/change match, keyword match count, file size over 30KB, and recency. Exclude the current session.
+   Pi sessions are included when present under `~/.pi/agent/sessions/`; they carry `cwd` like Codex but no VCS bookmark metadata. If `_meta.files_processed` is `0`, return `no relevant prior sessions`. If the first pass finds no relevant bookmark/change matches, or if processing Codex or Pi sessions, derive 2-4 keywords from the topic and re-run metadata extraction with `--keyword K1,K2,...`. Keep at most 5 sessions across Claude Code, Codex, Cursor, and Pi, ranked by bookmark/change match, keyword match count, file size over 30KB, and recency. Exclude the current session.
 
    **Extraction pipeline.** Create `SCRATCH=$(mktemp -d -t ce-compound-sessions-XXXXXX)`. For each selected session, write extracted content to scratch files:
 
@@ -478,7 +478,7 @@ Based on problem type, optionally dispatch generic subagents seeded with local p
 - **security_issue** → `references/agents/security-sentinel.md`
 - **database_issue** → `references/agents/data-integrity-guardian.md`
 - Any code-heavy issue → preserve code simplification as a **read-only documentation review**. Inspect the solution draft's code examples and explanatory claims inline, or dispatch a generic subagent seeded with a local prompt only to return suggestions. Do **not** invoke `ce-simplify-code` from this phase and do not mutate product code unless the user explicitly asks for a separate code-simplification pass. Do not use the deleted `code-simplicity-reviewer`.
-  Example: review the solution draft's examples for speculative abstractions, redundant wrappers, dead code paths, and just-in-case parameters. Apply edits only to the documentation/examples being written by `ce-compound`; leave any product code changes untouched.
+  Example: review the solution draft's examples for speculative abstractions, redundant wrappers, dead branches, and just-in-case parameters. Apply edits only to the documentation/examples being written by `ce-compound`; leave any bookmark/change code edits untouched.
 
 </parallel_tasks>
 

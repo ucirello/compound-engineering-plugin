@@ -36,7 +36,7 @@ The orchestrator handles consolidation directly (no subagent needed — the docs
 2. **Extract unique content** from the subsumed doc(s) — anything the canonical doc does not already cover. This might be specific edge cases, additional prevention rules, or alternative debugging approaches.
 3. **Merge unique content** into the canonical doc in a natural location. Do not just append — integrate it where it logically belongs. If the unique content is small (a bullet point, a sentence), inline it. If it is a substantial sub-topic, add it as a clearly labeled section.
 4. **Update cross-references** — if any other docs reference the subsumed doc, update those references to point to the canonical doc.
-5. **Delete the subsumed doc.** Do not archive it, do not add redirect metadata — just delete the file. VCS history preserves it.
+5. **Delete the subsumed doc.** Do not archive it, do not add redirect metadata — just delete the file. JJ history preserves it.
 
 If a doc cluster has 3+ overlapping docs, process pairwise: consolidate the two most overlapping docs first, then evaluate whether the merged result should be consolidated with the next doc.
 
@@ -79,7 +79,7 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
      Nested values, array items, and already-quoted values are out of scope here (array-item quoting is handled by the schema/YAML-safety step above). Then note in the completion output that the bundled script validator was unavailable on this platform and the checks were applied manually.
 
    The validator does not enforce schema rules and does not flag YAML reserved-indicator characters (those produce loud parser errors downstream rather than silent corruption — out of scope). Uses Python 3 stdlib only (no PyYAML or other deps).
-4. After the subagent completes, the orchestrator deletes the old learning file. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional — VCS history and the change message provide the same information.
+4. After the subagent completes, the orchestrator deletes the old learning file. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional — JJ history and the change description provide the same information.
 
 **When evidence is insufficient:**
 

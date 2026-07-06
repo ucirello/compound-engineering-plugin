@@ -53,7 +53,7 @@ If the line above is an absolute path, use it as `<repo-root>`. If it is empty o
 - `feedback_sources` — list of source entries; each carries a `type` (`slack`, `github-issues`, `email`), its target, the standing-approved ack action, an optional close-out action, and an optional `sensitive: true`. Presence of this key means the skill is configured.
 - `sweep_state_path` — path to the state file, established at setup; fallback `docs/feedback-sweep/state.yml`. A repo-internal path means tracked mode (the state file is described into the current change each run and must not be ignored); a path outside the repo (e.g. under `/tmp`) means machine-local mode (the state file is never tracked — only the plan is).
 - `sweep_lease_ttl_minutes` — single-writer lease staleness threshold; default `60`. Passed to `lease-acquire` in 2a.
-- `sweep_shared_branch` — `true` when the state file lives on a shared bookmark multiple checkouts push to (see 2a topology); default `false`.
+- `sweep_shared_bookmark` — `true` when the state file lives on a shared JJ bookmark multiple workspaces push to (see 2a topology); default `false`.
 - `sweep_ack_cap` — integer circuit-breaker threshold; default `25`.
 
 ### Phase 1: First-Run Setup
@@ -83,7 +83,7 @@ Run the phases in order.
 - `STALE-RECLAIMED` — an expired lease was taken over; proceed, and note the takeover in the final summary.
 - `OK` — proceed.
 
-**Shared-bookmark topology** (`sweep_shared_branch: true`): before any source-side write, describe the current JJ change with the state-file lease update, move the shared bookmark to `@`, and run `jj git push --bookmark <shared-bookmark>`. A rejected push means another writer won the bookmark — fetch, rebase the current change onto the fetched bookmark with `jj rebase -d <shared-bookmark>`, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Only once your lease is pushed and confirmed do you touch a source.
+**Shared-bookmark topology** (`sweep_shared_bookmark: true`): before any source-side write, describe the current JJ change with the state-file lease update, move the shared bookmark to `@` with `jj bookmark set <shared-bookmark> -r @`, and run `jj git push --bookmark <shared-bookmark>`. A rejected push means another writer won the bookmark — run `jj git fetch`, rebase the current change onto the fetched bookmark with `jj rebase -d <shared-bookmark>`, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Only once your lease is pushed and confirmed do you touch a source.
 
 Then `validate --state <state>` (a lease-agnostic repair): note in the summary any ids it downgrades from `closed` to `fix_pending`.
 
@@ -145,7 +145,7 @@ Interactive only. For items needing a product call, ask the user — grouped by 
 
 #### 2i. Wrap-up
 
-- **Describe the JJ change.** Include ONLY `docs/plans/feedback-sweep-plan.md` plus `<state>` when it is repo-internal (never sweep unrelated files; machine-local state under `/tmp` is never tracked), then run `jj describe -m "docs(sweep): feedback sweep <date>"`. A describe failure is reported, not fatal. In local-change mode, never push. In shared-bookmark mode (`sweep_shared_branch: true`), fetch, rebase onto the shared bookmark, move the bookmark to `@`, and `jj git push --bookmark <shared-bookmark>`.
+- **Describe the JJ change.** Include ONLY `docs/plans/feedback-sweep-plan.md` plus `<state>` when it is repo-internal (never sweep unrelated files; machine-local state under `/tmp` is never tracked), then run `jj describe -m "docs(sweep): feedback sweep <date>"`. A describe failure is reported, not fatal. In local-change mode, never push. In shared-bookmark mode (`sweep_shared_bookmark: true`), run `jj git fetch`, rebase onto the shared bookmark, move the bookmark to `@` with `jj bookmark set <shared-bookmark> -r @`, and `jj git push --bookmark <shared-bookmark>`.
 - **Record the run.** `run-record --state <state> --writer <writer> --outcome <completed|partial|failed> --counts '<per-source JSON>' --timestamp <ISO now>`.
 - **Release.** `lease-release --state <state> --writer <writer>`.
 - **Summary** (always emit): new items by source; recordings analyzed, each with its one-line finding; closed items with their fix evidence; the `ack_deferred` / `manual_stuck` / needs-attention list; any circuit-breaker or stale-reclaim note; and always the plan path with the handoff line:

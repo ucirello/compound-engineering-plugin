@@ -101,12 +101,13 @@ When invoking any skill referenced below, resolve its name against the available
 
    3. Read the failure logs, identify the root cause, and apply a fix in the working tree. Do NOT weaken, skip, or mock the failing assertion to make it pass — repair the actual issue. If the failure is a flaky test that has no fix path, document that as the residual outcome below rather than retrying without a code change.
 
-    4. Describe only the files you changed in a JJ change, then push:
+    4. Describe only the files you changed in a JJ change, start the next change, move/create the relevant bookmark to the described change, then push:
 
       ```bash
       jj describe -m "fix(ci): <one-line summary of the failure repaired>"
       jj new
-      jj git push
+      jj bookmark set <bookmark> -r @-
+      jj git push --bookmark <bookmark>
       ```
 
    5. Return to iteration (1) with the next attempt counter.

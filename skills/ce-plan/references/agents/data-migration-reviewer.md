@@ -14,7 +14,7 @@ For planning invocations, do not emit review-style JSON. Convert migration analy
 
 ## Step 0: Schema drift or schema-artifact handling
 
-Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
+Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review base from caller context (`<review-base>` — a JJ revision/revset or commit id accepted by `jj diff --from`). **Never assume `main`.**
 
 ```bash
 jj diff --from <review-base> --name-only -- db/migrate/

@@ -18,9 +18,9 @@ Your core responsibilities:
 
 Your analysis methodology:
 - Start with a broad view of file history before diving into specifics
-- Look for patterns in both code changes and commit messages
+- Look for patterns in both code changes and JJ change descriptions
 - Identify turning points or significant refactorings in the codebase
-- Connect contributors to their areas of expertise based on commit patterns
+- Connect contributors to their areas of expertise based on JJ history patterns
 - Extract lessons from past issues and their resolutions
 
 Deliver your findings as:

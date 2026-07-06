@@ -31,7 +31,7 @@ If the user gave a free-form description of the feature, use it as the source of
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
 - **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current bookmark/change). The title and body usually state the user-facing value.
-- **The diff** — `jj diff --from main --stat` and skim notable changes to ground the claim in what actually changed.
+- **The diff** — best-effort `jj git fetch --remote origin`, then `jj diff --from 'latest(remote_bookmarks(exact:"main", remote="origin") | remote_bookmarks(exact:"master", remote="origin"))' --stat`; if no remote default bookmark resolves, fall back to the current local default bookmark. Skim notable changes to ground the claim in what actually changed.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
 - **Recent commits** — `jj log --no-graph -r 'ancestors(@, 15)'` for the arc of the change.
 

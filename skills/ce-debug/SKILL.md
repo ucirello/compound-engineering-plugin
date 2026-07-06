@@ -43,7 +43,7 @@ Read the full conversation — the original description AND every comment, with 
 
 **Everything else** (stack traces, test paths, error messages, descriptions of broken behavior): the problem statement is the input itself.
 
-**Trivial-bug fast-path:** Once the problem is clear, decide whether the framework is needed at all. If the cause is immediately readable from the input (single-file typo, missing import, obvious null deref or off-by-one with a one-line fix) and verification doesn't require deep tracing, present the cause and the proposed one-line fix and run Phase 2's **Fix it now / Diagnosis only** user-choice gate before editing — the fast-path saves investigation ceremony, not the user's choice over whether to apply a fix. If the user picks fix, run Phase 3's **Workspace and bookmark check** (uncommitted-work confirmation and default-bookmark bookmark-creation prompt), apply the fix, leave a one-line note explaining the cause, and skip to Phase 4's structured summary. If diagnosis only, write the summary and stop. When in doubt, run the full framework; getting the wrong root cause costs more than the few minutes of ceremony.
+**Trivial-bug fast-path:** Once the problem is clear, decide whether the framework is needed at all. If the cause is immediately readable from the input (single-file typo, missing import, obvious null deref or off-by-one with a one-line fix) and verification doesn't require deep tracing, present the cause and the proposed one-line fix and run Phase 2's **Fix it now / Diagnosis only** user-choice gate before editing — the fast-path saves investigation ceremony, not the user's choice over whether to apply a fix. If the user picks fix, run Phase 3's **Workspace and bookmark check** (working-copy-change confirmation and default-bookmark bookmark-creation prompt), apply the fix, leave a one-line note explaining the cause, and skip to Phase 4's structured summary. If diagnosis only, write the summary and stop. When in doubt, run the full framework; getting the wrong root cause costs more than the few minutes of ceremony.
 
 **Otherwise**, proceed to Phase 1.
 
@@ -79,7 +79,7 @@ Confirm the bug exists and understand its behavior. Run the test, trigger the er
 
 Before deep code tracing, confirm the environment is what you think it is:
 
-- Correct bookmark/workspace active; no unintended uncommitted changes
+- Correct bookmark/workspace active; no unintended working-copy changes per `jj status`
 - Dependencies installed and up to date (`bun install`, `npm install`, `bundle install`, etc.) — stale `node_modules`/`vendor` is a frequent false lead
 - Expected interpreter or runtime version (check `.tool-versions`, `.nvmrc`, `Gemfile`, etc. against what's actually active)
 - Required env vars present and non-empty
@@ -213,15 +213,15 @@ If the user chose "Diagnosis only" at the end of Phase 2, skip this phase and go
 
 **Workspace and bookmark check:** Before editing files:
 
-- Check for uncommitted changes (`jj st`). If the user has in-progress work in files that need modification, confirm before editing — do not overwrite in-progress changes.
+- Check for working-copy changes with `jj status`. If the user has in-progress work in files that need modification, confirm before editing — do not overwrite in-progress changes.
 - If the current bookmark is the default bookmark, ask whether to create a feature bookmark first using the platform's blocking question tool (see Phase 2 for the per-platform names). To detect the default bookmark, compare against `main`, `master`, or the tracked remote bookmarks from `jj bookmark list`. Default to creating one; derive a name from the bug and run `jj new <default-bookmark>@origin` followed by `jj bookmark create <name> -r @`. On any other bookmark, proceed.
-- Record the pre-fix scope before editing: current `@` change ID, whether `jj st` is clean, and any pre-existing changed files. During Phase 3, keep a list of fix-owned files (the tests and implementation files changed for this bug). Phase 4 uses this to keep simplify/review from touching unrelated bookmark work.
+- Record the pre-fix scope before editing: current `@` change ID, whether `jj status` is clean, and any pre-existing changed files. During Phase 3, keep a list of fix-owned files (the tests and implementation files changed for this bug). Phase 4 uses this to keep simplify/review from touching unrelated bookmark work.
 
 **Test-first:**
 1. Inspect existing tests for the affected behavior before adding coverage.
 2. Choose the right regression home: use an existing failing test, update an existing test that owns the contract but has the wrong expectation, narrowly strengthen an over-mocked test that should have caught the bug, or add a new focused test when no existing test fits.
 3. Verify the chosen test fails for the right reason — the root cause, not unrelated setup.
-4. Implement the minimal fix — address the root cause and nothing else. Do not bundle drive-by refactors, formatting, or unrelated cleanup into a bug-fix change; those belong in separate commits.
+4. Implement the minimal fix — address the root cause and nothing else. Do not bundle drive-by refactors, formatting, or unrelated cleanup into a bug-fix change; those belong in separate described JJ changes.
 5. Verify the test passes.
 6. Run the broader test suite for regressions.
 7. Self-review the diff before declaring the root-cause fix done: read every changed line and check for style violations, missed edge cases, regressions in adjacent behavior, and missing test coverage for the fix. Do not run the broader polish/review/PR tail here; Phase 4 owns it after the debug summary so the user can see the root-cause result before shipping work begins.
@@ -255,7 +255,7 @@ Analyze how this was introduced and what allowed it to survive. Note any systemi
 
 **If Phase 3 ran**, the next move depends on whether the skill created the bookmark in Phase 3.
 
-#### Post-fix polish/review tail (before commit or PR)
+#### Post-fix polish/review tail (before describing the JJ change or opening a PR)
 
 Run this tail after Phase 3 ran and before the bookmark-based change/PR handoff. The goal is to leave the fix PR-ready, not merely locally green.
 
@@ -269,7 +269,7 @@ Run this tail after Phase 3 ran and before the bookmark-based change/PR handoff.
 
 **Handle residual findings before shipping.** Inspect the review's Actionable Findings. Do not auto-open a PR with unresolved P0/P1 findings, or with findings whose fix needs a product/design decision. Ask the user whether to fix now, accept/defer durably, or stop. For lower-severity residuals the user accepts, preserve them before any outward handoff: if a PR will be opened, pass them as "Known Residuals" context to `/ce-commit-push-pr`; if the user chooses change-only or stop, create `docs/residual-review-findings/<bookmark-or-change-id>.md` with the accepted findings and source review context, include it with the fix when describing the JJ change, and mention the file path in the final summary. Accepted residuals must not live only in the session.
 
-**Re-verify after tail edits.** If simplification or review changed code, rerun the bug's regression test and any targeted checks the tail identified. Never proceed to commit or PR with a red tree.
+**Re-verify after tail edits.** If simplification or review changed code, rerun the bug's regression test and any targeted checks the tail identified. Never proceed to describe the JJ change or open a PR with a red tree.
 
 **Post-fix quality summary.** After the tail, append this block below the Debug Summary before the commit/PR decision:
 
@@ -286,7 +286,7 @@ Run this tail after Phase 3 ran and before the bookmark-based change/PR handoff.
 
 1. **Check for contextual overrides first.** Look at the user's original prompt, loaded memories, and the project's active instructions already in your context for preferences that conflict with auto change-and-PR — for example, "always review before pushing", "open PRs as drafts", or "don't open PRs from skills". A signal must be an explicit instruction or a clearly applicable rule, not a vague tonal cue. If any apply, honor them — switch to the pre-existing-bookmark menu below, or skip the PR step entirely, whichever matches the user's stated preference.
 2. **Briefly preview what will happen** — what will be described, on what bookmark, and that a PR will be opened — then proceed without waiting for confirmation. The preview exists so the user can interrupt; it is not a blocking question. Format and length are your call; keep it scannable.
-3. **Run `/ce-commit-push-pr`.** When the entry came from an issue tracker, include the appropriate auto-close syntax for that tracker in the location it requires — most trackers parse PR descriptions (e.g., `Fixes #N` for GitHub, `Closes ABC-123` for Linear), but some only parse commit messages (e.g., Jira Smart Commits) — so the diagnosis and fix flow back to the issue and it closes on merge. Surface the resulting PR URL.
+3. **Run `/ce-commit-push-pr`.** When the entry came from an issue tracker, include the appropriate auto-close syntax for that tracker in the location it requires — most trackers parse PR descriptions (e.g., `Fixes #N` for GitHub, `Closes ABC-123` for Linear), but some only parse the exported Git commit message derived from the JJ change description (e.g., Jira Smart Commits) — so the diagnosis and fix flow back to the issue and it closes on merge. Surface the resulting PR URL.
 
 #### Pre-existing bookmark (skill did not create it): ask the user
 
@@ -306,4 +306,4 @@ Most bugs are localized mechanical fixes (typo, missed null check, missing impor
 - **Offer neutrally** when the lesson can be stated in one sentence — e.g., "X.foo() returns T | undefined when Y, not just T", or "the diagnostic path was non-obvious and worth recording." If you cannot articulate the lesson, skip rather than offer.
 - **Lean into the offer** when the pattern appears in 3+ locations OR the root cause reveals a wrong assumption about a shared dependency, framework, or convention that other code is likely to repeat.
 
-When offering, use the blocking question tool described above. If the user accepts, run `/ce-compound`, then include the resulting learning doc in a JJ change on the same bookmark and push so the open PR picks up the new change.
+When offering, use the blocking question tool described above. If the user accepts, run `/ce-compound`, then include the resulting learning doc in a described JJ change on the same bookmark and use `/ce-commit-push-pr` or `jj git push` so the open PR picks up the new change.

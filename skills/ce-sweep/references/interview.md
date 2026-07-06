@@ -109,10 +109,10 @@ Let the user override the path if they want a different location. If they pick m
 
 **Ask:** "Is this a multi-agent setup where several workspaces push the sweep state to a shared docs bookmark? Answer yes only if more than one machine or agent describes and pushes to the same bookmark. Default is no — a single workspace describing locally."
 
-- **No** (default) -> `sweep_shared_branch: false`. The single-writer lease serializes overlapping sweeps within one workspace.
-- **Yes** -> `sweep_shared_branch: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep describes and pushes the lease acquisition on the shared bookmark and confirms its writer won, making the lease a repo-wide mutex across machines.
+- **No** (default) -> `sweep_shared_bookmark: false`. The single-writer lease serializes overlapping sweeps within one workspace.
+- **Yes** -> `sweep_shared_bookmark: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep describes and pushes the lease acquisition on the shared JJ bookmark and confirms its writer won, making the lease a repo-wide mutex across machines.
 
-**Capture:** `sweep_shared_branch` (`true` | `false`).
+**Capture:** `sweep_shared_bookmark` (`true` | `false`).
 
 ---
 
@@ -147,7 +147,7 @@ Write these keys (see "Config File Shape" below for the exact form):
 - `feedback_sources` — the list of source maps assembled across sections 1-3.
 - `sweep_state_path` — from section 4.
 - `sweep_ack_cap` — from section 5.
-- `sweep_shared_branch` — from section 6 (default `false`; only meaningful with tracked state).
+- `sweep_shared_bookmark` — from section 6 (default `false`; only meaningful with tracked state).
 
 Then surface the resulting Sweep section to the user in chat and offer **one round of edits**.
 
@@ -180,7 +180,7 @@ feedback_sources:
 sweep_state_path: docs/feedback-sweep/state.yml   # tracked (multi-agent) or /tmp path (solo)
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
-sweep_shared_branch: false                        # true: push-gated lease for shared-docs-bookmark topology
+sweep_shared_bookmark: false                      # true: push-gated lease for shared-docs-bookmark topology
 ~~~
 
 Notes:

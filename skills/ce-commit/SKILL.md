@@ -14,7 +14,7 @@ Create a single, well-crafted jj change from the current working-copy changes.
 **In Claude Code**, the five labeled sections below (JJ status, Working-copy diff, Current bookmark, Recent changes, Remote default bookmark) contain pre-populated data. Use them directly throughout this skill -- do not re-run these commands.
 
 **JJ status:**
-!`jj st`
+!`jj status`
 
 **Working-copy diff:**
 !`jj diff`
@@ -35,7 +35,7 @@ Create a single, well-crafted jj change from the current working-copy changes.
 Run this single command to gather all context:
 
 ```bash
-printf '=== STATUS ===\n'; jj st; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ "\n"'; printf '\n=== LOG ===\n'; jj log -n 10 --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'; printf '\n=== DEFAULT_BOOKMARK ===\n'; jj log -r 'latest(remote_bookmarks(exact:"main", remote="origin") | remote_bookmarks(exact:"master", remote="origin"))' --no-graph -T 'bookmarks.join(" ") ++ "\n"' 2>/dev/null || echo '__DEFAULT_BOOKMARK_UNRESOLVED__'
+printf '=== STATUS ===\n'; jj status; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ "\n"'; printf '\n=== LOG ===\n'; jj log -n 10 --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'; printf '\n=== DEFAULT_BOOKMARK ===\n'; jj log -r 'latest(remote_bookmarks(exact:"main", remote="origin") | remote_bookmarks(exact:"master", remote="origin"))' --no-graph -T 'bookmarks.join(" ") ++ "\n"' 2>/dev/null || echo '__DEFAULT_BOOKMARK_UNRESOLVED__'
 ```
 
 ---
@@ -54,7 +54,7 @@ gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
 
 If both fail, fall back to `main`.
 
-If `jj st` from the context above shows no changes in the working copy, report that there is nothing to save and stop.
+If `jj status` from the context above shows no changes in the working copy, report that there is nothing to save and stop.
 
 If the current bookmark from the context above is empty, the working-copy change has no bookmark. Explain that a bookmark is required if the user wants this work attached to a named line of work. Ask whether to create a feature bookmark now. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
@@ -66,10 +66,10 @@ If the current bookmark from the context above is empty, the working-copy change
 Follow this priority order:
 
 1. **Repo conventions already in context** -- If project instructions (AGENTS.md, CLAUDE.md, or similar) are already loaded and specify change description conventions, follow those. Do not re-read these files; they are loaded at session start.
-2. **Recent change history** -- If no explicit convention is documented, examine the 10 most recent changes from Step 1. If a clear pattern emerges (e.g., conventional commits, ticket prefixes, emoji prefixes), match that pattern.
-3. **Default: conventional commits** -- If neither source provides a pattern, use conventional commit format for the jj description: `type(scope): description` where type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `style`, `build`.
+2. **Recent change history** -- If no explicit convention is documented, examine the 10 most recent changes from Step 1. If a clear pattern emerges (e.g., Conventional Commits-style prefixes, ticket prefixes, emoji prefixes), match that pattern.
+3. **Default: Conventional Commits-style descriptions** -- If neither source provides a pattern, use `type(scope): description` for the jj description, where type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `style`, `build`.
 
-When using conventional commits, choose the type that most precisely describes the change (the type list above). Where `fix:` and `feat:` both seem to fit, default to `fix:`: a change that remedies broken or missing behavior is `fix:` even when implemented by adding code. Reserve `feat:` for capabilities the user could not previously accomplish. Other types remain primary when they fit better. The user may override for a specific change.
+When using Conventional Commits-style descriptions, choose the type that most precisely describes the change (the type list above). Where `fix:` and `feat:` both seem to fit, default to `fix:`: a change that remedies broken or missing behavior is `fix:` even when implemented by adding code. Reserve `feat:` for capabilities the user could not previously accomplish. Other types remain primary when they fit better. The user may override for a specific change.
 
 ### Step 3: Consider logical changes
 
@@ -91,7 +91,7 @@ Write the change description:
 For each change group, set the description and then start a new empty working-copy change with `jj new`. Use a heredoc to preserve formatting:
 
 ```bash
-jj desc -m "$(cat <<'EOF'
+jj describe -m "$(cat <<'EOF'
 type(scope): subject line here
 
 Optional body explaining why this change was made,
@@ -102,4 +102,4 @@ EOF
 
 ### Step 5: Confirm
 
-Run `jj st` after finalizing to verify success. Report the change ID(s), commit hash(es), and subject line(s).
+Run `jj status` after finalizing to verify success. Report the change ID(s), commit ID(s), and subject line(s).

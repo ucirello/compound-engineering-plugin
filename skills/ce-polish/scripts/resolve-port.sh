@@ -6,8 +6,7 @@
 #   resolve-port.sh [path] [--type <type>] [--port <n>]
 #
 # Arguments:
-#   path   (optional) -- project root directory. Defaults to the JJ repo root,
-#                        or the current directory outside JJ.
+#   path   (optional) -- project root directory. Defaults to the Jujutsu repo root, falling back to the current directory.
 #   --type (optional) -- framework type to scope probes (rails|next|vite|nuxt|
 #                        astro|remix|sveltekit|procfile). Unset runs all probes.
 #   --port (optional) -- explicit port override. Emitted immediately when present.
@@ -70,9 +69,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Default to JJ repo root/current directory when no positional path is given.
+# Default to Jujutsu repo root when no positional path is given, then current directory.
 if [ -z "$PROJECT_ROOT" ]; then
   PROJECT_ROOT=$(jj root 2>/dev/null || pwd)
+  if [ -z "$PROJECT_ROOT" ]; then
+    echo "ERROR: cannot resolve project root" >&2
+    exit 1
+  fi
 fi
 
 if [ ! -d "$PROJECT_ROOT" ]; then

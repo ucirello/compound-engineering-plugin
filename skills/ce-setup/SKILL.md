@@ -44,9 +44,9 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 If the script is unavailable, perform the inline equivalent:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a JJ workspace, resolve the repo root with `jj workspace root`.
+2. If inside a Jujutsu repo, resolve the repo root with `jj root`.
 3. Check for obsolete `compound-engineering.local.md` at the repo root.
-4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether JJ reports it as untracked by the working-copy commit.
+4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether `jj file list .compound-engineering/config.local.yaml` shows it is untracked/ignored rather than tracked.
 5. Compare `.compound-engineering/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
 Display the diagnostic output to the user. Missing optional tools are not setup failures.
@@ -56,7 +56,7 @@ Display the diagnostic output to the user. Missing optional tools are not setup 
 Proceed to Phase 2 only if one or more repo-local project issues exist:
 
 - obsolete `compound-engineering.local.md`
-- `.compound-engineering/config.local.yaml` exists but is not safely ignored by version control
+- `.compound-engineering/config.local.yaml` exists but is not safely gitignored
 - `.compound-engineering/config.local.example.yaml` is missing or outdated
 
 If no project issues exist, report:
@@ -74,7 +74,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 ## Phase 2: Fix Repo-Local Issues
 
-Resolve the repository root (`jj workspace root`). All paths below are relative to the repo root, not the current working directory.
+Resolve the repository root (`jj root`). All paths below are relative to the repo root, not the current working directory.
 
 ### Step 4: Remove Obsolete Local Config
 
@@ -84,7 +84,7 @@ Ask whether to delete it now. Delete only if the user approves.
 
 ### Step 5: Refresh Example Config
 
-Copy `references/config-template.yaml` to `<repo-root>/.compound-engineering/config.local.example.yaml`, creating the directory if needed. This file is committed to the repo and should always reflect the latest available settings.
+Copy `references/config-template.yaml` to `<repo-root>/.compound-engineering/config.local.example.yaml`, creating the directory if needed. This file is tracked in the repo and should always reflect the latest available settings.
 
 If the bundled template cannot be located by the current platform, print the source template path that failed and tell the user the example config could not be refreshed automatically.
 
@@ -103,15 +103,15 @@ Everything starts commented out -- you only enable what you need.
 
 If the user approves, copy `references/config-template.yaml` to `<repo-root>/.compound-engineering/config.local.yaml`.
 
-### Step 7: Ensure Local Config Is Ignored
+### Step 7: Ensure Local Config Is Gitignored
 
-If `.compound-engineering/config.local.yaml` exists and is not covered by the repo's shared ignore rules, offer to add:
+If `.compound-engineering/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
 
 ```text
 .compound-engineering/*.local.yaml
 ```
 
-Append the entry to the repo-root shared ignore file only if the user approves. Do not overwrite unrelated ignore content.
+Append the entry to the repo-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
 ## Phase 3: Summary
 

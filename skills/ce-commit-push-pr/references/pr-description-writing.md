@@ -26,26 +26,33 @@ For PR mode, fetch metadata first:
 gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
 ```
 
-If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
+If `state` is not `OPEN`, report and stop -- do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>` for API fallback context.
 
-For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> try `main`/`master`/`develop` via `jj bookmark list --all-remotes`. If none resolve, ask the user. `<head>` is `@`.
+For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> a visible `<base>@origin` bookmark from `jj log -r 'remote_bookmarks(remote="origin")'` -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> try `main`/`master`/`develop` via `jj log -r '<candidate>@origin'`. If none resolve, ask the user. `<head>` is `@`.
 
-**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `jj git remote list`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
+**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, prefer the `gh` fallback -- do not diff against `origin` if it is the wrong base.
+
+For current-bookmark mode, fetch with jj and inspect the local range:
 
 ```bash
-jj git fetch --remote <base-remote> --branch <base>
-jj log --no-graph -r 'remote_bookmarks(<base>, <base-remote>)..<head>' -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
-jj log --no-graph -r 'remote_bookmarks(<base>, <base-remote>)..<head>' -T 'commit_id.short() ++ " " ++ description ++ "\n"'   # full change descriptions for related-reference discovery
-jj diff --from 'remote_bookmarks(<base>, <base-remote>)' --to '<head>'
+jj git fetch --remote <base-remote>
+jj log  -r '<base>@<base-remote>..<head>' --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+jj log  -r '<base>@<base-remote>..<head>' --no-graph -T 'description ++ "\n---\n"'   # full descriptions for related-reference discovery
+jj diff --from '<base>@<base-remote>' --to '<head>'
 ```
 
-When both endpoints are already resolved as local JJ refs, the equivalent range shape is `jj log -r "<base>..<head>" --no-graph`.
+For PR mode, prefer GitHub's PR range because the head SHA may not be present as a local jj revision:
 
-If the commit list is empty, report "No commits to describe" and stop.
+```bash
+gh pr diff <ref>
+gh pr view <ref> --json commits
+```
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local JJ can't reach the refs (fork PR with no matching remote, shallow clone, offline, unrelated histories).
+If the change list is empty, report "No changes to describe" and stop.
 
-Note in the user-facing summary when the API fallback was used.
+**Fallback** -- use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local jj can't reach the refs (fork PR with no matching remote, shallow clone, offline, unrelated histories).
+
+Note in the user-facing summary when the GitHub API fallback was used.
 
 ---
 
@@ -73,14 +80,14 @@ For small + non-trivial bugfixes, the 3-5 sentence target still needs a user-vis
 - Type by intent, not file extension. When `fix` and `feat` both seem to fit, default to `fix` — adding code to remedy missing behavior is `fix`. Reserve `feat` for capabilities the user could not previously accomplish. Use `refactor`/`docs`/`chore`/`perf`/`test` when more precise.
 - Scope (optional): narrowest useful label. Omit when no single label adds clarity.
 - Description: imperative, lowercase, under 72 chars, no trailing period.
-- Match repo conventions visible in recent commits.
+- Match repo conventions visible in recent change descriptions.
 - **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation** — they trigger automated major-version bumps.
 
 ---
 
 ## Step B1: Resolve related work references
 
-Before writing the body, make an explicit related-reference pass. Gather candidate work-item references from the user prompt, caller handoff, bookmark name, full commit messages, existing PR body, PR template, plan/debug notes, and visible URLs or IDs already in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
+Before writing the body, make an explicit related-reference pass. Gather candidate work-item references from the user prompt, caller handoff, bookmark name, full change descriptions, existing PR body, PR template, plan/debug notes, and visible URLs or IDs already in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
 
 Classify each candidate as:
 
@@ -102,7 +109,7 @@ Common syntax examples:
 
 | Tracker | Closing reference | Non-closing reference | Notes |
 |---|---|---|---|
-| GitHub Issues | `Fixes #123`; cross-repo: `Fixes owner/repo#123` | `Related: #123`; cross-repo: `Related: owner/repo#123` | Closing keywords are `close(s/d)`, `fix(es/ed)`, and `resolve(s/d)`. Use closing syntax only when the PR targets the default ref and truly resolves the issue; otherwise use a non-closing reference. Repeat the keyword for multiple closing issues. |
+| GitHub Issues | `Fixes #123`; cross-repo: `Fixes owner/repo#123` | `Related: #123`; cross-repo: `Related: owner/repo#123` | Closing keywords are `close(s/d)`, `fix(es/ed)`, and `resolve(s/d)`. Use closing syntax only when the PR targets the default branch and truly resolves the issue; otherwise use a non-closing reference. Repeat the keyword for multiple closing issues. |
 | Linear | `Fixes ENG-123` | `Related to ENG-123` | Linear supports closing and non-closing magic words. Put magic words in the PR description, not a PR comment. Multiple issues can follow one magic word when they share the same intent, e.g. `Fixes ENG-123, DES-5 and ENG-256`. |
 | Other trackers | Use the project's documented closing keyword only when known. | Prefer a full URL or tracker ID under `Related`. | Some trackers parse commit messages, PR descriptions, or both. Follow project docs or tracker integration docs when present; otherwise never guess a closing action. |
 

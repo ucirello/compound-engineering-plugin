@@ -7,14 +7,14 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working copy changes.** If the current JJ working-copy commit `@` has changes (`jj diff -r @` is non-empty), review those.
-3. **Bookmark work vs base bookmark.** If the working-copy commit is empty, review `jj diff --from 'heads(::@ & ::<base>)' --to @` where `<base>` is the default bookmark (main or master).
+2. **Working copy changes.** If the current JJ change is non-empty (`jj diff -r @` is non-empty), review it.
+3. **Unpushed changes vs base bookmark.** If the working copy is clean, review `jj diff --from <base> --to @` where `<base>` is the default bookmark (main or master).
 
 The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run JJ commands yourself unless PR scope mode requires it (below).
 
 ## Remote scope (`pr-remote` and `bookmark-remote`)
 
-When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>`, the working copy is **not** the reviewed head. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark/ref or PR under review.
+When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>`, the working tree is **not** the reviewed head. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark or PR under review.
 
 Instead:
 

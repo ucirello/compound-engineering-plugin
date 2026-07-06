@@ -10,8 +10,8 @@ Your output is themes, not tickets. 25 duplicate bugs about the same failure mod
 
 Verify each condition in order. If any fails, return a clear message explaining what is missing and stop.
 
-1. **JJ workspace** — confirm the current directory is in a JJ workspace using `jj workspace root`
-2. **GitHub remote** — detect the repository. Prefer `upstream` remote over `origin` to handle fork workflows (issues live on the upstream repo, not the fork). Use `gh repo view --json nameWithOwner` to confirm the resolved repo.
+1. **Jujutsu workspace** — confirm the current directory is in a jj workspace using `jj workspace root`
+2. **GitHub remote** — detect the repository from `jj git remote list`. Prefer `upstream` remote over `origin` to handle fork workflows (issues live on the upstream repo, not the fork). Use `gh repo view --json nameWithOwner` to confirm the resolved repo.
 3. **`gh` CLI available** — verify `gh` is installed with `which gh`
 4. **Authentication** — verify `gh auth status` succeeds
 

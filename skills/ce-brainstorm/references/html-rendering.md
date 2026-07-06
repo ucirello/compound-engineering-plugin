@@ -103,14 +103,14 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj workspace root`).
+1. Workspace root (resolve via `jj root`).
 2. `docs/DESIGN.md`.
 3. `.compound-engineering/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to a primary workspace. Users
-working from a JJ workspace who want HTML defaults can add DESIGN.md to the
+Workspace-root only — do not fall through to a trunk checkout. Users
+working from a workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
@@ -236,7 +236,7 @@ jj git remote list
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
+  `docs/solutions/bar.md`) -> `<repo-url>/blob/<default-branch>/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -245,7 +245,7 @@ Apply linking to three reference shapes:
   session or in `AGENTS.md`); otherwise leave as text.
 
 **Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
-Bitbucket, internal host) and the equivalent main-tree URL pattern
+Bitbucket, internal host) and the equivalent default-tree URL pattern
 isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.

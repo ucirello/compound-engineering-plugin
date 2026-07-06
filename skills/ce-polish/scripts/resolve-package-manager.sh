@@ -8,7 +8,7 @@
 #
 # Arguments:
 #   path (optional) — directory to inspect. When omitted, defaults to the
-#                     JJ repo root, or the current directory outside JJ.
+#                     repo root via `jj root`, falling back to the current directory.
 #
 # Output contract (two lines on stdout):
 #   Line 1: package-manager binary token (`npm` | `pnpm` | `yarn` | `bun`)
@@ -32,13 +32,13 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          no positional arg and current directory is unreadable
+#                          path does not exist or is not a directory
 
 set -u
 
 TARGET_PATH="${1:-}"
 
-# Resolve target directory: positional arg or JJ repo root/current directory.
+# Resolve target directory: positional arg, Jujutsu repo root, or current directory.
 if [ -n "$TARGET_PATH" ]; then
   if [ ! -d "$TARGET_PATH" ]; then
     echo "ERROR: path does not exist or is not a directory: $TARGET_PATH" >&2
@@ -46,6 +46,10 @@ if [ -n "$TARGET_PATH" ]; then
   fi
 else
   TARGET_PATH=$(jj root 2>/dev/null || pwd)
+  if [ -z "$TARGET_PATH" ]; then
+    echo "ERROR: cannot resolve target directory" >&2
+    exit 1
+  fi
 fi
 
 # Sentinel: no package.json means this is not a JS/TS project.

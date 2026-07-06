@@ -1,6 +1,6 @@
 # Review followup (LFG step 4–5)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then commits.
+`ce-code-review` is review-only. LFG applies eligible fixes itself, then describes the resulting JJ change.
 
 ## Step 4 — invoke review
 
@@ -16,7 +16,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the working copy only when **all** of the following hold:
+Apply a finding in the working tree only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -35,9 +35,9 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
+2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `jj status` shows changes, commit only review-driven files with `jj commit -m "fix(review): apply review findings"`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: resolve a writable remote dynamically, preferring `origin` when present; otherwise use `jj git remote list` and choose the first configured remote. Then run `jj git push --remote <remote> --bookmark <current-bookmark>`. If there is no remote at all, do not push — the local commit suffices. If no eligible fixes were applied, note explicitly and skip commit.
+4. If `jj status` shows changes, keep only review-driven files in this JJ change, describe it as `fix(review): apply review findings`, run `jj new`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: if a tracked bookmark exists, run `jj git push`. If no tracked bookmark exists but a remote is configured (common on fresh feature work), resolve a writable remote dynamically: prefer `origin` when present, otherwise use `jj git remote list` and choose the first configured remote. Then create/move a bookmark for the described change and run `jj git push --remote <remote> --bookmark <bookmark>`. If there is no remote at all, do not push — the local described change suffices. If no eligible fixes were applied, note explicitly and skip describing a new change.
 
 ## Step 6 — residual handoff
 

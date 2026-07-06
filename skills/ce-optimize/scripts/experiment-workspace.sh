@@ -10,7 +10,7 @@
 #   experiment-workspace.sh cleanup-all <spec_name>
 #   experiment-workspace.sh count
 #
-# Workspaces are created at: .workspaces/optimize-<spec>-exp-<NNN>/
+# Workspaces are created at: .worktrees/optimize-<spec>-exp-<NNN>/
 # Bookmarks are named: optimize-exp/<spec>/exp-<NNN>
 
 set -euo pipefail
@@ -21,12 +21,12 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-JJ_ROOT=$(jj root 2>/dev/null) || {
-  echo -e "${RED}Error: Not in a JJ workspace${NC}" >&2
+REPO_ROOT=$(jj root 2>/dev/null) || {
+  echo -e "${RED}Error: Not in a Jujutsu repository${NC}" >&2
   exit 1
 }
 
-WORKSPACE_DIR="$JJ_ROOT/.workspaces"
+WORKSPACE_DIR="$REPO_ROOT/.worktrees"
 
 experiment_bookmark_name() {
   local spec_name="${1:?Error: spec_name required}"
@@ -37,13 +37,46 @@ experiment_bookmark_name() {
   echo "optimize-exp/${spec_name}/exp-${padded_index}"
 }
 
-is_registered_workspace() {
-  local workspace_name="${1:?Error: workspace_name required}"
+ensure_workspace_exclude() {
+  local exclude_file
+  exclude_file="$REPO_ROOT/.gitignore"
 
-  jj workspace list | awk -v target="$workspace_name" '
-    $1 == target ":" { found = 1 }
-    END { exit(found ? 0 : 1) }
-  '
+  mkdir -p "$(dirname "$exclude_file")"
+
+  if ! grep -q "^\.worktrees$" "$exclude_file" 2>/dev/null; then
+    echo ".worktrees" >> "$exclude_file"
+  fi
+}
+
+is_registered_workspace() {
+  local workspace_path="${1:?Error: workspace_path required}"
+
+  jj workspace list 2>/dev/null | grep -F "$workspace_path" >/dev/null
+}
+
+is_bookmark_active() {
+  local bookmark_name="${1:?Error: bookmark_name required}"
+
+  jj log -r "${bookmark_name}" --no-graph --template 'change_id' >/dev/null 2>&1
+}
+
+reset_workspace_to_base() {
+  local workspace_path="${1:?Error: workspace_path required}"
+  local bookmark_name="${2:?Error: bookmark_name required}"
+  local base_bookmark="${3:?Error: base_bookmark required}"
+  local current_bookmark
+
+  current_bookmark=$(jj --repository "$workspace_path" log -r @ --no-graph --template 'bookmarks.join(",")' 2>/dev/null || true)
+  if [[ "$current_bookmark" != *"$bookmark_name"* ]]; then
+    echo -e "${RED}Error: Existing workspace is on unexpected bookmark: ${current_bookmark:-none} (expected $bookmark_name)${NC}" >&2
+    echo -e "${RED}Clean up the stale workspace before rerunning this experiment.${NC}" >&2
+    return 1
+  fi
+
+  echo -e "${YELLOW}Resetting existing experiment workspace to base: $bookmark_name -> $base_bookmark${NC}" >&2
+  jj --repository "$workspace_path" abandon @ >/dev/null 2>&1 || true
+  jj --repository "$workspace_path" new "$base_bookmark" >/dev/null
+  jj --repository "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
 }
 
 # Create an experiment workspace
@@ -60,18 +93,43 @@ create_workspace() {
   bookmark_name=$(experiment_bookmark_name "$spec_name" "$padded_index")
   local workspace_path="$WORKSPACE_DIR/$workspace_name"
 
-  if [[ -e "$workspace_path" ]] || is_registered_workspace "$workspace_name"; then
-    echo -e "${RED}Error: Existing experiment workspace found: $workspace_path${NC}" >&2
-    echo -e "${RED}Clean it up before rerunning this experiment.${NC}" >&2
-    return 1
+  # Check if workspace already exists
+  if [[ -d "$workspace_path" ]]; then
+    if ! jj --repository "$workspace_path" root >/dev/null 2>&1 || \
+       ! is_registered_workspace "$workspace_path"; then
+      echo -e "${RED}Error: Existing path is not a valid registered JJ workspace: $workspace_path${NC}" >&2
+      echo -e "${RED}Remove or repair that directory before rerunning the experiment.${NC}" >&2
+      return 1
+    fi
+
+    echo -e "${YELLOW}Workspace already exists: $workspace_path${NC}" >&2
+    reset_workspace_to_base "$workspace_path" "$bookmark_name" "$base_bookmark"
+  else
+    mkdir -p "$WORKSPACE_DIR"
+    ensure_workspace_exclude
+
+    # Create workspace from the base bookmark.
+    if ! jj workspace add --name "$workspace_name" "$workspace_path" "$base_bookmark" >/dev/null 2>&1; then
+      if is_bookmark_active "$bookmark_name"; then
+        if is_registered_workspace "$workspace_path"; then
+          echo -e "${RED}Error: Existing experiment bookmark is already active: $bookmark_name${NC}" >&2
+          echo -e "${RED}Clean up the stale workspace before rerunning this experiment.${NC}" >&2
+          return 1
+        fi
+
+        echo -e "${YELLOW}Resetting existing experiment bookmark to base: $bookmark_name -> $base_bookmark${NC}" >&2
+        jj bookmark set "$bookmark_name" -r "$base_bookmark" >/dev/null
+        jj workspace add --name "$workspace_name" "$workspace_path" "$bookmark_name" >/dev/null
+      else
+        echo -e "${RED}Error: Failed to create workspace for $bookmark_name from $base_bookmark${NC}" >&2
+        return 1
+      fi
+    fi
+    jj --repository "$workspace_path" bookmark create "$bookmark_name" -r @ >/dev/null 2>&1 || jj --repository "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
   fi
 
-  mkdir -p "$WORKSPACE_DIR"
-  jj workspace add --name "$workspace_name" --revision "$base_bookmark" "$workspace_path" >/dev/null
-  jj -R "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
-
-  # Copy .env files from main repo
-  for f in "$JJ_ROOT"/.env*; do
+  # Copy .env files from the main repo
+  for f in "$REPO_ROOT"/.env*; do
     if [[ -f "$f" ]]; then
       local basename
       basename=$(basename "$f")
@@ -83,17 +141,17 @@ create_workspace() {
 
   # Copy shared files
   for shared_file in "$@"; do
-    if [[ -f "$JJ_ROOT/$shared_file" ]]; then
+    if [[ -f "$REPO_ROOT/$shared_file" ]]; then
       local dir
       dir=$(dirname "$workspace_path/$shared_file")
       mkdir -p "$dir"
-      cp "$JJ_ROOT/$shared_file" "$workspace_path/$shared_file"
-    elif [[ -d "$JJ_ROOT/$shared_file" ]]; then
+      cp "$REPO_ROOT/$shared_file" "$workspace_path/$shared_file"
+    elif [[ -d "$REPO_ROOT/$shared_file" ]]; then
       local dir
       dir=$(dirname "$workspace_path/$shared_file")
       mkdir -p "$dir"
       rm -rf "$workspace_path/$shared_file"
-      cp -R "$JJ_ROOT/$shared_file" "$workspace_path/$shared_file"
+      cp -R "$REPO_ROOT/$shared_file" "$workspace_path/$shared_file"
     fi
   done
 
@@ -112,11 +170,14 @@ cleanup_workspace() {
   bookmark_name=$(experiment_bookmark_name "$spec_name" "$padded_index")
   local workspace_path="$WORKSPACE_DIR/$workspace_name"
 
-  if is_registered_workspace "$workspace_name"; then
-    jj workspace forget "$workspace_name" 2>/dev/null || true
+  if [[ -d "$workspace_path" ]]; then
+    jj workspace forget "$workspace_name" --repository "$workspace_path" >/dev/null 2>&1 || {
+      # If workspace forget fails, try manual cleanup
+      rm -rf "$workspace_path" 2>/dev/null || true
+    }
   fi
 
-  rm -rf "$workspace_path" 2>/dev/null || true
+  # Delete the experiment bookmark
   jj bookmark delete "$bookmark_name" 2>/dev/null || true
 
   echo -e "${GREEN}Cleaned up: $workspace_name${NC}" >&2
@@ -129,7 +190,7 @@ cleanup_all() {
   local count=0
 
   if [[ ! -d "$WORKSPACE_DIR" ]]; then
-    echo -e "${YELLOW}No experiment workspaces directory found${NC}" >&2
+    echo -e "${YELLOW}No workspaces directory found${NC}" >&2
     return 0
   fi
 
@@ -140,9 +201,11 @@ cleanup_all() {
       # Extract index from name
       local index_str="${workspace_name#$prefix}"
 
-      jj workspace forget "$workspace_name" 2>/dev/null || true
-      rm -rf "$workspace_path" 2>/dev/null || true
+      jj workspace forget "$workspace_name" --repository "$workspace_path" >/dev/null 2>&1 || {
+        rm -rf "$workspace_path" 2>/dev/null || true
+      }
 
+      # Delete the bookmark
       local bookmark_name
       bookmark_name=$(experiment_bookmark_name "$spec_name" "$index_str")
       jj bookmark delete "$bookmark_name" 2>/dev/null || true
@@ -159,12 +222,12 @@ cleanup_all() {
   echo -e "${GREEN}Cleaned up $count experiment workspace(s) for $spec_name${NC}" >&2
 }
 
-# Count total experiment workspaces (for budget check)
+# Count total workspaces (for budget check)
 count_workspaces() {
   local count=0
   if [[ -d "$WORKSPACE_DIR" ]]; then
     for workspace_path in "$WORKSPACE_DIR"/*; do
-      if [[ -d "$workspace_path" ]] && [[ -d "$workspace_path/.jj" ]]; then
+      if [[ -d "$workspace_path" ]] && [[ -e "$workspace_path/.jj" ]]; then
         count=$((count + 1))
       fi
     done
@@ -203,12 +266,12 @@ Usage:
   experiment-workspace.sh count
 
 Commands:
-  create       Create an experiment JJ workspace with copied shared files
+  create       Create an experiment workspace with copied shared files
   cleanup      Remove a single experiment workspace and its bookmark
   cleanup-all  Remove all experiment workspaces for a spec
-  count        Count total active experiment workspaces (for budget checking)
+  count        Count total active workspaces (for budget checking)
 
-Workspaces: .workspaces/optimize-<spec>-exp-<NNN>/
+Workspaces: .worktrees/optimize-<spec>-exp-<NNN>/
 Bookmarks:  optimize-exp/<spec>/exp-<NNN>
 EOF
       ;;

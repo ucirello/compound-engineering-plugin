@@ -13,9 +13,9 @@ Usage:
 `get` prints exactly one of:
     HIT\\n<profile-json>     a valid entry exists for the current repo state;
                             the profile JSON follows on subsequent lines
-    MISS\\n<write-path>      jj workspace, no valid entry — caller derives the
+    MISS\\n<write-path>      jj repo, no valid entry — caller derives the
                             profile and calls `put <write-path-or-any-file>`
-    NO-CACHE                no jj workspace or no writable cache — caller derives
+    NO-CACHE                no jj repo or no writable cache — caller derives
                             the profile fresh and skips `put`
 
 `put <file>` reads the profile JSON from <file>, wraps it with a validity
@@ -23,29 +23,28 @@ stamp, and writes it atomically to the computed cache path. Prints the path
 on success, `NO-CACHE` when the repo/cache is unavailable.
 
 Cache path:
-    /tmp/compound-engineering/repo-profile/<root-id>/<input-state-id>.json
-  root-id = lexicographically-first initial commit id from `jj log -r 'root()+ ~ root()'`
-            (deterministic even for multi-root histories) — the repo identity,
+    /tmp/compound-engineering/repo-profile/<root-id>/<head-id>.json
+  root-id = lexicographically-first commit id from
+            `jj log -r 'roots(::@ & ~root())'` — the repo identity,
             shared across workspaces and clones.
-  input-state-id = sha256 of profile-input file paths and contents at `@`.
+  head-id = commit id from `jj log -r @` — the working state.
 
 Validity (HIT) requires ALL of:
   - the cache file exists and parses as JSON,
-  - stored `head_sha` == current profile-input state id,
+  - stored `head_id` == current `@`,
   - stored `profile_schema_version` == PROFILE_SCHEMA_VERSION,
-  - no profile-input path is dirty or newly-added per `jj status`
-    (the schema-derived superset in `is_profile_input`, which also catches
-    untracked `?` files — a newly-added manifest or AGENTS.md must invalidate).
+  - no profile-input path is dirty or newly-added per `jj diff --name-only -r @`
+    (the schema-derived superset in `is_profile_input`; jj snapshots new files,
+    so a newly-added manifest or AGENTS.md invalidates).
 
 Cardinal rule: this cache is an optimization, never a correctness dependency.
-Every failure mode (not a jj workspace, unreadable/malformed cache, no writable
+Every failure mode (not a jj repo, unreadable/malformed cache, no writable
 /tmp, jj errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
 never serves a profile it cannot prove fresh.
 
 Pure stdlib. No third-party dependencies.
 """
 import json
-import hashlib
 import os
 import subprocess
 import sys
@@ -54,7 +53,7 @@ from datetime import datetime, timezone
 
 # Bump when the profile schema changes so a newer reader never reuses an
 # entry written under an older (narrower) schema.
-PROFILE_SCHEMA_VERSION = "1"
+PROFILE_SCHEMA_VERSION = "2"
 
 CACHE_ROOT = "/tmp/compound-engineering/repo-profile"
 
@@ -66,7 +65,7 @@ CACHE_ROOT = "/tmp/compound-engineering/repo-profile"
 # Dependency manifests + lockfiles. Matched by basename at ANY depth so a
 # monorepo workspace's manifest also invalidates. The profiler derives
 # stack/deps for ANY language, so this list must span ecosystems, not just JS —
-# an omitted manifest means a dirty dep bump can serve a stale
+# an omitted manifest means a dirty dep bump at unchanged HEAD serves a stale
 # profile (a cardinal-rule break).
 _MANIFEST_LOCKFILE = {
     # JavaScript / TypeScript / Deno
@@ -175,42 +174,11 @@ def is_profile_input(path: str) -> bool:
     return False
 
 
-def jj(*args: str, cwd: "str | None" = None) -> "str | None":
+def jj(*args: str) -> "str | None":
     """Run a jj command; return stripped stdout, or None on any failure."""
     try:
         result = subprocess.run(
-            ["jj", *args], cwd=cwd, capture_output=True, text=True, check=False
-        )
-    except OSError:
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
-
-
-def workspace_root() -> "str | None":
-    return jj("workspace", "root")
-
-
-def root_sha(root: str) -> "str | None":
-    out = jj("log", "-r", "root()+ ~ root()", "--no-graph", "-T", 'commit_id ++ "\\n"', cwd=root)
-    if not out:
-        return None
-    # Multi-root histories print several commit ids; pick a deterministic one.
-    return sorted(out.split("\n"))[0]
-
-
-def changed_paths(root: str) -> "list[str] | None":
-    """Paths from `jj status`, or None if it could not run.
-
-    Includes untracked (`?`) entries so a newly-added profile input is seen.
-    None signals "could not determine cleanliness" — the caller treats that
-    conservatively as a miss rather than serving an unverified profile.
-    """
-    try:
-        result = subprocess.run(
-            ["jj", "status"],
-            cwd=root,
+            ["jj", "--no-pager", "--color", "never", *args],
             capture_output=True,
             text=True,
             check=False,
@@ -219,52 +187,36 @@ def changed_paths(root: str) -> "list[str] | None":
         return None
     if result.returncode != 0:
         return None
-    def clean(token: str) -> str:
-        token = token.strip()
-        # jj may quote paths containing special characters.
-        if len(token) >= 2 and token[0] == '"' and token[-1] == '"':
-            token = token[1:-1]
-        return token
-
-    paths: list[str] = []
-    for line in result.stdout.split("\n"):
-        if not line.strip():
-            continue
-        if not line[:1] in {"M", "A", "D", "R", "C", "?"}:
-            continue
-        rest = line[2:] if len(line) > 1 and line[1] == " " else line[1:]
-        # Rename/copy entries are "old => new"; BOTH endpoints changed. A
-        # profile input renamed *away* (e.g. `package.json -> pkg.json`) must
-        # still invalidate, so keep the source path, not just the destination.
-        if " => " in rest:
-            for token in rest.split(" => ", 1):
-                p = clean(token)
-                if p:
-                    paths.append(p)
-            continue
-        p = clean(rest)
-        if p:
-            paths.append(p)
-    return paths
+    return result.stdout.strip()
 
 
-def profile_input_state(root: str) -> "str | None":
-    """Deterministic id for only the files that feed the agnostic profile."""
-    out = jj("file", "list", cwd=root)
+def root_id() -> "str | None":
+    out = jj(
+        "log",
+        "-r",
+        "roots(::@ & ~root())",
+        "--no-graph",
+        "-T",
+        'commit_id ++ "\\n"',
+    )
+    if not out:
+        return None
+    # Multi-root histories print several ids; pick a deterministic one.
+    ids = [line for line in out.split("\n") if line]
+    return sorted(ids)[0] if ids else None
+
+
+def changed_paths() -> "list[str] | None":
+    """Paths changed in jj's working-copy commit, or None if unknown.
+
+    jj snapshots new files into `@`, so a newly-added profile input is seen.
+    None signals "could not determine cleanliness" — the caller treats that
+    conservatively as a miss rather than serving an unverified profile.
+    """
+    out = jj("diff", "--name-only", "-r", "@")
     if out is None:
         return None
-    h = hashlib.sha256()
-    for rel in sorted(p for p in out.split("\n") if p and is_profile_input(p)):
-        h.update(rel.encode("utf-8"))
-        h.update(b"\0")
-        try:
-            with open(os.path.join(root, rel), "rb") as f:
-                h.update(f.read())
-        except OSError:
-            # A conflicted/deleted input is not cacheable.
-            return None
-        h.update(b"\0")
-    return h.hexdigest()
+    return [line for line in out.split("\n") if line]
 
 
 def cache_path(root: str, head: str) -> str:
@@ -272,12 +224,9 @@ def cache_path(root: str, head: str) -> str:
 
 
 def resolve_keys() -> "tuple[str, str] | None":
-    """The (root-id, current-id) cache key, or None if not a usable jj workspace."""
-    workspace = workspace_root()
-    if not workspace:
-        return None
-    root = root_sha(workspace)
-    head = profile_input_state(workspace)
+    """The (root-id, head-id) cache key, or None if not a usable jj repo."""
+    root = root_id()
+    head = jj("log", "-r", "@", "--no-graph", "-T", "commit_id")
     if not root or not head:
         return None
     return root, head
@@ -327,14 +276,13 @@ def do_get() -> int:
     profile = doc.get("profile") if isinstance(doc, dict) else None
     if (
         not isinstance(doc, dict)
-        or doc.get("head_sha") != head
+        or doc.get("head_id") != head
         or doc.get("profile_schema_version") != PROFILE_SCHEMA_VERSION
         or not is_valid_profile(profile)
     ):
         return miss()
 
-    workspace = workspace_root()
-    changed = changed_paths(workspace) if workspace else None
+    changed = changed_paths()
     # Could not determine cleanliness, or a profile input changed/was added.
     if changed is None or any(is_profile_input(p) for p in changed):
         return miss()
@@ -371,10 +319,10 @@ def do_put(profile_file: str) -> int:
         print("NO-CACHE")
         return 0
 
-    # Do not cache a profile derived from dirty profile inputs: it would be
-    # stored under a key that could later be reused after those edits are gone.
-    workspace = workspace_root()
-    changed = changed_paths(workspace) if workspace else None
+    # Do not cache a profile derived from DIRTY profile inputs: it reflects
+    # working-copy edits that could later be reverted while keeping the same
+    # question-agnostic facts stale for this cache key.
+    changed = changed_paths()
     if changed is None or any(is_profile_input(p) for p in changed):
         sys.stderr.write(
             "repo-profile-cache: profile inputs are dirty; not caching\n"
@@ -384,8 +332,8 @@ def do_put(profile_file: str) -> int:
 
     doc = {
         "profile_schema_version": PROFILE_SCHEMA_VERSION,
-        "root_sha": root,
-        "head_sha": head,
+        "root_id": root,
+        "head_id": head,
         "built_at": datetime.now(timezone.utc).isoformat(),
         "profile": profile,
     }

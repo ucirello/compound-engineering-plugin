@@ -27,13 +27,17 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, unreadable current directory).
+# genuine operational failures (missing `jq`, project root not found).
 
 set -u
 
 REQUESTED_NAME="${1:-}"
 
 REPO_ROOT=$(jj root 2>/dev/null || pwd)
+if [ -z "$REPO_ROOT" ]; then
+  echo "ERROR: cannot resolve project root" >&2
+  exit 1
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2

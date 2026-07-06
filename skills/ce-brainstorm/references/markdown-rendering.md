@@ -202,7 +202,7 @@ Engineering process metadata stays out of the artifact:
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in change messages, tool output, and agent
+This information belongs in JJ change descriptions, tool output, and agent
 transcripts — not in the artifact a reader returns to weeks later.
 
 ## Frontmatter shape

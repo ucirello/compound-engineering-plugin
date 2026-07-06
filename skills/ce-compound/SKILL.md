@@ -152,7 +152,7 @@ python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 
 The cache is an optimization, never a correctness dependency — if the helper errors or returns nothing usable, fall back to deriving the orientation inline and continue. Pass the resolved vocabulary/conventions into the Context Analyzer (for vocabulary and instruction-file convention grounding) so it does not re-derive them.
 
-**CRITICAL — the `docs/solutions/` enumeration is NEVER cached; the Related Docs Finder must glob it FRESH every run.** `ce-compound` *writes* new learnings into `docs/solutions/`, so a cached index would miss a doc added moments ago (even an uncommitted one). The cached profile supplies only the agnostic orientation above; the `docs/solutions/` search in step 3 always runs against the live tree.
+**CRITICAL — the `docs/solutions/` enumeration is NEVER cached; the Related Docs Finder must glob it FRESH every run.** `ce-compound` *writes* new learnings into `docs/solutions/`, so a cached index would miss a doc added moments ago (even one newly added in the working-copy change). The cached profile supplies only the agnostic orientation above; the `docs/solutions/` search in step 3 always runs against the live tree.
 
 Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent prompt. Each subagent **writes its full structured output** to its own file under `/tmp/compound-engineering/ce-compound/{run_id}/`, **confirms the write succeeded** (the file exists and is non-empty), and then **returns only a one-line confirmation containing the artifact path** — not the prose body inline. Artifact filenames by subagent:
 

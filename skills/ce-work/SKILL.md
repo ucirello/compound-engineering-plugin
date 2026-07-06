@@ -183,7 +183,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
    **After a parallel batch — the orchestrator integrates; never trust the handoff summary alone:**
    1. Wait for every worker in the batch to finish.
-   2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (`jj st`/`jj diff` in its workspace or the shared dir). Reported paths are a hint; declared `Files:` are often incomplete — workers create/modify files the plan didn't anticipate.
+   2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (`jj status`/`jj diff` in its workspace or the shared dir). Reported paths are a hint; declared `Files:` are often incomplete — workers create/modify files the plan didn't anticipate.
    3. **Detect real collisions** — 2+ workers that actually modified the same file. In a shared workspace only the last writer survived: describe and advance the non-colliding work first, then re-run the colliding units serially so each builds on the other's recorded result. With harness-native isolation the collision surfaces as an integration conflict instead (see the per-harness note).
    4. **Review, test, and describe each unit in dependency order — the orchestrator owns JJ change boundaries.** Move only that unit's file changes into the current change (use `jj split`/`jj squash` if needed), describe it with a message derived from its Goal, run the relevant tests, and fix before the next. Capture each worker's returned verification evidence into the run's `verification_evidence` roll-up — if a worker omitted it, re-derive what the tree allows and mark the rest as unverified rather than fabricating a red-before-implementation observation the worker never reported.
    5. Update the task list (progress lives in the JJ changes).
@@ -193,7 +193,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **Per-harness integration (examples — the universal flow above is the contract):**
    - **Claude `Agent` `isolation:"worktree"`:** each worker is on its own isolated JJ workspace/bookmark. Integrate each worker change into the orchestrator's change stack in dependency order; on conflict, abandon the attempted integration and re-run that unit serially against the integrated tree (hand-resolving silently discards one unit's intent).
    - **Codex `spawn_agent` worker:** integrate the worker's "uploaded changes," then `close_agent`.
-   - **Cursor `Task` (shared workspace):** edits are already in your tree — review and commit per step 4; **`best-of-n-runner`:** integrate its worktree.
+   - **Cursor `Task` (shared workspace):** edits are already in your tree — review and describe the JJ change per step 4; **`best-of-n-runner`:** integrate its worktree.
 
 ### Phase 2: Execute
 
@@ -218,7 +218,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
      - Assess testing coverage: did this task change behavior? If yes, were existing tests inspected and were tests written, updated, strengthened, or deliberately left unchanged with a reason? If no tests were added or changed, is the justification deliberate (e.g., pure config, no behavioral change, manual-only surface) and paired with replacement verification?
      - Record verification evidence for the task: behavior-change signal, existing tests inspected, tests added/changed/used unchanged, red failure or characterization observed when applicable, verification run, and any exception reason
      - Mark task as completed
-     - Evaluate for incremental commit (see below)
+      - Evaluate for incremental JJ change (see below)
    ```
 
    When a unit carries an `Execution note`, honor its intent rather than matching a fixed vocabulary. For notes that ask for proof-first work, write or identify the relevant failing test before implementation for that unit. For notes that ask for characterization, capture existing behavior before changing it. For notes that point away from unit coverage, run the named replacement verification and record why ordinary tests were not the right proof. For units without an `Execution note`, make the same decision from code and test discovery: upgrade to proof-first or characterization-first when behavior changes and the seam is practical; proceed pragmatically only when the task is non-behavioral or the exception is deliberate.
@@ -266,20 +266,20 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **When this matters most:** Any change that touches models with callbacks, error handling with fallback/retry, or functionality exposed through multiple interfaces.
 
 
-2. **Incremental Commits**
+2. **Incremental JJ Changes**
 
-   After completing each task, evaluate whether to create an incremental commit:
+   After completing each task, evaluate whether to describe the current JJ change and start a new one:
 
-   | Commit when... | Don't commit when... |
+   | Describe/new when... | Don't describe/new when... |
    |----------------|---------------------|
    | Logical unit complete (model, service, component) | Small part of a larger unit |
    | Tests pass + meaningful progress | Tests failing |
    | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-   | About to attempt risky/uncertain changes | Would need a "WIP" commit message |
+   | About to attempt risky/uncertain changes | Would need a "WIP" JJ change description |
 
-   **Heuristic:** "Can I write a commit message that describes a complete, valuable change? If yes, commit. If the message would be 'WIP' or 'partial X', wait."
+   **Heuristic:** "Can I write a JJ change description that describes a complete, valuable change? If yes, describe the change and start the next one. If the description would be 'WIP' or 'partial X', wait."
 
-   If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
+   If the plan has Implementation Units, use them as a starting guide for JJ change boundaries — but adapt based on what you find during implementation. A unit might need multiple JJ changes if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the JJ change description.
 
    **JJ change workflow:**
    ```bash
@@ -296,7 +296,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
    **Handling integration conflicts:** If conflicts arise during rebasing or integrating worker changes, resolve them immediately. Incremental JJ changes make conflict resolution easier since each change is small and focused.
 
-   **Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 commit/PR includes the full attribution.
+   **Note:** Incremental JJ change descriptions use clean conventional messages without attribution footers. The final Phase 4 change/PR includes the full attribution.
 
    **Parallel subagent mode:** JJ change ownership is split by isolation mode (see Phase 1 Step 4):
    - **Workspace-isolated:** subagents may describe their own JJ changes inside their own workspace/bookmark; the orchestrator integrates those changes in dependency order after the batch.
@@ -359,7 +359,7 @@ When all Phase 2 tasks are complete and execution transitions to quality check, 
 **Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the workspace, describes changes, or applies fixes.
 
 1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<ref>` when the merge base is known, and `depth:full` when a deep/thorough review was explicitly requested.
-2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator merges diffs, runs tests, and commits — it does not pre-investigate findings.
+2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator integrates diffs, runs tests, and describes JJ changes — it does not pre-investigate findings.
 3. **Residual Work Gate** — Only after followup; unresolved actionable findings go through the gate in `shipping-workflow.md` (autonomous sessions auto-accept + record residuals; interactive sessions ask).
 
 ## Return-to-Caller Mode

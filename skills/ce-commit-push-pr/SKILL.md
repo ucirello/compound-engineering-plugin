@@ -1,6 +1,6 @@
 ---
 name: ce-commit-push-pr
-description: Commit, push, and open a PR. Use when asked to ship/open a PR, or for PR-description-only flows like writing, rewriting, or describing a PR body.
+description: Describe JJ changes, push a bookmark, and open a PR. Use when asked to ship/open a PR, or for PR-description-only flows like writing, rewriting, or describing a PR body.
 ---
 
 # Jujutsu Commit, Push, and PR
@@ -18,7 +18,7 @@ description: Commit, push, and open a PR. Use when asked to ship/open a PR, or f
 **On platforms other than Claude Code**, run the Context fallback below. **In Claude Code**, the labeled sections contain pre-populated data — use them directly.
 
 **JJ status:**
-!`jj st`
+!`jj status`
 
 **Working-copy diff:**
 !`jj diff`
@@ -38,7 +38,7 @@ description: Commit, push, and open a PR. Use when asked to ship/open a PR, or f
 ### Context fallback
 
 ```bash
-printf '=== STATUS ===\n'; jj st; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ "\n"'; printf '\n=== LOG ===\n'; jj log -n 10 --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'; printf '\n=== DEFAULT_BOOKMARK ===\n'; jj log -r 'latest(remote_bookmarks(exact:"main", remote="origin") | remote_bookmarks(exact:"master", remote="origin"))' --no-graph -T 'bookmarks.join(" ") ++ "\n"' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'; printf '\n=== PR_CHECK ===\n'; gh pr view --json url,title,body,state 2>/dev/null || echo 'NO_OPEN_PR'
+printf '=== STATUS ===\n'; jj status; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ "\n"'; printf '\n=== LOG ===\n'; jj log -n 10 --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'; printf '\n=== DEFAULT_BOOKMARK ===\n'; jj log -r 'latest(remote_bookmarks(exact:"main", remote="origin") | remote_bookmarks(exact:"master", remote="origin"))' --no-graph -T 'bookmarks.join(" ") ++ "\n"' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'; printf '\n=== PR_CHECK ===\n'; gh pr view --json url,title,body,state 2>/dev/null || echo 'NO_OPEN_PR'
 ```
 
 ---
@@ -58,7 +58,7 @@ Note the existing PR URL and body from the PR check if `state: OPEN`. Step 5 use
 
 ## Step 2: Determine conventions
 
-Match repo style for jj change descriptions and PR titles (project instructions in context > recent changes > conventional commits as default). With conventional commits, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
+Match repo style for jj change descriptions and PR titles (project instructions in context > recent changes > Conventional Commits-style descriptions as default). With Conventional Commits-style descriptions, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
 
 ## Step 3: Describe and push
 
@@ -69,7 +69,7 @@ Scan changed files for naturally distinct concerns. If they clearly group into s
 Describe each change group, then start a new empty working-copy change with `jj new`:
 
 ```bash
-jj desc -m "$(cat <<'EOF'
+jj describe -m "$(cat <<'EOF'
 change description here
 EOF
 )" && jj new

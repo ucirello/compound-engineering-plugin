@@ -42,4 +42,4 @@ This fetches thread IDs and their first comment IDs (minimal fields, no bodies) 
 - **`replied` / `not-addressing` / `declined`** — no subagent. Compose the reply text per the rubric and proceed to reply/resolve.
 - **`needs-human`** — compose `decision_context` and the natural-sounding reply per the rubric, leave the thread open (don't resolve), and present the decision to the user (use the platform's blocking question tool as in Full Mode step 9). The shared reply step below posts the reply once — do not post it here.
 
-Then follow the same validate -> commit -> push -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validate/commit when no code changed.
+Then follow the same validate -> describe current JJ change -> `jj new` -> `jj git push` -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validate/describe/push when no code changed.

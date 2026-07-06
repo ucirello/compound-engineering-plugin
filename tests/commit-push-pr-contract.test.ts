@@ -26,7 +26,7 @@ describe("ce-commit-push-pr contract", () => {
     expect(content).toContain("closing reference")
     expect(content).toContain("non-closing reference")
     expect(content).toContain("Do not invent a closing keyword")
-    expect(content).toMatch(/jj log -r "<base>\.\.<head>" --no-graph/)
+    expect(content).toMatch(/jj log\s+-r '<base>@<base-remote>\.\.<head>' --no-graph/)
     expect(content).toContain("full change descriptions")
     expect(content).toContain("Do not put a non-closing reference next to close/fix/resolve/address/report wording")
     expect(content).toContain("Use the table's non-closing reference labels exactly")

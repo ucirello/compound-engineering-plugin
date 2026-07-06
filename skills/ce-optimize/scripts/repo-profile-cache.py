@@ -65,7 +65,7 @@ CACHE_ROOT = "/tmp/compound-engineering/repo-profile"
 # Dependency manifests + lockfiles. Matched by basename at ANY depth so a
 # monorepo workspace's manifest also invalidates. The profiler derives
 # stack/deps for ANY language, so this list must span ecosystems, not just JS —
-# an omitted manifest means a dirty dep bump at unchanged HEAD serves a stale
+# an omitted manifest means a dirty dep bump at unchanged @ serves a stale
 # profile (a cardinal-rule break).
 _MANIFEST_LOCKFILE = {
     # JavaScript / TypeScript / Deno

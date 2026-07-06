@@ -21,12 +21,13 @@ The steps below (detect -> native tool -> `jj` fallback) apply to both modes; th
 Before creating anything, check the current Jujutsu workspace and the workspace list:
 
 ```bash
-jj workspace root
+jj root
 jj workspace list
+jj log -r @ --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ bookmarks.join(" ") ++ " " ++ description.first_line() ++ "\n"'
 jj status
 ```
 
-If `jj workspace root` is already an isolated path chosen by the harness (for example a temporary workspace, a `.worktrees/<name>` path, or any non-primary workspace shown by `jj workspace list`), report the workspace root and current working-copy revision from `jj status`. Do not create another workspace — a workspace-from-workspace can land in a path the harness did not select or track. Then **work in place**: in new-work mode, continue here; in isolate-an-existing-ref mode, use `jj new <target>` or `jj edit <change>` here instead of nesting another workspace.
+If `jj root` is already an isolated path chosen by the harness (for example a temporary workspace, a `.worktrees/<name>` path, or any non-primary workspace shown by `jj workspace list`), report the workspace root and current working-copy revision from `jj status`. Do not create another workspace — a workspace-from-workspace can land in a path the harness did not select or track. Then **work in place**: in new-work mode, continue here; in isolate-an-existing-ref mode, use `jj new <target>` or `jj edit <change>` here instead of nesting another workspace.
 
 If `jj workspace list` shows only the primary/current workspace and the current root is the user's primary workspace, continue to Step 1.
 
@@ -40,7 +41,7 @@ If the harness provides a native workspace/worktree primitive — for example an
 
 Only when there is no native tool **and** Step 0 found no existing isolation.
 
-1. **Run from the workspace root.** The `.worktrees/` and `.gitignore` paths below are root-relative, but the skill runs from the user's current directory, which may be a subdirectory — so move to the root first: `cd "$(jj workspace root)"`. Without this, `.worktrees/<name>` and the `.gitignore` edit would land in the subdirectory (e.g. `src/.worktrees/...`, `src/.gitignore`) instead of at the workspace root.
+1. **Run from the repo root.** The `.worktrees/` and `.gitignore` paths below are root-relative, but the skill runs from the user's current directory, which may be a subdirectory — so move to the root first: `cd "$(jj root)"`. Without this, `.worktrees/<name>` and the `.gitignore` edit would land in the subdirectory (e.g. `src/.worktrees/...`, `src/.gitignore`) instead of at the workspace root.
 2. Choose a meaningful workspace/bookmark name from the work description (e.g. `feat-login`, `fix-email-validation`) — avoid opaque auto-generated names and avoid `/` because it creates nested paths under `.worktrees/`. Pick a base bookmark (default: `main`, `trunk`, or the repository's documented default bookmark; use `jj bookmark list` to inspect).
 3. **Ensure `.worktrees/` is ignored before creating anything**, so workspace contents are never committed. Check `.gitignore` for a `.worktrees/` line; if it is absent, add one.
 4. Best-effort refresh remote bookmarks without disturbing the current workspace: `jj git fetch --remote origin`. This is **non-fatal** — if it errors (no `origin` remote, a differently-named remote, or a local-only repository), do not abort; continue to the next step and use local bookmarks/revisions.

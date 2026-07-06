@@ -316,7 +316,7 @@ bash "$SKILL_DIR/scripts/parallel-probe.sh" "<project_directory>" "<measurement.
 
 Read the JSON output. Present any blockers to the user with suggested mitigations. Treat the probe as intentionally narrow: it should inspect the measurement command, the measurement working directory, and explicitly declared shared files, not the entire repository.
 
-### 1.5 Worktree Budget Check
+### 1.5 JJ Workspace Budget Check
 
 Count existing experiment workspaces:
 ```bash
@@ -348,7 +348,7 @@ Present to the user via the platform question tool:
 - **Experiment log location**: show the file path so the user knows where results are saved
 - **Parallel readiness**: probe results, any blockers, mitigations applied
 - **Clean-tree status**: confirmed clean
-- **Worktree budget**: current count and projected usage
+- **JJ workspace budget**: current count and projected usage
 - **Judge budget**: estimated per-experiment judge cost and configured `max_total_cost_usd` cap (or an explicit note that spend is uncapped)
 
 **Options:**
@@ -448,7 +448,7 @@ For each hypothesis in the batch, dispatch according to `execution.mode`. In `se
 
 The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-optimize` skill directory; see the Bundled scripts note in Phase 1) — shell state does not persist from Phase 1, so each block carries its own assignment.
 
-**Worktree backend:**
+**JJ workspace backend:**
 1. Create experiment workspace:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
@@ -538,7 +538,7 @@ After all experiments in the batch have been measured:
    - After integration succeeds, clean up the winner's experiment workspace and bookmark; the integrated change on the optimization bookmark is the durable artifact
    - This is now the new baseline for subsequent batches
 
-4. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
+4. **Check file-disjoint runners-up** (up to `max_runner_up_integrations_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
    - If disjoint: rebase the runner-up change onto the new baseline, re-run full measurement
@@ -627,7 +627,7 @@ Present a comprehensive summary:
 Optimization: <spec-name>
 Duration: <wall-clock time>
 Total experiments: <count>
-  Kept: <count> (including <runner_up_kept_count> runner-up merges)
+  Kept: <count> (including <runner_up_kept_count> runner-up integrations)
   Reverted: <count>
   Degenerate: <count>
   Errors: <count>
@@ -655,9 +655,9 @@ Present post-completion options via the platform question tool:
 
 1. **Run `/ce-code-review`** on the cumulative diff (baseline to final). Load the `ce-code-review` skill on the optimization bookmark (interactive or `mode:agent`). To land eligible fixes before the next option, apply the mechanical-apply bar below.
 
-   **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not describe or push from this step — leave the diff on the optimization bookmark for the Create PR option.
+   **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not run `/ce-commit`, `/ce-commit-push-pr`, or `jj git push` from this step — leave the diff on the optimization bookmark for the Create PR option.
 2. **Run `/ce-compound`** to document the winning strategy as an institutional learning.
-3. **Create PR** from the optimization bookmark to the default branch.
+3. **Create PR** — run `/ce-commit-push-pr` from the optimization bookmark; it should describe the JJ change if needed, move/push the bookmark with `jj bookmark`/`jj git push`, and open the PR against the default branch.
 4. **Continue** with more experiments: re-enter Phase 3 with the current state. State re-read first.
 5. **Done** -- leave the optimization bookmark for manual review.
 

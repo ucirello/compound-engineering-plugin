@@ -50,9 +50,9 @@ Emit a one-line failure reason. In `mode:agent`, return JSON: `{"status":"failed
 
 Same pipeline for default and `mode:agent`:
 
-- **Apply locally; never push.** Never push, open PRs, or file tickets in any mode — push is the outward step the user owns. In **default (interactive)** mode the review applies safe, verified fixes and commits them when the pre-review tree was clean (Stage 5c owns the full rule). In **`mode:agent`** it never mutates the tree — it reports and the caller applies.
+- **Apply locally; never push.** Never push, open PRs, or file tickets in any mode — push is the outward step the user owns. In **default (interactive)** mode the review applies safe, verified fixes and describes them as a JJ change when the pre-review tree was clean (Stage 5c owns the full rule). In **`mode:agent`** it never mutates the tree — it reports and the caller applies.
 - **No blocking prompts.** Never use `AskUserQuestion`, `request_user_input`, `ask_user`, or other blocking question tools. Infer intent, plan, and scope from explicit tokens, JJ state, PR metadata, and conversation. Note uncertainty in Coverage or the verdict — do not stop to ask.
-- **Explicit mutations only.** Never run `gh pr checkout`, `jj edit`, `jj new`, or similar workspace-switching commands. Passing a PR number, URL, or bookmark name selects **review scope**, not permission to mutate the working tree. To review local uncommitted work on a feature bookmark, move to that bookmark yourself (or stay on it) and pass `base:` or no target.
+- **Explicit mutations only.** Never run `gh pr checkout`, `jj edit`, `jj new`, or similar workspace-switching commands. Passing a PR number, URL, or bookmark name selects **review scope**, not permission to mutate the working tree. To review local working-copy work on a feature bookmark, move to that bookmark yourself (or stay on it) and pass `base:` or no target.
 - **Smart defaults.** Ignored/unrelated files: review scoped changes only and list excluded paths in Coverage. Plan: use `plan:` when passed; otherwise discover conservatively from PR body or bookmark keywords. Weak advisory P2/P3 from testing/maintainability alone: demote to `testing_gaps` / `residual_risks` per Stage 5.
 - **Report outcomes, not machinery.** What you show the user is about the review: what's being examined (the PR/bookmark), which coverage is included and the one-line reason for each conditional lens, the independent cross-model pass and which model runs it, and the findings. Keep the skill's internals out of user-facing text — model-tier assignments, raw scope-mode codenames (`local-aligned`/`pr-remote`), staging the diff to disk, loading persona files, parallel-dispatch bookkeeping, and step-by-step narration of your own setup. Name what the user would recognize (a PR number, a reviewer's concern, a peer model), not the plumbing. This governs *what* you surface and suppress; it does not script the wording — use your own voice.
 
@@ -187,7 +187,7 @@ BASE=$(jj log -r "heads(::$BASE_ARG & ::@)" --no-graph -T 'commit_id.short()' 2>
 Then produce the same output as the other paths:
 
 ```
-echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --to @ --name-only && echo "DIFF:" && jj diff --from "$BASE" --to @ --git && echo "STATUS:" && jj st
+echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --to @ --name-only && echo "DIFF:" && jj diff --from "$BASE" --to @ --git && echo "STATUS:" && jj status
 ```
 
 This path works with any rev — a SHA, `main@origin`, a bookmark name. Callers reviewing the current workspace should pass explicit `base:` when auto-detection is unnecessary. **Do not combine `base:` with a PR number or bookmark target.** If both are present, stop with an error: "Cannot use `base:` with a PR number or bookmark target — `base:` implies the current workspace is already the correct bookmark. Pass `base:` alone, or pass the target alone and let scope detection resolve the base."
@@ -215,7 +215,7 @@ If no skip rule fires, fetch PR metadata **without workspace switching**:
 gh pr view <number-or-url> --json title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,files,reviews,comments --jq '{title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}'
 ```
 
-Set `BASE:` to `pr:<number-or-url>` (logical marker — not a JJ rev). Set `STATUS:` from `jj st` on the **current** workspace (usually unrelated during PR-remote review).
+Set `BASE:` to `pr:<number-or-url>` (logical marker — not a JJ rev). Set `STATUS:` from `jj status` on the **current** workspace (usually unrelated during PR-remote review).
 
 **PR scope mode.** Classify as **`local-aligned`** only when **all** of these hold; otherwise use **`pr-remote`**. A matching bookmark name alone is not enough — a fork PR or a stale local bookmark can share a name with the PR head while pointing at unrelated code, and trusting the name would diff and inspect the wrong tree.
 
@@ -233,7 +233,7 @@ Set `BASE:` to `pr:<number-or-url>` (logical marker — not a JJ rev). Set `STAT
 
 When **`pr-remote`**, before Stage 4:
 
-1. Best-effort fetch Git remote bookmarks without switching workspaces: `jj git fetch --remote origin`.
+1. Best-effort fetch remote bookmarks without switching workspaces: `jj git fetch --remote origin`.
 2. When fetch succeeds and `<headRefName>@origin` resolves, set `PR_HEAD_REF=<headRefName>@origin` for reviewers and validators. When fetch fails, omit `PR_HEAD_REF` and note in Coverage — reviewers must rely on diff hunks only.
 3. When fetch succeeds and `<baseRefName>@origin` resolves, set `PR_BASE_REF=<baseRefName>@origin` — a **real JJ base rev** reviewers and validators use for file-level JJ diffs (e.g. `data-migration-reviewer` runs `jj diff --from <PR_BASE_REF> --to <PR_HEAD_REF> -- db/schema.rb`/`structure.sql`). The `pr:<number-or-url>` logical marker in `BASE:` stays the scope marker; `PR_BASE_REF` is the diffable base. When the fetch fails, omit `PR_BASE_REF` and note in Coverage — schema-drift and other JJ-diff checks fall back to diff hunks only and must **not** assume `main`.
 4. Include `<pr-scope-mode>pr-remote</pr-scope-mode>` and, when set, `<pr-head-ref>...</pr-head-ref>` and `<pr-base-ref>...</pr-base-ref>` in the Stage 4 review context bundle.
@@ -258,19 +258,19 @@ On success for remote bookmark diff, set **bookmark-remote scope**. The working 
 Produce:
 
 ```
-echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --to <bookmark-ref> --name-only && echo "DIFF:" && jj diff --from "$BASE" --to <bookmark-ref> --git && echo "STATUS:" && jj st
+echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --to <bookmark-ref> --name-only && echo "DIFF:" && jj diff --from "$BASE" --to <bookmark-ref> --git && echo "STATUS:" && jj status
 ```
 
 **If no argument (standalone on current bookmark):**
 
-Apply the same base-detection logic as bookmark mode above, using the current bookmark (i.e., `gh pr view --json baseRefName,url` with no argument defaults to the current GitHub branch/bookmark).
+Apply the same base-detection logic as bookmark mode above, using the current bookmark (i.e., `gh pr view --json baseRefName,url` with no argument defaults to the current GitHub PR context for the bookmark).
 
 If no base can be resolved, **stop**. Do not fall back to `jj diff -r @` — a standalone review without the base would only show the current working-copy change and silently miss earlier recorded work on the bookmark.
 
 On success, produce the diff:
 
 ```
-echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --to @ --name-only && echo "DIFF:" && jj diff --from "$BASE" --to @ --git && echo "STATUS:" && jj st
+echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --to @ --name-only && echo "DIFF:" && jj diff --from "$BASE" --to @ --git && echo "STATUS:" && jj status
 ```
 
 Using `jj diff --from "$BASE" --to @` diffs the ancestor base against the working tree, which includes recorded and current working-copy changes together.
@@ -325,7 +325,7 @@ fi
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with JJ change descriptions from the PR if the body is sparse.
 
 **Bookmark mode:** Run `jj log -r '${BASE}::<bookmark-ref> ~ ::${BASE}' --no-graph` using the resolved ancestor base and resolved bookmark ref from Stage 1. Use `<bookmark-ref>` (the resolved `<bookmark>@origin` or local bookmark), not the raw `<bookmark>` argument — a remote-only bookmark may have no matching local bookmark, so the raw name would fail or read a stale same-named local bookmark.
 
@@ -645,19 +645,19 @@ Independent verification gate. Spawn one validator sub-agent per surviving findi
 - **Push back** — do not apply — when the reviewer is wrong; keep the finding and state the disagreement with reasoning.
 - **Skip with judgment** taste calls and conflicting suggestions, but surface what was skipped and why. Never silently drop.
 
-Severity, confidence, and cross-reviewer agreement tell you what to do first and what to flag loudly — they do not gate the decision. There is no deny-list: downside is controlled after the fact (revert + visible diff + the commit checkpoint), not by a precondition.
+Severity, confidence, and cross-reviewer agreement tell you what to do first and what to flag loudly — they do not gate the decision. There is no deny-list: downside is controlled after the fact (revert + visible diff + the JJ change checkpoint), not by a precondition.
 
 **Scope invariant.** Apply only when the working tree *is* what was reviewed — `local-aligned` or standalone. In `pr-remote` / `bookmark-remote` the working tree is not the reviewed head; do not apply — report instead.
 
 **Verify, then keep.** After applying, run the affected tests and lint (targeted by default; broaden when fixes span files). If they fail, revert that fix and report it as a finding instead — an unverified fix is not finished. Never leave the tree red.
 
-**Review the autofix diff before finishing.** Before committing or reporting applied fixes, diff only the changes introduced during Stage 5c against the pre-apply checkpoint. Run one self-review pass over that diff:
+**Review the autofix diff before finishing.** Before describing the JJ change or reporting applied fixes, diff only the changes introduced during Stage 5c against the pre-apply checkpoint. Run one self-review pass over that diff:
 - If the same helper, policy, or guard was added to multiple parallel surfaces, extract it or explain in the Applied section why duplication is intentional.
 - If an exported/shared function now accepts a broader input shape, update the nearby docs, types, or tests that define the contract so future callers understand it.
 - If a reviewer item is pure information (no defect, no code contract change, no test gap), classify it as advisory/non-actionable in Coverage or residual risks; do not patch it or describe it as a missed defect.
-If this self-review changes files, rerun the affected tests or lint for those follow-up edits before committing or reporting; the earlier validation only covers the original autofix diff.
+If this self-review changes files, rerun the affected tests or lint for those follow-up edits before describing the JJ change or reporting; the earlier validation only covers the original autofix diff.
 
-**Describe a review fix change when the pre-review tree was clean.** Before applying, note whether the working tree already had uncommitted changes (`jj st`). The permanence gate is the **push**, not the local JJ change — a local change is private and reversible (`jj undo` or `jj abandon` before pushing).
+**Describe a review fix change when the pre-review tree was clean.** Before applying, note whether the working tree already had working-copy changes (`jj status`). The permanence gate is the **push**, not the local JJ change — a local change is private and reversible (`jj undo` or `jj abandon` before pushing).
 
 - **Clean before the review:** after applying and verifying, describe the fixes as one isolated, review-labeled JJ change — `fix(review): <summary>`, or the repo's nearest convention if `review` isn't an allowed scope. Labeled and reversible, returning the tree to a known state.
 - **Dirty before the review:** apply but do **not** describe/finalize a separate change — the fixes interleave with the user's in-flight work and ride along with the change they were already going to make. The Applied section lists what changed.

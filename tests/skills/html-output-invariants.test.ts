@@ -232,8 +232,8 @@ describe("html-rendering.md reference content invariants", () => {
       "Reference must name `jj git remote list` as the way to resolve the repo's GitHub URL at compose time.",
     ).toBe(true)
     expect(
-      /blob\/main/.test(REFERENCE),
-      "Reference must show the `<repo-url>/blob/main/<path>` URL shape for code/doc paths.",
+      /blob\/<default-branch-or-bookmark>/.test(REFERENCE),
+      "Reference must show the `<repo-url>/blob/<default-branch-or-bookmark>/<path>` URL shape for code/doc paths.",
     ).toBe(true)
     expect(
       /Do not invent URLs|broken or guessed link is worse than no link/i.test(REFERENCE),

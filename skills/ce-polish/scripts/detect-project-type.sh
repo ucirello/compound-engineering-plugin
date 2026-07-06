@@ -41,9 +41,9 @@
 
 set -u
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+REPO_ROOT=$(jj root 2>/dev/null || pwd)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a git repository" >&2
+  echo "ERROR: cannot resolve project root" >&2
   exit 1
 fi
 

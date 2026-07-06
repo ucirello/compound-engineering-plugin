@@ -17,7 +17,7 @@ For user-facing bugs, run an extra before/after pass before writing the mechanis
 
 Two modes:
 
-- **Current-branch mode** (default) — describe HEAD vs the repo's default base.
+- **Current-bookmark mode** (default) — describe `@` vs the repo's default base.
 - **PR mode** — describe a specific PR. Triggered when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
@@ -26,30 +26,33 @@ For PR mode, fetch metadata first:
 gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
 ```
 
-If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
+If `state` is not `OPEN`, report and stop -- do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>` for API fallback context.
 
-For current-branch mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) → `git rev-parse --abbrev-ref origin/HEAD` (strip `origin/`) → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `git rev-parse --verify origin/<candidate>`. If none resolve, ask the user. `<head>` is `HEAD`.
+For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> a visible `<base>@origin` bookmark from `jj log -r 'remote_bookmarks(remote="origin")'` -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> try `main`/`master`/`develop` via `jj log -r '<candidate>@origin'`. If none resolve, ask the user. `<head>` is `@`.
 
-**Base remote:** `origin` for current-branch mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `git remote -v`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
+**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, prefer the `gh` fallback -- do not diff against `origin` if it is the wrong base.
 
-```bash
-git fetch --no-tags <base-remote> <base>
-git fetch --no-tags <base-remote> <head>   # PR mode only: <head> is headRefOid and may not be local
-git log  --oneline "<base-remote>/<base>..<head>"
-git log  --format=fuller "<base-remote>/<base>..<head>"   # full commit messages for related-reference discovery
-git diff           "<base-remote>/<base>...<head>"
-```
-
-If the commit list is empty, report "No commits to describe" and stop.
-
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local git can't reach the refs (fork PR with no matching remote, shallow clone, offline, merge-base on unrelated histories). For GHES configurations that reject SHA fetch but allow `refs/pull/`:
+For current-bookmark mode, fetch with jj and inspect the local range:
 
 ```bash
-git fetch --no-tags <base-remote> "refs/pull/<number>/head"
-PR_HEAD_SHA=$(awk '/refs\/pull\/[0-9]+\/head/ {print $1; exit}' "$(git rev-parse --git-dir)/FETCH_HEAD")
+jj git fetch --remote <base-remote>
+jj log  -r '<base>@<base-remote>..<head>' --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+jj log  -r '<base>@<base-remote>..<head>' --no-graph -T 'description ++ "\n---\n"'   # full descriptions for related-reference discovery
+jj diff --from '<base>@<base-remote>' --to '<head>'
 ```
 
-Note in the user-facing summary when the API fallback was used.
+For PR mode, prefer GitHub's PR range because the head SHA may not be present as a local jj revision:
+
+```bash
+gh pr diff <ref>
+gh pr view <ref> --json commits
+```
+
+If the change list is empty, report "No changes to describe" and stop.
+
+**Fallback** -- use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local jj can't reach the refs (fork PR with no matching remote, shallow clone, offline, unrelated histories).
+
+Note in the user-facing summary when the GitHub API fallback was used.
 
 ---
 
@@ -77,14 +80,14 @@ For small + non-trivial bugfixes, the 3-5 sentence target still needs a user-vis
 - Type by intent, not file extension. When `fix` and `feat` both seem to fit, default to `fix` — adding code to remedy missing behavior is `fix`. Reserve `feat` for capabilities the user could not previously accomplish. Use `refactor`/`docs`/`chore`/`perf`/`test` when more precise.
 - Scope (optional): narrowest useful label. Omit when no single label adds clarity.
 - Description: imperative, lowercase, under 72 chars, no trailing period.
-- Match repo conventions visible in recent commits.
+- Match repo conventions visible in recent change descriptions.
 - **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation** — they trigger automated major-version bumps.
 
 ---
 
 ## Step B1: Resolve related work references
 
-Before writing the body, make an explicit related-reference pass. Gather candidate work-item references from the user prompt, caller handoff, branch name, full commit messages, existing PR body, PR template, plan/debug notes, and visible URLs or IDs already in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
+Before writing the body, make an explicit related-reference pass. Gather candidate work-item references from the user prompt, caller handoff, bookmark name, full change descriptions, existing PR body, PR template, plan/debug notes, and visible URLs or IDs already in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
 
 Classify each candidate as:
 

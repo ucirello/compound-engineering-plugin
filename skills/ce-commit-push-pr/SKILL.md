@@ -3,34 +3,34 @@ name: ce-commit-push-pr
 description: Commit, push, and open a PR. Use when asked to ship/open a PR, or for PR-description-only flows like writing, rewriting, or describing a PR body.
 ---
 
-# Git Commit, Push, and PR
+# Jujutsu Commit, Push, and PR
 
 **Asking the user:** When this skill says "ask the user", use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting the question in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
 ## Mode
 
 - **Description-only** — user wants *just* a description ("write/draft a PR description", "describe this PR", or pasted a PR URL/number alone). Run Step 4 only; print the result. Apply only if the user asks. If a PR ref was pasted, pass it to Step 4 so Pre-A resolves the right range.
-- **Description update** — user wants to refresh/rewrite an existing PR's description with no commit/push intent. If no open PR, report and stop. Otherwise run Step 4 (PR mode using the existing PR's URL), then Step 5 to preview, confirm, and apply via `gh pr edit`.
+- **Description update** — user wants to refresh/rewrite an existing PR's description with no save/push intent. If no open PR, report and stop. Otherwise run Step 4 (PR mode using the existing PR's URL), then Step 5 to preview, confirm, and apply via `gh pr edit`.
 - **Full workflow** — otherwise. Run Steps 1-5 in order.
 
 ## Context
 
 **On platforms other than Claude Code**, run the Context fallback below. **In Claude Code**, the labeled sections contain pre-populated data — use them directly.
 
-**Git status:**
-!`git status`
+**JJ status:**
+!`jj st`
 
-**Working tree diff:**
-!`git diff HEAD`
+**Working-copy diff:**
+!`jj diff`
 
-**Current branch:**
-!`git branch --show-current`
+**Current bookmark:**
+!`jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ "\n"'`
 
-**Recent commits:**
-!`git log --oneline -10`
+**Recent changes:**
+!`jj log -n 10 --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'`
 
-**Remote default branch:**
-!`git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo 'DEFAULT_BRANCH_UNRESOLVED'`
+**Remote default bookmark:**
+!`jj log -r 'latest(remote_bookmarks(exact:"main", remote="origin") | remote_bookmarks(exact:"master", remote="origin"))' --no-graph -T 'bookmarks.join(" ") ++ "\n"' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'`
 
 **Existing PR check:**
 !`gh pr view --json url,title,body,state 2>/dev/null || echo 'NO_OPEN_PR'`
@@ -38,50 +38,51 @@ description: Commit, push, and open a PR. Use when asked to ship/open a PR, or f
 ### Context fallback
 
 ```bash
-printf '=== STATUS ===\n'; git status; printf '\n=== DIFF ===\n'; git diff HEAD; printf '\n=== BRANCH ===\n'; git branch --show-current; printf '\n=== LOG ===\n'; git log --oneline -10; printf '\n=== DEFAULT_BRANCH ===\n'; git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo 'DEFAULT_BRANCH_UNRESOLVED'; printf '\n=== PR_CHECK ===\n'; gh pr view --json url,title,body,state 2>/dev/null || echo 'NO_OPEN_PR'
+printf '=== STATUS ===\n'; jj st; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj log -r @ --no-graph -T 'bookmarks.join(" ") ++ "\n"'; printf '\n=== LOG ===\n'; jj log -n 10 --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ " " ++ description.first_line() ++ "\n"'; printf '\n=== DEFAULT_BOOKMARK ===\n'; jj log -r 'latest(remote_bookmarks(exact:"main", remote="origin") | remote_bookmarks(exact:"master", remote="origin"))' --no-graph -T 'bookmarks.join(" ") ++ "\n"' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'; printf '\n=== PR_CHECK ===\n'; gh pr view --json url,title,body,state 2>/dev/null || echo 'NO_OPEN_PR'
 ```
 
 ---
 
-## Step 1: Resolve branch and PR state
+## Step 1: Resolve bookmark and PR state
 
-The remote default branch returns something like `origin/main`; strip the `origin/` prefix. If it returned `DEFAULT_BRANCH_UNRESOLVED` or bare `HEAD`, try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If both fail, fall back to `main`.
+The remote default bookmark returns something like `main@origin`; strip the `@origin` suffix. If it returned `DEFAULT_BOOKMARK_UNRESOLVED`, try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If both fail, fall back to `main`.
 
-Branch routing:
+Bookmark routing:
 
-- **Detached HEAD** — automatically create a feature branch from the current `HEAD` before continuing. Derive the branch name from the change content, run `git checkout -b <branch-name>`, re-read `git branch --show-current`, and use that result for the rest of the workflow. Do not ask whether to create the branch — invoking the full commit/push/PR workflow is already confirmation that the work should become branch-backed. If the derived branch name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
-- **On default branch with work to do** (uncommitted, unpushed, or no upstream) — automatically create a feature branch (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles branch creation safely. Do not ask whether to branch — committing on the default is not an option here.
-- **On default branch with no work** — report no feature branch work and stop.
-- **Feature branch** — continue.
+- **No bookmark on `@`** — automatically create a feature bookmark on the current working-copy change before continuing. Derive the bookmark name from the change content, run `jj bookmark create <bookmark-name> -r @`, re-read the current bookmark, and use that result for the rest of the workflow. Do not ask whether to create the bookmark -- invoking the full save/push/PR workflow is already confirmation that the work should become bookmark-backed. If the derived bookmark name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
+- **On default bookmark with work to do** (working-copy changes, unpublished changes, or no remote bookmark) — automatically create a feature bookmark (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles bookmark creation safely. Do not ask whether to create the bookmark -- saving on the default bookmark is not an option here.
+- **On default bookmark with no work** — report no feature bookmark work and stop.
+- **Feature bookmark** — continue.
 
 Note the existing PR URL and body from the PR check if `state: OPEN`. Step 5 uses the URL to route between new-PR and existing-PR application. Step 4 uses the existing body as preservation context when rewriting.
 
 ## Step 2: Determine conventions
 
-Match repo style for commit messages and PR titles (project instructions in context > recent commits > conventional commits as default). With conventional commits, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
+Match repo style for jj change descriptions and PR titles (project instructions in context > recent changes > conventional commits as default). With conventional commits, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
 
-## Step 3: Commit and push
+## Step 3: Describe and push
 
-If on the default branch, branch creation needs to handle stale local `<base>`, unpushed commits on local `<base>`, and uncommitted changes that collide with the fresh remote base. Read `references/branch-creation.md` and follow its decision flow before continuing.
+If on the default bookmark, bookmark creation needs to handle stale local `<base>`, unpublished changes on local `<base>`, and working-copy changes that collide with the fresh remote base. Read `references/bookmark-creation.md` and follow its decision flow before continuing.
 
-Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate commits (2-3 max). Group at file level only — no `git add -p`. When ambiguous, one commit is fine.
+Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate jj changes (2-3 max). Group at file level only with `jj split <file1> <file2>` -- no hunk splitting. When ambiguous, one change is fine.
 
-Stage and commit each group. **Avoid `git add -A` and `git add .`** — they sweep in `.env`, build artifacts, and generated files:
+Describe each change group, then start a new empty working-copy change with `jj new`:
 
 ```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-commit message here
+jj desc -m "$(cat <<'EOF'
+change description here
 EOF
-)"
+)" && jj new
 ```
 
-Then push:
+Move or create the feature bookmark at the described change, then push it:
 
 ```bash
-git push -u origin HEAD
+jj bookmark move <bookmark-name> --to @-
+jj git push --bookmark <bookmark-name> --remote origin
 ```
 
-If the working tree is clean and all commits are already pushed, this step is a no-op.
+If the working copy has no changes and the feature bookmark is already pushed, this step is a no-op.
 
 ## Step 4: Compose the PR title and body
 
@@ -91,9 +92,9 @@ If the working tree is clean and all commits are already pushed, this step is a 
 
 1. **User supplied evidence** (URL, markdown image/embed, local artifact path they want referenced) — incorporate it into the PR body as `## Demo`, `## Screenshots`, or `## Evidence`, matching the artifact type. Do not invent or upload evidence.
 2. **User explicitly asks to include evidence but has not supplied it** — ask for the URL/markdown/path, or tell them to use the current harness's capture flow and return with the artifact. Do not launch another CE skill.
-3. **Agent judgment on authored changes** — if you authored the commits and know the change is non-observable (internal plumbing, type-only, backend refactor without user-facing effect, docs/markdown/changelog/CI/test-only, pure refactors), skip evidence handling without asking.
+3. **Agent judgment on authored changes** — if you authored the jj changes and know the change is non-observable (internal plumbing, type-only, backend refactor without user-facing effect, docs/markdown/changelog/CI/test-only, pure refactors), skip evidence handling without asking.
 
-Otherwise, if the branch diff changes observable behavior (UI, CLI output, API behavior with runnable code, generated artifacts, workflow output), include a concise validation note in the PR body describing what was exercised and how it behaved. If no real run was possible because of unavailable credentials, paid services, deploy-only infrastructure, hardware, or missing local setup, say that plainly in the validation section.
+Otherwise, if the bookmark diff changes observable behavior (UI, CLI output, API behavior with runnable code, generated artifacts, workflow output), include a concise validation note in the PR body describing what was exercised and how it behaved. If no real run was possible because of unavailable credentials, paid services, deploy-only infrastructure, hardware, or missing local setup, say that plainly in the validation section.
 
 Do not block PR creation solely because no visual artifact exists. Test output and manual validation notes are acceptable validation evidence, but do not label test output as "Demo" or "Screenshots."
 
@@ -105,7 +106,7 @@ Then continue with the rest of the reference (Steps A through G) to compose the 
 
 **New PR** (full workflow, no existing PR from Step 1) — apply per "Applying via gh" below using `gh pr create`. Report the URL.
 
-**Existing PR** (full workflow, found in Step 1) — the new commits are already on the PR from Step 3. Report the PR URL, then ask whether to rewrite the description.
+**Existing PR** (full workflow, found in Step 1) — the new changes are already on the PR from Step 3. Report the PR URL, then ask whether to rewrite the description.
 
 - **No** — done.
 - **Yes** — run Step 4 if not already done, then preview and apply (see below).

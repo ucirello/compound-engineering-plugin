@@ -90,7 +90,7 @@ fi
 SQLITE_FILES=$(find "${SCAN_PATHS[@]}" -maxdepth 4 -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \) ! -path '*/.git/*' ! -path '*/node_modules/*' ! -path '*/.claude/*' ! -path '*/.context/*' ! -path '*/.worktrees/*' 2>/dev/null | head -10 || true)
 if [[ -n "$SQLITE_FILES" ]]; then
   FILE_COUNT=$(echo "$SQLITE_FILES" | wc -l | tr -d ' ')
-  add_blocker "shared_file" "Found $FILE_COUNT SQLite database file(s)" "Copy database files into each experiment worktree"
+  add_blocker "shared_file" "Found $FILE_COUNT SQLite database file(s)" "Copy database files into each experiment workspace"
 fi
 
 # Check 3: Lock/PID files in the measurement workdir or declared shared files

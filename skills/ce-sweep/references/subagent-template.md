@@ -34,7 +34,7 @@ Write your full bug-report-shaped finding to this path, and this path only:
 
 <rules>
 - Analyze only. You are read-only except for the single write to {scratch_artifact_path}.
-  Running the bundled analyzer and read-oriented git / gh are permitted; do not edit
+  Running the bundled analyzer and read-oriented jj / gh are permitted; do not edit
   project files, change branches, commit, push, or open PRs.
 - The media paths point at already-downloaded files in scratch. Open them; do not expect
   media bytes inline.

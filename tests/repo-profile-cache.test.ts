@@ -25,6 +25,14 @@ function git(cwd: string, ...args: string[]): string {
   return r.stdout ?? ""
 }
 
+function jj(cwd: string, ...args: string[]): string {
+  const r = spawnSync("jj", args, { cwd, encoding: "utf8" })
+  if (r.status !== 0) {
+    throw new Error(`jj ${args.join(" ")} failed: ${r.stderr}`)
+  }
+  return r.stdout ?? ""
+}
+
 function run(
   cwd: string,
   ...args: string[]
@@ -51,6 +59,7 @@ function makeRepo(): string {
   writeFileSync(path.join(dir, "README.md"), "# x\n")
   git(dir, "add", "-A")
   git(dir, "commit", "-q", "-m", "init")
+  jj(dir, "git", "init", "--colocate", ".")
   return dir
 }
 
@@ -172,6 +181,7 @@ describe("repo-profile-cache helper", () => {
     git(dir, "commit", "-q", "-m", "second root")
     git(dir, "checkout", "-q", orig)
     git(dir, "merge", "-q", "--allow-unrelated-histories", "--no-edit", "second")
+    jj(dir, "git", "import")
     const res = run(dir, "get")
     expect(res.code).toBe(0)
     const writePath = res.stdout.split("\n")[1]
@@ -231,8 +241,7 @@ describe("repo-profile-cache helper — review-driven invalidation cases", () =>
     const dir = makeRepo()
     mkdirSync(path.join(dir, "src"))
     writeFileSync(path.join(dir, "src", "lib.js"), "export const x = 1\n")
-    git(dir, "add", "-A")
-    git(dir, "commit", "-q", "-m", "add lib")
+    jj(dir, "commit", "-m", "add lib")
     putProfile(dir)
     git(dir, "mv", "src/lib.js", "src/lib2.js")
     expect(run(dir, "get").stdout.startsWith("HIT\n")).toBe(true)

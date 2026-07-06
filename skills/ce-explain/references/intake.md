@@ -8,7 +8,7 @@ Literal-prefix tokens are consumed and stripped; everything else is the request 
 
 | Token | Example | Effect |
 |-------|---------|--------|
-| `diff:<ref-or-range>` | `diff:abc1234`, `diff:main..HEAD`, `diff:PR#42` | Forces diff mode on that change |
+| `diff:<ref-or-range>` | `diff:abc1234`, `diff:main..@`, `diff:PR#42` | Forces diff mode on that change |
 | `since:<window-or-ref>` | `since:monday`, `since:7d`, `since:v2.1.0` | Forces recap mode over that window |
 | `output:<md\|html>` | `output:md` | Overrides the artifact format (default `html`) |
 
@@ -21,7 +21,7 @@ Literal-prefix tokens are consumed and stripped; everything else is the request 
 
 Classify the remaining text by shape:
 
-- **Diff** — the request names a resolvable change: a sha, branch, PR, "the last commit", "what you just did", "this change".
+- **Diff** — the request names a resolvable change: a change ID, commit ID, bookmark, PR, "the latest JJ change", "what you just did", "this change".
 - **Recap** — the request asks what happened over time: "what did I do this week", "catch me up", "prep me for standup". Default window when unspecified: the last 7 days in the current repo.
 - **Idea** — the request presents a proposal or notion of the user's to be understood: "explain my idea of X", "what would Y imply". The idea is a fixed given (see SKILL.md Boundaries).
 - **Concept** — everything else: a topic, pattern, subsystem, or external subject to learn.

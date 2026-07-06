@@ -72,9 +72,9 @@ A plan is ready when an implementer can start confidently without needing the pl
 Determine `OUTPUT_FORMAT` before any other phase fires. Output mode is **exclusive** — the plan is written as either markdown (`.md`) OR HTML (`.html`), never both. Precedence: in-prompt request > user-stated preference > config > default (`md`), with a hard pipeline-mode override.
 
 **Read config.** The repo root is pre-resolved at skill load:
-!`git rev-parse --show-toplevel 2>/dev/null || true`
+!`jj workspace root 2>/dev/null || true`
 
-If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `git rev-parse --show-toplevel` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a git repo) or the file does not exist, fall through to the defaults below.
+If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `jj workspace root` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not in a JJ workspace) or the file does not exist, fall through to the defaults below.
 
 Resolution steps:
 
@@ -107,7 +107,7 @@ Pipeline / `disable-model-invocation` runs already skip the chat confirmation (h
 If the user references an existing plan file or there is an obvious recent matching plan in `docs/plans/`:
 - Read it
 - Confirm whether to update it in place or create a new plan
-- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from git by `ce-work`, so there is no progress to preserve across edits
+- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from JJ changes by `ce-work`, so there is no progress to preserve across edits
 
 **A requirements-only unified plan is not a resume target.** A `docs/plans/` file with `artifact_readiness: requirements-only` is an *enrichment input*, not an existing plan to resume — do **not** fire the update-or-create confirm for it. Fall through to Phase 0.2, which enriches it in place to `implementation-ready`. This matters most for the hands-off `ce-brainstorm` -> `lfg` flow: `lfg` hands `ce-plan` the requirements-only path in `disable-model-invocation` pipeline mode, where no user is present to answer a resume prompt. More generally, in pipeline mode the resume choice is made automatically (default to in-place update of the referenced plan) and never prompted.
 
@@ -477,7 +477,7 @@ For **Standard** or **Deep** plans, briefly consider who is affected by this cha
 
 #### 3.3 Break Work into Implementation Units
 
-Break the work into logical implementation units. Each unit should represent one meaningful change that an implementer could typically land as an atomic commit.
+Break the work into logical implementation units. Each unit should represent one meaningful change that an implementer could typically land as an atomic JJ change.
 
 Good units are:
 - Focused on one component, behavior, or integration seam
@@ -518,7 +518,7 @@ The tree is a scope declaration showing the expected output shape. It is not a c
 
 #### 3.5 Define Each Implementation Unit
 
-Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as bulleted list items or prefix them with `- [ ]` / `- [x]` checkbox markers. List-based unit titles fragment in every standard renderer because the per-unit fields (`**Goal:**`, `**Files:**`, `**Approach:**`, etc.) are written flush-left, which terminates CommonMark list continuation and detaches the fields from the unit they describe. Headings render correctly everywhere, are the right semantic match for sections containing multi-block content, and give each unit an anchor link. The plan is a decision artifact; execution progress is derived from git by `ce-work` rather than stored in the plan body.
+Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as bulleted list items or prefix them with `- [ ]` / `- [x]` checkbox markers. List-based unit titles fragment in every standard renderer because the per-unit fields (`**Goal:**`, `**Files:**`, `**Approach:**`, etc.) are written flush-left, which terminates CommonMark list continuation and detaches the fields from the unit they describe. Headings render correctly everywhere, are the right semantic match for sections containing multi-block content, and give each unit an anchor link. The plan is a decision artifact; execution progress is derived from JJ changes by `ce-work` rather than stored in the plan body.
 
 **Stability rule.** Once assigned, a U-ID is never renumbered. Reordering units leaves their IDs in place (e.g., U1, U3, U5 in their new order is correct; renumbering to U1, U2, U3 is not). Splitting a unit keeps the original U-ID on the original concept and assigns the next unused number to the new unit. Deletion leaves a gap; gaps are fine. This rule matters most during deepening (Phase 5.3), which is the most likely accidental-renumber vector.
 
@@ -623,7 +623,7 @@ Omit "include when material" sections that don't carry information for this spec
 - Do not include implementation code — no imports, exact method signatures, or framework-specific syntax
 - Pseudo-code sketches and DSL grammars are allowed in the High-Level Technical Design section and per-unit technical design fields when they communicate design direction. Frame them explicitly as directional guidance, not implementation specification
 - Mermaid diagrams are encouraged when they clarify relationships or flows that prose alone would make hard to follow — ERDs for data model changes, sequence diagrams for multi-service interactions, state diagrams for lifecycle transitions, flowcharts for complex branching logic
-- Do not include git commands, commit messages, or exact test command recipes
+- Do not include JJ commands, change descriptions, or exact test command recipes
 - Do not expand implementation units into micro-step `RED/GREEN/REFACTOR` instructions
 - Do not pretend an execution-time question is settled just to make the plan look complete
 

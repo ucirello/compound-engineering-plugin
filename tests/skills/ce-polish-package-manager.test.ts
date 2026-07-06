@@ -177,14 +177,14 @@ describe("resolve-package-manager.sh", () => {
     expect(result.stdout.trim()).toBe("__NO_PACKAGE_JSON__")
   })
 
-  // --- Error cases ---
+  // --- Plain-directory fallback ---
 
-  test("not in a git repo AND no positional arg -> stderr contains ERROR:, exit 1", async () => {
-    // Create a plain directory (not a git repo)
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ce-polish-pkgmgr-nogit-"))
+  test("not in a JJ workspace AND no positional arg -> inspect cwd", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ce-polish-pkgmgr-nojj-"))
+    await writeJson(path.join(dir, "package.json"), { name: "test" })
     const result = await runCommand(["bash", resolvePackageManager], dir)
-    expect(result.exitCode).toBe(1)
-    expect(result.stderr).toContain("ERROR:")
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout.trim()).toBe("npm\nrun dev")
   })
 
   test("positional path doesn't exist -> stderr contains ERROR:, exit 1", async () => {

@@ -75,7 +75,7 @@ For each candidate artifact, classify it into one of five outcomes:
 | **Update** | Core solution is still correct, but references drifted | Apply evidence-backed in-place edits |
 | **Consolidate** | Two or more docs overlap heavily but are both correct | Merge unique content into the canonical doc, delete the subsumed doc |
 | **Replace** | The old artifact is now misleading, but there is a known better replacement | Create a trustworthy successor, then delete the old artifact |
-| **Delete** | No longer useful, applicable, or distinct | Delete the file — git history preserves it if anyone needs to recover it later |
+| **Delete** | No longer useful, applicable, or distinct | Delete the file — JJ history preserves it if anyone needs to recover it later |
 
 ## Core Rules
 
@@ -92,7 +92,7 @@ For each candidate artifact, classify it into one of five outcomes:
    - newer docs, pattern docs, PRs, or issues provide strong successor evidence.
 8. **Delete when the code is gone, and only after checking for inbound links.** If the referenced code, controller, or workflow no longer exists in the codebase and no successor can be found, delete the file — don't default to Keep just because the general advice is still "sound." When in doubt between Keep and Delete, ask the user (in interactive mode) or mark as stale (in headless mode). Inbound links inform classification, not cleanup: cleanup is always mechanical, but **decorative** citations (principle stated inline) allow Delete, while **substantive** citations (citing doc relies on the cited doc) signal Replace. The auto-delete case is missing code, no matching successor, and citations absent or decorative.
 9. **Evaluate document-set design, not just accuracy.** In addition to checking whether each doc is accurate, evaluate whether it is still the right unit of knowledge. If two or more docs overlap heavily, determine whether they should remain separate, be cross-scoped more clearly, or be consolidated into one canonical document. Redundant docs are dangerous because they drift silently — two docs saying the same thing will eventually say different things.
-10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. Git history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `git log --diff-filter=D -- docs/solutions/` will find it.
+10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. JJ history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `jj log -- docs/solutions/` can find the relevant history.
 
 ## Scope Selection
 
@@ -323,7 +323,7 @@ Choose **Consolidate** when Phase 1.75 identified docs that overlap heavily but 
 
 **Consolidate vs Delete:** If the subsumed doc has unique content worth preserving (edge cases, alternative approaches, extra prevention rules), use Consolidate to merge that content first. If the subsumed doc adds nothing the canonical doc doesn't already say, skip straight to Delete.
 
-The Consolidate action is: merge unique content from the subsumed doc into the canonical doc, then delete the subsumed doc. Not archive — delete. Git history preserves it.
+The Consolidate action is: merge unique content from the subsumed doc into the canonical doc, then delete the subsumed doc. Not archive — delete. JJ history preserves it.
 
 ### Replace
 
@@ -350,7 +350,7 @@ Choose **Delete** when:
 - The learning is fully redundant with another doc (use Consolidate if there is unique content to merge first)
 - There is no meaningful successor evidence suggesting it should be replaced instead
 
-Action: delete the file. No archival directory, no metadata — just delete it. Git history preserves every deleted file if recovery is ever needed.
+Action: delete the file. No archival directory, no metadata — just delete it. JJ history preserves every deleted file if recovery is ever needed.
 
 ### Before deleting: check if the problem domain is still active
 
@@ -550,7 +550,7 @@ Then for EVERY file processed, list:
 - What action was taken (or recommended)
 - For Consolidate: which doc was canonical, what unique content was merged, what was deleted
 
-For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating git churn.
+For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating VCS churn.
 
 ### Headless mode report
 
@@ -574,16 +574,16 @@ If all writes succeed, the Recommended section is empty. If no writes succeed (e
 **Legacy cleanup** (if `docs/solutions/_archived/` exists):
 - List archived files found and recommend disposition: restore (if still relevant), delete (if truly obsolete), or consolidate (if overlapping with active docs)
 
-## Phase 5: Commit Changes
+## Phase 5: Describe and Persist Changes
 
-After all actions are executed and the report is generated, handle committing the changes. Skip this phase if no files were modified (all Keep, or all writes failed).
+After all actions are executed and the report is generated, handle describing/persisting the changes. Skip this phase if no files were modified (all Keep, or all writes failed).
 
-### Detect git context
+### Detect JJ context
 
 Before offering options, check:
-1. Which branch is currently checked out (main/master vs feature branch)
-2. Whether the working tree has other uncommitted changes beyond what compound-refresh modified
-3. Recent commit messages to match the repo's commit style
+1. Which bookmark/change the current workspace is on (default bookmark vs feature bookmark/change)
+2. Whether the working tree has other changes beyond what compound-refresh modified
+3. Recent JJ change descriptions to match the repo's style
 
 ### Headless mode
 
@@ -591,38 +591,38 @@ Use sensible defaults — no user to ask:
 
 | Context | Default action |
 |---------|---------------|
-| On main/master | Create a branch named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), commit, attempt to open a PR. If PR creation fails, report the branch name. |
-| On a feature branch | Commit as a separate commit on the current branch |
-| Git operations fail | Include the recommended git commands in the report and continue |
+| On default bookmark | Create a feature bookmark named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), describe the refresh change, push the bookmark, attempt to open a PR. If PR creation fails, report the bookmark name. |
+| On feature bookmark | Describe as a separate JJ change on the current bookmark |
+| JJ operations fail | Include the recommended JJ commands in the report and continue |
 
-Stage only the files that compound-refresh modified — not other dirty files in the working tree.
+Move only the files that compound-refresh modified into the refresh change, using `jj split` if other dirty files are present.
 
 ### Interactive mode
 
-First, run `git branch --show-current` to determine the current branch. Then present the correct options based on the result. Stage only compound-refresh files regardless of which option the user picks.
+First, run `jj bookmark list --revisions @` to determine the current bookmark/change. Then present the correct options based on the result. Describe only compound-refresh files regardless of which option the user picks.
 
-**If the current branch is main, master, or the repo's default branch:**
+**If the current bookmark is main, master, or the repo's default bookmark:**
 
-1. Create a branch, commit, and open a PR (recommended) — the branch name should be specific to what was refreshed, not generic (e.g., `docs/refresh-auth-learnings` not `docs/compound-refresh`)
-2. Commit directly to `{current branch name}`
-3. Don't commit — I'll handle it
+1. Create a feature bookmark, describe the change, and open a PR (recommended) — the bookmark name should be specific to what was refreshed, not generic (e.g., `docs/refresh-auth-learnings` not `docs/compound-refresh`)
+2. Describe directly on `{current bookmark name}`
+3. Don't describe — I'll handle it
 
-**If the current branch is a feature branch, clean working tree:**
+**If the current bookmark is a feature bookmark, clean working tree:**
 
-1. Commit to `{current branch name}` as a separate commit (recommended)
-2. Create a separate branch and commit
-3. Don't commit
+1. Describe on `{current bookmark name}` as a separate JJ change (recommended)
+2. Create a separate bookmark and describe the change there
+3. Don't describe
 
-**If the current branch is a feature branch, dirty working tree (other uncommitted changes):**
+**If the current bookmark is a feature bookmark, dirty working tree (other changes):**
 
-1. Commit only the compound-refresh changes to `{current branch name}` (selective staging — other dirty files stay untouched)
-2. Don't commit
+1. Describe only the compound-refresh changes on `{current bookmark name}` (split only compound-refresh files — other dirty files stay untouched)
+2. Don't describe
 
-### Commit message
+### JJ change description
 
-Write a descriptive commit message that:
+Write a descriptive JJ change description that:
 - Summarizes what was refreshed (e.g., "update 3 stale learnings, consolidate 2 overlapping docs, delete 1 obsolete doc")
-- Follows the repo's existing commit conventions (check recent git log for style)
+- Follows the repo's existing change-description conventions (check recent `jj log` for style)
 - Is succinct — the details are in the changed files themselves
 
 ## Relationship to ce-compound
@@ -676,4 +676,4 @@ After the refresh report is generated, check whether the project's instruction f
 
    **Skip this step entirely if `CONCEPTS.md` does not exist** — never nag for an artifact the project has not adopted. When skipped, this step produces no output and no edit.
 
-6. **Amend or create a follow-up commit when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, stage the newly edited file and either amend the existing commit (if still on the same branch and no push has occurred) or create a small follow-up commit (e.g., `docs: add docs/solutions/ discoverability to AGENTS.md`, or `docs: add CONCEPTS.md discoverability to AGENTS.md`, or a combined message when both edits landed). If Phase 5 already pushed the branch to a remote (e.g., the branch+PR path), push the follow-up commit as well so the open PR includes the discoverability change. This keeps the working tree clean and the remote in sync at the end of the run. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits unstaged alongside the other uncommitted refresh changes — no separate commit logic needed.
+6. **Squash or create a follow-up JJ change when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already described the refresh change, either squash the newly edited file into the refresh change with `jj squash --from @ --into <refresh-change>` when safe and unpushed, or create a small follow-up JJ change (e.g., `docs: add docs/solutions/ discoverability to AGENTS.md`, or `docs: add CONCEPTS.md discoverability to AGENTS.md`, or a combined message when both edits landed). If Phase 5 already pushed the bookmark to a remote, push the bookmark again so the open PR includes the discoverability change. This keeps the working tree clean and the remote in sync at the end of the run. If the user chose "Don't describe" in Phase 5, leave the instruction-file edits alongside the other refresh changes — no separate change logic needed.

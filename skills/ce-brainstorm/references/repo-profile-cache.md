@@ -29,7 +29,7 @@ Never read from the cache — recompute every run:
 ```
 
 - `<root-id>` = lexicographically-first commit id from `jj log -r 'roots(::@ & ~root())'` — the repo identity (stable, shared across workspaces and clones).
-- `<head-id>` = commit id from `jj log -r @` — the working state.
+- `<head-id>` = commit id from `jj log -r @-` — the checked-out base state.
 
 Two workspaces at the same commit share the same entry. Lookup is jj metadata only; on a hit, only this one file is read.
 

@@ -22,7 +22,7 @@ describe("ce-code-review contract", () => {
     expect(content).toContain("/tmp/compound-engineering/ce-code-review/<run-id>/")
     expect(content).toMatch(/Never push, open PRs, or file tickets/i)
     expect(content).toContain("run artifact")
-    expect(content).toMatch(/switch to the PR head/i)
+    expect(content).toMatch(/Do \*\*not\*\* move to the PR bookmark/i)
     expect(content).toMatch(/Never run `gh pr checkout`/i)
     expect(content).not.toContain("Which severities should I fix?")
   })
@@ -54,12 +54,12 @@ describe("ce-code-review contract", () => {
     expect(content).toContain("review.json")
 
     // mode:agent never mutates; default mode applies safe fixes (this test owns the mutate-contract assertions)
-    expect(content).toMatch(/never mutates the working copy/i)
+    expect(content).toMatch(/never mutates the tree/i)
     expect(content).toMatch(/default \(interactive\).{0,4}mode the review applies/i)
 
     // Never mutate workspace/bookmark selection — explicit mutations only
     expect(content).toMatch(/Never run `gh pr checkout`/i)
-    expect(content).toMatch(/Do \*\*not\*\* switch to the PR head/i)
+    expect(content).toMatch(/Do \*\*not\*\* move to the PR bookmark/i)
 
     // Conflicting arguments
     expect(content).toContain("**Conflicting arguments:**")
@@ -76,7 +76,7 @@ describe("ce-code-review contract", () => {
 
     // Action Routing: autofix_class is signal only; mode:agent never mutates, default applies
     expect(content).toContain("## Action Routing")
-    expect(content).toMatch(/it never mutates the working copy/i)
+    expect(content).toMatch(/it never mutates the tree/i)
     expect(content).toContain("references/action-class-rubric.md")
 
     // No post-review triage — report is the complete handoff
@@ -319,10 +319,10 @@ describe("ce-code-review contract", () => {
     expect(content).toMatch(/Push back.*do not apply.*reviewer is wrong/i)
     expect(content).toMatch(/There is no deny-list/i)
 
-    // Scope invariant + verify-then-keep + commit-on-clean-working-copy, never push
-    expect(content).toMatch(/Apply only when the working copy \*?is\*? what was reviewed/i)
+    // Scope invariant + verify-then-keep + describe-on-clean-working-copy, never push
+    expect(content).toMatch(/Apply only when the working tree \*?is\*? what was reviewed/i)
     expect(content).toMatch(/revert that fix and report it/i)
-    expect(content).toMatch(/Commit when the pre-review working copy was clean/i)
+    expect(content).toMatch(/Describe a review fix change when the pre-review tree was clean/i)
     expect(content).toMatch(/Never push, open a PR, or file tickets/i)
 
     // Applied reporting (skill + template)
@@ -411,7 +411,7 @@ describe("ce-code-review contract", () => {
 
     expect(skill).toContain("<pr-scope-mode>bookmark-remote</pr-scope-mode>")
     expect(skill).toContain("<bookmark-head-ref>")
-    expect(skill).toMatch(/local-aligned.*local working-copy diff/i)
+    expect(skill).toMatch(/local-aligned.*local tree diff/i)
     expect(skill).not.toMatch(/append.*`DIFF:`.*unpushed/i)
     expect(skill).toMatch(/Do \*\*not\*\* call `gh pr diff` or append remote hunks/)
 
@@ -582,15 +582,15 @@ describe("ce-code-review contract", () => {
 
     // No scope path should fall back to only the current JJ change — that can silently
     // produce empty diffs after work has already been committed to earlier changes.
-    expect(content).not.toContain("Do not fall back to `jj diff -r @`")
+    expect(content).toContain("Do not fall back to `jj diff -r @`")
     expect(content).not.toContain("Do not fall back to `jj diff --name-only -r @`")
 
     // PR mode uses remote diff API, not workspace switching
     expect(content).toContain("gh pr diff")
-    expect(content).toMatch(/do not fall back to switching workspaces/i)
+    expect(content).toMatch(/do not fall back to workspace switching/i)
 
     // Bookmark and standalone modes must stop when no base can be resolved
-    const stopGuardMatches = content.match(/Never use `jj diff -r @` as a fallback/g)
+    const stopGuardMatches = content.match(/Do not fall back to `jj diff -r @`/g)
     expect(stopGuardMatches?.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -645,7 +645,7 @@ describe("ce-code-review contract", () => {
 
       // Accept-and-proceed path threads findings into the PR description.
       expect(workflow).toContain("Known Residuals")
-      expect(workflow).toContain("docs/residual-review-findings/<bookmark-or-jj-change-id>.md")
+      expect(workflow).toContain("docs/residual-review-findings/<bookmark-or-change-id>.md")
       expect(workflow).toContain("If the user later chooses the no-PR `ce-commit` path")
       expect(workflow).toContain("must not live only in the transient session")
     }
@@ -685,10 +685,10 @@ describe("ce-code-review contract", () => {
     expect(lfg).toContain("do not load any confirmation-driven PR update skill")
     expect(lfg).toContain("gh pr edit PR_NUMBER --body-file BODY_FILE")
     expect(lfg).toContain("## Residual Review Findings")
-    expect(lfg).toContain("docs/residual-review-findings/<bookmark-or-jj-change-id>.md")
+    expect(lfg).toContain("docs/residual-review-findings/<bookmark-or-change-id>.md")
     expect(lfg).toContain("prefer `origin` when present")
     expect(lfg).toContain("choose the first configured remote")
-    expect(lfg).toContain("jj git push --remote <remote> --bookmark <current-bookmark>")
+    expect(lfg).toContain("jj git push --remote <remote> --bookmark <bookmark>")
     expect(lfg).not.toContain("git push --set-upstream origin HEAD")
     expect(lfg).toContain("Do not output DONE until the residual findings are durable")
 

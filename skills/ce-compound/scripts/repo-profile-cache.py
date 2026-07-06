@@ -27,7 +27,7 @@ Cache path:
   root-id = lexicographically-first commit id from
             `jj log -r 'roots(::@ & ~root())'` — the repo identity,
             shared across workspaces and clones.
-  head-id = commit id from `jj log -r @` — the working state.
+  head-id = commit id from `jj log -r @-` — the checked-out base state.
 
 Validity (HIT) requires ALL of:
   - the cache file exists and parses as JSON,
@@ -206,6 +206,15 @@ def root_id() -> "str | None":
     return sorted(ids)[0] if ids else None
 
 
+def head_id() -> "str | None":
+    """Stable cache key for the checked-out base, excluding mutable @ edits."""
+    out = jj("log", "-r", "@-", "--no-graph", "-T", 'commit_id ++ "\\n"')
+    if not out:
+        return None
+    ids = [line for line in out.split("\n") if line]
+    return sorted(ids)[0] if ids else None
+
+
 def changed_paths() -> "list[str] | None":
     """Paths changed in jj's working-copy commit, or None if unknown.
 
@@ -216,7 +225,15 @@ def changed_paths() -> "list[str] | None":
     out = jj("diff", "--name-only", "-r", "@")
     if out is None:
         return None
-    return [line for line in out.split("\n") if line]
+    paths = {line for line in out.split("\n") if line}
+    git_diff = jj("diff", "--git", "-r", "@")
+    if git_diff is None:
+        return None
+    for line in git_diff.split("\n"):
+        for prefix in ("rename from ", "rename to "):
+            if line.startswith(prefix):
+                paths.add(line[len(prefix):])
+    return sorted(paths)
 
 
 def cache_path(root: str, head: str) -> str:
@@ -226,7 +243,7 @@ def cache_path(root: str, head: str) -> str:
 def resolve_keys() -> "tuple[str, str] | None":
     """The (root-id, head-id) cache key, or None if not a usable jj repo."""
     root = root_id()
-    head = jj("log", "-r", "@", "--no-graph", "-T", "commit_id")
+    head = head_id()
     if not root or not head:
         return None
     return root, head

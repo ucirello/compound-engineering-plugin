@@ -19,8 +19,8 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 
 ## Common rules
 
-- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not track `raw/` or `frames/` directories unless the user explicitly asks and privacy is acceptable.
-- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be tracked when they are needed for traceability and contain no sensitive data.
+- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not include `raw/` or `frames/` directories in a JJ change unless the user explicitly asks and privacy is acceptable.
+- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be included in a JJ change when they are needed for traceability and contain no sensitive data.
 - Use repo-relative screenshot paths in any tracked doc so later agents can open the evidence without absolute local paths.
 
 ## Analyzer entrypoint

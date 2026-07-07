@@ -213,7 +213,7 @@ a section with placeholder prose is worse than omitting it.
 
 - **High-Level Technical Design** — include when the technical approach has
   shape that prose alone doesn't carry well: architecture across components,
-  sequencing across processes, state machines, bookmarking gates.
+  sequencing across processes, state machines, branching gates.
   Visualizations (component topology, sequence, swim lane, flowchart,
   data-flow) typically live here. Skip when the approach is a one-paragraph
   pattern application that the prose itself conveys.
@@ -266,7 +266,7 @@ versa.
 
 The agent also picks per artifact:
 
-- Whether Problem Frame combines into Summary
+- Whether Problem Frame merges into Summary
 - Sub-groupings (Requirements by capability, KTDs by component, Units phased
   into milestones)
 - How much detail each section carries
@@ -336,7 +336,7 @@ plan.
   across readiness states (it is a plan at every stage). Do not put a
   conventional change-description prefix (`feat:`/`fix:`) in the title — the `type` field
   carries that classification.
-- **`type`** — conventional change-description prefix-aligned classification (`feat`,
+- **`type`** — conventional change-description-prefix-aligned classification (`feat`,
   `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
   intent the eventual JJ change description should reflect.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
@@ -362,7 +362,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the bookmark/test/JJ-change/CI lifecycle); absent or `code` routes
+  skipping the bookmark/test/change-description/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.

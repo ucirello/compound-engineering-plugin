@@ -1,8 +1,8 @@
 ---
 name: ce-dogfood
-description: "Hands-off, diff-scoped browser QA of the active bookmark: maps user flows, drives a real browser, autonomously fixes small breakages with regression tests and JJ descriptions, judges experience against product personas, and writes a durable dogfood report. Manual invocation only."
+description: "Hands-off, diff-scoped browser QA of the active bookmark: maps user flows, drives a real browser, autonomously fixes small breakages with regression tests and JJ changes, judges experience against product personas, and writes a durable dogfood report. Manual invocation only."
 disable-model-invocation: true
-argument-hint: "[PR number, bookmark name, or blank for current bookmark] [--port PORT]"
+argument-hint: "[PR number, bookmark name, or blank for current working-copy change (@)] [--port PORT]"
 ---
 
 # Dogfood
@@ -32,15 +32,15 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 
 | When | Skill | Why |
 |------|-------|-----|
-| Phase 0 isolation | `ce-workspace` | Run the dogfood in an isolated workspace so the primary workspace stays clean. |
+| Phase 0 isolation | `ce-worktree` | Run the dogfood in an isolated workspace so the main workspace stays clean. |
 | A failure's root cause is non-obvious | `ce-debug` | Systematic root-cause analysis instead of guess-and-check. |
-| Describing each fix | `ce-commit` | Consistent, well-scoped JJ change descriptions. |
+| Describing each fix change | `ce-commit` | Consistent, well-scoped JJ change descriptions. |
 | A bug reveals a reusable lesson | `ce-compound` | Capture the learning so the team compounds knowledge. |
 
 ## Workflow
 
 ```
-0. Scope        Pick the bookmark, move onto it (offer workspace), never touch the trunk
+0. Scope        Pick the bookmark, get onto it (offer workspace), never touch the trunk
 1. Analyze      Diff bookmark vs trunk, understand every change
 2. Map+Matrix   Map user flows as Mermaid flowcharts, then derive the test matrix as a task list
 3. Serve        Detect port, start dev server, open agent-browser
@@ -51,16 +51,16 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 
 ### Phase 0: Scope and Get on the Right Bookmark
 
-Parse `$ARGUMENTS`: a PR number, a bookmark name, or blank (use current bookmark). Strip `--port PORT` if present.
+Parse `$ARGUMENTS`: a PR number, a bookmark name, or blank (use the current working-copy change, `@`, and any bookmark pointing at it). Strip `--port PORT` if present.
 
-1. **Identify the target — keep PR identity; do not move the working-copy revision yet.**
-   - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, workspace movement). Read its head only for display (`gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare bookmark name: a fork PR's head can even be named `main`/`master`. Do not move to it yet.
+1. **Identify the target — keep PR identity; do not move the working-copy change yet.**
+   - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, workspace move). Read its head only for display (`gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare bookmark name: a fork PR's head can even be named `main`/`master`. Do not move the working copy to the PR head yet.
    - **Bookmark name:** the target is that bookmark.
-   - **Blank:** the target is the current bookmark.
+   - **Blank:** the target is the current working-copy change (`@`) and any bookmark pointing at it.
 2. **Refuse to run on the trunk — bookmark/blank targets only.** If a *bookmark-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse `/ce-dogfood <number>` just because the PR's head bookmark happens to be named `main`.
-3. **Decide isolation by what you're testing; let `ce-workspace` own the workspace mechanics.** Do not re-derive workspace detection or creation here — `ce-workspace` handles existing-isolation detection, the harness-native tool, attaching to a ref, and the "already active in a workspace" constraint, and reports its decision back. The only call this skill makes is *whether to ask for isolation at all*:
-   - **Blank / current-bookmark target:** do **not** isolate — dogfood in place. You are already on the bookmark under test, the fix descriptions belong on it, and JJ should not move the same bookmark in a second workspace implicitly. (If you happen to already be in a workspace, that is fine — you are simply dogfooding here.)
-   - **A PR or a different named bookmark:** this is an existing ref to test without disturbing your current workspace. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-workspace` to isolate **that target ref** — it attaches a workspace to the ref or works in place when already isolated. Act on `ce-workspace`'s verdict; the primary workspace is never moved. On **no**, move to the target with JJ (`jj new <bookmark-or-rev>`), confirming first if working-copy changes would be disturbed.
+3. **Decide isolation by what you're testing; let `ce-worktree` own the workspace mechanics.** Do not re-derive workspace detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, attaching to a ref, and JJ's same-change-in-multiple-workspaces constraint, and reports its decision back. The only call this skill makes is *whether to ask for isolation at all*:
+   - **Blank / current working-copy target (`@`):** do **not** isolate — dogfood in place. You are already at the change under test, the fix changes belong on it, and JJ cannot edit the same change in a second workspace anyway. (If you happen to already be in a workspace, that is fine — you are simply dogfooding here.)
+   - **A PR or a different named bookmark:** this is an existing ref to test without disturbing your current workspace. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` to isolate **that target ref** — it attaches a workspace to the ref (or, if already isolated, moves to it in place; or reports "already in use at `<path>` — work there" when the ref is live elsewhere). Act on `ce-worktree`'s verdict; the primary workspace is never moved. On **no**, move the JJ working copy in place: for a bookmark, use `jj new <bookmark>`; for a PR, read the PR head with `gh pr view`, fetch the head into a JJ-visible bookmark/revision with `jj git fetch` as needed, then use `jj new <revision>` or `jj edit <revision>` as appropriate. Confirm first if undescribed changes would be disturbed.
 4. **Resume if a prior run exists.** Look for an existing report at `docs/dogfood-reports/*-<bookmark-slug>-dogfood.md` (see the bookmark-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, re-hydrate the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
 
 ### Resumability (stop and return at any point)
@@ -74,30 +74,23 @@ Because tasks are session-scoped but the report doc is on disk, the report is th
 
 ### Phase 1: Analyze Changes
 
-Derive the trunk ref once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default bookmark is `master` (or anything else) would fail with `fatal: ambiguous argument 'main...@'`.
+Derive the trunk/default bookmark revision once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default bookmark is `master` (or anything else) may not have a `main` bookmark.
 
 ```bash
-# Resolve the trunk to a ref that actually exists. Start from the detected
-# default name (origin/@, then gh), then fall back to common names. For each
-# candidate prefer a local bookmark; else use the remote-tracking ref QUALIFIED as
-# origin/<bookmark> — an unqualified name resolves via refs/remotes/<name>, NOT
-# refs/remotes/origin/<name>, so a remote-only trunk would otherwise miss. This
-# qualification applies to the detected default too (PR/CI workspaces often have
-# only origin/main, no local main).
-DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || echo main)
+# Resolve the trunk bookmark. Start from GitHub's repository default when
+# available, then fall back to common bookmark names.
+DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)
 TRUNK=""
 for cand in "$DEFAULT" main master; do
   [ -n "$cand" ] || continue
-  if jj log -r "$cand" --no-graph >/dev/null 2>&1; then
+  if jj log -r "$cand" --no-graph -T 'change_id' >/dev/null 2>&1; then
     TRUNK=$cand; break
-  elif jj log -r "$cand@origin" --no-graph >/dev/null 2>&1; then
-    TRUNK="$cand@origin"; break
   fi
 done
 TRUNK=${TRUNK:-main}
 
-jj diff --from "$TRUNK" --to @ --name-only   # what changed
-jj diff --from "$TRUNK" --to @               # how it changed
+jj diff --from "$TRUNK" --to @ --summary   # what changed
+jj diff --from "$TRUNK" --to @             # how it changed
 ```
 
 Build a mental model of every change: new features, modified behavior, new routes/views/components, touched data flows. Note anything that produces user-visible behavior — that is what the matrix must cover.
@@ -110,7 +103,7 @@ Do not jump straight to a flat list of pages. First **understand the user flows 
 
 #### 2a. Map the user flows (required)
 
-For every user-visible change, trace the **complete journey** end to end and draw it. Map each flow as a **Mermaid `flowchart`** so the journey is explicit and reviewable before any testing happens — entry point, each user action, bookmark points (success / validation error / empty / permission-denied), side effects (emails, jobs, notifications), and the true end state.
+For every user-visible change, trace the **complete journey** end to end and draw it. Map each flow as a **Mermaid `flowchart`** so the journey is explicit and reviewable before any testing happens — entry point, each user action, branch points (success / validation error / empty / permission-denied), side effects (emails, jobs, notifications), and the true end state.
 
 > Email example: it's not enough that "an email sends." Does it go to the *right* recipient? When the user clicks through, does the app land on and scroll to the *right* message? Does the content make sense? Does the whole flow align with the product's vision and UX? The flowchart must carry the click-through and its destination, not stop at "email sent."
 
@@ -126,11 +119,11 @@ flowchart TD
     H --> I{Lands on correct thread + scrolls to the reply?}
 ```
 
-Produce one flowchart per distinct journey, scaled to the diff: a one-route or copy-only change gets a single small flowchart, a multi-step feature gets several. Cover the happy path **and** the bookmark points (error, empty, boundary, permission). Mapping the flows before the matrix is never skipped — these diagrams ARE the understanding; they become the spine of the matrix and belong in the final report.
+Produce one flowchart per distinct journey, scaled to the diff: a one-route or copy-only change gets a single small flowchart, a multi-step feature gets several. Cover the happy path **and** the branch points (error, empty, boundary, permission). Mapping the flows before the matrix is never skipped — these diagrams ARE the understanding; they become the spine of the matrix and belong in the final report.
 
 #### 2b. Derive the matrix from the flows
 
-Walk each flowchart and turn every node and bookmark into one or more test scenarios. Read `references/test-matrix-taxonomy.md` for the full set of dimensions (journeys, functional checks, experiential checks, edge/error/empty states, accessibility, responsiveness). Cover both **functional** ("does it work?") and **experiential** ("does it feel right and align with the product?").
+Walk each flowchart and turn every node and branch into one or more test scenarios. Read `references/test-matrix-taxonomy.md` for the full set of dimensions (journeys, functional checks, experiential checks, edge/error/empty states, accessibility, responsiveness). Cover both **functional** ("does it work?") and **experiential** ("does it feel right and align with the product?").
 
 Map changed files to concrete routes (views -> their pages, components -> pages rendering them, layouts -> all pages, stylesheets -> visual regression on key pages) and attach those routes to the flows that exercise them.
 
@@ -180,7 +173,7 @@ When a scenario fails — or a passing scenario carries a sharp paper cut worth 
 1. Investigate the root cause. If it's non-obvious, use `ce-debug`.
 2. Apply the fix in the code.
 3. **Add an automated regression test** that fails before the fix and passes after, so the bug can't return. This is the default for behavioral and code bugs. When an automated test is genuinely impractical — a pure copy, spacing, or visual fix with no behavioral assertion to make — substitute a documented browser-replay or screenshot check and **state in the report why no automated test was meaningful**. Do not invent a hollow test just to satisfy the step.
-4. Describe the fix change clearly with `ce-commit`. One logical fix per described JJ change.
+4. Describe the JJ fix change clearly (use `ce-commit`). One logical fix per change.
 5. Re-run the failing scenario in the browser to confirm it now passes; then continue the matrix.
 6. If the bug carried a reusable lesson, capture it with `ce-compound`.
 
@@ -194,4 +187,4 @@ Keep iterating until every task is `completed` or in a terminal `Blocked` state 
 
 The report doc was created at the end of Phase 2 and updated incrementally throughout (see Resumability). When the matrix is green (or every remaining item is explicitly blocked), **finalize** it at `docs/dogfood-reports/<YYYY-MM-DD>-<bookmark-slug>-dogfood.md` in the repo under test, then surface a short summary in chat with the file path.
 
-**Finalize against `references/dogfood-report-template.md`** — the same template the Phase 2 checkpoint was instantiated from, which owns the required sections and what each must carry. Confirm every template-owned section is present and complete; do not reconstruct the section list from memory, as that drifts from the template. Carry forward the cross-phase obligations this skill produced: the Mermaid flowcharts from Phase 2a, a matrix row per scenario with its revision ID, each fix's root cause and the regression test added (or why none was meaningful), paper cuts attributed by persona, learnings worth feeding to `ce-compound`, and a final readiness verdict that records the Phase 5 automated-suite result.
+**Finalize against `references/dogfood-report-template.md`** — the same template the Phase 2 checkpoint was instantiated from, which owns the required sections and what each must carry. Confirm every template-owned section is present and complete; do not reconstruct the section list from memory, as that drifts from the template. Carry forward the cross-phase obligations this skill produced: the Mermaid flowcharts from Phase 2a, a matrix row per scenario with its change ID, each fix's root cause and the regression test added (or why none was meaningful), paper cuts attributed by persona, learnings worth feeding to `ce-compound`, and a final readiness verdict that records the Phase 5 automated-suite result.

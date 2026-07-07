@@ -93,7 +93,7 @@ skill-invocation primitive, passing the unified plan artifact path as its
 argument so `lfg`'s `ce-plan` step enriches *this* requirements-only artifact in
 place rather than bootstrapping a new plan. `lfg` then owns the full pipeline
 autonomously — plan, implement (`ce-work` in `return-to-caller` mode), simplify,
-independent code review and applied fixes, describe/finalize/push/open PR, and CI watch to
+independent code review and applied fixes, `jj describe`, `jj git push`, open PR, and CI watch to
 green. Do not also start a `/goal` or load `ce-work` directly — `lfg`
 orchestrates them. Unlike a goal tool, `lfg` is host-agnostic: it works wherever
 skills run (plus `jj`/`gh` for the PR/CI tail, which it guards when absent).

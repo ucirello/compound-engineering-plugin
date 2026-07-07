@@ -853,7 +853,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- JJ change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; include generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
+        "- JJ change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; include generated Markdown/JSON/manifests in a change when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -874,7 +874,7 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not safe to include in a JJ change by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not change-safe by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
     lines.append("Extracted screenshots are retained locally for agent inspection and should not be included in a JJ change by default.")

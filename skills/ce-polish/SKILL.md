@@ -2,7 +2,7 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, bookmark name, or blank for current bookmark]"
+argument-hint: "[PR number, bookmark name, or blank for current working-copy change (@)]"
 ---
 
 # Polish
@@ -11,9 +11,9 @@ Start the dev server, open the feature in a browser, and iterate. You use the fe
 
 ## Phase 0: Get on the right bookmark
 
-1. If a PR number or bookmark name was provided, switch to the corresponding JJ bookmark/change (probe for existing workspaces first).
-2. If blank, use the current bookmark.
-3. Verify the current bookmark is not main/master.
+1. If a PR number or bookmark name was provided, move the working copy to the target with JJ (`jj new <bookmark-or-revision>` or `jj edit <revision>` as appropriate), probing for existing workspaces first.
+2. If blank, use the current working-copy change (`@`) and any bookmark currently pointing at it.
+3. Verify `@` is not the trunk/default bookmark revision (`main`, `master`, or the detected default bookmark).
 
 ## Phase 1: Start the dev server
 
@@ -85,7 +85,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done -> save the fixes in JJ (describe the current change if needed, then start a new change) and stop
+- When the user says they're done → describe the fix change and stop
 
 No checklist. No envelope. Just conversation.
 

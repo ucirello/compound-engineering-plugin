@@ -24,7 +24,7 @@ If the PR has no prior review comments, return an empty findings array immediate
 
 - **Unaddressed review comments** -- a prior reviewer asked for a change (fix a bug, add a test, rename a variable, handle an edge case) and the current diff does not reflect that change. The original code is still there, unchanged.
 - **Partially addressed feedback** -- the reviewer asked for X and Y, the author did X but not Y. Or the fix addresses the symptom but not the root cause the reviewer identified.
-- **Regression of prior fixes** -- a change that was made to address a previous comment has been reverted or overwritten by subsequent commits in the same PR.
+- **Regression of prior fixes** -- a change that was made to address a previous comment has been reverted or overwritten by subsequent changes in the same PR.
 
 ## What you don't flag
 

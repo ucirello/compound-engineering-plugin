@@ -76,21 +76,29 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## JJ Bisection for Regressions
+## JJ Revision Search for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking revision:
-
-```bash
-jj bisect run --range <known-good-ref>..@ -- <test-command>
-```
-
-`jj bisect run` edits each candidate revision as the working-copy revision and uses the command's exit status: `0` means good, non-zero means bad. Use a wrapper script when the check needs setup or multiple commands:
+When a bug is a regression ("it worked before"), use binary search over JJ revisions to find the breaking change:
 
 ```bash
-jj bisect run --range <known-good-ref>..@ -- bash path/to/regression-check.sh
+jj log -r '<known-good-ref>::@' --no-graph
+jj workspace add /tmp/jj-regression-check --revision <midpoint-rev>
+# Run the repro in /tmp/jj-regression-check.
+# If it is good, move the lower bound upward; if bad, move the upper bound downward.
+jj workspace forget jj-regression-check
+rm -rf /tmp/jj-regression-check
 ```
 
-Before bisection, record the current `@` and bookmark from `jj log -r @` and `jj bookmark list -r @` so you can return deliberately if the investigation changes the working-copy revision.
+For a repeatable test script, keep the command fixed and move only the checked revision:
+
+```bash
+jj workspace add /tmp/jj-regression-check --revision <candidate-rev>
+(cd /tmp/jj-regression-check && <test-command>)
+jj workspace forget jj-regression-check
+rm -rf /tmp/jj-regression-check
+```
+
+The test command should exit 0 for good, non-zero for bad. Keep notes of the good/bad bounds until one change remains.
 
 ---
 

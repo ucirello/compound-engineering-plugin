@@ -11,7 +11,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 ```markdown
 ## Code Review Results
 
-**Scope:** review base bookmark -> working tree (14 files, 342 lines)
+**Scope:** common ancestor with the review base bookmark -> current workspace (14 files, 342 lines)
 **Intent:** Add order export endpoint with CSV and JSON format support
 **Mode:** interactive
 
@@ -23,11 +23,11 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 
 | # | File | Fix | Reviewer |
 |---|------|-----|----------|
-| 6 | `export_helper_test.rb:40` | Added missing test for the empty-format bookmark | testing |
+| 6 | `export_helper_test.rb:40` | Added missing test for the empty-format branch | testing |
 | 7 | `orders_controller.rb:88` (+test) | Tightened export file perms `0644 -> 0600` (security-posture — verify in diff) | security |
 
 Validation: export tests 11 -> 13; suite 214 pass, lint clean.
-Committed: `fix(review): cover empty-format bookmark + tighten export perms` (working tree was clean before review).
+Described change: `fix(review): cover empty-format branch + tighten export perms` (workspace had no undescribed diff before review).
 
 ### Triage Groups
 
@@ -143,7 +143,7 @@ This fails because of the **box-drawing `────` separators between items*
 - **Header includes** scope, intent, and reviewer team with per-conditional justifications
 - **Mode line** -- include `interactive` or `agent`
 - **Triage Groups section (when groups exist)** -- pipe table `| Group | Findings | Context | Preferred Resolution | Why |` rendered after Applied and before the severity tables. The `Findings` cell lists stable `#`s (e.g. `#2, #3`); every referenced `#` must appear in a severity table below. Groups are a triage lens over the findings -- they never replace the severity tables, merge findings, or renumber them. Omit when `grouping:off` is active or no groups survived Stage 5b/5c pruning.
-- **Applied section (default mode only)** -- when the review applied fixes (Stage 5c), list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome (e.g. "suite 214 pass, lint clean") and the **JJ change status** — finalized as an isolated review-labeled JJ change (`fix(review): …`, or the repo's nearest convention when `review` isn't an allowed scope) when the working tree was clean before the review, or left unfinalized (for the user's JJ change) when it was already dirty. A fix spanning multiple files is **one row with one `#`** (e.g. `controller.rb:88 (+test)`) -- never duplicate the number across rows. Flag green-but-unverifiable edits (auth/contract/concurrency) inline in the `Fix` cell, e.g. `(security-posture — verify in diff)`. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit in `mode:agent` and when nothing was applied
+- **Applied section (default mode only)** -- when the review applied fixes (Stage 5c), list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome (e.g. "suite 214 pass, lint clean") and the **change status** — described as an isolated review-labeled JJ change (`fix(review): …`, or the repo's nearest convention when `review` isn't an allowed scope) when the workspace had no undescribed diff before the review, or left undescribed (for the user's change) when it already had user changes. A fix spanning multiple files is **one row with one `#`** (e.g. `controller.rb:88 (+test)`) -- never duplicate the number across rows. Flag green-but-unverifiable edits (auth/contract/concurrency) inline in the `Fix` cell, e.g. `(security-posture — verify in diff)`. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit in `mode:agent` and when nothing was applied
 - **Actionable Findings section** -- include when the actionable queue is non-empty (findings for the caller to handle)
 - **Pre-existing section** -- separate table, no confidence column (these are informational)
 - **Learnings & Past Solutions section** -- results from the `learnings-researcher` local prompt asset, with links to docs/solutions/ files

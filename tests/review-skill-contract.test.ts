@@ -22,7 +22,7 @@ describe("ce-code-review contract", () => {
     expect(content).toContain("/tmp/compound-engineering/ce-code-review/<run-id>/")
     expect(content).toMatch(/Never push, open PRs, or file tickets/i)
     expect(content).toContain("run artifact")
-    expect(content).toMatch(/move the working copy to another bookmark\/revision/i)
+    expect(content).toMatch(/move the workspace to the PR bookmark/i)
     expect(content).toMatch(/Never run `gh pr checkout`/i)
     expect(content).not.toContain("Which severities should I fix?")
   })
@@ -59,7 +59,7 @@ describe("ce-code-review contract", () => {
 
     // Never checkout — explicit mutations only
     expect(content).toMatch(/Never run `gh pr checkout`/i)
-    expect(content).toMatch(/Do \*\*not\*\* check out/i)
+    expect(content).toMatch(/Never run `gh pr checkout`/i)
 
     // Conflicting arguments
     expect(content).toContain("**Conflicting arguments:**")
@@ -76,7 +76,7 @@ describe("ce-code-review contract", () => {
 
     // Action Routing: autofix_class is signal only; mode:agent never mutates, default applies
     expect(content).toContain("## Action Routing")
-    expect(content).toMatch(/this skill does not mutate the working copy/i)
+    expect(content).toMatch(/this skill does not mutate the current JJ workspace/i)
     expect(content).toContain("references/action-class-rubric.md")
 
     // No post-review triage — report is the complete handoff
@@ -319,10 +319,10 @@ describe("ce-code-review contract", () => {
     expect(content).toMatch(/Push back.*do not apply.*reviewer is wrong/i)
     expect(content).toMatch(/There is no deny-list/i)
 
-    // Scope invariant + verify-then-keep + finalize-on-clean-tree, never push
-    expect(content).toMatch(/Apply only when the working tree \*?is\*? what was reviewed/i)
+    // Scope invariant + verify-then-keep + commit-on-clean-tree, never push
+    expect(content).toMatch(/Apply only when the current workspace \*?is\*? what was reviewed/i)
     expect(content).toMatch(/revert that fix and report it/i)
-    expect(content).toMatch(/Finalize as a JJ change when the pre-review tree was clean/i)
+    expect(content).toMatch(/Describe a new change when the workspace had no undescribed diff before review/i)
     expect(content).toMatch(/Never push, open a PR, or file tickets/i)
 
     // Applied reporting (skill + template)
@@ -411,7 +411,7 @@ describe("ce-code-review contract", () => {
 
     expect(skill).toContain("<pr-scope-mode>bookmark-remote</pr-scope-mode>")
     expect(skill).toContain("<bookmark-head-ref>")
-    expect(skill).toMatch(/local-aligned.*local tree diff/i)
+    expect(skill).toMatch(/local-aligned.*local workspace diff/i)
     expect(skill).not.toMatch(/append.*`DIFF:`.*unpushed/i)
     expect(skill).toMatch(/Do \*\*not\*\* call `gh pr diff` or append remote hunks/)
 
@@ -577,21 +577,21 @@ describe("ce-code-review contract", () => {
     expect(skill).not.toContain("ce-data-migrations-reviewer")
   })
 
-  test("PR mode uses gh pr diff without switching; bookmark/standalone fail closed on missing base", async () => {
+  test("PR mode uses gh pr diff without checkout; branch/standalone fail closed on missing base", async () => {
     const content = await readRepoFile("skills/ce-code-review/SKILL.md")
 
-    // No scope path should fall back to the mutable working-copy diff alone — that only
-    // shows current uncommitted changes and misses the bookmark/change under review.
+    // No scope path should fall back to `git diff HEAD` or `git diff --cached` — those only
+    // show uncommitted changes and silently produce empty diffs on clean feature branches.
     expect(content).not.toContain("git diff --name-only HEAD")
     expect(content).not.toContain("git diff -U10 HEAD")
     expect(content).not.toContain("git diff --cached")
 
-    // PR mode uses remote diff API, not switching bookmarks
+    // PR mode uses remote diff API, not checkout
     expect(content).toContain("gh pr diff")
-    expect(content).toMatch(/do not fall back to switching bookmarks/i)
+    expect(content).toMatch(/without switching workspaces/i)
 
-    // Bookmark and standalone modes must stop when no base can be resolved
-    const stopGuardMatches = content.match(/Do not fall back to `jj diff` alone/g)
+    // Branch and standalone modes must stop when no base can be resolved
+    const stopGuardMatches = content.match(/Do not fall back to `jj diff` against `@`/g)
     expect(stopGuardMatches?.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -646,7 +646,7 @@ describe("ce-code-review contract", () => {
 
       // Accept-and-proceed path threads findings into the PR description.
       expect(workflow).toContain("Known Residuals")
-      expect(workflow).toContain("docs/residual-review-findings/<bookmark-or-revision-id>.md")
+      expect(workflow).toContain("docs/residual-review-findings/<bookmark-or-head-change>.md")
       expect(workflow).toContain("If the user later chooses the no-PR `ce-commit` path")
       expect(workflow).toContain("must not live only in the transient session")
     }
@@ -686,11 +686,9 @@ describe("ce-code-review contract", () => {
     expect(lfg).toContain("do not load any confirmation-driven PR update skill")
     expect(lfg).toContain("gh pr edit PR_NUMBER --body-file BODY_FILE")
     expect(lfg).toContain("## Residual Review Findings")
-    expect(lfg).toContain("docs/residual-review-findings/<bookmark-or-revision-id>.md")
-    expect(lfg).toContain("prefer `origin` when present")
-    expect(lfg).toContain("choose the first configured remote")
-    expect(lfg).toContain("jj git push --bookmark <bookmark> --remote <remote>")
-    expect(lfg).not.toContain("jj git push --bookmark <bookmark> --remote origin")
+    expect(lfg).toContain("docs/residual-review-findings/<bookmark-or-head-change-id>.md")
+    expect(lfg).toContain("jj git push")
+    expect(lfg).not.toContain("git push --set-upstream origin HEAD")
     expect(lfg).toContain("Do not output DONE until the residual findings are durable")
 
     // Shipping precondition: a remote-less repo (e.g. a sandbox/throwaway checkout)

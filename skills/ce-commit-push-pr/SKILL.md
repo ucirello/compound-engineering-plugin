@@ -10,7 +10,7 @@ description: Describe JJ changes, push a bookmark, and open a PR. Use when asked
 ## Mode
 
 - **Description-only** — user wants *just* a description ("write/draft a PR description", "describe this PR", or pasted a PR URL/number alone). Run Step 4 only; print the result. Apply only if the user asks. If a PR ref was pasted, pass it to Step 4 so Pre-A resolves the right range.
-- **Description update** — user wants to refresh/rewrite an existing PR's description with no describe/finalize/push intent. If no open PR, report and stop. Otherwise run Step 4 (PR mode using the existing PR's URL), then Step 5 to preview, confirm, and apply via `gh pr edit`.
+- **Description update** — user wants to refresh/rewrite an existing PR's description with no describe/push intent. If no open PR, report and stop. Otherwise run Step 4 (PR mode using the existing PR's URL), then Step 5 to preview, confirm, and apply via `gh pr edit`.
 - **Full workflow** — otherwise. Run Steps 1-5 in order.
 
 ## Context
@@ -18,16 +18,16 @@ description: Describe JJ changes, push a bookmark, and open a PR. Use when asked
 **On platforms other than Claude Code**, run the Context fallback below. **In Claude Code**, the labeled sections contain pre-populated data — use them directly.
 
 **JJ status:**
-!`jj status`
+!`jj st`
 
-**Working tree diff:**
+**Working-copy diff:**
 !`jj diff`
 
-**Current bookmark:**
-!`jj bookmark list -r @`
+**Bookmarks at `@`:**
+!`jj bookmark list --revisions @ --tracked`
 
-**Recent changes:**
-!`jj log --no-graph -r 'ancestors(@, 10)' -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'`
+**Recent JJ changes:**
+!`jj log --limit 10 --no-graph`
 
 **Remote default bookmark:**
 !`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'`
@@ -38,19 +38,19 @@ description: Describe JJ changes, push a bookmark, and open a PR. Use when asked
 ### Context fallback
 
 ```bash
-printf '=== STATUS ===\n'; jj status; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARKS ===\n'; jj bookmark list -r @; printf '\n=== LOG ===\n'; jj log --no-graph -r 'ancestors(@, 10)' -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'; printf '\n=== DEFAULT_BOOKMARK ===\n'; gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'; printf '\n=== PR_CHECK ===\n'; gh pr view --json url,title,body,state 2>/dev/null || echo 'NO_OPEN_PR'
+printf '=== STATUS ===\n'; jj st; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj bookmark list --revisions @ --tracked; printf '\n=== LOG ===\n'; jj log --limit 10 --no-graph; printf '\n=== DEFAULT_BOOKMARK ===\n'; gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'; printf '\n=== PR_CHECK ===\n'; gh pr view --json url,title,body,state 2>/dev/null || echo 'NO_OPEN_PR'
 ```
 
 ---
 
 ## Step 1: Resolve bookmark and PR state
 
-If the remote default bookmark returned `DEFAULT_BOOKMARK_UNRESOLVED`, try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If that fails, fall back to `main`.
+The remote default bookmark should be a name like `main`. If it returned `DEFAULT_BOOKMARK_UNRESOLVED`, try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If both fail, fall back to `main`.
 
 Bookmark routing:
 
-- **No bookmark at `@`** — automatically create a feature bookmark from the current change before continuing. Derive the bookmark name from the change content, run `jj bookmark set <bookmark-name> -r @`, re-read `jj bookmark list -r @`, and use that result for the rest of the workflow. Do not ask whether to create the bookmark — invoking the full describe/finalize/push/PR workflow is already confirmation that the work should become bookmark-backed. If the derived bookmark name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
-- **On default bookmark with work to do** (unfinalized, unpushed, or no upstream) — automatically create a feature bookmark (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles bookmark creation safely. Do not ask whether to bookmark — finalizing directly on the default bookmark is not an option here.
+- **No bookmark points at `@`** — automatically create a feature bookmark on the current JJ change before continuing. Derive the bookmark name from the change content, run `jj bookmark create <bookmark-name> -r @`, re-read `jj bookmark list --revisions @ --tracked`, and use that result for the rest of the workflow. Do not ask whether to create the bookmark — invoking the full describe/push/PR workflow is already confirmation that the work should become bookmark-backed. If the derived bookmark name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
+- **On default bookmark with work to do** (undescribed changes, unpushed changes, or no tracked remote bookmark) — automatically create a feature bookmark (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles bookmark creation safely. Do not ask whether to create a bookmark — saving PR work on the default bookmark is not an option here.
 - **On default bookmark with no work** — report no feature bookmark work and stop.
 - **Feature bookmark** — continue.
 
@@ -58,30 +58,30 @@ Note the existing PR URL and body from the PR check if `state: OPEN`. Step 5 use
 
 ## Step 2: Determine conventions
 
-Match repo style for JJ change descriptions and PR titles (project instructions in context > recent JJ change descriptions > conventional commits as default). With conventional commits, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
+Match repo style for JJ change descriptions and PR titles (project instructions in context > recent JJ changes > conventional change descriptions as default). With conventional change descriptions, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override.
 
-## Step 3: Describe, finalize, and push
+## Step 3: Describe and push
 
-If on the default bookmark, bookmark creation needs to handle stale local `<base>`, local changes on `<base>`, and working-copy changes that collide with the fresh remote base. Read `references/bookmark-creation.md` and follow its decision flow before continuing.
+If a default bookmark points at `@`, bookmark creation needs to handle stale local `<base>`, unpushed JJ changes on local `<base>`, and working-copy changes that collide with the fresh remote base. Read `references/bookmark-creation.md` and follow its decision flow before continuing.
 
-Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate JJ changes (2-3 max). Group at file level only. When ambiguous, one change is fine.
+Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate JJ changes (2-3 max). Group at file level only. When ambiguous, one JJ change is fine.
 
-Describe and finalize each group. Ensure unrelated sensitive files (`.env`, credentials, build artifacts, generated files) are not included in the current change before finalizing:
+Describe the current JJ change. For multiple logical changes, split by file with `jj split file1 file2 file3` for each group, then describe each resulting change. Do not include unrelated files, secrets, `.env`, credentials, build artifacts, or generated files unless they are intentionally part of the user-visible change:
 
 ```bash
 jj describe -m "$(cat <<'EOF'
 change description here
 EOF
-)" && jj new
+)"
 ```
 
 Then push:
 
 ```bash
-jj git push --bookmark <bookmark-name>
+jj git push --bookmark <bookmark-name> --allow-new
 ```
 
-If the working tree is clean and all JJ changes are already pushed, this step is a no-op.
+If the working copy is clean and all JJ changes are already pushed, this step is a no-op.
 
 ## Step 4: Compose the PR title and body
 

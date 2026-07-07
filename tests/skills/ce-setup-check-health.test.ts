@@ -53,7 +53,7 @@ describe("ce-setup check-health", () => {
     }
   })
 
-  test("reports a healthy repo config when local config is ignored and example is current", async () => {
+  test("reports a healthy repo config when local config is gitignored and example is current", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "ce-setup-health-"))
 
     try {
@@ -67,7 +67,7 @@ describe("ce-setup check-health", () => {
 
       expect(result.exitCode).toBe(0)
       expect(result.stdout).toContain("Project config")
-      expect(result.stdout).toContain("Local config is ignored by repo rules")
+      expect(result.stdout).toContain("Local config is ignored")
       expect(result.stdout).toContain("Project config healthy")
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -83,10 +83,10 @@ describe("ce-setup check-health", () => {
       await copyFile(configTemplate, path.join(root, ".compound-engineering", "config.local.example.yaml"))
       await copyFile(configTemplate, path.join(root, ".compound-engineering", "config.local.yaml"))
 
-      const result = await runCheckHealth(root, "/usr/bin:/bin")
+      const result = await runCheckHealth(root, process.env.PATH ?? "/usr/bin:/bin")
 
       expect(result.exitCode).toBe(0)
-      expect(result.stdout).toContain("Local config is not safely ignored by repo rules")
+      expect(result.stdout).toContain("Local config is not safely ignored")
       expect(result.stdout).toContain("1 project issue(s) found")
     } finally {
       await rm(root, { recursive: true, force: true })

@@ -41,7 +41,10 @@
 
 set -u
 
-REPO_ROOT=$(jj workspace root 2>/dev/null || pwd)
+REPO_ROOT=$(jj workspace root 2>/dev/null)
+if [ -z "$REPO_ROOT" ]; then
+  REPO_ROOT=$(pwd)
+fi
 
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }
 

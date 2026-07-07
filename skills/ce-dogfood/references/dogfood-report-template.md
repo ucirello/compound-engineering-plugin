@@ -7,7 +7,7 @@
 
 ## Diff Summary
 
-<What changed between the bookmark and main: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
+<What changed between the bookmark/current change and the trunk/default bookmark: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
 
 ## Personas
 
@@ -17,7 +17,7 @@
 
 ## Flows Tested
 
-<One Mermaid flowchart per distinct user journey the diff touches. Include happy path and bookmark points (validation error, empty, permission-denied), side effects (emails, jobs, notifications), and the true end state — including click-through destinations.>
+<One Mermaid flowchart per distinct user journey the diff touches. Include happy path and branch points (validation error, empty, permission-denied), side effects (emails, jobs, notifications), and the true end state — including click-through destinations.>
 
 ```mermaid
 flowchart TD
@@ -30,7 +30,7 @@ flowchart TD
 
 ## Test Matrix & Results
 
-| # | Flow | Journey / Scenario | Status | Issue | Fix | Commit |
+| # | Flow | Journey / Scenario | Status | Issue | Fix | Change |
 |---|------|--------------------|--------|-------|-----|--------|
 | 1 |      |                    | Pass   | -     | -   | -      |
 | 2 |      |                    | Fixed  |       |     | abc123 |
@@ -42,7 +42,7 @@ Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human veri
 
 For each issue found and fixed:
 
-### <Short issue title> — `<revision>`
+### <Short issue title> — `<change>`
 - **Symptom:** <what the user saw / what failed in the browser>
 - **Root cause:** <why it happened>
 - **Fix:** <what changed, repo-relative file paths>
@@ -52,7 +52,7 @@ For each issue found and fixed:
 
 <Experiential friction found while walking each flow as each persona. A scenario can `Pass` functionally and still carry paper cuts. Note the persona, severity, and whether it was fixed (sharp ones, via the Phase 5 loop) or deferred. "None" if clean.>
 
-- **<Persona>** — <paper cut> — <severity> — <fixed `<revision>` / deferred>
+- **<Persona>** — <paper cut> — <severity> — <fixed `<change>` / deferred>
 
 ## Console Errors
 

@@ -10,7 +10,7 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — JJ change/commit ID, bookmark, or ref). **Never assume `main`.**
+Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — common ancestor change ID or bookmark). **Never assume `main`.**
 
 ```bash
 jj diff --from <review-base> --name-only -- db/migrate/
@@ -36,11 +36,11 @@ When drift is present, emit a **P1** finding on the affected dump path (`db/sche
 
 ```bash
 # schema.rb:
-jj restore --from <review-base> -- db/schema.rb
+jj restore --from <review-base> db/schema.rb
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-jj restore --from <review-base> -- db/structure.sql
+jj restore --from <review-base> db/structure.sql
 bin/rails db:migrate
 ```
 
@@ -48,7 +48,7 @@ If neither dump file is in the diff, skip this step.
 
 ## Migration safety (what you're hunting for)
 
-- **Swapped or inverted ID/enum mappings** — `1 => TypeA, 2 => TypeB` in code but production has the reverse. Verify each CASE/IF bookmark and constant hash entry individually.
+- **Swapped or inverted ID/enum mappings** — `1 => TypeA, 2 => TypeB` in code but production has the reverse. Verify each CASE/IF branch and constant hash entry individually.
 - **Irreversible migrations without rollback plan** — column drops, precision-losing type changes, data deletes. Destructive `down` missing or non-restorative needs explicit acknowledgment.
 - **Missing backfill for new non-nullable columns** — `NOT NULL` without default or backfill fails on existing rows.
 - **Deploy-window breaks** — rename/drop before all code paths stop reading; constraints that existing rows violate.

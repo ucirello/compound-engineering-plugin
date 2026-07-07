@@ -44,9 +44,9 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 If the script is unavailable, perform the inline equivalent:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a JJ repo, resolve the repo root with `jj workspace root`.
+2. If inside a JJ workspace, resolve the repo root with `jj workspace root`.
 3. Check for obsolete `compound-engineering.local.md` at the repo root.
-4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether `jj file list .compound-engineering/config.local.yaml` lists it.
+4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether the repo-root ignore file covers `.compound-engineering/*.local.yaml`.
 5. Compare `.compound-engineering/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
 Display the diagnostic output to the user. Missing optional tools are not setup failures.
@@ -56,7 +56,7 @@ Display the diagnostic output to the user. Missing optional tools are not setup 
 Proceed to Phase 2 only if one or more repo-local project issues exist:
 
 - obsolete `compound-engineering.local.md`
-- `.compound-engineering/config.local.yaml` exists but is not safely ignored by repo rules
+- `.compound-engineering/config.local.yaml` exists but is not safely ignored
 - `.compound-engineering/config.local.example.yaml` is missing or outdated
 
 If no project issues exist, report:
@@ -105,13 +105,13 @@ If the user approves, copy `references/config-template.yaml` to `<repo-root>/.co
 
 ### Step 7: Ensure Local Config Is Ignored
 
-If `.compound-engineering/config.local.yaml` exists and is not covered by the repo's ignore rules, offer to add:
+If `.compound-engineering/config.local.yaml` exists and is not covered by the repo-root ignore file, offer to add:
 
 ```text
 .compound-engineering/*.local.yaml
 ```
 
-Append the entry to the repo-root ignore rules only if the user approves. Do not overwrite unrelated ignore-rule content.
+Append the entry to the repo-root ignore file (usually `.gitignore` in colocated JJ repos) only if the user approves. Do not overwrite unrelated ignore-file content.
 
 ## Phase 3: Summary
 

@@ -1,6 +1,6 @@
 # Review followup (LFG step 4–5)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then describes/finalizes a JJ change.
+`ce-code-review` is review-only. LFG applies eligible fixes itself, then describes the JJ change.
 
 ## Step 4 — invoke review
 
@@ -16,7 +16,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the working tree only when **all** of the following hold:
+Apply a finding in the working copy only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -35,9 +35,9 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
+2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `jj st` shows changes, keep only review-driven files in the current change (use `jj split` if needed), describe it with `fix(review): apply review findings`, run `jj new`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: if an upstream exists, run `jj git push`. If no upstream exists but a remote is configured (common on a fresh feature bookmark), resolve a writable remote dynamically: prefer `origin` when present, otherwise use `jj git remote list` and choose the first configured remote. Run `jj git push --bookmark <bookmark> --remote <remote>`. If there is no remote at all, do not push — the finalized local change suffices. If no eligible fixes were applied, note explicitly and skip finalizing a change.
+4. If `jj st` shows changes, keep the current JJ change limited to review-driven files, describe it as `fix(review): apply review findings`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push, run `jj git push --bookmark <bookmark>`; if no bookmark is configured for push, create or move the appropriate bookmark before pushing. If there is no remote at all, do not push — the local change suffices. If no eligible fixes were applied, note explicitly and skip describing a change.
 
 ## Step 6 — residual handoff
 

@@ -16,7 +16,7 @@ allowed-tools:
 
 `ce-product-pulse` queries the product's data sources for a given time window and produces a compact, single-page report covering usage, performance, errors, and followups. The report is saved to `docs/pulse-reports/` and the key points are surfaced in chat.
 
-The skill does not mutate the product, the database, or any external system. Its only writes are pulse settings appended to `.compound-engineering/config.local.yaml` (the unified CE local config, ignored by repo rules, machine-local) and the report file (`docs/pulse-reports/...`). MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them.
+The skill does not mutate the product, the database, or any external system. Its only writes are pulse settings appended to `.compound-engineering/config.local.yaml` (the unified CE local config, ignored, machine-local) and the report file (`docs/pulse-reports/...`). MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them.
 
 ## Interaction Method
 
@@ -112,7 +112,7 @@ Apply the pushback rules in `references/interview.md` for each section. Treat ev
 
 If the user offers read-write database access, refuse and offer the alternatives documented in `references/interview.md` section 6.
 
-Write the captured config to `<repo-root>/.compound-engineering/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the repo root with `jj workspace root`. To write: (1) if the file or directory does not exist, create `.compound-engineering/` and write the YAML file; (2) if the file exists, add or update the new keys in the existing YAML, preserving any non-pulse keys (e.g., `work_delegate_*`) untouched. If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.jjignore`, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
+Write the captured config to `<repo-root>/.compound-engineering/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the repo root with `jj workspace root`. To write: (1) if the file or directory does not exist, create `.compound-engineering/` and write the YAML file; (2) if the file exists, merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `work_delegate_*`) untouched. If `.compound-engineering/config.local.yaml` is not already covered by the repo's ignore file, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
 
 After the config is written, run the **scheduling recommendation** from `references/interview.md` section 9: offer to set up a recurring run so the user gets the pulse on a cadence instead of having to remember to run it. Accept yes/no/later. If yes, hand off to whichever scheduling primitive the current harness exposes — the in-plugin `schedule` skill if it is installed, otherwise note that scheduling is platform-specific (cron, GitHub Actions, the host's own automation) and emit a brief hint covering what would need to run. Do not schedule inline. Then proceed to Phase 2.
 
@@ -168,7 +168,7 @@ Never schedule automatically. Any scheduling handoff requires explicit confirmat
 
 ## What This Skill Does Not Do
 
-- Does not report "what shipped." Shipped work lives in the issue tracker and JJ history, not here. Pulse is strictly about user experience and system performance.
+- Does not report "what shipped." Shipped work lives in the issue tracker and JJ change history, not here. Pulse is strictly about user experience and system performance.
 - Does not set thresholds or alert the user. The reader interprets.
 - Does not persist PII in saved reports.
 - Does not mutate the database or any external system. All queries are read-only.

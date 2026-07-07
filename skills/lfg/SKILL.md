@@ -25,7 +25,7 @@ When invoking any skill referenced below, resolve its name against the available
 
    This runs before review so the code-review in step 4 covers the simplified code. **Skip** this step when the change is docs-only (only markdown/docs paths changed) or trivial (roughly under 10 changed lines). Otherwise let `ce-simplify-code` resolve the bookmark-diff scope itself; it preserves behavior and runs the test suite.
 
-   Do not finalize a JJ change in this step. `ce-simplify-code` leaves its changes in the working tree; step 4's review scopes the working tree (unfinalized changes included), and step 8's `ce-commit-push-pr` describes/finalizes whatever remains. Finalizing here would sweep any still-unfinalized `ce-work` edits into a misleading `refactor` change and could stall on a tree that never goes clean.
+   Do not describe a separate JJ change in this step. `ce-simplify-code` leaves its edits in the working copy; step 4's review scopes the working copy (undescribed changes included), and step 8's `ce-commit-push-pr` describes whatever remains. Describing here would sweep any still-undescribed `ce-work` edits into a misleading `refactor` change and could stall on a workspace that never goes clean.
 
 4. Invoke the `ce-code-review` skill with `mode:agent plan:<plan-path-from-step-1>`.
 
@@ -33,11 +33,11 @@ When invoking any skill referenced below, resolve its name against the available
 
    `mode:agent` is report-only **by design** — it surfaces findings but never edits the tree; LFG applies the eligible ones in step 5. When narrating progress to the user, frame this as "review found X → applied X in step 5," not as "code review did not auto-fix." A report-only review followed by an LFG-applied fix is the intended contract, not a gap.
 
-**Shipping precondition (steps 5–9).** Run `jj git remote list` once before the shipping steps. If it lists **no remote** (e.g. a sandbox/throwaway workspace that has `jj git init` but no `origin`), shipping is **local-only**: describe/finalize every JJ change the steps below call for, but **skip every push, PR create/edit, and CI-watch action** — the pushes in steps 5 and 6, the push and PR creation in step 8, and step 9 in full. A missing remote is a terminal local-only state, not an error: never retry a push or hunt for a remote — make the local JJ changes and proceed to step 10. Run steps 5–9 normally when a remote exists.
+**Shipping precondition (steps 5–9).** Run `jj git remote list` once before the shipping steps. If it lists **no remote** (e.g. a sandbox/throwaway workspace with no `origin`), shipping is **local-only**: describe every JJ change the steps below call for, but **skip every push, PR create/edit, and CI-watch action** — the pushes in steps 5 and 6, the push and PR creation in step 8, and step 9 in full. A missing remote is a terminal local-only state, not an error: never retry a push or hunt for a remote — make the local changes durable and proceed to step 10. Run steps 5–9 normally when a remote exists.
 
 5. **Apply and persist review fixes** (REQUIRED after step 4, before residual handoff)
 
-   Load `references/review-followup.md` and execute its apply step (mechanical apply + describe/finalize + push when changes exist). Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working tree unfinalized.
+   Load `references/review-followup.md` and execute its apply step (mechanical apply + describe/push when changes exist). Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working copy undescribed.
 
 6. **Autonomous residual handoff** (only when step 4 reported one or more actionable `downstream-resolver` findings not applied in step 5; skip when it reported `Actionable findings: none.`)
 
@@ -49,7 +49,7 @@ When invoking any skill referenced below, resolve its name against the available
       - For each item in `filed`: a bullet with severity, file:line, title, and a link to the tracker ticket URL.
       - For each item in `failed`: a bullet with severity, file:line, title, and the failure reason (e.g., `Defer failed: gh returned 401 — tracker unavailable`).
       - For each item in `no_sink`: a bullet with severity, file:line, and title inlined verbatim so the PR body or fallback file is the durable record.
-   4. Detect the current bookmark's open PR without prompting:
+   4. Detect the open PR associated with a bookmark pointing at `@` without prompting:
 
       ```bash
       gh pr view --json number,url,body,state
@@ -61,7 +61,7 @@ When invoking any skill referenced below, resolve its name against the available
       gh pr edit PR_NUMBER --body-file BODY_FILE
       ```
 
-   6. If no open PR exists, create a tracked fallback file at `docs/residual-review-findings/<bookmark-or-revision-id>.md` containing the composed section and the source PR-review run context. Keep only that fallback file in the current change (use `jj split` if needed), describe it with `docs(review): record residual review findings`, run `jj new`, and push the current bookmark **when a remote is configured** (per the shipping precondition). When a remote is configured, resolve a writable remote dynamically: prefer `origin` when present, otherwise use `jj git remote list` and choose the first configured remote. Run `jj git push --bookmark <bookmark> --remote <remote>`. If there is no remote at all, do not push — the finalized local change is the durable sink. This is the durable no-PR sink. Do not output DONE until the residual findings are durable: either the existing PR body has been updated, or this fallback file change has been finalized (pushed when a remote exists, finalized locally when none). A push that fails when a remote exists is a stop-and-report; never retry a push, or block DONE, when no remote exists.
+   6. If no open PR exists, create a repo-versioned fallback file at `docs/residual-review-findings/<bookmark-or-head-change-id>.md` containing the composed section and the source PR-review run context. Keep the current JJ change limited to that file, describe it with `docs(review): record residual review findings`, and push the bookmark that points at the change **when a remote is configured** (per the shipping precondition). Run `jj git push --bookmark <bookmark>`; if no bookmark is configured for push, create or move the appropriate bookmark before pushing. If there is no remote at all, do not push — the described local change is the durable sink. This is the durable no-PR sink. Do not output DONE until the residual findings are durable: either the existing PR body has been updated, or this fallback file change has been described (pushed when a remote exists, local-only when none). A push that fails when a remote exists is a stop-and-report; never retry a push, or block DONE, when no remote exists.
 
    Never block DONE on tracker filing failures once residuals have been durably recorded. A `no_sink` outcome is success only when the findings are present in the PR body or in the pushed fallback file.
 
@@ -69,9 +69,9 @@ When invoking any skill referenced below, resolve its name against the available
 
 8. Invoke the `ce-commit-push-pr` skill.
 
-   This describes/finalizes any remaining changes, pushes the bookmark, and opens a pull request. If step 6 already opened a PR (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still describe/finalize and push any unfinalized changes. **Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` — its push step requires a configured remote, so a literal invocation would still hit the impossible push. Instead finalize any remaining changes locally yourself (`jj describe -m <message> && jj new`) and skip the push and PR creation entirely.**
+   This describes any remaining changes, pushes the bookmark, and opens a pull request. If step 6 already opened a PR (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still describe and push any undescribed changes. **Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` — its push step would still hit the impossible push. Instead describe any remaining changes locally yourself (`jj describe -m "<change description>"`) and skip the push and PR creation entirely.**
 
-9. **CI watch and autofix loop** (only when an open PR exists for the current bookmark)
+9. **CI watch and autofix loop** (only when an open PR exists for a bookmark pointing at `@`)
 
    Detect the PR; if none exists or `gh` is unavailable, skip this step entirely and proceed to step 10.
 
@@ -99,15 +99,14 @@ When invoking any skill referenced below, resolve its name against the available
 
       where `<run-id>` is parsed from the check's details URL or workflow run.
 
-   3. Read the failure logs, identify the root cause, and apply a fix in the working tree. Do NOT weaken, skip, or mock the failing assertion to make it pass — repair the actual issue. If the failure is a flaky test that has no fix path, document that as the residual outcome below rather than retrying without a code change.
+   3. Read the failure logs, identify the root cause, and apply a fix in the working copy. Do NOT weaken, skip, or mock the failing assertion to make it pass — repair the actual issue. If the failure is a flaky test that has no fix path, document that as the residual outcome below rather than retrying without a code change.
 
-   4. Keep only the files you changed in the current change, describe/finalize it, and push:
+    4. Keep the current JJ change limited to the files you changed, describe it, and push:
 
-       ```bash
+      ```bash
        jj describe -m "fix(ci): <one-line summary of the failure repaired>"
-       jj new
-       jj git push
-       ```
+       jj git push --bookmark <bookmark>
+      ```
 
    5. Return to iteration (1) with the next attempt counter.
 

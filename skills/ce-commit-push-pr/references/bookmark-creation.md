@@ -1,52 +1,48 @@
-# Bookmark Creation From Default Bookmark
+# Bookmark creation from default bookmark
 
-Local `<base>` may have stale changes or changes the user authored intending to bookmark from later. JJ makes the current work explicit as `@`, so preserve it unless the user chooses a fresh base.
+Local `<base>` may have stale JJ changes (another session/workspace advanced it) or JJ changes the user authored intending to bookmark from later. Ask when unpushed JJ changes are present.
 
-## Decision Flow
+## Decision flow
 
-### 1. Fetch Fresh Remote Base
+### 1. Fetch fresh remote base
 
 ```bash
-jj git fetch --remote origin
+jj git fetch --remote origin --branch <base>
 ```
 
 If fetch fails (network, auth, no remote), use the fallback at the bottom.
 
-### 2. Check For Local Work On `<base>`
-
-Inspect the current change and recent descendants:
+### 2. Check for unpushed local JJ changes on `<base>`
 
 ```bash
-jj status
 jj log --no-graph -r '<base>..@'
 ```
 
-- **No local work to preserve:** create a new change from `<base>@origin` when available, otherwise `<base>`.
-- **Local work exists:** show the change list and ask whether to carry it forward or start clean from the remote base.
+- **Empty output:** set `BASE_REF=<base>@origin` and proceed to step 3.
+- **Non-empty output:** show the JJ change list and ask (per the "Asking the user" convention in `SKILL.md`):
 
-Use the "Asking the user" convention in `SKILL.md`:
+  > "Local `<base>` has N unpushed JJ changes not on `<base>@origin`. Carry them onto the new feature bookmark, or leave them on local `<base>`?"
 
-> "Local `<base>` has work not confirmed on the remote base. Carry it onto the new feature bookmark, or start the feature bookmark from the fresh remote base?"
+  - **Carry forward** -> `BASE_REF=@`. The new bookmark starts from the current JJ change, preserving the changes.
+  - **Leave on `<base>`** -> `BASE_REF=<base>@origin`. The new bookmark starts clean; JJ changes remain on local `<base>`.
 
-- **Carry forward** -> keep `@` and set the bookmark there.
-- **Start clean** -> `jj new <base>@origin` when available, otherwise `jj new <base>`, then set the bookmark.
+  Never default silently — carrying foreign JJ changes into a PR is worse than asking again.
 
-Never default silently — carrying unrelated work into a PR is worse than asking again.
-
-### 3. Create The Feature Bookmark
+### 3. Create the feature bookmark
 
 ```bash
-jj bookmark set <bookmark-name> -r @
+jj new "$BASE_REF"
+jj bookmark create <bookmark-name> -r @
 ```
 
-If unrelated working-copy changes block a clean start, create a sibling change first (`jj new @-`) or ask the user whether to carry the current change forward. Do not emulate stash-style hidden state.
+If `jj new "$BASE_REF"` reports conflicting working-copy state, surface the output to the user and stop — do not auto-resolve.
 
-## Fetch Failure Fallback
+## Fetch failure fallback
 
-If `jj git fetch --remote origin` fails, set the bookmark on the current change:
+If `jj git fetch` fails, create the bookmark from the current JJ change:
 
 ```bash
-jj bookmark set <bookmark-name> -r @
+jj bookmark create <bookmark-name> -r @
 ```
 
-Note in the user-facing summary that base freshness was not verified. Skip remote freshness checks because without a fresh remote bookmark, the answer is unreliable.
+Note in the user-facing summary that base freshness was not verified. Skip the unpushed-JJ-changes check — without a fresh `<base>@origin`, the answer is unreliable.

@@ -80,8 +80,8 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 
 | field | meaning |
 | --- | --- |
-| `fix_ref` | Reference to the fix (PR/JJ revision/issue link). |
-| `verified_merge_sha` | The merge revision ID the fix landed on. |
+| `fix_ref` | Reference to the fix (PR/change/issue link). |
+| `verified_merge_sha` | The merge SHA the fix landed on. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
 `validate` scans every item and downgrades any `closed` item missing (or with a
@@ -145,8 +145,8 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-change mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same workspace (e.g. a cron sweep and a manual one). The file is written in-tree and may be described/finalized locally. No cross-machine guarantee. |
-| pushed-shared-bookmark | One writer **per repo**. | The state file lives on a shared bookmark multiple workspaces push to. `lease-acquire` must be described/finalized, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
+| local-change mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same working copy (e.g. a cron sweep and a manual one). The file is written in-tree (and may be described locally). No cross-machine guarantee. |
+| pushed-shared-bookmark | One writer **per repo**. | The state file lives on a shared bookmark multiple workspaces push to. `lease-acquire` must be described, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -170,8 +170,8 @@ subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
 whole load-modify-write, so two concurrent invocations serialize their writes
 regardless of lease ownership. The lease decides *who owns the sweep*; the file
 lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never included in a change (the skill's finalize step includes only the state file and the
-plan, never a blanket add).
+and never included in a JJ change (the skill's describe step includes only the
+state file and the plan).
 
 ## Engine status words
 

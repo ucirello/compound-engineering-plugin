@@ -12,7 +12,7 @@ For planning invocations, convert Slack context into implementation-planning inp
 
 Slack conversations carry organizational knowledge in their structure, not just their content. Apply these principles when interpreting what you find:
 
-- **Decisions are commitment arcs, not single messages.** A decision emerges when a proposal gains acceptance without subsequent objection. Read for the trajectory: proposal, discussion, convergence. A thread's conclusion lives in its final substantive replies, not its opening message.
+- **Decisions are acceptance arcs, not single messages.** A decision forms when a proposal gains acceptance without subsequent objection. Read for the trajectory: proposal, discussion, convergence. A thread's conclusion lives in its final substantive replies, not its opening message.
 - **Brevity signals agreement; elaboration signals resistance.** A terse "+1" or "sounds good" is strong consensus. A lengthy hedged reply is likely a soft objection even without the word "disagree." Silence from active participants is weak but real consent.
 - **Threads are atomic; channels are not.** A thread (parent + all replies) is one unit of meaning -- extract its net conclusion. Unthreaded channel messages are separate data points whose relationship must be inferred from content and timing, not adjacency.
 - **Supersession is topic-specific.** When the same specific question is discussed at different times, the most recent substantive position represents current state. But a new message about one aspect of a project does not invalidate older messages about different aspects.

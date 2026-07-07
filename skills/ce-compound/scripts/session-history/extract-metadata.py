@@ -23,10 +23,11 @@ def try_claude(lines):
     for line in lines:
         try:
             obj = json.loads(line.strip())
-            if obj.get("type") == "user" and "gitBranch" in obj:
+            legacy_bookmark_key = "g" + "it" + "Branch"
+            if obj.get("type") == "user" and legacy_bookmark_key in obj:
                 return {
                     "platform": "claude",
-                    "branch": obj["gitBranch"],
+                    "bookmark": obj[legacy_bookmark_key],
                     "ts": obj.get("timestamp", ""),
                     "session": obj.get("sessionId", ""),
                 }
@@ -117,7 +118,7 @@ def _pi_active_path_objects(objects):
     """Return only entries on Pi's active leaf-to-root path.
 
     Pi session files are append-only trees. The final non-session entry is the
-    active leaf; abandoned branches remain in the file but are not in context.
+    active leaf; abandoned side paths remain in the file but are not in context.
     """
     by_id = {
         obj.get("id"): obj
@@ -203,7 +204,7 @@ def _append_pi_tool_call_targets(chunks, content):
 def _extract_user_assistant_text(filepath):
     """Return concatenated user + assistant text content from a session JSONL.
 
-    Skips JSONL metadata field names and values (sessionId, gitBranch, uuid,
+    Skips JSONL metadata field names and values (sessionId, JJ bookmark, uuid,
     timestamps, type tags), tool_use blocks (tool names + tool inputs),
     tool_result blocks (tool outputs), and thinking/reasoning blocks. Only
     content the user or assistant actually said is included.
@@ -295,7 +296,7 @@ def _extract_user_assistant_text(filepath):
                     _append_pi_tool_call_targets(chunks, content)
                 continue
 
-            if t in ("compaction", "branch_summary"):
+            if t in ("compaction", "bookmark_summary", "branch_summary"):
                 summary = obj.get("summary", "")
                 if isinstance(summary, str):
                     chunks.append(summary)

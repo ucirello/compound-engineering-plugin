@@ -261,7 +261,7 @@ function createPiToolCallAndCustomSession(): string {
 // extract-metadata.py
 // ---------------------------------------------------------------------------
 describe("extract-metadata", () => {
-  test("detects Claude Code platform and extracts branch", async () => {
+  test("detects Claude Code platform and extracts bookmark", async () => {
     const { stdout, exitCode } = await runScript("extract-metadata.py", [
       path.join(FIXTURES_DIR, "claude-session.jsonl"),
     ])
@@ -269,7 +269,7 @@ describe("extract-metadata", () => {
     const lines = parseJsonLines(stdout)
     const session = lines.find((l) => !l._meta)
     expect(session.platform).toBe("claude")
-    expect(session.branch).toBe("feat/auth-fix")
+    expect(session.bookmark).toBe("feat/auth-fix")
     expect(session.session).toBe("test-claude-session-1")
     expect(session.ts).toContain("2026-04-05")
   })

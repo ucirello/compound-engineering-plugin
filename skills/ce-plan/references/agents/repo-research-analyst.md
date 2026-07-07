@@ -169,7 +169,7 @@ This context informs all subsequent research phases -- use it to focus documenta
    - Note testing requirements and review processes
 
 4. **Template Discovery**
-   - Search for issue templates in `.github/ISSUE_TEMPLATE/`
+   - Search for issue templates in `.jjhub/ISSUE_TEMPLATE/`
    - Check for pull request templates
    - Document any other template files (e.g., RFC templates)
    - Analyze template structure and required fields

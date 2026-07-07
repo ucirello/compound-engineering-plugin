@@ -110,7 +110,7 @@ The names below are skill-local prompt asset file stems under `references/agents
 - `framework-docs-researcher` for official framework or library behavior
 - `best-practices-researcher` for current external patterns and industry guidance
 - `web-researcher` for landscape/prior-art gaps — competitor patterns, market signals, or an unsettled external option set (which library/provider/approach) that recommendations depend on
-- Add `git-history-analyzer` only when historical rationale or prior art is materially missing
+- Add `jj-history-analyzer` only when historical rationale or prior art is materially missing
 
 **Key Technical Decisions**
 - `architecture-strategist` for design integrity, boundaries, and architectural tradeoffs
@@ -234,7 +234,7 @@ Strengthen only the selected sections. Keep the plan coherent and preserve its o
 Deepening may tighten, not only grow. A section can be strengthened by cutting as well as adding — collapse multi-idea sentences, drop hedges, and delete superseded text outright rather than leaving it as strikethrough or stacking a separate "resolutions" layer on top of it. A shorter, contradiction-free section is a stronger one. This is distinct from "rewrite the entire plan from scratch" below, which stays forbidden.
 
 Allowed changes:
-- Tighten prose in a strengthened section: cut hedges, split sentences carrying more than one idea, and remove superseded text in place (version control holds the history)
+- Tighten prose in a strengthened section: cut hedges, split sentences carrying more than one idea, and remove superseded text in place (JJ holds the history)
 - Clarify or strengthen decision rationale
 - Tighten requirements trace or origin fidelity
 - Reorder or split implementation units when sequencing is weak — but **never renumber existing U-IDs**. Reordering preserves U-IDs in their new order (e.g., U1, U3, U5 reordered is correct; renumbering to U1, U2, U3 is not). Splitting keeps the original U-ID on the original concept and assigns the next unused number to the new unit. Renumbering breaks ce-work blocker and verification references that were written against the original IDs
@@ -247,7 +247,7 @@ Allowed changes:
 
 Do **not**:
 - Add implementation code — no imports, exact method signatures, or framework-specific syntax. Pseudo-code sketches and DSL grammars are allowed
-- Add git commands, commit choreography, or exact test command recipes
+- Add JJ commands, change choreography, or exact test command recipes
 - Add generic `Research Insights` subsections everywhere
 - Rewrite the entire plan from scratch
 - Invent new product requirements, scope changes, or success criteria without surfacing them explicitly

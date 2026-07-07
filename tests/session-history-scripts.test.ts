@@ -269,7 +269,7 @@ describe("extract-metadata", () => {
     const lines = parseJsonLines(stdout)
     const session = lines.find((l) => !l._meta)
     expect(session.platform).toBe("claude")
-    expect(session.branch).toBe("feat/auth-fix")
+    expect(session.legacyGitBranch).toBe("feat/auth-fix")
     expect(session.session).toBe("test-claude-session-1")
     expect(session.ts).toContain("2026-04-05")
   })

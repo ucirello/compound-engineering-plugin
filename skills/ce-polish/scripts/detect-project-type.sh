@@ -31,7 +31,7 @@
 #   signature files. Deeper nesting is ignored to avoid false positives.
 #
 #   Excluded directories (not real project roots):
-#     node_modules .git vendor dist build coverage .next .nuxt
+#     node_modules .jj vendor dist build coverage .next .nuxt
 #     .svelte-kit .turbo tmp fixtures
 #
 # `multiple` vs `rails`: Rails apps commonly ship a Procfile.dev alongside
@@ -41,10 +41,9 @@
 
 set -u
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+REPO_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a git repository" >&2
-  exit 1
+  REPO_ROOT=$(pwd)
 fi
 
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }
@@ -120,7 +119,7 @@ esac
 # Exclusion list: directories that ship framework configs as fixtures or build
 # output, not as real project roots.
 
-EXCLUDE_DIRS="node_modules .git vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
+EXCLUDE_DIRS="node_modules .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
 EXCLUDE_ARGS=""
 for d in $EXCLUDE_DIRS; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS -path './$d' -prune -o -path '*/$d' -prune -o"

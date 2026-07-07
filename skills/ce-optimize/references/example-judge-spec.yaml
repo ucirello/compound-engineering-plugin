@@ -55,7 +55,7 @@ scope:
 
 execution:
   mode: serial
-  backend: worktree
+  backend: worktree  # legacy value name for JJ workspace isolation
   max_concurrent: 1
 
 parallel:

@@ -5,6 +5,7 @@ import {
   writeFileSync,
   readFileSync,
   mkdirSync,
+  renameSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -16,14 +17,6 @@ const SCRIPT = path.join(
   __dirname,
   "../skills/ce-pov/scripts/repo-profile-cache.py",
 )
-
-function git(cwd: string, ...args: string[]): string {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8" })
-  if (r.status !== 0) {
-    throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`)
-  }
-  return r.stdout ?? ""
-}
 
 function run(
   cwd: string,
@@ -37,20 +30,24 @@ function run(
   }
 }
 
-/** Fresh git repo with a manifest + README, one commit. Unique root SHA. */
+function jj(cwd: string, ...args: string[]): string {
+  const r = spawnSync("jj", args, { cwd, encoding: "utf8" })
+  if (r.status !== 0) {
+    throw new Error(`jj ${args.join(" ")} failed: ${r.stderr}`)
+  }
+  return r.stdout ?? ""
+}
+
+/** Fresh JJ repo with a manifest + README, one described change. */
 function makeRepo(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "repo-profile-"))
-  git(dir, "init", "-q")
-  git(dir, "config", "user.email", "test@example.com")
-  git(dir, "config", "user.name", "Test")
-  git(dir, "config", "commit.gpgsign", "false")
+  jj(dir, "git", "init")
   writeFileSync(
     path.join(dir, "package.json"),
     '{"name":"x","version":"1.0.0"}\n',
   )
   writeFileSync(path.join(dir, "README.md"), "# x\n")
-  git(dir, "add", "-A")
-  git(dir, "commit", "-q", "-m", "init")
+  jj(dir, "commit", "-m", "init")
   return dir
 }
 
@@ -156,29 +153,21 @@ describe("repo-profile-cache helper", () => {
     expect(res.stdout.startsWith("MISS\n")).toBe(true)
   })
 
-  test("non-git directory → NO-CACHE", () => {
+  test("non-JJ directory → NO-CACHE", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "repo-profile-nogit-"))
     const res = run(dir, "get")
     expect(res.code).toBe(0)
     expect(res.stdout.trim()).toBe("NO-CACHE")
   })
 
-  test("multi-root history yields a deterministic single-root path", () => {
+  test("root path component is a deterministic single JJ id", () => {
     const dir = makeRepo()
-    const orig = git(dir, "rev-parse", "--abbrev-ref", "HEAD").trim()
-    git(dir, "checkout", "-q", "--orphan", "second")
-    writeFileSync(path.join(dir, "other.txt"), "x\n")
-    git(dir, "add", "-A")
-    git(dir, "commit", "-q", "-m", "second root")
-    git(dir, "checkout", "-q", orig)
-    git(dir, "merge", "-q", "--allow-unrelated-histories", "--no-edit", "second")
     const res = run(dir, "get")
     expect(res.code).toBe(0)
     const writePath = res.stdout.split("\n")[1]
-    // The <root-sha> path component must be a single 40-hex SHA, not a
-    // newline-joined pair from multiple roots.
+    // The root path component must be one JJ id, not a newline-joined pair.
     const rootComponent = writePath.split("/repo-profile/")[1].split("/")[0]
-    expect(rootComponent).toMatch(/^[0-9a-f]{40}$/)
+    expect(rootComponent).toMatch(/^[a-z0-9]+$/)
   })
 
   test("put rejects a non-object / empty / partial profile → not cached", () => {
@@ -222,7 +211,7 @@ describe("repo-profile-cache helper — review-driven invalidation cases", () =>
   test("renaming a profile input AWAY → MISS (both rename endpoints count)", () => {
     const dir = makeRepo()
     putProfile(dir)
-    git(dir, "mv", "package.json", "pkg.json") // R package.json -> pkg.json
+    renameSync(path.join(dir, "package.json"), path.join(dir, "pkg.json"))
     const res = run(dir, "get")
     expect(res.stdout.startsWith("MISS\n")).toBe(true)
   })
@@ -231,10 +220,9 @@ describe("repo-profile-cache helper — review-driven invalidation cases", () =>
     const dir = makeRepo()
     mkdirSync(path.join(dir, "src"))
     writeFileSync(path.join(dir, "src", "lib.js"), "export const x = 1\n")
-    git(dir, "add", "-A")
-    git(dir, "commit", "-q", "-m", "add lib")
+    jj(dir, "commit", "-m", "add lib")
     putProfile(dir)
-    git(dir, "mv", "src/lib.js", "src/lib2.js")
+    renameSync(path.join(dir, "src", "lib.js"), path.join(dir, "src", "lib2.js"))
     expect(run(dir, "get").stdout.startsWith("HIT\n")).toBe(true)
   })
 

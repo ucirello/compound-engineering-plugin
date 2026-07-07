@@ -341,7 +341,7 @@ def handle_pi(obj):
     entry_type = obj.get("type")
     ts = obj.get("timestamp", "")[:19]
 
-    if entry_type in ("compaction", "branch_summary"):
+    if entry_type in ("compaction", "bookmark_summary", "branch_summary"):
         text = clean_text(obj.get("summary", ""))
         if len(text) > 15:
             flush_tools()

@@ -55,7 +55,7 @@ Set the Bash tool `timeout` to `660000` (11 min) — the script self-bounds (cod
 ## What the script does (for maintainers — you don't invoke this directly)
 
 `scripts/cross-model-adversarial-review.sh <peer> <base-ref> <run-dir>`:
-- Self-locates the persona + schema via `BASH_SOURCE` (works from any CWD); derives the repo root from JJ.
+- Self-locates the persona + schema via `BASH_SOURCE` (works from any CWD); derives the repo root from `jj`.
 - Composes the peer prompt from the canonical persona brief + a JSON-only contract. Codex fetches its own diff with read-only `jj` inside its sandbox; Claude (which has no sandbox) is hard-denied `Bash`, so it gets the diff embedded and needs no shell. After capture, the script forces `reviewer = adversarial-<peer>` (the persona's example name `adversarial` would otherwise collide with the in-process reviewer and erase the cross-model agreement signal).
 - Codex peer: `codex exec - -s read-only -o <out>` at high reasoning effort. No `--output-schema` (Codex strict mode rejects the permissive draft-07 schema); the full schema embedded in the prompt is its only contract, which produces complete schema-shaped findings (verified). The `-o` write is done by the codex CLI *outside* the model's sandbox, so it succeeds under `-s read-only` (verified); if it ever fails to materialize, the script recovers the same JSON from codex's captured stdout (belt-and-suspenders, no data lost).
 - Claude peer: `claude -p --permission-mode dontAsk --disallowedTools Edit Write NotebookEdit --json-schema … --output-format json` (disallowed tools passed as separate variadic args, not one quoted string), captured from stdout (it can't write a file under those permissions), parsed via `.structured_output` with a `.result` fallback.

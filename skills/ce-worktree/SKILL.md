@@ -1,75 +1,75 @@
 ---
 name: ce-worktree
-description: Set up isolated Jujutsu workspaces — create a bookmark-oriented workspace for fresh work, or attach a workspace to an existing bookmark/PR/change to work on it in isolation. Use when starting isolated work or isolating an existing ref; detects existing isolation first.
+description: Set up isolated JJ workspaces — create a bookmark-oriented workspace for fresh work, or attach a workspace to an existing bookmark/PR/change to work on it in isolation. Use when starting isolated work or isolating an existing ref; detects existing isolation first.
 ---
 
 # Workspace Isolation
 
-Ensure the current work happens in an isolated workspace, without disturbing the user's primary workspace. Most coding harnesses now create an isolated workspace by default at session start, so the common case is that **isolation already exists** — detect that first and do not create a redundant one.
+Ensure the current work happens in an isolated JJ workspace without disturbing the user's primary workspace. Most coding harnesses now create isolation at session start, so first detect whether isolation already exists and avoid creating a redundant workspace.
 
-Order of operations: **detect existing isolation -> prefer a native workspace tool -> fall back to JJ workspace commands.** Never create a workspace the harness cannot see when a native tool exists.
+Order of operations: **detect existing isolation -> prefer a native workspace tool -> fall back to `jj workspace add`**. Never create a workspace the harness cannot see when a native tool is available.
 
-## Two Modes
+**Two modes, set by the caller's need:**
 
-- **New work (default).** No specific ref named — create a fresh workspace from a base bookmark (trunk) and create a meaningful feature bookmark.
-- **Isolate an existing ref.** The caller names a ref to work on in isolation — a PR head, an existing bookmark, or a change/commit ID. Attach a workspace to that revision. If the target bookmark is already active in another workspace, prefer entering that workspace or creating a workspace at the target revision without moving the bookmark until explicitly requested.
+- **New work (default).** No specific ref named — create a fresh change from a trunk bookmark and attach a meaningful bookmark.
+- **Isolate an existing ref.** The caller names a PR head, existing bookmark, change ID, or revision ID. Create or enter a workspace at that target instead of switching the current workspace.
 
 ## Step 0: Detect Existing Isolation
 
-Before creating anything, run:
+Before creating anything, inspect JJ workspaces:
 
 ```bash
-jj workspace root
 jj workspace list
+jj workspace root
 ```
 
-If the current root is already a non-primary or harness-created workspace for the requested work, report that path and work in place. Do not create nested workspaces.
+If the current directory is already a non-primary or harness-managed workspace, report the workspace path and current revision/bookmarks, then work in place. Do not create a workspace from inside another workspace unless the user explicitly asks for a second isolated copy.
 
-## Step 1: Prefer The Harness's Native Workspace Tool
+## Step 1: Prefer The Harness Native Workspace Tool
 
-If the harness provides a native workspace/worktree primitive — for example an `EnterWorktree` / `WorktreeCreate` tool, a `/worktree` command, or a `--worktree` flag — use it and stop. Native tools place, track, and clean up the workspace so the harness can manage it.
+If the harness provides a native workspace primitive — for example an `EnterWorkspace` / `WorkspaceCreate` tool, a `/workspace` command, or a workspace flag — use it and stop. Native tools place, track, and clean up the workspace so the harness can manage it.
 
-## Step 2: JJ Workspace Fallback
+## Step 2: JJ Fallback
 
-Only when there is no native tool **and** Step 0 found no existing isolation.
+Only when there is no native tool and Step 0 found no existing isolation:
 
-1. **Run from the workspace root:** `cd "$(jj workspace root)"`.
-2. Choose a meaningful bookmark name from the work description (e.g. `feat/login`, `fix/email-validation`) and a workspace path under `.workspaces/<bookmark-slug>`.
-3. Resolve the base bookmark. Prefer the caller's base; otherwise use the project default (`main`, `master`, or `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`). Refresh it best-effort with `jj git fetch --remote origin --branch <base-bookmark>`; if fetch fails, continue with the local ref.
-4. Create the workspace:
+1. Resolve the repo root with `jj workspace root`; run from the repo root before using relative `.workspaces/` paths.
+2. Choose a meaningful bookmark name from the work description (e.g. `feat/login`, `fix/email-validation`) and a base bookmark (default: the project's trunk bookmark, usually `main` or `main@origin`).
+3. Ensure `.workspaces/` is ignored before creating anything so nested workspaces are not tracked. If needed, add `.workspaces/` to repo ignore rules.
+4. Refresh remotes when useful with `jj git fetch`. This is non-fatal for local-only repos.
+5. Create the workspace:
 
 ```bash
-jj workspace add .workspaces/<bookmark-slug> --revision <base-bookmark>
+jj workspace add --name <workspace-name> .workspaces/<workspace-name> <base-bookmark-or-rev>
+# Work in .workspaces/<workspace-name> after the workspace is created.
+jj bookmark set <bookmark-name> -r @
 ```
 
-5. Enter it and create or attach the bookmark:
+For an existing PR, use `gh` to identify the PR head ref and create the JJ workspace at that fetched bookmark or revision. Do not switch the current workspace; the target is a JJ workspace plus bookmark/change.
 
-```bash
-cd .workspaces/<bookmark-slug>
-jj bookmark create <bookmark-name> -r @
-```
-
-For an existing ref, use `jj workspace add .workspaces/<slug> --revision <target-rev>` and do **not** move an existing bookmark unless the caller explicitly requested that.
-
-If `jj workspace add` fails with a sandbox or permission error, the requested isolation could not be created. This needs a **blocking** user decision before touching the current workspace: use `AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), or `ask_user` in Pi. Ask whether to work in the current workspace or stop and resolve the permission issue. Only work in the current workspace on explicit confirmation.
+If `jj workspace add` fails with a sandbox or permission error, ask a blocking user question before touching the current workspace. Use `AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI, or `ask_user` in Pi when available; fall back to chat only when no blocking tool exists or the call errors. Offer options such as "work in the current workspace" vs "stop and resolve the permission issue". Only work in the current workspace on explicit confirmation.
 
 ## Other Workspace Operations
 
+Use JJ directly:
+
 ```bash
-jj workspace list                         # list workspaces
-jj workspace forget <workspace-name>      # stop tracking a workspace
-jj bookmark delete <bookmark>             # remove a no-longer-needed bookmark
-cd "$(jj workspace root)"                 # return to the current workspace root
+jj workspace list
+jj workspace forget <workspace-name>
+cd .workspaces/<workspace-name>
+cd "$(jj workspace root)"
 ```
+
+Delete the workspace directory only after `jj workspace forget <workspace-name>` succeeds or reports that the workspace is already forgotten.
 
 ## When To Create A Workspace
 
-Create one only when you are **not** already isolated and you need a separate workspace:
+Create one only when you are not already isolated and you need a separate workspace:
 
 - Reviewing a PR while keeping the current workspace free for other work
-- Running multiple features in parallel without bookmark/workspace switching overhead
+- Running multiple features in parallel without bookmark/revision switching overhead
 
-Do not create a workspace for single-task work that can happen on the current bookmark/change — and never when Step 0 shows you are already isolated.
+Do not create a workspace for single-task work that can happen on the current change, and never when Step 0 shows you are already in an isolated workspace.
 
 ## Integration
 
@@ -77,6 +77,6 @@ Do not create a workspace for single-task work that can happen on the current bo
 
 ## Troubleshooting
 
-**"Workspace already exists"**: the path or workspace name is in use. Switch to it (`cd .workspaces/<bookmark-slug>`) or forget/remove it before recreating.
+**"Workspace already exists"**: the path is in use. Switch to it (`cd .workspaces/<workspace-name>`) or forget and remove it before recreating.
 
-**"Cannot forget workspace"**: leave the workspace first, then run `jj workspace forget <workspace-name>` from another workspace and remove the directory when safe.
+**"Cannot forget current workspace"**: move to another workspace first, then run `jj workspace forget <workspace-name>`.

@@ -1,6 +1,6 @@
 # Sweep First-Run Interview
 
-Loaded by `SKILL.md` when `/ce-sweep` runs with no `feedback_sources` configured. Captures the setup that will be merged into `<repo-root>/.compound-engineering/config.local.yaml` (the unified CE local config, ignored by workspace rules, machine-local) and re-read on every subsequent run.
+Loaded by `SKILL.md` when `/ce-sweep` runs with no `feedback_sources` configured. Captures the setup that will be merged into `<repo-root>/.compound-engineering/config.local.yaml` (the unified CE local config, ignored by repo rules, machine-local) and re-read on every subsequent run.
 
 This interview is **interactive only**. The caller refuses first-run setup in headless mode — a scheduled or piped run with no config aborts and tells the user to run `/ce-sweep` interactively once. Do not attempt to infer sources, actions, or approvals without asking.
 
@@ -73,7 +73,7 @@ For email sources there are no source-side actions, so approval is moot — reco
 
 ## 3. Sensitive flag (per source)
 
-**Ask:** "Should item content from `{{source id}}` be withheld from committed state and from plan text? Say yes when the source can carry screen recordings, PII, customer data, or anything you don't want written to a file that may be committed or shared. When yes, the sweep drops item body and quote before writing state — only titles, urls, ids, and status persist. Default is no."
+**Ask:** "Should item content from `{{source id}}` be withheld from repo-tracked state and from plan text? Say yes when the source can carry screen recordings, PII, customer data, or anything you don't want written to a file that may be included in a JJ change or shared. When yes, the sweep drops item body and quote before writing state — only titles, urls, ids, and status persist. Default is no."
 
 - **No** (default) -> `sensitive: false`. Full item content is retained in state and available to plans.
 - **Yes** -> `sensitive: true`. The state engine drops `body` and `quote` at write time for this source's items, and plans reference items by id/title/url only.
@@ -103,14 +103,14 @@ Let the user override the path if they want a different location. If they pick m
 
 ---
 
-## 6. Shared bookmark (only if tracked state)
+## 6. Shared bookmark (only if repo-tracked state)
 
-**Skip this section entirely if the user chose machine-local state in section 4** — the shared-bookmark topology only applies to tracked state.
+**Skip this section entirely if the user chose machine-local state in section 4** — the shared-bookmark topology only applies to repo-tracked state.
 
-**Ask:** "Is this a multi-agent setup where several workspaces push the sweep state to a shared docs bookmark? Answer yes only if more than one machine or agent describes and pushes to the same bookmark. Default is no — a single workspace describing locally."
+**Ask:** "Is this a multi-agent setup where several workspaces push the sweep state to a shared docs bookmark? Answer yes only if more than one machine or agent describes/finalizes changes and pushes to the same bookmark. Default is no — a single workspace finalizing locally."
 
 - **No** (default) -> `sweep_shared_bookmark: false`. The single-writer lease serializes overlapping sweeps within one workspace.
-- **Yes** -> `sweep_shared_bookmark: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep describes and pushes the lease acquisition on the shared bookmark and confirms its writer won, making the lease a repo-wide mutex across machines.
+- **Yes** -> `sweep_shared_bookmark: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep describes/finalizes and pushes the lease acquisition on the shared bookmark and confirms its writer won, making the lease a repo-wide mutex across machines.
 
 **Capture:** `sweep_shared_bookmark` (`true` | `false`).
 
@@ -136,18 +136,18 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 
 ## 8. Write config
 
-Merge the captured settings into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the workspace root with `jj workspace root`.
+Merge the captured settings into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `jj workspace root`.
 
 - If the directory or file does not exist, create `.compound-engineering/` and write the file.
 - If the file exists, merge the sweep keys into the existing YAML, **preserving every unrelated key untouched** (e.g. `work_delegate_*`, `pulse_*`, `plan_*`). Only add or update the sweep keys.
-- If `.compound-engineering/config.local.yaml` is not already covered by the workspace ignore rules, offer to add the entry before writing.
+- If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.jjignore`, offer to add the entry before writing.
 
 Write these keys (see "Config File Shape" below for the exact form):
 
 - `feedback_sources` — the list of source maps assembled across sections 1-3.
 - `sweep_state_path` — from section 4.
 - `sweep_ack_cap` — from section 5.
-- `sweep_shared_bookmark` — from section 6 (default `false`; only meaningful with tracked state).
+- `sweep_shared_bookmark` — from section 6 (default `false`; only meaningful with repo-tracked state).
 
 Then surface the resulting Sweep section to the user in chat and offer **one round of edits**.
 
@@ -177,15 +177,15 @@ feedback_sources:
   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
-sweep_state_path: docs/feedback-sweep/state.yml   # tracked (multi-agent) or /tmp path (solo)
+sweep_state_path: docs/feedback-sweep/state.yml   # repo-tracked (multi-agent) or /tmp path (solo)
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
-sweep_shared_bookmark: false                      # true: push-gated lease for shared-docs-bookmark topology
+sweep_shared_bookmark: false                        # true: push-gated lease for shared-docs-bookmark topology
 ~~~
 
 Notes:
 
-- Each `feedback_sources` entry carries: `type` (`slack` | `github-issues` | `email`), `id` (short handle), `target` (channel ID / `owner/repo` / mailbox hint), `ack_action` and `closeout_action` (emoji/label names; omit both for email), `sensitive` (`true` withholds body/quote from committed state and plan text), and `approved` (standing approval for source-side writes; `false` keeps the source read-only with `ack_deferred` items).
+- Each `feedback_sources` entry carries: `type` (`slack` | `github-issues` | `email`), `id` (short handle), `target` (channel ID / `owner/repo` / mailbox hint), `ack_action` and `closeout_action` (emoji/label names; omit both for email), `sensitive` (`true` withholds body/quote from repo-tracked state and plan text), and `approved` (standing approval for source-side writes; `false` keeps the source read-only with `ack_deferred` items).
 - `feedback_sources` is a generic key — other skills may read this list.
 - `sweep_lease_ttl_minutes` is not asked in the interview; it is written with its default of `60` and left as a tunable the user can edit.
 - Email sources are read-only: omit `ack_action`/`closeout_action`, and record `approved: false`.

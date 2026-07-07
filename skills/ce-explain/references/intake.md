@@ -21,7 +21,7 @@ Literal-prefix tokens are consumed and stripped; everything else is the request 
 
 Classify the remaining text by shape:
 
-- **Diff** — the request names a resolvable change: a change ID, commit ID, bookmark, PR, "the latest JJ change", "what you just did", "this change".
+- **Diff** — the request names a resolvable change: a sha, bookmark, PR, "the last JJ change", "what you just did", "this change".
 - **Recap** — the request asks what happened over time: "what did I do this week", "catch me up", "prep me for standup". Default window when unspecified: the last 7 days in the current repo.
 - **Idea** — the request presents a proposal or notion of the user's to be understood: "explain my idea of X", "what would Y imply". The idea is a fixed given (see SKILL.md Boundaries).
 - **Concept** — everything else: a topic, pattern, subsystem, or external subject to learn.

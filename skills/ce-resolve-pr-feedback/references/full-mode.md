@@ -6,7 +6,7 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current JJ bookmark/change:
+If no PR number was provided, detect from the current bookmark:
 ```bash
 gh pr view --json number -q .number
 ```
@@ -65,7 +65,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, JJ file annotation/history or PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `JJ file annotation`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -126,15 +126,15 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 2. **Green** -> proceed to step 6.
 
-3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** describe or push the JJ change.
+3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** describe or push the change.
 
 4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the JJ change description: `Note: pre-existing failure in <test> not addressed by this PR.`
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Describe and Push Bookmark
+## 6. Describe and Push
 
-1. Describe the current JJ change with a message referencing the PR:
+1. Keep only files reported by fixers in the current JJ change. If unrelated user changes are present, preserve them by splitting the review fixes into their own change with `jj split` rather than restoring those paths. Then describe the review-fix change with a message referencing the PR:
 
 ```bash
 jj describe -m "Address PR review feedback (#PR_NUMBER)
@@ -142,9 +142,12 @@ jj describe -m "Address PR review feedback (#PR_NUMBER)
 - [list changes from fixer summaries]"
 ```
 
-2. Push the current bookmark to remote:
+2. Push the PR bookmark to the remote, then move to a fresh change so follow-up work does not accumulate on the pushed change:
 ```bash
-jj git push --bookmark <current-bookmark>
+BOOKMARK_NAME=$(gh pr view PR_NUMBER --json headRefName -q .headRefName)
+jj bookmark set "$BOOKMARK_NAME"
+jj git push --bookmark "$BOOKMARK_NAME"
+jj new
 ```
 
 ## 7. Reply and Resolve
@@ -249,7 +252,7 @@ Replied (count): [what questions were answered]
 Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm cited]
 
-Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were described/pushed]
+Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were made]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries a `decision_context` (composed in step 3, or by a fixer's escalation): what the reviewer said, what was investigated, why it needs a decision, concrete options with tradeoffs, and a lean if any.

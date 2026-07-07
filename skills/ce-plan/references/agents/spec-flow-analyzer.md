@@ -18,7 +18,7 @@ Walk through the spec as a user, mapping each distinct journey from entry point 
 
 For each flow, identify:
 - **Entry point** -- how the user arrives (direct navigation, link, redirect, notification)
-- **Decision points** -- where the flow branches based on user action or system state
+- **Decision points** -- where the flow bookmarks based on user action or system state
 - **Happy path** -- the intended journey when everything works
 - **Terminal states** -- where the flow ends (success, error, cancellation, timeout)
 
@@ -52,7 +52,7 @@ For each question, include:
 
 ### User Flows
 
-Number each flow. Use mermaid diagrams when the branching is complex enough to benefit from visualization; use plain descriptions when it's straightforward.
+Number each flow. Use mermaid diagrams when the bookmarking is complex enough to benefit from visualization; use plain descriptions when it's straightforward.
 
 ### Gaps
 

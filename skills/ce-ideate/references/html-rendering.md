@@ -109,8 +109,8 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to the default-bookmark workspace. Users
-working from a JJ workspace who want HTML defaults can add DESIGN.md to that
+Workspace-root only — do not fall through to a separate main workspace. Users
+working from a workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
@@ -236,7 +236,7 @@ jj git remote list
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/<default-bookmark>/<path>` (use the repository default bookmark when known; otherwise `main` is an acceptable GitHub URL fallback).
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -245,7 +245,7 @@ Apply linking to three reference shapes:
   session or in `AGENTS.md`); otherwise leave as text.
 
 **Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
-Bitbucket, internal host) and the equivalent main-tree URL pattern
+Bitbucket, internal host) and the equivalent default-bookmark URL pattern
 isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.

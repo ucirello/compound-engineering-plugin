@@ -217,7 +217,7 @@ In interactive mode, present each agent's findings to the user before integratio
 
 If the user chooses "Discuss", engage in brief dialogue about the findings and then re-ask with only accept/reject (no discuss option on the second ask). The user makes a deliberate choice either way.
 
-When presenting findings from multiple agents targeting the same section, present them one agent at a time so the user can make independent decisions. Do not merge findings from different agents before showing them.
+When presenting findings from multiple agents targeting the same section, present them one agent at a time so the user can make independent decisions. Do not combine findings from different agents before showing them.
 
 After all agents have been reviewed, carry only the accepted findings forward to 5.3.7.
 
@@ -247,7 +247,7 @@ Allowed changes:
 
 Do **not**:
 - Add implementation code — no imports, exact method signatures, or framework-specific syntax. Pseudo-code sketches and DSL grammars are allowed
-- Add JJ commands, change choreography, or exact test command recipes
+- Add JJ commands, change/bookmark choreography, or exact test command recipes
 - Add generic `Research Insights` subsections everywhere
 - Rewrite the entire plan from scratch
 - Invent new product requirements, scope changes, or success criteria without surfacing them explicitly

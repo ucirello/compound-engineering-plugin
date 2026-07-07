@@ -143,7 +143,7 @@ Rules:
 - Suppress any finding you cannot honestly anchor at `50` or higher (the actionable floor is `50`; anchors `0` and `25` are suppressed by synthesis anyway, so emitting them only adds noise). If your persona's domain description sets a stricter floor (e.g., anchor `75` minimum), honor it.
 - Every finding in the full artifact file MUST include at least one evidence item grounded in the actual code. The compact return omits evidence -- the evidence requirement applies to the disk artifact only.
 - Set `pre_existing` to true ONLY for issues in unchanged code that are unrelated to this diff. If the diff makes the issue newly relevant, it is NOT pre-existing.
-- You are operationally read-only. The one permitted exception is writing your full analysis to the `/tmp/compound-engineering/ce-code-review/{run_id}/` artifact path when a run ID is provided. You may also use non-mutating inspection commands, including read-oriented `jj` / `gh` commands, to gather evidence. Do not edit project files, change bookmarks/workspaces, commit, push, create PRs, or otherwise mutate the checkout or repository state.
+- You are operationally read-only. The one permitted exception is writing your full analysis to the `/tmp/compound-engineering/ce-code-review/{run_id}/` artifact path when a run ID is provided. You may also use non-mutating inspection commands, including read-oriented `jj` / `gh` commands, to gather evidence. Do not edit project files, change bookmarks, describe/finalize JJ changes, push, create PRs, or otherwise mutate the working copy or repository state.
 - Set `autofix_class` and `owner` per `references/action-class-rubric.md`; if that file is not reachable from your working directory, the same `gated_auto` / `manual` / `advisory` and owner semantics are already in the schema above and this template's guidance. This skill does not apply fixes — classify for caller routing only.
 - Default `owner` to `downstream-resolver` for actionable findings unless the item is genuinely human-only or release-owned.
 - Set `requires_verification` to true whenever the likely fix needs targeted tests, a focused re-review, or operational validation before it should be trusted.
@@ -180,7 +180,7 @@ Changed files: {file_list}
 Diff:
 {diff}
 
-(For a large review, `{file_list}` and `{diff}` may be **artifact file paths** rather than inline content. When a value above is a path, Read that file to get the full list/diff before reviewing — never treat the path string itself as the content to review.)
+(For a large current working-copy review, `{file_list}` and `{diff}` may be **file paths** rather than inline content. When a value above is a path, Read that file to get the full list/diff before reviewing — never treat the path string itself as the content to review.)
 </review-context>
 ```
 
@@ -192,8 +192,8 @@ Diff:
 | `{diff_scope_rules}` | `references/diff-scope.md` content | Primary/secondary/pre-existing tier rules |
 | `{schema}` | `references/findings-schema.json` content | The JSON schema reviewers must conform to |
 | `{intent_summary}` | Stage 2 output | 2-3 line description of what the change is trying to accomplish |
-| `{pr_metadata}` | Stage 1 output | PR title, body, and URL when reviewing a PR. Empty string when reviewing a bookmark or standalone checkout |
-| `{file_list}` | Stage 1 output | Changed-file list — inline, or an artifact file path to Read for a large review |
-| `{diff}` | Stage 1 output | The diff to review — inline hunks, or an artifact file path to Read for a large review |
+| `{pr_metadata}` | Stage 1 output | PR title, body, and URL when reviewing a PR. Empty string when reviewing a bookmark or standalone working-copy revision |
+| `{file_list}` | Stage 1 output | Changed-file list — inline, or a current working-copy file path to Read for a large review |
+| `{diff}` | Stage 1 output | The diff to review — inline hunks, or a current working-copy file path to Read for a large review |
 | `{run_id}` | Stage 4 output | Unique review run identifier for the artifact directory |
 | `{reviewer_name}` | Stage 3 output | Persona or agent name used as the artifact filename stem |

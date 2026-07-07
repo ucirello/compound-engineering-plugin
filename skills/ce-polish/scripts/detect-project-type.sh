@@ -41,12 +41,9 @@
 
 set -u
 
-REPO_ROOT=$(jj workspace root 2>/dev/null)
-if [ -z "$REPO_ROOT" ]; then
-  REPO_ROOT=$(pwd)
-fi
+REPO_ROOT=$(jj workspace root 2>/dev/null || pwd)
 
-cd "$REPO_ROOT" || { echo "ERROR: cannot cd to workspace root" >&2; exit 1; }
+cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }
 
 MATCHES=()
 

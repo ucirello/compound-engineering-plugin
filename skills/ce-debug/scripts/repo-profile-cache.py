@@ -13,9 +13,9 @@ Usage:
 `get` prints exactly one of:
     HIT\\n<profile-json>     a valid entry exists for the current repo state;
                             the profile JSON follows on subsequent lines
-    MISS\\n<write-path>      JJ workspace, no valid entry — caller derives the
+    MISS\\n<write-path>      JJ repo, no valid entry — caller derives the
                             profile and calls `put <write-path-or-any-file>`
-    NO-CACHE                no JJ workspace or no writable cache — caller derives
+    NO-CACHE                no JJ repo or no writable cache — caller derives
                             the profile fresh and skips `put`
 
 `put <file>` reads the profile JSON from <file>, wraps it with a validity
@@ -23,25 +23,23 @@ stamp, and writes it atomically to the computed cache path. Prints the path
 on success, `NO-CACHE` when the repo/cache is unavailable.
 
 Cache path:
-    /tmp/compound-engineering/repo-profile/<root-id>/<head-id>.json
-  root-id = lexicographically-first `jj log -G -r 'root()+' -T 'commit_id ++ "\\n"'`
-            (deterministic even for multi-root histories) — the repo identity,
-            shared across workspaces and clones.
-  head-id = `jj log -G -r @ -T 'change_id ++ " " ++ parents.map(|p| p.commit_id()).join(" ") ++ "\\n"'`
-            — the current JJ change identity and parent commit state. The
-            working-copy commit ID is intentionally excluded because JJ updates
-            it for any dirty file; profile-input dirtiness is checked separately.
+    /tmp/compound-engineering/repo-profile/<root-sha>/<base-sha>.json
+  root-sha = lexicographically-first root revision from `jj log -r 'roots(::@)'`
+             (deterministic even for multi-root histories) — the repo identity,
+             shared across workspaces and clones.
+  base-sha = `jj log -r @-` revision ID — the immutable parent of the mutable
+             working-copy revision.
 
 Validity (HIT) requires ALL of:
   - the cache file exists and parses as JSON,
-  - stored `head_sha` == current JJ head identity,
+  - stored `base_sha` == current `@-` revision ID,
   - stored `profile_schema_version` == PROFILE_SCHEMA_VERSION,
-  - no profile-input path is dirty or newly-added per `jj diff -r @ --summary`
-    (the schema-derived superset in `is_profile_input`, which also catches
+  - no profile-input path appears in `jj diff --summary` for the working-copy revision
+    (the schema-derived superset in `is_profile_input`, which catches newly-added
     files — a newly-added manifest or AGENTS.md must invalidate).
 
 Cardinal rule: this cache is an optimization, never a correctness dependency.
-Every failure mode (not a JJ workspace, unreadable/malformed cache, no writable
+Every failure mode (not a JJ repo, unreadable/malformed cache, no writable
 /tmp, JJ errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
 never serves a profile it cannot prove fresh.
 
@@ -61,14 +59,14 @@ PROFILE_SCHEMA_VERSION = "1"
 CACHE_ROOT = "/tmp/compound-engineering/repo-profile"
 
 # --- Profile-input set (the schema-derived superset, per the plan's R3) -------
-# Any change to one of these — including a NEW untracked file — must invalidate
+# Any change to one of these — including a NEW file — must invalidate
 # the cached profile. Conservative by design: over-invalidating costs a
 # re-derive; under-invalidating serves a stale profile (a cardinal-rule break).
 
 # Dependency manifests + lockfiles. Matched by basename at ANY depth so a
 # monorepo workspace's manifest also invalidates. The profiler derives
 # stack/deps for ANY language, so this list must span ecosystems, not just JS —
-# an omitted manifest means a dirty dep bump at unchanged current change identity serves a stale
+# an omitted manifest means a dirty dep bump at unchanged current revision serves a stale
 # profile (a cardinal-rule break).
 _MANIFEST_LOCKFILE = {
     # JavaScript / TypeScript / Deno
@@ -181,10 +179,7 @@ def jj(*args: str) -> "str | None":
     """Run a jj command; return stripped stdout, or None on any failure."""
     try:
         result = subprocess.run(
-            ["jj", "--no-pager", "--color=never", *args],
-            capture_output=True,
-            text=True,
-            check=False,
+            ["jj", "--no-pager", *args], capture_output=True, text=True, check=False
         )
     except OSError:
         return None
@@ -193,92 +188,87 @@ def jj(*args: str) -> "str | None":
     return result.stdout.strip()
 
 
-def root_id() -> "str | None":
-    out = jj("log", "-G", "-r", "root()+", "-T", 'commit_id ++ "\\n"')
+def root_sha() -> "str | None":
+    out = jj("log", "--no-graph", "-r", "roots(::@)", "-T", "commit_id ++ '\n'")
     if not out:
         return None
-    # Multi-root histories print several IDs; pick a deterministic one.
+    # Multi-root histories print several SHAs; pick a deterministic one.
     return sorted(out.split("\n"))[0]
 
 
-def head_id() -> "str | None":
-    return jj(
-        "log",
-        "-G",
-        "-r",
-        "@",
-        "-T",
-        'change_id ++ " " ++ parents.map(|p| p.commit_id()).join(" ") ++ "\\n"',
-    )
-
-
 def changed_paths() -> "list[str] | None":
-    """Paths from `jj diff -r @ --summary`, or None if it could not run.
+    """Paths from `jj diff --summary`, or None if it could not run.
 
-    Includes paths snapshotted into the current JJ working-copy change so a
-    newly-added profile input is seen.
+    Includes newly-added files so a newly-added profile input is seen.
     None signals "could not determine cleanliness" — the caller treats that
     conservatively as a miss rather than serving an unverified profile.
     """
-    out = jj("diff", "-r", "@", "--summary")
-    if out is None:
+    # Use diff summary instead of status prose so the parser only handles
+    # changed-file records for the current working-copy revision.
+    try:
+        result = subprocess.run(
+            ["jj", "--no-pager", "diff", "--summary"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
         return None
-
+    if result.returncode != 0:
+        return None
     def clean(token: str) -> str:
         token = token.strip()
-        if os.path.isabs(token):
-            root = jj("workspace", "root")
-            if root:
-                try:
-                    token = os.path.relpath(token, root)
-                except ValueError:
-                    pass
+        # JJ quotes paths containing special characters.
+        if len(token) >= 2 and token[0] == '"' and token[-1] == '"':
+            token = token[1:-1]
         return token
 
-    def add_path(paths: list[str], spec: str) -> None:
-        if "{" in spec and " => " in spec and "}" in spec:
-            prefix, rest = spec.split("{", 1)
-            inside, suffix = rest.split("}", 1)
-            old, new = inside.split(" => ", 1)
-            for token in (f"{prefix}{old}{suffix}", f"{prefix}{new}{suffix}"):
-                p = clean(token)
-                if p:
-                    paths.append(p)
-            return
-        if " => " in spec:
-            for token in spec.split(" => ", 1):
-                p = clean(token)
-                if p:
-                    paths.append(p)
-            return
-        p = clean(spec)
-        if p:
-            paths.append(p)
+    def expand_rename(rest: str) -> "list[str] | None":
+        # JJ may summarize renames as `dir/{old => new}`. Both endpoints are
+        # changed for cache invalidation; a manifest renamed away must MISS.
+        if "{" in rest and "}" in rest and " => " in rest:
+            prefix, remainder = rest.split("{", 1)
+            inside, suffix = remainder.split("}", 1)
+            if " => " in inside:
+                old, new = inside.split(" => ", 1)
+                return [prefix + old + suffix, prefix + new + suffix]
+        separator = " => " if " => " in rest else " -> " if " -> " in rest else None
+        if separator:
+            return rest.split(separator, 1)
+        return None
 
     paths: list[str] = []
-    for line in out.split("\n"):
+    for line in result.stdout.split("\n"):
         if not line.strip():
             continue
-        # Rename/copy output may be "old => new" or "dir/{old => new}"; BOTH endpoints changed. A
-        # profile input renamed *away* (e.g. `package.json => pkg.json`) must
+        rest = line[1:].strip()
+        # Rename/copy entries are "old => new" or "old -> new"; BOTH endpoints changed. A
+        # profile input renamed *away* (e.g. `package.json -> pkg.json`) must
         # still invalidate, so keep the source path, not just the destination.
-        add_path(paths, line[2:] if len(line) > 2 and line[1] == " " else line)
+        renamed = expand_rename(rest)
+        if renamed:
+            for token in renamed:
+                p = clean(token)
+                if p:
+                    paths.append(p)
+            continue
+        p = clean(rest)
+        if p:
+            paths.append(p)
     return paths
 
 
-def cache_path(root: str, head: str) -> str:
-    return os.path.join(CACHE_ROOT, root, f"{head}.json")
+def cache_path(root: str, base: str) -> str:
+    return os.path.join(CACHE_ROOT, root, f"{base}.json")
 
 
 def resolve_keys() -> "tuple[str, str] | None":
-    """The (root-id, head-id) cache key, or None if not a usable JJ workspace."""
-    if jj("workspace", "root") is None:
+    """The (root-sha, base-sha) cache key, or None if not a usable JJ repo."""
+    root = root_sha()
+    base = jj("log", "--no-graph", "-r", "@-", "-T", "commit_id")
+    if not root or not base:
         return None
-    root = root_id()
-    head = head_id()
-    if not root or not head:
-        return None
-    return root, head
+    return root, base
 
 
 _PROFILE_KEYS = ("stack", "dependencies", "topology", "conventions", "vocabulary")
@@ -298,8 +288,8 @@ def do_get() -> int:
     if keys is None:
         print("NO-CACHE")
         return 0
-    root, head = keys
-    path = cache_path(root, head)
+    root, base = keys
+    path = cache_path(root, base)
 
     def miss() -> int:
         print("MISS")
@@ -325,7 +315,7 @@ def do_get() -> int:
     profile = doc.get("profile") if isinstance(doc, dict) else None
     if (
         not isinstance(doc, dict)
-        or doc.get("head_sha") != head
+        or doc.get("base_sha") != base
         or doc.get("profile_schema_version") != PROFILE_SCHEMA_VERSION
         or not is_valid_profile(profile)
     ):
@@ -346,7 +336,7 @@ def do_put(profile_file: str) -> int:
     if keys is None:
         print("NO-CACHE")
         return 0
-    root, head = keys
+    root, base = keys
 
     try:
         with open(profile_file) as f:
@@ -368,10 +358,11 @@ def do_put(profile_file: str) -> int:
         print("NO-CACHE")
         return 0
 
-    # Do not cache a profile derived from a DIRTY workspace: it reflects current
-    # edits to profile inputs, yet it would be stored under the current head key
-    # and served as a HIT after those edits are reverted (same head, clean tree)
-    # — stale. Only persist a profile that matches the current JJ head identity.
+    # Do not cache a profile derived from a DIRTY working copy: it reflects
+    # working-copy edits to profile inputs, yet it would be stored under the
+    # base revision key and served as a HIT after those edits are reverted
+    # (same revision, clean working copy) — stale. Only persist a profile that
+    # matches the current revision.
     changed = changed_paths()
     if changed is None or any(is_profile_input(p) for p in changed):
         sys.stderr.write(
@@ -383,12 +374,12 @@ def do_put(profile_file: str) -> int:
     doc = {
         "profile_schema_version": PROFILE_SCHEMA_VERSION,
         "root_sha": root,
-        "head_sha": head,
+        "base_sha": base,
         "built_at": datetime.now(timezone.utc).isoformat(),
         "profile": profile,
     }
 
-    path = cache_path(root, head)
+    path = cache_path(root, base)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         # Atomic write: temp file in the same dir + os.replace (atomic on

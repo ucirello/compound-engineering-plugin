@@ -40,7 +40,16 @@ detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(jj workspace root >/dev/null 2>&1 && echo "yes" || echo "no")
+jj_bin=""
+if command -v jj >/dev/null 2>&1; then
+  jj_bin=$(command -v jj)
+elif [ -x /opt/homebrew/bin/jj ]; then
+  jj_bin=/opt/homebrew/bin/jj
+elif [ -x /usr/local/bin/jj ]; then
+  jj_bin=/usr/local/bin/jj
+fi
+
+in_repo=$([ -n "$jj_bin" ] && "$jj_bin" workspace root >/dev/null 2>&1 && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -74,20 +83,18 @@ example_cfg="skip"
 project_issues=0
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(jj workspace root 2>/dev/null)
+  repo_root=$("$jj_bin" workspace root 2>/dev/null)
   legacy_cfg="missing"
   [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$repo_root/.compound-engineering/config.local.yaml" ]; then
     local_cfg="present"
-    rel_cfg=".compound-engineering/config.local.yaml"
-    if ! cfg_status=$(jj status "root:$rel_cfg" 2>/dev/null); then
-      repo_cfg_ignore="missing"
-    elif printf '%s\n' "$cfg_status" | grep -q "$rel_cfg"; then
-      repo_cfg_ignore="missing"
-    else
+    listed=$("$jj_bin" file list .compound-engineering/config.local.yaml 2>/dev/null || true)
+    if [ "$listed" != ".compound-engineering/config.local.yaml" ]; then
       repo_cfg_ignore="ok"
+    else
+      repo_cfg_ignore="missing"
     fi
   fi
 
@@ -142,9 +149,9 @@ if [ "$in_repo" = "yes" ]; then
   if [ "$local_cfg" = "present" ]; then
     ok ".compound-engineering/config.local.yaml exists"
     if [ "$repo_cfg_ignore" = "ok" ]; then
-      ok "Local config is ignored by workspace rules"
+      ok "Local config is ignored by repo rules"
     else
-      warn "Local config is not safely ignored by workspace rules"
+      warn "Local config is not safely ignored by repo rules"
       project_issues=$((project_issues + 1))
     fi
   else
@@ -162,7 +169,7 @@ if [ "$in_repo" = "yes" ]; then
   fi
 else
   section "Project config"
-  skip "Not inside a JJ workspace"
+  skip "Not inside a JJ repository"
 fi
 
 echo ""

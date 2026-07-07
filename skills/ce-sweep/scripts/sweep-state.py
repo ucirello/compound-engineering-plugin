@@ -752,7 +752,7 @@ _HANDLERS = {
 # (run-record for an aborted-locked run, validate, import-legacy). Two
 # concurrent invocations (an overlapping cron and manual sweep) could otherwise
 # interleave load -> mutate -> write and lose an update — e.g. an aborted run's
-# stale-snapshot write clobbering the holder's just-written upsert. An OS
+    # stale-snapshot write clobbering the holder's just-written upsert. An OS
 # advisory lock held across each mutating RMW makes them mutually exclusive
 # regardless of lease ownership.
 _MUTATING = {

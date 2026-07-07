@@ -7,8 +7,8 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Current JJ change.** If the current change has a non-empty diff (`jj diff`), review it.
-3. **Bookmark changes vs base bookmark.** If the current JJ change is empty, review `jj diff --from <base>` where `<base>` is the default bookmark.
+2. **Working-copy changes.** If the current working-copy revision has changes (`jj diff` is non-empty), review those.
+3. **Unpushed JJ changes vs base bookmark.** If the working copy is clean, review `jj diff --from <base> --to @` where `<base>` is the default bookmark (main or master).
 
 The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run JJ commands yourself unless PR scope mode requires it (below).
 
@@ -18,7 +18,7 @@ When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `
 
 Instead:
 
-- Prefer `jj file show -r <remote-head-ref> <path>` when `<pr-head-ref>` or `<bookmark-head-ref>` is provided in context.
+- Prefer `jj file show --revision <remote-head-ref>:<path>` when `<pr-head-ref>` or `<bookmark-head-ref>` is provided in context.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 

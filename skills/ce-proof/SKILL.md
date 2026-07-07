@@ -119,9 +119,9 @@ When in doubt, start with `/snapshot` and build a small `/edit/v2` batch. A narr
 
 **Retry discipline after mutation errors — verify before retrying.** An error response is not proof that nothing was written.
 
-- `STALE_BASE`, `BASE_TOKEN_REQUIRED`, `MISSING_BASE`, `INVALID_BASE_TOKEN` — pre-commit, token-related. Re-read `/state`, rebuild the request body with a fresh `baseToken`, and retry once with a new `Idempotency-Key`.
-- `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS` — pre-commit, but the `quote` no longer uniquely matches content. Re-reading does not help by itself; the caller must tighten or regenerate the anchor before retrying. Do not auto-retry blindly.
-- `INVALID_OPERATIONS`, `INVALID_REQUEST`, `INVALID_REF`, `INVALID_BLOCK_MARKDOWN`, `INVALID_RANGE`, `INVALID_MARKDOWN`, 422 — pre-commit, but the payload is wrong. Do not retry blindly; fix the payload first.
+- `STALE_BASE`, `BASE_TOKEN_REQUIRED`, `MISSING_BASE`, `INVALID_BASE_TOKEN` — pre-apply, token-related. Re-read `/state`, rebuild the request body with a fresh `baseToken`, and retry once with a new `Idempotency-Key`.
+- `ANCHOR_NOT_FOUND`, `ANCHOR_AMBIGUOUS` — pre-apply, but the `quote` no longer uniquely matches content. Re-reading does not help by itself; the caller must tighten or regenerate the anchor before retrying. Do not auto-retry blindly.
+- `INVALID_OPERATIONS`, `INVALID_REQUEST`, `INVALID_REF`, `INVALID_BLOCK_MARKDOWN`, `INVALID_RANGE`, `INVALID_MARKDOWN`, 422 — pre-apply, but the payload is wrong. Do not retry blindly; fix the payload first.
 - `COLLAB_SYNC_FAILED`, `REWRITE_BARRIER_FAILED`, `PROJECTION_STALE`, `INTERNAL_ERROR`, 5xx, network timeout, and any **202 with `collab.status: "pending"`** — the canonical doc may have been written even though the call looks like a failure. Before any retry, re-read `/state` and check whether the intended mark/edit is already present; only retry if it isn't.
 - `Idempotency-Key` (see below) protects against double-apply *on the same request* (e.g., TCP-level retry). It does not help if you build a new request body and send a second call — that is a new logical write with a new key.
 
@@ -165,12 +165,12 @@ Batch `/ops` supports `comment.reply`, `comment.resolve`, and `comment.unresolve
 {"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "ai:compound-engineering", "content": "replacement text", "baseToken": "<token>"}
 ```
 
-**Suggest and immediately apply (tracked but committed — user can reject to revert):**
+**Suggest and immediately apply (tracked in Proof — user can reject to revert):**
 ```json
 {"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "ai:compound-engineering", "content": "replacement text", "status": "accepted", "baseToken": "<token>"}
 ```
 
-`status: "accepted"` creates the suggestion mark and commits the change in one call. The mark persists as an audit trail with per-edit attribution and a reject-to-revert affordance. Works with `kind: "insert" | "delete" | "replace"`.
+`status: "accepted"` creates the suggestion mark and applies the change in one call. The mark persists as an audit trail with per-edit attribution and a reject-to-revert affordance. Works with `kind: "insert" | "delete" | "replace"`.
 
 **Accept or reject an existing suggestion:**
 ```json
@@ -216,7 +216,7 @@ Per-op body shape (singular `block` vs plural `blocks` is load-bearing — sendi
 | `find_replace_in_block` | `ref`, `find`, `replace`, `occurrence: "first" \| "all"` |
 | `find_replace_in_doc` | `find`, `replace`, `occurrence: "first" \| "all"`, optional `fromRef`, `toRef`, `block_filter` |
 
-Read `/snapshot` to get block `ref` IDs and `mutationBase.token`. `ref` values are opaque request tokens tied to the snapshot/baseToken; re-read `/snapshot` before follow-up block edits if writes have landed. `operations` commits atomically — either every op lands or none do — so one `/edit/v2` call can batch dozens of block edits safely and efficiently. Successful full responses include the next `mutationBase.token` and fresh `snapshot.blocks[].ref` values for chaining.
+Read `/snapshot` to get block `ref` IDs and `mutationBase.token`. `ref` values are opaque request tokens tied to the snapshot/baseToken; re-read `/snapshot` before follow-up block edits if writes have landed. `operations` apply atomically — either every op lands or none do — so one `/edit/v2` call can batch dozens of block edits safely and efficiently. Successful full responses include the next `mutationBase.token` and fresh `snapshot.blocks[].ref` values for chaining.
 
 For literal doc-wide sweeps, prefer `find_replace_in_doc` over many block replacements or a whole-doc rewrite. Validate large batches with `?dryRun=1` or `?validate=1`; use `?return=minimal` when you only need `ok`, `revision`, `appliedCount`, and the next `mutationBase`.
 
@@ -301,7 +301,7 @@ OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/abc123/ops" \
 NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 [ -n "$NEXT_BASE" ] && BASE="$NEXT_BASE"
 
-# Suggest and immediately apply (tracked, committed)
+# Suggest and immediately apply (tracked in Proof)
 OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/abc123/ops" \
   -H "Content-Type: application/json" \
   -H "x-share-token: xxx" \

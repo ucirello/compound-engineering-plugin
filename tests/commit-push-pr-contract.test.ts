@@ -26,7 +26,7 @@ describe("ce-commit-push-pr contract", () => {
     expect(content).toContain("closing reference")
     expect(content).toContain("non-closing reference")
     expect(content).toContain("Do not invent a closing keyword")
-    expect(content).toMatch(/jj log/)
+    expect(content).toMatch(/jj log[\s\S]+description/)
     expect(content).toContain("full JJ change descriptions")
     expect(content).toContain("Do not put a non-closing reference next to close/fix/resolve/address/report wording")
     expect(content).toContain("Use the table's non-closing reference labels exactly")
@@ -39,7 +39,7 @@ describe("ce-commit-push-pr contract", () => {
     expect(content).toContain("GitHub Issues")
     expect(content).toContain("Fixes #123")
     expect(content).toContain("Fixes owner/repo#123")
-    expect(content).toMatch(/target.+default branch/i)
+    expect(content).toMatch(/target.+default bookmark/i)
 
     expect(content).toContain("Linear")
     expect(content).toContain("Fixes ENG-123")

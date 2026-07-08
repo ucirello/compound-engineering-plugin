@@ -51,7 +51,7 @@ For a friendly overview of what this skill is for, when to use hard metrics vs L
 
 **CRITICAL: The experiment log on disk is the single source of truth. The conversation context is NOT durable storage. Results that exist only in the conversation WILL be lost.**
 
-The files under `.context/compound-engineering/ce-optimize/<spec-name>/` are local scratch state. They are ignored by git, so they survive local resumes on the same machine but are not preserved by commits, branches, or pushes unless the user exports them separately.
+The files under `.context/compound-engineering/ce-optimize/<spec-name>/` are local scratch state. They are ignored by VCS, so they survive local resumes on the same machine but are not preserved by changes, bookmarks, or pushes unless the user exports them separately.
 
 Every piece of state that matters MUST live on disk, not in the agent's memory.
 
@@ -212,22 +212,22 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 
 ### 0.4 Run Identity Detection
 
-Check if `optimize/<spec-name>` branch already exists:
+Check if the `optimize/<spec-name>` bookmark already exists:
 
 ```bash
-git rev-parse --verify "optimize/<spec-name>" 2>/dev/null
+jj bookmark list "optimize/<spec-name>"
 ```
 
-**If branch exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
+**If the bookmark exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
 - **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning worktree directories for `result.yaml` markers. Continue from the last iteration number in the log.
-- **Fresh start**: archive the old branch to `optimize-archive/<spec-name>/archived-<timestamp>`, clear the experiment log, start from scratch
+- **Fresh start**: archive the old bookmark to `optimize-archive/<spec-name>/archived-<timestamp>`, clear the experiment log, start from scratch
 
-### 0.5 Create Optimization Branch and Scratch Space
+### 0.5 Create Optimization Bookmark and Scratch Space
 
 ```bash
-git checkout -b "optimize/<spec-name>"  # or switch to existing if resuming
+jj bookmark create "optimize/<spec-name>"  # or update to the existing bookmark if resuming
 ```
 
 Create scratch directory:
@@ -250,15 +250,15 @@ bash "$SKILL_DIR/scripts/<name>"
 
 ### 1.1 Clean-Tree Gate
 
-Verify no uncommitted changes to files within `scope.mutable` or `scope.immutable`:
+Verify no undescribed changes to files within `scope.mutable` or `scope.immutable`:
 
 ```bash
-git status --porcelain
+jj st
 ```
 
-Filter the output against the scope paths. If any in-scope files have uncommitted changes:
+Filter the output against the scope paths. If any in-scope files have undescribed changes:
 - Report which files are dirty
-- Ask the user to commit or stash before proceeding
+- Ask the user to describe or split the current JJ change before proceeding
 - Do NOT continue until the working tree is clean for in-scope files
 
 ### 1.2 Build or Validate Measurement Harness
@@ -468,13 +468,13 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 1. Check environment guard -- do NOT delegate if already inside a Codex sandbox:
    ```bash
    # If these exist, we're already in Codex -- fall back to subagent
-   test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .git
+   test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .jj
    ```
 2. Fill the experiment prompt template
 3. Write the filled prompt to a temp file
 4. Dispatch via Codex:
    ```bash
-   cat /tmp/optimize-exp-XXXXX.txt | codex exec --skip-git-repo-check - 2>&1
+   cat /tmp/optimize-exp-XXXXX.txt | codex exec - 2>&1
    ```
 5. Security posture: use the user's selection (ask once per session if not set in spec)
 
@@ -531,19 +531,19 @@ After all experiments in the batch have been measured:
 2. **Identify the best experiment** that passes all gates and improves the primary metric
 
 3. **If best improves on current best: KEEP**
-   - Commit the experiment branch first so the winning diff exists as a real commit before any merge or cherry-pick
-   - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and revert it
-   - Merge the committed experiment branch into the optimization branch
-   - Use the message `optimize(<spec-name>): <hypothesis description>` for the experiment commit
-   - After the merge succeeds, clean up the winner's experiment worktree and branch; the integrated commit on the optimization branch is the durable artifact
+   - Describe the experiment change first so the winning diff exists as a real JJ change before any integration
+   - Include only mutable-scope changes in that change; if no eligible diff remains, treat the experiment as non-improving and revert it
+   - Integrate the described experiment change into the optimization bookmark
+   - Use the description `optimize(<spec-name>): <hypothesis description>` for the experiment change
+   - After integration succeeds, clean up the winner's experiment worktree and bookmark; the integrated change on the optimization bookmark is the durable artifact
    - This is now the new baseline for subsequent batches
 
 4. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
-   - If disjoint: cherry-pick the runner-up onto the new baseline, re-run full measurement
-   - If combined measurement is strictly better: keep the cherry-pick (outcome: `runner_up_kept`), then clean up that runner-up's experiment worktree and branch
-   - Otherwise: revert the cherry-pick, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment worktree and branch
+   - If disjoint: apply the runner-up change onto the new baseline, re-run full measurement
+   - If combined measurement is strictly better: keep the applied change (outcome: `runner_up_kept`), then clean up that runner-up's experiment worktree and bookmark
+   - Otherwise: revert the applied change, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment worktree and bookmark
    - Stop after first failed combination
 
 5. **Handle deferred deps**: experiments that need unapproved dependencies get outcome `deferred_needs_approval`
@@ -648,18 +648,18 @@ Key improvements:
 
 ### 4.3 Preserve and Offer Next Steps
 
-The optimization branch (`optimize/<spec-name>`) is preserved with all commits from kept experiments.
-The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the branch because `.context/` is gitignored.
+The optimization bookmark (`optimize/<spec-name>`) is preserved with all kept experiment changes.
+The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the bookmark because `.context/` is ignored by VCS.
 
 Present post-completion options via the platform question tool:
 
-1. **Run `/ce-code-review`** on the cumulative diff (baseline to final). Load the `ce-code-review` skill on the optimization branch (interactive or `mode:agent`). To land eligible fixes before the next option, apply the mechanical-apply bar below.
+1. **Run `/ce-code-review`** on the cumulative diff (baseline to final). Load the `ce-code-review` skill on the optimization bookmark (interactive or `mode:agent`). To land eligible fixes before the next option, apply the mechanical-apply bar below.
 
-   **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not commit or push from this step — leave the diff on the optimization branch for the Create PR option.
+   **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not describe or push from this step — leave the diff on the optimization bookmark for the Create PR option.
 2. **Run `/ce-compound`** to document the winning strategy as an institutional learning.
-3. **Create PR** from the optimization branch to the default branch.
+3. **Create PR** from the optimization bookmark to the default branch.
 4. **Continue** with more experiments: re-enter Phase 3 with the current state. State re-read first.
-5. **Done** -- leave the optimization branch for manual review.
+5. **Done** -- leave the optimization bookmark for manual review.
 
 ### 4.4 Cleanup
 

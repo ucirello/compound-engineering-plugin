@@ -13,9 +13,9 @@ Usage:
 `get` prints exactly one of:
     HIT\\n<profile-json>     a valid entry exists for the current repo state;
                             the profile JSON follows on subsequent lines
-    MISS\\n<write-path>      git repo, no valid entry — caller derives the
+    MISS\\n<write-path>      JJ workspace, no valid entry — caller derives the
                             profile and calls `put <write-path-or-any-file>`
-    NO-CACHE                no git repo or no writable cache — caller derives
+    NO-CACHE                no JJ workspace or no writable cache — caller derives
                             the profile fresh and skips `put`
 
 `put <file>` reads the profile JSON from <file>, wraps it with a validity
@@ -23,29 +23,29 @@ stamp, and writes it atomically to the computed cache path. Prints the path
 on success, `NO-CACHE` when the repo/cache is unavailable.
 
 Cache path:
-    /tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json
-  root-sha = lexicographically-first `git rev-list --max-parents=0 HEAD`
-             (deterministic even for multi-root histories) — the repo identity,
-             shared across worktrees and clones.
-  head-sha = `git rev-parse HEAD` — the working state.
+    /tmp/compound-engineering/repo-profile/<root-id>/<current-id>.json
+  root-id = `jj log -r 'root()' -T commit_id` — the repository root identity,
+            shared across workspaces and clones.
+  current-id = `jj log -r @- -T commit_id` — the base revision for the working-copy change.
 
 Validity (HIT) requires ALL of:
   - the cache file exists and parses as JSON,
-  - stored `head_sha` == current HEAD,
+  - stored `current_id` == current working-copy base revision,
   - stored `profile_schema_version` == PROFILE_SCHEMA_VERSION,
-  - no profile-input path is dirty or newly-added per `git status --porcelain`
+  - no profile-input path is dirty or newly-added per `jj st`
     (the schema-derived superset in `is_profile_input`, which also catches
     untracked `??` files — a newly-added manifest or AGENTS.md must invalidate).
 
 Cardinal rule: this cache is an optimization, never a correctness dependency.
-Every failure mode (not a git repo, unreadable/malformed cache, no writable
-/tmp, git errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
+Every failure mode (not a JJ workspace, unreadable/malformed cache, no writable
+/tmp, JJ errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
 never serves a profile it cannot prove fresh.
 
 Pure stdlib. No third-party dependencies.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -174,11 +174,11 @@ def is_profile_input(path: str) -> bool:
     return False
 
 
-def git(*args: str) -> "str | None":
-    """Run a git command; return stripped stdout, or None on any failure."""
+def jj(*args: str) -> "str | None":
+    """Run a jj command; return stripped stdout, or None on any failure."""
     try:
         result = subprocess.run(
-            ["git", *args], capture_output=True, text=True, check=False
+            ["jj", *args], capture_output=True, text=True, check=False
         )
     except OSError:
         return None
@@ -187,31 +187,23 @@ def git(*args: str) -> "str | None":
     return result.stdout.strip()
 
 
-def root_sha() -> "str | None":
-    out = git("rev-list", "--max-parents=0", "HEAD")
+def revision_id(revset: str) -> "str | None":
+    out = jj("log", "-r", revset, "--no-graph", "-T", 'commit_id ++ "\\n"')
     if not out:
         return None
-    # Multi-root histories print several SHAs; pick a deterministic one.
-    return sorted(out.split("\n"))[0]
+    return sorted(line for line in out.split("\n") if line)[0]
 
 
 def changed_paths() -> "list[str] | None":
-    """Paths from `git status --porcelain`, or None if it could not run.
+    """Paths from `jj st`, or None if it could not run.
 
-    Includes untracked (`??`) entries so a newly-added profile input is seen.
+    Includes newly-added/untracked entries so a new profile input is seen.
     None signals "could not determine cleanliness" — the caller treats that
     conservatively as a miss rather than serving an unverified profile.
     """
-    # --untracked-files=all lists individual untracked files; without it git
-    # collapses a fully-untracked new directory to a single `?? dir/` entry,
-    # which would hide a newly-added manifest inside it.
-    #
-    # Call subprocess directly rather than via git(): porcelain's status
-    # columns include a significant LEADING space (e.g. " M path"), and
-    # git()'s .strip() would eat it and shift the path slice.
     try:
         result = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=all"],
+            ["jj", "st"],
             capture_output=True,
             text=True,
             check=False,
@@ -222,19 +214,40 @@ def changed_paths() -> "list[str] | None":
         return None
     def clean(token: str) -> str:
         token = token.strip()
-        # git quotes paths containing special characters.
+        # jj may quote paths containing special characters.
         if len(token) >= 2 and token[0] == '"' and token[-1] == '"':
             token = token[1:-1]
         return token
 
     paths: list[str] = []
+    in_changes = False
     for line in result.stdout.split("\n"):
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped:
             continue
-        rest = line[3:]
-        # Rename/copy entries are "old -> new"; BOTH endpoints changed. A
+        if stripped == "The working copy has no changes.":
+            return []
+        if stripped == "Working copy changes:":
+            in_changes = True
+            continue
+        if stripped.startswith("Working copy") or stripped.startswith("Parent commit"):
+            in_changes = False
+            continue
+        if not in_changes or len(line) < 3:
+            continue
+        rest = line[2:].strip()
+        # Rename/copy entries can be "old -> new" or JJ's brace form
+        # "dir/{old => new}"; BOTH endpoints changed. A
         # profile input renamed *away* (e.g. `package.json -> pkg.json`) must
         # still invalidate, so keep the source path, not just the destination.
+        brace = re.match(r"^(.*)\{(.+) => (.+)\}$", rest)
+        if brace:
+            prefix, old, new = brace.groups()
+            for token in (prefix + old, prefix + new):
+                p = clean(token)
+                if p:
+                    paths.append(p)
+            continue
         if " -> " in rest:
             for token in rest.split(" -> ", 1):
                 p = clean(token)
@@ -247,17 +260,17 @@ def changed_paths() -> "list[str] | None":
     return paths
 
 
-def cache_path(root: str, head: str) -> str:
-    return os.path.join(CACHE_ROOT, root, f"{head}.json")
+def cache_path(root: str, current: str) -> str:
+    return os.path.join(CACHE_ROOT, root, f"{current}.json")
 
 
 def resolve_keys() -> "tuple[str, str] | None":
-    """The (root-sha, head-sha) cache key, or None if not a usable git repo."""
-    root = root_sha()
-    head = git("rev-parse", "HEAD")
-    if not root or not head:
+    """The (root-id, current-id) cache key, or None without a usable JJ workspace."""
+    root = revision_id("root()")
+    current = revision_id("@-")
+    if not root or not current:
         return None
-    return root, head
+    return root, current
 
 
 _PROFILE_KEYS = ("stack", "dependencies", "topology", "conventions", "vocabulary")
@@ -277,8 +290,8 @@ def do_get() -> int:
     if keys is None:
         print("NO-CACHE")
         return 0
-    root, head = keys
-    path = cache_path(root, head)
+    root, current = keys
+    path = cache_path(root, current)
 
     def miss() -> int:
         print("MISS")
@@ -304,7 +317,7 @@ def do_get() -> int:
     profile = doc.get("profile") if isinstance(doc, dict) else None
     if (
         not isinstance(doc, dict)
-        or doc.get("head_sha") != head
+        or doc.get("current_id") != current
         or doc.get("profile_schema_version") != PROFILE_SCHEMA_VERSION
         or not is_valid_profile(profile)
     ):
@@ -325,7 +338,7 @@ def do_put(profile_file: str) -> int:
     if keys is None:
         print("NO-CACHE")
         return 0
-    root, head = keys
+    root, current = keys
 
     try:
         with open(profile_file) as f:
@@ -347,10 +360,9 @@ def do_put(profile_file: str) -> int:
         print("NO-CACHE")
         return 0
 
-    # Do not cache a profile derived from a DIRTY tree: it reflects uncommitted
-    # edits to profile inputs, yet it would be stored under the clean HEAD key
-    # and served as a HIT after those edits are reverted (same HEAD, clean tree)
-    # — stale. Only persist a profile that matches the committed HEAD.
+    # Do not cache a profile derived from dirty profile inputs: it reflects
+    # transient workspace edits and could be served later after those edits are
+    # reverted under the same JJ revision key.
     changed = changed_paths()
     if changed is None or any(is_profile_input(p) for p in changed):
         sys.stderr.write(
@@ -361,13 +373,13 @@ def do_put(profile_file: str) -> int:
 
     doc = {
         "profile_schema_version": PROFILE_SCHEMA_VERSION,
-        "root_sha": root,
-        "head_sha": head,
+        "root_id": root,
+        "current_id": current,
         "built_at": datetime.now(timezone.utc).isoformat(),
         "profile": profile,
     }
 
-    path = cache_path(root, head)
+    path = cache_path(root, current)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         # Atomic write: temp file in the same dir + os.replace (atomic on

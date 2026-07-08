@@ -13,7 +13,7 @@ Turn a feature that just shipped into copy-pasteable, user-facing announcement c
 
 After you ship, the messaging shouldn't wait for a separate marketing pass. `ce-promote` figures out what shipped, picks the right channels, and drafts the copy. It is **spiral-agnostic by default**: with nothing installed it draws on a lite layer of editorial and social-media expertise to produce strong channel-specific copy. When the Spiral CLI (see `references/spiral-cli.md`) is present and authed, it uses Spiral so the drafts are voice-matched to your brand — a subtle enhancement, never a requirement.
 
-**This skill drafts only. It never posts, publishes, commits, or opens PRs.** Posting is a human action. The output is always drafts for you to review, edit, and ship yourself.
+**This skill drafts only. It never posts, publishes, describes changes, pushes, or opens PRs.** Posting is a human action. The output is always drafts for you to review, edit, and ship yourself.
 
 ## Usage
 
@@ -30,10 +30,10 @@ If the user gave a free-form description of the feature, use it as the source of
 
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
-- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current branch). The title and body usually state the user-facing value.
-- **The diff** — `git diff main...HEAD --stat` and skim notable changes to ground the claim in what actually changed.
+- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current PR/bookmark). The title and body usually state the user-facing value.
+- **The diff** — `jj diff --from main --to @` and skim notable changes to ground the claim in what actually changed.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
-- **Recent commits** — `git log --oneline -15` for the arc of the change.
+- **Recent changes** — `jj log -r ::@` for the arc of the change.
 
 Then write a 1–3 sentence summary of the **user-facing value** — what a user can now do that they couldn't before, and why they'd care. Describe the outcome, not the implementation. ("You can now export any report to CSV in one click" — not "Added a CsvSerializer and an export endpoint.")
 
@@ -126,7 +126,7 @@ Show every draft as a clean, copy-pasteable block, labeled by channel. For each:
 
 - If Spiral produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app.
 - Offer to revise (tone, length, angle, more variations, another channel).
-- **Do not post, publish, schedule, commit, or open a PR.** End by reminding the user the drafts are theirs to ship.
+- **Do not post, publish, schedule, describe/push a change, or open a PR.** End by reminding the user the drafts are theirs to ship.
 
 ## Examples
 

@@ -26,8 +26,8 @@ describe("ce-commit-push-pr contract", () => {
     expect(content).toContain("closing reference")
     expect(content).toContain("non-closing reference")
     expect(content).toContain("Do not invent a closing keyword")
-    expect(content).toMatch(/git log\s+--format=fuller/)
-    expect(content).toContain("full commit messages")
+    expect(content).toMatch(/jj log\s+-r\s+"<base>@origin\.\.<head>"/)
+    expect(content).toContain("full change descriptions")
     expect(content).toContain("Do not put a non-closing reference next to close/fix/resolve/address/report wording")
     expect(content).toContain("Use the table's non-closing reference labels exactly")
     expect(content).toContain("Non-closing references always get their own sentence or `## Related` block")
@@ -76,7 +76,8 @@ describe("PR concept teaching contract", () => {
     // Declined rewrite must not leave a stray committed-but-unlinked doc
     expect(content).toContain("declined rewrite skips archival")
     // Never force-add an ignored path
-    expect(content).toContain("never `git add -f`")
+    expect(content).toContain("If the path is ignored")
+    expect(content).toContain("skip archival entirely")
   })
 
   test("reference composes the section via Step B2 with base-ref novelty checks", async () => {
@@ -87,7 +88,7 @@ describe("PR concept teaching contract", () => {
     expect(content).toContain("## Step B2: Judge new concepts")
     // Self-detection trap: novelty is judged against the base ref
     expect(content).toContain("never the working tree")
-    expect(content).toMatch(/git grep[^\n]*<base-remote>\/<base>/)
+    expect(content).toMatch(/jj file show -r "<base>"/)
     // Negative constraint keeps absence the common case
     expect(content).toContain("absence is the common case")
     // Section heading and its slot in Step C's assembly order

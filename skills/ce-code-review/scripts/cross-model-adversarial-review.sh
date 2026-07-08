@@ -10,12 +10,12 @@
 # Usage:  cross-model-adversarial-review.sh <peer: codex|claude> <base-ref> <run-dir>
 #   <peer>     codex  -> use Codex (when the host is Claude or Cursor)
 #              claude -> use Claude (when the host is Codex)
-#   <base-ref> the diff base (e.g. a merge-base SHA or branch); the peer reviews
-#              only `git diff <base-ref>` in the current repository
+#   <base-ref> the diff base (e.g. a base revision or bookmark); the peer reviews
+#              only `jj diff --from <base-ref>` in the current repository
 #   <run-dir>  an existing dir; output is written to <run-dir>/adversarial-<peer>.json
 #
 # Self-locates its sibling reference files via BASH_SOURCE (NOT the CWD, which is
-# the user's project on every host), and derives the repo root from git. The agent
+# the user's project on every host), and derives the repo root from JJ. The agent
 # only has to pass the three values above.
 #
 # NON-BLOCKING BY DESIGN: every failure logs to stderr and exits 0 without an output
@@ -46,7 +46,7 @@ SCHEMA="$SKILL_ROOT/references/findings-schema.json"
 [ -f "$SCHEMA" ]  || skip "findings schema not found at $SCHEMA; skipping"
 
 # --- derive repo root (read-only) ------------------------------------------
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || skip "not inside a git repository; skipping"
+REPO_ROOT="$(jj workspace root 2>/dev/null)" || skip "not inside a JJ workspace; skipping"
 
 OUT="$RUN_DIR/adversarial-$PEER.json"
 PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-prompt-XXXXXX")"
@@ -69,12 +69,12 @@ trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 } > "$PROMPT_FILE"
 # Per-peer diff delivery (composed below): codex fetches its own diff inside its
 # read-only sandbox; claude is hard-denied shell (see below), so it gets the diff
-# embedded and needs no git.
+# embedded and needs no shell access.
 if [ "$PEER" = codex ]; then
-  printf '\nRun: git diff %q — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
+  printf '\nRun: jj diff --from %q — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
 else
-  { printf '\nReview ONLY the change below (the output of `git diff %q`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
-    printf '\n=== BEGIN DIFF ===\n'; git -C "$REPO_ROOT" diff "$BASE"; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
+  { printf '\nReview ONLY the change below (the output of `jj diff --from %q`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
+    printf '\n=== BEGIN DIFF ===\n'; jj -R "$REPO_ROOT" diff --from "$BASE"; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
 fi
 
 # --- run the peer: idle-timeout for streaming codex, hard cap for claude ----

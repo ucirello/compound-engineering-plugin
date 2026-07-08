@@ -47,11 +47,11 @@ severity: low
 ---
 `
 
-// Scratch git repo shared by all repo-dependent tests. Layout:
-//   src/real-file.ts committed and reachable from both HEAD and the
-//   simulated origin/main; sharedSha = that commit; localOnlySha = a later
-//   commit reachable from HEAD only; upstreamOnlySha = a commit only the
-//   simulated origin/main can reach.
+// Scratch JJ repo shared by all repo-dependent tests. Layout:
+//   src/real-file.ts described and reachable from both @ and the simulated
+//   main@origin; sharedSha = that provider commit ID; localOnlySha = a later
+//   revision reachable from @ only; upstreamOnlySha = a revision only the
+//   simulated main@origin can reach.
 let repo: string
 let sharedSha: string
 let localOnlySha: string
@@ -59,9 +59,9 @@ let upstreamOnlySha: string
 
 beforeAll(() => {
   repo = mkdtempSync(path.join(tmpdir(), "doc-claims-repo-"))
-  sh(repo, "git", ["init", "-b", "main"])
-  sh(repo, "git", ["config", "user.email", "test@example.com"])
-  sh(repo, "git", ["config", "user.name", "Test"])
+  sh(repo, "jj", ["git", "init", "--colocate"])
+  sh(repo, "jj", ["config", "set", "--repo", "user.email", "test@example.com"])
+  sh(repo, "jj", ["config", "set", "--repo", "user.name", "Test"])
   mkdirSync(path.join(repo, "src"), { recursive: true })
   mkdirSync(path.join(repo, "docs/solutions/workflow"), { recursive: true })
   mkdirSync(path.join(repo, "docs/solutions/best-practices"), {
@@ -76,24 +76,24 @@ beforeAll(() => {
     path.join(repo, "docs/solutions/workflow/existing-doc.md"),
     "# existing\n",
   )
-  sh(repo, "git", ["add", "-A"])
-  sh(repo, "git", ["commit", "-m", "base"])
-  sharedSha = sh(repo, "git", ["rev-parse", "HEAD"])
+  sh(repo, "jj", ["describe", "-m", "base"])
+  sh(repo, "jj", ["bookmark", "set", "main", "-r", "@"])
+  sharedSha = sh(repo, "jj", ["log", "--no-graph", "-r", "@", "-T", "commit_id"])
 
-  // upstream-only commit: branch from base, commit, point origin/main at it
-  sh(repo, "git", ["checkout", "-b", "upstream-work"])
+  // upstream-only revision: branch from base, describe, point origin/main at it
+  sh(repo, "jj", ["new", sharedSha])
   writeFileSync(path.join(repo, "src/upstream-only.ts"), "export const u = 1\n")
-  sh(repo, "git", ["add", "-A"])
-  sh(repo, "git", ["commit", "-m", "upstream only"])
-  upstreamOnlySha = sh(repo, "git", ["rev-parse", "HEAD"])
+  sh(repo, "jj", ["describe", "-m", "upstream only"])
+  upstreamOnlySha = sh(repo, "jj", ["log", "--no-graph", "-r", "@", "-T", "commit_id"])
   sh(repo, "git", ["update-ref", "refs/remotes/origin/main", upstreamOnlySha])
-  sh(repo, "git", ["checkout", "main"])
+  sh(repo, "jj", ["git", "import"])
 
-  // local-only commit: on main, after origin/main was pinned
+  // local-only revision: sibling of upstream-only, after origin/main was pinned
+  sh(repo, "jj", ["new", sharedSha])
   writeFileSync(path.join(repo, "src/local-only.ts"), "export const l = 1\n")
-  sh(repo, "git", ["add", "-A"])
-  sh(repo, "git", ["commit", "-m", "local only"])
-  localOnlySha = sh(repo, "git", ["rev-parse", "HEAD"])
+  sh(repo, "jj", ["describe", "-m", "local only"])
+  localOnlySha = sh(repo, "jj", ["log", "--no-graph", "-r", "@", "-T", "commit_id"])
+  sh(repo, "jj", ["new", localOnlySha])
 })
 
 let docCounter = 0
@@ -142,14 +142,14 @@ describe("validate-doc-claims script", () => {
         expect(result.stdout).toContain("not found")
       })
 
-      test("classifies a path that only exists upstream as stale-checkout", () => {
+      test("classifies a path that only exists upstream as stale-workspace", () => {
         const docPath = writeRepoDoc(
           "See `src/upstream-only.ts` for the new helper.\n",
         )
         const result = runValidator(skillDir, docPath)
         expect(result.code).toBe(1)
         expect(result.stdout).toContain("FLAG path `src/upstream-only.ts`")
-        expect(result.stdout).toContain("exists at origin/main")
+        expect(result.stdout).toContain("exists at main@origin")
       })
 
       test("skips slash-delimited identifiers that are not path-shaped", () => {
@@ -191,17 +191,17 @@ describe("validate-doc-claims script", () => {
         expect(result.stdout).toContain("does not resolve")
       })
 
-      test("flags a HEAD-only SHA as rewritable on merge", () => {
+      test("flags a current-only SHA as rewritable on publish", () => {
         const docPath = writeRepoDoc(
           `Landed in ${localOnlySha.slice(0, 12)} on this branch.\n`,
         )
         const result = runValidator(skillDir, docPath)
         expect(result.code).toBe(1)
         expect(result.stdout).toContain(`FLAG sha ${localOnlySha.slice(0, 12)}`)
-        expect(result.stdout).toContain("local-only commit")
+        expect(result.stdout).toContain("local-only revision")
       })
 
-      test("flags an upstream-only SHA as predating-the-merge (the stale-branch bug)", () => {
+      test("flags an upstream-only SHA as predating-the-merge (the stale-workspace bug)", () => {
         const docPath = writeRepoDoc(
           `Fixed by ${upstreamOnlySha.slice(0, 12)} which merged upstream.\n`,
         )
@@ -281,21 +281,21 @@ describe("validate-doc-claims script", () => {
       })
 
       test("reports staleness INFO when HEAD is behind the upstream ref", () => {
-        // HEAD (main) does not contain upstream-only work, so rev-list
-        // HEAD..origin/main is non-zero in the scratch repo.
+        // @ does not contain upstream-only work, so @..main@origin is
+        // non-empty in the scratch repo.
         const docPath = writeRepoDoc("Nothing cited here.\n")
         const result = runValidator(skillDir, docPath)
-        expect(result.stdout).toContain("INFO: worktree is")
-        expect(result.stdout).toContain("behind origin/main")
+        expect(result.stdout).toContain("INFO: workspace is")
+        expect(result.stdout).toContain("behind main@origin")
       })
 
-      test("still checks scaffold and links outside a git repository", () => {
+      test("still checks scaffold and links outside a JJ workspace", () => {
         const docPath = writeBareDoc(
           "This continues Learning 2 — see [gone](./gone.md).\n",
         )
         const result = runValidator(skillDir, docPath)
         expect(result.code).toBe(1)
-        expect(result.stdout).toContain("not a git repository")
+        expect(result.stdout).toContain("not a JJ workspace")
         expect(result.stdout).toContain("FLAG scaffold")
         expect(result.stdout).toContain("FLAG link (./gone.md)")
       })

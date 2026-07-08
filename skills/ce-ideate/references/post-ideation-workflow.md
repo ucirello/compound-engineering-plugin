@@ -89,8 +89,8 @@ Offer four options (self-contained labels with the distinguishing word front-loa
 
 1. *(when `OUTPUT_FORMAT=html`)* **Open in browser** — open the saved HTML deliverable (re-open if it was already opened).
    *(when `OUTPUT_FORMAT=md`)* **Publish to Proof** — publish the saved markdown to Proof and get a shareable link; one-way, the local file stays canonical.
-2. **Brainstorm one idea with `ce-brainstorm`** — commit a chosen idea to a requirements-only unified plan under `docs/plans/`; leaves ce-ideate. Asks which idea first.
-3. **Discuss or refine the ideas first** — stay here to think across the set before committing: adjust or interrogate one idea, compare several, or combine/merge them. Asks what you want to work on.
+2. **Brainstorm one idea with `ce-brainstorm`** — choose an idea to turn into a requirements-only unified plan under `docs/plans/`; leaves ce-ideate. Asks which idea first.
+3. **Discuss or refine the ideas first** — stay here to think across the set before choosing: adjust or interrogate one idea, compare several, or combine/merge them. Asks what you want to work on.
 4. **Done — keep the file and stop.**
 
 **Adjacent nudge (prose, not a slot):** "Don't want it kept? Say 'discard' and the agent deletes the file." Handled via free text (see §5.5); it is create-only and never deletes a resumed or pre-existing doc.
@@ -121,7 +121,7 @@ If the user already named what they want to work on inline (e.g. "brainstorm the
 
 ### 5.3 Discuss or Refine the Ideas First
 
-This stays in ce-ideate — no skill handoff. It is the "think across the set before committing" step, and it is a normal, expected outcome of ideation: seeing several strong candidates and wanting to deliberate is more common than instantly committing one. The orchestrator still holds the full grounding and generation context, so it can reason across every survivor — this is where that context pays off. The work here is either **single-idea** (sharpen or interrogate one) or **cross-idea** (compare, combine, or merge several); do not force the user to name a single idea before they can engage.
+This stays in ce-ideate — no skill handoff. It is the "think across the set before choosing" step, and it is a normal, expected outcome of ideation: seeing several strong candidates and wanting to deliberate is more common than instantly choosing one. The orchestrator still holds the full grounding and generation context, so it can reason across every survivor — this is where that context pays off. The work here is either **single-idea** (sharpen or interrogate one) or **cross-idea** (compare, combine, or merge several); do not force the user to name a single idea before they can engage.
 
 1. **Establish what the user wants to work on and how.** Infer from their phrasing when given; otherwise ask one open question ("What do you want to work on?") rather than assuming a single idea. The scope may be one idea, a subset, or the whole set.
 2. **Route by intent:**
@@ -136,8 +136,8 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a git repo:** offer to commit only the ideation doc (do not create a branch, do not push; if the user declines, leave it uncommitted).
-- **Temp-area or non-repo file:** skip the commit offer.
+- **Inside a JJ repo:** offer to describe only the ideation-doc change (do not create a bookmark, do not push; if the user declines, leave it undescribed).
+- **Temp-area or non-repo file:** skip the change-description offer.
 
 Then narrate the path and end the session — do not return to the menu.
 

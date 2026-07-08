@@ -23,7 +23,7 @@ Create a single, well-crafted JJ change from the current working-copy changes.
 !`jj bookmark list --revisions @ --tracked`
 
 **Recent JJ changes:**
-!`jj log --limit 10 --no-graph`
+!`jj log -r ::@ --limit 10 --no-graph`
 
 **Remote default bookmark:**
 !`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo '__DEFAULT_BOOKMARK_UNRESOLVED__'`
@@ -35,7 +35,7 @@ Create a single, well-crafted JJ change from the current working-copy changes.
 Run this single command to gather all context:
 
 ```bash
-printf '=== STATUS ===\n'; jj st; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj bookmark list --revisions @ --tracked; printf '\n=== LOG ===\n'; jj log --limit 10 --no-graph; printf '\n=== DEFAULT_BOOKMARK ===\n'; gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo '__DEFAULT_BOOKMARK_UNRESOLVED__'
+printf '=== STATUS ===\n'; jj st; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj bookmark list --revisions @ --tracked; printf '\n=== LOG ===\n'; jj log -r ::@ --limit 10 --no-graph; printf '\n=== DEFAULT_BOOKMARK ===\n'; gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo '__DEFAULT_BOOKMARK_UNRESOLVED__'
 ```
 
 ---

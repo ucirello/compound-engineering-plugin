@@ -51,7 +51,7 @@ For a friendly overview of what this skill is for, when to use hard metrics vs L
 
 **CRITICAL: The experiment log on disk is the single source of truth. The conversation context is NOT durable storage. Results that exist only in the conversation WILL be lost.**
 
-The files under `.context/compound-engineering/ce-optimize/<spec-name>/` are local scratch state. They are ignored by VCS, so they survive local resumes on the same machine but are not preserved by described changes, bookmarks, or pushes unless the user exports them separately.
+The files under `.context/compound-engineering/ce-optimize/<spec-name>/` are local scratch state. They are ignored by source control, so they survive local resumes on the same machine but are not preserved by described JJ changes, bookmarks, or pushes unless the user exports them separately.
 
 Every piece of state that matters MUST live on disk, not in the agent's memory.
 
@@ -544,7 +544,7 @@ After all experiments in the batch have been measured:
 4. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
-   - If disjoint: duplicate/rebase the runner-up JJ change onto the new baseline, re-run full measurement
+   - If disjoint: duplicate the runner-up JJ change, `jj rebase` it onto the new baseline, and re-run full measurement
     - If combined measurement is strictly better: keep the applied runner-up change (outcome: `runner_up_kept`), then clean up that runner-up's experiment workspace and bookmark
     - Otherwise: revert the applied runner-up change, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment workspace and bookmark
    - Stop after first failed combination
@@ -652,7 +652,7 @@ Key improvements:
 ### 4.3 Preserve and Offer Next Steps
 
 The optimization bookmark (`optimize/<spec-name>`) is preserved with all JJ changes from kept experiments.
-The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the bookmark because `.context/` is VCS-ignored.
+The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the bookmark because `.context/` is source-control ignored.
 
 Present post-completion options via the platform question tool:
 

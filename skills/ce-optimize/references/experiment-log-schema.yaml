@@ -147,8 +147,8 @@ experiment_entry:
         - error                   # measurement command crashed, timed out, or produced malformed output
         - deferred_needs_approval # experiment needs an unapproved dependency -> set aside for batch approval
         - timeout                 # measurement command exceeded timeout_seconds
-        - runner_up_kept          # file-disjoint runner-up that was duplicated/rebased and re-measured successfully
-        - runner_up_reverted      # file-disjoint runner-up that was duplicated/rebased but combined measurement was not better
+        - runner_up_kept          # file-disjoint runner-up that was duplicated, jj-rebased, and re-measured successfully
+        - runner_up_reverted      # file-disjoint runner-up that was duplicated and jj-rebased but combined measurement was not better
       description: >
         Load-bearing state: the loop branches on this value.
         'measured' is the only non-terminal state and exists so CP-3 can persist
@@ -231,7 +231,7 @@ experiment_entry:
 #           -> persist raw metrics   -> outcome: measured
 #           -> judge evaluated (if type: judge)
 #             -> best in batch, improved  -> outcome: kept
-#             -> runner-up, file-disjoint -> duplicate/rebase + re-measure
+#             -> runner-up, file-disjoint -> duplicate + jj rebase + re-measure
 #               -> combined better        -> outcome: runner_up_kept
 #               -> combined not better    -> outcome: runner_up_reverted
 #             -> not improved             -> outcome: reverted

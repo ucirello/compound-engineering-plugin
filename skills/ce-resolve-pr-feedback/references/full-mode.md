@@ -143,8 +143,9 @@ jj describe -m "Address PR review feedback (#PR_NUMBER)
 - [list changes from fixer summaries]"
 ```
 
-2. Push the bookmark that points at the described change:
+2. Identify and push the bookmark that points at the described change:
 ```bash
+jj bookmark list
 jj git push --bookmark <bookmark>
 ```
 

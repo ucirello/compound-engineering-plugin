@@ -34,6 +34,20 @@ This also requires a JJ workspace with changes to test.
 
 ### 2. Determine Test Scope
 
+Resolve the default/trunk bookmark once; do not hard-code `main`, because some repos use `master` or another default bookmark.
+
+```bash
+DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)
+TRUNK=""
+for cand in "$DEFAULT" main master; do
+  [ -n "$cand" ] || continue
+  if jj log -r "$cand" --no-graph -T 'change_id' >/dev/null 2>&1; then
+    TRUNK=$cand; break
+  fi
+done
+TRUNK=${TRUNK:-main}
+```
+
 **If PR number provided:**
 ```bash
 gh pr view [number] --json files -q '.files[].path'
@@ -41,12 +55,12 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-jj diff --from main --to @ --name-only
+jj diff --from "$TRUNK" --to @ --name-only
 ```
 
 **If bookmark name provided:**
 ```bash
-jj diff --from main --to [bookmark] --name-only
+jj diff --from "$TRUNK" --to [bookmark] --name-only
 ```
 
 ### 3. Map Changed Files to Routes

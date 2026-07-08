@@ -27,7 +27,7 @@ description: Describe JJ changes, push a bookmark, and open a PR. Use when asked
 !`jj bookmark list --revisions @ --tracked`
 
 **Recent JJ changes:**
-!`jj log --limit 10 --no-graph`
+!`jj log -r ::@ --limit 10 --no-graph`
 
 **Remote default bookmark:**
 !`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'`
@@ -38,7 +38,7 @@ description: Describe JJ changes, push a bookmark, and open a PR. Use when asked
 ### Context fallback
 
 ```bash
-printf '=== STATUS ===\n'; jj st; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj bookmark list --revisions @ --tracked; printf '\n=== LOG ===\n'; jj log --limit 10 --no-graph; printf '\n=== DEFAULT_BOOKMARK ===\n'; gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'; printf '\n=== PR_CHECK ===\n'; gh pr view --json url,title,body,state 2>/dev/null || echo 'NO_OPEN_PR'
+printf '=== STATUS ===\n'; jj st; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARK ===\n'; jj bookmark list --revisions @ --tracked; printf '\n=== LOG ===\n'; jj log -r ::@ --limit 10 --no-graph; printf '\n=== DEFAULT_BOOKMARK ===\n'; gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo 'DEFAULT_BOOKMARK_UNRESOLVED'; printf '\n=== PR_CHECK ===\n'; gh pr view --json url,title,body,state 2>/dev/null || echo 'NO_OPEN_PR'
 ```
 
 ---

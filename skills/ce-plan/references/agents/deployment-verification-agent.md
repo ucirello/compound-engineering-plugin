@@ -85,7 +85,7 @@ SELECT status, COUNT(*) FROM records GROUP BY status;
 - [ ] No - irreversible change (document why this is acceptable)
 
 **Rollback Steps:**
-1. Deploy previous commit
+1. Deploy previous change
 2. Run rollback migration (if applicable)
 3. Restore data from backup (if needed)
 4. Verify with post-rollback queries
@@ -119,11 +119,11 @@ Produce a complete Go/No-Go checklist that an engineer can literally execute:
 ## 🔴 Pre-Deploy (Required)
 - [ ] Run baseline SQL queries
 - [ ] Save expected values
-- [ ] Verify staging test passed
+- [ ] Verify preprod test passed
 - [ ] Confirm rollback plan reviewed
 
 ## 🟡 Deploy Steps
-1. [ ] Deploy commit [sha]
+1. [ ] Deploy change [id]
 2. [ ] Run migration
 3. [ ] Enable feature flag
 
@@ -140,7 +140,7 @@ Produce a complete Go/No-Go checklist that an engineer can literally execute:
 
 ## 🔄 Rollback (If Needed)
 1. [ ] Disable feature flag
-2. [ ] Deploy rollback commit
+2. [ ] Deploy rollback change
 3. [ ] Run data restoration
 4. [ ] Verify with post-rollback queries
 ```

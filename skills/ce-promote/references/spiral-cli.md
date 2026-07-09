@@ -26,7 +26,7 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 Read the project config (resolve the repo root, never CWD):
 
 ```bash
-cat "$(git rev-parse --show-toplevel 2>/dev/null)/.compound-engineering/config.local.yaml" 2>/dev/null || echo '__NO_CONFIG__'
+cat "$(jj workspace root 2>/dev/null)/.compound-engineering/config.local.yaml" 2>/dev/null || echo '__NO_CONFIG__'
 ```
 
 If the contents have an **uncommented** top-level `ce_promote_spiral_optout: true` line, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template ships a `# ce_promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
@@ -65,11 +65,11 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 Resolve the repo root, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.compound-engineering/config.local.yaml`, using the native file-write/edit tool:
 
 - **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it (and its `.compound-engineering/` directory) with the key, AND make sure the machine-local config won't be committed. Check whether the root-relative path `<root>/.compound-engineering/config.local.yaml` is already ignored (`git check-ignore -q <path>`); if it isn't, append `.compound-engineering/*.local.yaml` to git's **local exclude file** — resolve that file's path with `git rev-parse --git-path info/exclude` (this is correct in worktrees too, where `.git` is a *file* and `info/exclude` lives in the common git dir; do **not** hardcode `<root>/.git/info/exclude`). Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally commit machine-local opt-out state.
+- **File absent:** create it (and its `.compound-engineering/` directory) with the key, AND make sure the machine-local config won't be described/published. Check whether the root-relative path `<root>/.compound-engineering/config.local.yaml` is already ignored (`jj file list .compound-engineering/config.local.yaml` should not list it); if it isn't ignored and a local exclude file is available, append `.compound-engineering/*.local.yaml` there. Use the local exclude, **not** the shared ignore file: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared ignore entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally publish machine-local opt-out state.
 
 If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.compound-engineering/config.local.yaml`, kept out of git). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
+After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.compound-engineering/config.local.yaml`, kept out of version control). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
 
 ## Generate
 

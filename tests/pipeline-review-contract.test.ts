@@ -311,9 +311,8 @@ describe("ce-plan review contract", () => {
   test("handoff options expose deeper-review opt-in alongside ce-work", async () => {
     const content = await readRepoFile("skills/ce-plan/references/plan-handoff.md")
 
-    // Both executors are offered; ce-work is always the recommended default (it is the
-    // correctly-layered entry point that reaches goal/workflow engines itself), while goal
-    // mode is the opt-in preference for driving the work through the harness's goal loop.
+    // Both executors are offered; ce-work is recommended because it owns engine
+    // selection and can hand off to goal mode when appropriate.
     expect(content).toContain("**Start `/ce-work`** - Build and ship the plan in this session")
     expect(content).toContain("**Run it as a `/goal`**")
     expect(content).toMatch(/`ce-work` \(option 1\) always carries \*\(recommended\)\*/i)

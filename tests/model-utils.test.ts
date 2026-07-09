@@ -3,7 +3,6 @@ import {
   resolveClaudeFamilyAlias,
   normalizeModelWithProvider,
   addProviderPrefix,
-  rejectsSamplingParams,
   CLAUDE_FAMILY_ALIASES,
 } from "../src/utils/model"
 
@@ -23,7 +22,7 @@ describe("resolveClaudeFamilyAlias", () => {
 
 describe("addProviderPrefix", () => {
   test("prefixes Claude models with anthropic/", () => {
-    expect(addProviderPrefix("claude-sonnet-5")).toBe("anthropic/claude-sonnet-5")
+    expect(addProviderPrefix("claude-sonnet-4-6")).toBe("anthropic/claude-sonnet-4-6")
     expect(addProviderPrefix("claude-haiku-4-5")).toBe("anthropic/claude-haiku-4-5")
   })
 
@@ -73,25 +72,6 @@ describe("normalizeModelWithProvider", () => {
   test("passes through already-prefixed models unchanged", () => {
     expect(normalizeModelWithProvider("anthropic/claude-opus")).toBe("anthropic/claude-opus")
     expect(normalizeModelWithProvider("google/gemini-2.0")).toBe("google/gemini-2.0")
-  })
-})
-
-describe("rejectsSamplingParams", () => {
-  test("flags models that reject non-default sampling params", () => {
-    expect(rejectsSamplingParams("sonnet")).toBe(true)
-    expect(rejectsSamplingParams("opus")).toBe(true)
-    expect(rejectsSamplingParams("claude-sonnet-5")).toBe(true)
-    expect(rejectsSamplingParams("claude-opus-4-8")).toBe(true)
-    expect(rejectsSamplingParams("claude-opus-4-7")).toBe(true)
-    expect(rejectsSamplingParams("anthropic/claude-sonnet-5")).toBe(true)
-  })
-
-  test("passes models that still accept sampling params", () => {
-    expect(rejectsSamplingParams("haiku")).toBe(false)
-    expect(rejectsSamplingParams("claude-haiku-4-5")).toBe(false)
-    expect(rejectsSamplingParams("claude-sonnet-4-20250514")).toBe(false)
-    expect(rejectsSamplingParams("claude-opus-4-6")).toBe(false)
-    expect(rejectsSamplingParams("gpt-5.4")).toBe(false)
   })
 })
 

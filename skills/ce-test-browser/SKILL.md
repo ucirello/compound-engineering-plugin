@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current change/bookmark or PR.
+argument-hint: "[PR number, bookmark name, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch changes using the `agent-browser` CLI.
+Run end-to-end browser tests on pages affected by a PR or bookmark/change changes using the `agent-browser` CLI.
 
 ## Modes
 
@@ -30,7 +30,7 @@ command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 
 If not installed, tell the user: "`agent-browser` is not installed. Run `/ce-setup` for the current install command, then install agent-browser and retry." Then stop — this skill cannot function without it.
 
-This also requires a git repository with changes to test.
+This also requires a JJ repository with changes to test.
 
 ### 2. Determine Test Scope
 
@@ -41,12 +41,12 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj diff --from main@origin --to @ --name-only
 ```
 
-**If branch name provided:**
+**If bookmark name provided:**
 ```bash
-git diff --name-only main...[branch]
+jj diff --from main@origin --to [bookmark] --name-only
 ```
 
 ### 3. Map Changed Files to Routes
@@ -221,7 +221,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [bookmark name]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -249,13 +249,13 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test current change/bookmark changes (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test specific branch
+# Test specific bookmark
 /ce-test-browser feature/new-dashboard
 
 # Test on a specific port

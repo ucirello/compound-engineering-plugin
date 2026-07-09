@@ -231,7 +231,7 @@ experiment_entry:
 #           -> persist raw metrics   -> outcome: measured
 #           -> judge evaluated (if type: judge)
 #             -> best in batch, improved  -> outcome: kept
-#             -> runner-up, file-disjoint -> cherry-pick + re-measure
+#             -> runner-up, file-disjoint -> rebase onto new baseline + re-measure
 #               -> combined better        -> outcome: runner_up_kept
 #               -> combined not better    -> outcome: runner_up_reverted
 #             -> not improved             -> outcome: reverted

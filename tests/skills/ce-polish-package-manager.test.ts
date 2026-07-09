@@ -177,15 +177,14 @@ describe("resolve-package-manager.sh", () => {
     expect(result.stdout.trim()).toBe("__NO_PACKAGE_JSON__")
   })
 
-  // --- Error cases ---
-
-  test("outside a JJ workspace AND no positional arg -> current directory fallback", async () => {
-    // Create a plain directory (not a JJ workspace)
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ce-polish-pkgmgr-nogit-"))
+  test("outside a JJ workspace and no positional arg -> CWD fallback", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ce-polish-pkgmgr-nojj-"))
     const result = await runCommand(["bash", resolvePackageManager], dir)
     expect(result.exitCode).toBe(0)
     expect(result.stdout.trim()).toBe("__NO_PACKAGE_JSON__")
   })
+
+  // --- Error cases ---
 
   test("positional path doesn't exist -> stderr contains ERROR:, exit 1", async () => {
     const repo = await initRepo()

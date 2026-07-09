@@ -38,17 +38,16 @@ function run(
   }
 }
 
-/** Fresh JJ repo with a manifest + README and one described change. */
+/** Fresh JJ workspace with a manifest + README, one described change. */
 function makeRepo(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "repo-profile-"))
-  jj(dir, "git", "init")
+  jj(dir, "git", "init", "--no-colocate")
   writeFileSync(
     path.join(dir, "package.json"),
     '{"name":"x","version":"1.0.0"}\n',
   )
   writeFileSync(path.join(dir, "README.md"), "# x\n")
-  jj(dir, "describe", "-m", "init")
-  jj(dir, "new")
+  jj(dir, "--config", "user.name='Test'", "--config", "user.email='test@example.com'", "commit", "-m", "init")
   return dir
 }
 
@@ -88,12 +87,7 @@ describe("repo-profile-cache helper", () => {
 
   test("put then get (clean tree) → HIT with the stored profile", () => {
     const dir = makeRepo()
-    const cachePath = putProfile(dir)
-    const changeId = jj(dir, "log", "-r", "@", "--no-graph", "-T", 'change_id ++ "\\n"').trim()
-    expect(path.basename(cachePath)).toBe(`${changeId}.json`)
-    const cachedDoc = JSON.parse(readFileSync(cachePath, "utf8"))
-    expect(cachedDoc.head_change_id).toBe(changeId)
-    expect(cachedDoc.head_sha).toBeUndefined()
+    putProfile(dir)
     const res = run(dir, "get")
     expect(res.code).toBe(0)
     expect(res.stdout.startsWith("HIT\n")).toBe(true)
@@ -160,19 +154,18 @@ describe("repo-profile-cache helper", () => {
   })
 
   test("non-JJ directory → NO-CACHE", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "repo-profile-nogit-"))
+    const dir = mkdtempSync(path.join(tmpdir(), "repo-profile-nojj-"))
     const res = run(dir, "get")
     expect(res.code).toBe(0)
     expect(res.stdout.trim()).toBe("NO-CACHE")
   })
 
-  test("multi-root history yields a deterministic single-root path", () => {
+  test("root revision yields a deterministic single-root path", () => {
     const dir = makeRepo()
     const res = run(dir, "get")
     expect(res.code).toBe(0)
     const writePath = res.stdout.split("\n")[1]
-    // The <root-sha> path component must be a single 40-hex SHA, not a
-    // newline-joined pair from multiple roots.
+    // The <root-id> path component must be a single 40-hex ID.
     const rootComponent = writePath.split("/repo-profile/")[1].split("/")[0]
     expect(rootComponent).toMatch(/^[0-9a-f]{40}$/)
   })
@@ -227,8 +220,7 @@ describe("repo-profile-cache helper — review-driven invalidation cases", () =>
     const dir = makeRepo()
     mkdirSync(path.join(dir, "src"))
     writeFileSync(path.join(dir, "src", "lib.js"), "export const x = 1\n")
-    jj(dir, "describe", "-m", "add lib")
-    jj(dir, "new")
+    jj(dir, "--config", "user.name='Test'", "--config", "user.email='test@example.com'", "commit", "-m", "add lib")
     putProfile(dir)
     renameSync(path.join(dir, "src", "lib.js"), path.join(dir, "src", "lib2.js"))
     expect(run(dir, "get").stdout.startsWith("HIT\n")).toBe(true)

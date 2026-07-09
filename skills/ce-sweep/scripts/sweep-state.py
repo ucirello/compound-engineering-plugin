@@ -420,7 +420,7 @@ def _load_owned_state(args):
     return data, None
 
 
-def _commit_owned(args, data):
+def _persist_owned(args, data):
     """Shared tail for lease-gated mutations: re-stamp the lease, persist."""
     restamp_lease(data, args.writer, resolve_now(args))
     write_state(args.state, data)
@@ -458,7 +458,7 @@ def cmd_upsert_item(args):
             merged.pop(f, None)
 
     items[key] = merged
-    return _commit_owned(args, data)
+    return _persist_owned(args, data)
 
 
 def cmd_cursor_get(args):
@@ -487,7 +487,7 @@ def cmd_cursor_advance(args):
     if current is not None and _cursor_lt(str(args.to), str(current)):
         return emit("REFUSED")
     entry["cursor"] = args.to
-    return _commit_owned(args, data)
+    return _persist_owned(args, data)
 
 
 def _cursor_lt(a, b):

@@ -114,7 +114,7 @@ describe("html-rendering.md reference content invariants", () => {
     expect(/Active-recall/i.test(REFERENCE)).toBe(true)
   })
 
-  test("DESIGN.md discovery paths in workspace-root order", () => {
+  test("DESIGN.md discovery paths in worktree-root order", () => {
     expect(/DESIGN\.md discovery/i.test(REFERENCE)).toBe(true)
     expect(/workspace root|jj workspace root/i.test(REFERENCE)).toBe(true)
     expect(/docs\/DESIGN\.md/.test(REFERENCE)).toBe(true)
@@ -232,12 +232,8 @@ describe("html-rendering.md reference content invariants", () => {
       "Reference must name `jj git remote list` as the way to resolve the repo's GitHub URL at compose time.",
     ).toBe(true)
     expect(
-      /default ref[\s\S]{0,120}default bookmark[\s\S]{0,120}`main`/.test(REFERENCE),
-      "Reference must resolve the tree ref from GitHub default ref, JJ default bookmark, then main fallback.",
-    ).toBe(true)
-    expect(
-      /blob\/<tree-ref>/.test(REFERENCE),
-      "Reference must show the `<repo-url>/blob/<tree-ref>/<path>` URL shape for code/doc paths.",
+      /blob\/main/.test(REFERENCE),
+      "Reference must show the `<repo-url>/blob/main/<path>` URL shape for code/doc paths.",
     ).toBe(true)
     expect(
       /Do not invent URLs|broken or guessed link is worse than no link/i.test(REFERENCE),

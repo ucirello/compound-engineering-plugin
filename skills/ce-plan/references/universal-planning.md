@@ -11,7 +11,7 @@ The detection stub in SKILL.md routes here for anything that isn't clearly softw
 - **Pipeline mode?** If invoked from LFG or any `disable-model-invocation` context: output "This is a non-software task. The LFG pipeline requires ce-work, which only supports software tasks. Use `/ce-plan` directly for non-software planning." and stop.
 - **Unified artifact guard.** Universal-planning outputs are not software implementation plans. Do not label them `artifact_contract: ce-unified-plan/v1` and do not produce a `/goal` launch block unless the deliverable itself is a complete software implementation plan with Product Contract, Planning Contract, Implementation Units, Verification Contract, and Definition of Done.
 
-Once past these checks, stay with the task — do not bail because it looks like a "lookup" or "research question." The user invoked the planning tool on purpose. Then choose the disposition below.
+Once past these checks, commit to the task — do not bail because it looks like a "lookup" or "research question." The user invoked the planning tool on purpose. Then choose the disposition below.
 
 ---
 

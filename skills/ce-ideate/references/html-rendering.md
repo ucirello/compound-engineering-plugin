@@ -109,8 +109,8 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to a primary workspace. Users
-working from a JJ workspace who want HTML defaults can add DESIGN.md to the
+Workspace-root only — do not fall through to another local copy. Users
+working from a workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
@@ -233,22 +233,16 @@ Resolve the repo's GitHub URL once at compose time:
 jj git remote list
 ```
 
-Resolve the target tree ref from the GitHub default ref when available;
-otherwise use the workspace's default bookmark if known, then `main` as a last
-resort.
-
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/<tree-ref>/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
   link only when the workspace URL is established in loaded context
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
-  session or in the project's active instructions); otherwise leave as text.
-
-Prefer the `upstream` GitHub URL when present, otherwise `origin`.
+  session or in `AGENTS.md`); otherwise leave as text.
 
 **Do not invent URLs.** If the selected remote isn't a GitHub URL (GitLab,
 Bitbucket, internal host) and the equivalent main-tree URL pattern

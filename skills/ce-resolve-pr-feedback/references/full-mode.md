@@ -6,7 +6,7 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from a bookmark pointing at `@`:
+If no PR number was provided, detect from the current bookmark/change:
 ```bash
 gh pr view --json number -q .number
 ```
@@ -65,7 +65,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj log`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -134,7 +134,7 @@ Record the validation outcome (command run, pass/fail counts, any pre-existing f
 
 ## 6. Describe and Push
 
-1. Confirm only files reported by fixers are included, then describe the current JJ change with a description referencing the PR:
+1. Verify `jj st` contains only files reported by fixers, then describe the current working-copy change with a message referencing the PR:
 
 ```bash
 jj st
@@ -143,10 +143,9 @@ jj describe -m "Address PR review feedback (#PR_NUMBER)
 - [list changes from fixer summaries]"
 ```
 
-2. Identify and push the bookmark that points at the described change:
+2. Push to remote:
 ```bash
-jj bookmark list
-jj git push --bookmark <bookmark>
+jj git push
 ```
 
 ## 7. Reply and Resolve
@@ -251,7 +250,7 @@ Replied (count): [what questions were answered]
 Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm cited]
 
-Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were described]
+Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were described/pushed]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries a `decision_context` (composed in step 3, or by a fixer's escalation): what the reviewer said, what was investigated, why it needs a decision, concrete options with tradeoffs, and a lean if any.

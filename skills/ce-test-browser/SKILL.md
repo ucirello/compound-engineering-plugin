@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current working-copy change, bookmark, or PR.
+description: Run browser tests for pages affected by the current change/bookmark or PR.
 argument-hint: "[PR number, bookmark name, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or bookmark changes using the `agent-browser` CLI.
+Run end-to-end browser tests on pages affected by a PR or bookmark/change changes using the `agent-browser` CLI.
 
 ## Modes
 
@@ -30,23 +30,9 @@ command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 
 If not installed, tell the user: "`agent-browser` is not installed. Run `/ce-setup` for the current install command, then install agent-browser and retry." Then stop — this skill cannot function without it.
 
-This also requires a JJ workspace with changes to test.
+This also requires a JJ repository with changes to test.
 
 ### 2. Determine Test Scope
-
-Resolve the default/trunk bookmark once; do not hard-code `main`, because some repos use `master` or another default bookmark.
-
-```bash
-DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)
-TRUNK=""
-for cand in "$DEFAULT" main master; do
-  [ -n "$cand" ] || continue
-  if jj log -r "$cand" --no-graph -T 'change_id' >/dev/null 2>&1; then
-    TRUNK=$cand; break
-  fi
-done
-TRUNK=${TRUNK:-main}
-```
 
 **If PR number provided:**
 ```bash
@@ -55,12 +41,12 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-jj diff --from "$TRUNK" --to @ --name-only
+jj diff --from main@origin --to @ --name-only
 ```
 
 **If bookmark name provided:**
 ```bash
-jj diff --from "$TRUNK" --to [bookmark] --name-only
+jj diff --from main@origin --to [bookmark] --name-only
 ```
 
 ### 3. Map Changed Files to Routes
@@ -263,7 +249,7 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current working-copy changes (auto-detects port)
+# Test current change/bookmark changes (auto-detects port)
 /ce-test-browser
 
 # Test specific PR

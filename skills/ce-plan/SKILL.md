@@ -16,7 +16,7 @@ This workflow produces a durable implementation plan. It does **not** implement 
 
 ## Mandatory Completion Contract
 
-Every normal interactive `ce-plan` path that produces a plan artifact or checkpoint is incomplete until its owning handoff question is presented. For software implementation-plan runs that continue past Phase 0.1b, that boundary is Phase 5.4's post-generation handoff menu. Non-software plan-seeking and approach-altitude paths use the terminal handoff in the reference workflow they route to; do not force those paths through Phase 5.4 after they have been told to skip subsequent phases. Answer-seeking is the exception: it may end after delivering the answer unless the universal-planning reference says to offer save/share.
+Every normal interactive `ce-plan` branch that produces a plan artifact or checkpoint is incomplete until its owning handoff question is presented. For software implementation-plan runs that continue past Phase 0.1b, that boundary is Phase 5.4's post-generation handoff menu. Non-software plan-seeking and approach-altitude branches use the terminal handoff in the reference workflow they route to; do not force those branches through Phase 5.4 after they have been told to skip subsequent phases. Answer-seeking is the exception: it may end after delivering the answer unless the universal-planning reference says to offer save/share.
 
 For software implementation-plan runs, writing the plan file, running the confidence check, and running or skipping `ce-doc-review` are intermediate milestones, not completion. This remains true when the user's prompt says only "create a plan", "write the doc", "run `ce-doc-review`", or similar. The only exception is pipeline mode (LFG or any `disable-model-invocation` context), where the caller owns the next step after the plan file, confidence check, and headless document review are complete.
 
@@ -74,7 +74,7 @@ Determine `OUTPUT_FORMAT` before any other phase fires. Output mode is **exclusi
 **Read config.** The repo root is pre-resolved at skill load:
 !`jj workspace root 2>/dev/null || true`
 
-If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `jj workspace root` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a JJ workspace) or the file does not exist, fall through to the defaults below.
+If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `jj workspace root` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a jj workspace) or the file does not exist, fall through to the defaults below.
 
 Resolution steps:
 
@@ -86,7 +86,7 @@ Resolution steps:
 4. **Default.** Otherwise `OUTPUT_FORMAT=md`.
 5. **Pipeline override.** When invoked from LFG or any `disable-model-invocation` context, force `OUTPUT_FORMAT=md` regardless of steps 1-4. `ce-work` and other automated downstream consumers parse markdown reliably; HTML in pipeline runs is unnecessary friction.
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, the exact `confirm:auto`/`confirm:ask` forms, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including conventional change-description prefixes like `feat:`, `fix:`, `chore:`, and any unrecognized `confirm:<value>` (e.g., a `confirm: delete-account modal` feature description) — pass through verbatim.
+**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, the exact `confirm:auto`/`confirm:ask` forms, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including conventional change prefixes like `feat:`, `fix:`, `chore:`, and any unrecognized `confirm:<value>` (e.g., a `confirm: delete-account modal` feature description) — pass through verbatim.
 
 **Load the format-rendering reference based on the resolved value.** Section content is the same in either format; presentation differs. Both references are paired with `references/plan-sections.md`, which describes what the plan contains regardless of format.
 
@@ -107,7 +107,7 @@ Pipeline / `disable-model-invocation` runs already skip the chat confirmation (h
 If the user references an existing plan file or there is an obvious recent matching plan in `docs/plans/`:
 - Read it
 - Confirm whether to update it in place or create a new plan
-- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from JJ by `ce-work`, so there is no progress to preserve across edits
+- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from jj by `ce-work`, so there is no progress to preserve across edits
 
 **A requirements-only unified plan is not a resume target.** A `docs/plans/` file with `artifact_readiness: requirements-only` is an *enrichment input*, not an existing plan to resume — do **not** fire the update-or-create confirm for it. Fall through to Phase 0.2, which enriches it in place to `implementation-ready`. This matters most for the hands-off `ce-brainstorm` -> `lfg` flow: `lfg` hands `ce-plan` the requirements-only path in `disable-model-invocation` pipeline mode, where no user is present to answer a resume prompt. More generally, in pipeline mode the resume choice is made automatically (default to in-place update of the referenced plan) and never prompted.
 
@@ -206,6 +206,7 @@ If no relevant Product Contract source exists, planning may proceed from the use
 If no relevant requirements document exists, or the input needs more structure:
 - Assess whether the request is already clear enough for direct technical planning — if so, continue to Phase 0.5
 - If the ambiguity is mainly product framing, user behavior, or scope definition, recommend `ce-brainstorm` as a suggestion — but always offer to continue planning here as well
+- If the user signals they lack working knowledge of the problem domain itself, recommend `ce-brainstorm` — its blindspot pass maps the territory's decision surface before requirements are extracted — but honor their choice to continue here; Phase 2's unfamiliar-territory scaffolding then applies
 - If the user wants to continue here (or was already explicit about wanting a plan), run the planning bootstrap below
 
 The planning bootstrap should establish:
@@ -290,7 +291,7 @@ Prepare a concise planning context summary (a paragraph or two) to pass as input
 - If `STRATEGY.md` exists, read it and include the relevant pieces (target problem, approach, active tracks) in the summary so downstream research and planning decisions are anchored to product strategy
 - If `CONCEPTS.md` exists at repo root, read it — its definitions are the canonical names for domain entities, named processes, and status concepts. Plan with those terms rather than synonyms.
 
-**Resolve the project profile from the shared cache first.** The agnostic profile (stack, deps, conventions, structure) is identical at this JJ change, so reuse it instead of having `repo-research-analyst` re-derive `technology`/`architecture`/`conventions` every run. Set `SKILL_DIR` to this skill's directory and run the helper (protocol in `references/repo-profile-cache.md`):
+**Resolve the project profile from the shared cache first.** The agnostic profile (stack, deps, conventions, structure) is identical at this change, so reuse it instead of having `repo-research-analyst` re-derive `technology`/`architecture`/`conventions` every run. Set `SKILL_DIR` to this skill's directory and run the helper (protocol in `references/repo-profile-cache.md`):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
@@ -456,19 +457,21 @@ For each question, decide whether it should be:
 
 Ask the user only when the answer materially affects architecture, scope, sequencing, or risk and cannot be responsibly inferred. Use the platform's blocking question tool when available (see Interaction Method).
 
+**Scaffold questions on unfamiliar territory.** When the user has signaled they lack working knowledge of the area a question lives in — an explicit "I don't know X", or earlier answers showing they *cannot evaluate* options rather than merely haven't decided — do not ask the question naked. Present it as a taught decision: the realistic options, one clause each on the trade-off that matters for this plan, and a recommended default. If the user still cannot evaluate, record the default as an explicit assumption in the plan instead of extracting a guess. In pipeline mode (LFG, any `disable-model-invocation` context) this scaffolding never presents anything — resolve to the recommended default and record it as an explicit assumption in the plan.
+
 **Do not** run tests, build the app, or probe runtime behavior in this phase. The goal is a strong plan, not partial execution.
 
 ### Phase 3: Structure the Plan
 
 #### 3.1 Title and File Naming
 
-- Draft a clear, searchable title using conventional format such as `feat: Add user authentication` or `fix: Prevent checkout double-submit`
+- Draft a clear, searchable title using conventional format such as `feat: Add user authentication` or `fix: Prevent purchase double-submit`
 - Determine the plan type: `feat`, `fix`, or `refactor`
 - Build the filename following the repository convention: `docs/plans/YYYY-MM-DD-NNN-<type>-<descriptive-name>-plan.md`
   - Create `docs/plans/` if it does not exist
   - Check existing files for today's date to determine the next sequence number (zero-padded to 3 digits, starting at 001)
   - Keep the descriptive name concise (3-5 words) and kebab-cased
-  - Examples: `2026-01-15-001-feat-user-authentication-flow-plan.md`, `2026-02-03-002-fix-checkout-race-condition-plan.md`
+  - Examples: `2026-01-15-001-feat-user-authentication-flow-plan.md`, `2026-02-03-002-fix-payment-race-condition-plan.md`
   - Avoid: missing sequence numbers, vague names like "new-feature", invalid characters (colons, spaces)
 
 #### 3.2 Stakeholder and Impact Awareness
@@ -477,7 +480,7 @@ For **Standard** or **Deep** plans, briefly consider who is affected by this cha
 
 #### 3.3 Break Work into Implementation Units
 
-Break the work into logical implementation units. Each unit should represent one meaningful change that an implementer could typically land as an atomic JJ change.
+Break the work into logical implementation units. Each unit should represent one meaningful change that an implementer could typically land as an atomic jj change.
 
 Good units are:
 - Focused on one component, behavior, or integration seam
@@ -518,7 +521,7 @@ The tree is a scope declaration showing the expected output shape. It is not a c
 
 #### 3.5 Define Each Implementation Unit
 
-Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as bulleted list items or prefix them with `- [ ]` / `- [x]` checkbox markers. List-based unit titles fragment in every standard renderer because the per-unit fields (`**Goal:**`, `**Files:**`, `**Approach:**`, etc.) are written flush-left, which terminates CommonMark list continuation and detaches the fields from the unit they describe. Headings render correctly everywhere, are the right semantic match for sections containing multi-block content, and give each unit an anchor link. The plan is a decision artifact; execution progress is derived from JJ by `ce-work` rather than stored in the plan body.
+Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as bulleted list items or prefix them with `- [ ]` / `- [x]` checkbox markers. List-based unit titles fragment in every standard renderer because the per-unit fields (`**Goal:**`, `**Files:**`, `**Approach:**`, etc.) are written flush-left, which terminates CommonMark list continuation and detaches the fields from the unit they describe. Headings render correctly everywhere, are the right semantic match for sections containing multi-block content, and give each unit an anchor link. The plan is a decision artifact; execution progress is derived from jj by `ce-work` rather than stored in the plan body.
 
 **Stability rule.** Once assigned, a U-ID is never renumbered. Reordering units leaves their IDs in place (e.g., U1, U3, U5 in their new order is correct; renumbering to U1, U2, U3 is not). Splitting a unit keeps the original U-ID on the original concept and assigns the next unused number to the new unit. Deletion leaves a gap; gaps are fine. This rule matters most during deepening (Phase 5.3), which is the most likely accidental-renumber vector.
 
@@ -623,7 +626,7 @@ Omit "include when material" sections that don't carry information for this spec
 - Do not include implementation code — no imports, exact method signatures, or framework-specific syntax
 - Pseudo-code sketches and DSL grammars are allowed in the High-Level Technical Design section and per-unit technical design fields when they communicate design direction. Frame them explicitly as directional guidance, not implementation specification
 - Mermaid diagrams are encouraged when they clarify relationships or flows that prose alone would make hard to follow — ERDs for data model changes, sequence diagrams for multi-service interactions, state diagrams for lifecycle transitions, flowcharts for complex branching logic
-- Do not include JJ commands, change descriptions, or exact test command recipes
+- Do not include jj commands, change descriptions, or exact test command recipes
 - Do not expand implementation units into micro-step `RED/GREEN/REFACTOR` instructions
 - Do not pretend an execution-time question is settled just to make the plan look complete
 
@@ -659,7 +662,7 @@ If the plan originated from a requirements document, re-read that document and v
 
 #### 5.1.5 Brainstorm-Sourced Scoping Synthesis
 
-Surface plan-time call-outs to the user before Phase 5.2 commits the plan to disk — the latest cheap moment to catch plan-time scope errors. The brainstorm already validated WHAT to build; this phase surfaces HOW the plan will execute on the forks that matter.
+Surface plan-time call-outs to the user before Phase 5.2 writes the plan to disk — the latest cheap moment to catch plan-time scope errors. The brainstorm already validated WHAT to build; this phase surfaces HOW the plan will execute on the forks that matter.
 
 Fires **whenever Phase 0.2 resolved an upstream Product Contract source** — a requirements-only unified plan (an explicit path, or a discovered `product_contract_source: ce-brainstorm` plan in `docs/plans/`) **or** a legacy `*-requirements.{md,html}` brainstorm doc — AND not on Phase 0.1 fast paths (resume normal, deepen-intent). The new `ce-brainstorm` -> `ce-plan <unified-plan>` enrichment flow is brainstorm-sourced and MUST fire this gate, just like legacy flows. Skip Phase 5.1.5 only in solo invocation (no upstream source found; `product_contract_source: ce-plan-bootstrap`) — solo plans handled their synthesis in Phase 0.7.
 
@@ -769,10 +772,10 @@ After document review and final checks, print a one-line summary of the headless
 
 **Options.** Option 5's label matches the artifact's format. Under exclusive output mode, exactly one of "Publish to Proof" or "Open in browser" applies per run — `OUTPUT_FORMAT=md` shows Proof; `OUTPUT_FORMAT=html` shows browser. Proof operates on markdown and cannot ingest HTML; the browser option opens the local `.html` file. Render the option matching the format produced this run.
 
-1. **Start `/ce-work`** - Best for shorter work, or when you want to review and possibly steer as it goes (runs via `ce-work`, in this session). Implementation-ready code plans only.
-2. **Run it as a `/goal`** - Run this plan as an autonomous goal to its Definition of Done — fewer check-ins; good for longer or unattended runs. The alternative to option 1, not an add-on — pick one. Implementation-ready code plans only, and only where the host has goal capability (Codex `create_goal` in the available tool list, or a user-typed `/goal` in Claude Code). Where it can start directly, it does; otherwise it hands over a copy-paste prompt.
+1. **Start `/ce-work`** - Build and ship the plan in this session — subagent-driven development with simplification, code review, and jj changes. Implementation-ready code plans only.
+2. **Run it as a `/goal`** - Choose this if you'd rather run the plan through your harness's autonomous goal mode instead of ce-work's build-and-ship flow. The alternative to option 1, not an add-on — pick one. Implementation-ready code plans only, and only where the host has goal capability (Codex `create_goal` in the available tool list, or a user-typed `/goal` in Claude Code). Where it can start directly, it does; otherwise it hands over a copy-paste prompt.
 
-**Recommended marker (dynamic):** Goal mode is the recommended default when the host supports it — mark option 2 *(recommended)* and leave option 1 unmarked; on hosts without goal capability (option 2 omitted), mark option 1 *(recommended)* instead. Exactly one option carries it.
+**Recommended marker:** `ce-work` (option 1) always carries *(recommended)* and option 2 stays unmarked. `ce-work` is the correctly-layered execution entry point — it owns engine selection and reaches goal or dynamic-workflow engines itself when a plan's shape warrants, so recommending it never forecloses goal mode. Exactly one option carries the marker.
 3. **Decide on the review's open items** - Confirm or skip the suggested edits, and settle the judgment calls the auto-pass left for you. (Safe, mechanical fixes were already applied; you can also defer items into Open Questions.)
 4. **Create Issue** - Create a tracked issue from this plan in your configured issue tracker (e.g., GitHub Issues, Linear, Jira)
 5. **Publish to Proof — shareable link** - Publish the plan to Every's Proof editor and get a shareable link to read, comment on, or share with others. One-way: the local plan file stays canonical. **Render only when `OUTPUT_FORMAT=md`.**
@@ -781,7 +784,7 @@ After document review and final checks, print a one-line summary of the headless
 **Routing.** Act on the user's selection — do not just announce it. Elaborate sub-flows (Issue Creation tracker detection) live in `references/plan-handoff.md`.
 
 - **Start `/ce-work`** — Offered only when the artifact is `artifact_readiness: implementation-ready` and `execution: code` (not for requirements-only, universal-planning, answer-seeking, or approach-plan outputs). Invoke the `ce-work` skill via the platform's skill-invocation primitive (`Skill` in Claude Code and Codex, the equivalent on Gemini/Pi), passing the plan path as the skill argument; `ce-work` owns engine selection and the tail. If no skill-invocation primitive exists, print the `ce-work` fallback prompt for the user to run. Do not merely tell the user to type `/ce-work` when a skill invocation primitive is available.
-- **Run it as a `/goal`** — Offered on the implementation-ready-code gate, and only where the host has goal capability. In Codex, the presence of `create_goal` in the available tool list is sufficient; do not look for a literal `/goal` slash command. In Claude Code, the capability is user-typed `/goal`. **`ce-work` does not also run.** Build a **thin** objective from the plan here (not from a doc section), pointing to the plan's sections — do **not** copy its resolved decisions, exact commands, or requirements into the prompt (deletion test: if the draft names a specific command, file path, U-ID dependency, stop condition, or DoD item, cut it — it should read the same for any plan except the path), and carry the PR-precedence line instead of a hardcoded open/don't-open directive: implement `<plan-path>` to its Definition of Done; scan headings, don't read the whole doc; read the Goal Capsule then work units in dependency order with their cited R/F/AE/KTD; run the plan's Verification Contract gates and satisfy each unit's test scenarios; track progress outside the plan file; follow the plan's PR/landing strategy if it defines one, with repo conventions and user preferences overriding it; surface a genuine blocker (changes scope or contradicts the plan) instead of guessing, using judgment on details the plan leaves open. If `create_goal` is available, call it with that objective — the session works toward the DoD; do not call `update_goal` (the goal session completes itself). Otherwise (user-typed `/goal` only, e.g. Claude Code), print that objective as a copyable `/goal` prompt for the user to paste, then return to the menu.
+- **Run it as a `/goal`** — Offered on the implementation-ready-code gate, and only where the host has goal capability. In Codex, the presence of `create_goal` in the available tool list is sufficient; do not look for a literal `/goal` slash command. In Claude Code, the capability is user-typed `/goal`. **`ce-work` does not also run.** Build a **thin** objective from the plan here (not from a doc section), pointing to the plan's sections — do **not** copy its resolved decisions, exact commands, or requirements into the prompt (deletion test: if the draft names a specific command, file path, U-ID dependency, stop condition, or DoD item, cut it — it should read the same for any plan except the path), and carry the PR-precedence line instead of a hardcoded open/don't-open directive: implement `<plan-path>` to its Definition of Done; scan headings, don't read the whole doc; read the Goal Capsule then work units in dependency order with their cited R/F/AE/KTD; run the plan's Verification Contract gates and satisfy each unit's test scenarios; track progress outside the plan file; follow the plan's PR/landing strategy if it defines one, with repo conventions and user preferences overriding it; surface a genuine blocker (changes scope or contradicts the plan) instead of guessing, using judgment on details the plan leaves open. If `create_goal` is available, call it with that objective — the session works toward the DoD; do not call `update_goal` (the goal session completes itself). Otherwise (user-typed `/goal` only, e.g. Claude Code), print that objective as a copyable `/goal` prompt for the user to paste, and best-effort copy it to the OS clipboard — hand the prompt off as data (write it to a temp file via a quoted-sentinel here-doc so the shell never evaluates its backticks/`$`, then pipe that file to the first available tool: `pbcopy`/`wl-copy`/`xclip -selection clipboard`/`xsel --clipboard --input`/`clip.exe`; never interpolate the prompt into the command). Only claim it copied when the clipboard command exits 0, say "this machine's clipboard" (a remote/sandboxed session copies to the wrong machine), and keep the printed block as the source of truth. See `references/plan-handoff.md` for the exact snippet. Then return to the menu.
 - **Decide on the review's open items** — Re-invoke the `ce-doc-review` skill on the plan path **without** `mode:headless` so the interactive routing question and walkthrough fire. After it returns, re-render this menu with refreshed counts so the user can pick a next-stage action.
 - **Create Issue** — Detect the project tracker from the project instructions already in your context and create the issue from the plan file as described under "Issue Creation" in `references/plan-handoff.md`. Create the issue through whatever interface the tracker actually exposes — `gh` for GitHub when it's installed and authenticated, otherwise GitHub's connector/MCP tool or API; for Linear, a connector/MCP tool, documented API/GraphQL, or a documented CLI (no guaranteed `linear` CLI). Do not treat a missing binary, env var, or unloaded MCP tool as proof the tracker is unavailable. After creation, display the issue URL and ask whether to proceed to `/ce-work` via the platform's blocking question tool.
 - **Publish to Proof — shareable link** — Load the `ce-proof` skill to publish the plan: create a shared Proof doc from the plan file (title = plan title; identity `ai:compound-engineering` / `Compound Engineering`), surface the share URL to the user, then return to this menu. One-way publish — the local plan file stays canonical, nothing syncs back. If the upload fails, see the graceful-fallback note in `references/plan-handoff.md`.

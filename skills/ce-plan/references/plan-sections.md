@@ -125,7 +125,7 @@ write the plan.
 
 **Skip implementation-ready plan creation only when ALL of these hold:**
 
-- The work is **atomic** — fits in one JJ change, no meaningful unit boundaries
+- The work is **atomic** — fits in one jj change, no meaningful unit boundaries
   to break out independently.
 - There are **no design choices that constrain implementation** — no
   Key Technical Decisions worth recording. If the work needs the implementer
@@ -157,7 +157,7 @@ vs. genuine skip cases:
   bump introduces breaking changes that warrant unit-by-unit migration).
 
 When skipping the plan doc, the work proceeds directly to `ce-work` or to
-implementation, and any decisions made along the way land in the JJ change
+implementation, and any decisions made along the way land in the change
 description or `docs/solutions/` if they're worth carrying forward.
 
 ## Implementation-ready hard floor
@@ -334,16 +334,16 @@ plan.
   (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
   across readiness states (it is a plan at every stage). Do not put a
-  conventional change-description prefix (`feat:`/`fix:`) in the title — the `type` field
+  conventional-change prefix (`feat:`/`fix:`) in the title — the `type` field
   carries that classification.
-- **`type`** — conventional change-description-prefix-aligned classification (`feat`,
+- **`type`** — conventional-change-prefix-aligned classification (`feat`,
   `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual JJ change description should reflect.
+  intent the eventual change description should reflect.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from JJ, not stored in the doc. Do not
+whether a plan shipped is derived from jj, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -362,7 +362,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the bookmark/test/change-description/CI lifecycle); absent or `code` routes
+  skipping the bookmark/test/change/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.
@@ -386,7 +386,7 @@ These apply regardless of rendering format.
   they break portability across machines, workspaces, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
-  metadata belongs in JJ change descriptions and tool output, not the artifact.
+  metadata belongs in change descriptions and tool output, not the artifact.
 - **Group Requirements by concern when they span distinct logical areas.**
   The trigger is distinct concerns, not item count — even four requirements
   benefit from grouping if they cover three different topics. Skip grouping

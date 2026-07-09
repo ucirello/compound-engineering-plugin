@@ -30,7 +30,7 @@ Check if `$ARGUMENTS` contains `mode:headless`. If present, strip it from argume
 
 If invoked specifically to create or bootstrap `CONCEPTS.md` (e.g., "create a CONCEPTS.md", "build the concept map", "set up shared vocabulary"), the intent is ambiguous between two jobs — building the vocabulary file and running a docs/solutions refresh — so disambiguate before proceeding. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. Two options:
 
-1. **Create CONCEPTS.md (build the concept map)** — seed the repo-wide concept map and describe a JJ change for it; skip only the docs/solutions classification phases (Phases 0–4). Read `references/concepts-vocabulary.md` and follow its **Seed goal** and **Scope of a seed** (repo-wide) rules: seed the project's core domain nouns from the declared domain model (schema, core types, primary models, top-level domain docs), each meeting the qualifying bar, the codebase setting the count. Write the preamble (see Phase 4.5), cluster per the organization rules, and run the Discoverability Check so `AGENTS.md`/`CLAUDE.md` surface the new file. Then **enter Phase 5 (Describe and Ship Changes)** to describe/push/PR the new `CONCEPTS.md` and any instruction-file edit through the same durable-write flow the refresh uses — do not leave the bootstrap undescribed.
+1. **Create CONCEPTS.md (build the concept map)** — seed the repo-wide concept map and describe it in a durable JJ change; skip only the docs/solutions classification phases (Phases 0-4). Read `references/concepts-vocabulary.md` and follow its **Seed goal** and **Scope of a seed** (repo-wide) rules: seed the project's core domain nouns from the declared domain model (schema, core types, primary models, top-level domain docs), each meeting the qualifying bar, the codebase setting the count. Write the preamble (see Phase 4.5), cluster per the organization rules, and run the Discoverability Check so `AGENTS.md`/`CLAUDE.md` surface the new file. Then **enter Phase 5 (Describe Changes)** to describe/PR the new `CONCEPTS.md` and any instruction-file edit through the same durable-write flow the refresh uses — do not leave the bootstrap undescribed.
 2. **Run a refresh cycle** — proceed with the normal refresh flow below; `CONCEPTS.md` is seeded (if absent) and reconciled as part of Phase 4.5.
 
 In headless mode there is no user to ask: default to the refresh cycle (vocabulary is seeded and reconciled within Phase 4.5 regardless) and note in the report that a standalone repo-wide bootstrap was not run.
@@ -92,7 +92,7 @@ For each candidate artifact, classify it into one of five outcomes:
    - newer docs, pattern docs, PRs, or issues provide strong successor evidence.
 8. **Delete when the code is gone, and only after checking for inbound links.** If the referenced code, controller, or workflow no longer exists in the codebase and no successor can be found, delete the file — don't default to Keep just because the general advice is still "sound." When in doubt between Keep and Delete, ask the user (in interactive mode) or mark as stale (in headless mode). Inbound links inform classification, not cleanup: cleanup is always mechanical, but **decorative** citations (principle stated inline) allow Delete, while **substantive** citations (citing doc relies on the cited doc) signal Replace. The auto-delete case is missing code, no matching successor, and citations absent or decorative.
 9. **Evaluate document-set design, not just accuracy.** In addition to checking whether each doc is accurate, evaluate whether it is still the right unit of knowledge. If two or more docs overlap heavily, determine whether they should remain separate, be cross-scoped more clearly, or be consolidated into one canonical document. Redundant docs are dangerous because they drift silently — two docs saying the same thing will eventually say different things.
-10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. JJ history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `jj log -- docs/solutions/` will find it.
+10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. JJ history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `jj log -r 'all()' -- docs/solutions/` will help find the change that removed it.
 
 ## Scope Selection
 
@@ -375,7 +375,7 @@ Search efficiently:
 
 Classify each citation by what it does in its citing context:
 
-- **Decorative** — principle stated inline, citation is a "see also" pointer or bare attribution. Delete is fine; clean up citations in the same JJ change.
+- **Decorative** — principle stated inline, citation is a "see also" pointer or bare attribution. Delete is fine; clean up citations in the same change.
 - **Substantive** — citing doc relies on the cited doc to provide content not stated inline (e.g., "see X for details on Y" with no inline Y). Signal Replace — write a successor at the same path, or **Keep with narrowed scope** if the doc's actual content is broader than its title implies.
 - **Mixed or unclear** — stale-mark.
 
@@ -491,7 +491,7 @@ For each candidate, execute the flow that matches its classification from Phase 
 - **Keep** — no file edit by default; summarize why the learning remains trustworthy.
 - **Update** — in-place edits when the solution is still substantively correct (path renames, link refreshes, module renames).
 - **Consolidate** — merge overlapping docs into a canonical doc, delete subsumed docs, update cross-references. The orchestrator handles consolidation directly.
-- **Replace** — write a successor learning via subagent (passing the documentation contract files), validate frontmatter, then delete the old. When evidence is insufficient, mark stale instead.
+- **Replace** — write a successor learning via subagent (passing the documentation contract files), validate frontmatter and cited claims, then delete the old. When evidence is insufficient, mark stale instead.
 - **Delete** — final inbound-link check, then remove. Reclassify if late-discovered substantive citations surface.
 
 Only one flow runs per candidate; the reference contains the per-action criteria, examples, and step-by-step instructions.
@@ -550,7 +550,7 @@ Then for EVERY file processed, list:
 - What action was taken (or recommended)
 - For Consolidate: which doc was canonical, what unique content was merged, what was deleted
 
-For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating jj churn.
+For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating VCS churn.
 
 ### Headless mode report
 
@@ -574,16 +574,16 @@ If all writes succeed, the Recommended section is empty. If no writes succeed (e
 **Legacy cleanup** (if `docs/solutions/_archived/` exists):
 - List archived files found and recommend disposition: restore (if still relevant), delete (if truly obsolete), or consolidate (if overlapping with active docs)
 
-## Phase 5: Describe and Ship Changes
+## Phase 5: Describe Changes
 
-After all actions are executed and the report is generated, handle describing and shipping the JJ change. Skip this phase if no files were modified (all Keep, or all writes failed).
+After all actions are executed and the report is generated, handle describing and optionally publishing the JJ change. Skip this phase if no files were modified (all Keep, or all writes failed).
 
 ### Detect jj context
 
 Before offering options, check:
-1. Which JJ bookmark/change is current, and whether it is the default-line bookmark/change or a feature bookmark/change
-2. Whether the working copy/current change has other undescribed changes beyond what compound-refresh modified
-3. Recent JJ change descriptions to match the repo's style
+1. Which bookmarks point at the working-copy change (`jj bookmark list -r @`) and whether one is `main` or `master`
+2. Whether the working copy has unrelated changes beyond what compound-refresh modified (`jj st` and `jj diff --name-only`)
+3. Recent change descriptions to match the repo's description style (`jj log`)
 
 ### Headless mode
 
@@ -591,38 +591,38 @@ Use sensible defaults — no user to ask:
 
 | Context | Default action |
 |---------|---------------|
-| On the default-line bookmark/change | Create a bookmark named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), describe the JJ change, push the bookmark, and attempt to open a PR. If PR creation fails, report the bookmark name. |
-| On a feature bookmark/change | Describe a separate JJ change where the current feature bookmark points |
+| On main/master | Create a new working-copy change and bookmark named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), describe it, attempt to open a PR. If PR creation fails, report the bookmark name. |
+| On a feature bookmark/change | Describe or commit a separate JJ change on the current stack |
 | JJ operations fail | Include the recommended jj commands in the report and continue |
 
-Include only the files that compound-refresh modified in the described JJ change. Do not absorb unrelated working-copy changes; use `jj split` when you need to separate mixed changes.
+Include only the files that compound-refresh modified — not other dirty files in the working copy. If unrelated files are present in the same working-copy change, split or move the refresh edits into their own change before describing.
 
 ### Interactive mode
 
-First, run `jj log -r @ --no-graph -T 'bookmarks ++ " " ++ change_id.short()'` to determine the bookmarks pointing at `@` and the current change. Then present the correct options based on the result. Include only compound-refresh files in the described change regardless of which option the user picks; if unrelated edits are mixed into `@`, use `jj split` to isolate them before describing.
+First, run `jj bookmark list -r @` and `jj st` to determine the current bookmark/change context. Then present the correct options based on the result. Include only compound-refresh files regardless of which option the user picks.
 
-**If a bookmark pointing at `@` is the repo's default line:**
+**If the working-copy change is on main, master, or the repo's default bookmark:**
 
-1. Create a bookmark, describe the JJ change, push, and open a PR (recommended) — the bookmark name should be specific to what was refreshed, not generic (e.g., `docs/refresh-auth-learnings` not `docs/compound-refresh`)
-2. Describe the current JJ change directly at `{bookmark/change}`
-3. Don't describe or push — I'll handle it
+1. Create a new change and bookmark, describe it, and open a PR (recommended) — the bookmark name should be specific to what was refreshed, not generic (e.g., `docs/refresh-auth-learnings` not `docs/compound-refresh`)
+2. Describe the current change directly on `{current bookmark name}`
+3. Don't describe/publish — I'll handle it
 
-**If a bookmark pointing at `@` is a feature line and the working copy/current change only contains compound-refresh edits:**
+**If the current bookmark/change is a feature context and the working copy contains only compound-refresh edits:**
 
-1. Describe a separate JJ change at `{bookmark/change}` (recommended)
-2. Create a separate bookmark and describe the JJ change there
-3. Don't describe or push
+1. Describe or commit the refresh edits as a separate JJ change on `{current bookmark name}` (recommended)
+2. Create a separate change and bookmark
+3. Don't describe/publish
 
-**If a bookmark pointing at `@` is a feature line and the working copy/current change has unrelated edits:**
+**If the current bookmark/change is a feature context and the working copy also has unrelated changes:**
 
-1. Use `jj split` if needed, then describe only the compound-refresh JJ change at `{bookmark/change}`; leave unrelated edits in the other change
-2. Don't describe or push
+1. Move only the compound-refresh edits into their own JJ change on `{current bookmark name}` — other working-copy edits stay untouched
+2. Don't describe/publish
 
 ### Change description
 
 Write a descriptive JJ change description that:
 - Summarizes what was refreshed (e.g., "update 3 stale learnings, consolidate 2 overlapping docs, delete 1 obsolete doc")
-- Follows the repo's existing change-description conventions (check recent `jj log` for style)
+- Follows the repo's existing description conventions (check recent `jj log` output for style)
 - Is succinct — the details are in the changed files themselves
 
 ## Relationship to ce-compound
@@ -636,7 +636,7 @@ Use **Consolidate** proactively when the document set has grown organically and 
 
 ## Discoverability Check
 
-After the refresh report is generated, check whether the project's instruction files would lead an agent to discover and search `docs/solutions/` before starting work in a documented area. This runs every time — the knowledge store only compounds value when agents can find it. If this check produces edits, they are described as part of (or immediately after) the Phase 5 JJ flow — see step 5 below.
+After the refresh report is generated, check whether the project's instruction files would lead an agent to discover and search `docs/solutions/` before starting work in a documented area. This runs every time — the knowledge store only compounds value when agents can find it. If this check produces edits, they are described as part of (or immediately after) the Phase 5 change flow — see step 5 below.
 
 1. Identify which root-level instruction files exist (AGENTS.md, CLAUDE.md, or both). Read the file(s) and determine which holds the substantive content — one file may just be a shim that `@`-includes the other (e.g., `CLAUDE.md` containing only `@AGENTS.md`, or vice versa). The substantive file is the assessment and edit target; ignore shims. If neither file exists, skip this check entirely.
 2. Assess whether an agent reading the instruction files would learn three things:
@@ -676,4 +676,4 @@ After the refresh report is generated, check whether the project's instruction f
 
    **Skip this step entirely if `CONCEPTS.md` does not exist** — never nag for an artifact the project has not adopted. When skipped, this step produces no output and no edit.
 
-6. **Squash into the current/described JJ change or create a follow-up change when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already described the refresh change, either `jj squash` the newly edited file into that JJ change (if still on the same bookmark/change and no push has occurred) or create a small follow-up JJ change with its own description (e.g., `docs: add docs/solutions/ discoverability to AGENTS.md`, or `docs: add CONCEPTS.md discoverability to AGENTS.md`, or a combined description when both edits landed). If Phase 5 already pushed the bookmark to a remote (e.g., the bookmark+PR path), push the follow-up JJ change as well so the open PR includes the discoverability change. This keeps the working copy clean and the remote in sync at the end of the run. If the user chose "Don't describe or push" in Phase 5, leave the instruction-file edits in the working copy/current change alongside the other undescribed refresh changes — no separate change logic needed.
+6. **Update the described change or create a follow-up change when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already described the refresh change, either update that change description if it has not been pushed or create a small follow-up JJ change (e.g., `docs: add docs/solutions/ discoverability to AGENTS.md`, or `docs: add CONCEPTS.md discoverability to AGENTS.md`, or a combined description when both edits landed). If Phase 5 already pushed the bookmark to a remote (e.g., the bookmark+PR path), push the follow-up change as well so the open PR includes the discoverability change. This keeps the working copy clean and the remote in sync at the end of the run. If the user chose "Don't describe/publish" in Phase 5, leave the instruction-file edits in the working copy alongside the other refresh changes — no separate change logic needed.

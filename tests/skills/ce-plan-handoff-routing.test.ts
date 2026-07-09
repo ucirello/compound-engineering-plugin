@@ -182,16 +182,16 @@ describe("ce-plan post-generation menu routing", () => {
 
     const topContract = SKILL_BODY.slice(contractStart, interactionStart)
     expect(
-      /Every normal interactive `ce-plan` path that produces a plan artifact or checkpoint is incomplete until its owning handoff question is presented/i.test(topContract),
-      "Top completion contract must state that artifact/checkpoint paths are incomplete until their owning handoff question is presented.",
+      /Every normal interactive `ce-plan` branch that produces a plan artifact or checkpoint is incomplete until its owning handoff question is presented/i.test(topContract),
+      "Top completion contract must state that artifact/checkpoint branches are incomplete until their owning handoff question is presented.",
     ).toBe(true)
     expect(
       /software implementation-plan runs[\s\S]{0,120}Phase 5\.4[\s\S]{0,120}handoff menu/i.test(topContract),
       "Top completion contract must state that software implementation-plan runs are incomplete until the Phase 5.4 handoff menu is presented.",
     ).toBe(true)
     expect(
-      /Non-software plan-seeking and approach-altitude paths[\s\S]{0,160}do not force those paths through Phase 5\.4/i.test(topContract),
-      "Top completion contract must preserve path-owned handoffs for non-software plan-seeking and approach-altitude paths.",
+      /Non-software plan-seeking and approach-altitude branches[\s\S]{0,160}do not force those branches through Phase 5\.4/i.test(topContract),
+      "Top completion contract must preserve branch-owned handoffs for non-software plan-seeking and approach-altitude branches.",
     ).toBe(true)
     expect(
       /Answer-seeking is the exception:[\s\S]{0,140}may end after delivering the answer unless[\s\S]{0,100}offer save\/share/i.test(topContract),

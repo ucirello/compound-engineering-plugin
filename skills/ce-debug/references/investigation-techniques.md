@@ -76,29 +76,18 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## JJ Revision Search for Regressions
+## JJ Binary Search for Regressions
 
-When a bug is a regression ("it worked before"), use binary search over JJ revisions to find the breaking change:
-
-```bash
-jj log -r '<known-good-ref>::@' --no-graph
-jj workspace add /tmp/jj-regression-check --revision <midpoint-rev>
-# Run the repro in /tmp/jj-regression-check.
-# If it is good, move the lower bound upward; if bad, move the upper bound downward.
-jj workspace forget jj-regression-check
-rm -rf /tmp/jj-regression-check
-```
-
-For a repeatable test script, keep the command fixed and move only the checked revision:
+When a bug is a regression ("it worked before"), use `jj log` and `jj new` to binary-search for the breaking change:
 
 ```bash
-jj workspace add /tmp/jj-regression-check --revision <candidate-rev>
-(cd /tmp/jj-regression-check && <test-command>)
-jj workspace forget jj-regression-check
-rm -rf /tmp/jj-regression-check
+jj log -r '<known-good-rev>::@' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+jj new <candidate-rev>            # create a test working-copy change at a midpoint
+# run the reproduction; mark the candidate mentally as good or bad
+jj edit <original-rev>             # return to the original change when done
 ```
 
-The test command should exit 0 for good, non-zero for bad. Keep notes of the good/bad bounds until one change remains.
+Repeat with the midpoint between the known-good and known-bad bounds until the breaking change is isolated. For scripted projects, wrap the reproduction command in a small loop over candidate revisions, but always return to the original change with `jj edit <original-rev>` before fixing.
 
 ---
 

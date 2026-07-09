@@ -9,8 +9,8 @@ import {
 describe("resolveClaudeFamilyAlias", () => {
   test("resolves bare aliases to full Claude model names", () => {
     expect(resolveClaudeFamilyAlias("haiku")).toBe("claude-haiku-4-5")
-    expect(resolveClaudeFamilyAlias("sonnet")).toBe("claude-sonnet-4-6")
-    expect(resolveClaudeFamilyAlias("opus")).toBe("claude-opus-4-6")
+    expect(resolveClaudeFamilyAlias("sonnet")).toBe("claude-sonnet-5")
+    expect(resolveClaudeFamilyAlias("opus")).toBe("claude-opus-4-8")
   })
 
   test("passes through non-alias model names unchanged", () => {
@@ -60,9 +60,9 @@ describe("addProviderPrefix", () => {
 
 describe("normalizeModelWithProvider", () => {
   test("resolves bare aliases and adds provider prefix", () => {
-    expect(normalizeModelWithProvider("sonnet")).toBe("anthropic/claude-sonnet-4-6")
+    expect(normalizeModelWithProvider("sonnet")).toBe("anthropic/claude-sonnet-5")
     expect(normalizeModelWithProvider("haiku")).toBe("anthropic/claude-haiku-4-5")
-    expect(normalizeModelWithProvider("opus")).toBe("anthropic/claude-opus-4-6")
+    expect(normalizeModelWithProvider("opus")).toBe("anthropic/claude-opus-4-8")
   })
 
   test("adds provider prefix to full Claude model names", () => {

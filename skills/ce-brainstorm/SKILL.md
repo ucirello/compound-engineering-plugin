@@ -1,6 +1,6 @@
 ---
 name: ce-brainstorm
-description: 'Explore vague or ambitious ideas into a right-sized requirements-only unified plan. Use when the user wants to brainstorm, think through scope, decide what to build, or needs collaborative product framing before planning. Not for executing already-specified work — direct implementation, debugging, or code review where no product scope is left to decide. Not for a decisive verdict on whether to adopt or switch to a specific external technology, library, or platform — brainstorming scopes what to build, not whether to commit to an outside option.'
+description: 'Explore vague or ambitious ideas into a right-sized requirements-only unified plan. Use when the user wants to brainstorm, think through scope, decide what to build, or needs collaborative product framing before planning. Also use when the user must scope work in territory they say they do not know ("I know nothing about X but need to...") or asks for a blindspot pass — mapping the decision surface before questions begin. Not for executing already-specified work — direct implementation, debugging, or code review where no product scope is left to decide. Not for a decisive verdict on whether to adopt or switch to a specific external technology, library, or platform — brainstorming scopes what to build, not whether to commit to an outside option.'
 argument-hint: "[feature idea or problem to explore] [output:html]"
 ---
 
@@ -61,7 +61,7 @@ Determine `OUTPUT_FORMAT` before any other phase fires. Output mode is **exclusi
 **Read config.** The repo root is pre-resolved at skill load:
 !`jj workspace root 2>/dev/null || true`
 
-If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `jj workspace root` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a JJ workspace) or the file does not exist, fall through to the defaults below.
+If the line above is an absolute path, use it as `<repo-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<repo-root>` at runtime by running `jj workspace root` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a jj workspace) or the file does not exist, fall through to the defaults below.
 
 Resolution steps:
 
@@ -73,7 +73,7 @@ Resolution steps:
 4. **Default.** Otherwise `OUTPUT_FORMAT=md`.
 5. **Pipeline override.** When invoked from LFG or any `disable-model-invocation` context, force `OUTPUT_FORMAT=md` regardless of steps 1-4. Downstream consumers (`ce-plan`, `ce-work`) parse markdown reliably; HTML in pipeline runs is unnecessary friction.
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including release-classification prefixes like `feat:`, `fix:`, `chore:` that may appear inside a feature description — pass through verbatim.
+**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including conventional change prefixes like `feat:`, `fix:`, `chore:` that may appear inside a feature description — pass through verbatim.
 
 **Resolve the format here; load the rendering reference at Phase 3, not now.** The format-rendering reference (`references/markdown-rendering.md` for `md`, `references/html-rendering.md` for `html`) is consumed only when the doc is composed — loading it during Phase 0 would carry 200+ lines through the entire dialogue. Phase 3 names the load. Section content is the same in either format; presentation differs.
 
@@ -142,6 +142,8 @@ Product-tier triggers additional Phase 1.2 questions and additional Product Cont
 
 **Visual probe tripwire.** If the feature is inherently visual or spatial — drawing/canvas tools, annotation behavior, visual editors, UI layout or navigation, interaction states, charts, diagrams, animation, maps, timelines, or spatial flows — read `references/visual-probes.md` now. Strong signals include freehand vs constrained drawing behavior, canvas annotation tools, layout comparisons, and state/flow placement. Loading the reference here is readiness only; it owns when the gate fires (state-based, at the first shape/behavior/state/layout/flow/diagram decision), the text-vs-visual offer, and helper invocation.
 
+**Unfamiliarity tripwire.** If the user signals they lack working knowledge of the domain or the territory the topic touches — "I know nothing about X", "never touched the auth modules", "I don't know what's possible / what I should be asking" — read `references/blindspot-pass.md` now. Loading here is readiness only; the reference owns when the offer fires (territory-scoped, before the first substantive question into the flagged territory), the map's shape, and how mapped decisions re-enter the dialogue.
+
 ### Phase 1: Understand the Idea
 
 #### 1.1 Existing Context Scan
@@ -188,6 +190,8 @@ Read `references/product-pressure-test.md` for the per-tier lens catalog (Lightw
 #### 1.3 Collaborative Dialogue
 
 Follow the Interaction Rules above. Use the platform's blocking question tool when available.
+
+**Blindspot gate — check it before probing flagged territory.** If the Phase 0.3 unfamiliarity tripwire fired, fire the blindspot offer from `references/blindspot-pass.md` before the first substantive question into the flagged territory (questions about the user's own problem, users, and evidence proceed normally — the gate is territory-scoped). The gate also arms mid-dialogue without a tripwire: when two consecutive answers show the user *cannot evaluate* the question's substance — not merely hasn't decided — read the reference and offer the pass then. Never silently switch into teaching; the offer is a blocking question.
 
 **Visual-probe gate — precondition, check it before raising the first shape decision.** If the Phase 0.3 tripwire fired, then before raising the first decision about shape, behavior, state, layout, flow, or a diagram — in any form, plain chat or a blocking tool — fire the text-vs-visual offer from `references/visual-probes.md`. The gate is state-based: offer unless this specific decision has already been through it; anchor the check to the decision you are about to raise, not a "pending gate" remembered since Phase 0.3. It **takes precedence over the default blocking-question path** (Interaction Rule 4): do not raise the shape decision as an `AskUserQuestion`/`request_user_input` menu until the user has declined visual. **An ASCII preview or text mockup inside the question's choices does not satisfy the offer** — that is the shortcut this gate exists to stop. Use the platform's blocking question tool for the text-vs-visual offer itself when available; the reference owns the offer wording, the cheapest-probe build, helper invocation, and the display-only feedback contract.
 
@@ -257,7 +261,7 @@ Skip when Path A fires, when the doc will make no checkable claims, or on the no
 
 ### Phase 3: Capture the Requirements-Only Unified Plan
 
-Write or update a requirements-only unified plan only when the conversation produced durable decisions worth preserving — see `references/brainstorm-sections.md` "Decide whether a doc is warranted at all" for the criteria and the bug-fix stress test. Skip document creation when the user only needs brief alignment and the decisions can flow downstream (ce-plan, JJ change description, docs/solutions/) without a brainstorm artifact in the middle.
+Write or update a requirements-only unified plan only when the conversation produced durable decisions worth preserving — see `references/brainstorm-sections.md` "Decide whether a doc is warranted at all" for the criteria and the bug-fix stress test. Skip document creation when the user only needs brief alignment and the decisions can flow downstream (ce-plan, change description, docs/solutions/) without a brainstorm artifact in the middle.
 
 When a doc is warranted, compose it using:
 
@@ -266,7 +270,7 @@ When a doc is warranted, compose it using:
 
 **Write tight.** A section being material is not license to pad it. Hold every kept section to the prose-economy discipline in `references/brainstorm-sections.md`: lead with the decision or outcome, one idea per sentence, a requirement is intent plus at most one qualifier, defer forks to Outstanding Questions rather than specifying both arms, resolve superseded text in place rather than stacking strata. Before declaring the doc written, run the named test there — could a reader find a contradiction in each section in one pass?
 
-Write to `docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>` — extension follows `OUTPUT_FORMAT`. Include `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`. Title is `<Name> - Plan` (matching the H1; no release-classification prefix). Keep the doc light and standalone-readable: a Goal Capsule (objective, product authority, open blockers) and the Product Contract. Do **not** emit a Goal Launch Block or Reader Index. See `references/brainstorm-sections.md` — which owns the artifact content rules, including repo-relative file paths inside the doc. When confirming in chat, report the written artifact with its absolute path so the reference is clickable.
+Write to `docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>` — extension follows `OUTPUT_FORMAT`. Include `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`. Title is `<Name> - Plan` (matching the H1; no conventional-change prefix). Keep the doc light and standalone-readable: a Goal Capsule (objective, product authority, open blockers) and the Product Contract. Do **not** emit a Goal Launch Block or Reader Index. See `references/brainstorm-sections.md` — which owns the artifact content rules, including repo-relative file paths inside the doc. When confirming in chat, report the written artifact with its absolute path so the reference is clickable.
 
 #### Vocabulary Capture — after the requirements-only unified plan (only if CONCEPTS.md already exists)
 

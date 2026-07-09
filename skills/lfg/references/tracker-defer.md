@@ -31,7 +31,7 @@ The caller decides how to surface the result to the user. The non-interactive mo
 
 ## Detection
 
-The agent determines the project's tracker from whatever documentation is obvious. Primary source: the project's active instructions and conventions already in its context — no need to open or name specific instruction files. Read a file directly only when the relevant instructions aren't already in context: a subdirectory-scoped instruction file governing the area you're working in, or when you're a fresh subagent that wasn't given the project's instructions. Supplementary signals (when primary documentation is ambiguous): `CONTRIBUTING.md`, `README.md`, PR templates under `.jjhub/`, visible tracker URLs in the repo.
+The agent determines the project's tracker from whatever documentation is obvious. Primary source: the project's active instructions and conventions already in its context — no need to open or name specific instruction files. Read a file directly only when the relevant instructions aren't already in context: a subdirectory-scoped instruction file governing the area you're working in, or when you're a fresh subagent that wasn't given the project's instructions. Supplementary signals (when primary documentation is ambiguous): `CONTRIBUTING.md`, `README.md`, PR templates under `.github/`, visible tracker URLs in the repo.
 
 A tracker can be surfaced via MCP tool (e.g., a Linear MCP server), CLI (e.g., `gh`), or direct API. All are acceptable. The detection output is a tuple with two availability flags — one for the named tracker specifically (drives label confidence in Interactive mode) and one for the full fallback chain (drives whether Defer is offered at all):
 

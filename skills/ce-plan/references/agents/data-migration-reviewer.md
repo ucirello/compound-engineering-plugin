@@ -14,20 +14,20 @@ For planning invocations, do not emit review-style JSON. Convert migration analy
 
 ## Step 0: Schema drift or schema-artifact handling
 
-Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review base revision from caller context (`<review-base>` — common ancestor change ID, bookmark, or revset). **Never assume `main`.**
+Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review base ref from caller context (`<review-base>` — common ancestor change ID or ref). **Never assume `main`.**
 
 ```bash
-jj diff --from <review-base> --to @ --name-only -- db/migrate/
+jj diff --from <review-base> --name-only -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the provided diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-jj diff --from <review-base> --to @ -- db/schema.rb
+jj diff --from <review-base> -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-jj diff --from <review-base> --to @ -- db/structure.sql
+jj diff --from <review-base> -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in the provided diff**:

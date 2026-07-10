@@ -45,15 +45,15 @@ describe("ce-worktree SKILL.md", () => {
   test("detects existing isolation before creating a workspace", () => {
     expect(
       SKILL_BODY.includes("jj workspace list"),
-      "ce-worktree/SKILL.md must inspect JJ workspaces to detect existing isolation (Step 0).",
+      "ce-worktree/SKILL.md must inspect `jj workspace list` to detect existing JJ isolation (Step 0).",
     ).toBe(true)
     expect(
-      SKILL_BODY.includes("jj workspace root"),
-      "ce-worktree/SKILL.md must report/anchor on `jj workspace root` so a subdirectory CWD is not misread as a separate workspace.",
+      SKILL_BODY.includes("jj log -r @ --no-graph"),
+      "ce-worktree/SKILL.md must inspect the current JJ change before deciding whether isolation already exists.",
     ).toBe(true)
     expect(
       SKILL_BODY.includes("jj bookmark list --revisions @"),
-      "ce-worktree/SKILL.md must report current bookmarks for the existing workspace.",
+      "ce-worktree/SKILL.md must inspect current bookmarks before creating another workspace.",
     ).toBe(true)
     expect(
       /work in place/i.test(SKILL_BODY),
@@ -63,30 +63,29 @@ describe("ce-worktree SKILL.md", () => {
 
   test("prefers the harness's native workspace tool before the JJ fallback", () => {
     expect(
-      /native (isolation primitive|workspace tool|workspace flag)/i.test(SKILL_BODY),
+      /native workspace (primitive|tool)/i.test(SKILL_BODY),
       "ce-worktree/SKILL.md must instruct the agent to prefer the harness's native workspace tool before falling back to JJ (avoids phantom state).",
     ).toBe(true)
   })
 
-  test("documents an inline JJ fallback under .workspaces with ignore safety", () => {
+  test("documents an inline JJ fallback under .workspaces with gitignore safety", () => {
     expect(
       SKILL_BODY.includes("jj workspace add"),
       "ce-worktree/SKILL.md must document the inline `jj workspace add` fallback.",
     ).toBe(true)
     expect(
       SKILL_BODY.includes(".workspaces/"),
-      "ce-worktree/SKILL.md must ensure `.workspaces/` is ignored before creating a JJ workspace.",
+      "ce-worktree/SKILL.md must keep JJ fallback workspaces under an ignored `.workspaces/` directory.",
     ).toBe(true)
   })
 
-  // PR #948 review: the fallback's relative `.workspaces/` and ignore
+  // PR #948 review: the fallback's relative `.workspaces/` and `.gitignore`
   // paths resolve against the agent's CWD, which may be a subdirectory — so the
   // skill must anchor at the repo root first, or it creates `src/.worktrees/...`
   // and edits `src/.gitignore` instead of the repo-root ones.
-  test("anchors the JJ fallback at the repo root before using relative paths", () => {
-    expect(
-      SKILL_BODY.includes('cd "$(jj workspace root)"'),
-      "ce-worktree/SKILL.md must `cd \"$(jj workspace root)\"` in the JJ fallback so relative `.workspaces`/ignore paths resolve at the repo root, not a subdirectory CWD.",
+  test("anchors the git fallback at the repo root before using relative paths", () => {
+    expect(SKILL_BODY.includes("jj root"),
+      "ce-worktree/SKILL.md must resolve the JJ repo root before using relative `.workspaces`/`.gitignore` paths.",
     ).toBe(true)
     expect(
       /run from the repo root/i.test(SKILL_BODY),
@@ -94,13 +93,13 @@ describe("ce-worktree SKILL.md", () => {
     ).toBe(true)
   })
 
-  // PR #948 review: `git fetch origin <branch>` exits 128 with no `origin`
+  // PR #948 review: `jj git fetch --remote origin` fails with no `origin`
   // remote / a local-only base. The fetch must be non-fatal so the flow
   // continues to the local-ref fallback it claims to handle.
-  test("treats the base-bookmark fetch as best-effort / non-fatal", () => {
+  test("treats the base-branch fetch as best-effort / non-fatal", () => {
     expect(
       /non-fatal|best-effort/i.test(SKILL_BODY),
-      "ce-worktree/SKILL.md must mark the `jj git fetch` step non-fatal so an absent remote falls through to the local base ref instead of aborting.",
+      "ce-worktree/SKILL.md must mark the `jj git fetch` step non-fatal so an absent `origin` remote falls through to the local base ref instead of aborting.",
     ).toBe(true)
   })
 
@@ -116,8 +115,8 @@ describe("ce-worktree SKILL.md", () => {
     // blocking-question tool (AGENTS.md > Cross-Platform User Interaction),
     // not a vague "ask the user" that can degrade to a non-blocking prompt.
     expect(
-      SKILL_BODY.includes("AskUserQuestion") && SKILL_BODY.includes("request_user_input"),
-      "ce-worktree/SKILL.md must route the sandbox-failure confirmation through the platform's blocking question tool (name AskUserQuestion / request_user_input / ask_user), per AGENTS.md > Cross-Platform User Interaction, rather than a non-blocking 'ask the user'.",
+      /blocking question tool/i.test(SKILL_BODY),
+      "ce-worktree/SKILL.md must route the sandbox-failure confirmation through the platform's blocking question tool rather than a non-blocking 'ask the user'.",
     ).toBe(true)
   })
 })

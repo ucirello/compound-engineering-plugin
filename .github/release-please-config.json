@@ -82,6 +82,11 @@
         },
         {
           "type": "json",
+          "path": ".devin-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": "plugin.json",
           "jsonpath": "$.version"
         }

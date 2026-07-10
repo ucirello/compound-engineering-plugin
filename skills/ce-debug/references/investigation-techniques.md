@@ -76,18 +76,23 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## JJ Binary Search for Regressions
+## Manual JJ Binary Search for Regressions
 
-When a bug is a regression ("it worked before"), use `jj log` and `jj new` to binary-search for the breaking change:
+When a bug is a regression ("it worked before"), use binary search to find the breaking commit. Current JJ does not provide a built-in `bisect` command, so keep the good/bad set yourself:
 
 ```bash
-jj log -r '<known-good-rev>::@' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
-jj new <candidate-rev>            # create a test working-copy change at a midpoint
-# run the reproduction; mark the candidate mentally as good or bad
-jj edit <original-rev>             # return to the original change when done
+original=$(jj log -r @ --no-graph -T 'commit_id')
+jj log -r '<known-good-rev>::@' --reversed --no-graph -T 'commit_id ++ " " ++ description.first_line() ++ "\n"'
+# Pick a midpoint revision from that list, then test it in a new working-copy change:
+jj new <midpoint-rev>
+<test-command>
+# Record the midpoint as good or bad, narrow the candidate list, and repeat.
+jj new "$original" # return to the original revision when done
 ```
 
-Repeat with the midpoint between the known-good and known-bad bounds until the breaking change is isolated. For scripted projects, wrap the reproduction command in a small loop over candidate revisions, but always return to the original change with `jj edit <original-rev>` before fixing.
+For a scripted search, write a small loop that chooses the midpoint from the `jj log` list, runs `jj new <candidate-rev>`, executes the test command, and records the exit status. Stop when the good and bad revisions are adjacent.
+
+The test command should exit 0 for good, non-zero for bad. Do this only from a clean workspace or an isolated workspace because `jj new <rev>` changes the working-copy commit.
 
 ---
 

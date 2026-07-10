@@ -85,7 +85,7 @@ SELECT status, COUNT(*) FROM records GROUP BY status;
 - [ ] No - irreversible change (document why this is acceptable)
 
 **Rollback Steps:**
-1. Deploy previous change
+1. Deploy previous commit
 2. Run rollback migration (if applicable)
 3. Restore data from backup (if needed)
 4. Verify with post-rollback queries
@@ -119,11 +119,11 @@ Produce a complete Go/No-Go checklist that an engineer can literally execute:
 ## 🔴 Pre-Deploy (Required)
 - [ ] Run baseline SQL queries
 - [ ] Save expected values
-- [ ] Verify preprod test passed
+- [ ] Verify staging test passed
 - [ ] Confirm rollback plan reviewed
 
 ## 🟡 Deploy Steps
-1. [ ] Deploy change [id]
+1. [ ] Deploy commit [sha]
 2. [ ] Run migration
 3. [ ] Enable feature flag
 
@@ -140,7 +140,7 @@ Produce a complete Go/No-Go checklist that an engineer can literally execute:
 
 ## 🔄 Rollback (If Needed)
 1. [ ] Disable feature flag
-2. [ ] Deploy rollback change
+2. [ ] Deploy rollback commit
 3. [ ] Run data restoration
 4. [ ] Verify with post-rollback queries
 ```
@@ -154,4 +154,4 @@ Invoke this prompt when:
 - Migration analysis flags critical findings
 - Any change that could silently corrupt/lose data
 
-Be thorough. Be specific. Produce executable checklists, not vague recommendations.
+Every checklist item must name the command or observable signal that proves the step succeeded.

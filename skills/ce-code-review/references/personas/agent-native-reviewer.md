@@ -132,7 +132,7 @@ If an action looks like it belongs on this list but you are not sure, flag it as
 
 Use the anchored confidence rubric in the subagent template. Persona-specific guidance:
 
-**Anchor 100** — the gap is mechanically verifiable: a new UI button with no matching tool registration, a tool definition that literally contains business-logic branching.
+**Anchor 100** — the gap is mechanically verifiable: a new UI button with no matching tool registration, a tool definition that literally contains business-logic bookmarking.
 
 **Anchor 75** — the gap is directly visible — a UI action exists with no corresponding tool, or a tool embeds clear business logic. Traceable from the code alone.
 

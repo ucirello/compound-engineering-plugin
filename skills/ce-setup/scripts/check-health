@@ -40,7 +40,7 @@ detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(jj workspace root >/dev/null 2>&1 && echo "yes" || echo "no")
+in_repo=$(jj root >/dev/null 2>&1 && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -68,23 +68,23 @@ done
 # =====================================================
 
 legacy_cfg="skip"
-local_cfg_ignored="skip"
+repo_cfg_gitignore="skip"
 local_cfg="skip"
 example_cfg="skip"
 project_issues=0
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(jj workspace root 2>/dev/null)
+  repo_root=$(jj root 2>/dev/null)
   legacy_cfg="missing"
   [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$repo_root/.compound-engineering/config.local.yaml" ]; then
     local_cfg="present"
-    if ! jj file list .compound-engineering/config.local.yaml 2>/dev/null | grep -q '^.compound-engineering/config.local.yaml$'; then
-      local_cfg_ignored="ok"
+    if grep -qsE '^\.compound-engineering/(\*\.local\.yaml|config\.local\.yaml)$' "$repo_root/.gitignore" "$repo_root/.ignore" 2>/dev/null; then
+      repo_cfg_gitignore="ok"
     else
-      local_cfg_ignored="missing"
+      repo_cfg_gitignore="missing"
     fi
   fi
 
@@ -138,10 +138,10 @@ if [ "$in_repo" = "yes" ]; then
 
   if [ "$local_cfg" = "present" ]; then
     ok ".compound-engineering/config.local.yaml exists"
-    if [ "$local_cfg_ignored" = "ok" ]; then
-      ok "Local config is ignored by jj"
+    if [ "$repo_cfg_gitignore" = "ok" ]; then
+      ok "Local config is gitignored"
     else
-      warn "Local config is not safely ignored"
+      warn "Local config is not safely gitignored"
       project_issues=$((project_issues + 1))
     fi
   else
@@ -159,7 +159,7 @@ if [ "$in_repo" = "yes" ]; then
   fi
 else
   section "Project config"
-  skip "Not inside a jj workspace"
+  skip "Not inside a JJ repository"
 fi
 
 echo ""

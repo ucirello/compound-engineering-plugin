@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current change/bookmark or PR.
+description: Run browser tests for pages affected by the current bookmark/change or PR.
 argument-hint: "[PR number, bookmark name, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or bookmark/change changes using the `agent-browser` CLI.
+Run end-to-end browser tests on pages affected by a PR or bookmark changes using the `agent-browser` CLI.
 
 ## Modes
 
@@ -41,12 +41,12 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-jj diff --from main@origin --to @ --name-only
+jj diff --name-only --from main --to @
 ```
 
 **If bookmark name provided:**
 ```bash
-jj diff --from main@origin --to [bookmark] --name-only
+jj diff --name-only --from main --to <bookmark-or-rev>
 ```
 
 ### 3. Map Changed Files to Routes
@@ -249,7 +249,7 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current change/bookmark changes (auto-detects port)
+# Test current bookmark/change changes (auto-detects port)
 /ce-test-browser
 
 # Test specific PR

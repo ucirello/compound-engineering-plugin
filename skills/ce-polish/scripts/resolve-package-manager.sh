@@ -8,7 +8,7 @@
 #
 # Arguments:
 #   path (optional) — directory to inspect. When omitted, defaults to the
-#                     JJ workspace root when available, otherwise the CWD.
+#                     JJ repo root, falling back to the current directory.
 #
 # Output contract (two lines on stdout):
 #   Line 1: package-manager binary token (`npm` | `pnpm` | `yarn` | `bun`)
@@ -32,23 +32,20 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          no positional arg and the CWD cannot be resolved
+#                          no positional arg and current directory is invalid
 
 set -u
 
 TARGET_PATH="${1:-}"
 
-# Resolve target directory: positional arg, JJ workspace root, or CWD.
+# Resolve target directory: positional arg or JJ repo root/current directory.
 if [ -n "$TARGET_PATH" ]; then
   if [ ! -d "$TARGET_PATH" ]; then
     echo "ERROR: path does not exist or is not a directory: $TARGET_PATH" >&2
     exit 1
   fi
 else
-  TARGET_PATH=$(jj workspace root 2>/dev/null)
-  if [ -z "$TARGET_PATH" ]; then
-    TARGET_PATH=$(pwd)
-  fi
+  TARGET_PATH=$(jj root 2>/dev/null || pwd)
 fi
 
 # Sentinel: no package.json means this is not a JS/TS project.

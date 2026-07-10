@@ -14,20 +14,20 @@ For planning invocations, do not emit review-style JSON. Convert migration analy
 
 ## Step 0: Schema drift or schema-artifact handling
 
-Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review base ref from caller context (`<review-base>` — common ancestor change ID or ref). **Never assume `main`.**
+Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
-jj diff --from <review-base> --name-only -- db/migrate/
+jj diff <review-base> --name-only -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the provided diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-jj diff --from <review-base> -- db/schema.rb
+jj diff <review-base> -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-jj diff --from <review-base> -- db/structure.sql
+jj diff <review-base> -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in the provided diff**:
@@ -54,7 +54,7 @@ When no concrete diff is available, do not pretend to check drift. Instead, iden
 
 ## Migration safety (what you're hunting for)
 
-- **Swapped or inverted ID/enum mappings** — `1 => TypeA, 2 => TypeB` in code but production has the reverse. Verify each CASE/IF branch and constant hash entry individually.
+- **Swapped or inverted ID/enum mappings** — `1 => TypeA, 2 => TypeB` in code but production has the reverse. Verify each CASE/IF bookmark and constant hash entry individually.
 - **Irreversible migrations without rollback plan** — column drops, precision-losing type changes, data deletes. Destructive `down` missing or non-restorative needs explicit acknowledgment.
 - **Missing backfill for new non-nullable columns** — `NOT NULL` without default or backfill fails on existing rows.
 - **Deploy-window breaks** — rename/drop before all code paths stop reading; constraints that existing rows violate.

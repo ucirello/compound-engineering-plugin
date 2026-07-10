@@ -25,6 +25,7 @@ const FILE_COMPONENT_MAP: Array<{ component: ReleaseComponent; prefixes: string[
       ".codex-plugin/",
       ".kimi-plugin/plugin.json",
       ".grok-plugin/",
+      ".devin-plugin/plugin.json",
       ".opencode/",
       ".pi/",
       "AGENTS.md",
@@ -187,6 +188,7 @@ export async function loadCurrentVersions(cwd = process.cwd()): Promise<VersionS
   const antigravity = await readJson<PluginManifest>(`${cwd}/plugin.json`)
   const kimi = await readJson<PluginManifest>(`${cwd}/.kimi-plugin/plugin.json`)
   const grok = await readJson<PluginManifest>(`${cwd}/.grok-plugin/plugin.json`)
+  const devin = await readJson<PluginManifest>(`${cwd}/.devin-plugin/plugin.json`)
   const marketplace = await readJson<MarketplaceManifest>(`${cwd}/.claude-plugin/marketplace.json`)
   const cursorMarketplace = await readJson<MarketplaceManifest>(`${cwd}/.cursor-plugin/marketplace.json`)
 
@@ -204,6 +206,10 @@ export async function loadCurrentVersions(cwd = process.cwd()): Promise<VersionS
 
   if (root.version !== grok.version) {
     throw new Error(`package.json version ${root.version} does not match .grok-plugin/plugin.json version ${grok.version}`)
+  }
+
+  if (root.version !== devin.version) {
+    throw new Error(`package.json version ${root.version} does not match .devin-plugin/plugin.json version ${devin.version}`)
   }
 
   return {

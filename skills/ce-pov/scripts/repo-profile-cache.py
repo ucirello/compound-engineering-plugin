@@ -13,9 +13,9 @@ Usage:
 `get` prints exactly one of:
     HIT\\n<profile-json>     a valid entry exists for the current repo state;
                             the profile JSON follows on subsequent lines
-    MISS\\n<write-path>      JJ workspace, no valid entry — caller derives the
+    MISS\\n<write-path>      JJ repo, no valid entry — caller derives the
                             profile and calls `put <write-path-or-any-file>`
-    NO-CACHE                no JJ workspace or no writable cache — caller derives
+    NO-CACHE                no JJ repo or no writable cache — caller derives
                             the profile fresh and skips `put`
 
 `put <file>` reads the profile JSON from <file>, wraps it with a validity
@@ -24,20 +24,20 @@ on success, `NO-CACHE` when the repo/cache is unavailable.
 
 Cache path:
     /tmp/compound-engineering/repo-profile/<root-id>/<current-id>.json
-  root-id = `jj log -r 'root()' -T commit_id` — the repository root identity,
-            shared across workspaces and clones.
-  current-id = `jj log -r @- -T commit_id` — the base revision for the working-copy change.
+  root-id = lexicographically-first `jj log -r 'root()+'` commit ID — the repo
+            identity, shared across workspaces and clones.
+  current-id = `jj log -r @` commit ID — the current JJ working-copy state.
 
 Validity (HIT) requires ALL of:
   - the cache file exists and parses as JSON,
-  - stored `current_id` == current working-copy base revision,
+  - stored `current_id` == current JJ working-copy commit ID,
   - stored `profile_schema_version` == PROFILE_SCHEMA_VERSION,
-  - no profile-input path is dirty or newly-added per `jj st`
-    (the schema-derived superset in `is_profile_input`, which also catches
-    untracked `??` files — a newly-added manifest or AGENTS.md must invalidate).
+  - no profile-input path is changed in the current JJ change per
+    `jj diff --name-only -r @` (the schema-derived superset in
+    `is_profile_input` — a newly-added manifest or AGENTS.md must invalidate).
 
 Cardinal rule: this cache is an optimization, never a correctness dependency.
-Every failure mode (not a JJ workspace, unreadable/malformed cache, no writable
+Every failure mode (not a JJ repo, unreadable/malformed cache, no writable
 /tmp, JJ errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
 never serves a profile it cannot prove fresh.
 
@@ -65,7 +65,7 @@ CACHE_ROOT = "/tmp/compound-engineering/repo-profile"
 # Dependency manifests + lockfiles. Matched by basename at ANY depth so a
 # monorepo workspace's manifest also invalidates. The profiler derives
 # stack/deps for ANY language, so this list must span ecosystems, not just JS —
-# an omitted manifest means a dirty dep bump at unchanged HEAD serves a stale
+# an omitted manifest means a dirty dep bump at an unchanged JJ revision serves a stale
 # profile (a cardinal-rule break).
 _MANIFEST_LOCKFILE = {
     # JavaScript / TypeScript / Deno
@@ -187,76 +187,31 @@ def jj(*args: str) -> "str | None":
     return result.stdout.strip()
 
 
-def revision_id(revset: str) -> "str | None":
-    out = jj("log", "-r", revset, "--no-graph", "-T", 'commit_id ++ "\\n"')
+def root_id() -> "str | None":
+    out = jj("log", "-r", "root()+", "--no-graph", "-T", "commit_id ++ \"\\n\"")
     if not out:
         return None
-    return sorted(line for line in out.split("\n") if line)[0]
+    # Multi-root histories can print several IDs; pick a deterministic one.
+    return sorted(out.split("\n"))[0]
 
 
 def changed_paths() -> "list[str] | None":
-    """Paths from `jj st`, or None if it could not run.
+    """Paths from `jj diff --name-only -r @`, or None if it could not run.
 
-    Includes newly-added/untracked entries so a new profile input is seen.
-    None signals "could not determine cleanliness" — the caller treats that
+    Includes newly-added tracked files in the current JJ change. None signals
+    "could not determine cleanliness" — the caller treats that
     conservatively as a miss rather than serving an unverified profile.
     """
-    try:
-        result = subprocess.run(
-            ["jj", "st"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
+    out = jj("diff", "--name-only", "-r", "@")
+    if out is None:
         return None
-    if result.returncode != 0:
-        return None
-    def clean(token: str) -> str:
-        token = token.strip()
-        # jj may quote paths containing special characters.
-        if len(token) >= 2 and token[0] == '"' and token[-1] == '"':
-            token = token[1:-1]
-        return token
-
-    paths: list[str] = []
-    in_changes = False
-    for line in result.stdout.split("\n"):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped == "The working copy has no changes.":
-            return []
-        if stripped == "Working copy changes:":
-            in_changes = True
-            continue
-        if stripped.startswith("Working copy") or stripped.startswith("Parent commit"):
-            in_changes = False
-            continue
-        if not in_changes or len(line) < 3:
-            continue
-        rest = line[2:].strip()
-        # Rename/copy entries can be "old -> new" or JJ's brace form
-        # "dir/{old => new}"; BOTH endpoints changed. A
-        # profile input renamed *away* (e.g. `package.json -> pkg.json`) must
-        # still invalidate, so keep the source path, not just the destination.
-        brace = re.match(r"^(.*)\{(.+) => (.+)\}$", rest)
-        if brace:
-            prefix, old, new = brace.groups()
-            for token in (prefix + old, prefix + new):
-                p = clean(token)
-                if p:
-                    paths.append(p)
-            continue
-        if " -> " in rest:
-            for token in rest.split(" -> ", 1):
-                p = clean(token)
-                if p:
-                    paths.append(p)
-            continue
-        p = clean(rest)
-        if p:
-            paths.append(p)
+    paths = [line for line in out.split("\n") if line]
+    summary = jj("diff", "--summary", "-r", "@")
+    if summary is not None:
+        for line in summary.split("\n"):
+            match = re.search(r"\{(.+?) => (.+?)\}", line)
+            if match:
+                paths.extend([match.group(1), match.group(2)])
     return paths
 
 
@@ -265,9 +220,9 @@ def cache_path(root: str, current: str) -> str:
 
 
 def resolve_keys() -> "tuple[str, str] | None":
-    """The (root-id, current-id) cache key, or None without a usable JJ workspace."""
-    root = revision_id("root()")
-    current = revision_id("@-")
+    """The (root-id, current-id) cache key, or None if not a usable JJ repo."""
+    root = root_id()
+    current = jj("log", "-r", "parents(@)", "--no-graph", "-T", "commit_id") or jj("log", "-r", "@", "--no-graph", "-T", "commit_id")
     if not root or not current:
         return None
     return root, current
@@ -360,9 +315,9 @@ def do_put(profile_file: str) -> int:
         print("NO-CACHE")
         return 0
 
-    # Do not cache a profile derived from dirty profile inputs: it reflects
-    # transient workspace edits and could be served later after those edits are
-    # reverted under the same JJ revision key.
+    # Do not cache a profile derived from a changed JJ working-copy state: it
+    # reflects profile-input edits that may later be split, abandoned, or
+    # rewritten, risking stale reuse under the same current revision ID.
     changed = changed_paths()
     if changed is None or any(is_profile_input(p) for p in changed):
         sys.stderr.write(

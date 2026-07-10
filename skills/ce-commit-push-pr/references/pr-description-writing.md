@@ -17,7 +17,7 @@ For user-facing bugs, run an extra before/after pass before writing the mechanis
 
 Two modes:
 
-- **Current-bookmark mode** (default) — describe the current JJ change stack vs the repo's default base.
+- **Current-bookmark mode** (default) — describe `@` vs the repo's default base.
 - **PR mode** — describe a specific PR. Triggered when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
@@ -28,35 +28,38 @@ gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,
 
 If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> try `main`/`master`/`develop` as JJ bookmarks. If none resolve, ask the user. `<head>` is `@`.
+For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> try `main@origin`/`master@origin`/`develop@origin` via `jj log -r <candidate>`. If none resolve, ask the user. `<head>` is `@`.
 
-**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against the configured remotes. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
-
-For current-bookmark mode:
+**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `jj git remote list`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
 
 ```bash
-jj git fetch
-jj log  -r "<base>@origin..<head>" --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'
-jj log  -r "<base>@origin..<head>" --no-graph -T 'change_id.short() ++ " " ++ description ++ "\n"'
-jj diff --from "<base>@origin" --to "<head>"
+jj git fetch --remote <base-remote>
+jj log --no-graph -r "<base>@<base-remote>..<head>" -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'
+jj log --no-graph -r "<base>@<base-remote>..<head>" -T 'description ++ "\n---\n"'   # full descriptions for related-reference discovery
+jj diff --from "<base>@<base-remote>" --to "<head>"
 ```
 
-For PR mode, prefer GitHub APIs; they already expose the PR's commit list and diff without workspace mutation:
+If the commit list is empty, report "No commits to describe" and stop.
 
-```bash
-gh pr view <ref> --json commits --jq '.commits[] | [.oid, .messageHeadline, .messageBody] | @tsv'
-gh pr diff <ref> --color=never
-```
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local JJ cannot reach the revisions (fork PR with no matching remote, shallow clone, offline, unrelated histories).
 
-If the change/commit list is empty, report "No changes to describe" and stop.
-
-**Fallback** — if `gh pr diff <ref>` fails, use `gh pr view <ref> --json commits,files,body,title` to write from metadata only. Note in the user-facing summary when the metadata-only fallback was used.
+Note in the user-facing summary when the API fallback was used.
 
 ---
 
 ## Step A: Size the description
 
-Match weight to weight. When in doubt, shorter wins. Subtract fix-up changes (review fixes, lint, conflict-resolution cleanup) when sizing — they're invisible to the reader. Large PRs need more selectivity, not more content.
+**Size by decision cost, not diff shape.** What a description must cover is set by how much a reviewer cannot establish from the diff alone — not changed-line count, file extension, or visual surface. A 5-line edit to ranking logic or a deploy manifest can carry more reviewer uncertainty than a 500-line mechanical rename.
+
+Before sizing, name the change's **material claims** — what became possible, what was fixed, what risk changed, what design decision the reviewer must assess — and which of them the diff alone can't establish. Surface those; let the rest stay implicit. **Classify each changed file by runtime purpose, not extension** when you judge this: markdown or YAML may be inert docs and examples, or runtime agent instructions, configuration, product content, or production deployment behavior — a "docs-only" diff that is really runtime instruction carries real claims and is not auto-sized to one line.
+
+Decision cost sets **what you surface, not how long you run** — it raises the content floor, not the length ceiling. A high-uncertainty *small* diff earns a sharper lead and at most a one-line validation caveat, not a multi-section essay; reviewer uncertainty moves a change at most one size row, and only when the diff genuinely can't carry the claim. Fold risk and residual uncertainty into the narrative rather than spawning dedicated `##` sections unless the PR is already large. The one-rule replacement for "shorter is safer":
+
+> Prefer the shortest description that still lets a reviewer decide — carrying the context, evidence, and residual uncertainty they can't get from the diff, and nothing they can.
+
+Evidence is broader than screenshots and passing tests — benchmarks, API captures, migration/rollback exercises, logs, compatibility matrices, security analysis, evals, manual probes, and rollout results all count — but include a result only when it changes confidence in a material claim, never to look thorough.
+
+Subtract fix-up commits (review fixes, lint, rebase resolutions) when sizing — they're invisible to the reader. Large PRs need more selectivity, not more content. The table below is the calibration; the rules above move a change at most one row.
 
 | Change profile | Description approach |
 |---|---|
@@ -78,7 +81,7 @@ For small + non-trivial bugfixes, the 3-5 sentence target still needs a user-vis
 - Type by intent, not file extension. When `fix` and `feat` both seem to fit, default to `fix` — adding code to remedy missing behavior is `fix`. Reserve `feat` for capabilities the user could not previously accomplish. Use `refactor`/`docs`/`chore`/`perf`/`test` when more precise.
 - Scope (optional): narrowest useful label. Omit when no single label adds clarity.
 - Description: imperative, lowercase, under 72 chars, no trailing period.
-- Match repo conventions visible in recent change descriptions.
+- Match repo conventions visible in recent commits.
 - **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation** — they trigger automated major-version bumps.
 
 ---
@@ -107,9 +110,9 @@ Common syntax examples:
 
 | Tracker | Closing reference | Non-closing reference | Notes |
 |---|---|---|---|
-| GitHub Issues | `Fixes #123`; cross-repo: `Fixes owner/repo#123` | `Related: #123`; cross-repo: `Related: owner/repo#123` | Closing keywords are `close(s/d)`, `fix(es/ed)`, and `resolve(s/d)`. Use closing syntax only when the PR targets the default branch and truly resolves the issue; otherwise use a non-closing reference. Repeat the keyword for multiple closing issues. |
+| GitHub Issues | `Fixes #123`; cross-repo: `Fixes owner/repo#123` | `Related: #123`; cross-repo: `Related: owner/repo#123` | Closing keywords are `close(s/d)`, `fix(es/ed)`, and `resolve(s/d)`. Use closing syntax only when the PR targets the default bookmark and truly resolves the issue; otherwise use a non-closing reference. Repeat the keyword for multiple closing issues. |
 | Linear | `Fixes ENG-123` | `Related to ENG-123` | Linear supports closing and non-closing magic words. Put magic words in the PR description, not a PR comment. Multiple issues can follow one magic word when they share the same intent, e.g. `Fixes ENG-123, DES-5 and ENG-256`. |
-| Other trackers | Use the project's documented closing keyword only when known. | Prefer a full URL or tracker ID under `Related`. | Some trackers parse change descriptions, PR descriptions, or both. Follow project docs or tracker integration docs when present; otherwise never guess a closing action. |
+| Other trackers | Use the project's documented closing keyword only when known. | Prefer a full URL or tracker ID under `Related`. | Some trackers parse commit messages, PR descriptions, or both. Follow project docs or tracker integration docs when present; otherwise never guess a closing action. |
 
 Closing references can live in the opening paragraph when the body is tiny. Non-closing references always get their own sentence or `## Related` block before validation/evidence. For one item that truly closes, a single line like `Fixes ENG-123.` can be enough; for mixed items, separate closing and non-closing bullets.
 
@@ -124,7 +127,7 @@ Decide whether the change introduces a concept — a pattern, technique, library
 **Check each candidate against the base ref, never the working tree.** The working tree contains this PR's own code, so grepping it finds the concept you just added and wrongly concludes it is already established. Check the base instead (Pre-A already resolved it):
 
 ```bash
-jj file show -r "<base>" . | rg -il "<term>" | head -5
+jj file list -r "<base>@<base-remote>" | xargs rg -il -- "<term>" | head -5
 ```
 
 Run one call per candidate — candidates cap at two, so the cost is trivial — and read establishment from the output: empty output means the concept is absent from the base.
@@ -155,7 +158,7 @@ Lead with the point, then the mechanism, then the caveat. Dense is good; long is
 
 **Rewrite preservation:** when rewriting an existing PR body, preserve an existing `## New concepts` section and any explainer-doc link verbatim (same rule as `## Demo`) unless the user's focus asks to refresh the concepts. Description-only and description-update runs never write repo files.
 
-**Archival hook:** when the skill's Step 5 confirms the apply and `pr_teaching_archive` is on (full workflow only), the teaching content is also written to `docs/explainers/` and linked from the section — the JJ change-and-push transition and doc frontmatter live in SKILL.md Step 5.
+**Archival hook:** when the skill's Step 5 confirms the apply and `pr_teaching_archive` is on (full workflow only), the teaching content is also written to `docs/explainers/` and linked from the section — the commit-and-push transition and doc frontmatter live in SKILL.md Step 5.
 
 ---
 
@@ -191,3 +194,13 @@ The opening goes under `## Summary` if the body uses any `##` headings; bare par
 **Model slug:** spaces become underscores; append context window and thinking level in parens if known. **URL-encode literal parens as `%28` / `%29`** — unencoded parens inside markdown image URLs break release-please's commit parser, which silently drops the commit from the changelog. Examples: `Opus_4.6_%281M,_Extended_Thinking%29`, `Sonnet_4.6_%28200K%29`, `Gemini_3.1_Pro`.
 
 Skip the badge if regenerating a body that already contains it.
+
+---
+
+## Step E: Pre-apply coverage audit
+
+Before returning the body, check it against the material claims from Step A and revise if any answer is wrong:
+
+- Is every claim the diff can't establish present — and is any claim the diff *does* show restated needlessly?
+- Is decision-changing evidence stated as a result rather than collapsed into an unexplained "tests passed", with demonstrated results kept distinct from assumptions and from mixed or negative outcomes?
+- Can any sentence or section of the *description* be cut without lowering reviewer confidence? If so, cut it — but never the required Step D badge/footer, which is mandated boilerplate, not descriptive content subject to this trim.

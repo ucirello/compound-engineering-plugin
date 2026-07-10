@@ -6,7 +6,8 @@
 #   resolve-port.sh [path] [--type <type>] [--port <n>]
 #
 # Arguments:
-#   path   (optional) -- project root directory. Defaults to the git repo root.
+#   path   (optional) -- project root directory. Defaults to the JJ repo root,
+#                        falling back to the current directory.
 #   --type (optional) -- framework type to scope probes (rails|next|vite|nuxt|
 #                        astro|remix|sveltekit|procfile). Unset runs all probes.
 #   --port (optional) -- explicit port override. Emitted immediately when present.
@@ -69,13 +70,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Default to git repo root when no positional path is given.
+# Default to JJ repo root/current directory when no positional path is given.
 if [ -z "$PROJECT_ROOT" ]; then
-  PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-  if [ -z "$PROJECT_ROOT" ]; then
-    echo "ERROR: not in a git repository and no path provided" >&2
-    exit 1
-  fi
+  PROJECT_ROOT=$(jj root 2>/dev/null || pwd)
 fi
 
 if [ ! -d "$PROJECT_ROOT" ]; then

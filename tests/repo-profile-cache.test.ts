@@ -22,6 +22,9 @@ function git(cwd: string, ...args: string[]): string {
   if (r.status !== 0) {
     throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`)
   }
+  if (args[0] === "commit") {
+    spawnSync("jj", ["git", "import"], { cwd, encoding: "utf8" })
+  }
   return r.stdout ?? ""
 }
 
@@ -51,6 +54,8 @@ function makeRepo(): string {
   writeFileSync(path.join(dir, "README.md"), "# x\n")
   git(dir, "add", "-A")
   git(dir, "commit", "-q", "-m", "init")
+  spawnSync("jj", ["git", "init", "--colocate", dir], { cwd: dir, encoding: "utf8" })
+  spawnSync("jj", ["git", "import"], { cwd: dir, encoding: "utf8" })
   return dir
 }
 

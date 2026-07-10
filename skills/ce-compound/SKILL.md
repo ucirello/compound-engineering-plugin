@@ -42,13 +42,13 @@ Headless mode is intended for automations and skill-to-skill invocation where no
 
 ## Pre-resolved context
 
-**Git branch (pre-resolved):** !`git rev-parse --abbrev-ref HEAD`
+**JJ bookmark (pre-resolved):** !`jj rev-parse --abbrev-ref @`
 
-If the line above resolved to a plain branch name (like `feat/my-branch`), use it in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving it. If it still contains a backtick command string, shows an error, or is empty, derive the branch at runtime.
+If the line above resolved to a plain bookmark name (like `feat/my-bookmark`), use it in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving it. If it still contains a backtick command string, shows an error, or is empty, derive the bookmark at runtime.
 
-**Repo root (pre-resolved):** !`git rev-parse --show-toplevel`
+**Repo root (pre-resolved):** !`jj root`
 
-If the line above resolved to an absolute path, use it as the session-history repo filter in Phase 1. If it still contains a backtick command string, shows an error, or is empty, derive the repo root at runtime with the shell tool (`git rev-parse --show-toplevel`, falling back to the working directory outside a git repo).
+If the line above resolved to an absolute path, use it as the session-history repo filter in Phase 1. If it still contains a backtick command string, shows an error, or is empty, derive the repo root at runtime with the shell tool (`jj root`, falling back to the working directory outside a JJ repo).
 
 ## Support Files
 
@@ -62,7 +62,7 @@ These files are the durable contract for the workflow. Read them on-demand at th
 - `assets/resolution-template.md` — section structure for new docs (read when assembling)
 - `scripts/session-history/` — session discovery and extraction scripts copied into this skill so session-history support does not depend on the deleted `ce-sessions` public skill
 - `scripts/validate-frontmatter.py` — frontmatter parser-safety validator (run in Phase 2 step 8 through the existence guard documented there; resolves only on Claude Code via `${CLAUDE_SKILL_DIR}`, with a manual-checklist fallback elsewhere)
-- `scripts/validate-doc-claims.py` — mechanical claims validator: cited paths, commit SHAs, relative links, dangling drafting scaffold (run in Phase 2.45 via the `SKILL_DIR` anchor)
+- `scripts/validate-doc-claims.py` — mechanical claims validator: cited paths, commit IDs, relative links, dangling drafting scaffold (run in Phase 2.45 via the `SKILL_DIR` anchor)
 
 When spawning subagents, pass the relevant file contents into the task prompt so they have the contract without needing cross-skill paths.
 
@@ -152,7 +152,7 @@ python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 
 - On `HIT`: load the profile JSON and use its `vocabulary` (CONCEPTS canonical terms) and `conventions` (root instruction/convention digests) as the agnostic orientation; do not re-derive them.
 - On `MISS`: dispatch a generic subagent seeded with `references/agents/repo-profiler.md` to derive the profile, write its JSON to a file, then persist with `python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <file>` (re-set `SKILL_DIR` in that call — shell vars don't persist between Bash invocations).
-- On `NO-CACHE` (no git repo or no writable cache): derive the orientation inline this run and skip `put`.
+- On `NO-CACHE` (no JJ repo or no writable cache): derive the orientation inline this run and skip `put`.
 
 The cache is an optimization, never a correctness dependency — if the helper errors or returns nothing usable, fall back to deriving the orientation inline and continue. Pass the resolved vocabulary/conventions into the Context Analyzer (for vocabulary and instruction-file convention grounding) so it does not re-derive them.
 
@@ -193,7 +193,7 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
    - **Writes the full doc-body prose** (all track-appropriate sections below) to `solution.md` and returns only the artifact path. This is the subagent most prone to the issue #956 summary-collapse, so its prose must land on disk rather than only in the inline return.
    - Incorporates auto memory excerpts (if provided by the orchestrator) as supplementary evidence -- conversation history and the verified fix take priority; if memory notes contradict the conversation, note the contradiction as cautionary context
    - **Grounds code-behavior claims in source, not conversation memory.** Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree and cite `file:line` alongside the claim. A claim that cannot be verified against the tree is softened or attributed ("per this session's conclusion…"), never stated as fact
-   - **Writes merge-state claims for time.** Cite PR numbers rather than bare commit SHAs — SHAs are rewritten by rebase/squash merges and may not exist on other checkouts. A "fixed in X" claim requires the fix to be reachable from the current tree; otherwise phrase it as pending ("fix opened in #1608, unmerged as of this writing")
+   - **Writes merge-state claims for time.** Cite PR numbers rather than bare commit IDs — SHAs are rewritten by rebase/squash merges and may not exist on other checkouts. A "fixed in X" claim requires the fix to be reachable from the current tree; otherwise phrase it as pending ("fix opened in #1608, unmerged as of this writing")
 
    **Bug track output sections:**
 
@@ -245,15 +245,15 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
 
 #### 4. **Session History** (internal flow after launching the parallel block — only if the user opted in)
    - **Skip entirely** if the user declined session history in the follow-up question, if running in lightweight mode, or if running in headless mode.
-   - Run session discovery, branch/keyword filtering, scan-window selection, deep-dive selection, and per-session extraction directly inside this skill using `scripts/session-history/`.
+   - Run session discovery, bookmark/keyword filtering, scan-window selection, deep-dive selection, and per-session extraction directly inside this skill using `scripts/session-history/`.
    - Read the skill-local synthesis prompt at `references/agents/session-historian.md`, then dispatch a generic subagent using that prompt content. Do not dispatch a standalone agent by type/name.
 
    **Session-history payload — keep tight.** A long, keyword-rich payload licenses widening. Use this shape:
 
-   - **Pre-resolved context** (only if values resolved cleanly above; otherwise omit): repo name, current git branch.
+   - **Pre-resolved context** (only if values resolved cleanly above; otherwise omit): repo name, current JJ bookmark.
    - **Time window**: explicit `7 days` unless the documented problem clearly spans a longer arc.
    - **Problem topic**: one sentence naming the concrete issue — error message, module name, what broke and how it was fixed. Not a paragraph; not a bullet list of related topics.
-   - **Filter rule (one line)**: "Only surface findings directly relevant to this specific problem. Ignore unrelated work from the same sessions or branches."
+   - **Filter rule (one line)**: "Only surface findings directly relevant to this specific problem. Ignore unrelated work from the same sessions or bookmarks."
    - **Output schema**:
 
      ```
@@ -274,7 +274,7 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
 
    ```bash
    if [ -n "${CLAUDE_SKILL_DIR}" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/session-history/discover-sessions.sh" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/session-history/extract-metadata.py" ]; then
-     REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+     REPO_ROOT=$(jj root 2>/dev/null || pwd)
      REPO_NAME=$(basename "$REPO_ROOT")
      SCAN_DAYS="7"
      bash "${CLAUDE_SKILL_DIR}/scripts/session-history/discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS" --cwd "$REPO_ROOT" | tr '\n' '\0' | xargs -0 python3 "${CLAUDE_SKILL_DIR}/scripts/session-history/extract-metadata.py" --cwd-filter "$REPO_ROOT"
@@ -283,7 +283,7 @@ Pass `{run_id}` (the resolved `$RUN_ID` value) into every Phase 1 subagent promp
    fi
    ```
 
-   Pi sessions are included when present under `~/.pi/agent/sessions/`; they carry `cwd` like Codex but no git branch. If `_meta.files_processed` is `0`, return `no relevant prior sessions`. If the first pass finds no relevant branch matches, or if processing Codex or Pi sessions, derive 2-4 keywords from the topic and re-run metadata extraction with `--keyword K1,K2,...`. Keep at most 5 sessions across Claude Code, Codex, Cursor, and Pi, ranked by branch match, keyword match count, file size over 30KB, and recency. Exclude the current session.
+   Pi sessions are included when present under `~/.pi/agent/sessions/`; they carry `cwd` like Codex but no JJ bookmark. If `_meta.files_processed` is `0`, return `no relevant prior sessions`. If the first pass finds no relevant bookmark matches, or if processing Codex or Pi sessions, derive 2-4 keywords from the topic and re-run metadata extraction with `--keyword K1,K2,...`. Keep at most 5 sessions across Claude Code, Codex, Cursor, and Pi, ranked by bookmark match, keyword match count, file size over 30KB, and recency. Exclude the current session.
 
    **Extraction pipeline.** Create `SCRATCH=$(mktemp -d -t ce-compound-sessions-XXXXXX)`. For each selected session, write extracted content to scratch files:
 
@@ -348,7 +348,7 @@ The orchestrating agent (main conversation) performs these steps:
    ```
 
    - **If the script ran:** exit 0 means parser-safe; exit 1 means stderr names the offending field(s) — quote the value(s), re-write the doc, and re-run until exit 0. Do not declare success while validation fails.
-   - **If the script did not run** (else branch): apply the validator's checks by hand, matching its exact scope — checking more broadly risks edits the validator would not require. Fix any violation by quoting the whole value before continuing:
+   - **If the script did not run** (else bookmark): apply the validator's checks by hand, matching its exact scope — checking more broadly risks edits the validator would not require. Fix any violation by quoting the whole value before continuing:
      1. The opening and closing frontmatter delimiters are each a line whose content is `---` (trailing whitespace is fine; `----` or `---extra` is not a valid delimiter).
      2. For each **top-level** mapping entry (`key: value`, no leading indentation) whose value is **not already quoted or structured** (does not start with `"`, `'`, `[`, `{`, `|`, or `>`): the value must contain no unquoted ` #` (space-then-hash — YAML treats it as a comment and silently truncates) and no unquoted `: ` (colon-then-space — strict YAML may read it as a nested mapping). Quote the whole value if either appears.
      Nested values, array items, and already-quoted values are out of scope here (array-item quoting is handled by the schema/YAML-safety step above). Then state in the completion output that the bundled script validator was unavailable on this platform and the checks were applied manually.
@@ -385,7 +385,7 @@ If no terms qualified after applying the reference's criteria, record that outco
 
 The doc (and any `CONCEPTS.md` entries from Phase 2.4) is about to become permanent, trusted knowledge. Validate its claims against the tree before it compounds. **Read `references/grounding-validation.md` now** — it holds the adjudication rules and the validator prompt; the steps below are only the trigger.
 
-1. **Mechanical claims check (every mode, including headless).** Optionally run `git fetch --quiet` first (best-effort — skip silently offline; the network is never a correctness dependency). Then run the bundled validator against the written doc:
+1. **Mechanical claims check (every mode, including headless).** Optionally run `jj git fetch --remote origin` first (best-effort — skip silently offline; the network is never a correctness dependency). Then run the bundled validator against the written doc:
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
@@ -394,7 +394,7 @@ The doc (and any `CONCEPTS.md` entries from Phase 2.4) is about to become perman
 
    Exit 0 means nothing flagged. Exit 1 means flags to **adjudicate, not auto-fix** — each flagged path, SHA, link, or scaffold pattern is fixed, annotated as historical, or confirmed intentional per the reference's adjudication table. A doc may legitimately cite a path deleted by the very fix it documents; a flag is a question, not a failure. If the script cannot be resolved on this platform, apply the reference's manual checklist and say so in the output — never silently skip.
 
-2. **Semantic grounding validator (Full and headless; lightweight skips it).** Dispatch one read-only generic subagent built from the prompt template in the reference, covering the written doc plus any `CONCEPTS.md` entries added or edited this run. It verifies code-behavior claims by quoting the defining source line, merge-state claims against remote truth (`gh` primary, git reachability fallback), and internal completeness of countable assertions. Apply its verdicts per the reference (fix contradicted claims from the quoted evidence; soften or drop unverifiable ones; mark offline merge-state checks as degraded), then re-run the mechanical check if the body changed.
+2. **Semantic grounding validator (Full and headless; lightweight skips it).** Dispatch one read-only generic subagent built from the prompt template in the reference, covering the written doc plus any `CONCEPTS.md` entries added or edited this run. It verifies code-behavior claims by quoting the defining source line, merge-state claims against remote truth (`gh` primary, JJ reachability fallback), and internal completeness of countable assertions. Apply its verdicts per the reference (fix contradicted claims from the quoted evidence; soften or drop unverifiable ones; mark offline merge-state checks as degraded), then re-run the mechanical check if the body changed.
 
 ### Phase 2.5: Selective Refresh Check
 
@@ -501,7 +501,7 @@ Based on problem type, optionally dispatch generic subagents seeded with local p
 - **security_issue** → `references/agents/security-sentinel.md`
 - **database_issue** → `references/agents/data-integrity-guardian.md`
 - Any code-heavy issue → preserve code simplification as a **read-only documentation review**. Inspect the solution draft's code examples and explanatory claims inline, or dispatch a generic subagent seeded with a local prompt only to return suggestions. Do **not** invoke `ce-simplify-code` from this phase and do not mutate product code unless the user explicitly asks for a separate code-simplification pass. Do not use the deleted `code-simplicity-reviewer`.
-  Example: review the solution draft's examples for speculative abstractions, redundant wrappers, dead branches, and just-in-case parameters. Apply edits only to the documentation/examples being written by `ce-compound`; leave any branch code changes untouched.
+  Example: review the solution draft's examples for speculative abstractions, redundant wrappers, dead bookmarks, and just-in-case parameters. Apply edits only to the documentation/examples being written by `ce-compound`; leave any bookmark code changes untouched.
 
 </parallel_tasks>
 
@@ -519,7 +519,7 @@ Headless mode forces Full and does not enter Lightweight — automations get the
 
 The orchestrator (main conversation) performs ALL of the following in one sequential pass:
 
-1. **Extract from conversation**: Identify the problem and solution from conversation history. Also scan the "user's auto-memory" block injected into your system prompt, if present (Claude Code only) -- use any relevant notes as supplementary context alongside conversation history. Tag any memory-sourced content incorporated into the final doc with "(auto memory [claude])". Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree — soften or attribute any claim you cannot verify. Cite PR numbers over bare commit SHAs, and phrase unmerged fixes as pending
+1. **Extract from conversation**: Identify the problem and solution from conversation history. Also scan the "user's auto-memory" block injected into your system prompt, if present (Claude Code only) -- use any relevant notes as supplementary context alongside conversation history. Tag any memory-sourced content incorporated into the final doc with "(auto memory [claude])". Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree — soften or attribute any claim you cannot verify. Cite PR numbers over bare commit IDs, and phrase unmerged fixes as pending
 2. **Classify**: Read `references/schema.yaml` and `references/yaml-schema.md`, then determine track (bug vs knowledge), category, and filename
 3. **Write minimal doc**: Create `docs/solutions/[category]/[filename].md` using the appropriate track template from `assets/resolution-template.md`, with:
    - YAML frontmatter with track-appropriate fields, applying the YAML-safety quoting rule for array items (see `references/yaml-schema.md` > YAML Safety Rules)
@@ -662,7 +662,7 @@ Subagent Results:
   ✓ Context Analyzer: Identified performance_issue in brief_system, category: performance-issues/
   ✓ Solution Extractor: 3 code fixes, prevention strategies
   ✓ Related Docs Finder: 2 related issues
-  ✓ Session History: 3 prior sessions on same branch, 2 failed approaches surfaced
+  ✓ Session History: 3 prior sessions on same bookmark, 2 failed approaches surfaced
 
 Grounding Validation:
   ✓ Mechanical check: 14 paths, 2 SHAs, 3 links checked — 1 flag annotated as historical

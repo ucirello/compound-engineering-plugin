@@ -7,9 +7,9 @@ Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted 
 Two claim categories verify against different trees:
 
 - **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree** — they describe what this session's work produced and verified here.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local JJ reachability is only the fallback. The script's `INFO: workspace is N commits behind …` line tells you how much to distrust the local tree for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort — skip silently on failure or offline; the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Before running the script, optionally run `jj git fetch --remote origin` (best-effort — skip silently on failure or offline; the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -21,7 +21,7 @@ The script reports flags; you decide each one. Three resolutions — **fix**, **
 | path missing here, exists at upstream | Stale checkout | Verify the claim against upstream; annotate if the doc implies the file is present locally |
 | path deliberately gone (doc says removed/renamed) | Historical citation | Confirm the surrounding prose marks it as historical ("removed by this fix", "pre-fix state"); add that marker if absent |
 | SHA does not resolve | Fabricated or from another repo | Replace with the PR number, or drop |
-| SHA reachable from HEAD only | Local-only commit; SHA will change on rebase/squash merge | Replace with the PR number |
+| SHA reachable from @ only | Local-only commit; SHA will change on rebase/squash merge | Replace with the PR number |
 | SHA reachable from upstream only | Checkout predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
 | SHA exists but unreachable | Rebased-away commit | Replace with the PR number |
 | scaffold ("Learning 3", `{{…}}`) | Drafting-context leak | Always fix — rewrite as a real path or link |
@@ -38,7 +38,7 @@ Dispatch **one generic read-only subagent** covering the written solution doc pl
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, JJ (non-mutating), and gh when available.
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.
@@ -54,8 +54,8 @@ Check every factual claim in three categories:
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
    "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: git
-   reachability from the upstream default branch. Verdict: verified,
+   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: JJ
+   reachability from the upstream default bookmark. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.
 

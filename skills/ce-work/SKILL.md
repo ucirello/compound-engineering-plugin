@@ -163,7 +163,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    7. **Abort criteria:** if a batch produces broad unplanned edits, out-of-scope test failures, or repeated conflicts, stop parallelizing and finish the rest serially.
 
    **Isolation is the harness's job, never ce-work's** — never run `jj workspace add` yourself. Probe what your subagent mechanism provides and pick the parallel path:
-   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: Claude Code `Agent` tool (`isolation: "workspace"` + `run_in_background: true`; workspace under a gitignored `.claude/workspaces/`), Codex `spawn_agent` (a coding **worker** edits its forked workspace), Cursor `best-of-n-runner`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's merge-cost judgment). This works even when you are *already* inside a workspace — harness workspaces are peers of one repo, not nested, bookmarked from your current @.
+   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: Claude Code `Agent` tool (`isolation: "workspace"` + `run_in_background: true`; workspace under an ignored `.claude/workspaces/` path), Codex `spawn_agent` (a coding **worker** edits its forked workspace), Cursor `best-of-n-runner`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's merge-cost judgment). This works even when you are *already* inside a workspace — harness workspaces are peers of one repo, not nested, bookmarked from your current @.
    - **Shared workspace only** — subagents run in your working directory (Cursor `Task` default, or any harness without isolation). Parallelize **disjoint-file units only**, under the shared-workspace constraints below; contending units run serial.
    - **No subagent mechanism:** run inline.
 
@@ -173,7 +173,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    - Instruction to check whether the unit's test scenarios cover all applicable categories (happy paths, edge cases, error paths, integration) and supplement gaps before writing tests.
    - **Instruction to choose the unit's evidence strategy and gather the evidence** (see Evidence Strategy in Phase 2) — for behavior-bearing changes, honor the Execution note and default to proof-first or characterization-first: create/update/strengthen the test and observe the red failure or characterization baseline **before** changing production code. The worker is the only party that witnesses this, so it must capture it as it goes.
    - **Instruction to report, in its final message, both (a) the file paths it changed and (b) the unit's verification evidence** — `behavior_changed`, existing tests inspected, tests added/changed or used unchanged, the red failure or characterization observed (when applicable), the verification run and result, and any deliberate no-test exception with its reason. The handoff is a text summary on most harnesses with no guaranteed diff, so reported paths are the orchestrator's starting hint (it still verifies the actual tree); the evidence fields are **not** reconstructable from the tree afterward, so a worker that omits them forces the orchestrator to re-derive or leave `verification_evidence` incomplete.
-   - **Do not commit.** Workers implement and may run their *own unit's* focused tests in isolation as a self-check, but the **orchestrator owns staging, committing, and the authoritative test runs**. (Capability note: a harness that *reaps* the isolated workspace on worker completion — none of our current targets do — would instead require the worker to commit to its bookmark; confirm before assuming it.)
+   - **Do not commit.** Workers implement and may run their *own unit's* focused tests in isolation as a self-check, but the **orchestrator owns splitting changes, committing, and the authoritative test runs**. (Capability note: a harness that *reaps* the isolated workspace on worker completion — none of our current targets do — would instead require the worker to commit to its bookmark; confirm before assuming it.)
 
    **Shared-workspace constraints** — when subagents share your working directory (no isolation): they must not `jj split`, commit, or run the full test suite concurrently (index corruption + test interference); the orchestrator does all of that after the batch. A worker may run a single focused unit test only if it touches no shared state.
 
@@ -185,7 +185,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    1. Wait for every worker in the batch to finish.
    2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (`jj status`/diff in its workspace or the shared dir). Reported paths are a hint; declared `Files:` are often incomplete — workers create/modify files the plan didn't anticipate.
    3. **Detect real collisions** — 2+ workers that actually modified the same file. In a shared workspace only the last writer survived: commit the non-colliding work first, then re-run the colliding units serially so each builds on the other's committed result. With harness-native isolation the collision surfaces as a merge conflict at integration instead (see the per-harness note).
-   4. **Review, test, and commit each unit in dependency order — the orchestrator owns commits.** Stage only that unit's files, commit with a message derived from its Goal, run the relevant tests, and fix before the next. Capture each worker's returned verification evidence into the run's `verification_evidence` roll-up — if a worker omitted it, re-derive what the tree allows and mark the rest as unverified rather than fabricating a red-before-implementation observation the worker never reported.
+    4. **Review, test, and commit each unit in dependency order — the orchestrator owns commits.** Split only that unit's files into the committed change, commit with a message derived from its Goal, run the relevant tests, and fix before the next. Capture each worker's returned verification evidence into the run's `verification_evidence` roll-up — if a worker omitted it, re-derive what the tree allows and mark the rest as unverified rather than fabricating a red-before-implementation observation the worker never reported.
    5. Update the task list (progress lives in the commits).
    6. **Release the workers** — close/clean up each worker handle so it stops holding a concurrency slot or leaving orphans (e.g., Codex `close_agent`; for a Claude per-worker workspace: `jj workspace forget <workspace>` -> remove the workspace directory -> `jj bookmark delete <bookmark>`). These isolated workspaces are peers invisible to any outer orchestrator (e.g., Orca), so cleanup is entirely ce-work's.
    7. Dispatch the next dependency layer.
@@ -286,7 +286,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    # 1. Verify tests pass (use project's test command)
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-   # 2. Stage only files related to this logical unit (not `jj split .`)
+   # 2. Split only files related to this logical unit (not `jj split .`)
    jj split <files related to this logical unit>
 
    # 3. Commit with conventional message
@@ -298,8 +298,8 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 commit/PR includes the full attribution.
 
    **Parallel subagent mode:** Commit ownership is split by isolation mode (see Phase 1 Step 4):
-   - **Workspace-isolated:** subagents may stage and commit inside their own workspace bookmark; the orchestrator merges those bookmarks in dependency order after the batch.
-   - **Shared-directory fallback:** subagents do not commit; the orchestrator stages and commits each unit after the entire parallel batch completes.
+   - **Workspace-isolated:** subagents may split and commit inside their own workspace bookmark; the orchestrator merges those bookmarks in dependency order after the batch.
+   - **Shared-directory fallback:** subagents do not commit; the orchestrator splits and commits each unit after the entire parallel batch completes.
 
 3. **Follow Existing Patterns**
 
@@ -357,7 +357,7 @@ When all Phase 2 tasks are complete and execution transitions to quality check, 
 
 **Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the checkout, commits, or applies fixes.
 
-1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<ref>` when the merge base is known, and `depth:full` when a deep/thorough review was explicitly requested.
+1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<ref>` when the common-ancestor base is known, and `depth:full` when a deep/thorough review was explicitly requested.
 2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator merges diffs, runs tests, and commits — it does not pre-investigate findings.
 3. **Residual Work Gate** — Only after followup; unresolved actionable findings go through the gate in `shipping-workflow.md` (autonomous sessions auto-accept + record residuals; interactive sessions ask).
 

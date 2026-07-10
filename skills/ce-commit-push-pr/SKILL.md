@@ -72,7 +72,7 @@ If on the default bookmark, bookmark creation needs to handle stale local `<base
 
 Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate JJ changes (2-3 max). Group at file level only — use `jj split` when a mixed current change must be separated. When ambiguous, one change is fine.
 
-Describe each group as a logical change. JJ has no staging area; when only some paths belong in a logical change, split first:
+Describe each group as a logical change. JJ records the working copy as a change; when only some paths belong in a logical change, split first:
 
 ```bash
 jj split file1 file2 file3

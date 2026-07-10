@@ -258,7 +258,7 @@ jj status
 
 Filter the output against the scope paths. If any in-scope files have uncommitted changes:
 - Report which files are dirty
-- Ask the user to commit or stash before proceeding
+- Ask the user to commit, split, or move the work aside in another JJ change before proceeding
 - Do NOT continue until the working tree is clean for in-scope files
 
 ### 1.2 Build or Validate Measurement Harness

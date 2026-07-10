@@ -61,7 +61,7 @@ When invoking any skill referenced below, resolve its name against the available
       gh pr edit PR_NUMBER --body-file BODY_FILE
       ```
 
-   6. If no open PR exists, create a tracked fallback file at `docs/residual-review-findings/<bookmark-or-head-sha>.md` containing the composed section and the source PR-review run context. Stage only that file, commit it with `docs(review): record residual review findings`, and push the current bookmark/change **when a remote is configured** (per the shipping precondition). Resolve a writable remote dynamically: prefer `origin` when present, otherwise use `jj git remote list` and choose the first configured remote. Then run `jj git push --remote <remote> --bookmark <current-bookmark>`. If there is no remote at all, do not push — the committed fallback file is the durable sink. This is the durable no-PR sink. Do not output DONE until the residual findings are durable: either the existing PR body has been updated, or this fallback file commit has been made (pushed when a remote exists, committed locally when none). A push that fails when a remote exists is a stop-and-report; never retry a push, or block DONE, when no remote exists.
+   6. If no open PR exists, create a tracked fallback file at `docs/residual-review-findings/<bookmark-or-head-id>.md` containing the composed section and the source PR-review run context. Split only that file into the committed change, commit it with `docs(review): record residual review findings`, and push the current bookmark/change **when a remote is configured** (per the shipping precondition). Resolve a writable remote dynamically: prefer `origin` when present, otherwise use `jj git remote list` and choose the first configured remote. Then run `jj git push --remote <remote> --bookmark <current-bookmark>`. If there is no remote at all, do not push — the committed fallback file is the durable sink. This is the durable no-PR sink. Do not output DONE until the residual findings are durable: either the existing PR body has been updated, or this fallback file commit has been made (pushed when a remote exists, committed locally when none). A push that fails when a remote exists is a stop-and-report; never retry a push, or block DONE, when no remote exists.
 
    Never block DONE on tracker filing failures once residuals have been durably recorded. A `no_sink` outcome is success only when the findings are present in the PR body or in the pushed fallback file.
 
@@ -101,7 +101,7 @@ When invoking any skill referenced below, resolve its name against the available
 
    3. Read the failure logs, identify the root cause, and apply a fix in the working tree. Do NOT weaken, skip, or mock the failing assertion to make it pass — repair the actual issue. If the failure is a flaky test that has no fix path, document that as the residual outcome below rather than retrying without a code change.
 
-   4. Stage only the files you changed, commit, and push:
+   4. Split only the files you changed into the committed change, commit, and push:
 
       ```bash
       jj split <changed-files>

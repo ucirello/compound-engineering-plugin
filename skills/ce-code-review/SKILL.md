@@ -54,7 +54,7 @@ Same pipeline for default and `mode:agent`:
 - **No blocking prompts.** Never use `AskUserQuestion`, `request_user_input`, `ask_user`, or other blocking question tools. Infer intent, plan, and scope from explicit tokens, JJ state, PR metadata, and conversation. Note uncertainty in Coverage or the verdict — do not stop to ask.
 - **Explicit mutations only.** Never run `gh pr view`, `jj new`, `jj new`, or similar bookmark-switch commands. Passing a PR number, URL, or bookmark name selects **review scope**, not permission to mutate the working tree. To review local uncommitted work on a feature bookmark, check out that bookmark yourself (or stay on it) and pass `base:` or no target.
 - **Smart defaults.** Untracked files: review tracked changes only and list excluded paths in Coverage. Plan: use `plan:` when passed; otherwise discover conservatively from PR body or bookmark keywords. Weak advisory P2/P3 from testing/maintainability alone: demote to `testing_gaps` / `residual_risks` per Stage 5.
-- **Report outcomes, not machinery.** What you show the user is about the review: what's being examined (the PR/bookmark), which coverage is included and the one-line reason for each conditional lens, the independent cross-model pass and which model runs it, and the findings. Keep the skill's internals out of user-facing text — model-tier assignments, raw scope-mode codenames (`local-aligned`/`pr-remote`), staging the diff to disk, loading persona files, parallel-dispatch bookkeeping, and step-by-step narration of your own setup. Name what the user would recognize (a PR number, a reviewer's concern, a peer model), not the plumbing. This governs *what* you surface and suppress; it does not script the wording — use your own voice.
+- **Report outcomes, not machinery.** What you show the user is about the review: what's being examined (the PR/bookmark), which coverage is included and the one-line reason for each conditional lens, the independent cross-model pass and which model runs it, and the findings. Keep the skill's internals out of user-facing text — model-tier assignments, raw scope-mode codenames (`local-aligned`/`pr-remote`), writing the diff to disk, loading persona files, parallel-dispatch bookkeeping, and step-by-step narration of your own setup. Name what the user would recognize (a PR number, a reviewer's concern, a peer model), not the plumbing. This governs *what* you surface and suppress; it does not script the wording — use your own voice.
 
 ## Output format
 
@@ -176,7 +176,7 @@ Compute the diff range, file list, and diff. Minimize permission prompts by comb
 
 **If `base:` argument is provided (fast path):**
 
-The caller already knows the diff base. Skip all base-bookmark detection, remote resolution, and merge-base computation. Use the provided value directly:
+The caller already knows the diff base. Skip all base-bookmark detection, remote resolution, and common-ancestor computation. Use the provided value directly:
 
 ```
 BASE_ARG="{base_arg}"
@@ -227,14 +227,14 @@ Set `BASE:` to `pr:<number-or-url>` (logical marker — not a JJ SHA). Set `UNTR
 
 **Diff by scope mode** (do not mix remote and local diffs — contradictory hunks cause false positives):
 
-- **`local-aligned`:** Resolve `<resolved-base-ref>` from `baseRefName` (fetch if needed). Compute `BASE=$(jj log --no-graph -r "latest(common_ancestors(@, <resolved-base-ref>))" -T 'commit_id')`, then set `FILES:` from `jj diff --name-only --from $BASE` and `DIFF:` from `jj diff --from $BASE` (includes committed, staged, and working-copy changes on the PR bookmark). Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local tree is canonical. Note in Coverage: `scope: local-aligned (PR; local tree diff)`.
+- **`local-aligned`:** Resolve `<resolved-base-ref>` from `baseRefName` (fetch if needed). Compute `BASE=$(jj log --no-graph -r "latest(common_ancestors(@, <resolved-base-ref>))" -T 'commit_id')`, then set `FILES:` from `jj diff --name-only --from $BASE` and `DIFF:` from `jj diff --from $BASE` (includes the current JJ stack and working-copy change on the PR bookmark). Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local tree is canonical. Note in Coverage: `scope: local-aligned (PR; local tree diff)`.
 - **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `gh pr diff <number-or-url> --color=never`. If `gh pr diff` fails, stop with an actionable error — do not fall back to checkout.
 
 When **`pr-remote`**, before Stage 4:
 
 1. Best-effort fetch PR head without checkout: `jj git fetch --remote origin --branch <headRefName>` (substitute PR metadata).
 2. When fetch succeeds, set `PR_HEAD_REF=<headRefName>@origin` for reviewers and validators. When fetch fails, omit `PR_HEAD_REF` and note in Coverage — reviewers must rely on diff hunks only.
-3. Best-effort fetch the PR base without checkout: `jj git fetch --remote origin --branch <baseRefName>`. When it succeeds, resolve a concrete ref with `jj log -r <baseRefName>@origin --no-graph -T 'commit_id'` and set `PR_BASE_REF` to that SHA — a **real JJ base ref** reviewers and validators use for file-level jj diffs (e.g. `data-migration-reviewer` runs `jj diff <PR_BASE_REF> -- db/schema.rb`/`structure.sql`). The `pr:<number-or-url>` logical marker in `BASE:` stays the scope marker; `PR_BASE_REF` is the diffable base. When the fetch fails, omit `PR_BASE_REF` and note in Coverage — schema-drift and other JJ-diff checks fall back to diff hunks only and must **not** assume `main`.
+3. Best-effort fetch the PR base without checkout: `jj git fetch --remote origin --branch <baseRefName>`. When it succeeds, resolve a concrete ref with `jj log -r <baseRefName>@origin --no-graph -T 'commit_id'` and set `PR_BASE_REF` to that commit ID — a **real JJ base ref** reviewers and validators use for file-level jj diffs (e.g. `data-migration-reviewer` runs `jj diff <PR_BASE_REF> -- db/schema.rb`/`structure.sql`). The `pr:<number-or-url>` logical marker in `BASE:` stays the scope marker; `PR_BASE_REF` is the diffable base. When the fetch fails, omit `PR_BASE_REF` and note in Coverage — schema-drift and other JJ-diff checks fall back to diff hunks only and must **not** assume `main`.
 4. Include `<pr-scope-mode>pr-remote</pr-scope-mode>` and, when set, `<pr-head-ref>...</pr-head-ref>` and `<pr-base-ref>...</pr-base-ref>` in the Stage 4 review context bundle.
 
 Reviewers and Stage 5b validators in **`pr-remote`** mode must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `jj file show -r <PR_HEAD_REF> <path>` when `PR_HEAD_REF` is set, otherwise use only the provided diff hunks. **`local-aligned`** uses normal workspace inspection.
@@ -272,9 +272,9 @@ On success, produce the diff:
 echo "BASE:$BASE" && echo "FILES:" && jj diff --name-only --from $BASE && echo "DIFF:" && jj diff --from $BASE && echo "UNTRACKED:" && jj status
 ```
 
-Using `jj diff $BASE` (without `..@`) diffs the merge-base against the working tree, which includes committed, staged, and working-copy changes together.
+Using `jj diff --from $BASE` diffs the common ancestor against the working tree, which includes committed changes in the stack plus the current working-copy change.
 
-**Untracked file handling:** Always inspect `UNTRACKED:`. Untracked paths are out of scope unless staged. When non-empty, list excluded files in Coverage and continue on tracked changes only — never stop or prompt.
+**Untracked file handling:** Always inspect `UNTRACKED:`. New paths are in scope only when they appear in the JJ diff. When non-empty but absent from the diff, list excluded files in Coverage and continue on tracked changes only — never stop or prompt.
 
 ### Stage 1b: Compute scope signals (cheap, deterministic)
 
@@ -321,7 +321,7 @@ Understand what the change is trying to accomplish. The source of intent depends
 
 **PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
 
-**Branch mode:** Run `jj log --no-graph -r "$BASE..<bookmark-ref>"` using the resolved merge-base and resolved bookmark ref from Stage 1. Use `<bookmark-ref>` (the resolved `<bookmark>@origin` or fetched ref), not the raw `<bookmark>` argument — a remote-only bookmark has no matching local ref, so the raw name would fail or read a stale same-named local bookmark.
+**Bookmark mode:** Run `jj log --no-graph -r "$BASE..<bookmark-ref>"` using the resolved common ancestor and resolved bookmark ref from Stage 1. Use `<bookmark-ref>` (the resolved `<bookmark>@origin` or fetched ref), not the raw `<bookmark>` argument — a remote-only bookmark has no matching local ref, so the raw name would fail or read a stale same-named local bookmark.
 
 **Standalone (current bookmark/change):** Run:
 
@@ -480,7 +480,7 @@ mkdir -p "/tmp/compound-engineering/ce-code-review/$RUN_ID"
 
 Pass `{run_id}` to every persona sub-agent so they can write their full analysis to `/tmp/compound-engineering/ce-code-review/{run_id}/{reviewer_name}.json`.
 
-**Large shared context — pass paths, not contents.** The diff and file list go to every reviewer and validator. When inlining them into each subagent prompt would be wasteful (many files / a big diff), write them once into the run dir (e.g. `full.diff`, `files.txt`) and pass those **paths** in the diff / changed-files slots instead of inline content — the subagent and validator templates instruct the child to Read a staged context path. Inline a small diff directly.
+**Large shared context — pass paths, not contents.** The diff and file list go to every reviewer and validator. When inlining them into each subagent prompt would be wasteful (many files / a big diff), write them once into the run dir (e.g. `full.diff`, `files.txt`) and pass those **paths** in the diff / changed-files slots instead of inline content — the subagent and validator templates instruct the child to Read a context artifact path. Inline a small diff directly.
 
 #### Spawning
 
@@ -539,7 +539,7 @@ Each persona sub-agent writes full JSON (all schema fields) to `/tmp/compound-en
 
 `first_evidence` is the **one** detail-tier field promoted into the compact return: the verbatim motivating line with `file:line` that the quote-the-line gate requires. It is **mandatory for every finding at anchor 75 or 100** (the gate is unenforceable without it in-band, since the rest of `evidence` lives only in the artifact). Omit it only for anchor-50 findings. Stage 5 drops/demotes any 75/100 finding missing it; Stage 5b uses it for the validator-skip check. Keep it to the single triggering line, not the full `evidence` array — the array stays in the artifact.
 
-The artifact file **must** carry the full detail-tier fields (`why_it_matters`, `evidence`); the compact *return* omits all detail-tier fields **except `first_evidence`**, but writing the compact shape to the artifact (a common reviewer slip) silently strips the detail Coverage and the keyed detail lines depend on. However review context is delivered — inlined, or staged to disk for a large diff — each reviewer still receives the full subagent-template output contract; staging context never licenses a thinner one. `suggested_fix` is optional in both tiers -- included in compact returns when present so callers can apply fixes after review. If the file write fails, the compact return still provides everything the merge needs.
+The artifact file **must** carry the full detail-tier fields (`why_it_matters`, `evidence`); the compact *return* omits all detail-tier fields **except `first_evidence`**, but writing the compact shape to the artifact (a common reviewer slip) silently strips the detail Coverage and the keyed detail lines depend on. However review context is delivered — inlined, or written to disk for a large diff — each reviewer still receives the full subagent-template output contract; artifact-backed context never licenses a thinner one. `suggested_fix` is optional in both tiers -- included in compact returns when present so callers can apply fixes after review. If the file write fails, the compact return still provides everything the merge needs.
 
 **CE always-on local prompt assets** (`agent-native-reviewer`, `learnings-researcher`) are dispatched as generic subagents through the same bounded parallel scheduler as the structured personas. Read their prompt files from `references/personas/`, then give them the same review context bundle the personas receive: entry mode, any PR metadata gathered in Stage 1, intent summary, review base bookmark name when known, `BASE:` marker, file list, diff, and `UNTRACKED:` scope notes. Do not invoke them with a generic "review this" prompt. Their output is unstructured and synthesized separately in Stage 6.
 
@@ -716,7 +716,7 @@ Minimum shape:
   "status": "complete",
   "verdict": "Ready to merge | Ready with fixes | Not ready",
   "scope": {
-    "base": "<merge-base sha, pr:NNN marker, or base: ref>",
+    "base": "<common-ancestor commit ID, pr:NNN marker, or base: ref>",
     "bookmark": "<current bookmark/change name>",
     "commit_id": "<jj log -r @ --no-graph -T 'commit_id'>",
     "pr_url": "<url or null>",

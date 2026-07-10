@@ -32,7 +32,7 @@ Confidence anchor: {finding_confidence}
 </diff>
 
 <scope-context>
-The diff above is the full change being reviewed. The finding is about file {finding_file} around line {finding_line}. (If the `<diff>` block contains a file path rather than inline hunks — large-diff path-staging — Read that file first to get the full diff.)
+The diff above is the full change being reviewed. The finding is about file {finding_file} around line {finding_line}. (If the `<diff>` block contains a file path rather than inline hunks — large-diff artifact path — Read that file first to get the full diff.)
 
 When `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>` is in context, do **not** Read/Grep the workspace copy of {finding_file}. Inspect via `jj file show -r <pr-head-ref> {finding_file}` or `jj file show -r <bookmark-head-ref> {finding_file}` when a remote head ref is set; otherwise use diff hunks only.
 

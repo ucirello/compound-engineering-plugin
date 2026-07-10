@@ -7,8 +7,8 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working copy changes.** If there are unstaged or staged changes (`jj diff @` is non-empty), review those.
-3. **Unpushed commits vs base bookmark.** If the working copy is clean, review `jj diff $(JJ merge-base @ <base>)..@` where `<base>` is the default bookmark (main or master).
+2. **Working-copy change.** If `jj diff -r @` is non-empty, review the current JJ change.
+3. **Bookmark stack vs base bookmark.** If the working-copy change is empty, review `jj diff --from <base> --to @` where `<base>` is the default bookmark (`main` or `master`).
 
 The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run VCS commands yourself unless PR scope mode requires it (below).
 

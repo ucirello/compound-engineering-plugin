@@ -37,7 +37,7 @@ If the harness provides a native isolation primitive — for example an `EnterWo
 
 Only when there is no native tool **and** Step 0 found no existing isolation.
 
-1. **Run from the repo root.** Resolve it with `jj root`. The `.workspaces/` and `.gitignore` paths below are repo-root-relative.
+1. **Run from the repo root.** Resolve it with `jj root`. The `.workspaces/` and ignore-rule paths below are repo-root-relative.
 2. Choose a meaningful bookmark/workspace name from the work description (e.g. `feat/login`, `fix/email-validation`) — avoid opaque auto-generated names. Pick a base revision (default: the GitHub default bookmark at `<default>@origin`, else `main@origin`, `master@origin`, then local `main`/`master`).
 3. Ensure `.workspaces/` is ignored before creating anything, so workspace contents are never tracked by the parent workspace. If the ignore rules do not already cover it, add a `.workspaces/` line to `.gitignore`.
 4. Best-effort refresh remote bookmarks without disturbing the current workspace: `jj git fetch --remote origin`. This is **non-fatal** — if it errors, do not abort; continue with local revisions.

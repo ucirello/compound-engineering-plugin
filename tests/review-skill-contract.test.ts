@@ -686,7 +686,7 @@ describe("ce-code-review contract", () => {
     expect(lfg).toContain("do not load any confirmation-driven PR update skill")
     expect(lfg).toContain("gh pr edit PR_NUMBER --body-file BODY_FILE")
     expect(lfg).toContain("## Residual Review Findings")
-    expect(lfg).toContain("docs/residual-review-findings/<bookmark-or-head-sha>.md")
+    expect(lfg).toContain("docs/residual-review-findings/<bookmark-or-head-id>.md")
     expect(lfg).toContain("prefer `origin` when present")
     expect(lfg).toContain("choose the first configured remote")
     expect(lfg).toContain("jj git push --remote <remote> --bookmark <current-bookmark>")

@@ -22,7 +22,7 @@ Only when the caller reached this file **without** already running review (no re
 Invoke the skill explicitly — do not treat a casual "review my changes" prompt as a substitute unless the harness routed it to `ce-code-review`.
 
 ```
-ce-code-review mode:agent plan:<plan-path> base:<merge-base-or-ref>
+ce-code-review mode:agent plan:<plan-path> base:<common-ancestor-or-ref>
 ```
 
 - `mode:agent` — JSON output (`review.json` + primary JSON response) for programmatic parsing; same review pipeline as default.
@@ -82,7 +82,7 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Work through assigned `#` in severity order; at each `file:line`, skip with a one-line reason if evidence no longer matches
 - Apply the mechanical bar from § What to apply / What not to apply — skip anything that needs design judgment
 - Do not re-run `ce-code-review`
-- Shared-directory fallback: do not stage or commit — return which `#` were applied or skipped and which files changed
+- Shared-directory fallback: do not split or commit — return which `#` were applied or skipped and which files changed
 
 **After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless workspace-isolated subagents merge per Phase 1. Repeat until all batches complete.
 

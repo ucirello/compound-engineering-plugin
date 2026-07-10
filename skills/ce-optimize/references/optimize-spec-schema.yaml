@@ -272,7 +272,7 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # git worktrees for isolation (default)
+          - worktree  # JJ workspaces for isolation (default)
           - codex     # Codex sandboxes for isolation
         default: worktree
       max_concurrent:

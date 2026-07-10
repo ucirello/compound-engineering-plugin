@@ -213,7 +213,7 @@ a section with placeholder prose is worse than omitting it.
 
 - **High-Level Technical Design** — include when the technical approach has
   shape that prose alone doesn't carry well: architecture across components,
-  sequencing across processes, state machines, branching gates.
+  sequencing across processes, state machines, bookmarking gates.
   Visualizations (component topology, sequence, swim lane, flowchart,
   data-flow) typically live here. Skip when the approach is a one-paragraph
   pattern application that the prose itself conveys.
@@ -339,11 +339,11 @@ plan.
 - **`type`** — conventional-commit-prefix-aligned classification (`feat`,
   `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
   intent the eventual commit message should reflect.
-- **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
+- **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII diJJs only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from git, not stored in the doc. Do not
+whether a plan shipped is derived from JJ, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -362,7 +362,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the branch/test/commit/CI lifecycle); absent or `code` routes
+  skipping the bookmark/test/describe/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.
@@ -383,7 +383,7 @@ These apply regardless of rendering format.
 - **Plain prefix.** `R1.`, `U1.` as bullet prefixes. Do not bold; the prefix
   is visually distinctive on its own.
 - **Repo-relative paths.** Always. Never absolute paths in plan content;
-  they break portability across machines, worktrees, teammates.
+  they break portability across machines, workspaces, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
   metadata belongs in commit messages and tool output, not the artifact.

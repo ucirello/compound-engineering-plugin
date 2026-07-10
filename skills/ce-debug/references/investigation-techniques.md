@@ -76,27 +76,23 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## Manual JJ Binary Search for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), use binary search to find the breaking commit. Current JJ does not provide a built-in `bisect` command, so keep the good/bad set yourself:
 
 ```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
+original=$(jj log -r @ --no-graph -T 'commit_id')
+jj log -r '<known-good-rev>::@' --reversed --no-graph -T 'commit_id ++ " " ++ description.first_line() ++ "\n"'
+# Pick a midpoint revision from that list, then test it in a new working-copy change:
+jj new <midpoint-rev>
+<test-command>
+# Record the midpoint as good or bad, narrow the candidate list, and repeat.
+jj new "$original" # return to the original revision when done
 ```
 
-The test command should exit 0 for good, non-zero for bad.
+For a scripted search, write a small loop that chooses the midpoint from the `jj log` list, runs `jj new <candidate-rev>`, executes the test command, and records the exit status. Stop when the good and bad revisions are adjacent.
+
+The test command should exit 0 for good, non-zero for bad. Do this only from a clean workspace or an isolated workspace because `jj new <rev>` changes the working-copy commit.
 
 ---
 

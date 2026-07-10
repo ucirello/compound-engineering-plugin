@@ -47,7 +47,7 @@ severity: low
 ---
 `
 
-// Scratch git repo shared by all repo-dependent tests. Layout:
+// Scratch colocated JJ/Git repo shared by all repo-dependent tests. Layout:
 //   src/real-file.ts committed and reachable from both HEAD and the
 //   simulated origin/main; sharedSha = that commit; localOnlySha = a later
 //   commit reachable from HEAD only; upstreamOnlySha = a commit only the
@@ -94,6 +94,8 @@ beforeAll(() => {
   sh(repo, "git", ["add", "-A"])
   sh(repo, "git", ["commit", "-m", "local only"])
   localOnlySha = sh(repo, "git", ["rev-parse", "HEAD"])
+  sh(repo, "jj", ["git", "init", "--colocate", repo])
+  sh(repo, "jj", ["git", "import"])
 })
 
 let docCounter = 0
@@ -149,12 +151,12 @@ describe("validate-doc-claims script", () => {
         const result = runValidator(skillDir, docPath)
         expect(result.code).toBe(1)
         expect(result.stdout).toContain("FLAG path `src/upstream-only.ts`")
-        expect(result.stdout).toContain("exists at origin/main")
+        expect(result.stdout).toContain("exists at main@origin")
       })
 
       test("skips slash-delimited identifiers that are not path-shaped", () => {
         const docPath = writeRepoDoc(
-          "Branched as `feat/foo` off `origin/main`, drafted by " +
+          "Bookmarked as `feat/foo` off `main@origin`, drafted by " +
             "`anthropic/claude-sonnet-4-6`.\n",
         )
         const result = runValidator(skillDir, docPath)
@@ -193,22 +195,22 @@ describe("validate-doc-claims script", () => {
 
       test("flags a HEAD-only SHA as rewritable on merge", () => {
         const docPath = writeRepoDoc(
-          `Landed in ${localOnlySha.slice(0, 12)} on this branch.\n`,
+          `Landed in ${localOnlySha} on this bookmark.\n`,
         )
         const result = runValidator(skillDir, docPath)
         expect(result.code).toBe(1)
-        expect(result.stdout).toContain(`FLAG sha ${localOnlySha.slice(0, 12)}`)
-        expect(result.stdout).toContain("local-only commit")
+        expect(result.stdout).toContain(`FLAG sha ${localOnlySha}`)
+        expect(result.stdout).toContain("local-only revision")
       })
 
       test("flags an upstream-only SHA as predating-the-merge (the stale-branch bug)", () => {
         const docPath = writeRepoDoc(
-          `Fixed by ${upstreamOnlySha.slice(0, 12)} which merged upstream.\n`,
+          `Fixed by ${upstreamOnlySha} which merged upstream.\n`,
         )
         const result = runValidator(skillDir, docPath)
         expect(result.code).toBe(1)
         expect(result.stdout).toContain(
-          `FLAG sha ${upstreamOnlySha.slice(0, 12)}`,
+          `FLAG sha ${upstreamOnlySha}`,
         )
         expect(result.stdout).toContain("predates the merge")
       })
@@ -281,21 +283,21 @@ describe("validate-doc-claims script", () => {
       })
 
       test("reports staleness INFO when HEAD is behind the upstream ref", () => {
-        // HEAD (main) does not contain upstream-only work, so rev-list
-        // HEAD..origin/main is non-zero in the scratch repo.
+        // The current change does not contain upstream-only work, so the JJ
+        // current-to-main@origin comparison is non-empty in the scratch repo.
         const docPath = writeRepoDoc("Nothing cited here.\n")
         const result = runValidator(skillDir, docPath)
-        expect(result.stdout).toContain("INFO: worktree is")
-        expect(result.stdout).toContain("behind origin/main")
+        expect(result.stdout).toContain("INFO: workspace has")
+        expect(result.stdout).toContain("not in main@origin")
       })
 
-      test("still checks scaffold and links outside a git repository", () => {
+      test("still checks scaffold and links outside a JJ repository", () => {
         const docPath = writeBareDoc(
           "This continues Learning 2 — see [gone](./gone.md).\n",
         )
         const result = runValidator(skillDir, docPath)
         expect(result.code).toBe(1)
-        expect(result.stdout).toContain("not a git repository")
+        expect(result.stdout).toContain("not a JJ repository")
         expect(result.stdout).toContain("FLAG scaffold")
         expect(result.stdout).toContain("FLAG link (./gone.md)")
       })

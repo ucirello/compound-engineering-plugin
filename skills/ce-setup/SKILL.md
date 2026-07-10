@@ -44,9 +44,9 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 If the script is unavailable, perform the inline equivalent:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a git repo, resolve the repo root with `git rev-parse --show-toplevel`.
+2. If inside a JJ repo, resolve the repo root with `jj root`.
 3. Check for obsolete `compound-engineering.local.md` at the repo root.
-4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether `git check-ignore -q .compound-engineering/config.local.yaml` succeeds.
+4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether `ignore rules cover .compound-engineering/config.local.yaml` succeeds.
 5. Compare `.compound-engineering/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
 Display the diagnostic output to the user. Missing optional tools are not setup failures.
@@ -56,7 +56,7 @@ Display the diagnostic output to the user. Missing optional tools are not setup 
 Proceed to Phase 2 only if one or more repo-local project issues exist:
 
 - obsolete `compound-engineering.local.md`
-- `.compound-engineering/config.local.yaml` exists but is not safely gitignored
+- `.compound-engineering/config.local.yaml` exists but is not safely JJignored
 - `.compound-engineering/config.local.example.yaml` is missing or outdated
 
 If no project issues exist, report:
@@ -74,7 +74,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 ## Phase 2: Fix Repo-Local Issues
 
-Resolve the repository root (`git rev-parse --show-toplevel`). All paths below are relative to the repo root, not the current working directory.
+Resolve the repository root (`jj root`). All paths below are relative to the repo root, not the current working directory.
 
 ### Step 4: Remove Obsolete Local Config
 

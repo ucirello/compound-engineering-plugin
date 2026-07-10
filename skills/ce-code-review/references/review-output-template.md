@@ -11,7 +11,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 ```markdown
 ## Code Review Results
 
-**Scope:** merge-base with the review base branch -> working tree (14 files, 342 lines)
+**Scope:** common ancestor with the review base bookmark -> working tree (14 files, 342 lines)
 **Intent:** Add order export endpoint with CSV and JSON format support
 **Mode:** interactive
 
@@ -23,11 +23,11 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 
 | # | File | Fix | Reviewer |
 |---|------|-----|----------|
-| 6 | `export_helper_test.rb:40` | Added missing test for the empty-format branch | testing |
+| 6 | `export_helper_test.rb:40` | Added missing test for the empty-format bookmark | testing |
 | 7 | `orders_controller.rb:88` (+test) | Tightened export file perms `0644 -> 0600` (security-posture — verify in diff) | security |
 
 Validation: export tests 11 -> 13; suite 214 pass, lint clean.
-Committed: `fix(review): cover empty-format branch + tighten export perms` (working tree was clean before review).
+Committed: `fix(review): cover empty-format bookmark + tighten export perms` (working tree was clean before review).
 
 ### Triage Groups
 

@@ -1,7 +1,7 @@
 ---
 name: ce-simplify-code
 description: "Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving behavior. Use for tidy/refactor passes; use ce-debug for bugs."
-argument-hint: "[blank to simplify current bookmark/change changes, or describe what to simplify]"
+argument-hint: "[blank to simplify the current JJ revision stack, or describe what to simplify]"
 ---
 
 Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
@@ -11,14 +11,14 @@ Simplify recently changed code for clarity, reuse, quality, and efficiency while
 Resolve the simplification scope in this order:
 
 1. **If the user explicitly named a scope** (a file, a directory, "the function I just wrote", "the changes from this morning"), use that scope. Treat user-named scope as authoritative — do not widen it.
-2. **Otherwise, in a JJ repository**, default to the diff between the current bookmark/change and its base bookmark (e.g., `jj diff --from main@origin` or against the configured upstream). This covers the common case of "simplify everything I've added on this feature bookmark before opening a PR." If the bookmark has no upstream or base ref, fall back to working-copy changes (`jj diff`).
-3. **Outside a JJ repository or when no diff is available**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
+2. **Otherwise, in a JJ workspace**, run `jj status` to inspect the working-copy revision and conflicts, then inspect the current stack with `jj log -r 'trunk()..@'`. Default to the aggregate content diff from the stack's fork-point revision through the working-copy revision: `jj diff --from 'fork_point(trunk() | @)' --to @`. The configured `trunk()` revset normally resolves the repository's upstream trunk bookmark. If it does not identify the project's integration line, inspect `jj bookmark list --all-remotes`, select the project-appropriate local or remote bookmark, and substitute that bookmark for `trunk()` in both revsets. This covers "simplify everything in my current stack before opening a PR," whether or not a feature bookmark points to it. If no appropriate trunk bookmark can be resolved, fall back to the working-copy revision's own changes with `jj diff -r @`.
+3. **Outside a JJ workspace or when the resolved JJ diff is empty**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
 
 If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
 ## Step 2: Launch 3 review agents in parallel
 
-Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set) so it has complete context:
+Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full JJ revision diff or file set) so it has complete context:
 
 - `references/personas/code-reuse-reviewer.md` — existing utilities, duplicated functionality, reimplemented stdlib/runtime primitives.
 - `references/personas/code-quality-reviewer.md` — redundant state, parameter sprawl, copy-paste, leaky abstractions, stringly-typed code, dead code, over-nesting, and the over-simplification balance guard.
@@ -51,7 +51,7 @@ The premise of this skill is that simplification preserves exact functionality. 
 - Broaden scope when the change has obvious wide reach — e.g., a heavily-imported utility was rewritten, or the code-quality reviewer's consolidation/dedup fixes modified shared code. This is a judgment call about ripple risk, not a mechanical rule.
 - If the test runner has no scoping mechanism, run the full suite.
 
-Surface any failure clearly with the failing check name and the relevant output. Do not relax assertions, weaken type signatures, or skip tests to make checks pass — that defeats the "preserves functionality" guarantee. Either fix the underlying break introduced by simplification, or revert the specific change that caused the regression.
+Surface any failure clearly with the failing check name and the relevant output. Do not relax assertions, weaken type signatures, or skip tests to make checks pass — that defeats the "preserves functionality" guarantee. Either fix the underlying break introduced by simplification, or undo the specific simplification that caused the regression.
 
 If no test suite, lint, or typecheck is configured, state that explicitly in the summary; do not silently skip verification.
 

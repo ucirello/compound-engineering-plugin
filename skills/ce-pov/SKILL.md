@@ -55,9 +55,9 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ### Phase 1: Ground (dispatch scouts, never inline)
 
-Grounding searches code, JJ/VCS history, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
+Grounding searches code, JJ revision history and bookmarks/workspaces, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
 
-**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this commit, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
+**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at the same profile revision, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
@@ -88,7 +88,7 @@ echo "$SCRATCH_DIR"
 
 ### Phase 2: Verify against the two floors
 
-**Read `references/method.md` now**, before reasoning about the verdict — it defines the Verify and Verdict steps, the skeptic stance and reversibility tiering as cross-cutting properties, and the two-floor Invalid-Verdict gate. Apply that gate as a pass/fail checklist over the dossiers: a failed floor forbids Adopt/Reject and returns the matching Hold subtype. Do this reasoning on the clean context — read a dossier on demand, never pull its bulk in.
+**Read `references/method.md` now**, before reasoning about the verdict — it defines the Verify and Verdict steps, the skeptic stance and reversibility tiering as cross-cutting properties, and the two-floor Invalid-Verdict gate. Apply that gate as a pass/fail checklist over the dossiers: a failed floor forbids Adopt/Reject and returns the matching Hold subtype. Do this reasoning in the uncluttered context — read a dossier on demand, never pull its bulk in.
 
 ### Phase 3: Verdict
 

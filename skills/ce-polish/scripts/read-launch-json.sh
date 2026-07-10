@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# read-launch-json.sh — read .claude/launch.json from the repo root and emit
+# read-launch-json.sh — read .claude/launch.json from the JJ workspace root and emit
 # the selected configuration as JSON on stdout, or a sentinel on failure.
 #
 # Usage:
@@ -27,20 +27,24 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, project root not found).
+# genuine operational failures (missing `jq`, JJ workspace root not found).
 
 set -u
 
 REQUESTED_NAME="${1:-}"
 
-REPO_ROOT=$(jj root 2>/dev/null || pwd)
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+if [ -z "$WORKSPACE_ROOT" ]; then
+  echo "ERROR: not in a JJ workspace" >&2
+  exit 1
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
   exit 1
 fi
 
-LAUNCH_PATH="$REPO_ROOT/.claude/launch.json"
+LAUNCH_PATH="$WORKSPACE_ROOT/.claude/launch.json"
 
 if [ ! -f "$LAUNCH_PATH" ]; then
   echo "__NO_LAUNCH_JSON__"

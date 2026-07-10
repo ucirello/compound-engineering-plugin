@@ -109,9 +109,9 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to a main checkout. Users
-working from a workspace who want HTML defaults can add DESIGN.md to the
-workspace.
+Current JJ workspace only — do not fall through to another workspace, including
+one whose working-copy revision is at `trunk()`. Users who want HTML defaults
+in this workspace can add DESIGN.md to this workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -227,16 +227,19 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time:
+Resolve the repo's GitHub URL and the immutable trunk target once at compose
+time. `jj git remote list` is the permitted Git-interop boundary; the link uses
+the JJ `trunk()` revset instead of assuming a branch name:
 
 ```bash
-gh repo view --json url --jq .url || jj git remote list
+jj git remote list
+jj log -r 'trunk()' --no-graph -T 'commit_id'
 ```
 
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/<default-bookmark>/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/<trunk-commit-id>/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -244,10 +247,10 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
-Bitbucket, internal host) and the equivalent main-tree URL pattern
-isn't obvious, leave entries as `<code>` text. If the external
-tracker workspace isn't established, leave as text. A broken or
+**Do not invent URLs.** If no GitHub remote and unambiguous `trunk()` revision
+are available, or the remote is GitLab, Bitbucket, or an internal host whose
+revision-tree URL pattern is not obvious, leave entries as `<code>` text. If
+the external tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.
 
 **Scope: reference index only, not inline prose.** Inline `<code>`

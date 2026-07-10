@@ -103,15 +103,15 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj root`).
+1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
 3. `.compound-engineering/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to a main checkout. Users
-working from a workspace who want HTML defaults can add DESIGN.md to the
-workspace.
+Workspace-root only — do not fall through to another workspace. Users
+working from an added workspace who want HTML defaults can add DESIGN.md to
+that workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -227,16 +227,19 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time:
+Resolve the repo's GitHub URL and default remote bookmark once at compose
+time. List remotes, prefer `upstream` over `origin`, then query that GitHub
+repository:
 
 ```bash
-gh repo view --json url --jq .url || jj git remote list
+jj git remote list
+gh repo view <selected-github-remote-url> --json url,defaultBranchRef
 ```
 
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/<default-bookmark>/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/<default-remote-bookmark>/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -244,7 +247,7 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
+**Do not invent URLs.** If the selected remote isn't a GitHub URL (GitLab,
 Bitbucket, internal host) and the equivalent main-tree URL pattern
 isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or

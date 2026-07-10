@@ -99,6 +99,7 @@ The analyzer writes:
 - `source-materials.md`: a manifest linking the original source location, local-only raw files, transcript locations, chunks, local-only frames, and generated artifacts.
 - `requirements-kickoff.md`: a CE-friendly requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
 - `analysis.json`: structured session, event, transcript, moment, and artifact metadata.
+- `.gitignore`: output-local JJ ignore rules for `raw/` and `frames/` (JJ uses this filename; there is no `.jjignore`).
 - `frames/`: extracted PNG screenshots for selected moments. Local-only by default.
 - `raw/`: extracted zip contents and copied source media. Local-only by default.
 

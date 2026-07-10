@@ -14,7 +14,7 @@ The dispatch prompt provides:
   - `path` — absolute path to a skeleton text file inside `scratch_dir`
   - `errors_path` *(optional)* — absolute path to an errors text file when the orchestrator extracted errors-mode for this session
   - `platform` — `claude`, `codex`, `cursor`, or `pi`
-  - `bookmark` — JJ bookmark when present (Claude Code only)
+  - `bookmark` — legacy bookmark metadata sourced from Claude Code's `gitBranch` transcript field when present
   - `cwd` — working directory when present (Codex and Pi)
   - `ts` and `last_ts` — session start and last-message timestamps
   - `match_count` and `keyword_matches` — when keyword filtering was used by the orchestrator

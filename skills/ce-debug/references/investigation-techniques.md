@@ -76,23 +76,19 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Manual JJ Binary Search for Regressions
+## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit. Current JJ does not provide a built-in `bisect` command, so keep the good/bad set yourself:
+When a bug is a regression ("it worked before"), use binary search to find the breaking change:
 
 ```bash
-original=$(jj log -r @ --no-graph -T 'commit_id')
-jj log -r '<known-good-rev>::@' --reversed --no-graph -T 'commit_id ++ " " ++ description.first_line() ++ "\n"'
-# Pick a midpoint revision from that list, then test it in a new working-copy change:
-jj new <midpoint-rev>
-<test-command>
-# Record the midpoint as good or bad, narrow the candidate list, and repeat.
-jj new "$original" # return to the original revision when done
+jj bisect run --range <known-good-ref>..@ -- <test-command>
 ```
 
-For a scripted search, write a small loop that chooses the midpoint from the `jj log` list, runs `jj new <candidate-rev>`, executes the test command, and records the exit status. Stop when the good and bad revisions are adjacent.
+The range head (`@`) is assumed bad; ancestors outside the range, including `<known-good-ref>`, are assumed good. The command edits each candidate directly as the working-copy revision. Before starting, use `jj status` to identify pre-existing changes, record the original full commit ID with `jj log -r @ --no-graph -T 'commit_id ++ "\n"'`, and prefer a clean dedicated workspace. Return afterward with `jj edit <original-full-commit-id>` if needed. A change ID may be useful for reporting, but it is not a safe recovery handle when bisect hides or rewrites an empty working-copy change.
 
-The test command should exit 0 for good, non-zero for bad. Do this only from a clean workspace or an isolated workspace because `jj new <rev>` changes the working-copy commit.
+For a manual test, pass an interactive shell as `<test-command>`, investigate each selected revision, then `exit 0` for good, `exit 125` to skip, or any other non-zero status for bad. There are no separate `jj bisect good`/`bad` state commands.
+
+For automated tests, exit 0 for good, 125 to skip, 127 only for command-not-found/abort, and any other non-zero status for bad. The candidate commit ID is available as `$JJ_BISECT_TARGET`.
 
 ---
 

@@ -7,18 +7,19 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working-copy change.** If `jj diff -r @` is non-empty, review the current JJ change.
-3. **Bookmark stack vs base bookmark.** If the working-copy change is empty, review `jj diff --from <base> --to @` where `<base>` is the default bookmark (`main` or `master`).
+2. **Current JJ change.** If `jj diff` is non-empty, review the current working-copy revision.
+3. **Stack vs base bookmark.** If the current change is empty but the stack has work, review `jj diff --from <base> --to @` where `<base>` is the default remote bookmark such as `main@origin`.
 
-The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run VCS commands yourself unless PR scope mode requires it (below).
+The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run VCS commands yourself unless revision-specific inspection is required below.
 
 ## Remote scope (`pr-remote` and `bookmark-remote`)
 
-When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>`, the working tree is **not** the reviewed head. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark or PR under review.
+When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>`, the working-copy revision is **not** the reviewed head. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark/revision or PR under review.
 
 Instead:
 
 - Prefer `jj file show -r <remote-head-ref> <path>` when `<pr-head-ref>` or `<bookmark-head-ref>` is provided in context.
+- Use `jj file annotate -r <remote-head-ref> <path>` when line history is needed at that revision.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 

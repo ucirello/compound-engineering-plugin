@@ -6,10 +6,52 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current bookmark:
+Jujutsu has no active/current bookmark. If no PR number was provided, list the nearest local bookmark(s) at or behind the working-copy change:
 ```bash
-gh pr view --json number -q .number
+jj bookmark list -r 'heads(::@ & bookmarks())' -T 'name ++ "\n"'
 ```
+
+For each candidate, query GitHub by bookmark name rather than relying on Git's detached `HEAD`:
+
+```bash
+GIT_DIR="$(jj git root)" gh pr view BOOKMARK --json number -q .number
+```
+
+If no candidate has an open PR, or multiple candidates remain ambiguous, ask for the PR number. Once the PR number is known, whether provided or discovered, resolve all repository and head metadata needed by later steps:
+
+```bash
+GIT_DIR="$(jj git root)" gh repo view --json nameWithOwner -q .nameWithOwner
+GIT_DIR="$(jj git root)" gh pr view PR_NUMBER --json number,headRefName,headRefOid,headRepository,headRepositoryOwner
+jj git remote list
+```
+
+Record the base repository as `OWNER/REPO`, `headRefName` as `PR_BOOKMARK`, and `headRefOid` as `PR_HEAD_OID`. Resolve `PUSH_REMOTE` from the configured remotes: prefer `git.push` when it names a configured remote whose URL matches `headRepositoryOwner.login/headRepository.name`; otherwise require exactly one configured remote with a matching normalized HTTPS or SSH GitHub URL. Do not assume `origin`. If no unique matching remote exists, stop before making changes and ask which configured remote to use. `GIT_DIR=$(jj git root)` is the supported GitHub CLI bridge for a non-colocated JJ repository; it does not authorize raw Git workflow commands.
+
+### Pin and verify the PR head before any edit
+
+Treat all GitHub names as untrusted. Require `PR_HEAD_OID` to match `^[0-9a-fA-F]{40}$`. Require `OWNER`, `REPO`, and `PUSH_REMOTE` to match `^[A-Za-z0-9][A-Za-z0-9._-]*$`. Require `PR_BOOKMARK` to match the conservative Git-ref shape `^[A-Za-z0-9][A-Za-z0-9._/-]*$`, then reject `..`, `//`, `@{`, a leading or trailing `/` or `.`, any component beginning with `.`, and any component ending in `.lock`. Stop on validation failure; never interpolate an unvalidated value into a JJ argument or revset.
+
+Fetch only the validated PR branch from the selected remote. JJ name arguments default to glob patterns, so use `exact:` wherever a command accepts a name pattern:
+
+```bash
+jj git fetch --remote "exact:$PUSH_REMOTE" --branch "exact:$PR_BOOKMARK"
+FETCHED_HEAD=$(jj bookmark list --remote "exact:$PUSH_REMOTE" "exact:$PR_BOOKMARK" -T 'if(normal_target, normal_target.commit_id() ++ "\n", "CONFLICT\n")')
+```
+
+Require `FETCHED_HEAD` to be one line exactly equal to lowercase `PR_HEAD_OID`; `CONFLICT`, no output, multiple outputs, or a different OID means the PR moved or the bookmark is ambiguous. Re-query `headRefOid`, repeat the exact fetch once, and stop if they still disagree. Resolve all PR content and history by the validated OID, never by the bookmark name:
+
+```bash
+jj log --no-graph -r "exactly(commit_id($PR_HEAD_OID), 1)" -T 'commit_id ++ "\n"'
+ALIGNED=$(jj log --no-graph -r "exactly(commit_id($PR_HEAD_OID), 1) & ::@" -T 'commit_id ++ "\n"')
+```
+
+Proceed only when the first command resolves exactly `PR_HEAD_OID` and `ALIGNED` equals exactly `PR_HEAD_OID`. This proves that the current `@` equals or descends from that exact Git commit. If not aligned, make no edits, commits, bookmark moves, or pushes. Explain that `@` is unrelated and require or offer a dedicated workspace whose new working-copy change is a child of the exact PR head:
+
+```bash
+jj workspace add --name "pr-PR_NUMBER-feedback" -r "commit_id($PR_HEAD_OID)" PATH
+```
+
+Run that command only with the user's chosen destination. Continue from the new workspace after repeating this gate. Never push an unrelated `@`.
 
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments):
 
@@ -24,7 +66,7 @@ if [ ! -f "$SCRIPT_DIR/get-pr-comments" ]; then
   exit 1
 fi
 
-bash "$SCRIPT_DIR/get-pr-comments" PR_NUMBER
+bash "$SCRIPT_DIR/get-pr-comments" PR_NUMBER OWNER/REPO
 ```
 
 Returns a JSON object with three keys:
@@ -37,8 +79,8 @@ Returns a JSON object with three keys:
 
 If the script fails, fall back to:
 ```bash
-gh pr view PR_NUMBER --json reviews,comments
-gh api repos/{owner}/{repo}/pulls/PR_NUMBER/comments
+GIT_DIR="$(jj git root)" gh pr view PR_NUMBER --repo OWNER/REPO --json reviews,comments
+gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments
 ```
 
 ## 2. Triage: Separate New from Pending
@@ -65,7 +107,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `JJ/VCS history`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; inspect the working change with `jj diff -r @`, a specific revision with `jj show -r REVISION`, and historical file content with `jj file show -r REVISION PATH`. Deep-read callers, invariants, `jj file annotate`, and PR rationale only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -94,7 +136,7 @@ Each fixer receives:
 - Your step-3 note: what to change and why it was judged valid.
 - The PR number.
 
-For `pr_comment` / `review_body` fix-list items (no file/line), the fixer identifies the relevant files from the comment text and the PR diff.
+For `pr_comment` / `review_body` fix-list items (no file/line), the fixer identifies the relevant files from the comment text and the GitHub PR diff (`gh pr diff PR_NUMBER --repo OWNER/REPO`) or the local JJ stack diff (`jj diff --from trunk() --to @`).
 
 ### Fixer return format
 
@@ -132,21 +174,33 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Commit and Push
+## 6. Record the Change and Push
 
-1. Split only files reported by fixers into the committed change and commit with a message referencing the PR:
+1. Inspect the combined working-copy change and confirm which paths belong to the approved fixes:
 
 ```bash
-jj split [files from fixer summaries]
-jj describe -m "Address PR review feedback (#PR_NUMBER)
+jj status
+jj diff --summary
+jj diff --git [files from fixer summaries]
+```
+
+Jujutsu has no staging area. With path arguments, `jj commit` keeps the selected paths in the current change, gives that change the description, and moves all remaining changes into a new working-copy change on top. Commit only paths reported by fixers:
+
+```bash
+jj commit [files from fixer summaries] -m "Address PR review feedback (#PR_NUMBER)
 
 - [list changes from fixer summaries]"
 ```
 
-2. Push to remote:
+If a reported path also contains unrelated edits, use `jj commit --interactive [files from fixer summaries] -m "..."` and select only the feedback changes. After either form, the recorded feedback change is `@-` and `@` is the new working-copy change. Verify with `jj show -r @-` and `jj status` before moving any bookmark.
+
+2. Move the PR's exact head bookmark to the recorded change and push only that bookmark to the previously identified head-repository remote:
 ```bash
-jj git push --bookmark <current-bookmark>
+jj bookmark set "$PR_BOOKMARK" -r @-
+jj git push --bookmark "exact:$PR_BOOKMARK" --remote "$PUSH_REMOTE"
 ```
+
+Do not use `jj git push --change`: it creates a generated bookmark instead of updating the PR head. If push safety checks report that the remote moved, repeat the exact fetch and OID/alignment gate from step 1, inspect `jj status` and `jj bookmark list --remote "exact:$PUSH_REMOTE" "exact:$PR_BOOKMARK"`, resolve any bookmark conflict, and only then retry. Never bypass the lease-style safety check.
 
 ## 7. Reply and Resolve
 
@@ -222,7 +276,7 @@ if [ ! -f "$SCRIPT_DIR/get-pr-comments" ]; then
   exit 1
 fi
 
-bash "$SCRIPT_DIR/get-pr-comments" PR_NUMBER
+bash "$SCRIPT_DIR/get-pr-comments" PR_NUMBER OWNER/REPO
 ```
 
 The `review_threads` array should be empty (except `needs-human` items).

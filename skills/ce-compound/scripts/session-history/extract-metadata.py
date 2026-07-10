@@ -23,10 +23,12 @@ def try_claude(lines):
     for line in lines:
         try:
             obj = json.loads(line.strip())
+            # Claude Code calls this transcript field `gitBranch`; expose it
+            # as legacy bookmark metadata to the JJ-first caller.
             if obj.get("type") == "user" and "gitBranch" in obj:
                 return {
                     "platform": "claude",
-                    "branch": obj["gitBranch"],
+                    "bookmark": obj["gitBranch"],
                     "ts": obj.get("timestamp", ""),
                     "session": obj.get("sessionId", ""),
                 }
@@ -117,7 +119,7 @@ def _pi_active_path_objects(objects):
     """Return only entries on Pi's active leaf-to-root path.
 
     Pi session files are append-only trees. The final non-session entry is the
-    active leaf; abandoned branches remain in the file but are not in context.
+    active leaf; abandoned paths remain in the file but are not in context.
     """
     by_id = {
         obj.get("id"): obj

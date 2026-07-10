@@ -1,6 +1,6 @@
 # Shared Repo-Grounding Profile Cache
 
-Read this when a repo-grounding skill needs the question-agnostic **project profile** (stack, deps, conventions, structure). The profile is derived once and reused within a session and across sessions and skills at an unchanged JJ revision — only the *question-specific* grounding for the current run is ever re-derived.
+Read this when a repo-grounding skill needs the question-agnostic **project profile** (stack, deps, conventions, structure). The profile is derived once and reused within a session and across sessions and skills at an unchanged profile revision — only the *question-specific* grounding for the current run is ever re-derived.
 
 This file is **byte-duplicated** into every consuming skill (the plugin has no cross-skill import mechanism). All copies must stay identical; `tests/repo-profile-cache-parity.test.ts` enforces it. The deterministic cache I/O lives in the co-located `scripts/repo-profile-cache.py`; the derivation-on-miss is done by the co-located `references/agents/repo-profiler.md` persona.
 
@@ -18,20 +18,20 @@ A single JSON object, versioned by `profile_schema_version`:
 
 Never read from the cache — recompute every run:
 
-- The `docs/solutions/` enumeration (a new learning, even uncommitted, must be visible — re-globbing it is ~free and the match reads files fresh anyway).
+- The `docs/solutions/` enumeration (a new learning, even when present only in the working-copy revision, must be visible — re-globbing it is ~free and the match reads files fresh anyway).
 - Subdirectory-scoped instruction files (area-scoped `CLAUDE.md`/`AGENTS.md`).
-- All question-specific grounding: a candidate's call-sites/footprint, prior-decision matches, feature patterns, JJ/VCS history of touched files, tracker/PR activity, external research.
+- All question-specific grounding: a candidate's call-sites/footprint, prior-decision matches, feature patterns, JJ history of touched files, tracker/PR activity, external research.
 
 ## Cache location & key
 
 ```
-/tmp/compound-engineering/repo-profile/<root-id>/<current-id>.json
+/tmp/compound-engineering/repo-profile/<root-commit-id>/<revision-key>.json
 ```
 
-- `<root-id>` = lexicographically-first `jj log -r 'root()+' --no-graph -T 'commit_id ++ "\n"'` — the repo identity (stable, shared across workspaces and clones).
-- `<current-id>` = `jj log -r @ --no-graph -T 'commit_id'` — the working state.
+- `<root-commit-id>` = the lexicographically first initial non-virtual revision's full commit ID from `jj log -r 'roots(all() ~ root())'` — the repository identity (stable and shared across workspaces and clones of the same history).
+- `<revision-key>` = the stable profile revision key: the working-copy parent revision when `@` does not modify profile inputs, or the current working-copy revision when it does and the caller needs a miss path. Multiple working-copy parents are sorted and hashed with SHA-256.
 
-Two workspaces at the same revision share the same entry. Lookup is JJ metadata only; on a hit, only this one file is read.
+Two workspaces at the same profile revision share the same entry. The helper resolves `jj --ignore-working-copy workspace root` first so root-relative profile inputs are classified consistently even when invoked from a subdirectory. Metadata-only JJ calls use `--ignore-working-copy`. The freshness diff intentionally snapshots exactly once so `@` reflects the current filesystem; subsequent metadata reads do not snapshot again.
 
 ## Protocol — how a skill uses it
 
@@ -56,7 +56,7 @@ In all three cases, after the agnostic profile is in hand, run **this skill's qu
 
 ## Freshness (delta-aware)
 
-A cached entry is a `HIT` only when, at the current JJ revision (`@`), its `profile_schema_version` matches and **no profile-input path** is changed in the current JJ change. Freshness is checked with `jj diff --name-only -r @`. The profile-input set is a conservative **superset** of every file the schema derives from — dependency manifests + lockfiles (any depth), license, root instruction/doc files, `CONCEPTS.md`/`STRATEGY.md`, topology sources (`Dockerfile`, `.github/workflows/`, `.cursor/rules`). A changed source file, `docs/plans/*`, or other non-input path does **not** invalidate. Completeness of this set is the cardinal-rule safety requirement: over-invalidating costs a re-derive; under-invalidating would serve a stale profile.
+A cached entry is a `HIT` only when its `profile_schema_version` matches and the current working-copy revision `@` **does not modify a profile-input path** relative to its parent(s). Freshness is checked from the workspace root with one snapshotting `jj diff --name-only -r @`, so newly added tracked inputs invalidate too. The helper then compares root-relative profile-input files present on disk with `jj --ignore-working-copy file list -r @`; an input omitted from `@` by settings such as `snapshot.auto-track=none()` also invalidates conservatively. The profile-input set is a conservative **superset** of every file the schema derives from — dependency manifests + lockfiles (any depth), license, root instruction/doc files, `CONCEPTS.md`/`STRATEGY.md`, topology sources (`Dockerfile`, `.github/workflows/`, `.cursor/rules`). A modified source file, `docs/plans/*`, or other non-input path does **not** invalidate. Completeness of this set is the cardinal-rule safety requirement: over-invalidating costs a re-derive; under-invalidating would serve a stale profile.
 
 ## Degradation
 

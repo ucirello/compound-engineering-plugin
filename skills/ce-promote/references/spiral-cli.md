@@ -23,7 +23,7 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 
 ### Check the opt-out
 
-Read the project config (resolve the repo root, never CWD):
+Read the project config (resolve the JJ workspace root, never assume CWD):
 
 ```bash
 cat "$(jj root 2>/dev/null)/.compound-engineering/config.local.yaml" 2>/dev/null || echo '__NO_CONFIG__'
@@ -62,14 +62,14 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the repo root, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.compound-engineering/config.local.yaml`, using the native file-write/edit tool:
+Resolve the JJ workspace root with `jj root`, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.compound-engineering/config.local.yaml`, using the native file-write/edit tool:
 
 - **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it (and its `.compound-engineering/` directory) with the key, AND make sure the machine-local config won't be committed. Check whether the root-relative path `<root>/.compound-engineering/config.local.yaml` is already ignored (`inspect ignore rules for <path>`); if it isn't, append `.compound-engineering/*.local.yaml` to JJ's **local exclude file** — resolve that file's path with `repo-local exclude file` (this is correct in workspaces too, where `.jj` is a *file* and `info/exclude` lives in the common JJ dir; do **not** hardcode `<root>/.jj/info/exclude`). Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally commit machine-local opt-out state.
+- **File absent:** create it (and its `.compound-engineering/` directory) with the key, AND make sure the machine-local config will not be recorded in version control. Check the applicable ignore files for the root-relative path `<root>/.compound-engineering/config.local.yaml`. For a Git-backed JJ repository, use `jj git root` only to locate the backing repository's local exclude file and append `.compound-engineering/*.local.yaml` there if needed; JJ honors that exclude file. If no backing Git repository or local exclude is available, warn and ask before writing. Use the local exclude rather than a tracked ignore file so a drafts-only action does not change the working-copy revision. `ce-setup` is the canonical place that adds the shared ignore entry for teammates.
 
-If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
+If the workspace root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.compound-engineering/config.local.yaml`, kept out of JJ). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
+After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.compound-engineering/config.local.yaml`, kept out of version control). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
 
 ## Generate
 

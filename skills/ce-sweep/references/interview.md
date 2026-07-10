@@ -1,6 +1,6 @@
 # Sweep First-Run Interview
 
-Loaded by `SKILL.md` when `/ce-sweep` runs with no `feedback_sources` configured. Captures the setup that will be merged into `<repo-root>/.compound-engineering/config.local.yaml` (the unified CE local config, gitignored, machine-local) and re-read on every subsequent run.
+Loaded by `SKILL.md` when `/ce-sweep` runs with no `feedback_sources` configured. Captures the setup that will be merged into `<repo-root>/.compound-engineering/config.local.yaml` (the unified CE local config, ignored, machine-local) and re-read on every subsequent run.
 
 This interview is **interactive only**. The caller refuses first-run setup in headless mode — a scheduled or piped run with no config aborts and tells the user to run `/ce-sweep` interactively once. Do not attempt to infer sources, actions, or approvals without asking.
 
@@ -86,8 +86,8 @@ For email sources there are no source-side actions, so approval is moot — reco
 
 Ask where the sweep's state file lives:
 
-- **Committed to the repo** (recommended when multiple agents or machines share bookmarks — one source of truth everyone reads and writes). Sets `sweep_state_path` to the committed default `docs/feedback-sweep/state.yml`.
-- **Machine-local under `/tmp`** (solo setups; keeps sweep bookkeeping out of the repo, no commit noise). Sets `sweep_state_path` to `/tmp/compound-engineering/ce-sweep/<repo-slug>/state.yml`, where `<repo-slug>` is derived from the repo (e.g. the basename of the repo root).
+- **Versioned in the repo** (recommended when multiple agents or machines share a bookmark — one source of truth everyone reads and writes). Sets `sweep_state_path` to `docs/feedback-sweep/state.yml`.
+- **Machine-local under `/tmp`** (solo setups; keeps sweep bookkeeping out of the repo, no change noise). Sets `sweep_state_path` to `/tmp/compound-engineering/ce-sweep/<repo-slug>/state.yml`, where `<repo-slug>` is derived from the repo (e.g. the basename of the workspace root).
 
 Let the user override the path if they want a different location. If they pick machine-local, note that a fresh checkout or a teammate's machine will not see this state — it is per-machine by design.
 
@@ -103,16 +103,16 @@ Let the user override the path if they want a different location. If they pick m
 
 ---
 
-## 6. Shared bookmark (only if committed state)
+## 6. Shared bookmark (only if versioned state)
 
-**Skip this section entirely if the user chose machine-local state in section 4** — the shared-bookmark topology only applies to committed state.
+**Skip this section entirely if the user chose machine-local state in section 4** — the shared-bookmark topology only applies to versioned state.
 
-**Ask:** "Is this a multi-agent setup where several checkouts push the sweep state to a shared docs bookmark? Answer yes only if more than one machine or agent commits and pushes to the same bookmark. Default is no — a single checkout committing locally."
+**Ask:** "Is this a multi-agent setup where dedicated JJ workspaces publish sweep state through one shared bookmark? Answer yes only if more than one machine or agent uses the same bookmark and Git remote. Default is no — one workspace records changes locally."
 
-- **No** (default) -> `sweep_shared_bookmark: false`. The single-writer lease serializes overlapping sweeps within one checkout.
-- **Yes** -> `sweep_shared_bookmark: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep commits and pushes the lease acquisition on the shared bookmark and confirms its writer won, making the lease a repo-wide mutex across machines.
+- **No** (default) -> omit `sweep_shared_bookmark` and `sweep_shared_remote`. The state-engine lease serializes overlapping sweeps within one workspace.
+- **Yes** -> ask for an existing dedicated bookmark (for example `feedback-sweep`) and its Git remote (default `origin`). Require bookmark shape `^[A-Za-z0-9][A-Za-z0-9._/-]*$` and remote shape `^[A-Za-z0-9][A-Za-z0-9._-]*$`; reject `@`, quotes, whitespace, and revset operators. Explain that the lease is **push-gated**: before any source-side write, the sweep publishes and fetch-confirms its lease change on that exact tracked bookmark. The workspace must be dedicated and clean because the sweep creates `@` from the remote bookmark before acquiring the lease. Run `jj bookmark track <bookmark>@<remote>` once so `jj git fetch --remote <remote> --tracked` propagates remote updates.
 
-**Capture:** `sweep_shared_bookmark` (`true` | `false`).
+**Capture:** `sweep_shared_bookmark` (string, omitted for no) and `sweep_shared_remote` (string, default `origin`, omitted for no).
 
 ---
 
@@ -136,18 +136,18 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 
 ## 8. Write config
 
-Merge the captured settings into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `jj root`.
+Merge the captured settings into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `jj workspace root`.
 
 - If the directory or file does not exist, create `.compound-engineering/` and write the file.
 - If the file exists, merge the sweep keys into the existing YAML, **preserving every unrelated key untouched** (e.g. `pulse_*`, `plan_*`). Only add or update the sweep keys.
-- If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing.
+- If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing. JJ honors `.gitignore`; this machine-local config must remain untracked. Conversely, when state is versioned, run `jj file track --include-ignored` on its exact root-relative fileset so a broader ignore rule cannot omit it.
 
 Write these keys (see "Config File Shape" below for the exact form):
 
 - `feedback_sources` — the list of source maps assembled across sections 1-3.
 - `sweep_state_path` — from section 4.
 - `sweep_ack_cap` — from section 5.
-- `sweep_shared_bookmark` — from section 6 (default `false`; only meaningful with committed state).
+- `sweep_shared_bookmark` and `sweep_shared_remote` — from section 6; omit both for local-only state.
 
 Then surface the resulting Sweep section to the user in chat and offer **one round of edits**.
 
@@ -177,10 +177,11 @@ feedback_sources:
   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
-sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+sweep_state_path: docs/feedback-sweep/state.yml   # versioned (multi-agent) or /tmp path (solo)
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
-sweep_shared_bookmark: false                        # true: push-gated lease for shared-docs-bookmark topology
+sweep_shared_bookmark: feedback-sweep             # omit for local-only; exact tracked bookmark
+sweep_shared_remote: origin                       # omit for local-only; Git remote for the bookmark
 ~~~
 
 Notes:

@@ -41,7 +41,7 @@ scope:
 
 execution:
   mode: serial
-  backend: worktree
+  backend: workspace
   max_concurrent: 1
 
 parallel:
@@ -61,4 +61,4 @@ stopping:
   plateau_iterations: 3
   target_reached: true
 
-max_runner_up_merges_per_batch: 0
+max_runner_up_integrations_per_batch: 0

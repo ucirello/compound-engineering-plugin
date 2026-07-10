@@ -1,6 +1,6 @@
 # Execution Engines
 
-`ce-work` can implement an implementation-ready unified plan with one of three engines. The engine is chosen once, after Phase 0 classifies the plan as `artifact_readiness: implementation-ready` plus `execution: code`. The engine decides *how* implementation runs; it never changes *who* owns the shipping tail (see "Tail ownership" below).
+`ce-work` can implement an implementation-ready unified plan with one of three engines. The engine is chosen once, after Phase 0 classifies the plan as `artifact_readiness: implementation-ready` plus `execution: code`. The engine decides *how* implementation runs; it never changes *who* owns the shipping tail (see "Tail ownership" below) or the JJ workspace/change model in `SKILL.md`.
 
 Engine selection applies only to code execution. Knowledge-work and legacy plans keep the inline/subagent flow in `SKILL.md`.
 
@@ -25,7 +25,7 @@ When more than one engine is callable, choose by the plan's decomposition shape:
 | Plan shape | Engine | Why |
 |---|---|---|
 | Sequential or modest U-ID decomposition; units share files or depend on each other | **Inline / subagent** (default), or a **goal-mode** prompt for sustained focus when callable | The DoD already defines the end condition; ordinary persistence finishes it. |
-| Many independent U-IDs with disjoint file ownership; codebase-wide sweep; large migration; adversarial cross-checking | **Dynamic-workflow** when callable; otherwise parallel subagents | Workflow scripts hold bookmarking, loops, and intermediate worker state outside the main context and coordinate many agents. Prefer this over goal-mode for large fan-out. |
+| Many independent U-IDs with disjoint file ownership; codebase-wide sweep; large migration; adversarial cross-checking | **Dynamic-workflow** when callable; otherwise parallel subagents | Workflow scripts hold decision paths, loops, and intermediate worker state outside the main context and coordinate many agents. Prefer this over goal-mode for large fan-out. |
 | Host exposes no callable goal/workflow primitive (e.g. Claude Code in-session) | **Inline / subagent** | Preserve the same heading-scan / DoD / U-ID discipline without relying on unavailable host features. |
 
 Recommend exactly one path. Present a non-default engine as an "advanced / large-scale option" only when the plan shape plausibly warrants it — never as an equal coin-flip.
@@ -71,7 +71,7 @@ Keep emitted prompts under 4,000 characters and always substitute the literal pl
 
 ## Step 4: Resume the correct tail
 
-After any engine finishes implementation, inspect the diff and continue at the tail that matches the caller. The engine never owns more than implementation + local verification on its own.
+After any engine finishes implementation, inspect `jj status`, `jj diff --from 'trunk()' --to @`, and `jj log -r 'trunk()..@'`, then continue at the tail that matches the caller. The engine never owns more than implementation + local verification on its own.
 
 | Mode | After implementation, `ce-work` ... |
 |---|---|
@@ -82,4 +82,4 @@ Using goal-mode or a dynamic workflow is a way to get better sustained implement
 
 ## Progress visibility (independent of tail ownership)
 
-Tail ownership decides who opens the **final** PR; it does not forbid progress signals during a long run. For multi-hour goals, meaningful commits as units complete and an optional scratch progress artifact (outside the plan body) are encouraged so a long trajectory stays observable. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when it explicitly owns that channel; in return-to-caller mode `ce-work` must not open any PR, but may commit and return a progress report in its structured envelope. Never write progress or status into the plan body — JJ, commits, and the envelope carry it.
+Tail ownership decides who opens the **final** PR; it does not forbid progress signals during a long run. For multi-hour goals, meaningful JJ changes as units complete and an optional scratch progress artifact (outside the plan body) are encouraged so a long trajectory stays observable. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when it explicitly owns that channel; in return-to-caller mode `ce-work` must not open any PR, but may commit changes and return a progress report in its structured envelope. Never write progress or status into the plan body — `jj log`, described changes, and the envelope carry it.

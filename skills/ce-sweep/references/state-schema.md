@@ -35,7 +35,7 @@ last_run:
 | `schema_version` | int | Contract version. Currently `1`. A file missing this key is treated as corrupt. |
 | `lease` | map | Single-writer mutex (see Lease). Absent when no writer holds it. |
 | `sources` | map keyed by source id | Per-source resume cursor and optional flags. |
-| `items` | map keyed by `<source-id>:<item-id>` | Per-item lifecycle record. The key is source-scoped so a source-native id (a Slack ts, a GitHub issue number) never collides with the same id from another source. Personas pass a source-native `id` plus `--source`; the engine composes the storage key and records both `source` and `id` on the item so it stays self-describing. |
+| `items` | map keyed by `<escaped-source-id>:<escaped-item-id>` | Per-item lifecycle record. Each component escapes `%` as `%25` and `:` as `%3A` before joining, so existing simple keys stay readable while delimiter-containing values cannot collide. Personas pass a source-native `id` plus `--source`; the engine composes the same storage key for live upserts and legacy imports and records both `source` and `id` on the item so it stays self-describing. |
 | `last_run` | map | Bookkeeping for the most recent sweep (see run-record). |
 
 ## Compatibility rule (forward/backward)
@@ -133,6 +133,12 @@ Rules the engine enforces:
   before writing and returns `LEASE-LOST` (no write) if the caller is not the
   current holder; on success it **re-stamps** the lease timestamp so a long
   sweep keeps the lease alive.
+- In shared-bookmark mode, local restamps are not visible to another machine.
+  Before half the TTL elapses, the holder must commit the restamped state,
+  advance the shared bookmark, push with remote-state safety, fetch, and confirm
+  the new commit ID and writer. A rejected or mismatched heartbeat ends all
+  source-side writes. The newly confirmed commit becomes the lease tip used by
+  the next heartbeat and final release.
 - `lease-release` clears the caller's own lease (`OK`, also `OK` if none is
   held); releasing another writer's lease returns `LEASE-LOST` and does not
   write.
@@ -145,8 +151,8 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-commit mode (default) | Single writer **per checkout**. | The lease serializes overlapping sweeps in the same working tree (e.g. a cron sweep and a manual one). The file is written in-tree (and may be committed locally). No cross-machine guarantee. |
-| pushed-shared-branch | One writer **per repo**. | The state file lives on a shared branch multiple checkouts push to. `lease-acquire` must be committed, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
+| local-only mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in one working copy (e.g. a scheduled sweep and a manual one). The file may be selected into a local JJ change. No cross-machine guarantee. |
+| pushed shared bookmark | One writer **per repo**. | A dedicated clean workspace creates a lease change from the exact tracked remote bookmark, moves the local bookmark to that change, pushes with JJ's remote-state safety check, fetches, and confirms the remote target and writer **before any source-side write**. It push-confirms heartbeats before half the TTL elapses. A losing writer starts a fresh `@` from the fetched winner and never rebases or merges competing lease states. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -162,16 +168,21 @@ Records the outcome of a sweep run under `last_run`.
 | `writer` | `--writer` | The writer id that recorded the run. |
 | `counts` | `--counts` (JSON object) | Free-form tallies (per status, per source, etc.). |
 
-`run-record` is intentionally **lease-agnostic**: a run that aborted precisely
-because the lease was `LOCKED` (`outcome: aborted-locked`) must still be able to
-record that fact — but that write happens while the lease holder is mid-sweep.
-To keep it from clobbering the holder's concurrent upserts, every mutating
-subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
-whole load-modify-write, so two concurrent invocations serialize their writes
-regardless of lease ownership. The lease decides *who owns the sweep*; the file
-lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never committed (the skill's commit step adds only the state file and the
-plan, never `-A`).
+`run-record` is intentionally **lease-agnostic** so a locally aborted run can
+record `aborted-locked` while the holder is mid-sweep. Every mutating subcommand
+therefore holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
+whole load-modify-write, so same-machine invocations serialize state-file writes
+regardless of lease ownership. Shared-bookmark losers do not call `run-record`:
+writing bookkeeping into fetched winner state would violate the remote lease.
+
+This file lock protects an external YAML read/modify/write; it is not a JJ repo
+lock. JJ intentionally reconciles concurrent repository operations through its
+operation log and surfaces bookmark/file conflicts in `jj status`. The pushed
+state lease provides cross-machine exclusion, while `jj git push` verifies that
+the remote bookmark still matches its last fetched target. Never use an
+operation-log fork (`--at-operation` or `--no-integrate-operation`) as a lock or
+as a way around a rejected push. The `.lock` file is ephemeral and is never in
+the exact filesets selected by the skill.
 
 ## Engine status words
 

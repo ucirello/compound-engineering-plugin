@@ -110,7 +110,7 @@ The names below are skill-local prompt asset file stems under `references/agents
 - `framework-docs-researcher` for official framework or library behavior
 - `best-practices-researcher` for current external patterns and industry guidance
 - `web-researcher` for landscape/prior-art gaps — competitor patterns, market signals, or an unsettled external option set (which library/provider/approach) that recommendations depend on
-- Add `git-history-analyzer` only when historical rationale or prior art is materially missing
+- Add `jj-history-analyzer` only when historical rationale or prior art is materially missing
 
 **Key Technical Decisions**
 - `architecture-strategist` for design integrity, boundaries, and architectural tradeoffs
@@ -247,7 +247,7 @@ Allowed changes:
 
 Do **not**:
 - Add implementation code — no imports, exact method signatures, or framework-specific syntax. Pseudo-code sketches and DSL grammars are allowed
-- Add git commands, commit choreography, or exact test command recipes
+- Add VCS commands, JJ revision choreography, or exact test command recipes
 - Add generic `Research Insights` subsections everywhere
 - Rewrite the entire plan from scratch
 - Invent new product requirements, scope changes, or success criteria without surfacing them explicitly

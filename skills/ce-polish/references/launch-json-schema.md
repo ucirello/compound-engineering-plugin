@@ -1,6 +1,6 @@
 # `.claude/launch.json` schema
 
-Polish reads `.claude/launch.json` at the repo root to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format — chosen because Claude Code, Cursor, and VS Code all understand it and because users often already have one for editor integration.
+Polish reads `.claude/launch.json` at the JJ workspace root to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format — chosen because Claude Code, Cursor, and VS Code all understand it and because users often already have one for editor integration.
 
 ## Top-level shape
 
@@ -28,7 +28,7 @@ Polish reads `.claude/launch.json` at the repo root to resolve the dev-server st
 | `runtimeExecutable` | yes | The binary polish spawns (e.g., `bin/dev`, `npm`, `overmind`, `bun`). |
 | `runtimeArgs` | no | Array of arguments passed to `runtimeExecutable`. Default: empty array. |
 | `port` | yes | The port the dev server will listen on. Polish probes `http://localhost:<port>` for reachability and uses it for the IDE browser handoff. |
-| `cwd` | no | Repo-relative working directory for the dev server. Default: repo root. Useful for monorepos (`apps/web`, `packages/frontend`). |
+| `cwd` | no | JJ-workspace-relative working directory for the dev server. Default: JJ workspace root. Useful for monorepos (`apps/web`, `packages/frontend`). |
 | `env` | no | Additional environment variables for the dev-server process. Default: inherit polish's environment. |
 
 ## Stub template (written on first run when user accepts)

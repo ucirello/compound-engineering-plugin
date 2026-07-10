@@ -56,10 +56,10 @@ Availability probes run **at most once per session** and **only when Defer execu
 Typical probe sequence:
 
 1. Consult the project's instructions already in context for tracker references — don't open or name specific instruction files; read one directly only when the relevant instructions aren't in context (subdirectory scope, or a fresh subagent). If nothing found, set `tracker_name = null`, `confidence = low`.
-2. **Probe the named tracker when one was found.** For GitHub Issues, run `gh auth status` and `gh repo view --json hasIssuesEnabled`. For Linear or other connector/MCP-backed trackers, first discover available tools via the platform's tool-discovery primitive (e.g., `ToolSearch` in Claude Code) rather than assuming absence from an unloaded tool, then verify the discovered tool is responsive. For API-backed trackers, verify credentials wherever the platform exposes them (environment, connector auth, or a documented secrets location) — not only shell env vars. Set `named_sink_available` from the probe result.
+2. **Probe the named tracker when one was found.** For GitHub Issues, run `gh auth status` and `GIT_DIR="$(jj git root)" gh repo view --json hasIssuesEnabled`; the JJ Git-store path makes repository discovery work in non-colocated workspaces. For Linear or other connector/MCP-backed trackers, first discover available tools via the platform's tool-discovery primitive (e.g., `ToolSearch` in Claude Code) rather than assuming absence from an unloaded tool, then verify the discovered tool is responsive. For API-backed trackers, verify credentials wherever the platform exposes them (environment, connector auth, or a documented secrets location) — not only shell env vars. Set `named_sink_available` from the probe result.
 3. **Probe the GitHub Issues fallback to compute `any_sink_available`.** Even when the named tracker was found and probed, `gh` matters for the `no_sink` bucket decision so that a run with no documented tracker but working `gh` still offers Defer.
    - If `named_sink_available = true`: `any_sink_available = true` (no further probes needed).
-   - Otherwise, probe GitHub Issues via `gh auth status` + `gh repo view --json hasIssuesEnabled` (skip if already probed in step 2). If it works, `any_sink_available = true`.
+   - Otherwise, probe GitHub Issues via `gh auth status` + `GIT_DIR="$(jj git root)" gh repo view --json hasIssuesEnabled` (skip if already probed in step 2). If it works, `any_sink_available = true`.
    - Otherwise, `any_sink_available = false`.
 
 When Interactive mode's routing question is skipped entirely (R2 zero-findings case), no probes run. When the cached tuple is reused across a session, any `named_sink_available = true` from the session's first probe stays cached — do not re-probe per Defer.
@@ -81,7 +81,7 @@ Non-interactive mode skips label decisions entirely — it acts silently on the 
 When the named tracker is unavailable or no tracker is named, fall back in this order. Prefer the project's detected tracker; use `gh` only when no named tracker was found or the named one is unreachable.
 
 1. **Named tracker** (MCP tool, CLI, or API the agent can invoke directly, identified via Detection above)
-2. **GitHub Issues via `gh`** — when `gh auth status` succeeds and the current repo has issues enabled (`gh repo view --json hasIssuesEnabled` returns `true`)
+2. **GitHub Issues via `gh`** — when `gh auth status` succeeds and the current repository has issues enabled (`GIT_DIR="$(jj git root)" gh repo view --json hasIssuesEnabled` returns `true`)
 3. **No sink** — findings remain in the review report's residual-work section (Interactive mode) or are returned in the `no_sink` bucket for the caller to route (Non-interactive mode). The agent does not re-display them through a transient surface.
 
 Previously this chain included a third in-session fallback tier. That tier was removed because in-session tasks do not survive past the session and therefore do not meet the "durable filing" intent of a Defer action. When no durable tracker exists, the correct behavior is to leave findings in the report (Interactive) or return them to the caller (Non-interactive).
@@ -134,7 +134,7 @@ Concrete behavior per tracker at execution time. The agent may invoke any of the
 | Tracker | Interface | Invocation sketch | Body format | Labels |
 |---------|-----------|-------------------|-------------|--------|
 | Linear | MCP (preferred) or API | Create issue in the project/workspace identified by documentation; assign to the reporter if the MCP tool exposes user context | Markdown | Severity priority field if the MCP exposes it; otherwise include severity in body |
-| GitHub Issues | `gh issue create` | Repo defaults to the current repo. Use `--label` for severity tag when labels exist; omit `--label` if the repo has no label fixture. Fall back to a label-less issue on first failure. | Markdown | `--label P0` / `--label P1` / etc. when labels exist |
+| GitHub Issues | `GIT_DIR="$(jj git root)" gh issue create` | Repository is resolved through the JJ Git store. Use `--label` for severity tag when labels exist; omit `--label` if the repository has no label fixture. Fall back to a label-less issue on first failure. | Markdown | `--label P0` / `--label P1` / etc. when labels exist |
 | Jira | MCP or API | Create issue in the project identified by documentation; Jira's markdown dialect differs from GitHub's — use plain text in the body when MCP does not handle conversion | Plain text when MCP does not handle markdown | Severity priority field |
 | No sink available | — | Interactive: Defer option omitted, findings remain in the report's residual-work section. Non-interactive: findings returned in the `no_sink` bucket for caller routing. | — | — |
 

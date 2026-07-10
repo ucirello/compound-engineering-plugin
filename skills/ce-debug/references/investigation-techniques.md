@@ -76,27 +76,19 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), use binary search to find the breaking change:
 
 ```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
+jj bisect run --range <known-good-ref>..@ -- <test-command>
 ```
 
-The test command should exit 0 for good, non-zero for bad.
+The range head (`@`) is assumed bad; ancestors outside the range, including `<known-good-ref>`, are assumed good. The command edits each candidate directly as the working-copy revision. Before starting, use `jj status` to identify pre-existing changes, record the original full commit ID with `jj log -r @ --no-graph -T 'commit_id ++ "\n"'`, and prefer a clean dedicated workspace. Return afterward with `jj edit <original-full-commit-id>` if needed. A change ID may be useful for reporting, but it is not a safe recovery handle when bisect hides or rewrites an empty working-copy change.
+
+For a manual test, pass an interactive shell as `<test-command>`, investigate each selected revision, then `exit 0` for good, `exit 125` to skip, or any other non-zero status for bad. There are no separate `jj bisect good`/`bad` state commands.
+
+For automated tests, exit 0 for good, 125 to skip, 127 only for command-not-found/abort, and any other non-zero status for bad. The candidate commit ID is available as `$JJ_BISECT_TARGET`.
 
 ---
 

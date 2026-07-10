@@ -9,6 +9,17 @@ Parse the URL to extract OWNER, REPO, PR number, and comment REST ID:
 https://github.com/OWNER/REPO/pull/NUMBER#discussion_rCOMMENT_ID
 ```
 
+Resolve the PR head bookmark and its configured JJ push remote before making changes:
+
+```bash
+gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName,headRefOid,headRepository,headRepositoryOwner
+jj git remote list
+```
+
+Record `headRefName` as `PR_BOOKMARK` and `headRefOid` as `PR_HEAD_OID`. Resolve `PUSH_REMOTE` exactly as Full Mode step 1 does: prefer a matching configured `git.push` remote, otherwise require one configured remote whose normalized URL matches the PR head repository. Do not assume `origin`.
+
+Before reading code, dispatching a fixer, or making any edit, perform Full Mode's **Pin and verify the PR head before any edit** gate in `references/full-mode.md`. This includes validating the URL-derived owner/repository/PR number and all GitHub metadata, fetching only `--branch "exact:$PR_BOOKMARK"` from `--remote "exact:$PUSH_REMOTE"`, requiring the fetched remote bookmark to equal `headRefOid`, resolving content through `exactly(commit_id($PR_HEAD_OID), 1)`, and proving `@` equals or descends from that exact commit. If alignment fails, stop and require or offer the dedicated workspace child described there; never edit, commit, or push the unrelated `@`.
+
 **Step 1** -- Get comment details and GraphQL node ID via REST (cheap, single comment):
 ```bash
 gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
@@ -34,7 +45,7 @@ This fetches thread IDs and their first comment IDs (minimal fields, no bodies) 
 
 ## 2. Judge, Fix, Reply, Resolve
 
-**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read (callers, invariants, `git blame`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
+**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
 
 **Then act on the verdict:**
 
@@ -42,4 +53,4 @@ This fetches thread IDs and their first comment IDs (minimal fields, no bodies) 
 - **`replied` / `not-addressing` / `declined`** — no subagent. Compose the reply text per the rubric and proceed to reply/resolve.
 - **`needs-human`** — compose `decision_context` and the natural-sounding reply per the rubric, leave the thread open (don't resolve), and present the decision to the user (use the platform's blocking question tool as in Full Mode step 9). The shared reply step below posts the reply once — do not post it here.
 
-Then follow the same validate -> commit -> push -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validate/commit when no code changed.
+Then follow the same validate -> record JJ change -> move PR bookmark -> `jj git push` -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validation and change recording when no code changed.

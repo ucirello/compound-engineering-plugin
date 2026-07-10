@@ -136,8 +136,8 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a git repo:** offer to commit only the ideation doc (do not create a branch, do not push; if the user declines, leave it uncommitted).
-- **Temp-area or non-repo file:** skip the commit offer.
+- **Inside a JJ workspace:** offer to finalize only the ideation doc as its own change with `jj commit <path> -m "docs(ideation): capture <topic> ideas"` (do not create or move a bookmark and do not push; if the user declines, leave it in the working-copy change).
+- **Temp-area or non-workspace file:** skip the revision offer.
 
 Then narrate the path and end the session — do not return to the menu.
 

@@ -1,6 +1,6 @@
 ---
 name: ce-setup
-description: "Check Compound Engineering health and repo-local config."
+description: "Check Compound Engineering health and workspace-local config."
 disable-model-invocation: true
 ---
 
@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 Ask each question below using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to a numbered list in chat only when no blocking tool exists in the harness or the call errors. Never silently skip or auto-configure.
 
-`ce-setup` is a lightweight health check and repo-local config helper. It does **not** bulk-install every optional dependency. Missing tools are reported as optional capabilities so the user can install only the workflows they use.
+`ce-setup` is a lightweight health check and workspace-local config helper. It does **not** bulk-install every optional dependency. Missing tools are reported as optional capabilities so the user can install only the workflows they use.
 
 ## Phase 1: Diagnose
 
@@ -44,19 +44,19 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 If the script is unavailable, perform the inline equivalent:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a git repo, resolve the repo root with `git rev-parse --show-toplevel`.
-3. Check for obsolete `compound-engineering.local.md` at the repo root.
-4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does, whether `git check-ignore -q .compound-engineering/config.local.yaml` succeeds.
+2. Resolve the workspace root without snapshotting with `jj --ignore-working-copy workspace root`; if there is no JJ workspace, use the current directory as the project root so filesystem checks still run.
+3. Check for obsolete `compound-engineering.local.md` at the workspace root.
+4. Check whether `.compound-engineering/config.local.yaml` exists and, if it does in a JJ workspace, whether JJ already tracks it with `jj --ignore-working-copy file list`. For an untracked file, create a disposable directory with `mktemp`, copy only the config plus applicable root and `.compound-engineering/` `.gitignore` files, initialize it with `jj git init --no-colocate`, and use `jj file list` there to determine whether JJ ignores the config. Remove the disposable directory afterward. Do not snapshot or otherwise mutate the real workspace, and do not use raw Git.
 5. Compare `.compound-engineering/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
 Display the diagnostic output to the user. Missing optional tools are not setup failures.
 
 ### Step 3: Decide Whether Fixes Are Needed
 
-Proceed to Phase 2 only if one or more repo-local project issues exist:
+Proceed to Phase 2 only if one or more workspace-local project issues exist:
 
 - obsolete `compound-engineering.local.md`
-- `.compound-engineering/config.local.yaml` exists but is not safely gitignored
+- `.compound-engineering/config.local.yaml` exists but is not safely ignored
 - `.compound-engineering/config.local.example.yaml` is missing or outdated
 
 If no project issues exist, report:
@@ -72,19 +72,19 @@ Run /ce-setup anytime to re-check.
 
 If optional tools are missing, do not offer a bulk install. The diagnostic already printed the relevant install command or project URL. Say: "Install optional tools only for the workflows you use."
 
-## Phase 2: Fix Repo-Local Issues
+## Phase 2: Fix Workspace-Local Issues
 
-Resolve the repository root (`git rev-parse --show-toplevel`). All paths below are relative to the repo root, not the current working directory.
+Resolve the JJ workspace root (`jj --ignore-working-copy workspace root`). All paths below are relative to the workspace root, not the current working directory.
 
 ### Step 4: Remove Obsolete Local Config
 
-If `compound-engineering.local.md` exists at the repo root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.compound-engineering/config.local.yaml`.
+If `compound-engineering.local.md` exists at the workspace root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.compound-engineering/config.local.yaml`.
 
 Ask whether to delete it now. Delete only if the user approves.
 
 ### Step 5: Refresh Example Config
 
-Copy `references/config-template.yaml` to `<repo-root>/.compound-engineering/config.local.example.yaml`, creating the directory if needed. This file is committed to the repo and should always reflect the latest available settings.
+Copy `references/config-template.yaml` to `<workspace-root>/.compound-engineering/config.local.example.yaml`, creating the directory if needed. This file is committed and should always reflect the latest available settings.
 
 If the bundled template cannot be located by the current platform, print the source template path that failed and tell the user the example config could not be refreshed automatically.
 
@@ -101,17 +101,17 @@ Everything starts commented out -- you only enable what you need.
 2. No thanks
 ```
 
-If the user approves, copy `references/config-template.yaml` to `<repo-root>/.compound-engineering/config.local.yaml`.
+If the user approves, copy `references/config-template.yaml` to `<workspace-root>/.compound-engineering/config.local.yaml`.
 
-### Step 7: Ensure Local Config Is Gitignored
+### Step 7: Ensure Local Config Is Ignored by JJ
 
-If `.compound-engineering/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
+If `.compound-engineering/config.local.yaml` exists and is not covered by JJ's `.gitignore` rules, offer to add:
 
 ```text
 .compound-engineering/*.local.yaml
 ```
 
-Append the entry to the repo-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
+Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content. If the file is already tracked, explain that adding an ignore rule does not untrack it and offer `jj file untrack .compound-engineering/config.local.yaml` separately.
 
 ## Phase 3: Summary
 
@@ -120,8 +120,8 @@ Display a brief summary:
 ```text
 ✅ Compound Engineering setup complete
 
-Fixed:     <repo-local fixes applied, or none>
-Skipped:   <repo-local fixes declined, or none>
+Fixed:     <workspace-local fixes applied, or none>
+Skipped:   <workspace-local fixes declined, or none>
 Optional:  <missing optional tools, or all available>
 
 Run /ce-setup anytime to re-check.

@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 try:
     import fcntl  # POSIX advisory locks (macOS, Linux — this repo's Unix targets)
     _HAS_FCNTL = True
-except ImportError:  # non-POSIX; degrade to unlocked (single-writer by convention)
+except ImportError:  # non-POSIX; mutating commands fail closed below
     _HAS_FCNTL = False
 
 SCHEMA_VERSION = 1
@@ -247,7 +247,10 @@ def _item_key(source, item_id):
     source that reuses numeric ids). Namespacing by source keeps each source's
     id space independent, matching the composite keys documented in
     references/state-schema.md."""
-    return "{}:{}".format(source, item_id)
+    def escape(component):
+        return str(component).replace("%", "%25").replace(":", "%3A")
+
+    return "{}:{}".format(escape(source), escape(item_id))
 
 
 def load_state(path):
@@ -543,8 +546,9 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
+    # the lease yet must still record its outcome. In local-only mode there is
+    # a single writer per workspace, so this bookkeeping write is safe. A
+    # shared-bookmark loser is required not to call this command.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -592,7 +596,7 @@ def cmd_import_legacy(args):
     items_imported = 0
     if isinstance(legacy, dict):
         cursors_imported = _import_channels(legacy, data, source_map)
-        items_imported = _import_legacy_items(legacy, data)
+        items_imported = _import_legacy_items(legacy, data, source_map)
 
     # Persist only when something changed: a fresh state file was seeded, or
     # the import actually brought data in. A no-op import writes nothing.
@@ -648,20 +652,27 @@ def _import_channels(legacy, data, source_map=None):
     return count
 
 
-def _import_legacy_items(legacy, data):
+def _import_legacy_items(legacy, data, source_map=None):
     raw_items = legacy.get("items")
     items = data.setdefault("items", {})
     count = 0
 
+    source_map = source_map or {}
+
     def add(item_id, fields):
         if not item_id:
             return 0
-        merged = dict(items.get(str(item_id), {}))
+        legacy_source = fields.get("source") or fields.get("channel") or "legacy"
+        source = source_map.get(str(legacy_source), str(legacy_source))
+        key = _item_key(source, item_id)
+        merged = dict(items.get(key, {}))
         for k in ("status", "source", "channel", "title", "url"):
             if k in fields and fields[k] is not None:
                 key = "source" if k == "channel" else k
                 merged.setdefault(key, fields[k])
-        items[str(item_id)] = merged
+        merged["source"] = source
+        merged["id"] = str(item_id)
+        items[key] = merged
         return 1
 
     if isinstance(raw_items, dict):
@@ -762,13 +773,23 @@ _MUTATING = {
 
 
 def _run_locked(handler, args):
+    state_dir = os.path.dirname(os.path.abspath(args.state))
+    try:
+        os.makedirs(state_dir, exist_ok=True)
+        if not os.path.isdir(state_dir):
+            return emit("ERROR")
+    except OSError:
+        return emit("ERROR")
     lock_path = str(args.state) + ".lock"
     try:
         lock_fd = open(lock_path, "w")
     except OSError:
-        return handler(args)  # cannot create a lock file; degrade to unlocked
+        return emit("ERROR")
     try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        except OSError:
+            return emit("ERROR")
         return handler(args)
     finally:
         try:
@@ -781,7 +802,9 @@ def main(argv):
     args = build_parser().parse_args(argv[1:])
     handler = _HANDLERS[args.cmd]
     try:
-        if _HAS_FCNTL and args.cmd in _MUTATING:
+        if args.cmd in _MUTATING:
+            if not _HAS_FCNTL:
+                return emit("ERROR")
             return _run_locked(handler, args)
         return handler(args)
     except Exception as exc:  # never leak a traceback to the caller

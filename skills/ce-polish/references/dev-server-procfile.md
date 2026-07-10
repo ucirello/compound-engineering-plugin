@@ -4,7 +4,7 @@ Loaded when `detect-project-type.sh` returns `procfile` and there is no `.claude
 
 ## Signature
 
-- `Procfile` or `Procfile.dev` exists at the repo root
+- `Procfile` or `Procfile.dev` exists at the JJ workspace root
 - `bin/dev` is **not** present (if it is, use the Rails recipe)
 
 ## Start command

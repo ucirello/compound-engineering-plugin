@@ -10,7 +10,7 @@
 # Arguments:
 #   repo-name  Folder name of the repo (e.g., "my-repo"). Used for directory matching.
 #   days       Scan window in days (e.g., 7). Files older than this are skipped.
-#   --cwd      Absolute repo root. Used for exact Pi encoded-CWD discovery.
+#   --cwd      Absolute workspace root. Used for exact Pi encoded-CWD discovery.
 #   --platform Restrict to a single platform. Omit to search all.
 
 set -euo pipefail
@@ -95,7 +95,7 @@ discover_pi() {
     fi
 
     # Pi stores sessions under --<absolute-cwd-with-slashes-as-hyphens>--.
-    # When the caller supplies an exact repo root, probe only that encoded
+    # When the caller supplies an exact workspace root, probe only that encoded
     # directory so sibling repos like my-repo-old never enter the pipeline.
     if [ -n "$REPO_CWD" ]; then
         local dir="$base/$(encode_pi_cwd "$REPO_CWD")"

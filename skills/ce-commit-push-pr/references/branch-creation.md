@@ -1,55 +1,54 @@
-# Branch creation from default branch
+# Bookmark creation from the default bookmark
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+Read this reference whenever the full workflow starts from the default bookmark or must choose whether local default-bookmark changes belong in the PR. Its result is an explicit base revision, head bookmark name, and correctly based working-copy change.
+
+Local `<base>` may contain changes absent from `<base>@<remote>` because another workspace advanced it or because the user intentionally created local work there. JJ exposes the topology, but it cannot infer ownership or intent. Ask when local-only changes are present.
 
 ## Decision flow
 
-### 1. Fetch fresh remote base
+### 1. Fetch the remote base
+
+Resolve the intended fetch remote from `jj git remote list`, then run:
 
 ```bash
-git fetch --no-tags origin <base>
+jj git fetch --remote <base-remote>
 ```
 
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
+Confirm `<base>@<base-remote>` exists with `jj bookmark list --all-remotes`. If fetch fails because of authentication, connectivity, or a missing remote, use the fallback below.
 
-### 2. Check for unpushed local commits on `<base>`
+### 2. Check local-only default-bookmark changes
+
+Inspect the local default bookmark relative to its remote counterpart:
 
 ```bash
-git log origin/<base>..HEAD --oneline
+jj log -r '<base>@<base-remote>..<base>' --no-graph
 ```
 
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
+- **Empty output:** set `<base-revision>` to `<base>@<base-remote>`.
+- **Non-empty output:** show the changes and ask whether they belong in the new PR.
+- **Carry forward:** set `<base-revision>` to `<base>` so those local changes remain ancestors of the feature work.
+- **Leave on the default bookmark:** set `<base-revision>` to `<base>@<base-remote>` and move only the current working-copy change onto it in Step 3.
 
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
+Never choose silently. Carrying unrelated local changes into a PR is more harmful than asking again.
 
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
+If the local bookmark is conflicted, stop and surface both targets from `jj bookmark list --all-remotes`. Do not move or push a conflicted bookmark.
 
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
+### 3. Base the working-copy change safely
 
-### 3. Create the feature branch
+Bookmarks do not become active and do not move with new JJ changes. Record a non-conflicting `<head-bookmark>` derived from the work's purpose, but create or move it only after Step 3 of `SKILL.md` identifies the completed stack head.
+
+Inspect `jj status`, `jj diff`, and the parents of `@`. If `@` is already based on `<base-revision>`, preserve it. Otherwise move only the working-copy change, leaving unwanted local default-bookmark ancestors behind:
 
 ```bash
-git checkout -b <branch-name> "$BASE_REF"
+jj rebase -s @ -o <base-revision>
 ```
 
-If checkout fails because uncommitted changes would be overwritten, stash and retry:
+Jujutsu records rebase conflicts as first-class state and completes the operation. If `jj status` reports conflicts, resolve mechanical conflicts with `jj resolve` or direct edits. A semantic conflict that requires intent is a blocker to surface, not a reason to discard the working-copy change.
 
-```bash
-git stash push -u -m "ce-commit-push-pr: pre-branch <branch-name>"
-git checkout -b <branch-name> "$BASE_REF"
-git stash pop
-```
+Do not create a temporary stash, switch a checkout, or create a raw Git branch. The working-copy change already preserves uncommitted content while JJ changes its parent.
 
-If `git stash pop` reports conflicts, surface the conflict output and the stash ref to the user — do not auto-resolve.
+After the final content change is finished, `SKILL.md` creates or advances the explicit head bookmark at the actual stack head and publishes only that bookmark through `jj git`.
 
 ## Fetch failure fallback
 
-If `git fetch` fails, branch from current local HEAD:
-
-```bash
-git checkout -b <branch-name>
-```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+When fresh remote state cannot be obtained, preserve the current JJ topology and use the current parent of `@` as `<base-revision>`. Do not move the default bookmark or claim it is current. Continue only if the intended head bookmark and PR range remain unambiguous, and report that base freshness was not verified. If the missing remote state makes the PR range ambiguous, stop and ask rather than guessing.

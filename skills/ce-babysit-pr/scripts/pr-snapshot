@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Deterministic snapshot + state helper for ce-babysit-pr.
 
-The agent (SKILL.md) owns judgment and mutations; this script owns the parts
+AI Assistant (SKILL.md) owns judgment and mutations; this script owns the parts
 prose cannot do reliably: a combined fetch of both event streams, atomic state
 read/write under a file lock, and dedup keyed on remote truth.
 
 The dedup model is claim -> act -> confirm. `snapshot` never marks an item
 handled just because it observed it; an item stays actionable until either the
-agent confirms it acted (`mark`) OR remote truth removes it (a resolved thread
+AI Assistant confirms it acted (`mark`) OR remote truth removes it (a resolved thread
 drops out of the unresolved fetch). So if a resolve/debug pass crashes or fails
-before the agent marks it, the item is still actionable on the next tick.
+before AI Assistant marks it, the item is still actionable on the next tick.
 
 Subcommands:
   snapshot --pr N [--repo O/R] --state-dir DIR [--fetch-file F]
@@ -17,7 +17,7 @@ Subcommands:
            observed state atomically, emit the actionable set as JSON.
   mark     --state-dir DIR (--thread ID --disposition needs-human|dispatched
            | --comment ID --disposition needs-human|dispatched | --check KEY)
-           Record that the agent acted on an item. A `dispatched` thread is
+           Record that AI Assistant acted on an item. A `dispatched` thread is
            re-emitted when a later reviewer comment moves its last-comment
            identity past the one we acted on (our own reply does not
            re-trigger); a `needs-human` thread stays parked until an explicit
@@ -33,7 +33,6 @@ import hashlib
 import json
 import os
 import subprocess
-import tempfile
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -259,7 +258,7 @@ query($owner:String!,$repo:String!,$pr:Int!,$cursor:String){
             last = cs[-1] if cs else {}
             # `last_comment_at` is the reactivation signal — the MAX edit/create time across every
             # comment in the thread, not just the last one, so a reviewer editing an *earlier* comment
-            # (their original request) after the agent's reply still moves the identity and re-opens it.
+            # (their original request) after AI Assistant's reply still moves the identity and re-opens it.
             # Bounded to the last 100 comments (see the query): review threads are ~never that long; an
             # edit to a comment outside that window would be missed (acceptable vs paginating per thread).
             edit_at = max((c.get("lastEditedAt") or c.get("createdAt") or "" for c in cs), default="")
@@ -299,14 +298,14 @@ def _empty_trajectory():
         "problem_keys": [],            # last tick's failing checks + non-parked threads (progress detection)
         "min_open_problems": None,     # lowest total open-problem count seen
         "heads_since_progress": 0,     # head changes since progress (a new low OR something cleared)
-        "last_head": None,             # head as of the last AGENT tick — hsp counts moves between ticks,
+        "last_head": None,             # head as of the last AI Assistant tick; hsp counts moves between ticks,
                                        # NOT poll-observed head moves (state["head_sha"] advances on polls)
     }
 
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in the repository-local state directory across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -345,8 +344,8 @@ def _trend(series):
 
 
 def _record_check_history(state, head, new_checks):
-    """Record CI fail->clear->fail recurrence transitions. Runs on EVERY snapshot — agent ticks AND
-    watch polls — so a CLEAR (or FAIL) observed only between agent ticks is not lost, which would
+    """Record CI fail->clear->fail recurrence transitions. Runs on EVERY snapshot — AI Assistant ticks AND
+    watch polls — so a CLEAR (or FAIL) observed only between AI Assistant ticks is not lost, which would
     otherwise make the ping-pong recurrence trigger under-fire under the self-sustaining watch.
     Idempotent per transition: once a check is FAILING, re-observing FAIL does not re-increment."""
     tj = _load_trajectory(state)
@@ -364,7 +363,7 @@ def _record_check_history(state, head, new_checks):
             h["state"] = CHECK_CLEAR
             h["last_head"] = head
         # IN_PROGRESS/QUEUED: leave prior state untouched (not yet a clear)
-    # Evict entries unseen for TTL agent-ticks (polls don't advance the tick) — bounds growth without
+    # Evict entries unseen for TTL AI Assistant ticks (polls don't advance the tick) — bounds growth without
     # erasing a check that was briefly absent (a one-tick gap must not lose real recurrence history).
     tj["check_history"] = {k: v for k, v in hist.items() if tick - v.get("seen_tick", tick) <= CHECK_HISTORY_TTL}
 
@@ -379,8 +378,8 @@ def _update_trajectory(state, head, new_checks, new_threads, new_feedback, actio
     tj = _load_trajectory(state)
 
     # --- CI recurrence (fail->clear->fail on a *different* head): recorded on EVERY observation
-    # (agent ticks AND watch polls, via _record_check_history in diff) so a clear seen only between
-    # agent ticks is not lost. Here we just READ the accumulated history for the trigger. recur_max
+    # (AI Assistant ticks AND watch polls, via _record_check_history in diff) so a clear seen only between
+    # AI Assistant ticks is not lost. Here we just READ the accumulated history for the trigger. recur_max
     # reflects only checks present this tick, so a stale key can't keep it elevated. ---
     hist = tj["check_history"]
     recur_max = max((hist[k]["recur"] for k in new_checks if k in hist), default=0)
@@ -424,9 +423,9 @@ def _update_trajectory(state, head, new_checks, new_threads, new_feedback, actio
     new_low = minp is None or open_problems < minp
     if new_low:
         tj["min_open_problems"] = open_problems
-    # heads_since_progress counts head moves BETWEEN AGENT TICKS (tj["last_head"]), not poll-observed
+    # heads_since_progress counts head moves BETWEEN AI Assistant TICKS (tj["last_head"]), not poll-observed
     # moves — a watch poll advances state["head_sha"], so a plain head_changed would read False at the
-    # agent's tick and starve this stall signal under the default self-sustaining watch.
+    # AI Assistant's tick and starve this stall signal under the default self-sustaining watch.
     traj_head_moved = tj.get("last_head") is not None and head != tj.get("last_head")
     if new_low or cleared_something:
         tj["heads_since_progress"] = 0
@@ -506,7 +505,7 @@ def diff(state, cur, now=None, advance_trajectory=True):
         # SHA-scoped state is meaningless on a new head.
         state["ci_dispatched"] = {}
 
-    # --- CI: a failing check on the current head is actionable until the agent
+    # --- CI: a failing check on the current head is actionable until AI Assistant
     # marks it dispatched (recorded in ci_dispatched[head]) or the head moves.
     # `checks_terminal` = every check has finished (none IN_PROGRESS/QUEUED).
     # Duplicate check keys (same workflow/name) are disambiguated with a #n suffix
@@ -577,8 +576,8 @@ def diff(state, cur, now=None, advance_trajectory=True):
     if advance_trajectory:
         state["tick"] = state.get("tick", 0) + 1
     # Record CI recurrence transitions on EVERY observation (polls too) so a fail->clear->fail seen
-    # only between agent ticks is not lost. head_sha for the check-level last_head is the observed
-    # head; the trajectory-level last_head (for heads_since_progress) is agent-tick-only, inside
+    # only between AI Assistant ticks is not lost. head_sha for the check-level last_head is the observed
+    # head; the trajectory-level last_head (for heads_since_progress) is AI Assistant tick-only, inside
     # _update_trajectory.
     _record_check_history(state, head, new_checks)
     if advance_trajectory:
@@ -587,8 +586,8 @@ def diff(state, cur, now=None, advance_trajectory=True):
         # A watch poll detects change and advances the settle clock, but must NOT roll the rest of the
         # trajectory (tick counter, seen_threads, unresolved_series, heads_since_progress). Advancing
         # it would consume new_threads_this_tick — the waking poll marks the just-arrived thread
-        # "seen", so the agent's real tick reads 0 new arrivals and the review-bot-treadmill
-        # non-convergence trigger never fires. Only the agent's tick (advance_trajectory=True) rolls it.
+        # "seen", so AI Assistant's real tick reads 0 new arrivals and the review-bot-treadmill
+        # non-convergence trigger never fires. Only AI Assistant's tick (advance_trajectory=True) rolls it.
         trajectory = {}
 
     # --- Settle window: any observable movement resets the quiet clock. ---
@@ -670,12 +669,12 @@ def locked_state(state_dir, pr, repo, now):
             state = _empty_state(pr, repo, None, now)
         box = {"state": state}
         yield box
-        tmp = tempfile.NamedTemporaryFile("w", dir=state_dir, delete=False)
-        json.dump(box["state"], tmp, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp.close()
-        os.replace(tmp.name, state_path)
+        tmp_path = os.path.join(state_dir, f"state.json.tmp-{os.getpid()}-{time.time_ns()}")
+        with open(tmp_path, "w") as tmp:
+            json.dump(box["state"], tmp, indent=2)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp_path, state_path)
         fcntl.flock(lf, fcntl.LOCK_UN)
 
 
@@ -703,7 +702,7 @@ def cmd_snapshot(args):
 
 
 def _wake_reason(a, settle_seconds):
-    """Why the in-session agent should wake and run a tick, or None to keep watching.
+    """Why the in-session AI Assistant should wake and run a tick, or None to keep watching.
     Ordered by precedence — a terminal/blocked/needs-human state outranks a merge-ready read."""
     if a.get("pr_state") in ("MERGED", "CLOSED"):
         return "terminal"
@@ -742,7 +741,7 @@ def _emit_wake(reason, **fields):
 
 
 def _blocker_sig(a):
-    """Identity of blockers the agent surfaces once but cannot self-clear — parked needs-human
+    """Identity of blockers AI Assistant surfaces once but cannot self-clear — parked needs-human
     items, a dispatched terminally-red check, and a fork workflow awaiting maintainer approval. The
     watch captures this at arm time and does not re-wake on a blocker already in that baseline, so a
     parked residual keeps the watch alive (or the blocked-external bounded watch keeps polling for
@@ -754,7 +753,7 @@ def _blocker_sig(a):
         sig.add("__blocked_external__")
     # A new head is "context materially changed": a human may have pushed a commit that answers or
     # supersedes a parked residual, so the head is part of the baseline — when it moves, the residual
-    # is no longer "already-surfaced against this state" and the watch wakes to give the agent a tick
+    # is no longer "already-surfaced against this state" and the watch wakes to give AI Assistant a tick
     # to reopen/reprocess it, instead of parking forever while it still blocks merge-ready.
     if sig:
         sig.add(("head", a.get("head_sha")))
@@ -762,11 +761,11 @@ def _blocker_sig(a):
 
 
 def cmd_watch(args):
-    """Deterministic background change-detector (no agent tokens between changes): poll on an
-    interval, print one wake sentinel line and exit when there is something for the agent to do
+    """Deterministic background change-detector (no AI Assistant reasoning between changes): poll on an
+    interval, print one wake sentinel line and exit when there is something for AI Assistant to do
     (an actionable change or a stop condition), or exit on the stop-signal file / max-runtime.
     A residual already present at arm time (a parked needs-human, or a dispatched terminal-red the
-    agent already handed back) does NOT re-wake the loop — it keeps watching the other streams;
+    AI Assistant already handed back) does NOT re-wake the loop — it keeps watching the other streams;
     only a *new* blocker (signature grown past the baseline) wakes."""
     deadline = (time.monotonic() + args.max_runtime) if args.max_runtime else None
     armed = None  # baseline blocker signature captured on the first poll (already-surfaced residuals)
@@ -840,7 +839,7 @@ def cmd_mark(args):
                         entry["acted_identity"] = ident
                 elif args.comment and args.acted_edit_id:
                     # our reply is a separate top-level comment and never edits THIS one, so the
-                    # snapshot-time edit_id the agent passes is already the correct baseline (no fetch).
+                    # snapshot-time edit_id AI Assistant passes is already the correct baseline (no fetch).
                     entry["acted_identity"] = [args.acted_edit_id]
             state["last_action"] = f"{args.disposition} {label} {item_id}"
     print(json.dumps({"marked": args.check or args.thread or args.comment}))

@@ -53,9 +53,9 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ### Phase 1: Ground (dispatch scouts, never inline)
 
-Grounding searches code, git, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
+Grounding searches code, JJ revision history and bookmarks/workspaces, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
 
-**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this commit, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
+**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at the same profile revision, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -67,9 +67,9 @@ On `HIT`, load the profile JSON — that is your agnostic project orientation; d
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_DIR="/tmp/compound-engineering/ce-pov/$(openssl rand -hex 4)"
+SCRATCH_DIR=".tmp/rocketclaw/ce-pov/$(openssl rand -hex 4)"
 mkdir -p "$SCRATCH_DIR"
-echo "$SCRATCH_DIR"
+python3 -c 'import os; print(os.path.abspath("'"$SCRATCH_DIR"'"))'
 ```
 
 **Every scout payload carries the same context.** A fresh subagent does not inherit this conversation, so fill the persona files' `{subject}` / `{scratch-dir}` placeholders at dispatch: pass each scout the framed question (subject + intent), the named incumbent and the reversibility tier, and the resolved `<scratch-dir>` path — plus any user-supplied links for the external researcher. A scout seeded with only its generic persona grounds "some external thing" and can produce an empty or unfocused dossier.
@@ -86,7 +86,7 @@ echo "$SCRATCH_DIR"
 
 ### Phase 2: Verify against the two floors
 
-**Read `references/method.md` now**, before reasoning about the verdict — it defines the Verify and Verdict steps, the skeptic stance and reversibility tiering as cross-cutting properties, and the two-floor Invalid-Verdict gate. Apply that gate as a pass/fail checklist over the dossiers: a failed floor forbids Adopt/Reject and returns the matching Hold subtype. Do this reasoning on the clean context — read a dossier on demand, never pull its bulk in.
+**Read `references/method.md` now**, before reasoning about the verdict — it defines the Verify and Verdict steps, the skeptic stance and reversibility tiering as cross-cutting properties, and the two-floor Invalid-Verdict gate. Apply that gate as a pass/fail checklist over the dossiers: a failed floor forbids Adopt/Reject and returns the matching Hold subtype. Do this reasoning in the uncluttered context — read a dossier on demand, never pull its bulk in.
 
 ### Phase 3: Verdict
 

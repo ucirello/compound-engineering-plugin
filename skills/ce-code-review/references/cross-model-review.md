@@ -9,7 +9,7 @@ All invocation detail (provider→route resolution, availability + classified-fa
 ## Gates — run only when all hold
 
 1. `adversarial-reviewer` was selected in Stage 3 (reuse that diff gate — don't run a costly external CLI on a trivial diff).
-2. Scope is `local-aligned` or standalone — the working tree IS the reviewed head. Skip in `pr-remote` / `branch-remote`: the peer reviews the local tree, which is not the PR/branch head.
+2. Scope is `local-aligned` or standalone — the working-copy revision IS the reviewed head. Skip in `pr-remote` / `bookmark-remote`: the peer reviews `@`, which is not the PR/bookmark head.
 
 ## Step 1 — Attest the host provider, then resolve one different-provider peer
 
@@ -33,7 +33,7 @@ else XHOST=unknown; fi
 **Resolve the peer preference (first match wins), then let the script pick by availability:**
 
 1. A preference the user **states in conversation** (e.g. "use grok for the cross-model pass").
-2. `cross_model_peer:` in `.compound-engineering/config.local.yaml` (the only file the script/skill reads for this).
+2. `cross_model_peer:` in `.rocketclaw/config.local.yaml` (the only file the script/skill reads for this).
 3. A preference already in your **project instructions** (the active instructions in your context) — consumed from context, **never** read from a named file.
 4. **Default:** first available provider ≠ host, order `codex → claude → grok → composer`.
 
@@ -65,10 +65,10 @@ bash "$SKILL_DIR/scripts/cross-model-adversarial-review.sh" "<host-provider>" "<
 
 - `<host-provider>` = attested key from Step 1 (`codex`/`claude`/`grok`/`composer`, or `unknown` to force a clean skip).
 - `<candidates>` = the comma-separated preference-front-loaded provider order from Step 1 (e.g. `codex,claude,grok,composer`). The script excludes the host, applies the `CROSS_MODEL_PEERS` allowlist, walks this order by availability, and picks up to `CROSS_MODEL_MAX_PEERS` (default 1).
-- `<base-ref>` = the Stage 1 `BASE` (the diff base the peer reviews via `git diff <base-ref>`).
-- `<run-dir>` = the Stage 4 run dir (`/tmp/compound-engineering/ce-code-review/<run-id>/`). The script writes `adversarial-<provider>.json` there **only after** forcing `reviewer` to `adversarial-<provider>` and downgrading peer `safe_auto` → `gated_auto`.
+- `<base-ref>` = the Stage 1 `BASE` (the diff base the peer reviews via `jj diff --from <base-ref> --to @`).
+- `<run-dir>` = the Stage 4 run dir (`.tmp/rocketclaw/ce-code-review/<run-id>/`). The script writes `adversarial-<provider>.json` there **only after** forcing `reviewer` to `adversarial-<provider>` and downgrading peer `safe_auto` → `gated_auto`.
 
-Set the Bash tool `timeout` / `block_until_ms` high enough to cover the hard cap (default 600s) **and await completion** — the script self-bounds (codex idle-timeout default 180s with reasoning forced on for liveness; hard backstop `CROSS_MODEL_HARD_SECS` default 600s) and exits cleanly. If the harness can't background a shell command, run the call inline before awaiting the reviewers; correctness is unaffected, only wall-clock. The script needs no prompt or schema passed in — it reads the persona brief and `findings-schema.json` from the skill dir and reviews the current work tree against `<base-ref>`.
+Set the Bash tool `timeout` / `block_until_ms` high enough to cover the hard cap (default 600s) **and await completion** — the script self-bounds (codex idle-timeout default 180s with reasoning forced on for liveness; hard backstop `CROSS_MODEL_HARD_SECS` default 600s) and exits cleanly. If the harness can't background a shell command, run the call inline before awaiting the reviewers; correctness is unaffected, only wall-clock. The script needs no prompt or schema passed in — it reads the persona brief and `findings-schema.json` from the skill dir and reviews the current working-copy revision against `<base-ref>`.
 
 ## Step 5 — Fold into Stage 5
 
@@ -79,12 +79,21 @@ Set the Bash tool `timeout` / `block_until_ms` high enough to cover the hard cap
 
 ## Trust boundary (maintainers)
 
-The peer reviews the **current work tree** (read-only) against `git diff <base-ref>`. Reviewed code/diff content is sent to an external model provider (OpenAI, Anthropic, xAI, or Cursor, depending on the resolved peer). `CROSS_MODEL_PEERS` restricts which providers may receive content.
+The peer reviews the **current working-copy revision** (read-only) against `jj diff --from <base-ref> --to @`. Reviewed code/diff content is sent to an external model provider (OpenAI, Anthropic, xAI, or Cursor, depending on the resolved peer). `CROSS_MODEL_PEERS` restricts which providers may receive content.
 
 **Isolation differs from ce-doc-review by design.** Doc-review embeds a self-contained document into a tool-less empty scratch. Code-review needs surrounding code context, so peers run **in-tree read-only**:
 
-- **codex:** `-s read-only` with cwd at the repo root (may fetch `git diff` itself).
+- **codex:** `-s read-only` with cwd at the workspace root (may fetch `jj diff` itself).
 - **claude:** deny mutators / Bash / Task / `mcp__*`; **Read allowed** for context; diff is embedded because Bash is denied.
 - **grok / cursor-agent:** ask/dontAsk + no write/force/yolo; Read allowed; workspace/cwd at the repo root.
 
 Impact is bounded to disclosure, not repo mutation. The script's stderr audit log records each send so the egress is auditable even in `mode:agent`.
+## What the script does (for maintainers — you don't invoke this directly)
+
+`scripts/cross-model-adversarial-review.sh <host-provider> <candidates> <base-ref> <run-dir>`:
+- Self-locates the persona + schema via `BASH_SOURCE` (works from any CWD); derives the workspace root with `jj workspace root`.
+- Composes the peer prompt from the canonical persona brief + a JSON-only contract. Codex obtains its own diff with read-only `jj diff` inside its sandbox; Claude (which has no sandbox) is hard-denied `Bash`, so it gets the JJ diff embedded and needs no shell. After capture, the script forces `reviewer = adversarial-<provider>` so it remains distinct from the in-process reviewer.
+ - Codex peer: `codex exec - -s read-only -o <out>` at high reasoning effort. No `--output-schema` (Codex strict mode rejects the permissive draft-07 schema); the full schema embedded in the prompt is its only contract, which produces complete schema-shaped findings (verified). The `-o` write is done by the codex CLI *outside* the model's sandbox, so it succeeds under `-s read-only` (verified); if it ever fails to materialize, the script recovers the same JSON from codex's captured stdout (belt-and-suspenders, no data lost).
+ - Claude peer: `claude -p --permission-mode dontAsk --disallowedTools Edit Write NotebookEdit --json-schema … --output-format json` (disallowed tools passed as separate variadic args, not one quoted string), captured from stdout (it can't write a file under those permissions), parsed via `.structured_output` with a `.result` fallback.
+ - Read-only differs by peer: codex `-s read-only` is a hard sandbox; claude `dontAsk` denies `Edit`/`Write`/`NotebookEdit`/`Bash` plus `mcp__*` (a user's pre-approved MCP write/deploy tools would otherwise run under `dontAsk`) and `Task` (a subagent would bypass the deny list) — so it can't mutate via shell, MCP, or a spawned subagent even under broad user allow-rules (deny overrides allow) — and reviews the embedded diff with read-only file access. Non-blocking everywhere: any gap → log + exit 0, no output file.
+ - Timeouts kill the whole **process group**, so no orphaned model call outlives the script. **Codex** streams its reasoning, so it runs in its own process group (`set -m`) under a watchdog that reaps the group — `kill -TERM` then `kill -KILL` after a grace, checking *group* liveness so a child that defers SIGTERM can't escape — when output stalls for `CROSS_MODEL_IDLE_SECS` (default 180s; reasoning is forced on via `-c hide_agent_reasoning=false` so the stream stays a reliable liveness signal even under a user config that hides it) or exceeds the hard backstop `CROSS_MODEL_HARD_SECS` (default 600s). Reaping the group directly (rather than signalling a `gtimeout` wrapper, whose `-k` only escalates on its *own* expiry) is what guarantees the peer dies. **Claude**'s `--output-format json` is single-shot, so it just gets a `gtimeout`/`timeout` hard cap.

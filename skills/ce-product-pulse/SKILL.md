@@ -16,7 +16,7 @@ allowed-tools:
 
 `ce-product-pulse` queries the product's data sources for a given time window and produces a compact, single-page report covering usage, performance, errors, and followups. The report is saved to `docs/pulse-reports/` and the key points are surfaced in chat.
 
-The skill does not mutate the product, the database, or any external system. Its only writes are pulse settings appended to `.compound-engineering/config.local.yaml` (the unified CE local config, gitignored, machine-local) and the report file (`docs/pulse-reports/...`). MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them.
+The skill does not mutate the product, the database, or any external system. Its only writes are pulse settings merged into `.rocketclaw/config.local.yaml` (ignored, repository-local config) and the report file (`docs/pulse-reports/...`). MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them.
 
 ## Interaction Method
 
@@ -52,7 +52,7 @@ Apply a **15-minute trailing buffer** to the window's upper bound. Many analytic
 
 ### Phase 0: Route by Config State
 
-**Read config.** Resolve `<repo-root>` at runtime by running `git rev-parse --show-toplevel` with the shell tool. Then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool (e.g., Read in Claude Code, read_file in Codex). If the root cannot be resolved or the file does not exist, treat this as a first run. Otherwise extract values for the `pulse_*` keys listed under "Config keys" below.
+**Read config.** Resolve `<workspace-root>` at runtime by running `jj workspace root` with the shell tool. Resolve it once and retain the absolute value for the whole run. Set `<strategy-path>` to `<workspace-root>/STRATEGY.md` and `<reports-dir>` to `<workspace-root>/docs/pulse-reports`; every config, strategy, and report read/write below uses these anchored absolute paths, never a path relative to the process working directory. Then read `<workspace-root>/.rocketclaw/config.local.yaml` with the native file-read tool (e.g., Read in Claude Code, read_file in Codex). If the workspace root cannot be resolved or the file does not exist, treat this as a first run. Otherwise extract values for the `pulse_*` keys listed under "Config keys" below.
 
 **Config keys:**
 - `pulse_product_name` -- string, used in report titles. Required for routing: if unset, skill is unconfigured.
@@ -81,14 +81,14 @@ If the argument was `setup`, `reconfigure`, or `edit config`, go to Phase 1 rega
 
 #### 1.0 Seed from strategy (if available)
 
-Before asking any questions, read `STRATEGY.md` using the native file-read tool. If the file exists, extract:
+Before asking any questions, read `<strategy-path>` using the native file-read tool. If the file exists, extract:
 
 - The product name from the `name` key in the YAML frontmatter, falling back to the H1 title (stripping the trailing ` Strategy` suffix, e.g., `# Spiral Strategy` -> `Spiral`) if frontmatter is missing
 - The list of key metrics from the `## Key metrics` section, one per line
 
 Open the interview by surfacing what was extracted: announce that a strategy doc was found, show the seeded product name and the list of key metrics that will be carried into event/data setup, and invite the user to correct any of it before continuing.
 
-If `STRATEGY.md` does not exist, note that explicitly in chat: no strategy doc on file, running setup from scratch, and mention that `ce-strategy` can seed pulse later if run first.
+If `<strategy-path>` does not exist, note that explicitly in chat: no strategy doc on file, running setup from scratch, and mention that `ce-strategy` can seed pulse later if run first.
 
 #### 1.1 Interview
 
@@ -109,13 +109,13 @@ Apply the pushback rules in `references/interview.md` for each section. Treat ev
 
 If the user offers read-write database access, refuse and offer the alternatives documented in `references/interview.md` section 6.
 
-Write the captured config to `<repo-root>/.compound-engineering/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the repo root with `git rev-parse --show-toplevel`. To write: (1) if the file or directory does not exist, create `.compound-engineering/` and write the YAML file; (2) if the file exists, merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `plan_*`) untouched. If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
+Write the captured config to `<workspace-root>/.rocketclaw/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the workspace root with `jj workspace root`. To write: (1) if the file or directory does not exist, create `.rocketclaw/` and write the YAML file; (2) if the file exists, merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `plan_*`) untouched. If `.rocketclaw/config.local.yaml` is not already covered by the workspace's ignore rules, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
 
 After the config is written, run the **scheduling recommendation** from `references/interview.md` section 9: offer to set up a recurring run so the user gets the pulse on a cadence instead of having to remember to run it. Accept yes/no/later. If yes, hand off to whichever scheduling primitive the current harness exposes — the in-plugin `schedule` skill if it is installed, otherwise note that scheduling is platform-specific (cron, GitHub Actions, the host's own automation) and emit a brief hint covering what would need to run. Do not schedule inline. Then proceed to Phase 2.
 
 ### Phase 2: Run the Pulse
 
-If Phase 1 ran (first run, or `setup`/`reconfigure` argument), re-read `.compound-engineering/config.local.yaml` from the repo root using the native file-read tool to pick up any edits accepted during the Phase 1 review step. Otherwise, use the `pulse_*` values already extracted in Phase 0. Apply hard defaults for any unset settings (see Phase 0 "Config keys").
+If Phase 1 ran (first run, or `setup`/`reconfigure` argument), re-read `<workspace-root>/.rocketclaw/config.local.yaml` using the native file-read tool to pick up any edits accepted during the Phase 1 review step. Otherwise, use the `pulse_*` values already extracted in Phase 0. Apply hard defaults for any unset settings (see Phase 0 "Config keys").
 
 #### 2.1 Dispatch Queries
 
@@ -150,7 +150,7 @@ Keep the total to 30-40 lines. If a section is thin, leave it thin; do not pad.
 
 #### 2.4 Write the Report
 
-Save to `docs/pulse-reports/YYYY-MM-DD_HH-MM.md` using the local time of the run. Create `docs/pulse-reports/` if it does not exist.
+Save to `<reports-dir>/YYYY-MM-DD_HH-MM.md` using the local time of the run. Create `<reports-dir>` if it does not exist.
 
 Surface the Headlines and top Followup in chat. Provide the full file path so the user can open the saved report.
 
@@ -165,7 +165,7 @@ Never schedule automatically. Any scheduling handoff requires explicit confirmat
 
 ## What This Skill Does Not Do
 
-- Does not report "what shipped." Shipped work lives in the issue tracker and commit history, not here. Pulse is strictly about user experience and system performance.
+- Does not report "what shipped." Shipped work lives in the issue tracker and Jujutsu revision history (`jj log`), where stable change IDs identify evolving changes, not here. Pulse is strictly about user experience and system performance.
 - Does not set thresholds or alert the user. The reader interprets.
 - Does not persist PII in saved reports.
 - Does not mutate the database or any external system. All queries are read-only.

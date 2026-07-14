@@ -13,8 +13,8 @@ Design rules (mirrors the repo's repo-profile-cache helper):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are atomic: a repository-local `.tmp/rocketclaw/` scratch file plus
+    os.replace, so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -38,16 +38,18 @@ JSON tokens (strings always double-quoted on one line); lists and empty dicts
 are emitted as inline JSON flow on a single line — itself valid YAML.
 """
 import argparse
+import hashlib
 import json
 import os
+import secrets
+import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 
 try:
     import fcntl  # POSIX advisory locks (macOS, Linux — this repo's Unix targets)
     _HAS_FCNTL = True
-except ImportError:  # non-POSIX; degrade to unlocked (single-writer by convention)
+except ImportError:  # non-POSIX; mutating commands fail closed below
     _HAS_FCNTL = False
 
 SCHEMA_VERSION = 1
@@ -247,7 +249,10 @@ def _item_key(source, item_id):
     source that reuses numeric ids). Namespacing by source keeps each source's
     id space independent, matching the composite keys documented in
     references/state-schema.md."""
-    return "{}:{}".format(source, item_id)
+    def escape(component):
+        return str(component).replace("%", "%25").replace(":", "%3A")
+
+    return "{}:{}".format(escape(source), escape(item_id))
 
 
 def load_state(path):
@@ -255,13 +260,9 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # A machine-local state file can live under world-shared /tmp, and
-            # it is a correctness dependency (lease, cursors, closed status) as
-            # well as an injection sink (item bodies re-read into agent
-            # context). Reject a file not owned by us so a co-tenant cannot
-            # plant a forged lease/cursor or attacker-authored item text. Skip
-            # where geteuid is unavailable (non-POSIX), where the threat does
-            # not apply.
+            # Local-only state lives under repository-local .tmp/rocketclaw/.
+            # It remains a correctness dependency and an injection sink, so
+            # reject a file not owned by us. Skip where geteuid is unavailable.
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return ("corrupt", None)
@@ -287,13 +288,31 @@ def new_state():
     return {"schema_version": SCHEMA_VERSION, "sources": {}, "items": {}}
 
 
+def repo_scratch_dir(*parts):
+    root = subprocess.run(
+        ["jj", "workspace", "root"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if root.returncode != 0 or not root.stdout.strip():
+        raise OSError("could not resolve JJ workspace root for local scratch")
+    path = os.path.join(
+        root.stdout.strip(), ".tmp", "rocketclaw", "ce-sweep", *parts
+    )
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def write_state(path, state):
     """Atomic write of the state file. Returns True on success."""
     state["schema_version"] = SCHEMA_VERSION
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    scratch_dir = repo_scratch_dir("atomic-writes")
+    tmp = os.path.join(scratch_dir, f"state-{os.getpid()}-{secrets.token_hex(8)}.yml")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
@@ -543,8 +562,9 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
+    # the lease yet must still record its outcome. In local-only mode there is
+    # a single writer per workspace, so this bookkeeping write is safe. A
+    # shared-bookmark loser is required not to call this command.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -592,7 +612,7 @@ def cmd_import_legacy(args):
     items_imported = 0
     if isinstance(legacy, dict):
         cursors_imported = _import_channels(legacy, data, source_map)
-        items_imported = _import_legacy_items(legacy, data)
+        items_imported = _import_legacy_items(legacy, data, source_map)
 
     # Persist only when something changed: a fresh state file was seeded, or
     # the import actually brought data in. A no-op import writes nothing.
@@ -648,20 +668,27 @@ def _import_channels(legacy, data, source_map=None):
     return count
 
 
-def _import_legacy_items(legacy, data):
+def _import_legacy_items(legacy, data, source_map=None):
     raw_items = legacy.get("items")
     items = data.setdefault("items", {})
     count = 0
 
+    source_map = source_map or {}
+
     def add(item_id, fields):
         if not item_id:
             return 0
-        merged = dict(items.get(str(item_id), {}))
+        legacy_source = fields.get("source") or fields.get("channel") or "legacy"
+        source = source_map.get(str(legacy_source), str(legacy_source))
+        key = _item_key(source, item_id)
+        merged = dict(items.get(key, {}))
         for k in ("status", "source", "channel", "title", "url"):
             if k in fields and fields[k] is not None:
                 key = "source" if k == "channel" else k
                 merged.setdefault(key, fields[k])
-        items[str(item_id)] = merged
+        merged["source"] = source
+        merged["id"] = str(item_id)
+        items[key] = merged
         return 1
 
     if isinstance(raw_items, dict):
@@ -762,13 +789,24 @@ _MUTATING = {
 
 
 def _run_locked(handler, args):
-    lock_path = str(args.state) + ".lock"
+    state_dir = os.path.dirname(os.path.abspath(args.state))
+    try:
+        os.makedirs(state_dir, exist_ok=True)
+        if not os.path.isdir(state_dir):
+            return emit("ERROR")
+    except OSError:
+        return emit("ERROR")
+    state_key = hashlib.sha256(os.path.abspath(args.state).encode()).hexdigest()
+    lock_path = os.path.join(repo_scratch_dir("locks"), state_key + ".lock")
     try:
         lock_fd = open(lock_path, "w")
     except OSError:
-        return handler(args)  # cannot create a lock file; degrade to unlocked
+        return emit("ERROR")
     try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        except OSError:
+            return emit("ERROR")
         return handler(args)
     finally:
         try:
@@ -781,7 +819,9 @@ def main(argv):
     args = build_parser().parse_args(argv[1:])
     handler = _HANDLERS[args.cmd]
     try:
-        if _HAS_FCNTL and args.cmd in _MUTATING:
+        if args.cmd in _MUTATING:
+            if not _HAS_FCNTL:
+                return emit("ERROR")
             return _run_locked(handler, args)
         return handler(args)
     except Exception as exc:  # never leak a traceback to the caller

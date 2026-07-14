@@ -6,12 +6,54 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current branch:
+Jujutsu has no active/current bookmark. If no PR number was provided, list the nearest local bookmark(s) at or behind the working-copy change:
 ```bash
-gh pr view --json number -q .number
+jj bookmark list -r 'heads(::@ & bookmarks())' -T 'name ++ "\n"'
 ```
 
-Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments). Set `SKILL_DIR` to the absolute directory you loaded the ce-resolve-pr-feedback SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, and shell state does not persist between Bash calls, so set it inline in each block below that runs a bundled script. If the bundled script is missing on disk the call fails plainly; fall back to the `gh` commands shown after this block.
+For each candidate, query GitHub by bookmark name rather than relying on a detached checkout state:
+
+```bash
+GIT_DIR="$(jj git root)" gh pr view BOOKMARK --json number -q .number
+```
+
+If no candidate has an open PR, or multiple candidates remain ambiguous, ask for the PR number. Once the PR number is known, whether provided or discovered, resolve all repository and head metadata needed by later steps:
+
+```bash
+GIT_DIR="$(jj git root)" gh repo view --json nameWithOwner -q .nameWithOwner
+GIT_DIR="$(jj git root)" gh pr view PR_NUMBER --json number,headRefName,headRefOid,headRepository,headRepositoryOwner
+jj git remote list
+```
+
+Record the base repository as `OWNER/REPO`, `headRefName` as `PR_BOOKMARK`, and `headRefOid` as `PR_HEAD_OID`. Resolve `PUSH_REMOTE` from the configured remotes: prefer `git.push` when it names a configured remote whose URL matches `headRepositoryOwner.login/headRepository.name`; otherwise require exactly one configured remote with a matching normalized HTTPS or SSH GitHub URL. Do not assume `origin`. If no unique matching remote exists, stop before making changes and ask which configured remote to use. `GIT_DIR=$(jj git root)` is the supported GitHub CLI bridge for a non-colocated JJ repository; it does not authorize raw Git workflow commands.
+
+### Pin and verify the PR head before any edit
+
+Treat all GitHub names as untrusted. Require `PR_HEAD_OID` to match `^[0-9a-fA-F]{40}$`. Require `OWNER`, `REPO`, and `PUSH_REMOTE` to match `^[A-Za-z0-9][A-Za-z0-9._-]*$`. Require `PR_BOOKMARK` to match the conservative Git-ref shape `^[A-Za-z0-9][A-Za-z0-9._/-]*$`, then reject `..`, `//`, `@{`, a leading or trailing `/` or `.`, any component beginning with `.`, and any component ending in `.lock`. Stop on validation failure; never interpolate an unvalidated value into a JJ argument or revset.
+
+Fetch only the validated PR branch from the selected remote. JJ name arguments default to glob patterns, so use `exact:` wherever a command accepts a name pattern:
+
+```bash
+jj git fetch --remote "exact:$PUSH_REMOTE" --branch "exact:$PR_BOOKMARK"
+FETCHED_HEAD=$(jj bookmark list --remote "exact:$PUSH_REMOTE" "exact:$PR_BOOKMARK" -T 'if(normal_target, normal_target.commit_id() ++ "\n", "CONFLICT\n")')
+```
+
+Require `FETCHED_HEAD` to be one line exactly equal to lowercase `PR_HEAD_OID`; `CONFLICT`, no output, multiple outputs, or a different OID means the PR moved or the bookmark is ambiguous. Re-query `headRefOid`, repeat the exact fetch once, and stop if they still disagree. Resolve all PR content and history by the validated OID, never by the bookmark name:
+
+```bash
+jj log --no-graph -r "exactly(commit_id($PR_HEAD_OID), 1)" -T 'commit_id ++ "\n"'
+ALIGNED=$(jj log --no-graph -r "exactly(commit_id($PR_HEAD_OID), 1) & ::@" -T 'commit_id ++ "\n"')
+```
+
+Proceed only when the first command resolves exactly `PR_HEAD_OID` and `ALIGNED` equals exactly `PR_HEAD_OID`. This proves that the current `@` equals or descends from that exact commit. If not aligned, make no edits, commits, bookmark moves, or pushes. Explain that `@` is unrelated and require or offer a dedicated workspace whose new working-copy change is a child of the exact PR head:
+
+```bash
+jj workspace add --name "pr-PR_NUMBER-feedback" -r "commit_id($PR_HEAD_OID)" PATH
+```
+
+Run that command only with the user's chosen destination. Continue from the new workspace after repeating this gate. Never push an unrelated `@`.
+
+Then fetch all feedback using the GraphQL script at `scripts/get-pr-comments`. Set `SKILL_DIR` to the absolute directory containing this skill's `SKILL.md` — the Bash tool's CWD is the user's project, not the skill dir, and shell state does not persist between Bash calls, so set it inline in each block below that runs a bundled script. If the bundled script is missing on disk the call fails plainly; fall back to the `gh` commands shown after this block.
 
 **GitHub Enterprise host.** The bundled `gh api graphql` scripts hit `gh`'s default host unless told otherwise, so on a GHE PR they would wrongly target `github.com`. Derive the host: if the caller passed a full PR **URL**, take its host; otherwise read it from `gh repo view --json url -q .url`. Then — because shell state does **not** persist between separate Bash calls — pass the host as a `GH_HOST=<host>` **env prefix inline on every bundled-script call** (`gh api` honors `GH_HOST` as the request host). A single `export` in one block does **not** carry to the reply/resolve/verify blocks that run as later Bash calls, which is why each call below shows the prefix. On `github.com`, drop the `GH_HOST=<host> ` prefix entirely.
 
@@ -38,8 +80,8 @@ Returns a JSON object with three keys:
 
 If the script fails, fall back to:
 ```bash
-gh pr view PR_NUMBER --json reviews,comments
-gh api repos/{owner}/{repo}/pulls/PR_NUMBER/comments
+GIT_DIR="$(jj git root)" gh pr view PR_NUMBER --repo OWNER/REPO --json reviews,comments
+gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments
 ```
 
 ## 2. Triage: Separate New from Pending
@@ -61,12 +103,12 @@ If there are no new items across all feedback types, skip steps 3-8 and go strai
 
 ## 3. Consolidate & Decide (the legitimacy gate)
 
-This is the gate. Judge every **new** item here, in your own context, before any fix is dispatched. Apply the rubric in [references/evaluation-rubric.md](evaluation-rubric.md) (read it now) across the whole batch at once.
+This is the gate. Judge every **new** item here, in your own context, before any fix is dispatched. Apply the rubric in `references/evaluation-rubric.md` (read it now) across the whole batch at once.
 
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; inspect the working change with `jj diff -r @`, a specific revision with `jj show -r REVISION`, and historical file content with `jj file show -r REVISION PATH`. Deep-read callers, invariants, `jj file annotate`, and PR rationale only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -86,7 +128,7 @@ Dispatch fixers **only** for fix-list items. Reply-list and human-list items nev
 
 ### Dispatch
 
-Read [references/agents/pr-comment-resolver.md](agents/pr-comment-resolver.md) and spawn a generic subagent seeded with that fixer prompt for each fix-list item. Do not dispatch a standalone agent by type/name. The fixer is a pure executor: the validity judgment is already done, so it implements and returns — it does not re-judge worthwhileness.
+Read `references/agents/pr-comment-resolver.md` and spawn a generic subagent seeded with that fixer prompt for each fix-list item. Do not dispatch a standalone agent by type/name. The fixer is a pure executor: the validity judgment is already done, so it implements and returns — it does not re-judge worthwhileness.
 
 Each fixer receives:
 - The feedback_id (thread ID or comment ID) and feedback type.
@@ -95,7 +137,7 @@ Each fixer receives:
 - Your step-3 note: what to change and why it was judged valid.
 - The PR number.
 
-For `pr_comment` / `review_body` fix-list items (no file/line), the fixer identifies the relevant files from the comment text and the PR diff.
+For `pr_comment` / `review_body` fix-list items (no file/line), the fixer identifies the relevant files from the comment text and the GitHub PR diff (`gh pr diff PR_NUMBER --repo OWNER/REPO`) or the local JJ stack diff (`jj diff --from trunk() --to @`).
 
 ### Fixer return format
 
@@ -129,25 +171,35 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a concise footer describing the pre-existing failure, using wording consistent with the repository's existing message style.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Commit and Push
+## 6. Record the Change and Push
 
-1. Stage only files reported by fixers and commit with a message referencing the PR:
+1. Inspect the combined working-copy change and confirm which paths belong to the approved fixes:
 
 ```bash
-git add [files from fixer summaries]
-git commit -m "Address PR review feedback (#PR_NUMBER)
-
-- [list changes from fixer summaries]"
+jj status
+jj diff --summary
+jj diff --git [files from fixer summaries]
 ```
 
-2. Push to remote:
+Jujutsu has no staging area. With path arguments, `jj commit` keeps the selected paths in the current change, gives that change the description, and moves all remaining changes into a new working-copy change on top. Commit only paths reported by fixers. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository instructions and the syntax visible in `git log` take precedence; apply compatible Go guidance such as a concise subject and explanatory body where useful.
+
 ```bash
-git push
+jj commit [files from fixer summaries] -m "<message derived from repository conventions; preserve the semantic summary of the review fixes and any pre-existing validation failure>"
 ```
+
+If a reported path also contains unrelated edits, use `jj commit --interactive [files from fixer summaries] -m "<message derived from repository conventions>"` and select only the feedback changes. After either form, the recorded feedback change is `@-` and `@` is the new working-copy change. Verify with `jj show -r @-` and `jj status` before moving any bookmark.
+
+2. Move the PR's exact head bookmark to the recorded change and push only that bookmark to the previously identified head-repository remote:
+```bash
+jj bookmark set "$PR_BOOKMARK" -r @-
+jj git push --bookmark "exact:$PR_BOOKMARK" --remote "$PUSH_REMOTE"
+```
+
+Do not use `jj git push --change`: it creates a generated bookmark instead of updating the PR head. If push safety checks report that the remote moved, repeat the exact fetch and OID/alignment gate from step 1, inspect `jj status` and `jj bookmark list --remote "exact:$PUSH_REMOTE" "exact:$PR_BOOKMARK"`, resolve any bookmark conflict, and only then retry. Never bypass the lease-style safety check.
 
 ## 7. Reply and Resolve
 
@@ -155,13 +207,13 @@ After the push succeeds, post replies and resolve where applicable. Post for eve
 
 ### Reply format
 
-All replies quote the relevant part of the original feedback for continuity — the specific sentence or passage, not the entire comment if it's long. The per-verdict templates are in [references/evaluation-rubric.md](evaluation-rubric.md) (skip verdicts) and [references/agents/pr-comment-resolver.md](agents/pr-comment-resolver.md) (`fixed` / `fixed-differently`).
+All replies quote the relevant part of the original feedback for continuity — the specific sentence or passage, not the entire comment if it's long. The per-verdict templates are in `references/evaluation-rubric.md` (skip verdicts) and `references/agents/pr-comment-resolver.md` (`fixed` / `fixed-differently`).
 
 For `needs-human` verdicts, post the natural-sounding reply but do NOT resolve the thread. Leave it open for human input.
 
 ### Review threads
 
-0. **Verify the thread ID** before replying. GitHub Enterprise can return inconsistent node IDs for the same thread depending on the query path. Always confirm the ID from `get-pr-comments` resolves to the correct thread using [scripts/get-thread-for-comment](../scripts/get-thread-for-comment) with the comment's numeric URL ID. Extract the numeric comment ID from the comment URL (e.g. `discussion_r2589700` → `2589700`) for the `gh api` call; if the bundled script is missing, use `gh api` to inspect the review thread instead:
+0. **Verify the thread ID** before replying. GitHub Enterprise can return inconsistent node IDs for the same thread depending on the query path. Always confirm the ID from `get-pr-comments` resolves to the correct thread using `scripts/get-thread-for-comment` with the comment's numeric URL ID. Extract the numeric comment ID from the comment URL (e.g. `discussion_r2589700` → `2589700`) for the `gh api` call; if the bundled script is missing, use `gh api` to inspect the review thread instead:
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
 GH_HOST=<derived-host> GH_REPO=OWNER/REPO gh api repos/{owner}/{repo}/pulls/comments/COMMENT_ID --jq .node_id
@@ -169,14 +221,14 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/get-thread-for-comment" PR_NUMBE
 ```
 The returned `id` is the authoritative thread ID to use for reply and resolve. If it differs from what `get-pr-comments` returned, use the one from this script.
 
-1. **Reply** using [scripts/reply-to-pr-thread](../scripts/reply-to-pr-thread) (if the bundled script is missing, post the reply with `gh api` or `gh pr comment` as appropriate):
+1. **Reply** using `scripts/reply-to-pr-thread` (if the bundled script is missing, post the reply with `gh api` or `gh pr comment` as appropriate):
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
 echo "REPLY_TEXT" | GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/reply-to-pr-thread" THREAD_ID
 ```
 Check that the returned comment URL contains the correct `OWNER/REPO` and PR number before proceeding.
 
-2. **Resolve** using [scripts/resolve-pr-thread](../scripts/resolve-pr-thread) (if the bundled script is missing, resolve the thread with `gh api` if supported):
+2. **Resolve** using `scripts/resolve-pr-thread` (if the bundled script is missing, resolve the thread with `gh api` if supported):
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
 GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/resolve-pr-thread" THREAD_ID

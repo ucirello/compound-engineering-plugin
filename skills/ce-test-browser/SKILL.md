@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current JJ change stack, a revision, or a PR.
+argument-hint: "[PR number, bookmark/revset, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a PR or JJ revision using the best approved browser driver available in the active harness.
 
 ## Modes
 
@@ -27,9 +27,18 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 ### 1. Select the Browser Driver
 
-Apply the Browser Driver Policy above and record the selected driver. This also requires a git repository with changes to test.
+Apply the Browser Driver Policy above and record the selected driver. This also requires a JJ workspace containing the content to test. If the selected fallback is `agent-browser`, read `references/agent-browser-driver.md` and perform its installation check before continuing.
 
 ### 2. Determine Test Scope
+
+For every scope, first establish the JJ workspace and inspect its status:
+
+```bash
+jj root
+jj status
+```
+
+Run subsequent project discovery from the workspace root printed by `jj root`. If `jj root` fails, stop and report that the current path is not in a JJ workspace. If `jj status` reports unresolved conflicts, stop and report them rather than testing conflicted content.
 
 **If PR number provided:**
 ```bash
@@ -38,13 +47,24 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj log -r 'exactly(trunk(), 1)' --no-graph -T 'change_id.short() ++ "\n"'
+jj log -r 'trunk() & root()' --count
+jj diff --from 'trunk()' --to @ --name-only
 ```
 
-**If branch name provided:**
+`@` is the current workspace's working-copy revision. JJ has no active bookmark; use `@` for the content currently being tested. `trunk()` is JJ's configured default-remote trunk revision. The first command must resolve exactly one trunk revision, and the second must print `0`. If `trunk()` is unresolved, ambiguous, or has fallen back to `root()`, stop and ask the user to configure or provide the intended base revision instead of treating every project file as changed.
+
+**If bookmark or revset provided:**
 ```bash
-git diff --name-only main...[branch]
+jj log -r 'exactly(<bookmark-or-revset>, 1)' --no-graph -T 'change_id.short() ++ "\n"'
+jj log -r 'exactly(trunk(), 1)' --no-graph -T 'change_id.short() ++ "\n"'
+jj log -r 'trunk() & root()' --count
+jj diff --from 'trunk()' --to '<bookmark-or-revset>' --name-only
 ```
+
+Substitute the user-provided bookmark or revset literally; do not assume a current bookmark because JJ has no active bookmark concept. Require it to resolve to exactly one revision before passing it to `--to`. Apply the same `trunk()` checks as the current scope. A bookmark, change ID, or other single-revision revset is valid. If the changed-file list is empty, report that the selected scope has no net file changes from `trunk()` and stop.
+
+The PR, bookmark, or revset selects the affected files and pages; browser actions always exercise the content in the current workspace at `@`. If the requested content is not present at `@`, stop and ask the user to open a JJ workspace at the intended revision rather than moving or rewriting the current workspace.
 
 ### 3. Map Changed Files to Routes
 
@@ -195,7 +215,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / `@` against `trunk()` / [bookmark or revset] against `trunk()`
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -223,13 +243,13 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test the current JJ change stack through @ (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test specific branch
+# Test a specific JJ bookmark or single-revision revset
 /ce-test-browser feature/new-dashboard
 
 # Test on a specific port

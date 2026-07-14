@@ -30,10 +30,12 @@ If the user gave a free-form description of the feature, use it as the source of
 
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
-- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current branch). The title and body usually state the user-facing value.
-- **The diff** — `git diff main...HEAD --stat` and skim notable changes to ground the claim in what actually changed.
+- **Workspace and status** — resolve the workspace root with `jj root`, run repository commands from there, and inspect `jj status`. Treat `@` as the working-copy revision; JJ has no current bookmark.
+- **Merged/active PR** — list the nearest local bookmarks on the working-copy ancestry with `jj bookmark list -r 'heads(::@ & bookmarks())' --template 'name ++ "\n"'`. For each plausible non-trunk bookmark, run `GIT_DIR="$(jj git root)" gh pr view "<bookmark>" --json title,body,url,state 2>/dev/null`; passing the bookmark explicitly preserves GitHub lookup without relying on a current branch. If none resolves, inspect a few recent merged PRs with `GIT_DIR="$(jj git root)" gh pr list --state merged --limit 5 --json title,body,url,headRefName,mergedAt 2>/dev/null`. The title and body usually state the user-facing value. Never use argumentless `gh pr view`, because it assumes a current Git branch that JJ does not have.
+- **The feature diff** — inspect the aggregate feature revisions, not a direct comparison from the current trunk tree (which can pull unrelated trunk changes into the result). Use `jj diff -r 'trunk()..@' --stat` when the feature revisions form a contiguous set; JJ aggregates that revision set from its fork point through `@`. If the set is not contiguous, resolve the fork point as `heads(::@ & ::trunk())` and use `jj diff --from 'heads(::@ & ::trunk())' --to @ --stat`. Skim notable changes to ground the claim in what actually changed. `trunk()` follows the repository's configured default remote bookmark instead of hard-coding a bookmark or remote name.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
-- **Recent commits** — `git log --oneline -15` for the arc of the change.
+- **Release tags** — `jj tag list -r 'heads(::@ & tags())'` for the nearest tags reachable from the working-copy revision.
+- **Recent revisions** — `jj log -r 'ancestors(@, 15) ~ root()' --no-graph` for the arc of the change without JJ's virtual root revision.
 
 Then write a 1–3 sentence summary of the **user-facing value** — what a user can now do that they couldn't before, and why they'd care. Describe the outcome, not the implementation. ("You can now export any report to CSV in one click" — not "Added a CsvSerializer and an export endpoint.")
 

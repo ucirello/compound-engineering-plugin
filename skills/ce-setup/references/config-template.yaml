@@ -1,5 +1,5 @@
-# Compound Engineering -- local config
-# Copy to .compound-engineering/config.local.yaml in your project root.
+# RocketClaw -- local config
+# Copy to .rocketclaw/config.local.yaml in your JJ workspace root.
 # All settings are optional. Invalid values fall through to defaults.
 
 # --- Product pulse ---
@@ -48,14 +48,14 @@
 # brainstorm_use_fable: true     # true | false (default: false)
 # fable_nudge: false             # true | false (default: true -- one-time tip when elevation is available but off)
 
-# --- PR concept teaching (ce-commit-push-pr) ---
+# --- PR concept teaching ---
 # When a PR introduces a concept new to the codebase, the generated PR
 # description gains a "New concepts" section teaching it. The section toggle is
 # the single gate: off disables judgment, the section, the /ce-explain offer,
 # and archival. Archival additionally writes the explainer to docs/explainers/
 # and links it from the PR (full-workflow runs only; override per run with
-# archive:on|off). Note: this file is gitignored and per-checkout -- fresh
-# worktrees don't inherit it.
+# archive:on|off). Note: this file is ignored via .gitignore and per-workspace -- fresh
+# workspaces don't inherit it.
 
 # pr_teaching_section: false     # true | false (default: true)
 # pr_teaching_archive: true      # true | false (default: false; full-workflow runs only)
@@ -94,7 +94,8 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # repository-tracked (multi-agent) or .tmp/rocketclaw/ path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
-# sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
+# sweep_shared_bookmark: feedback-sweep              # omit for local-only; exact tracked JJ bookmark
+# sweep_shared_remote: origin                        # omit for local-only; Git remote for the bookmark

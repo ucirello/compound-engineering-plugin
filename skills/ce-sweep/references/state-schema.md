@@ -170,8 +170,9 @@ Records the outcome of a sweep run under `last_run`.
 
 `run-record` is intentionally **lease-agnostic** so a locally aborted run can
 record `aborted-locked` while the holder is mid-sweep. Every mutating subcommand
-therefore holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
-whole load-modify-write, so same-machine invocations serialize state-file writes
+therefore holds an **OS advisory lock** (`flock` on a state-path-keyed file under
+`.tmp/rocketclaw/ce-sweep/locks/`) across its whole load-modify-write, so
+same-machine invocations serialize state-file writes
 regardless of lease ownership. Shared-bookmark losers do not call `run-record`:
 writing bookkeeping into fetched winner state would violate the remote lease.
 
@@ -181,8 +182,8 @@ operation log and surfaces bookmark/file conflicts in `jj status`. The pushed
 state lease provides cross-machine exclusion, while `jj git push` verifies that
 the remote bookmark still matches its last fetched target. Never use an
 operation-log fork (`--at-operation` or `--no-integrate-operation`) as a lock or
-as a way around a rejected push. The `.lock` file is ephemeral and is never in
-the exact filesets selected by the skill.
+as a way around a rejected push. The lock file remains under ignored
+`.tmp/rocketclaw/` and is never in the exact filesets selected by the skill.
 
 ## Engine status words
 

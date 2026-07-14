@@ -8,7 +8,13 @@ argument-hint: "[issue reference, error message, test path, or description of br
 
 Find root causes, then fix them. This skill investigates bugs systematically — tracing the full causal chain before proposing a fix — and optionally implements the fix with test-first discipline.
 
-<bug_description> #$ARGUMENTS </bug_description>
+The **bug description** is the input this skill was invoked with — the failure to diagnose, present in the current prompt or conversation, whether the user provided it directly or a calling skill passed it (e.g. `ce-babysit-pr` / `lfg` in `mode:pipeline`, which pass the failing jobs and log tails as the argument). It may be a description of the failure, a `mode:` token, or an issue reference (`#123`, `org/repo#123`, or an issue URL). The rest of this skill refers to it as `<bug_description>`; if nothing was provided, treat `<bug_description>` as blank.
+
+## Mode
+
+Default is **interactive** — investigate, then use the Phase 2 fix-choice gate and the Phase 4 handoff prompt as written below.
+
+**`mode:pipeline`** (set by an orchestrator such as `ce-babysit-pr` or `lfg`): run fully non-interactively. Strip the `mode:pipeline` token from `<bug_description>` before parsing. **Read `references/pipeline-mode.md` and follow it** — it overrides every "ask the user" point in this skill with a conservative default, replaces the Phase 2 fix-gate with "fix convergent bugs, defer divergent ones," and replaces the Phase 4 prompt with a structured return. Never call the blocking-question tool in pipeline mode.
 
 ## Core Principles
 
@@ -36,7 +42,7 @@ Beyond the trivial-bug fast-path in Phase 0, no further phase skipping — compl
 Parse the input and reach a clear problem statement.
 
 **If the input references an issue tracker**, fetch it:
-- GitHub (`#123`, `org/repo#123`, github.com URL): Parse the issue reference from `<bug_description>` and fetch with `gh issue view <number> --json title,body,comments,labels`. For URLs, pass the URL directly to `gh`.
+- GitHub (`#123`, `org/repo#123`, a github.com or GitHub Enterprise issue URL): Parse the issue reference from `<bug_description>` and fetch with `gh issue view <number> --json title,body,comments,labels`. For URLs, pass the URL directly to `gh` (it targets whatever host it is configured for, GHE included).
 - Other trackers (Linear URL/ID, Jira URL/key, any tracker URL): Attempt to fetch using available MCP tools or by fetching the URL content. If the fetch fails — auth, missing tool, non-public page — ask the user to paste the relevant issue content. Ensure the fetch includes the full comment thread, not just the opening description.
 
 Read the full conversation — the original description AND every comment, with particular attention to the latest ones. Comments frequently contain updated reproduction steps, narrowed scope, prior failed attempts, additional stack traces, or a pivot to a different suspected root cause; treating the opening post as the whole picture often sends the investigation in the wrong direction. Extract reported symptoms, expected behavior, reproduction steps, and environment details from the combined thread. Then proceed to Phase 1.
@@ -69,7 +75,7 @@ Confirm the bug exists and understand its behavior. Run the test, trigger the er
 - **Writing the reproduction test:** Orient on the project's testing conventions before authoring the failing test. Resolve them from the shared repo-grounding cache first — set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
   ```bash
-  SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+  SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
   python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
   ```
 
@@ -116,7 +122,7 @@ The project's institutional memory often already holds the bug, its cause, or a 
 Skip on the trivial fast-path. Run for non-trivial bugs; treat regression signals ("it worked before", a reopened or recurring symptom) as the strongest trigger.
 
 **Find the tracker and code-review surface from repo signals** — do not assume a specific tool exists, and do not treat a missing CLI/MCP as proof the capability is absent:
-- Git remotes configured through JJ (`jj git remote list`; a GitHub remote implies GitHub Issues + PRs; `gh` if available). Use `jj bookmark list --all-remotes` to inspect known remote bookmarks; run `jj git fetch --remote <remote>` only when fresh remote state is needed and network access is appropriate.
+- Repository remotes configured through JJ (`jj git remote list`; a GitHub remote implies GitHub Issues + PRs; `gh` if available). Use `jj bookmark list --all-remotes` to inspect known remote bookmarks; run `jj git fetch --remote <remote>` only when fresh remote state is needed and network access is appropriate.
 - Issue-key patterns in recent change descriptions, bookmark names, and PR titles (`ABC-123` -> Jira/Linear).
 - The issue tracker named in the project's active instructions and conventions already in your context.
 
@@ -170,6 +176,8 @@ Once the root cause is confirmed, present:
 
 Then offer next steps.
 
+**`mode:pipeline`:** do not ask. The caller invoked this skill to fix, so proceed to Phase 3 and apply a **convergent** fix; a **divergent** fix (one that would reverse a deliberate contract/behavior/product decision — including a "failing" test that asserts intended behavior) is deferred, not applied, per `references/pipeline-mode.md`. Never route to `/ce-brainstorm` in pipeline mode — a design problem becomes a `needs-human` residual.
+
 Use the platform's blocking question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension)). In Claude Code, call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded — a pending schema load is not a reason to fall back. Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes). Never silently skip the question.
 
 Options to offer:
@@ -221,7 +229,7 @@ If the user chose "Diagnosis only" at the end of Phase 2, skip this phase and go
 1. Inspect existing tests for the affected behavior before adding coverage.
 2. Choose the right regression home: use an existing failing test, update an existing test that owns the contract but has the wrong expectation, narrowly strengthen an over-mocked test that should have caught the bug, or add a new focused test when no existing test fits.
 3. Verify the chosen test fails for the right reason — the root cause, not unrelated setup.
-4. Implement the minimal fix — address the root cause and nothing else. Do not bundle drive-by refactors, formatting, or unrelated cleanup into a bug-fix change; those belong in separate commits.
+4. Implement the minimal fix — address the root cause and nothing else. Do not bundle drive-by refactors, formatting, or unrelated cleanup into a bug-fix change; those belong in separate JJ changes.
 5. Verify the test passes.
 6. Run the broader test suite for regressions.
 7. Self-review the diff before declaring the root-cause fix done: read every changed line and check for style violations, missed edge cases, regressions in adjacent behavior, and missing test coverage for the fix. Do not run the broader polish/review/PR tail here; Phase 4 owns it after the debug summary so the user can see the root-cause result before shipping work begins.
@@ -238,6 +246,8 @@ Analyze how this was introduced and what allowed it to survive. Note any systemi
 ---
 
 ### Phase 4: Handoff
+
+**`mode:pipeline` — skip this entire interactive handoff.** Do not run the polish/review tail, do not ask about residuals, do not show the bookmark menu, do not offer learning capture. Instead: describe and push the convergent fix through JJ (per `references/pipeline-mode.md`), then emit that reference's **structured return** as the skill's final output. Divergent / needs-human items are deferred there (open thread or the caller's run-report comment — never a PR-body section), not prompted. The rest of this section is the interactive path only.
 
 **Structured summary** — always write this first:
 
@@ -257,7 +267,7 @@ Analyze how this was introduced and what allowed it to survive. Note any systemi
 
 #### Post-fix polish/review tail (before describing/pushing the change or opening a PR)
 
-Run this tail after Phase 3 ran and before the bookmark-based commit/PR handoff. The goal is to leave the fix PR-ready, not merely locally green.
+Run this tail after Phase 3 ran and before the bookmark-based description/PR handoff. The goal is to leave the fix PR-ready, not merely locally green.
 
 **Contextual overrides first.** Look at the user's original prompt, loaded memories, and the project's active instructions already in your context for preferences that conflict with automatic post-fix polish or review — for example, "minimal hotfix only", "do not run review", "always ask before cleanup", or "ship the smallest possible diff." A signal must be explicit or clearly applicable. Honor it and state what was skipped.
 
@@ -267,26 +277,26 @@ Run this tail after Phase 3 ran and before the bookmark-based commit/PR handoff.
 
 **Review the final fix scope.** After simplification (or after the skip decision), review every non-mechanical fix unless review tooling is unavailable. Run default `/ce-code-review` only when its diff scope is known to be this fix: the bookmark was created by this skill, or the pre-fix working-copy change was empty and you can pass `base:<pre-fix-revision>`. Do not run default `/ce-code-review` on a pre-existing working-copy change or a bookmark whose revision range contains unrelated work; standalone review may apply fixes outside the bug scope. In that case, run the harness's lightweight review tool only if it accepts an explicit file scope; otherwise perform an explicit manual review of the fix-owned files and record `Code review: targeted manual due to unrelated bookmark work`. If `/ce-code-review` is unavailable on an otherwise fix-only scope, fall back to the harness's lightweight review tool when available; otherwise do one explicit manual `jj diff --from <pre-fix-revision> --to @` scan and state that dedicated review was unavailable.
 
-**Handle residual findings before shipping.** Inspect the review's Actionable Findings. Do not auto-open a PR with unresolved P0/P1 findings, or with findings whose fix needs a product/design decision. Ask the user whether to fix now, accept/defer durably, or stop. For lower-severity residuals the user accepts, preserve them before any outward handoff: if a PR will be opened, include them as "Known Residuals" in its body; if the user chooses commit-only or stop, create `docs/residual-review-findings/<bookmark-or-commit-id>.md` with the accepted findings and source review context, include it in the fix change when committing, and mention the file path in the final summary. Accepted residuals must not live only in the session.
+**Handle residual findings before shipping.** Inspect the review's Actionable Findings. Do not auto-open a PR with unresolved P0/P1 findings, or with findings whose fix needs a product/design decision. Ask the user whether to fix now, accept/defer durably, or stop. For lower-severity residuals the user accepts, preserve them before any outward handoff: if a PR will be opened, include them as "Known Residuals" in its body; if the user chooses local-change-only or stop, create `docs/residual-review-findings/<bookmark-or-change-id>.md` with the accepted findings and source review context, include it in the fix change before describing it, and mention the file path in the final summary. Accepted residuals must not live only in the session.
 
-**Re-verify after tail edits.** If simplification or review changed code, rerun the bug's regression test and any targeted checks the tail identified. Never proceed to commit or PR with a red tree.
+**Re-verify after tail edits.** If simplification or review changed code, rerun the bug's regression test and any targeted checks the tail identified. Never describe or publish a red change.
 
-**Post-fix quality summary.** After the tail, append this block below the Debug Summary before the commit/PR decision:
+**Post-fix quality summary.** After the tail, append this block below the Debug Summary before the description/PR decision:
 
 ```
 ## Post-Fix Quality
 **Scope**: [fix-only bookmark / `jj diff --from <pre-fix-revision> --to @` / fix-owned files only / targeted manual due to unrelated bookmark work]
 **Simplify**: [ran/skipped + reason]
 **Review**: [ran/skipped/manual + outcome]
-**Residuals**: [none / accepted Known Residuals for PR / accepted residuals written to docs/residual-review-findings/<bookmark-or-commit-id>.md / blocked pending user decision]
+**Residuals**: [none / accepted Known Residuals for PR / accepted residuals written to docs/residual-review-findings/<bookmark-or-change-id>.md / blocked pending user decision]
 **Re-verification**: [checks rerun after tail edits]
 ```
 
-#### Skill-owned bookmark (created in Phase 3): default to commit-and-PR without prompting
+#### Skill-owned bookmark (created in Phase 3): default to describe, push, and open a PR without prompting
 
-1. **Check for contextual overrides first.** Look at the user's original prompt, loaded memories, and the project's active instructions already in your context for preferences that conflict with auto commit-and-PR — for example, "always review before pushing", "open PRs as drafts", or "don't open PRs from skills". A signal must be an explicit instruction or a clearly applicable rule, not a vague tonal cue. If any apply, honor them — switch to the pre-existing-bookmark menu below, or skip the PR step entirely, whichever matches the user's stated preference.
-2. **Briefly preview what will happen** — what change will be described/committed, which bookmark will be advanced and pushed through JJ's Git interop, and that a PR will be opened — then proceed without waiting for confirmation. The preview exists so the user can interrupt; it is not a blocking question. Format and length are your call; keep it scannable.
-3. **Persist and publish the fix.** Invoke `/ce-commit`, advance the skill-owned bookmark to the resulting non-empty head, push it with `jj git push --bookmark "exact:<bookmark>" --remote <remote>`, and create the PR with explicit `gh pr create --head <bookmark> --base <base>`. When the entry came from an issue tracker, include its required auto-close syntax in the PR body or change description. Surface the resulting PR URL.
+1. **Check for contextual overrides first.** Look at the user's original prompt, loaded memories, and the project's active instructions already in your context for preferences that conflict with automatic description and PR creation — for example, "always review before pushing", "open PRs as drafts", or "don't open PRs from skills". A signal must be an explicit instruction or a clearly applicable rule, not a vague tonal cue. If any apply, honor them — switch to the pre-existing-bookmark menu below, or skip the PR step entirely, whichever matches the user's stated preference.
+2. **Briefly preview what will happen** — what change will be described, which bookmark will be advanced and pushed through JJ's Git interop, and that a PR will be opened — then proceed without waiting for confirmation. The preview exists so the user can interrupt; it is not a blocking question. Format and length are your call; keep it scannable.
+3. **Persist and publish the fix.** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Invoke `/ce-commit`, advance the skill-owned bookmark to the resulting non-empty head, push it with `jj git push --bookmark "exact:<bookmark>" --remote <remote>`, and create the PR with explicit `gh pr create --head <bookmark> --base <base>`. When the entry came from an issue tracker, include its required auto-close syntax in the PR body or change description. Surface the resulting PR URL.
 
 #### Pre-existing bookmark or anonymous change (skill did not create it): ask the user
 
@@ -294,9 +304,11 @@ Use the platform's blocking question tool (`AskUserQuestion` in Claude Code, `re
 
 Options:
 
-1. **Commit, push, and open a PR with the reviewed fix using JJ and `gh`** — default for most cases
-2. **Commit the fix (`/ce-commit`)** — local commit only
+1. **Describe, push, and open a PR with the reviewed fix using JJ and `gh`** — default for most cases
+2. **Describe the fix (`/ce-commit`)** — keep the JJ change local
 3. **Stop here** — user takes it from there
+
+For either description option: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 #### After a PR is open (either path): consider offering learning capture
 
@@ -306,4 +318,4 @@ Most bugs are localized mechanical fixes (typo, missed null check, missing impor
 - **Offer neutrally** when the lesson can be stated in one sentence — e.g., "X.foo() returns T | undefined when Y, not just T", or "the diagnostic path was non-obvious and worth recording." If you cannot articulate the lesson, skip rather than offer.
 - **Lean into the offer** when the pattern appears in 3+ locations OR the root cause reveals a wrong assumption about a shared dependency, framework, or convention that other code is likely to repeat.
 
-When offering, use the blocking question tool described above. If the user accepts, run `/ce-compound`, then commit the resulting learning doc, advance the same bookmark, and push it through JJ's Git interop so the open PR picks up the new change.
+When offering, use the blocking question tool described above. If the user accepts, run `/ce-compound`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Describe the resulting learning doc with `/ce-commit`, advance the same bookmark, and push it through `jj git` so the open PR picks up the new change.

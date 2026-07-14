@@ -53,7 +53,7 @@ The ideation artifact is produced **automatically** — persistence is not opt-i
    - Extension follows `OUTPUT_FORMAT` (`.html` default, `.md` on override).
    - **Repo mode:** ensure `docs/ideation/` exists (create if absent).
    - **Elsewhere mode with `docs/ideation/` already present:** use it.
-   - **Otherwise (no repo, or elsewhere with no `docs/ideation/`):** write into the run's CE temp area — the `<scratch-dir>` resolved in Phase 1 (`/tmp/compound-engineering/ce-ideate/<run-id>/`). Do **not** write into the user's current working directory, and do **not** create a `docs/ideation/` tree for a subject unrelated to the repo. Announce the absolute path and note it is temporary (`/tmp` is cleared on reboot — move it to keep it).
+   - **Otherwise (no repo, or elsewhere with no `docs/ideation/`):** write into the run's workspace-local scratch area — the `<scratch-dir>` resolved in Phase 1 (`.tmp/rocketclaw/ce-ideate/<run-id>/`). Do **not** write directly into the user's current working directory, and do **not** create a `docs/ideation/` tree for a subject unrelated to the repo. Announce the absolute path and note it is temporary scratch that the user should move to keep permanently.
 2. **Choose the file path:** `<dir>/YYYY-MM-DD-<topic>-ideation.<ext>` (or `<dir>/YYYY-MM-DD-open-ideation.<ext>` when no focus exists).
 3. **Load the section contract and rendering reference** (deferred from Phase 0.0): read `references/ideation-sections.md` and the format-rendering reference matching `OUTPUT_FORMAT` — `references/markdown-rendering.md` for `md`, `references/html-rendering.md` for `html`.
 4. **Write the document** per those references. `ideation-sections.md` defines the section contract (metadata, Grounding Context, Topic Axes, Ranked Ideas with per-idea fields, Rejection Summary); the rendering reference defines how the resolved format presents it. Content is identical across formats; only presentation differs.
@@ -103,7 +103,7 @@ If the user already named what they want to work on inline (e.g. "brainstorm the
 - **Markdown — Publish to Proof.** The local markdown file already exists (Phase 4) and stays canonical; Proof is a one-way published copy, not a sync target. Load the `ce-proof` skill to publish, passing:
   - **source file:** the saved `.md` file from Phase 4.
   - **doc title:** `Ideation: <topic>` or the doc's H1.
-  - **identity:** `ai:compound-engineering` / `Compound Engineering`.
+  - **identity:** `ai:assistant` / `AI Assistant`.
 
   ce-proof creates a shared Proof doc (Create and Share workflow) and returns the share URL. Surface it to the user, then return to the Phase 5 menu — nothing syncs back to disk. If the Proof handoff fails after the proof skill's internal retry plus one orchestrator-side retry (~2s pause, narrated as "Retrying Proof... attempt 2/2"), tell the user Proof is unavailable and that the local file is intact at `<path>`, then return to the menu — the deliverable was never at risk (it was written in Phase 4). *(If the user explicitly asked for Proof during an HTML run: Proof is markdown-only and cannot ingest HTML, so render a throwaway markdown copy of the survivors as the Proof source and do not upload the `.html`.)*
 
@@ -136,7 +136,7 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a JJ workspace:** offer to finalize only the ideation doc as its own change with `jj commit <path> -m "docs(ideation): capture <topic> ideas"` (do not create or move a bookmark and do not push; if the user declines, leave it in the working-copy change).
+- **Inside a JJ workspace:** offer to finalize only the ideation doc as its own change with `jj commit <path> -m "<description following the repository's present standard>"` (do not create or move a bookmark and do not publish it with `jj git push`; if the user declines, leave it in the working-copy change). Derive the description at runtime without imposing a template. Repository instructions and `git log` syntax always win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 - **Temp-area or non-workspace file:** skip the revision offer.
 
 Then narrate the path and end the session — do not return to the menu.
@@ -162,6 +162,6 @@ Before finishing, check:
 - if sub-agents were used, they improved diversity without replacing the core workflow
 - every rejected idea has a reason
 - survivors are materially better than a naive "give me ideas" list
-- the deliverable was written automatically in both modes (Phase 4) — to `docs/ideation/` when present, else the CE temp area, never the user's CWD
+- the deliverable was written automatically in both modes (Phase 4) — to `docs/ideation/` when present, else the workspace-local `.tmp/rocketclaw/` area, never directly in the user's CWD
 - the session showed a concise summary, not a reproduction of the full deliverable
 - acting on an idea routes to `ce-brainstorm` (with a substance seed, not the whole file), not directly to implementation

@@ -8,9 +8,7 @@ argument-hint: "[the external thing to judge, plus any links] — or invoke bare
 
 Return a decisive, **graded verdict** on something from the outside world — judged against *this project*, not in the abstract.
 
-<pov_request> #$ARGUMENTS </pov_request>
-
-*(If `$ARGUMENTS` above appears as a literal token rather than the user's words — it was not substituted on this host — use the user's actual request from the conversation as the input.)*
+The subject of this point of view — the thing to judge — is the input this skill was invoked with, present in the current prompt or conversation (whether the user asked directly or a calling skill passed it).
 
 **Note: The current year is 2026.** Use this when weighting source recency and dating any captured record.
 
@@ -60,7 +58,7 @@ Grounding searches code, JJ revision history and bookmarks/workspaces, the issue
 **Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at the same profile revision, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 ```
 
@@ -69,9 +67,9 @@ On `HIT`, load the profile JSON — that is your agnostic project orientation; d
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_DIR="/tmp/compound-engineering/ce-pov/$(openssl rand -hex 4)"
+SCRATCH_DIR=".tmp/rocketclaw/ce-pov/$(openssl rand -hex 4)"
 mkdir -p "$SCRATCH_DIR"
-echo "$SCRATCH_DIR"
+python3 -c 'import os; print(os.path.abspath("'"$SCRATCH_DIR"'"))'
 ```
 
 **Every scout payload carries the same context.** A fresh subagent does not inherit this conversation, so fill the persona files' `{subject}` / `{scratch-dir}` placeholders at dispatch: pass each scout the framed question (subject + intent), the named incumbent and the reversibility tier, and the resolved `<scratch-dir>` path — plus any user-supplied links for the external researcher. A scout seeded with only its generic persona grounds "some external thing" and can produce an empty or unfocused dossier.

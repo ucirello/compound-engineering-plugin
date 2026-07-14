@@ -11,7 +11,7 @@ This reference loads **after** review has run. In the ce-work shipping flow, ste
 Reuse the review output already in hand:
 
 - Parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) **or** the markdown Actionable Findings summary captured by the caller
-- Run artifact dir: `/tmp/compound-engineering/ce-code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`)
+- Run artifact dir: `.tmp/rocketclaw/ce-code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`)
 
 If `status` is `failed`, stop shipping and surface `reason`. If `degraded`, note partial reviewer coverage before applying anything.
 
@@ -36,17 +36,17 @@ For human / interactive shipping, invoke `ce-code-review` without `mode:agent` i
 
 - `actionable_findings` from JSON, or the Actionable Findings section from markdown
 - Full finding detail when needed: `review.json` / artifact `findings`, or `{reviewer}.json` for `why_it_matters` and `evidence`
-- Stable finding `#` — reuse in commits, residual sinks, and subagent prompts
+- Stable finding `#` — reuse in change descriptions, residual sinks, and subagent prompts
 
 ## What to apply
 
-Default to applying every actionable finding. Applying is a reversible edit to the JJ working-copy change; `jj diff` is reviewed before commit (below) and tests run after — so leaving a clear, reversible fix unapplied "to be safe" is the failure mode, not the safe choice. Bias to act:
+Default to applying every actionable finding. Applying is a reversible edit to the JJ working-copy change; `jj diff` is reviewed before the change is described (below) and tests run after — so leaving a clear, reversible fix unapplied "to be safe" is the failure mode, not the safe choice. Bias to act:
 
 - **Apply** any finding with a concrete `suggested_fix` that is a clear improvement — the common case. `confidence` and `autofix_class` tell you what to prioritize and what to flag, not whether you may apply: `autofix_class` is signal, **never permission**.
 - **Push back** — keep the finding, don't apply — when the reviewer is wrong; note why.
 - **Flag, don't block, green-but-unverifiable edits** — when an applied fix touches auth/authz, a public or cross-service contract/schema, or concurrency, a passing test does not prove safety; apply it when there is a clear `suggested_fix` and confidence, and call it out prominently in the diff review.
 
-There is no precondition safety checklist and no deny-list — a code-review fix is a reversible edit, so downside is controlled after the fact (diff review + tests + the commit checkpoint), not by gating the apply.
+There is no precondition safety checklist and no deny-list — a code-review fix is a reversible edit, so downside is controlled after the fact (diff review + tests + the description checkpoint), not by gating the apply.
 
 **Evidence still matches the code** — the fix subagent confirms at `file:line` before editing. The orchestrator does **not** open files just to decide eligibility or dispatch.
 
@@ -62,7 +62,7 @@ Surface what was deferred and why; never silently drop.
 
 The orchestrator **does not investigate findings** (no pre-read of cited files to judge complexity or inline vs subagent). That would spend the context window you are trying to protect.
 
-**Orchestrator owns:** parse review output → **eligibility filter on JSON fields only** → build batches → dispatch fix subagents → review diffs → tests → commit → Residual Work Gate.
+**Orchestrator owns:** parse review output → **eligibility filter on JSON fields only** → build batches → dispatch fix subagents → review diffs → tests → describe changes → Residual Work Gate.
 
 **Fix subagents own:** read `file:line`, confirm evidence still matches, apply or skip with reason, return summary.
 
@@ -84,7 +84,7 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Do not re-run `ce-code-review`
 - Shared-workspace fallback: do not run JJ history/bookmark commands — return which `#` were applied or skipped and which files changed
 
-**After each wave:** orchestrator reviews with `jj diff` (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), then describes/rebases isolated `<workspace>@` changes or fileset-commits shared `@` edits as `fix(review): apply findings #…` per Phase 1. Repeat until all batches complete.
+**After each wave:** orchestrator reviews with `jj diff` (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), then describes/rebases isolated `<workspace>@` changes or fileset-commits shared `@` edits per Phase 1. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

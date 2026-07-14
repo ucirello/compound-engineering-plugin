@@ -29,7 +29,7 @@ Diagrams complement prose; they never replace it. A reader who skips every visua
 - Hold prose to ~70ch (`max-width` on text blocks); full-width only for diagrams and code.
 - Lead each section with the point, then the mechanism, then the caveat.
 - Dense is good; long is not. The explainer is one sitting's read — cut background that doesn't change understanding.
-- Code samples: real code from the grounding evidence where it exists, invented minimal examples only for external topics, always syntax-highlighted with inline `<style>` classes.
+- Code samples: real code from the grounding evidence where it exists, invented minimal examples only for external topics, always syntax-highlighted with inline `<style>` classes. For Go, preserve local conventions and use idiomatic, `gofmt`-compatible examples with errors handled explicitly.
 
 ## Post-compose audit
 

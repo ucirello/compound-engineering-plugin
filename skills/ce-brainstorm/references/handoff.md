@@ -73,7 +73,7 @@ Immediately load the `ce-plan` skill in the current session. Pass the unified
 plan artifact path when one exists; otherwise pass a concise summary of the
 finalized brainstorm decisions. When the Phase 1.1 grounding scout produced a
 dossier and the file still exists, also pass its path
-(`/tmp/compound-engineering/ce-brainstorm/<run-id>/grounding.md`) — it gives
+(`<workspace-root>/.tmp/rocketclaw/ce-brainstorm/<run-id>/grounding.md`) — it gives
 planning verified quotes with `file:line` pointers to start from instead of
 re-scanning the repo. Do not print the closing summary first.
 
@@ -112,7 +112,7 @@ Load the `ce-proof` skill to publish the markdown unified plan. Pass:
 
 - **source file:** `docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.md`
 - **doc title:** `Plan: <topic title> (requirements-only)`
-- **identity:** `ai:compound-engineering` / `Compound Engineering`
+- **identity:** `ai:assistant` / `AI Assistant`
 
 ce-proof creates a shared Proof doc from the markdown plan file (Create and
 Share workflow), binds the display name, and returns the share URL. Surface

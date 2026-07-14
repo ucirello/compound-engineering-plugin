@@ -103,9 +103,9 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj root`).
+1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
-3. `.compound-engineering/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
@@ -229,7 +229,7 @@ every entry into a browser or IDE.
 
 Resolve the repo's GitHub URL and the immutable trunk target once at compose
 time. `jj git remote list` is the permitted Git-interop boundary; the link uses
-the JJ `trunk()` revset instead of assuming a branch name:
+the JJ `trunk()` revset instead of assuming a bookmark name:
 
 ```bash
 jj git remote list

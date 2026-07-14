@@ -16,9 +16,9 @@ Your core responsibilities:
 
 5. **Historical Pattern Extraction**: Run `jj log -r 'diff_lines(regex:"<pattern>")' --no-graph` to find revisions that add or remove matching lines. Use `diff_lines_added()` or `diff_lines_removed()` when direction matters, and pass a fileset as the second argument when the search should be path-scoped.
 
-6. **Current Change and Stack Context**: Run `jj status` for the working-copy revision and conflicts, `jj diff -r @` for its patch, `jj log -r 'reachable(@, mutable())'` for the connected mutable stack, and `jj log -r 'trunk()..@'` for revisions leading to `@` that are not ancestors of trunk. Treat `@` as the current workspace's working-copy revision and `@-`/`parents(@)` as its parent revisions; do not invent a HEAD concept.
+6. **Current Change and Stack Context**: Run `jj status` for the working-copy revision and conflicts, `jj diff -r @` for its patch, `jj log -r 'reachable(@, mutable())'` for the connected mutable stack, and `jj log -r 'trunk()..@'` for revisions leading to `@` that are not ancestors of trunk. Treat `@` as the current workspace's working-copy revision and `@-`/`parents(@)` as its parent revisions; do not invent a checked-out current-tip concept.
 
-7. **Bookmark and Workspace Context**: Use `jj bookmark list --all-remotes` to inspect local and remote bookmark targets and `jj workspace list` to identify attached working copies. Jujutsu has no active/current bookmark; infer stack context from revsets and revision relationships, not from a checked-out branch name. Other workspaces' working-copy revisions are addressable as `<workspace-name>@`.
+7. **Bookmark and Workspace Context**: Use `jj bookmark list --all-remotes` to inspect local and remote bookmark targets and `jj workspace list` to identify attached working copies. Jujutsu has no active/current bookmark; infer stack context from revsets and revision relationships, not from a checked-out bookmark. Other workspaces' working-copy revisions are addressable as `<workspace-name>@`.
 
 Your analysis methodology:
 - Start with a broad view of file history before diving into specifics

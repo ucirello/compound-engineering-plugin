@@ -105,7 +105,7 @@ these locations, first match wins:
 
 1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
-3. `.compound-engineering/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
@@ -227,17 +227,17 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL and link revision once at compose time. From `jj git remote list`, select a nonempty GitHub remote URL, preferring `upstream`, then `origin`, then another GitHub remote. Query that repository with `gh repo view --json defaultBranchRef` for its default branch. For durable artifacts, prefer an immutable revision that is actually resolved locally (for example the full commit ID from `jj log -r @ --no-graph -T 'commit_id'`); use the GitHub default branch only when the reference intentionally tracks the live branch:
+Resolve the repo's GitHub URL and immutable `trunk()` target once at compose time. From `jj git remote list`, select a nonempty GitHub remote URL, preferring `upstream`, then `origin`, then another GitHub remote. Resolve the full commit ID from the JJ `trunk()` revset:
 
 ```bash
 jj git remote list
-gh repo view <selected-github-remote-url> --json defaultBranchRef --jq '.defaultBranchRef.name'
+jj log -r 'trunk()' --no-graph -T 'commit_id'
 ```
 
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/<resolved-full-commit-id>/<path>` for an immutable link, or `<repo-url>/blob/<default-branch>/<path>` when a live-branch link is intended.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/<trunk-commit-id>/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →

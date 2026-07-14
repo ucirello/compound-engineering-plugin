@@ -116,7 +116,7 @@ describe("html-rendering.md reference content invariants", () => {
 
   test("DESIGN.md discovery paths in worktree-root order", () => {
     expect(/DESIGN\.md discovery/i.test(REFERENCE)).toBe(true)
-    expect(/workspace root|worktree root|jj root/i.test(REFERENCE)).toBe(true)
+    expect(/worktree root|git rev-parse --show-toplevel/i.test(REFERENCE)).toBe(true)
     expect(/docs\/DESIGN\.md/.test(REFERENCE)).toBe(true)
     expect(/\.compound-engineering\/DESIGN\.md/.test(REFERENCE)).toBe(true)
   })
@@ -228,12 +228,12 @@ describe("html-rendering.md reference content invariants", () => {
       "Reference must require hyperlinking entries in the Sources & References section.",
     ).toBe(true)
     expect(
-      /jj git remote list/.test(REFERENCE),
-      "Reference must name `jj git remote list` as the way to resolve the repo's GitHub URL at compose time.",
+      /git remote get-url origin/.test(REFERENCE),
+      "Reference must name `git remote get-url origin` as the way to resolve the repo's GitHub URL at compose time.",
     ).toBe(true)
     expect(
-      /blob\/<default-bookmark>/.test(REFERENCE),
-      "Reference must show the `<repo-url>/blob/<default-bookmark>/<path>` URL shape for code/doc paths.",
+      /blob\/main/.test(REFERENCE),
+      "Reference must show the `<repo-url>/blob/main/<path>` URL shape for code/doc paths.",
     ).toBe(true)
     expect(
       /Do not invent URLs|broken or guessed link is worse than no link/i.test(REFERENCE),

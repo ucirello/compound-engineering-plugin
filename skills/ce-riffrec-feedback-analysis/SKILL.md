@@ -28,12 +28,12 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 All non-setup paths share the same analyzer, which ships in this skill's `scripts/` directory. The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve. Invoke it by the skill's own absolute path: set `SKILL_DIR` to the directory you loaded this `ce-riffrec-feedback-analysis` SKILL.md from, in the same command (shell state does not persist between Bash calls):
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
+SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input
 ```
 
-Accepted inputs: a Riffrec `.zip`, an `.mp4` / `.mov` / `.webm` video, an `.m4a` / `.mp3` / `.wav` audio file, or a meeting-notes `.md`. Use `--output-dir <dir>` to control where artifacts land. In repos with `docs/brainstorms/`, the default remains `docs/brainstorms/riffrec-feedback/` as a documented evidence/kickoff-artifact exception; it is not the durable `ce-brainstorm` output convention. The quick path overrides the output dir to a temp location so nothing pollutes the repo.
+Accepted inputs: a Riffrec `.zip`, an `.mp4` / `.mov` / `.webm` video, an `.m4a` / `.mp3` / `.wav` audio file, or a meeting-notes `.md`. Use `--output-dir <dir>` to control where artifacts land. In repos with `docs/brainstorms/`, the default remains `docs/brainstorms/riffrec-feedback/` as a documented evidence/kickoff-artifact exception; it is not the durable `ce-brainstorm` output convention. The quick path overrides the output dir to repository-local `.tmp/rocketclaw/` scratch so generated evidence does not pollute durable project paths.
 
 JJ honors the generated `.gitignore`; there is no `.jjignore`. Ignore rules do not retroactively untrack paths. Never claim they protect already tracked media and never untrack it implicitly. When the analyzer refuses an existing output, obtain explicit user approval before re-running with `--allow-untrack-tracked-media`; that option writes the ignore rules, runs `jj file untrack` for the exact output `raw/` and `frames/` paths, and proceeds only if untracking succeeds.
 
-The Compound Engineering output format used by the extensive path is documented in `references/compound-engineering-feedback-format.md`.
+The output format used by the extensive path is documented in `references/feedback-format.md`.

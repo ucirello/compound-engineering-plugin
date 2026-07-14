@@ -27,15 +27,15 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 
   If not installed, stop and tell the user to install `agent-browser` (run `/ce-setup` to print the current install command), then re-run this skill — this workflow cannot function without it.
 
-## Reusing Compound-Engineering Skills
+## Reusing Skills
 
-`ce-dogfood` is an orchestrator. Prefer delegating to existing CE skills over re-deriving their behavior:
+`ce-dogfood` is an orchestrator. Prefer delegating to the existing functional skills below over re-deriving their behavior:
 
 | When | Skill | Why |
 |------|-------|-----|
 | Phase 0 isolation | `ce-worktree` | Run the dogfood in an isolated JJ workspace so the primary workspace stays untouched. |
 | A failure's root cause is non-obvious | `ce-debug` | Systematic root-cause analysis instead of guess-and-check. |
-| Finalizing each fix | `ce-commit` | Consistent, well-scoped JJ change descriptions. |
+| Finalizing each fix | `ce-commit` | Finalize the selected fix files as one JJ change. |
 | A bug reveals a reusable lesson | `ce-compound` | Capture the learning so the team compounds knowledge. |
 
 ## Workflow
@@ -52,10 +52,10 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 
 ### Phase 0: Scope and Get on the Right Target
 
-Parse `$ARGUMENTS`: a PR number, a JJ bookmark/revision, or blank (use `@` in the current workspace). Strip `--port PORT` if present.
+Parse the arguments you were invoked with: a PR number, a JJ bookmark/revision, or blank (use `@` in the current workspace). Strip `--port PORT` if present.
 
 1. **Identify the target without moving `@` yet.** Resolve every JJ revset to exactly one revision and save its full commit ID as the stable `TARGET_TIP`; an absent, conflicted, or multi-revision target is a blocker, not permission to guess. Do not retain a bookmark name as `TARGET_TIP`, because that bookmark will move after fixes.
-   - **PR number:** the target remains the PR. Carry the number through isolation and reporting. Read GitHub metadata with `GIT_DIR="$(jj git root)" gh pr view <number> --json baseRefName,headRefName,headRefOid,isCrossRepository`. Require `headRefOid` to be a 40-character hexadecimal object ID. Before using `headRefName`, require a nonempty slash-separated Git branch shape containing only ASCII letters, digits, `.`, `_`, `/`, and `-`: no empty component, component beginning or ending `.`, component ending `.lock`, `..`, or `@{`, and the whole name must not begin `-` or end `/`. Reject invalid metadata rather than interpolating it. Use only the validated `headRefOid` as the stable target commit ID and resolve content with `exactly(commit_id(<validated-headRefOid>), 1)` after fetch or attachment; never resolve content from `headRefName` or a remote bookmark. GitHub and `.github` remain valid product/forge surfaces. Do not use `gh pr checkout`, `git switch`, `git checkout`, or other raw Git commands. Let `ce-worktree` fetch and resolve the PR when isolating, then independently verify the validated OID. For in-place work, fetch with the exact JJ string pattern `jj git fetch --remote "<existing-remote>" --branch "exact:\"<validated-headRefName>\""`, then resolve the validated OID. Do not pass a bare branch name or a glob pattern. If no existing remote exposes a cross-repository head, stop and offer isolation instead of adding a remote or mutating Git state.
+   - **PR number:** the target remains the PR. Carry the number through isolation and reporting. Read GitHub metadata with `GIT_DIR="$(jj git root)" gh pr view <number> --json baseRefName,headRefName,headRefOid,isCrossRepository`. Require `headRefOid` to be a 40-character hexadecimal object ID. Before using `headRefName`, require a nonempty slash-separated Git branch shape containing only ASCII letters, digits, `.`, `_`, `/`, and `-`: no empty component, component beginning or ending `.`, component ending `.lock`, `..`, or `@{`, and the whole name must not begin `-` or end `/`. Reject invalid metadata rather than interpolating it. Use only the validated `headRefOid` as the stable target commit ID and resolve content with `exactly(commit_id(<validated-headRefOid>), 1)` after fetch or attachment; never resolve content from `headRefName` or a remote bookmark. GitHub and `.github` remain valid product/forge surfaces. Do not use raw Git mutation commands. Let `ce-worktree` fetch and resolve the PR when isolating, then independently verify the validated OID. For in-place work, fetch with the exact JJ string pattern `jj git fetch --remote "<existing-remote>" --branch "exact:\"<validated-headRefName>\""`, then resolve the validated OID. Do not pass a bare branch name or a glob pattern. If no existing remote exposes a cross-repository head, stop and offer isolation instead of adding a remote or mutating repository state.
    - **Bookmark/revision:** resolve the supplied JJ symbol or revset. A supplied local bookmark is also the bookmark to advance after fixes; a remote bookmark such as `feature@origin` or an arbitrary change/commit ID is not.
    - **Blank:** resolve the current workspace's `@` as `TARGET_TIP`. Record a non-trunk local bookmark pointing there only if it is unambiguous; otherwise record no target bookmark. Do not invent an "active bookmark" — JJ has no current-bookmark concept.
 2. **Refuse to run on trunk for bookmark/revision or blank targets.** Resolve `trunk()` and the target with `exactly(..., 1)`. If the target is `trunk()`, or it is only an empty working-copy change directly on trunk with no content diff, stop — there is nothing to dogfood. A PR uses its declared base and remains independently diffable.
@@ -126,7 +126,7 @@ Map changed files to concrete routes (views -> their pages, components -> pages 
 
 ### Phase 3: Detect Port and Start the Dev Server
 
-Determine the port (priority: explicit `--port` > a port explicitly stated in your in-context project instructions > `package.json` dev script > `.env*` `PORT=` > default `3000`). If a server is already listening on it, reuse it. Otherwise start the project's dev command (`bin/dev`, `rails server`, `npm run dev`, etc.) in the background and poll the port until it accepts connections before opening the browser. This skill is hands-off, so start the server automatically without asking — do not block on a confirmation.
+Determine the port (priority: explicit `--port` > a port explicitly stated in your in-context project instructions > `package.json` dev script > `.env*` `PORT=` > default `3000`). If a server is already listening on it, reuse it. Otherwise start the project's dev command (`bin/dev`, `rails server`, `npm run dev`, etc.) in the background and poll the port until it accepts connections before opening the browser. This skill is hands-off, so start the server automatically without asking — do not block on a confirmation. Create `.tmp/rocketclaw/ce-dogfood/screenshots/` and ensure `.tmp/` is present in the repository's `.gitignore`, adding only that missing entry when necessary.
 
 ```bash
 agent-browser open "http://localhost:${PORT}"
@@ -145,11 +145,11 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
    agent-browser snapshot -i
    agent-browser click @e1
    agent-browser fill @e2 "value"
-   agent-browser screenshot "$(mktemp -d)/<scenario>.png"   # scratch dir, not the repo root
+   agent-browser screenshot ".tmp/rocketclaw/ce-dogfood/screenshots/<scenario>.png"
    agent-browser errors      # check console/page errors
    ```
 
-   Write transient screenshots to OS temp (e.g. `mktemp -d`), never the repo root. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+   Write transient screenshots to the repository's ignored `.tmp/rocketclaw/ce-dogfood/screenshots/` directory. Only copy a screenshot into the report's location if you intend to embed it in the final report.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product?
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity.
@@ -168,10 +168,10 @@ When a scenario fails — or a passing scenario carries a sharp paper cut worth 
 1. Investigate the root cause. If it's non-obvious, use `ce-debug`.
 2. Apply the fix in the code.
 3. **Add an automated regression test** that fails before the fix and passes after, so the bug can't return. This is the default for behavioral and code bugs. When an automated test is genuinely impractical — a pure copy, spacing, or visual fix with no behavioral assertion to make — substitute a documented browser-replay or screenshot check and **state in the report why no automated test was meaningful**. Do not invent a hollow test just to satisfy the step.
-4. Finalize the fix with a clear description (use `ce-commit`). One logical fix per JJ change. The report checkpoint is also changing in `@`, so direct `ce-commit` to finalize only the code and regression-test filesets for this fix; JJ's path-selective commit leaves the unselected report update in the fresh working-copy change on top. Verify with `jj diff -r @- --name-only` and `jj diff -r @ --name-only`: the finalized fix must contain its implementation/test files but not the dogfood report, while the report remains in `@`. If files overlap or selection is ambiguous, stop and split deliberately instead of mixing unrelated report churn into the fix.
+4. Finalize the fix with a clear description using `ce-commit`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository syntax wins; apply compatible Go guidance, preserve the fix's user-visible intent, and keep one logical fix per JJ change. The report checkpoint is also changing in `@`, so direct `ce-commit` to finalize only the code and regression-test filesets for this fix; JJ's path-selective commit leaves the unselected report update in the fresh working-copy change on top. Verify with `jj diff -r @- --name-only` and `jj diff -r @ --name-only`: the finalized fix must contain its implementation/test files but not the dogfood report, while the report remains in `@`. If files overlap or selection is ambiguous, stop and split deliberately instead of mixing unrelated report churn into the fix.
 5. Capture the finalized revision from the skill result (normally `@-`) and record both `change_id.short()` and `commit_id.short()` with `jj log`.
 6. If a local target bookmark was recorded in Phase 0, advance that specific bookmark to the finalized fix with `jj bookmark advance <bookmark> --to <fix-revision>`. Bookmarks do not follow newly created JJ changes automatically. Never advance trunk, create a bookmark for an anonymous target, or move a remote bookmark directly.
-7. Do **not** push. Dogfood leaves fixes local. In particular, never substitute `git push`; a later publishing workflow may use `jj git push --bookmark <bookmark>`, which maps the JJ bookmark to a Git branch and performs JJ's remote safety checks.
+7. Do **not** push. Dogfood leaves fixes local. A later publishing workflow may use `jj git push --bookmark <bookmark>`, which maps the JJ bookmark to a forge branch and performs JJ's remote safety checks.
 8. Re-run the failing scenario in the browser to confirm it now passes; then continue the matrix.
 9. If the bug carried a reusable lesson, capture it with `ce-compound`.
 

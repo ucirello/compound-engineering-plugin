@@ -6,7 +6,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 1. **Run Core Quality Checks**
 
-   Refresh the configured Git remote and rebase the current JJ stack onto the latest trunk before final tests:
+   Refresh the configured JJ remote and rebase the current JJ stack onto the latest trunk before final tests:
 
    ```bash
    jj git fetch
@@ -15,7 +15,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    jj log -r 'trunk()..@ & conflicts()'
    ```
 
-   `-r` selects only the revisions in the current ancestry stack; do not use `-b @`, whose branch selection can include descendants outside that stack. JJ records rebase conflicts in changes and does not require a `--continue`. If the conflict revset is non-empty, resolve the affected files or use `jj resolve`, inspect `jj diff`, and rerun the status/conflict check. Then always run before submitting:
+   `-r` selects only the revisions in the current ancestry stack; do not use `-b @`, whose selection can include descendants outside that stack. JJ records rebase conflicts in changes and does not require a continuation command. If the conflict revset is non-empty, resolve the affected files or use `jj resolve`, inspect `jj diff`, and rerun the status/conflict check. Then always run before submitting:
 
    ```bash
    # Run full test suite (use project's test command)
@@ -49,7 +49,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 4. **Residual Work Gate** (REQUIRED when `ce-code-review` ran and left actionable residuals)
 
-   After code review and review-findings followup, inspect the **Actionable Findings** summary (or read the run artifact at `/tmp/compound-engineering/ce-code-review/<run-id>/` if the summary was truncated). If one or more actionable `downstream-resolver` findings were not applied in followup, do not proceed to Final Validation until they are resolved or durably recorded.
+   After code review and review-findings followup, inspect the **Actionable Findings** summary (or read the run artifact at `.tmp/rocketclaw/ce-code-review/<run-id>/` if the summary was truncated). If one or more actionable `downstream-resolver` findings were not applied in followup, do not proceed to Final Validation until they are resolved or durably recorded.
 
    **Non-interactive / autonomous sessions (no human can answer — e.g. an `lfg`-style pipeline or a headless run):** do **not** call the blocking tool — that would hang the pipeline. After step 3b auto-applied every mechanically-eligible finding, take the `Accept and proceed` path automatically: record the remaining actionable residuals verbatim to the durable Known Residuals sink (the PR description's Known Residuals section, or `docs/residual-review-findings/<bookmark-or-change-id>.md` on the no-PR path) and continue to Final Validation. Obtain a stable identifier with `jj log -r @ -T 'change_id.short()'` (use `@-` if `@` is the empty post-commit change). Residuals are recorded, never dropped.
 
@@ -60,7 +60,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    Options (four or fewer, self-contained labels):
    - `Apply/fix now` — load `references/review-findings-followup.md`, dispatch batched fix subagents for remaining eligible findings, run tests, commit if needed; optionally re-run `ce-code-review` only after the diff changed materially.
    - `File tickets via project tracker` — load `references/tracker-defer.md` in Interactive mode; the agent files tickets in the project's detected tracker (or `gh` fallback, or leaves them in the report if no sink exists) and proceeds to Final Validation.
-   - `Accept and proceed` — record the residual findings verbatim in a durable "Known Residuals" sink before shipping. If a PR will be created or updated in Phase 4, include them in the PR description's "Known Residuals" section. If the user later chooses the no-PR `ce-commit` path, create `docs/residual-review-findings/<bookmark-or-change-id>.md`, include the accepted findings and source review-run context, include that path in the appropriate `jj commit` fileset, and mention it in the final summary. The user has acknowledged the risk, but the findings must not live only in the transient session.
+   - `Accept and proceed` — record the residual findings verbatim in a durable "Known Residuals" sink before shipping. If a PR will be created or updated in Phase 4, include them in the PR description's "Known Residuals" section. If the user later chooses the no-PR `ce-commit` path, create `docs/residual-review-findings/<bookmark-or-change-id>.md`, include the accepted findings and source review-run context, include that path in the appropriate `jj commit` fileset, and mention it in the final summary. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary. The user has acknowledged the risk, but the findings must not live only in the transient session.
    - `Stop — do not ship` — abort the shipping workflow. The user will handle findings manually before re-invoking.
 
    Skip this gate entirely when the review reported `Actionable findings: none.` (and followup applied everything mechanical), or when dedicated review was skipped (mechanical diff or `ce-code-review` unavailable). Do not proceed past this gate on an `Accept and proceed` decision (including the autonomous auto-accept above) until the agent has recorded whether the durable sink is `PR Known Residuals` or `docs/residual-review-findings/<bookmark-or-change-id>.md`.
@@ -89,15 +89,15 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 1. **Prepare Validation Context**
 
-   Do not try to launch a dedicated CE evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
+   Do not try to launch a dedicated evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
 
    Note whether the completed work has observable behavior (UI rendering, CLI output, API/library behavior with a runnable example, generated artifacts, or workflow output), and summarize any manual validation performed. If the user supplied evidence (URL, markdown embed, local artifact path), retain it as PR-description context.
 
-2. **Commit and Create Pull Request**
+2. **Describe Changes and Create Pull Request**
 
-   Before handoff, inspect `jj status` and `jj log -r 'trunk()..@'`. Commit any non-empty final `@` with the appropriate filesets; after `jj commit`, the ship head is normally `@-` because `@` is the new empty change. Create or advance exactly one meaningful bookmark to the ship head with `jj bookmark set <name> -r <ship-head>`, then verify it with `jj bookmark list -r <ship-head>`. Do not point the bookmark at an empty post-commit `@`.
+   Before handoff, inspect `jj status` and `jj log -r 'trunk()..@'`. Describe any non-empty final `@` with the appropriate filesets; after `jj commit`, the ship tip is normally `@-` because `@` is the new empty change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary. Create or advance exactly one meaningful bookmark to the ship tip with `jj bookmark set <name> -r <ship-tip>`, then verify it with `jj bookmark list -r <ship-tip>`. Do not point the bookmark at an empty post-description `@`.
 
-   Resolve `heads(trunk()..@ & ~empty())` and require exactly one publishable head. Select the push remote from `jj config get git.push`, `origin` when present, or the sole entry from `jj git remote list`; stop if multiple remotes remain ambiguous. Fetch that remote, advance the bookmark to the publishable head, and push only that bookmark with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`. Create or update the PR with an explicit bookmark and repository context: `GIT_DIR="$(jj git root)" gh pr view "$BOOKMARK" --json number,url,state`; use `gh pr create --head "$BOOKMARK" --base "$BASE_BOOKMARK" --title "$TITLE" --body-file "$BODY_FILE"` when none exists, or `gh pr edit <number> --body-file "$BODY_FILE"` when one does. Never rely on Git `HEAD` or argumentless `gh pr view`.
+   Resolve `heads(trunk()..@ & ~empty())` and require exactly one publishable tip. Select `origin` when present or the sole entry from `jj git remote list`; stop if multiple remotes remain ambiguous. Fetch that remote, advance the bookmark to the publishable tip, and push only that bookmark with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`. Resolve `REPOSITORY` from that remote and create or update the PR with explicit bookmark and repository context: `gh pr view "$BOOKMARK" --repo "$REPOSITORY" --json number,url,state`; use `gh pr create --repo "$REPOSITORY" --head "$BOOKMARK" --base "$BASE_BOOKMARK" --title "$TITLE" --body-file ".tmp/rocketclaw/pr-body.md"` when none exists, or `gh pr edit <number> --repo "$REPOSITORY" --body-file ".tmp/rocketclaw/pr-body.md"` when one does. Never rely on implicit repository or bookmark discovery.
 
    When providing context for the PR description, include:
    - The plan's summary and key decisions
@@ -107,7 +107,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    - The Post-Deploy Monitoring & Validation section (see Phase 3 Step 6)
    - Any "Known Residuals" accepted in the Phase 3 Residual Work Gate, rendered as a dedicated section in the PR body with severity, file:line, and title per finding
 
-   If the user prefers to commit without creating a PR, load the `ce-commit` skill instead.
+   If the user prefers to describe changes without creating a PR, load the `ce-commit` skill instead. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary.
 
 3. **Notify User**
    - Summarize what was completed
@@ -126,12 +126,11 @@ Before creating PR, verify:
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
 - [ ] Validation/evidence context included in the PR description when the change has observable behavior
-- [ ] Commit messages follow conventional format
+- [ ] Change descriptions follow repository standards
 - [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
 - [ ] Simplify: `ce-simplify-code` when diff >=30 lines (or skipped with reason)
 - [ ] Code review: `ce-code-review` ran (self-sized), or skipped (mechanical diff / unavailable — noted in summary); residuals handled via the Residual Work Gate
 - [ ] PR description includes summary, testing notes, and evidence when captured
-- [ ] PR description includes Compound Engineered badge with accurate model and harness
 
 ## Code Review
 

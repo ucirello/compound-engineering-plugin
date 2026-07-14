@@ -5,12 +5,12 @@ description: Set up isolated JJ workspaces for fresh work or an existing bookmar
 
 # JJ Workspace Isolation
 
-Create or select a Jujutsu workspace backed by the current JJ repository. The public skill name remains `ce-worktree`, but the implementation is JJ-native: never use `git worktree`, branch checkout/switching, a staging area, or a stash.
+Create or select a Jujutsu workspace backed by the current JJ repository. The public skill name remains `ce-worktree`, but the implementation is JJ-native: use revisions, bookmarks, workspaces, and working-copy changes throughout.
 
 ## Choose The Mode
 
 - **New work**: create a new working-copy change whose parent is the chosen base revision, then create a local feature bookmark on that change.
-- **Continue from a target**: create a new working-copy change whose parent is an existing bookmark, remote bookmark, PR head, tag, change ID, or commit ID. This is the safe default for review fixes and follow-up work.
+- **Continue from a target**: create a new working-copy change whose parent is an existing bookmark, remote bookmark, PR head, tag, change ID, or revision ID. This is the safe default for review fixes and follow-up work.
 - **Edit an existing change**: create the workspace, then explicitly `jj edit` the mutable target only when the caller intends to amend that exact change.
 
 `jj workspace add -r <target>` has the semantics of `jj new <target>`: the new workspace's `@` is a new child of `<target>`. It does not check out or edit `<target>`. Do not describe it as attaching directly to that revision.
@@ -28,19 +28,19 @@ jj --ignore-working-copy log -r '@ | @-'
 
 Match the current root and target revision against `jj workspace list`. If a suitable workspace already exists, report its path from `jj workspace root --name <workspace-name>` and use it. Do not create a workspace inside another workspace.
 
-If that existing isolated workspace must be repositioned, use `jj new <target>` to preserve its current working-copy change and start a child on the target. Use `jj edit <target>` only for intentional direct amendment after applying the direct-edit checks below. There is no stash step.
+If that existing isolated workspace must be repositioned, use `jj new <target>` to preserve its current working-copy change and start a child on the target. Use `jj edit <target>` only for intentional direct amendment after applying the direct-edit checks below.
 
-A generic harness "worktree" primitive may be Git-backed. Use a native harness primitive only when it explicitly creates a JJ workspace in this same JJ repository; otherwise use `jj workspace add` below.
+A generic harness alternate-workspace primitive may use incompatible semantics. Use a native harness primitive only when it explicitly creates a JJ workspace in this same JJ repository; otherwise use `jj workspace add` below.
 
 ## 2. Resolve The Revision
 
-Resolve names before creating files. Accept JJ revsets and unambiguous bookmark, tag, change-ID, or commit-ID prefixes. Use `jj --ignore-working-copy log -r '<rev>'` and require exactly one revision. If a bookmark is conflicted or a prefix is ambiguous, stop and ask the user which target to use.
+Resolve names before creating files. Accept JJ revsets and unambiguous bookmark, tag, change-ID, or revision-ID prefixes. Use `jj --ignore-working-copy log -r '<rev>'` and require exactly one revision. If a bookmark is conflicted or a prefix is ambiguous, stop and ask the user which target to use.
 
 For new work, prefer the project's configured or documented trunk bookmark. Otherwise inspect likely local and remote bookmarks rather than assuming `main` or `origin`:
 
 ```bash
 jj --ignore-working-copy bookmark list --all-remotes
-jj --ignore-working-copy git remote list
+jj git remote list
 ```
 
 Remote bookmarks are addressed as `<bookmark>@<remote>`. Fetch only when fresh remote state is useful and network access is allowed:
@@ -53,19 +53,19 @@ A failed fetch is non-fatal only when the user accepts the already-resolved loca
 
 ### Pull Requests
 
-Use the forge interface only to read PR metadata such as the head repository, head bookmark name, and head commit ID. Do not run `gh pr checkout`: it applies Git checkout/branch behavior to the workspace.
+Use the forge interface only to read PR metadata such as the source repository, source bookmark name, and source revision ID. Resolve the revision and create a JJ workspace rather than asking the forge interface to mutate the workspace.
 
-1. Inspect the PR head metadata and `jj git remote list`.
-2. If its repository already has a JJ Git remote, validate the head bookmark, fetch it with `jj git fetch --remote "<remote>" --branch 'exact:"<validated-head-bookmark>"'`, and resolve the authoritative PR commit ID from GitHub metadata. Treat `<head-bookmark>@<remote>` as naming context, not content identity.
-3. For a fork with no matching remote, ask before adding one with `jj git remote add <remote> <url>`, then fetch its head bookmark. Adding a remote changes shared repository configuration.
-4. If the PR commit ID is already present locally, it can be used directly without creating or tracking a bookmark.
-5. If no JJ-visible revision can be obtained, stop. Do not fall back to Git fetch, checkout, or a detached Git HEAD.
+1. Inspect the PR source metadata and `jj git remote list`.
+2. If its repository already has a JJ remote, validate the source bookmark, fetch it with `jj git fetch --remote "<remote>" --branch 'exact:"<validated-source-bookmark>"'`, and resolve the authoritative PR revision ID from forge metadata. Treat `<source-bookmark>@<remote>` as naming context, not content identity.
+3. For a fork with no matching remote, ask before adding one with `jj git remote add <remote> <url>`, then fetch its source bookmark. Adding a remote changes shared repository configuration.
+4. If the PR revision ID is already present locally, it can be used directly without creating or tracking a bookmark.
+5. If no JJ-visible revision can be obtained, stop rather than switching repository models.
 
 Use `jj bookmark track <bookmark>@<remote>` only when the user wants a same-named local bookmark that follows future fetches. Merely reviewing or basing a child change on a remote bookmark does not require tracking it.
 
 ## 3. Choose A Workspace Path
 
-Choose a unique ASCII workspace name and an absolute destination outside every existing workspace root. A sibling directory such as `<parent>/<repo-name>-workspaces/<workspace-name>` is a good default. Do not put workspaces under `.worktrees/`, `.workspaces/`, or any other directory inside a working copy: JJ snapshots working-copy files automatically, and nesting mixes workspace contents with tracked project content.
+Choose a unique ASCII workspace name and an absolute destination outside every existing workspace root. A sibling directory such as `<parent>/<repo-name>-workspaces/<workspace-name>` is a good default. Do not put workspaces inside a working copy: JJ snapshots working-copy files automatically, and nesting mixes workspace contents with tracked project content.
 
 Create only the destination's parent directory, then let JJ create the destination. Refuse to reuse a non-empty path or a workspace name already shown by `jj workspace list`.
 
@@ -78,7 +78,7 @@ Run the command against the current workspace root so repository discovery is un
 jj -R <current-workspace-root> workspace add --name <workspace-name> -r <base-rev> <absolute-destination>
 ```
 
-This preserves the current workspace's working-copy commit and files. By default the new workspace copies the current workspace's sparse patterns; use `--sparse-patterns full` only when a full working copy is required.
+This preserves the current workspace's working-copy change and files. By default the new workspace copies the current workspace's sparse patterns; use `--sparse-patterns full` only when a full working copy is required.
 
 For new work, create a local bookmark at the new working-copy change:
 
@@ -86,7 +86,7 @@ For new work, create a local bookmark at the new working-copy change:
 jj -R <absolute-destination> bookmark create <feature-bookmark> -r @
 ```
 
-JJ has no current or checked-out bookmark. A bookmark follows rewrites of its target change, but it does not automatically advance when `jj new` or `jj commit` creates a child. Move it deliberately when the publishable tip changes:
+JJ has no current or selected bookmark. A bookmark follows rewrites of its target change, but it does not automatically advance when `jj new` or `jj commit` creates a child. Move it deliberately when the publishable tip changes:
 
 ```bash
 jj bookmark move <feature-bookmark> --to <tip-rev>
@@ -99,7 +99,7 @@ For an existing target, the `workspace add` command above already creates the re
 Use direct editing only when the caller explicitly wants to amend the target rather than add a child change:
 
 1. Confirm the target is mutable and is not conflicted.
-2. Compare it with every working-copy revision shown by `jj workspace list`. A revision cannot safely be the working-copy commit of two workspaces; if another workspace already edits it, use that workspace or choose child-change mode.
+2. Compare it with every working-copy revision shown by `jj workspace list`. A revision cannot safely be the working-copy change of two workspaces; if another workspace already edits it, use that workspace or choose child-change mode.
 3. Create the workspace as above, then switch its working-copy revision explicitly:
 
 ```bash
@@ -152,4 +152,4 @@ Delete the workspace directory separately, before or after `forget`, only after 
 - **Target is already a working copy**: use the existing workspace or create a child change; do not `jj edit` it in a second workspace.
 - **Missing remote revision**: use `jj git fetch` against a configured JJ remote. For a fork, request permission before `jj git remote add`.
 - **Bookmark conflict or ambiguous revision**: stop for an explicit revision choice. Do not resolve by moving a bookmark arbitrarily.
-- **Git interop needed**: prefer `jj git fetch`, JJ remote bookmarks, and `jj git push`. In colocated repositories JJ imports/exports Git refs automatically; in non-colocated repositories `jj git import`/`jj git export` are explicit synchronization tools, not checkout mechanisms.
+- **Remote synchronization needed**: prefer `jj git fetch`, JJ remote bookmarks, and `jj git push`. In colocated repositories synchronization is automatic; in non-colocated repositories `jj git import` and `jj git export` are explicit synchronization tools, not workspace-selection mechanisms.

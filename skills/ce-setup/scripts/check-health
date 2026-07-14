@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compound Engineering environment health check.
+# Plugin environment health check.
 # Reports optional tool capabilities and workspace-local config safety in one pass.
 
 set -o pipefail
@@ -76,16 +76,16 @@ example_cfg="skip"
 project_issues=0
 
 legacy_cfg="missing"
-[ -f "$project_root/compound-engineering.local.md" ] && legacy_cfg="present"
+[ -f "$project_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
 local_cfg="missing"
-if [ -e "$project_root/.compound-engineering/config.local.yaml" ]; then
+if [ -e "$project_root/.rocketclaw/config.local.yaml" ]; then
   local_cfg="present"
 fi
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 template="$script_dir/../references/config-template.yaml"
-example="$project_root/.compound-engineering/config.local.example.yaml"
+example="$project_root/.rocketclaw/config.local.example.yaml"
 if [ ! -f "$example" ]; then
   example_cfg="missing"
 elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -95,17 +95,16 @@ else
 fi
 
 if [ "$in_workspace" = "yes" ] && [ "$local_cfg" = "present" ]; then
-  local_cfg_path=".compound-engineering/config.local.yaml"
+  local_cfg_path=".rocketclaw/config.local.yaml"
   tracked_path=$(jj --ignore-working-copy file list -- "$local_cfg_path" 2>/dev/null || true)
   if [ "$tracked_path" = "$local_cfg_path" ]; then
     local_cfg_ignored="missing"
   else
-    inspection_root=$(mktemp -d -t ce-setup-ignore-XXXXXX 2>/dev/null || true)
-    if [ -n "$inspection_root" ]; then
-      mkdir -p "$inspection_root/.compound-engineering"
-      cp "$project_root/.compound-engineering/config.local.yaml" "$inspection_root/$local_cfg_path"
+    inspection_root="$project_root/.tmp/rocketclaw/ce-setup-ignore-$$"
+    if mkdir -p "$inspection_root/.rocketclaw" 2>/dev/null; then
+      cp "$project_root/.rocketclaw/config.local.yaml" "$inspection_root/$local_cfg_path"
       [ ! -f "$project_root/.gitignore" ] || cp "$project_root/.gitignore" "$inspection_root/.gitignore"
-      [ ! -f "$project_root/.compound-engineering/.gitignore" ] || cp "$project_root/.compound-engineering/.gitignore" "$inspection_root/.compound-engineering/.gitignore"
+      [ ! -f "$project_root/.rocketclaw/.gitignore" ] || cp "$project_root/.rocketclaw/.gitignore" "$inspection_root/.rocketclaw/.gitignore"
       if jj git init --no-colocate "$inspection_root" >/dev/null 2>&1; then
         inspected_path=$(jj -R "$inspection_root" file list -- "root-file:$local_cfg_path" 2>/dev/null || true)
         [ "$inspected_path" != "$local_cfg_path" ] && local_cfg_ignored="ok" || local_cfg_ignored="missing"
@@ -145,14 +144,14 @@ section "Project config"
 detail "Project root: $project_root"
 
 if [ "$legacy_cfg" = "present" ]; then
-  warn "Obsolete compound-engineering.local.md exists"
+  warn "Obsolete rocketclaw.local.md exists"
   project_issues=$((project_issues + 1))
 else
-  ok "No obsolete compound-engineering.local.md"
+  ok "No obsolete rocketclaw.local.md"
 fi
 
 if [ "$local_cfg" = "present" ]; then
-  ok ".compound-engineering/config.local.yaml exists"
+  ok ".rocketclaw/config.local.yaml exists"
   if [ "$in_workspace" != "yes" ]; then
     skip "JJ ignore safety unavailable outside a JJ workspace"
   elif [ "$local_cfg_ignored" = "ok" ]; then
@@ -162,13 +161,13 @@ if [ "$local_cfg" = "present" ]; then
     project_issues=$((project_issues + 1))
   fi
 else
-  skip "No local config yet (.compound-engineering/config.local.yaml)"
+  skip "No local config yet (.rocketclaw/config.local.yaml)"
 fi
 
 if [ "$example_cfg" = "ok" ]; then
   ok "Example config is current"
 elif [ "$example_cfg" = "missing" ]; then
-  warn "Example config missing (.compound-engineering/config.local.example.yaml)"
+  warn "Example config missing (.rocketclaw/config.local.example.yaml)"
   project_issues=$((project_issues + 1))
 elif [ "$example_cfg" = "outdated" ]; then
   warn "Example config outdated (new settings available)"

@@ -14,7 +14,7 @@ This command takes a work document (plan or specification) or a bare prompt desc
 
 ## Input Document
 
-<input_document> #$ARGUMENTS </input_document>
+The **input document** for this run is the input this skill was invoked with — present in the current prompt or conversation, whether the user provided it directly or a calling skill passed it (e.g. `lfg` in `mode:pipeline`, which passes a plan path). It may be a plan or spec path, a `mode:` token followed by a path, or a bare work prompt. The rest of this skill refers to it as `<input_document>`; if nothing was provided, treat `<input_document>` as blank.
 
 ## Execution Workflow
 
@@ -84,7 +84,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    jj log -r 'trunk()..@ & ~empty()'
    ```
 
-   `@` is this workspace's working-copy change and `trunk()` resolves the configured default remote bookmark. JJ has no active/current bookmark: a bookmark is only a named pointer, and `jj commit` does not advance it. Treat `heads(::@ & bookmarks())` as naming context, not as a checked-out branch.
+   `@` is this workspace's working-copy change and `trunk()` resolves the configured default remote bookmark. JJ has no active/current bookmark: a bookmark is only a named pointer, and `jj commit` does not advance it. Treat `heads(::@ & bookmarks())` as naming context, not as a selected line of development.
 
    **If `trunk()..@ & ~empty()` contains feature work:**
 
@@ -157,7 +157,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    7. **Abort criteria:** if a batch produces broad unplanned edits, out-of-scope test failures, or repeated conflicts, stop parallelizing and finish the rest serially.
 
    **Isolation is the harness's job, never ce-work's** — never run `jj workspace add` yourself. Probe what your subagent mechanism provides and pick the parallel path:
-   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: Claude Code `Agent` tool (`isolation: "workspace"` + `run_in_background: true`; workspace under an ignored `.claude/workspaces/`), Codex `spawn_agent` (a coding **worker** edits its forked workspace), Cursor `best-of-n-runner`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's reconciliation-cost judgment). This works even when you are *already* inside a workspace — harness workspaces are peers of one repo, not nested, and their working-copy changes can be addressed as `<workspace>@`.
+   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: a native isolated-agent tool, a coding worker with a forked workspace, or an equivalent best-of-N runner. When a repository-local harness path is needed, use `.rocketclaw/workspaces/`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's reconciliation-cost judgment). This works even when you are *already* inside a workspace — harness workspaces are peers of one repository, not nested, and their working-copy changes can be addressed as `<workspace>@`.
    - **Shared workspace only** — subagents run in your working directory (Cursor `Task` default, or any harness without isolation). Parallelize **disjoint-file units only**, under the shared-workspace constraints below; contending units run serial.
    - **No subagent mechanism:** run inline.
 
@@ -179,8 +179,8 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    1. Wait for every worker in the batch to finish.
    2. **Inspect the actual change, not reported paths.** For an isolated JJ workspace, use `jj -R <workspace-root> status`, `jj diff -r '<workspace-name>@'`, and `jj diff -r '<workspace-name>@' --name-only`; for a shared workspace inspect `jj status` and `jj diff -r @`. Reported paths are a hint; declared `Files:` are often incomplete.
    3. **Detect real collisions** — 2+ workers that actually modified the same file. In a shared workspace only the last writer survived: fileset-commit the non-colliding work first, then re-run colliding units serially. With isolated workspaces, serialize overlapping changes and expect JJ to record any conflict when the later change is rebased onto the integrated tip.
-   4. **Review, test, and integrate each unit in dependency order — the orchestrator owns change history.** For an isolated worker, set its description with `jj describe -r '<workspace-name>@' -m '<message>'`, then `jj rebase -s '<workspace-name>@' -o @` and advance the orchestrator with `jj new '<workspace-name>@'`; this preserves the worker's change identity and creates a fresh `@` for the next unit. For shared-workspace edits, commit only the unit's fileset with `jj commit <filesets> -m '<message>'`. Run relevant tests and resolve any recorded conflicts before the next unit. Capture each worker's returned verification evidence into the roll-up; never fabricate a red-before-implementation observation.
-   5. Update the task list (progress lives in the commits).
+   4. **Review, test, and integrate each unit in dependency order — the orchestrator owns change history.** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary. For an isolated worker, set its description with `jj describe -r '<workspace-name>@' -m '<message describing the completed unit>'`, then `jj rebase -s '<workspace-name>@' -o @` and advance the orchestrator with `jj new '<workspace-name>@'`; this preserves the worker's change identity and creates a fresh `@` for the next unit. For shared-workspace edits, commit only the unit's fileset with `jj commit <filesets> -m '<message describing the completed unit>'`. Run relevant tests and resolve any recorded conflicts before the next unit. Capture each worker's returned verification evidence into the roll-up; never fabricate a red-before-implementation observation.
+   5. Update the task list (progress lives in the described changes).
    6. **Release the workers** — close each worker handle, obtain its root with `jj workspace root --name <workspace>`, run `jj workspace forget <workspace>`, then remove that harness-created workspace directory. Delete a bookmark only if the harness explicitly created a disposable one; JJ workspaces do not inherently require bookmarks.
    7. Dispatch the next dependency layer.
 
@@ -260,39 +260,41 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **When this matters most:** Any change that touches models with callbacks, error handling with fallback/retry, or functionality exposed through multiple interfaces.
 
 
-2. **Incremental Commits**
+2. **Incremental Changes**
 
-   After completing each task, evaluate whether to create an incremental commit:
+   After completing each task, evaluate whether to describe an incremental change:
 
-   | Commit when... | Don't commit when... |
+   | Describe when... | Wait when... |
    |----------------|---------------------|
    | Logical unit complete (model, service, component) | Small part of a larger unit |
    | Tests pass + meaningful progress | Tests failing |
    | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-   | About to attempt risky/uncertain changes | Would need a "WIP" commit message |
+   | About to attempt risky/uncertain changes | The change does not yet express complete value |
 
-   **Heuristic:** "Can I write a commit message that describes a complete, valuable change? If yes, commit. If the message would be 'WIP' or 'partial X', wait."
+   **Heuristic:** describe the change when it expresses complete, valuable work; otherwise wait.
 
-   If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
+   If the plan has Implementation Units, use them as a starting guide for change boundaries, but adapt based on what you find during implementation. A unit might need multiple changes if it is larger than expected, or small related units might land together. Use each unit's Goal to inform the description.
 
-   **Change commit workflow:**
+   **Change-description workflow:**
+
+   Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary.
    ```bash
    # 1. Verify tests pass (use project's test command)
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
    # 2. Select only files related to this logical unit with JJ filesets.
    # There is no staging area; positional filesets remain in the described
-   # commit while all other changes move to the new working-copy change.
+   # change while all other edits move to the new working-copy change.
 
-   # 3. Commit with conventional message
-   jj commit <filesets for this logical unit> -m "feat(scope): description of this unit"
+   # 3. Describe the completed logical unit without imposing a fixed syntax.
+   jj commit <filesets for this logical unit> -m "<message describing the completed logical unit>"
    ```
 
    Use workspace-relative `root:`/`root-file:` filesets when commands may run below the workspace root; quote fileset expressions containing operators. Verify the remainder with `jj status` and the committed unit with `jj show @-`.
 
    **Handling conflicts:** `jj rebase` and multi-parent `jj new <left> <right>` can succeed while recording first-class conflicts; there is no `--continue` step. Inspect `jj status` and `jj diff`, resolve markers or use `jj resolve`, and verify `conflicts()` is empty for the shipping stack before proceeding. Incremental changes keep resolution scoped.
 
-   **Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 commit/PR includes the full attribution.
+   **Note:** Change descriptions contain only repository-relevant semantic content; do not add non-project footers or identity metadata.
 
    **Parallel subagent mode:** History ownership stays with the orchestrator (see Phase 1 Step 4):
    - **Workspace-isolated:** each subagent leaves one working-copy change; the orchestrator describes and rebases `<workspace>@` changes in dependency order.

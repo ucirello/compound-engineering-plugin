@@ -105,7 +105,7 @@ these locations, first match wins:
 
 1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
-3. `.compound-engineering/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
@@ -227,19 +227,18 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL and default remote bookmark once at compose
-time. List remotes, prefer `upstream` over `origin`, then query that GitHub
-repository:
+Resolve the repo's GitHub URL and immutable `trunk()` target once at compose
+time. List remotes, prefer `upstream` over `origin`, then resolve the JJ revset:
 
 ```bash
 jj git remote list
-gh repo view <selected-github-remote-url> --json url,defaultBranchRef
+jj log -r 'trunk()' --no-graph -T 'commit_id'
 ```
 
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/<default-remote-bookmark>/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/<trunk-commit-id>/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →

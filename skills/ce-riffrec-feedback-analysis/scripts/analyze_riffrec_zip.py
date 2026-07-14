@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip, standalone video, standalone audio, and
 meeting notes text/markdown. The script extracts transcript, high-signal
-video frames when available, and CE-friendly markdown artifacts.
+video frames when available, and structured markdown artifacts.
 """
 
 from __future__ import annotations
@@ -723,7 +723,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document retained in JJ history.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a requirements document retained in JJ history.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -768,11 +768,11 @@ def write_requirements_kickoff(
         "",
         "---",
         "",
-        "## Actors",
+        "## Participants",
         "",
-        "- A1. User: Operates the product in the recorded session and verbalizes friction.",
-        "- A2. Product surface: The UI and backend behavior visible in the recording.",
-        "- A3. Brainstorm agent: Uses the evidence bundle to confirm, correct, and group requirements before planning.",
+        "- participant-1. Operates the product in the recorded session and verbalizes friction.",
+        "- participant-2. Represents the UI and backend behavior visible in the recording.",
+        "- participant-3. Uses the evidence bundle to confirm, correct, and group requirements before planning.",
         "",
         "---",
         "",
@@ -780,7 +780,7 @@ def write_requirements_kickoff(
         "",
         "- F1. Evidence-backed feedback triage",
         "  - **Trigger:** A feedback zip, video, audio file, or meeting notes file is available.",
-        "  - **Actors:** A1, A2, A3",
+        "  - **Participants:** participant-1, participant-2, participant-3",
         "  - **Steps:** Extract or copy the source, transcribe media or read notes, select high-signal moments when video exists, inspect screenshots when available, confirm problems, and write requirements with supporting evidence.",
         "  - **Outcome:** Confirmed product problems are represented as requirements with transcript support and screenshot support when visual evidence exists.",
         "  - **Covered by:** R1, R2, R3",
@@ -1171,7 +1171,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under docs/plans/.")
     return 0
 

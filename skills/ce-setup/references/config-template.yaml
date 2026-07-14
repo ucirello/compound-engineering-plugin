@@ -1,5 +1,5 @@
-# Compound Engineering -- local config
-# Copy to .compound-engineering/config.local.yaml in your JJ workspace root.
+# RocketClaw -- local config
+# Copy to .rocketclaw/config.local.yaml in your JJ workspace root.
 # All settings are optional. Invalid values fall through to defaults.
 
 # --- Product pulse ---
@@ -60,6 +60,12 @@
 # pr_teaching_section: false     # true | false (default: true)
 # pr_teaching_archive: true      # true | false (default: false; full-workflow runs only)
 
+# --- ce-commit-push-pr babysit handoff ---
+# After a full-workflow PR is opened, ce-commit-push-pr auto-invokes ce-babysit-pr
+# to watch CI + incoming review and drive the PR toward merge-ready. Set false to
+# opt out standing (per-run override: the babysit:off token).
+# auto_babysit: false            # true | false (default: true)
+
 # --- ce-plan scoping confirmation ---
 # By default /ce-plan pauses before research/plan-write to show a scoping
 # summary and wait for you to confirm scope. Set this to skip that wait: ce-plan
@@ -88,7 +94,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # repository-tracked (multi-agent) or .tmp/rocketclaw/ path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_bookmark: feedback-sweep              # omit for local-only; exact tracked JJ bookmark

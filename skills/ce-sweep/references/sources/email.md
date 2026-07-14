@@ -11,7 +11,7 @@ Every message you report maps to this item schema — the orchestrator's vocabul
 | `id` | Stable per source — the RFC 822 `Message-ID` header. |
 | `source` | The `source` config-entry id you were seeded with, verbatim. |
 | `origin` | A stable reference to the message (provider permalink when the tool exposes one, otherwise the `Message-ID`). |
-| `author_class` | `customer`, `teammate`, or `bot` — infer from the sender address and domain; treat automated/no-reply senders as `bot`. |
+| `author_class` | `customer`, `teammate`, or `automation` — infer from the sender address and domain; treat automated/no-reply senders as `automation`. |
 | `body` | The subject plus a one-line summary of the email body. Never reproduce the body verbatim. |
 | `media` | List of `{name, url/ref, kind}` for each attachment. Empty list when none. |
 | `existing_ack` | Boolean — see Availability Probe. When no readable ack primitive exists, this is always false and the item is `ack_deferred`; the orchestrator records acknowledgment in state only. |

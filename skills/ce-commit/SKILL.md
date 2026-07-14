@@ -1,103 +1,82 @@
 ---
 name: ce-commit
-description: Create a JJ commit with a clear, value-communication message. Use when the user asks to commit/save current working-copy changes with a repo-appropriate, value-communicating message.
+description: Create a JJ commit with a clear, repository-appropriate message. Use when the user asks to commit or save current working-copy changes.
 ---
 
 # JJ Commit
 
-Describe and finish one or more well-crafted JJ changes from the working-copy commit.
+Describe and finish one or more coherent JJ changes from the working-copy commit. Done means each intended change has a validated description, the resulting change and commit IDs are reported, and any remainder in `@` is named explicitly.
 
 Jujutsu has no staging area: the working copy is a commit (`@`), and most `jj` commands snapshot file-system changes into it. `jj commit` describes `@` and creates a new working-copy change on top. With filesets, selected changes remain in the commit being finished and unselected changes move to the new working-copy child.
 
 ## Context
 
-**On platforms other than Claude Code**, skip to the "Context fallback" section below and run the command there to gather context.
+Run each command as its own shell tool call. Do not join commands with shell operators, pipes, substitutions, or redirects. A non-zero exit is state to interpret, not a failure to hide.
 
-**In Claude Code**, the labeled sections below contain pre-populated data. Use them directly throughout this skill -- do not re-run these commands.
+| Command | Purpose | Failure meaning |
+| --- | --- | --- |
+| `jj root` | Repository root | Not a JJ repository; report and stop |
+| `jj status` | Working-copy and conflict state | Repository cannot be read; report and stop |
+| `jj diff` | Current content changes | No output means no content change |
+| `jj bookmark list -r @` | Bookmarks at the working-copy change | Empty output is normal |
+| `jj bookmark list -r @-` | Bookmarks at its parent | Empty output is normal |
+| `jj log -r '::@' --limit 10 --no-graph` | Recent local descriptions and topology | No prior history is available |
+| `git log -10 --format=%B` | Repository message syntax and style | No compatible history is available |
 
-**JJ status:**
-!`jj status`
-
-**Current diff:**
-!`jj diff`
-
-**Bookmarks pointing to the working-copy commit:**
-!`jj bookmark list -r @`
-
-**Recent changes:**
-!`jj log -r '::@' --limit 10 --no-graph`
-
-### Context fallback
-
-**In Claude Code, skip this section — the data above is already available.**
-
-Run this single command to gather all context:
-
-```bash
-printf '=== STATUS ===\n'; jj status; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARKS AT @ ===\n'; jj bookmark list -r @; printf '\n=== LOG ===\n'; jj log -r '::@' --limit 10 --no-graph
-```
+The final command is read-only interoperability for the required local message-style check; all VCS mutation remains JJ-native. Re-read `jj status` and `jj diff` immediately before each commit because commands snapshot the working copy and concurrent edits may change it.
 
 ## Workflow
 
-### Step 1: Gather context
+### Step 1: Validate the working copy
 
-Use the context above (`jj status`, the diff of `@`, bookmarks pointing to `@`, and recent changes). All data needed for this step is already available -- do not re-run those commands.
+If `jj status` reports no changes in `@`, report that there is nothing to finish and stop. Do not create an empty change.
 
-If `jj status` shows no changes in the working-copy commit, report that there is nothing to finish and stop. Do not create an empty change.
+If `jj status` reports conflicts, resolve them before finishing the change. Use `jj resolve` for an available merge tool or edit the materialized conflict directly, then rerun `jj status` and `jj diff`. Do not finish a conflicted change.
 
-Bookmarks are named pointers, not active branches: there is no current or checked-out bookmark. Do not create or move a bookmark unless the user explicitly asks; a working-copy change does not need a bookmark to be committed.
+Bookmarks are named pointers, not active branches. A working-copy change does not need a bookmark merely to be committed, so do not create or move one in this skill unless the user explicitly asks.
 
-### Step 2: Determine commit message convention
+### Step 2: Determine the message standard
 
-Follow this priority order:
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-1. **Repo conventions already in context** -- If project instructions already loaded specify commit message conventions, follow those. Do not re-read these files; they are loaded at session start.
-2. **Recent JJ history** -- If no explicit convention is documented, examine the descriptions of the 10 most recent changes from Step 1. If a clear pattern emerges, match that pattern.
-3. **Default: conventional commits** -- If neither source provides a pattern, use conventional commit format: `type(scope): description` where type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `style`, `build`.
+Apply authority in this order: the project's active local instructions and conventions already in context; the syntax and style visible in `git log`; then compatible Go commit-message quality guidance. Local instructions and `git log` syntax always win. Use the Go guidance only where compatible: communicate the change's purpose clearly, keep the first line useful in history, and add explanatory context when a future reader needs it. Do not impose a fixed prefix, type list, scope form, capitalization rule, line-length rule, or body template that local evidence does not require.
 
-When using conventional commits, choose the type that most precisely describes the change. Where `fix:` and `feat:` both seem to fit, default to `fix:`: a change that remedies broken or missing behavior is `fix:` even when implemented by adding code. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override for a specific change.
+### Step 3: Choose coherent changes
 
-### Step 3: Consider logical commits
+Scan the changed paths for distinct concerns. If file-level groups are clearly independent, finish them separately. If separation is ambiguous, keep one change. Do not use interactive splitting unless the user explicitly requests hunk-level separation.
 
-Scan changed files for naturally distinct concerns. If modified files clearly group into separate logical changes, finish them as separate changes.
-
-Keep this lightweight:
-
-- Group at the **file level only** -- do not use interactive `jj split` unless the user explicitly asks for hunk-level separation.
-- If the separation is obvious, separate it. If it is ambiguous, one change is fine.
-- Two or three logical changes is the sweet spot. Do not over-slice.
+Each change must preserve one reviewable purpose. Include related tests, generated outputs, and documentation with the behavior they validate or describe unless local conventions require another grouping.
 
 ### Step 4: Describe and finish
 
-Write the change description:
+At each change-description composition site, apply this instruction exactly:
 
-- **Subject line**: Concise, imperative mood, focused on *why* not *what*. Follow the convention determined in Step 2.
-- **Body** (when needed): Add a body separated by a blank line for non-trivial changes. Explain motivation, trade-offs, or anything a future reader would need. Omit the body for obvious single-purpose changes.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-If all current changes belong together, finish `@` with:
+The project's active local instructions and conventions win first, and the syntax visible in `git log` wins next; compatible Go guidance is a quality backstop only. Describe the purpose and material effect accurately. Add a body only when it carries motivation, tradeoffs, compatibility notes, or other context not clear from the first line. Do not use a fixed message syntax or stock wording.
 
-```bash
-jj commit -m "type(scope): subject line here"
-```
-
-Without filesets, this is equivalent to `jj describe -m "..."` followed by `jj new`: it updates the description of `@`, then creates a new empty working-copy change on top. Do not run an additional `jj new`.
-
-For multiple file-level groups, finish one group at a time with path-limited commits:
+For one change:
 
 ```bash
-jj commit path/to/file1 path/to/file2 -m "$(cat <<'EOF'
-type(scope): subject line here
-
-Optional body explaining why this change was made,
-not just what changed.
-EOF
-)"
+jj commit -m "<repository-derived message>"
 ```
 
-Each fileset selects changes to keep in the commit being finished. Changes outside those filesets move into the new working-copy child, where they remain available for the next group. Re-check `jj status` and `jj diff` after each path-limited commit before choosing the next filesets. Do not use Git-style staging commands.
+For a multiline description, use the available file-writing capability to create `<repo-root>/.tmp/rocketclaw/ce-commit/<change-id>.txt`, then run:
 
-### Step 5: Confirm
+```bash
+jj commit --message-file <repo-root>/.tmp/rocketclaw/ce-commit/<change-id>.txt
+```
 
-After each `jj commit`, run `jj log -r @- --no-graph` and record the completed change ID, commit ID, and description. For a path-limited commit, `@` should contain the unselected remainder; for the final commit, `@` should be a new empty change.
+For multiple file-level groups, pass the group's filesets before `-m` or `--message-file`. Each fileset selects changes retained in the change being finished; unselected changes move to the new working-copy child. Re-run `jj status` and `jj diff` after every path-limited commit before selecting the next group. Do not use staging-area or non-JJ commit commands.
 
-Run `jj status` after the final commit. Report every recorded change ID, commit ID, and subject line. If `@` is not empty, report the remaining paths rather than claiming all changes were committed.
+Without filesets, `jj commit` is equivalent to describing `@` and creating a new empty working-copy change on top. Do not run an additional `jj new`.
+
+### Step 5: Validate and report
+
+For every completed change, inspect it with `jj log -r @- --no-graph` and, when needed, `jj show -r @-`. Validate its description with this instruction:
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+The project's active local instructions and conventions and the syntax visible in `git log` override compatible Go guidance. If the description does not match the actual change or present repository standard, edit it with `jj describe -r @- -m "<repository-derived corrected message>"` or `--message-file <repo-local-path>`, then validate it again.
+
+Run `jj status` after the final commit. Report every completed change ID, commit ID, and first line. If `@` is not empty, report the remaining paths rather than claiming all changes were committed.

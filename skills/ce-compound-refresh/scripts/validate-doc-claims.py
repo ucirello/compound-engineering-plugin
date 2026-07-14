@@ -20,8 +20,8 @@ citations against the repository:
        real paths and are classified (sparse/stale workspace vs removed in
        the current change vs a line that differs from trunk). Tokens
        missing everywhere are flagged only when path-shaped; slash-delimited
-        identifiers (bookmark names, refs, provider/model IDs) are skipped.
-    2. Cited commit SHAs (7-40 hex chars with at least one digit and one
+         identifiers (bookmark names, revision selectors, provider/model IDs) are skipped.
+    2. Cited commit IDs (7-40 hex chars with at least one digit and one
        a-f letter) resolve to commits, classified by reachability from
          @ and trunk().
     3. Relative markdown link targets resolve from the doc's location.
@@ -34,7 +34,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `jj git fetch --all-remotes` first
+whatever revision references exist locally. Run a best-effort `jj git fetch --all-remotes` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -46,7 +46,7 @@ import sys
 PLACEHOLDER_CHARS = set("<>{}*$")
 PLACEHOLDER_SUBSTRINGS = ("path/to", "...", "…")
 
-SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+COMMIT_ID_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 BACKTICK_RE = re.compile(r"`([^`\n]+)`")
 MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 SCAFFOLD_RES = (
@@ -95,8 +95,8 @@ def is_path_candidate(token: str) -> bool:
         return False
     if "://" in token or token.startswith(("http", "#", "/", "~")):
         return False
-    if token.startswith(("origin/", "upstream/", "refs/")):
-        return False  # remote refs, not repo paths
+    if token.startswith(("bookmarks/", "remote-bookmarks/")):
+        return False  # JJ revision selectors, not repo paths
     if PLACEHOLDER_CHARS & set(token):
         return False
     if any(sub in token for sub in PLACEHOLDER_SUBSTRINGS):
@@ -117,7 +117,7 @@ def is_path_shaped(token: str, base: str) -> bool:
 
 def normalize_path(token: str) -> str:
     token = token.strip().rstrip(".,;")
-    token = re.sub(r":\d+(-\d+)?$", "", token)  # strip `:line` / `:a-b` refs
+    token = re.sub(r":\d+(-\d+)?$", "", token)  # strip `:line` / `:a-b` citations
     if token.startswith("./"):
         token = token[2:]
     return token
@@ -257,29 +257,30 @@ def main(argv: list[str]) -> int:
                 "citation, or annotate it as historical (e.g. removed by this fix)."
             )
 
-    # --- 2. Cited commit SHAs ----------------------------------------------
-    checked_shas = 0
-    seen_shas: set[str] = set()
+    # --- 2. Cited commit IDs ------------------------------------------------
+    checked_commit_ids = 0
+    seen_commit_ids: set[str] = set()
     if in_jj:
-        for m in SHA_RE.finditer(body):
-            sha = m.group(0)
-            if sha in seen_shas:
+        for m in COMMIT_ID_RE.finditer(body):
+            commit_id = m.group(0)
+            if commit_id in seen_commit_ids:
                 continue
             if not (
-                any(c.isdigit() for c in sha) and any(c in "abcdef" for c in sha)
+                any(c.isdigit() for c in commit_id)
+                and any(c in "abcdef" for c in commit_id)
             ):
-                continue  # dates and decimal ids are not SHAs
-            seen_shas.add(sha)
-            checked_shas += 1
-            loc = loc_suffix(sha)
-            commit_revset = f"commit_id({sha})"
+                continue  # dates and decimal ids are not commit IDs
+            seen_commit_ids.add(commit_id)
+            checked_commit_ids += 1
+            loc = loc_suffix(commit_id)
+            commit_revset = f"commit_id({commit_id})"
             code, resolved = jj(
                 ["log", "-r", commit_revset, "--no-graph", "-T", "commit_id"],
                 repo_root,
             )
             if code != 0 or not resolved:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — does not resolve to a commit in this "
+                    f"FLAG commit ID {commit_id}{loc} — does not resolve to a commit in this "
                     "repository. Replace with the PR number, or drop it."
                 )
                 continue
@@ -316,21 +317,21 @@ def main(argv: list[str]) -> int:
                 continue
             if in_current and not in_trunk:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — reachable from @ but not {trunk}: "
+                    f"FLAG commit ID {commit_id}{loc} — reachable from @ but not {trunk}: "
                     "local-only commit ID that may be rewritten on merge "
-                    "(rebase/squash). Prefer citing the PR number."
+                    "or revision rewrite. Prefer citing the PR number."
                 )
             elif in_trunk:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — not reachable from @ but reachable "
+                    f"FLAG commit ID {commit_id}{loc} — not reachable from @ but reachable "
                     f"from {trunk}: this working-copy line predates the merge. Add a "
                     "temporal qualifier or verify the claim via gh."
                 )
             else:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — exists but unreachable from @"
+                    f"FLAG commit ID {commit_id}{loc} — exists but unreachable from @"
                     + (f" or {trunk}" if trunk else "")
-                    + ": likely a rebased-away commit. Prefer citing the PR number."
+                    + ": likely a rewritten revision. Prefer citing the PR number."
                 )
 
     # --- 3. Relative markdown links -----------------------------------------
@@ -370,7 +371,7 @@ def main(argv: list[str]) -> int:
     for flag in flags:
         print(flag)
     print(
-        f"checked {checked_paths} paths, {checked_shas} SHAs, "
+        f"checked {checked_paths} paths, {checked_commit_ids} commit IDs, "
         f"{checked_links} links; {len(flags)} flags"
     )
     if flags:

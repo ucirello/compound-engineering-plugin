@@ -1,6 +1,6 @@
 # Review followup (LFG step 4–5)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then commits the selected fileset as a JJ change.
+`ce-code-review` is review-only. LFG applies eligible fixes itself, then describes the selected fileset as a JJ change.
 
 ## Step 4 — invoke review
 
@@ -37,7 +37,7 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the current working-copy change in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `jj status` shows review-driven changes, inspect the exact fileset with `jj diff --summary`, commit only those files with `jj commit <files> -m "fix(review): apply review findings"`, run `jj bookmark set "$FEATURE_BOOKMARK" -r @-`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition) using `jj git push --bookmark "$FEATURE_BOOKMARK" --remote "$SHIPPING_REMOTE"`. JJ has no staging area, and `jj commit <files>` moves unselected edits into the new working-copy change. If there is no remote at all, do not push — the local committed change suffices. If no eligible fixes were applied, note explicitly and skip `jj commit`.
+4. If `jj status` shows review-driven changes, inspect the exact fileset with `jj diff --summary`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary. Commit only those files with `jj commit <files> -m "<message describing the applied review findings>"`, run `jj bookmark set "$FEATURE_BOOKMARK" -r @-`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition) using `jj git push --bookmark "$FEATURE_BOOKMARK" --remote "$SHIPPING_REMOTE"`. JJ has no staging area, and `jj commit <files>` moves unselected edits into the new working-copy change. If there is no remote, do not push; the locally described change suffices. If no eligible fixes were applied, note explicitly and skip `jj commit`.
 
 ## Step 6 — residual handoff
 

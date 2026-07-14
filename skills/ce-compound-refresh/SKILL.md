@@ -10,7 +10,7 @@ Maintain the quality of `docs/solutions/` over time. This workflow reviews exist
 
 ## Mode Detection
 
-Check if `$ARGUMENTS` contains `mode:headless`. If present, strip it from arguments (use the remainder as a scope hint) and run in **headless mode**.
+Check whether the arguments you were invoked with contain `mode:headless`. If present, strip it from the arguments (use the remainder as a scope hint) and run in **headless mode**.
 
 | Mode | When | Behavior |
 |------|------|----------|
@@ -105,7 +105,7 @@ Exclude:
 
 Find all `.md` files under `docs/solutions/`, excluding `README.md` files and anything under `_archived/`. If an `_archived/` directory exists, note it in the report as a legacy artifact that should be cleaned up (files either restored or deleted).
 
-If `$ARGUMENTS` is provided, use it to narrow scope before proceeding. Try these matching strategies in order, stopping at the first that produces results:
+If a scope argument was provided, use it to narrow scope before proceeding. Try these matching strategies in order, stopping at the first that produces results:
 
 1. **Directory match** — check if the argument matches a subdirectory name under `docs/solutions/` (e.g., `performance-issues`, `database-issues`)
 2. **Frontmatter match** — search `module`, `component`, or `tags` fields in learning frontmatter for the argument
@@ -135,9 +135,9 @@ Before making any edits, record the current JJ context so Phase 5 can distinguis
 
 1. Run `jj workspace root` to confirm the workspace root.
 2. Run `jj status` and `jj diff --summary` and retain the changed-path baseline.
-3. Run `jj bookmark list -r 'heads(::@ & bookmarks())'` to identify the nearest local bookmark(s) on the current line of history. JJ does not check out a branch; a bookmark may point to `@`, an ancestor such as `@-`, or no revision on the current line.
+3. Run `jj bookmark list -r 'heads(::@ & bookmarks())'` to identify the nearest local bookmark(s) on the current line of history. A bookmark may point to `@`, an ancestor such as `@-`, or no revision on the current line.
 4. Resolve `trunk()` to identify the configured default-line revision, then use the project's conventions and bookmark names to label it for reporting and GitHub's `--base`. Do not assume the default is named `main`/`master` or that the nearest bookmark is the default bookmark.
-5. Inspect recent descriptions with `jj log -r '::@' -n 10 --no-graph` to learn the repository's change-description style.
+5. Inspect recent descriptions with `jj log -r '::@' -n 10 --no-graph` to learn the repository's change-description style. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Treat the repository's active syntax and conventions as authoritative; apply compatible Go quality guidance without imposing a fixed prefix, structure, or template.
 
 Do not create or move a bookmark during baseline capture.
 
@@ -610,7 +610,7 @@ Use sensible defaults — no user to ask:
 | Feature line | Commit the refresh paths as a separate commit and move the unique nearest feature bookmark forward to that commit. Do not push unless the invoking workflow already requires it. |
 | JJ operations fail | Include the recommended JJ commands in the report and continue |
 
-Commit only the exact files that compound-refresh modified by passing them as filesets to `jj commit -m '<description>' <path>...`. JJ has no staging area: with path arguments, the selected paths remain in the commit being described and all other changes move into the new working-copy commit on top. After that command, the completed refresh commit is `@-`; pre-existing paths remain in `@`.
+Commit only the exact files that compound-refresh modified by passing them as filesets to `jj commit -m '<description>' <path>...`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The repository's active syntax and conventions win; apply only compatible Go quality guidance and do not impose a fixed message template. With path arguments, the selected paths remain in the commit being described and all other changes move into the new working-copy commit on top. After that command, the completed refresh commit is `@-`; pre-existing paths remain in `@`.
 
 If any path modified by compound-refresh was already present in the Phase 0 baseline, path selection alone cannot separate the pre-existing and refresh edits within that file. In interactive mode, disclose the overlap and offer `jj commit -i` to select only the intended diff or "Don't commit"; never commit the whole overlapping path while claiming it contains only refresh work. In headless mode, do not commit: report the overlap and the recommended interactive `jj commit -i` step.
 
@@ -647,10 +647,9 @@ When a commit should become part of an existing bookmark, run the selective `jj 
 
 ### Commit message
 
-Write a descriptive commit message that:
-- Summarizes what was refreshed (e.g., "update 3 stale learnings, consolidate 2 overlapping docs, delete 1 obsolete doc")
-- Follows the repo's existing commit conventions (use the Phase 0 `jj log` sample)
-- Is succinct — the details are in the changed files themselves
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+The repository's active syntax and conventions win over generic guidance. Apply compatible Go guidance to make the message clear and concise, but do not impose a fixed prefix, line width, structure, or template. Describe the material refresh outcome; the changed files carry the implementation detail.
 
 ## Relationship to ce-compound
 
@@ -703,4 +702,4 @@ After the refresh report is generated, check whether the project's instruction f
 
    **Skip this step entirely if `CONCEPTS.md` does not exist** — never nag for an artifact the project has not adopted. When skipped, this step produces no output and no edit.
 
-6. **Adjust the change or create a follow-up commit when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, commit only the newly edited instruction path with `jj commit -m '<description>' <instruction-path>`, then move the same bookmark to `@-` if Phase 5 associated the refresh with one (e.g., `docs: add docs/solutions/ discoverability to AGENTS.md`, or `docs: add CONCEPTS.md discoverability to AGENTS.md`, or a combined message when both edits landed). If Phase 5 already pushed that bookmark, run `jj git push --bookmark <bookmark>` again so the open PR includes the follow-up commit. This leaves unrelated paths in `@` and keeps the remote bookmark current. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits in the working-copy commit alongside the other refresh changes — no separate commit logic needed.
+6. **Adjust the change or create a follow-up commit when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, commit only the newly edited instruction path with `jj commit -m '<description>' <instruction-path>`, then move the same bookmark to `@-` if Phase 5 associated the refresh with one. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The repository's active syntax and conventions win; use compatible Go quality guidance without copying a fixed example or template. If Phase 5 already pushed that bookmark, run `jj git push --bookmark <bookmark>` again so the open PR includes the follow-up commit. This leaves unrelated paths in `@` and keeps the remote bookmark current. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits in the working-copy commit alongside the other refresh changes — no separate commit logic needed.

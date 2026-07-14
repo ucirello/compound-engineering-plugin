@@ -1,4 +1,4 @@
-# Compound Engineering Feedback Format
+# Feedback Format
 
 Use this shape when converting Riffrec evidence into a durable brainstorm or planning input.
 
@@ -31,11 +31,11 @@ topic: <topic>
 
 ---
 
-## Actors
+## Participants
 
-- A1. User: <Role in the recorded workflow>
-- A2. Product surface: <System under test>
-- A3. Agent/assistant, if relevant: <Role in the workflow>
+- participant-1. <Role in the recorded workflow>
+- participant-2. <System under test>
+- participant-3. <Additional role in the workflow, when relevant>
 
 ---
 
@@ -43,7 +43,7 @@ topic: <topic>
 
 - F1. Recorded feedback triage
   - **Trigger:** A Riffrec zip is available for review.
-  - **Actors:** A1, A2
+  - **Participants:** participant-1, participant-2
   - **Steps:** <3-7 product steps seen in the recording>
   - **Outcome:** <What should be true after the fix>
   - **Covered by:** R1, R2
@@ -113,4 +113,4 @@ topic: <topic>
 - Prefer moment IDs and screenshot links over prose-only claims.
 - Mark visual interpretation as an inference when the screenshot does not prove intent.
 - Requirements should describe product behavior, not implementation details.
-- Do not include absolute local paths in CE docs; use repo-relative paths when possible.
+- Do not include absolute local paths in retained documents; use repo-relative paths when possible.

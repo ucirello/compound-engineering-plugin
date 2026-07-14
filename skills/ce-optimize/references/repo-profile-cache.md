@@ -2,7 +2,7 @@
 
 Read this when a repo-grounding skill needs the question-agnostic **project profile** (stack, deps, conventions, structure). The profile is derived once and reused within a session and across sessions and skills at an unchanged profile revision — only the *question-specific* grounding for the current run is ever re-derived.
 
-This file is **byte-duplicated** into every consuming skill (the plugin has no cross-skill import mechanism). All copies must stay identical; `tests/repo-profile-cache-parity.test.ts` enforces it. The deterministic cache I/O lives in the co-located `scripts/repo-profile-cache.py`; the derivation-on-miss is done by the co-located `references/agents/repo-profiler.md` persona.
+This file is **byte-duplicated** into every consuming skill (the plugin has no cross-skill import mechanism). All copies must stay identical. The deterministic cache I/O lives in the co-located `scripts/repo-profile-cache.py`; the derivation-on-miss is done by the co-located `references/agents/repo-profiler.md` persona.
 
 ## What is cached (the agnostic profile)
 
@@ -25,20 +25,20 @@ Never read from the cache — recompute every run:
 ## Cache location & key
 
 ```
-/tmp/compound-engineering/repo-profile/<root-commit-id>/<revision-key>.json
+<workspace-root>/.tmp/rocketclaw/repo-profile/<root-commit-id>/<revision-key>.json
 ```
 
-- `<root-commit-id>` = the lexicographically first initial non-virtual revision's full commit ID from `jj log -r 'roots(all() ~ root())'` — the repository identity (stable and shared across workspaces and clones of the same history).
+- `<root-commit-id>` = the lexicographically first initial non-virtual revision's full commit ID from `jj log -r 'roots(all() ~ root())'` — the repository identity.
 - `<revision-key>` = the stable profile revision key: the working-copy parent revision when `@` does not modify profile inputs, or the current working-copy revision when it does and the caller needs a miss path. Multiple working-copy parents are sorted and hashed with SHA-256.
 
-Two workspaces at the same profile revision share the same entry. The helper resolves `jj --ignore-working-copy workspace root` first so root-relative profile inputs are classified consistently even when invoked from a subdirectory. Metadata-only JJ calls use `--ignore-working-copy`. The freshness diff intentionally snapshots exactly once so `@` reflects the current filesystem; subsequent metadata reads do not snapshot again.
+Each workspace keeps its own repo-local entry. The helper resolves `jj workspace root` first so root-relative profile inputs and cache storage are classified consistently even when invoked from a subdirectory. Metadata-only JJ calls use `--ignore-working-copy`. The freshness diff intentionally snapshots exactly once so `@` reflects the current filesystem; subsequent metadata reads do not snapshot again.
 
 ## Protocol — how a skill uses it
 
 Invoke the helper via the `SKILL_DIR` anchor (set `SKILL_DIR` to the absolute path of the directory containing the SKILL.md you just read; the Bash tool's cwd is the user's project, not the skill dir):
 
 ```bash
-SKILL_DIR="<absolute path of this skill's directory>"
+SKILL_DIR="<absolute path of this skill's directory>";
 python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 ```
 
@@ -47,7 +47,7 @@ python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 - `HIT` then the profile JSON on the following lines → load it as the agnostic profile; skip derivation.
 - `MISS` then a write-path on the next line → dispatch the `repo-profiler` persona to derive the profile, write its JSON output to a file, then persist it. This `put` runs after the profiler, so it is a **separate Bash-tool call** from the `get` above — shell variables do not persist between calls, so **re-set `SKILL_DIR` in the same command**:
   ```bash
-  SKILL_DIR="<absolute path of this skill's directory>"
+  SKILL_DIR="<absolute path of this skill's directory>";
   python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <profile-json-file>
   ```
 - `NO-CACHE` → no JJ repo or no writable cache. Derive the profile fresh for this run and **skip** `put` (nothing to persist).
@@ -60,4 +60,4 @@ A cached entry is a `HIT` only when its `profile_schema_version` matches and the
 
 ## Degradation
 
-The cache is an optimization, never a correctness dependency. Outside a JJ repo, with no writable `/tmp`, or on an unreadable/malformed entry, the helper returns `NO-CACHE`/`MISS` (exit 0) and the skill derives fresh. It never blocks and never serves a profile it cannot prove fresh. And if the helper *invocation itself* fails — a non-zero exit, empty output, or an unresolved `SKILL_DIR` so the script isn't found — treat it exactly like `NO-CACHE`: derive the profile fresh this run and proceed. Never stall waiting on the cache.
+The cache is an optimization, never a correctness dependency. Outside a JJ repo, with no writable workspace-local `.tmp/rocketclaw/`, or on an unreadable/malformed entry, the helper returns `NO-CACHE`/`MISS` (exit 0) and the skill derives fresh. It never blocks and never serves a profile it cannot prove fresh. And if the helper *invocation itself* fails — a non-zero exit, empty output, or an unresolved `SKILL_DIR` so the script isn't found — treat it exactly like `NO-CACHE`: derive the profile fresh this run and proceed. Never stall waiting on the cache.

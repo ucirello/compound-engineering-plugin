@@ -14,7 +14,7 @@ Literal-prefix tokens are consumed and stripped; everything else is the request 
 
 - An explicit token always beats inference.
 - `diff:` and `since:` together conflict — say so and ask which mode the user wants.
-- An unrecognized `<word>:<word>` token (including conventional-commit prefixes like `feat:` appearing inside a topic) is not a flag — it passes through verbatim as request text.
+- An unrecognized `<word>:<word>` token (including conventional description prefixes like `feat:` appearing inside a topic) is not a flag — it passes through verbatim as request text.
 - `output:` with an unknown value: drop the token, note `Ignored unknown output: value '<value>' — using html`, and continue.
 
 ## Inference (no forcing token)

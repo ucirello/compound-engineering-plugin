@@ -21,7 +21,7 @@ Sections earn their place by serving one of these audiences. Omit padding.
 
 ## Unified plan artifact contract
 
-`ce-plan` writes the canonical compound-engineering plan artifact. The same
+`ce-plan` writes the canonical unified plan artifact. The same
 artifact may begin as a requirements-only skeleton from `ce-brainstorm` and
 later be enriched by `ce-plan`; it is still one plan file moving through
 readiness states, not a requirements doc plus a separate implementation doc.
@@ -333,12 +333,11 @@ plan.
 - **`title`** — the plan's descriptive name with a ` - Plan` suffix
   (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
-  across readiness states (it is a plan at every stage). Do not put a
-  conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
-  carries that classification.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual JJ change description should reflect.
+  across readiness states (it is a plan at every stage). Keep the title
+  descriptive; the separate `type` field carries the artifact classification.
+- **`type`** — classification derived from the repository's present artifact
+  vocabulary rather than a fixed prescribed set. It describes the work's intent
+  without prescribing syntax for a future JJ change description.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a

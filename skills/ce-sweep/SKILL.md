@@ -39,10 +39,7 @@ Parse a `mode:headless` token from anywhere in the arguments, strip it, and trea
 
 ### Phase 0: Route by Config State
 
-**Resolve the repo root.** Pre-resolved at skill load:
-!`jj workspace root`
-
-If the line above is an absolute path, use it as `<repo-root>`. If it is empty, shows an error, or still shows a backtick command string (a harness that did not pre-resolve), run `jj workspace root` with the shell tool. Read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool.
+**Resolve the repo root.** Run `jj workspace root` with the shell tool and read `<repo-root>/.rocketclaw/config.local.yaml` with the native file-read tool. If the root cannot be resolved, report the blocker and stop.
 
 **Route:**
 - Config file missing, or it has no `feedback_sources` key -> first run -> Phase 1.
@@ -51,7 +48,7 @@ If the line above is an absolute path, use it as `<repo-root>`. If it is empty, 
 
 **Config keys read here:**
 - `feedback_sources` — list of source entries; each carries a `type` (`slack`, `github-issues`, `email`), its target, the standing-approved ack action, an optional close-out action, and an optional `sensitive: true`. Presence of this key means the skill is configured.
-- `sweep_state_path` — path to the state file, established at setup; fallback `docs/feedback-sweep/state.yml`. A repo-internal path means versioned mode (the state file is included in a change each run); a path outside the repo (e.g. under `/tmp`) means machine-local mode (the state file is never included — only the plan is).
+- `sweep_state_path` — path to the state file, established at setup; fallback `docs/feedback-sweep/state.yml`. A path under `.tmp/rocketclaw/` means local-only mode (the state file is never included; only the plan is); other repo-internal paths use versioned mode.
 - `sweep_lease_ttl_minutes` — single-writer lease staleness threshold; default `60`. Passed to `lease-acquire` in 2a.
 - `sweep_shared_bookmark` — exact JJ bookmark name used to publish versioned state from multiple workspaces; absent means local-only mode. Never infer an "active" bookmark — JJ has none.
 - `sweep_shared_remote` — exact Git remote backing `sweep_shared_bookmark`; default `origin`.
@@ -59,19 +56,19 @@ If the line above is an absolute path, use it as `<repo-root>`. If it is empty, 
 
 ### Phase 1: First-Run Setup
 
-Read `references/interview.md` and follow it. Setup is interactive-only: if the run is headless, report `first run requires interactive setup` and stop. The interview writes `feedback_sources` and the `sweep_*` keys into `<repo-root>/.compound-engineering/config.local.yaml` and offers a scheduling handoff. When it completes, continue into Phase 2.
+Read `references/interview.md` and follow it. Setup is interactive-only: if the run is headless, report `first run requires interactive setup` and stop. The interview writes `feedback_sources` and the `sweep_*` keys into `<repo-root>/.rocketclaw/config.local.yaml` and offers a scheduling handoff. When it completes, continue into Phase 2.
 
 ### Phase 2: Sweep Run
 
 Resolve once and reuse for the entire run:
-- `<state>` = `sweep_state_path` from config (fallback above).
-- `<writer>` = a run-unique writer id identifying harness + session + host, e.g. `sweep-<host>-<session>-<YYYY-MM-DD>`. Use the same string for every state-engine call this run.
+- `<state>` = `sweep_state_path` from config (fallback above), resolved against `<repo-root>` when relative. Reject a path that escapes the workspace.
+- `<writer>` = a neutral, run-unique writer id, e.g. `writer-<random-suffix>-<YYYY-MM-DD>`. Use the same string for every state-engine call this run; do not encode a person, vendor, model, harness, or host name.
 - `<run-id>` = a short unique token for scratch paths, e.g. the date plus a random suffix.
 
 **Every Bash call that runs the bundled engine sets `SKILL_DIR` inline** (shell state does not persist between calls):
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 python3 "$SKILL_DIR/scripts/sweep-state.py" <subcommand> --state <state> ...
 ```
 
@@ -91,7 +88,7 @@ Lease result:
 **Shared-bookmark topology** (`sweep_shared_bookmark` set): treat the configured bookmark and remote as trusted config, but require bookmark shape `^[A-Za-z0-9][A-Za-z0-9._/-]*$` and remote shape `^[A-Za-z0-9][A-Za-z0-9._-]*$` before embedding either in a revset or command. Then:
 
 1. Require a dedicated, clean sweep workspace: `jj status` must show no working-copy changes or conflicts before changing its parent. Run `jj bookmark track <bookmark>@<remote>` during setup; at runtime run `jj git fetch --remote <remote> --tracked`, require the remote bookmark to resolve to exactly one revision with `exactly(remote_bookmarks(exact:"<bookmark>", exact:"<remote>"), 1)`, then `jj new <that-revset>`. Confirm the new `@` is clean and its sole parent is that exact fetched revision. Do not build the lease change on an arbitrary `@` and do not move unrelated work onto the shared bookmark.
-2. Acquire the state lease exactly once from that clean child, explicitly track the state fileset, and run `jj commit <state-fileset> -m "chore(sweep): acquire lease <writer>"`. This leaves the lease change at `@-` and creates a new empty `@`. Save the full commit ID of `@-`, set the exact bookmark to it with `jj bookmark set <bookmark> -r @-`, and run `jj git push --remote <remote> --bookmark 'exact:<bookmark>'`. Check `jj status` first and stop on a conflicted bookmark.
+2. Acquire the state lease exactly once from that clean child and explicitly track the state fileset. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-specific syntax always wins; apply compatible Go guidance. Run `jj commit <state-fileset> -m <composed-message>` with a message that states the lease-acquisition purpose without prescribing a fixed prefix or wording. This leaves the lease change at `@-` and creates a new empty `@`. Save the full commit ID of `@-`, set the exact bookmark to it with `jj bookmark set <bookmark> -r @-`, and run `jj git push --remote <remote> --bookmark 'exact:<bookmark>'`. Check `jj status` first and stop on a conflicted bookmark.
 3. Fetch the tracked bookmark again and resolve `exactly(remote_bookmarks(exact:"<bookmark>", exact:"<remote>"), 1)`. Source-side writes are authorized only when its full commit ID equals the saved lease commit ID and the fetched state names `<writer>`. The push's remote-state check is JJ's force-with-lease safety; the fetch-and-ID comparison confirms who won.
 4. If push is rejected or confirmation differs, another writer or concurrent operation won. Fetch, resolve the conflicted local bookmark to the exact fetched target with `jj bookmark set <bookmark> -r <remote-bookmark-revset> --allow-backwards`, create a fresh `@` with `jj new <remote-bookmark-revset>`, abandon only the saved losing lease commit by its generated full commit ID, and re-run `lease-acquire` from the fetched state. Never rebase or merge competing lease changes. If the fetched lease is live and belongs to someone else, stop without `run-record`; if it is stale, repeat the acquire/publish/confirm loop.
 5. Treat the saved, confirmed commit as `<lease-tip>`. A long run must publish a heartbeat before half the TTL has elapsed since the last confirmed lease timestamp: re-run the re-entrant `lease-acquire` to restamp, commit only the state fileset, set the bookmark to the new `@-`, push with the same remote-state safety check, fetch-confirm both commit ID and writer, then replace `<lease-tip>`. Perform this check immediately before every source-side acknowledgment or close-out. On heartbeat rejection or mismatch, stop all source writes and report `partial`; never reclaim, rebase, or overwrite from the old writer.
@@ -131,7 +128,7 @@ A failed ack write -> upsert the item as `ack_deferred` and hold the cursor (do 
 #### 2e. Media
 
 For each new item carrying `media`:
-- Download attachments into scratch `/tmp/compound-engineering/ce-sweep/<run-id>/`; raw media is never committed. A download failure -> set the item `needs_download` and continue.
+- Download attachments into repository-local scratch `<repo-root>/.tmp/rocketclaw/ce-sweep/<run-id>/`; raw media is never committed. Ensure `.tmp/rocketclaw/` is covered by `.gitignore`. A download failure -> set the item `needs_download` and continue.
 - Dispatch one generic subagent per recording, in parallel, at the **generation tier**, using `references/subagent-template.md` filled from `references/agents/media-analyzer.md`. Fill the template's `{skill_dir}` slot with the same absolute ce-sweep skill directory you resolve for your own `SKILL_DIR` Bash calls (a fresh subagent does not inherit your shell state, so it cannot run the bundled analyzer without being told the path). Pass the absolute media PATHS, a scratch artifact path, and the item's `sensitive` flag; collect the compact 1-2 line summary each returns. A subagent failure -> set the item `needs_analysis`, retain the media, and continue.
 - Track attempts on the item (a `media_attempts` count upserted on each try). After 3 failed attempts across runs (`needs_download`/`needs_analysis`), set the item `manual_stuck` and list it separately — out of the routine nag.
 
@@ -161,7 +158,7 @@ Interactive only. For items needing a product call, ask the user — grouped by 
 
 - **Reconfirm shared ownership.** In shared-bookmark mode, fetch `--tracked` before changing final state and require the exact remote target to equal `<lease-tip>` and the fetched lease to name `<writer>`. If either differs, do not `run-record`, release, move, rebase, merge, or push; leave the local state for manual reconciliation, report `partial`, and continue only to the summary.
 - **Record and release.** Once local ownership (and, in shared mode, remote ownership) is confirmed, run `run-record --state <state> --writer <writer> --outcome <completed|partial|failed> --counts '<per-source JSON>' --timestamp <ISO now>`, then `lease-release --state <state> --writer <writer>`.
-- **Describe and commit exact filesets.** Run `jj status <plan-fileset> [<state-fileset>]`, stop on conflicts, explicitly track each selected fileset (`--include-ignored` for versioned state), then `jj commit <plan-fileset> [<state-fileset>] -m "docs(sweep): feedback sweep <date>"`. With path arguments, `jj commit` describes the selected current changes, leaves them in the committed `@-`, and creates a fresh `@` containing every unselected change; it does not move bookmarks. A failure is reported, not fatal. Machine-local state under `/tmp` is never selected.
+- **Describe and commit exact filesets.** Run `jj status <plan-fileset> [<state-fileset>]`, stop on conflicts, and explicitly track each selected fileset (`--include-ignored` for versioned state). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-specific syntax always wins; apply compatible Go guidance. Run `jj commit <plan-fileset> [<state-fileset>] -m <composed-message>` with a message that describes the feedback-sweep update without prescribing a fixed prefix or wording. With path arguments, `jj commit` describes the selected current changes, leaves them in the committed `@-`, and creates a fresh `@` containing every unselected change; it does not move bookmarks. A failure is reported, not fatal. Local-only state under `.tmp/rocketclaw/` is never selected.
 - **Publish only in shared-bookmark mode.** Set the shared bookmark to the final `@-`, check `jj status` for operation/bookmark conflicts, and `jj git push --remote <remote> --bookmark 'exact:<bookmark>'`. The push is leased against the target fetched during reconfirmation. A rejection is a lost remote-state lease: leave the local final change intact for manual reconciliation and report `partial`; never retry by overwriting the winner. Local-only mode never pushes.
 - **Summary** (always emit): new items by source; recordings analyzed, each with its one-line finding; closed items with their fix evidence; the `ack_deferred` / `manual_stuck` / needs-attention list; any circuit-breaker or stale-reclaim note; and always the plan path with the handoff line:
 

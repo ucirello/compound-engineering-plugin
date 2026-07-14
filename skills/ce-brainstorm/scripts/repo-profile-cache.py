@@ -23,10 +23,10 @@ stamp, and writes it atomically to the computed cache path. Prints the path
 on success, `NO-CACHE` when the repo/cache is unavailable.
 
 Cache path:
-    /tmp/compound-engineering/repo-profile/<root-commit-id>/<revision-key>.json
+    <workspace-root>/.tmp/rocketclaw/repo-profile/<root-commit-id>/<revision-key>.json
   root-commit-id = lexicographically-first initial non-virtual revision's full
-                   commit ID from `jj log` — the repository identity, shared
-                   across workspaces and clones of the same history.
+                   commit ID from `jj log` — the repository identity within
+                   this workspace-local cache.
   revision-key = the working-copy parent revision when profile inputs are
                  unchanged in `@`, otherwise `@` for a miss path.
 
@@ -39,9 +39,9 @@ Validity (HIT) requires ALL of:
     from `jj file list -r @` (important when snapshot.auto-track=none()).
 
 Cardinal rule: this cache is an optimization, never a correctness dependency.
-Every failure mode (not a jj repo, unreadable/malformed cache, no writable
-/tmp, jj errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
-never serves a profile it cannot prove fresh.
+Every failure mode (not a JJ repo, unreadable/malformed cache, no writable
+workspace-local cache, JJ errors) degrades to NO-CACHE/MISS and exits 0 — it
+never raises and never serves a profile it cannot prove fresh.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -57,7 +57,7 @@ from datetime import datetime, timezone
 # entry written under an older (narrower) schema.
 PROFILE_SCHEMA_VERSION = "1"
 
-CACHE_ROOT = "/tmp/compound-engineering/repo-profile"
+CACHE_SUBDIR = os.path.join(".tmp", "rocketclaw", "repo-profile")
 
 # --- Profile-input set (the schema-derived superset, per the plan's R3) -------
 # Any change to one of these — including a newly tracked file — must invalidate
@@ -243,7 +243,7 @@ def working_copy_changed_paths(root: str) -> "list[str] | None":
     tracked = {p for p in tracked_out.split("\n") if p}
     try:
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d != ".jj"]
+            dirnames[:] = [d for d in dirnames if d not in {".jj", ".tmp"}]
             for filename in filenames:
                 full_path = os.path.join(dirpath, filename)
                 relative = os.path.relpath(full_path, root).replace(os.sep, "/")
@@ -254,8 +254,8 @@ def working_copy_changed_paths(root: str) -> "list[str] | None":
     return paths
 
 
-def cache_path(root_id: str, revision_id: str) -> str:
-    return os.path.join(CACHE_ROOT, root_id, f"{revision_id}.json")
+def cache_path(root: str, root_id: str, revision_id: str) -> str:
+    return os.path.join(root, CACHE_SUBDIR, root_id, f"{revision_id}.json")
 
 
 def profile_revision_key(root: str, changed: "list[str] | None") -> "str | None":
@@ -320,7 +320,7 @@ def do_get() -> int:
         print("NO-CACHE")
         return 0
     root_id, revision_key = keys
-    path = cache_path(root_id, revision_key)
+    path = cache_path(root, root_id, revision_key)
 
     def miss() -> int:
         print("MISS")
@@ -331,11 +331,9 @@ def do_get() -> int:
     # same MISS, so no separate existence check is needed.
     try:
         with open(path) as f:
-            # /tmp is world-shared, so reject a cache file not owned by us: a
-            # co-tenant could plant an entry that passes the gates below and
-            # feed attacker-controlled text into the agent as the "profile"
-            # (indirect prompt injection). Skip where geteuid is unavailable
-            # (non-POSIX), where this shared-tmp threat does not apply.
+            # Reject a cache file not owned by the current user so another
+            # local actor cannot feed untrusted text to the agent as a profile.
+            # Skip where geteuid is unavailable (non-POSIX).
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return miss()
@@ -412,7 +410,7 @@ def do_put(profile_file: str) -> int:
         "profile": profile,
     }
 
-    path = cache_path(root_id, revision_key)
+    path = cache_path(root, root_id, revision_key)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         # Atomic write: temp file in the same dir + os.replace (atomic on

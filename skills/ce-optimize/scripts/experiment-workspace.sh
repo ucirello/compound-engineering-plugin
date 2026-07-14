@@ -5,12 +5,12 @@
 # Each experiment gets an isolated working-copy change and copied resources.
 #
 # Usage:
-#   experiment-worktree.sh create <spec_name> <exp_index> <base_rev> [shared_file ...]
-#   experiment-worktree.sh cleanup <spec_name> <exp_index>
-#   experiment-worktree.sh cleanup-all <spec_name>
-#   experiment-worktree.sh count
+#   experiment-workspace.sh create <spec_name> <exp_index> <base_rev> [shared_file ...]
+#   experiment-workspace.sh cleanup <spec_name> <exp_index>
+#   experiment-workspace.sh cleanup-all <spec_name>
+#   experiment-workspace.sh count
 #
-# Workspaces are created outside the project under the OS temp directory.
+# Workspaces are created under the repository's ignored local scratch directory.
 
 set -euo pipefail
 
@@ -26,7 +26,7 @@ JJ_ROOT=$(jj workspace root 2>/dev/null) || {
 
 canonical_root=$(cd "$JJ_ROOT" && pwd -P)
 repo_key=$(printf '%s' "$canonical_root" | cksum | cut -d ' ' -f 1)
-WORKSPACE_DIR="${TMPDIR:-/tmp}/compound-engineering/ce-optimize/workspaces/$repo_key"
+WORKSPACE_DIR="$canonical_root/.tmp/rocketclaw/ce-optimize/workspaces/$repo_key"
 
 validate_spec_name() {
   local spec_name="${1:?Error: spec_name required}"
@@ -225,10 +225,10 @@ main() {
 Experiment Workspace Manager
 
 Usage:
-  experiment-worktree.sh create <spec_name> <exp_index> <base_rev> [shared_file ...]
-  experiment-worktree.sh cleanup <spec_name> <exp_index>
-  experiment-worktree.sh cleanup-all <spec_name>
-  experiment-worktree.sh count
+  experiment-workspace.sh create <spec_name> <exp_index> <base_rev> [shared_file ...]
+  experiment-workspace.sh cleanup <spec_name> <exp_index>
+  experiment-workspace.sh cleanup-all <spec_name>
+  experiment-workspace.sh count
 
 Commands:
   create       Create an isolated experiment workspace and working-copy change
@@ -236,7 +236,7 @@ Commands:
   cleanup-all  Remove all experiment workspaces for a spec
   count        Count active experiment workspaces (for budget checking)
 
-Workspaces: OS temp/compound-engineering/ce-optimize/workspaces/<repo-key>/optimize-<spec>-exp-<NNN>/
+Workspaces: .tmp/rocketclaw/ce-optimize/workspaces/<repo-key>/optimize-<spec>-exp-<NNN>/
 EOF
       ;;
     *)

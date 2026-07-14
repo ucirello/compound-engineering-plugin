@@ -21,7 +21,7 @@ The script reports flags; you decide each one. Three resolutions — **fix**, **
 | path missing here, exists at upstream | Stale working copy | Verify the claim against upstream; annotate if the doc implies the file is present locally |
 | path deliberately gone (doc says removed/renamed) | Historical citation | Confirm the surrounding prose marks it as historical ("removed by this fix", "pre-fix state"); add that marker if absent |
 | Commit ID does not resolve | Fabricated or from another repository | Replace with the PR number, or drop |
-| Commit ID reachable from `@` only | Local-only change; commit ID can change after revision rewrite or squash merge | Replace with the PR number |
+| Commit ID reachable from `@` only | Local-only change; commit ID can change after revision rewrite or forge integration | Replace with the PR number |
 | Commit ID reachable from upstream only | Working copy predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
 | Commit ID exists but is unreachable | Rewritten-away revision | Replace with the PR number |
 | scaffold ("Learning 3", `{{…}}`) | Drafting-context leak | Always fix — rewrite as a real path or link |

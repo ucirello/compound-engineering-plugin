@@ -13,8 +13,8 @@ Design rules (mirrors the repo's repo-profile-cache helper):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are atomic: a repository-local `.tmp/rocketclaw/` scratch file plus
+    os.replace, so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -38,10 +38,12 @@ JSON tokens (strings always double-quoted on one line); lists and empty dicts
 are emitted as inline JSON flow on a single line — itself valid YAML.
 """
 import argparse
+import hashlib
 import json
 import os
+import secrets
+import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 
 try:
@@ -258,13 +260,9 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # A machine-local state file can live under world-shared /tmp, and
-            # it is a correctness dependency (lease, cursors, closed status) as
-            # well as an injection sink (item bodies re-read into agent
-            # context). Reject a file not owned by us so a co-tenant cannot
-            # plant a forged lease/cursor or attacker-authored item text. Skip
-            # where geteuid is unavailable (non-POSIX), where the threat does
-            # not apply.
+            # Local-only state lives under repository-local .tmp/rocketclaw/.
+            # It remains a correctness dependency and an injection sink, so
+            # reject a file not owned by us. Skip where geteuid is unavailable.
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return ("corrupt", None)
@@ -290,13 +288,31 @@ def new_state():
     return {"schema_version": SCHEMA_VERSION, "sources": {}, "items": {}}
 
 
+def repo_scratch_dir(*parts):
+    root = subprocess.run(
+        ["jj", "workspace", "root"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if root.returncode != 0 or not root.stdout.strip():
+        raise OSError("could not resolve JJ workspace root for local scratch")
+    path = os.path.join(
+        root.stdout.strip(), ".tmp", "rocketclaw", "ce-sweep", *parts
+    )
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def write_state(path, state):
     """Atomic write of the state file. Returns True on success."""
     state["schema_version"] = SCHEMA_VERSION
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    scratch_dir = repo_scratch_dir("atomic-writes")
+    tmp = os.path.join(scratch_dir, f"state-{os.getpid()}-{secrets.token_hex(8)}.yml")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
@@ -780,7 +796,8 @@ def _run_locked(handler, args):
             return emit("ERROR")
     except OSError:
         return emit("ERROR")
-    lock_path = str(args.state) + ".lock"
+    state_key = hashlib.sha256(os.path.abspath(args.state).encode()).hexdigest()
+    lock_path = os.path.join(repo_scratch_dir("locks"), state_key + ".lock")
     try:
         lock_fd = open(lock_path, "w")
     except OSError:

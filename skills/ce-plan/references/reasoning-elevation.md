@@ -25,7 +25,7 @@ Proceed with elevation ONLY when `HOST=claude`. On `cursor`, `codex`, or `unknow
 Resolve a per-skill boolean by precedence:
 
 1. **In-prompt intent** — reason over THIS run's prompt. Affirmative intent ("use fable", "get fable help", "have fable plan this") → elevate. Negative intent ("don't use fable", "no fable") → do not elevate. Intent is *reasoned, not keyword-matched*: a passing mention of "fable" as subject matter (e.g. "design a fable-generator feature") is NOT activation.
-2. **Config** — otherwise the per-skill key: `plan_use_fable` for ce-plan, `brainstorm_use_fable` for ce-brainstorm. Read it from the config file the **same way this skill's Phase 0.0 already resolves `plan_output` / `brainstorm_output`**: reuse the repo root the skill already resolved if you have it, else run `git rev-parse --show-toplevel`, then read `<repo-root>/.compound-engineering/config.local.yaml` with the native file-read tool. This skill already read that file once at Phase 0.0 — reuse that result if you still have it rather than re-reading. Ignore commented (`#`-prefixed) lines. `true` → elevate; missing / commented / invalid / `false` / no file → off.
+2. **Config** — otherwise the per-skill key: `plan_use_fable` for ce-plan, `brainstorm_use_fable` for ce-brainstorm. Read it from the config file the **same way this skill's Phase 0.0 already resolves `plan_output` / `brainstorm_output`**: reuse the JJ workspace root the skill already resolved if available, otherwise run `jj workspace root`, then read `<workspace-root>/.rocketclaw/config.local.yaml` with the native file-read tool. This skill already read that file once at Phase 0.0 — reuse that result if you still have it rather than re-reading. Ignore commented (`#`-prefixed) lines. `true` → elevate; missing / commented / invalid / `false` / no file → off.
 3. **Pipeline runs** — in pipeline / `disable-model-invocation` runs there is no prompt, so resolution is config-only; if the key is on, elevate. Still subordinate to the host gate — a config copied to a non-Claude harness never fires it.
 
 If the session model is already Fable, elevation is moot: skip dispatch and the nudge.
@@ -35,7 +35,7 @@ If the session model is already Fable, elevation is moot: skip dispatch and the 
 When elevation is active, dispatch the reasoning-heavy step to a Fable subagent:
 
 - Use the platform subagent primitive with a per-agent model override of **fable** (`model: "fable"` on the Claude Code `Agent`/`Task` tool).
-- Pass the main agent's full working context as **file paths the subagent reads itself**, never a re-narrated prose brief. If a needed piece lives only in context, **write it to a fresh scratch file you create** (e.g. `mktemp` under the OS temp dir) rather than skipping it or summarizing it:
+- Pass the main agent's full working context as **file paths the subagent reads itself**, never a re-narrated prose brief. If a needed piece lives only in context, create the parent directories and **write it to a fresh file under `<workspace-root>/.tmp/rocketclaw/reasoning-elevation/<run-id>/`** rather than skipping it or summarizing it:
   - **Research / grounding evidence.** ce-brainstorm already wrote a Phase 1.1 grounding dossier to a scratch path — pass it. ce-plan consolidates its Phase 1 research findings *in context only* (Phase 1.4 summarizes; it does not write a file), so **serialize those consolidated findings to a scratch file now and pass it** — the elevated author must interpret the same research evidence the inline path had, not just the resulting decisions.
   - **Dialogue / decisions.** Write the accumulated dialogue/decisions this skill holds in context to a fresh scratch file and pass that path too.
 
@@ -55,9 +55,9 @@ The elevated steps: **ce-plan** — interpret research findings and author the p
 
 When ALL hold — `HOST=claude`, the run completed with elevation NOT active (no intent, config off), the session is not already on Fable, `fable_nudge` is not `false` in config, this is not a pipeline run, and the tip has not already been shown once — surface the one-line tip, then record that it was shown.
 
-"Shown once" is enforced by a **per-user marker file at a stable path outside the repo** (per-user, not per-checkout — e.g. `~/.config/compound-engineering/fable-nudge-seen`). Before showing: if the marker exists, skip the nudge. After showing: create the marker (with its parent dir). A missing marker means "not yet shown."
+"Shown once" is enforced by a **workspace-local marker file** at `.rocketclaw/fable-nudge-seen`. Before showing: if the marker exists, skip the nudge. After showing: create the marker and its parent directory. A missing marker means "not yet shown."
 
-- **ce-plan:** `💡 Tip: add "use fable" to your prompt and Fable will author your plan with deeper reasoning — your session model stays as-is. Set plan_use_fable: true to make it the default.`
-- **ce-brainstorm:** `💡 Tip: say "use fable" and Fable will generate sharper approaches — no session switch needed. Set brainstorm_use_fable: true to default it on.`
+- **ce-plan:** `Tip: add "use fable" to your prompt and Fable will author your plan with deeper reasoning — your session model stays as-is. Set plan_use_fable: true to make it the default.`
+- **ce-brainstorm:** `Tip: say "use fable" and Fable will generate sharper approaches — no session switch needed. Set brainstorm_use_fable: true to default it on.`
 
 Never show the nudge when elevation was active (redundant), in pipeline runs (no reader), or off-Claude (the gate stopped earlier).

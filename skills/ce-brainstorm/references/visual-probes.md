@@ -54,7 +54,7 @@ Allowed:
 
 Avoid:
 
-- polished branding
+- polished visual identity
 - final colors or typography
 - component-library precision
 - pixel-perfect layout
@@ -72,14 +72,14 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-node "$SKILL_DIR/scripts/visual-probe-server.js" start --root /tmp/compound-engineering/ce-brainstorm-visual/<run-id>
+node "$SKILL_DIR/scripts/visual-probe-server.js" start --root <workspace-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>
 ```
 
 Append `--foreground` to that `start` command for foreground mode. Status and stop take the same anchor — and because `SKILL_DIR` does not persist between Bash invocations, each must re-set it in its own call rather than reuse the `start` block's value:
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-node "$SKILL_DIR/scripts/visual-probe-server.js" status --root /tmp/compound-engineering/ce-brainstorm-visual/<run-id>
+node "$SKILL_DIR/scripts/visual-probe-server.js" status --root <workspace-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)
 ```
 
@@ -133,14 +133,14 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use OS temp by default because visual probes are disposable scratch:
+Use workspace-local scratch because visual probes are disposable. Resolve `<workspace-root>` with `jj workspace root`; outside a JJ workspace, use the current working directory so the fallback remains in its local `.tmp/`:
 
 ```text
-/tmp/compound-engineering/ce-brainstorm-visual/<run-id>/
+.tmp/rocketclaw/ce-brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/
     display-info.json
 ```
 
-Use `.context/compound-engineering/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.
+Use `.context/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.

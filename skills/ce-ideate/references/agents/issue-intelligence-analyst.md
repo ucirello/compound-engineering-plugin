@@ -10,8 +10,8 @@ Your output is themes, not tickets. 25 duplicate bugs about the same failure mod
 
 Verify each condition in order. If any fails, return a clear message explaining what is missing and stop.
 
-1. **Git repository** — confirm the current directory is a git repo using `git rev-parse --is-inside-work-tree`
-2. **GitHub remote** — detect the repository. Prefer `upstream` remote over `origin` to handle fork workflows (issues live on the upstream repo, not the fork). Use `gh repo view --json nameWithOwner` to confirm the resolved repo.
+1. **JJ workspace** — confirm the current directory is a JJ workspace using `jj workspace root`
+2. **GitHub remote** — list configured remotes with `jj git remote list`, prefer `upstream` over `origin` to handle fork workflows (issues live on the upstream repo, not the fork), and pass that remote's GitHub URL to `gh repo view <url> --json nameWithOwner` to confirm the resolved repo.
 3. **`gh` CLI available** — verify `gh` is installed with `which gh`
 4. **Authentication** — verify `gh auth status` succeeds
 

@@ -4,7 +4,7 @@ description: Refresh docs/solutions learnings against the current codebase. Use 
 argument-hint: "[optional: scope hint — directory, filename, module, or keyword] [mode:headless] "
 ---
 
-# Compound Refresh
+# Refresh Learnings
 
 Maintain the quality of `docs/solutions/` over time. This workflow reviews existing learnings against the current codebase, then refreshes any derived pattern docs that depend on them.
 
@@ -75,7 +75,7 @@ For each candidate artifact, classify it into one of five outcomes:
 | **Update** | Core solution is still correct, but references drifted | Apply evidence-backed in-place edits |
 | **Consolidate** | Two or more docs overlap heavily but are both correct | Merge unique content into the canonical doc, delete the subsumed doc |
 | **Replace** | The old artifact is now misleading, but there is a known better replacement | Create a trustworthy successor, then delete the old artifact |
-| **Delete** | No longer useful, applicable, or distinct | Delete the file — git history preserves it if anyone needs to recover it later |
+| **Delete** | No longer useful, applicable, or distinct | Delete the file — JJ history preserves it if anyone needs to recover it later |
 
 ## Core Rules
 
@@ -92,7 +92,7 @@ For each candidate artifact, classify it into one of five outcomes:
    - newer docs, pattern docs, PRs, or issues provide strong successor evidence.
 8. **Delete when the code is gone, and only after checking for inbound links.** If the referenced code, controller, or workflow no longer exists in the codebase and no successor can be found, delete the file — don't default to Keep just because the general advice is still "sound." When in doubt between Keep and Delete, ask the user (in interactive mode) or mark as stale (in headless mode). Inbound links inform classification, not cleanup: cleanup is always mechanical, but **decorative** citations (principle stated inline) allow Delete, while **substantive** citations (citing doc relies on the cited doc) signal Replace. The auto-delete case is missing code, no matching successor, and citations absent or decorative.
 9. **Evaluate document-set design, not just accuracy.** In addition to checking whether each doc is accurate, evaluate whether it is still the right unit of knowledge. If two or more docs overlap heavily, determine whether they should remain separate, be cross-scoped more clearly, or be consolidated into one canonical document. Redundant docs are dangerous because they drift silently — two docs saying the same thing will eventually say different things.
-10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. Git history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `git log --diff-filter=D -- docs/solutions/` will find it.
+10. **Delete, don't archive.** There is no `_archived/` directory. JJ history preserves deleted files — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `jj log docs/solutions/` can find the relevant history.
 
 ## Scope Selection
 
@@ -128,6 +128,18 @@ Before asking the user to classify anything:
 1. Discover candidate artifacts
 2. Estimate scope
 3. Choose the lightest interaction path that fits
+
+### Capture the JJ baseline
+
+Before making any edits, record the current JJ context so Phase 5 can distinguish pre-existing working-copy changes from files changed by this run:
+
+1. Run `jj workspace root` to confirm the workspace root.
+2. Run `jj status` and `jj diff --summary` and retain the changed-path baseline.
+3. Run `jj bookmark list -r 'heads(::@ & bookmarks())'` to identify the nearest local bookmark(s) on the current line of history. A bookmark may point to `@`, an ancestor such as `@-`, or no revision on the current line.
+4. Resolve `trunk()` to identify the configured default-line revision, then use the project's conventions and bookmark names to label it for reporting and GitHub's `--base`. Do not assume the default is named `main`/`master` or that the nearest bookmark is the default bookmark.
+5. Inspect recent descriptions with `jj log -r '::@' -n 10 --no-graph` to learn the repository's change-description style. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active local instructions and observed history syntax win; use the Go guidance only for compatible message quality while describing the change clearly.
+
+Do not create or move a bookmark during baseline capture.
 
 ### Route by Scope
 
@@ -323,7 +335,7 @@ Choose **Consolidate** when Phase 1.75 identified docs that overlap heavily but 
 
 **Consolidate vs Delete:** If the subsumed doc has unique content worth preserving (edge cases, alternative approaches, extra prevention rules), use Consolidate to merge that content first. If the subsumed doc adds nothing the canonical doc doesn't already say, skip straight to Delete.
 
-The Consolidate action is: merge unique content from the subsumed doc into the canonical doc, then delete the subsumed doc. Not archive — delete. Git history preserves it.
+The Consolidate action is: merge unique content from the subsumed doc into the canonical doc, then delete the subsumed doc. Not archive — delete. JJ history preserves it.
 
 ### Replace
 
@@ -350,7 +362,7 @@ Choose **Delete** when:
 - The learning is fully redundant with another doc (use Consolidate if there is unique content to merge first)
 - There is no meaningful successor evidence suggesting it should be replaced instead
 
-Action: delete the file. No archival directory, no metadata — just delete it. Git history preserves every deleted file if recovery is ever needed.
+Action: delete the file. No archival directory, no metadata — just delete it. JJ history preserves every deleted file if recovery is ever needed.
 
 ### Before deleting: check if the problem domain is still active
 
@@ -375,7 +387,7 @@ Search efficiently:
 
 Classify each citation by what it does in its citing context:
 
-- **Decorative** — principle stated inline, citation is a "see also" pointer or bare attribution. Delete is fine; clean up citations in the same commit.
+- **Decorative** — principle stated inline, citation is a "see also" pointer or bare source note. Delete is fine; clean up citations in the same commit.
 - **Substantive** — citing doc relies on the cited doc to provide content not stated inline (e.g., "see X for details on Y" with no inline Y). Signal Replace — write a successor at the same path, or **Keep with narrowed scope** if the doc's actual content is broader than its title implies.
 - **Mixed or unclear** — stale-mark.
 
@@ -528,7 +540,7 @@ Note: if this run **creates** `CONCEPTS.md` from scratch, the Discoverability Ch
 After processing the selected scope, output the following report:
 
 ```text
-Compound Refresh Summary
+Learning Refresh Summary
 ========================
 Scanned: N learnings
 
@@ -550,7 +562,7 @@ Then for EVERY file processed, list:
 - What action was taken (or recommended)
 - For Consolidate: which doc was canonical, what unique content was merged, what was deleted
 
-For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating git churn.
+For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating version-control churn.
 
 ### Headless mode report
 
@@ -578,12 +590,15 @@ If all writes succeed, the Recommended section is empty. If no writes succeed (e
 
 After all actions are executed and the report is generated, handle committing the changes. Skip this phase if no files were modified (all Keep, or all writes failed).
 
-### Detect git context
+### Reconcile JJ context
 
-Before offering options, check:
-1. Which branch is currently checked out (main/master vs feature branch)
-2. Whether the working tree has other uncommitted changes beyond what compound-refresh modified
-3. Recent commit messages to match the repo's commit style
+Re-run `jj status` and `jj diff --summary`, then compare their changed paths with the Phase 0 baseline and the exact paths compound-refresh modified. Classify the current line as:
+
+- **Default line** — the unique nearest local bookmark names the same line as `trunk()`
+- **Feature line** — the nearest local bookmark is a non-default bookmark
+- **Unbookmarked line** — no unique nearest local bookmark identifies the line containing `@`
+
+Also record whether `@` contains pre-existing paths beyond the paths modified by compound-refresh. Do not interpret an absent bookmark at `@` as detached state: JJ bookmarks do not automatically move with new commits and commonly point to `@-` or another ancestor.
 
 ### Headless mode
 
@@ -591,39 +606,50 @@ Use sensible defaults — no user to ask:
 
 | Context | Default action |
 |---------|---------------|
-| On main/master | Create a branch named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), commit, attempt to open a PR. If PR creation fails, report the branch name. |
-| On a feature branch | Commit as a separate commit on the current branch |
-| Git operations fail | Include the recommended git commands in the report and continue |
+| Default or unbookmarked line | Commit the refresh paths, create a bookmark named specifically for what was refreshed at the new commit, push it, and attempt to open a PR. If push or PR creation fails, report the bookmark name and the failed step. |
+| Feature line | Commit the refresh paths as a separate commit and move the unique nearest feature bookmark forward to that commit. Do not push unless the invoking workflow already requires it. |
+| JJ operations fail | Include the recommended JJ commands in the report and continue |
 
-Stage only the files that compound-refresh modified — not other dirty files in the working tree.
+Commit only the exact files that compound-refresh modified by passing them as filesets to `jj commit -m '<description>' <path>...`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active local instructions and observed history syntax win; use the Go guidance only for compatible message quality while describing the refresh accurately. With path arguments, the selected paths remain in the commit being described and all other changes move into the new working-copy commit on top. After that command, the completed refresh commit is `@-`; pre-existing paths remain in `@`.
+
+If any path modified by compound-refresh was already present in the Phase 0 baseline, path selection alone cannot separate the pre-existing and refresh edits within that file. In interactive mode, disclose the overlap and offer `jj commit -i` to select only the intended diff or "Don't commit"; never commit the whole overlapping path while claiming it contains only refresh work. In headless mode, do not commit: report the overlap and the recommended interactive `jj commit -i` step.
+
+For a feature line, advance its bookmark with `jj bookmark move <bookmark> --to @-`. For a new review line, create it with `jj bookmark create <bookmark> -r @-`, then run `jj git push --bookmark <bookmark>`. Resolve the GitHub repository from the URL returned by `jj git remote list`, then use `gh pr create --repo <repository> --head <bookmark> --base <default-bookmark>` so non-colocated JJ workspaces do not require raw Git environment state.
 
 ### Interactive mode
 
-First, run `git branch --show-current` to determine the current branch. Then present the correct options based on the result. Stage only compound-refresh files regardless of which option the user picks.
+Use the reconciled context above, including the nearest bookmark(s) on the current line and the pre-existing-path comparison. Then present the correct options. Commit only compound-refresh paths regardless of which option the user picks.
 
-**If the current branch is main, master, or the repo's default branch:**
+**If on the default line:**
 
-1. Create a branch, commit, and open a PR (recommended) — the branch name should be specific to what was refreshed, not generic (e.g., `docs/refresh-auth-learnings` not `docs/compound-refresh`)
-2. Commit directly to `{current branch name}`
+1. Commit, create a bookmark, push it, and open a PR (recommended) — the bookmark name should be specific to what was refreshed, not generic
+2. Commit and move `{default bookmark name}` directly to the new commit
 3. Don't commit — I'll handle it
 
-**If the current branch is a feature branch, clean working tree:**
+**If on a feature line with no pre-existing paths in `@`:**
 
-1. Commit to `{current branch name}` as a separate commit (recommended)
-2. Create a separate branch and commit
+1. Commit as a separate commit and move `{nearest bookmark name}` forward (recommended)
+2. Commit and create a separate bookmark at the new commit
 3. Don't commit
 
-**If the current branch is a feature branch, dirty working tree (other uncommitted changes):**
+**If on a feature line with pre-existing paths in `@`:**
 
-1. Commit only the compound-refresh changes to `{current branch name}` (selective staging — other dirty files stay untouched)
+1. Commit only the compound-refresh paths and move `{nearest bookmark name}` to that commit (other paths remain in `@`)
 2. Don't commit
 
-### Commit message
+**If on an unbookmarked line:**
 
-Write a descriptive commit message that:
-- Summarizes what was refreshed (e.g., "update 3 stale learnings, consolidate 2 overlapping docs, delete 1 obsolete doc")
-- Follows the repo's existing commit conventions (check recent git log for style)
-- Is succinct — the details are in the changed files themselves
+1. Commit the compound-refresh paths and create a specific bookmark at that commit (recommended)
+2. Commit without creating a bookmark
+3. Don't commit
+
+When a commit should become part of an existing bookmark, run the selective `jj commit` first and then `jj bookmark move <bookmark> --to @-`. When creating a separate line, run the selective commit first and then `jj bookmark create <bookmark> -r @-`. Never move an unrelated bookmark merely because it appears in `jj bookmark list` output; only use a unique nearest bookmark established by the Phase 0 ancestry query, otherwise treat the line as unbookmarked and ask.
+
+### Change description
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+The project's active local instructions and observed history syntax win; use the Go guidance only for compatible message quality while describing the material refresh outcome clearly.
 
 ## Relationship to ce-compound
 
@@ -676,4 +702,4 @@ After the refresh report is generated, check whether the project's instruction f
 
    **Skip this step entirely if `CONCEPTS.md` does not exist** — never nag for an artifact the project has not adopted. When skipped, this step produces no output and no edit.
 
-6. **Amend or create a follow-up commit when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, stage the newly edited file and either amend the existing commit (if still on the same branch and no push has occurred) or create a small follow-up commit (e.g., `docs: add docs/solutions/ discoverability to AGENTS.md`, or `docs: add CONCEPTS.md discoverability to AGENTS.md`, or a combined message when both edits landed). If Phase 5 already pushed the branch to a remote (e.g., the branch+PR path), push the follow-up commit as well so the open PR includes the discoverability change. This keeps the working tree clean and the remote in sync at the end of the run. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits unstaged alongside the other uncommitted refresh changes — no separate commit logic needed.
+6. **Adjust the change or create a follow-up commit when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, commit only the newly edited instruction path with `jj commit -m '<description>' <instruction-path>`, then move the same bookmark to `@-` if Phase 5 associated the refresh with one. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active local instructions and observed history syntax win; use the Go guidance only for compatible message quality while describing the discoverability change accurately. If Phase 5 already pushed that bookmark, run `jj git push --bookmark <bookmark>` again so the open PR includes the follow-up commit. This leaves unrelated paths in `@` and keeps the remote bookmark current. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits in the working-copy commit alongside the other refresh changes — no separate commit logic needed.

@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip, standalone video, standalone audio, and
 meeting notes text/markdown. The script extracts transcript, high-signal
-video frames when available, and CE-friendly markdown artifacts.
+video frames when available, and structured markdown artifacts.
 """
 
 from __future__ import annotations
@@ -50,6 +50,7 @@ NOISY_NETWORK_PATTERNS = (
 VIDEO_EXTENSIONS = {".webm", ".mp4", ".mov", ".m4v", ".mkv", ".avi"}
 AUDIO_EXTENSIONS = {".webm", ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".ogg", ".flac"}
 NOTES_EXTENSIONS = {".txt", ".md", ".markdown", ".text"}
+LOCAL_ONLY_IGNORE_PATTERNS = ("/raw/", "/frames/")
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,6 +69,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--no-transcribe", action="store_true", help="Skip media transcription")
     parser.add_argument("--max-moments", type=int, default=12, help="Maximum screenshots to extract")
+    parser.add_argument("--allow-untrack-tracked-media", action="store_true", help="Explicitly approve JJ untracking of already tracked raw/ and frames/ media before overwrite")
     return parser.parse_args()
 
 
@@ -100,6 +102,47 @@ def safe_extract(zip_path: Path, dest: Path) -> None:
                 resolved.parent.mkdir(parents=True, exist_ok=True)
                 with archive.open(member) as source, resolved.open("wb") as target:
                     shutil.copyfileobj(source, target)
+
+
+def ensure_local_only_ignores(output_dir: Path) -> None:
+    """Keep private media out of JJ's automatically tracked working-copy change."""
+    ignore_path = output_dir / ".gitignore"
+    existing = ignore_path.read_text() if ignore_path.exists() else ""
+    existing_lines = set(existing.splitlines())
+    missing = [pattern for pattern in LOCAL_ONLY_IGNORE_PATTERNS if pattern not in existing_lines]
+    if not missing:
+        return
+
+    separator = "" if not existing or existing.endswith("\n") else "\n"
+    ignore_path.write_text(existing + separator + "\n".join(missing) + "\n")
+
+
+def jj_tracked_media(output_dir: Path) -> tuple[Path | None, list[str]]:
+    probe_dir = output_dir.parent
+    while not probe_dir.exists() and probe_dir != probe_dir.parent:
+        probe_dir = probe_dir.parent
+    try:
+        root_result = subprocess.run(["jj", "workspace", "root"], cwd=probe_dir, capture_output=True, text=True, check=False)
+    except (FileNotFoundError, OSError):
+        return None, []
+    if root_result.returncode != 0:
+        return None, []
+    repo_root = Path(root_result.stdout.strip()).resolve()
+    try:
+        media_paths = [str((output_dir / name).relative_to(repo_root)) for name in ("raw", "frames")]
+    except ValueError:
+        return repo_root, []
+    listed = subprocess.run(["jj", "file", "list", "-r", "@", *media_paths], cwd=repo_root, capture_output=True, text=True, check=False)
+    if listed.returncode != 0:
+        raise RuntimeError(f"Could not verify JJ tracking state: {listed.stderr.strip()}")
+    return repo_root, [line for line in listed.stdout.splitlines() if line]
+
+
+def untrack_media(repo_root: Path, output_dir: Path) -> None:
+    media_paths = [str((output_dir / name).relative_to(repo_root)) for name in ("raw", "frames")]
+    result = subprocess.run(["jj", "file", "untrack", *media_paths], cwd=repo_root, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"Could not untrack private media: {result.stderr.strip()}")
 
 
 def default_output_dir(zip_path: Path) -> Path:
@@ -680,7 +723,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a requirements document retained in JJ history.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -725,11 +768,11 @@ def write_requirements_kickoff(
         "",
         "---",
         "",
-        "## Actors",
+        "## Participants",
         "",
-        "- A1. User: Operates the product in the recorded session and verbalizes friction.",
-        "- A2. Product surface: The UI and backend behavior visible in the recording.",
-        "- A3. Brainstorm agent: Uses the evidence bundle to confirm, correct, and group requirements before planning.",
+        "- participant-1. Operates the product in the recorded session and verbalizes friction.",
+        "- participant-2. Represents the UI and backend behavior visible in the recording.",
+        "- participant-3. Uses the evidence bundle to confirm, correct, and group requirements before planning.",
         "",
         "---",
         "",
@@ -737,7 +780,7 @@ def write_requirements_kickoff(
         "",
         "- F1. Evidence-backed feedback triage",
         "  - **Trigger:** A feedback zip, video, audio file, or meeting notes file is available.",
-        "  - **Actors:** A1, A2, A3",
+        "  - **Participants:** participant-1, participant-2, participant-3",
         "  - **Steps:** Extract or copy the source, transcribe media or read notes, select high-signal moments when video exists, inspect screenshots when available, confirm problems, and write requirements with supporting evidence.",
         "  - **Outcome:** Confirmed product problems are represented as requirements with transcript support and screenshot support when visual evidence exists.",
         "  - **Covered by:** R1, R2, R3",
@@ -853,7 +896,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Commit policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; commit generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
+        "- JJ retention policy: output-local `.gitignore` rules keep raw media, audio chunks, zip contents, session dumps, and extracted screenshots out of the working-copy change by default; generated Markdown/JSON/manifests may remain when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -874,10 +917,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not commit-safe by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; ignored from JJ tracking by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be committed by default.")
+    lines.append("Extracted screenshots are retained locally for agent inspection and ignored from JJ tracking by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -896,7 +939,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not commit these unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally local-only and ignored from JJ tracking by default. Remove the ignore rules only when the user explicitly asks to retain them in history and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")
@@ -1036,7 +1079,22 @@ def main() -> int:
         return 1
 
     output_dir = (args.output_dir or default_output_dir(source_path)).expanduser().resolve()
+    try:
+        repo_root, tracked_media = jj_tracked_media(output_dir)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if tracked_media and not args.allow_untrack_tracked_media:
+        print("Refusing to overwrite tracked private media. JJ reports:\n  " + "\n  ".join(tracked_media) + "\nRe-run with --allow-untrack-tracked-media to explicitly approve untracking first.", file=sys.stderr)
+        return 1
     output_dir.mkdir(parents=True, exist_ok=True)
+    ensure_local_only_ignores(output_dir)
+    if tracked_media and repo_root is not None:
+        try:
+            untrack_media(repo_root, output_dir)
+        except RuntimeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     raw_dir = output_dir / "raw"
     frames_dir = output_dir / "frames"
     source = prepare_source(source_path, raw_dir)
@@ -1070,7 +1128,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = Path.cwd()
+    repo_root = repo_root or Path.cwd()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
@@ -1113,7 +1171,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under docs/plans/.")
     return 0
 

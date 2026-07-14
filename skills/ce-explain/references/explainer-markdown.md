@@ -27,4 +27,4 @@ Never hand-draw box-drawing/ASCII diagrams — mermaid or prose. Diagrams comple
 
 - Lead each section with the point, then the mechanism, then the caveat.
 - Dense is good; long is not — one sitting's read.
-- Real code from the grounding evidence where it exists; language-tagged fences always.
+- Real code from the grounding evidence where it exists; language-tagged fences always. For Go, preserve local conventions and use idiomatic, `gofmt`-compatible examples with errors handled explicitly.

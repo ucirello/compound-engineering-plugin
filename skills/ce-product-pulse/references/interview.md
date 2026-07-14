@@ -1,6 +1,6 @@
 # Product Pulse First-Run Interview
 
-Loaded by `SKILL.md` at the start of Phase 1. Captures the configuration that will be merged into `.compound-engineering/config.local.yaml` (the unified CE local config, gitignored, machine-local) as `pulse_*` keys and re-read on every subsequent run.
+Loaded by `SKILL.md` at the start of Phase 1. Captures the configuration that will be merged into `.rocketclaw/config.local.yaml` (ignored, repository-local config) as `pulse_*` keys and re-read on every subsequent run.
 
 For each section: ask the opening question, evaluate the answer against the quality bar, push back when it falls into a named anti-pattern, and capture the final answer in the user's own language.
 
@@ -118,7 +118,7 @@ Compile the full list of signals that need a source:
 - Each completion/conversion event (section 4)
 - Each key metric carried from the strategy doc, if strategy was seeded
 
-For each entry, ask one question: "Where does `{{event or metric}}` live? Name the tool (e.g. Mixpanel, PostHog, Amplitude, Stripe, internal DB) and how the agent would query it."
+For each entry, ask one question: "Where does `{{event or metric}}` live? Name the tool (e.g. Mixpanel, PostHog, Amplitude, Stripe, internal DB) and how the AI Assistant would query it."
 
 The answer produces (tool name, query shape). If multiple entries land in the same tool, consolidate them into one source entry.
 
@@ -139,14 +139,14 @@ After each unique source is named, check MCP coverage:
 
 1. Call `search_mcp_registry` with the tool name to see if an official or community MCP exists. Do not guess from memory.
 2. If one exists and the user already has it connected (ask: "Is the `{{tool}}` MCP already connected?"), note `using MCP for {{tool}}` in the config.
-3. If one exists but the user hasn't connected it, suggest: "There's an MCP for `{{tool}}`. Connecting it is the fastest way to let the agent query on each run - I can call `suggest_connectors` to walk you through it, or we can skip and I'll note the source as `manual - agent will need credentials or another path`."
-4. If no MCP exists, capture `manual` and note what shape of query the agent should use (CLI, API, etc.).
+3. If one exists but the user hasn't connected it, suggest: "There's an MCP for `{{tool}}`. Connecting it is the fastest way to let the AI Assistant query on each run - I can call `suggest_connectors` to walk you through it, or we can skip and I'll note the source as `manual - AI Assistant will need credentials or another path`."
+4. If no MCP exists, capture `manual` and note what shape of query the AI Assistant should use (CLI, API, etc.).
 
 Do not set up MCP connections inside this interview - that's a separate flow. Just record which tools have MCP coverage and which do not.
 
 ### 6.2 Database access (optional, read-only only)
 
-Ask explicitly: "Do you have a read-only database connection you'd like the agent to use for any signals that live in the DB? Read-only only - I will refuse a read-write connection."
+Ask explicitly: "Do you have a read-only database connection you'd like the AI Assistant to use for any signals that live in the DB? Read-only only - I will refuse a read-write connection."
 
 **Handling the answer:**
 
@@ -224,9 +224,9 @@ Skipping this entirely is fine - the skill does not require a schedule to functi
 
 ## Config File Shape
 
-After the interview completes, merge a `pulse_*` block into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `git rev-parse --show-toplevel`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
+After the interview completes, merge a `pulse_*` block into `<workspace-root>/.rocketclaw/config.local.yaml`. Resolve the Jujutsu workspace root with `jj workspace root`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
 
-If the file does not yet exist, create the directory and file. If `.compound-engineering/config.local.yaml` is not already covered by `.gitignore`, offer to add the entry before writing.
+If the file does not yet exist, create the directory and file. If `.rocketclaw/config.local.yaml` is not already covered by `.gitignore`, offer to add the entry before writing. Jujutsu intentionally honors Git-format `.gitignore` files; this is ignore-file interoperability, not a Git CLI workflow.
 
 The pulse block uses skill-prefixed flat keys so it can share the config file without owning unrelated settings:
 

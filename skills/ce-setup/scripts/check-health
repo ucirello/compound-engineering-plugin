@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Compound Engineering environment health check.
-# Reports optional tool capabilities and repo-local config safety in one pass.
-
+# Plugin environment health check.
+# Reports optional tool capabilities and workspace-local config safety in one pass.
 set -o pipefail
 
 # =====================================================
@@ -40,7 +39,9 @@ detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "yes" || echo "no")
+workspace_root=$(jj --ignore-working-copy workspace root 2>/dev/null || true)
+in_workspace=$([ -n "$workspace_root" ] && echo "yes" || echo "no")
+project_root=${workspace_root:-"$PWD"}
 
 # =====================================================
 #  Check optional capabilities
@@ -64,39 +65,65 @@ for entry in "${deps[@]}"; do
 done
 
 # =====================================================
-#  Project checks (repo only)
+#  Project checks
 # =====================================================
 
 legacy_cfg="skip"
-repo_cfg_gitignore="skip"
+local_cfg_ignored="skip"
 local_cfg="skip"
 example_cfg="skip"
 project_issues=0
 
-if [ "$in_repo" = "yes" ]; then
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
-  legacy_cfg="missing"
-  [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
+legacy_cfg="missing"
+[ -f "$project_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
-  local_cfg="missing"
-  if [ -e "$repo_root/.compound-engineering/config.local.yaml" ]; then
-    local_cfg="present"
-    if git check-ignore -q "$repo_root/.compound-engineering/config.local.yaml" 2>/dev/null; then
-      repo_cfg_gitignore="ok"
-    else
-      repo_cfg_gitignore="missing"
-    fi
-  fi
+local_cfg="missing"
+if [ -e "$project_root/.rocketclaw/config.local.yaml" ]; then
+  local_cfg="present"
+fi
 
-  script_dir="$(cd "$(dirname "$0")" && pwd)"
-  template="$script_dir/../references/config-template.yaml"
-  example="$repo_root/.compound-engineering/config.local.example.yaml"
-  if [ ! -f "$example" ]; then
-    example_cfg="missing"
-  elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
-    example_cfg="outdated"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+template="$script_dir/../references/config-template.yaml"
+example="$project_root/.rocketclaw/config.local.example.yaml"
+if [ ! -f "$example" ]; then
+  example_cfg="missing"
+elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
+  example_cfg="outdated"
+else
+  example_cfg="ok"
+fi
+
+if [ "$in_workspace" = "yes" ] && [ "$local_cfg" = "present" ]; then
+  local_cfg_path=".rocketclaw/config.local.yaml"
+  tracked_path=$(jj --ignore-working-copy file list -- "$local_cfg_path" 2>/dev/null || true)
+  if [ "$tracked_path" = "$local_cfg_path" ]; then
+    local_cfg_ignored="missing"
   else
-    example_cfg="ok"
+    scratch_root="$project_root/.tmp"
+    inspection_parent="$scratch_root/rocketclaw"
+    inspection_root=""
+    if [ ! -L "$scratch_root" ] &&
+       { [ -d "$scratch_root" ] || mkdir "$scratch_root" 2>/dev/null; } &&
+       [ ! -L "$inspection_parent" ] &&
+       { [ -d "$inspection_parent" ] || mkdir "$inspection_parent" 2>/dev/null; }; then
+      for attempt in {1..10}; do
+        candidate="$inspection_parent/ce-setup-ignore-$$-$RANDOM-$attempt"
+        if mkdir "$candidate" 2>/dev/null; then
+          inspection_root="$candidate"
+          break
+        fi
+      done
+    fi
+    if [ -n "$inspection_root" ] && mkdir "$inspection_root/.rocketclaw" 2>/dev/null; then
+      cp "$project_root/.rocketclaw/config.local.yaml" "$inspection_root/$local_cfg_path"
+      [ ! -f "$project_root/.gitignore" ] || cp "$project_root/.gitignore" "$inspection_root/.gitignore"
+      [ ! -f "$project_root/.rocketclaw/.gitignore" ] || cp "$project_root/.rocketclaw/.gitignore" "$inspection_root/.rocketclaw/.gitignore"
+      if jj git init --no-colocate "$inspection_root" >/dev/null 2>&1; then
+        inspected_path=$(jj -R "$inspection_root" file list -- "root-file:$local_cfg_path" 2>/dev/null || true)
+        [ "$inspected_path" != "$local_cfg_path" ] && local_cfg_ignored="ok" || local_cfg_ignored="missing"
+      fi
+    fi
+    [ -z "$inspection_root" ] || rm -rf -- "$inspection_root"
   fi
 fi
 
@@ -126,40 +153,38 @@ for result in "${results[@]}"; do
   fi
 done
 
-if [ "$in_repo" = "yes" ]; then
-  section "Project config"
+section "Project config"
+detail "Project root: $project_root"
 
-  if [ "$legacy_cfg" = "present" ]; then
-    warn "Obsolete compound-engineering.local.md exists"
-    project_issues=$((project_issues + 1))
+if [ "$legacy_cfg" = "present" ]; then
+  warn "Obsolete rocketclaw.local.md exists"
+  project_issues=$((project_issues + 1))
+else
+  ok "No obsolete rocketclaw.local.md"
+fi
+
+if [ "$local_cfg" = "present" ]; then
+  ok ".rocketclaw/config.local.yaml exists"
+  if [ "$in_workspace" != "yes" ]; then
+    skip "JJ ignore safety unavailable outside a JJ workspace"
+  elif [ "$local_cfg_ignored" = "ok" ]; then
+    ok "Local config is ignored by JJ"
   else
-    ok "No obsolete compound-engineering.local.md"
-  fi
-
-  if [ "$local_cfg" = "present" ]; then
-    ok ".compound-engineering/config.local.yaml exists"
-    if [ "$repo_cfg_gitignore" = "ok" ]; then
-      ok "Local config is gitignored"
-    else
-      warn "Local config is not safely gitignored"
-      project_issues=$((project_issues + 1))
-    fi
-  else
-    skip "No local config yet (.compound-engineering/config.local.yaml)"
-  fi
-
-  if [ "$example_cfg" = "ok" ]; then
-    ok "Example config is current"
-  elif [ "$example_cfg" = "missing" ]; then
-    warn "Example config missing (.compound-engineering/config.local.example.yaml)"
-    project_issues=$((project_issues + 1))
-  elif [ "$example_cfg" = "outdated" ]; then
-    warn "Example config outdated (new settings available)"
+    warn "Local config is not safely ignored by JJ"
     project_issues=$((project_issues + 1))
   fi
 else
-  section "Project config"
-  skip "Not inside a git repository"
+  skip "No local config yet (.rocketclaw/config.local.yaml)"
+fi
+
+if [ "$example_cfg" = "ok" ]; then
+  ok "Example config is current"
+elif [ "$example_cfg" = "missing" ]; then
+  warn "Example config missing (.rocketclaw/config.local.example.yaml)"
+  project_issues=$((project_issues + 1))
+elif [ "$example_cfg" = "outdated" ]; then
+  warn "Example config outdated (new settings available)"
+  project_issues=$((project_issues + 1))
 fi
 
 echo ""

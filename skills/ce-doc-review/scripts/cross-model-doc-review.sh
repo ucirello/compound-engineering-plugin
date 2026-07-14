@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cross-model-doc-review.sh
 #
-# Runs ONE ce-doc-review judgment persona through ONE or more DIFFERENT model
+# Runs ONE document-review judgment persona through ONE or more DIFFERENT model
 # PROVIDERS than the host (the "peer(s)") in separate, read-only, least-privilege
 # processes, and writes each peer's findings as JSON into the run dir. Each peer
 # gets the same canonical persona brief the in-process reviewer uses
@@ -162,8 +162,9 @@ RUN_DIR="${7:-}"
 : "${ORIGIN:=none}"
 [ -n "$RUN_DIR" ] || skip "run-dir not given; skipping"
 # Create the scratch run-dir rather than skipping when it doesn't exist yet:
-# ce-doc-review (unlike ce-code-review) has no pre-existing run-artifact dir, and
-# the caller is told to pass a fresh path like /tmp/compound-engineering/ce-doc-review/<run-id>/.
+# Document review has no pre-existing run-artifact dir, and the caller is told
+# to pass a fresh workspace-local path under $(jj workspace root)/.tmp, with the
+# current project's .tmp used outside JJ.
 # Requiring it to pre-exist would silently no-op the whole pass (no fold-in files).
 mkdir -p "$RUN_DIR" 2>/dev/null
 [ -d "$RUN_DIR" ] || skip "run-dir '$RUN_DIR' could not be created; skipping"
@@ -299,8 +300,32 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+if PROJECT_ROOT="$(jj workspace root 2>/dev/null)"; then :; else PROJECT_ROOT="$PWD"; fi
+SCRATCH_ROOT="$PROJECT_ROOT/.tmp/rocketclaw/cross-model-doc-review"
+mkdir -p "$SCRATCH_ROOT" || skip "cannot create repo-local scratch dir; skipping"
+
+new_local_file() {
+  local prefix="$1" candidate i=0
+  while [ "$i" -lt 100 ]; do
+    candidate="$SCRATCH_ROOT/$prefix-$$-${RANDOM:-0}-$i"
+    if (set -C; : > "$candidate") 2>/dev/null; then printf '%s\n' "$candidate"; return 0; fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+new_local_dir() {
+  local prefix="$1" candidate i=0
+  while [ "$i" -lt 100 ]; do
+    candidate="$SCRATCH_ROOT/$prefix-$$-${RANDOM:-0}-$i"
+    if mkdir "$candidate" 2>/dev/null; then printf '%s\n' "$candidate"; return 0; fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+PROMPT_FILE="$(new_local_file xmodel-doc-prompt)" || skip "cannot create repo-local prompt file; skipping"
+PEERLOG="$(new_local_file xmodel-doc-log)" || { rm -f "$PROMPT_FILE"; skip "cannot create repo-local log file; skipping"; }
 trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 # Basename only in the peer prompt: content is already embedded (KTD3). An absolute
 # path would give cursor-agent residual-Read a repo coordinate to walk from.
@@ -477,8 +502,8 @@ run_provider() {   # <provider>
   # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
   # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
-  # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  # A scratch-directory failure preserves prior behavior by using the run dir.
+  PEER_WORKDIR="$(new_local_dir xmodel-doc-peer)" || PEER_WORKDIR="$RUN_DIR"
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   case "$provider" in
     codex)    primary="codex" ;;
@@ -524,8 +549,10 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
-    if jq --arg r "$REVIEWER_NAME-$provider" --arg route "$ACTUAL_ROUTE" \
+    _norm="$(new_local_file xmodel-doc-norm)" || _norm=""
+    if [ -z "$_norm" ]; then
+      log "cannot create repo-local normalization file; skipping fold-in"
+    elif jq --arg r "$REVIEWER_NAME-$provider" --arg route "$ACTUAL_ROUTE" \
          'if (.findings|type)=="array"
           then { reviewer: $r,
                  cross_model_route: $route,

@@ -12,14 +12,14 @@ allowed-tools:
 
 Proof is a collaborative document editor for humans and agents. This skill uses the **hosted web API** at `https://www.proofeditor.ai` (HTTP/`Bash`). If typed `proof_*` MCP tools are already available in the harness, prefer them; otherwise use the HTTP recipes below.
 
-## Identity and Attribution
+## Identity
 
-Every write to a Proof doc must be attributed. Two fields carry the agent's identity:
+Every write to a Proof doc must include the agent's identity. Two fields carry it:
 
-- **Machine ID (`by` on every op, `X-Agent-Id` header):** `ai:compound-engineering` — stable, lowercase-hyphenated, machine-parseable. Appears in marks, events, and the API response.
-- **Display name (`name` on `POST /presence`):** `Compound Engineering` — human-readable, shown in Proof's presence chips and comment-author badges.
+- **Machine ID (`by` on every op, `X-Agent-Id` header):** `ai:assistant` — stable and machine-parseable. Appears in marks, events, and the API response.
+- **Display name (`name` on `POST /presence`):** `AI Assistant` — human-readable and shown in Proof's presence and comments.
 
-Set the display name once per doc session by posting to presence with the `X-Agent-Id` header; Proof binds the name to that agent ID for the session. These values are the defaults for any caller of this skill; a caller may pass a different `identity` pair if a distinct sub-agent should own the doc. Do not use `ai:compound` or other ad-hoc variants — identity stays uniform unless a caller explicitly overrides it.
+Set the display name once per doc session by posting to presence with the `X-Agent-Id` header; Proof binds the name to that agent ID for the session. Use this identity pair uniformly for every caller of the skill.
 
 ## Publish Mode
 
@@ -42,7 +42,7 @@ Document creation returns two credentials with different jobs:
 - `accessToken` — everyday bearer for read, edit, presence, and events. Use this for all non-owner agent API calls.
 - `ownerSecret` — owner authority only (delete and other owner-level ops). Never use it as the everyday bearer.
 
-Store them separately for the session (shell vars or equivalent non-repo memory). Never write `ownerSecret` or `accessToken` into repo-tracked files, commits, or durable project logs. Never expose `ownerSecret` in user-facing UI copy.
+Store them separately for the session (shell vars or equivalent non-repo memory). Never write `ownerSecret` or `accessToken` into repo-tracked files, JJ history, or durable project logs. Never expose `ownerSecret` in user-facing UI copy.
 
 Always hand humans the tokenized link (`tokenUrl`), never a bare `/d/<slug>` alone — the editor token doubles as claim capability for ownerless docs.
 
@@ -102,7 +102,7 @@ curl -sS -H "Accept: text/markdown" "https://www.proofeditor.ai/d/{slug}?token=<
 
 curl -sS "https://www.proofeditor.ai/api/agent/{slug}/v3/document" \
   -H "Authorization: Bearer <token>" \
-  -H "X-Agent-Id: ai:compound-engineering"
+  -H "X-Agent-Id: ai:assistant"
 # -> { ok, revision, title, markdown, comments[], suggestions[], mutationReady? }
 ```
 
@@ -120,10 +120,10 @@ Send `{ by, baseRevision?, operations: [...] }` to `POST /api/agent/{slug}/v3/ed
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/{slug}/v3/edit" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: ai:assistant" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "by":"ai:compound-engineering",
+    "by":"ai:assistant",
     "operations":[
       {"op":"replace","find":"old visible text","with":"new text"},
       {"op":"comment","on":"text to anchor on","body":"Is this still accurate?"}
@@ -179,8 +179,8 @@ After every successful edit: confirm `ok:true`, confirm the intended text/commen
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/{slug}/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
-  -H "X-Agent-Id: ai:compound-engineering" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Joining the doc"}'
+  -H "X-Agent-Id: ai:assistant" \
+  -d '{"name":"AI Assistant","status":"reading","summary":"Joining the doc"}'
 ```
 
 Common statuses: `reading`, `thinking`, `acting`, `waiting`, `completed`, `error`.
@@ -220,20 +220,20 @@ If a mutation keeps failing after a fresh read and one safe retry, call `POST ht
 When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 1. Extract the slug and token
-2. Bind presence with the CE identity defaults
+2. Bind presence with the default identity
 3. Read via `v3/document`
 4. Edit with `v3/edit` (narrow content ops; review ops for comments/suggestions)
 
 ```bash
 TOKEN="xxx"
 SLUG="abc123"
-AGENT="ai:compound-engineering"
+AGENT="ai:assistant"
 
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Reviewing doc"}'
+  -d '{"name":"AI Assistant","status":"reading","summary":"Reviewing doc"}'
 
 DOC=$(curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
@@ -247,7 +247,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d "$(jq -n --argjson rev "${REVISION:-null}" '{
-    by:"ai:compound-engineering",
+    by:"ai:assistant",
     baseRevision: (if $rev == null then null else $rev end),
     operations:[{op:"comment",on:"text to comment on",body:"Your comment here"}]
   } | if .baseRevision == null then del(.baseRevision) else . end')"
@@ -258,7 +258,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:compound-engineering","operations":[{"op":"replace","find":"old","with":"new"}]}'
+  -d '{"by":"ai:assistant","operations":[{"op":"replace","find":"old","with":"new"}]}'
 
 # Tracked suggestion
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
@@ -266,7 +266,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:compound-engineering","operations":[{"op":"suggest","kind":"replace","find":"old","with":"new"}]}'
+  -d '{"by":"ai:assistant","operations":[{"op":"suggest","kind":"replace","find":"old","with":"new"}]}'
 ```
 
 ## Workflow: Create and Share a New Document
@@ -291,8 +291,8 @@ OWNER_SECRET=$(echo "$RESPONSE" | jq -r '.ownerSecret')   # required for owner d
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Uploaded doc"}'
+  -H "X-Agent-Id: ai:assistant" \
+  -d '{"name":"AI Assistant","status":"reading","summary":"Uploaded doc"}'
 
 echo "$URL"
 ```
@@ -321,13 +321,20 @@ SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-STATE_TMP=$(mktemp)
+ROOT="$(jj workspace root 2>/dev/null)"
+if [ -n "$ROOT" ]; then
+  TMP_DIR="$ROOT/.tmp/rocketclaw/proof"
+else
+  TMP_DIR=".tmp/rocketclaw/proof"
+fi
+mkdir -p "$TMP_DIR"
+STATE_TMP="$TMP_DIR/proof-state.$$"
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" > "$STATE_TMP"
+  -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"
 REVISION=$(jq -r '.revision // empty' "$STATE_TMP")
 
-TMP="${LOCAL}.proof-sync.$$"
+TMP="$TMP_DIR/proof-sync.$$"
 jq -jr '.markdown' "$STATE_TMP" > "$TMP" && mv "$TMP" "$LOCAL"
 rm "$STATE_TMP"
 ```
@@ -340,7 +347,7 @@ rm "$STATE_TMP"
 
 - Use `v3/document` as source of truth before editing
 - Prefer narrow `replace` / `insert` / `delete` before `suggest` or `set_document`
-- Always include `by: "ai:compound-engineering"` on writes and `X-Agent-Id: ai:compound-engineering` in headers
+- Always include `by: "ai:assistant"` on writes and `X-Agent-Id: ai:assistant` in headers
 - Use `accessToken` for everyday calls; reserve `ownerSecret` for owner delete
-- Never commit share tokens or owner secrets to the project tree
+- Never record share tokens or owner secrets in the project tree or JJ history
 - On `TARGET_AMBIGUOUS` / retryable errors, re-resolve against `error.current` — do not double-apply comments blindly

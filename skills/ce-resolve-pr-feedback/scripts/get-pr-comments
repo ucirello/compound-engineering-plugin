@@ -16,16 +16,18 @@ if [ -n "$2" ]; then
     REPO=$(echo "$2" | cut -d/ -f2)
 else
     # `|| true` is load-bearing: under `set -e`, a failed command substitution
-    # in an assignment aborts the script immediately. Run outside a git repo,
-    # `gh repo view` exits 1, its stderr is swallowed by `2>/dev/null`, and the
+    # in an assignment aborts the script immediately. In a non-colocated JJ
+    # workspace, point GitHub CLI at JJ's backing store; `gh repo view`
+    # otherwise exits 1, its stderr is swallowed by `2>/dev/null`, and the
     # script would die here with rc=1 and no output -- making the friendly error
     # below unreachable. Keep `|| true` so detection failure falls through to it.
-    OWNER=$(gh repo view --json owner -q .owner.login 2>/dev/null || true)
-    REPO=$(gh repo view --json name -q .name 2>/dev/null || true)
+    JJ_GIT_ROOT=$(jj git root 2>/dev/null || true)
+    OWNER=$(GIT_DIR="$JJ_GIT_ROOT" gh repo view --json owner -q .owner.login 2>/dev/null || true)
+    REPO=$(GIT_DIR="$JJ_GIT_ROOT" gh repo view --json name -q .name 2>/dev/null || true)
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-pr-comments from inside the target git repository, or pass OWNER/REPO as the second argument (e.g., get-pr-comments $PR_NUMBER EveryInc/cora)." >&2
+    echo "Error: could not resolve owner/repo from the current JJ workspace. Pass OWNER/REPO as the second argument (e.g., get-pr-comments $PR_NUMBER EveryInc/cora)." >&2
     exit 1
 fi
 

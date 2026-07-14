@@ -5,8 +5,10 @@ node_modules/
 todos/
 .worktrees
 .context/
+.tmp/
 .claude/worktrees/
 __pycache__/
 *.pyc
 
-.compound-engineering/*.local.yaml
+.rocketclaw/*.local.yaml
+loop.old.sh

@@ -1,32 +1,32 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communication message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate, value-communicating message.
+description: Describe and finalize a JJ change with a clear, value-communicating message. Use when the user asks to describe/finalize/save working-copy changes with a repo-appropriate message.
 ---
 
-# Git Commit
+# JJ Describe and Finalize
 
-Create a single, well-crafted git commit from the current working tree changes.
+Create one or more well-described JJ changes from the current working copy.
 
 ## Context
 
 **On platforms other than Claude Code**, skip to the "Context fallback" section below and run the command there to gather context.
 
-**In Claude Code**, the five labeled sections below (Git status, Working tree diff, Current branch, Recent commits, Remote default branch) contain pre-populated data. Use them directly throughout this skill -- do not re-run these commands.
+**In Claude Code**, the five labeled sections below (JJ status, Working-copy diff, Current bookmarks, Recent changes, Remote default branch) contain pre-populated data. Use them directly throughout this skill -- do not re-run these commands.
 
-**Git status:**
-!`git status`
+**JJ status:**
+!`jj status`
 
-**Working tree diff:**
-!`git diff HEAD`
+**Working-copy diff:**
+!`jj diff`
 
-**Current branch:**
-!`git branch --show-current`
+**Bookmarks at the current change or its parent:**
+!`jj bookmark list -r '@ | @-'`
 
-**Recent commits:**
-!`git log --oneline -10`
+**Recent changes:**
+!`jj log -r 'ancestors(@, 10)' --limit 10`
 
 **Remote default branch:**
-!`git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'`
+!`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'`
 
 ### Context fallback
 
@@ -35,7 +35,7 @@ Create a single, well-crafted git commit from the current working tree changes.
 Run this single command to gather all context:
 
 ```bash
-printf '=== STATUS ===\n'; git status; printf '\n=== DIFF ===\n'; git diff HEAD; printf '\n=== BRANCH ===\n'; git branch --show-current; printf '\n=== LOG ===\n'; git log --oneline -10; printf '\n=== DEFAULT_BRANCH ===\n'; git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'
+printf '=== STATUS ===\n'; jj status; printf '\n=== DIFF ===\n'; jj diff; printf '\n=== BOOKMARKS ===\n'; jj bookmark list -r '@ | @-'; printf '\n=== LOG ===\n'; jj log -r 'ancestors(@, 10)' --limit 10; printf '\n=== DEFAULT_BRANCH ===\n'; gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'
 ```
 
 ---
@@ -44,62 +44,53 @@ printf '=== STATUS ===\n'; git status; printf '\n=== DIFF ===\n'; git diff HEAD;
 
 ### Step 1: Gather context
 
-Use the context above (git status, working tree diff, current branch, recent commits, remote default branch). All data needed for this step is already available -- do not re-run those commands.
+Use the context above (JJ status, working-copy diff, current bookmarks, recent changes, remote default branch). All data needed for this step is already available -- do not re-run those commands.
 
-The remote default branch value returns something like `origin/main`. Strip the `origin/` prefix to get the branch name. If it returned `__DEFAULT_BRANCH_UNRESOLVED__` or a bare `HEAD`, try:
+If the remote default branch returned `__DEFAULT_BRANCH_UNRESOLVED__`, try:
 
 ```bash
 gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
 ```
 
-If both fail, fall back to `main`.
+If that fails, fall back to `main`.
 
-If the git status from the context above shows a clean working tree (no staged, modified, or untracked files), report that there is nothing to commit and stop.
+If the JJ status from the context above shows no working-copy changes, report that there is nothing to describe or finalize and stop.
 
-If the current branch from the context above is empty, the repository is in detached HEAD state. Explain that a branch is required before committing if the user wants this work attached to a branch. Ask whether to create a feature branch now. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+If neither the current change nor its parent has a bookmark, explain that a bookmark is required only if the user wants this work attached to a name for pushing. Ask whether to create a feature bookmark now. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
-- If the user chooses to create a branch, derive the name from the change content, create it with `git checkout -b <branch-name>`, then run `git branch --show-current` again and use that result as the current branch name for the rest of the workflow.
-- If the user declines, continue with the detached HEAD commit.
+- If the user chooses to create a bookmark, derive the name from the change content, create it with `jj bookmark create <bookmark-name> -r @`, then run `jj bookmark list -r @` again and use that result for the rest of the workflow.
+- If the user declines, continue with the unbookmarked JJ change.
 
-### Step 2: Determine commit message convention
+### Step 2: Determine JJ description convention
 
-Follow this priority order:
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-1. **Repo conventions already in context** -- If project instructions (AGENTS.md, CLAUDE.md, or similar) are already loaded and specify commit message conventions, follow those. Do not re-read these files; they are loaded at session start.
-2. **Recent commit history** -- If no explicit convention is documented, examine the 10 most recent commits from Step 1. If a clear pattern emerges (e.g., conventional commits, ticket prefixes, emoji prefixes), match that pattern.
-3. **Default: conventional commits** -- If neither source provides a pattern, use conventional commit format: `type(scope): description` where type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `style`, `build`.
+Repository-local instructions and the repository's `git log` syntax always win. Apply compatible Go quality guidance: use concise imperative wording focused on intent, with motivation or context for non-trivial changes. Derive any prefix, type, scope, ticket, emoji, subject form, capitalization, punctuation, body structure, or other syntax dynamically from those sources; never impose a fixed template.
 
-When using conventional commits, choose the type that most precisely describes the change (the type list above). Where `fix:` and `feat:` both seem to fit, default to `fix:`: a change that remedies broken or missing behavior is `fix:` even when implemented by adding code. Reserve `feat:` for capabilities the user could not previously accomplish. Other types remain primary when they fit better. The user may override for a specific change.
+### Step 3: Consider logical changes
 
-### Step 3: Consider logical commits
-
-Before staging everything together, scan the changed files for naturally distinct concerns. If modified files clearly group into separate logical changes (e.g., a refactor in one directory and a new feature in another, or test files for a different change than source files), create separate commits for each group.
+Before finalizing everything together, scan the changed files for naturally distinct concerns. If modified files clearly group into separate logical changes (e.g., a refactor in one directory and a new feature in another, or test files for a different change than source files), finalize separate changes for each group.
 
 Keep this lightweight:
-- Group at the **file level only** -- do not use `git add -p` or try to split hunks within a file.
-- If the separation is obvious (different features, unrelated fixes), split. If it's ambiguous, one commit is fine.
-- Two or three logical commits is the sweet spot. Do not over-slice into many tiny commits.
+- Group at the **file level only** -- pass explicit filesets to `jj commit`; do not split hunks within a file.
+- If the separation is obvious (different features, unrelated fixes), split. If it's ambiguous, one change is fine.
+- Two or three logical changes is the sweet spot. Do not over-slice into many tiny changes.
 
-### Step 4: Stage and commit
+### Step 4: Describe and finalize
 
-If the current branch from the context above is `main`, `master`, or the resolved default branch from Step 1, automatically create a feature branch before committing. Derive the branch name from the change content, create it with `git checkout -b <branch-name>`, run `git branch --show-current` to confirm, and use the new branch as the current branch for the rest of the workflow. Do not ask whether to branch — committing on the default branch is not an option here.
+If the current change or its parent carries the resolved default bookmark, automatically create a feature bookmark before finalizing. Derive the name from the change content, create it with `jj bookmark create <bookmark-name> -r @`, run `jj bookmark list -r @` to confirm, and use it for the rest of the workflow. Do not ask whether to create it -- finalizing directly on the default bookmark is not an option here.
 
-Write the commit message:
-- **Subject line**: Concise, imperative mood, focused on *why* not *what*. Follow the convention determined in Step 2.
-- **Body** (when needed): Add a body separated by a blank line for non-trivial changes. Explain motivation, trade-offs, or anything a future reader would need. Omit the body for obvious single-purpose changes.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-For each commit group, stage and commit in a single call. Prefer staging specific files by name over `git add -A` or `git add .` to avoid accidentally including sensitive files (.env, credentials) or unrelated changes. Use a heredoc to preserve formatting:
+Repository-local instructions and the repository's `git log` syntax always win. Apply compatible Go quality guidance and the dynamically discovered convention from Step 2. Focus the message on why rather than a file inventory, including non-trivial motivation, trade-offs, or future-reader context in the repository's established form.
+
+For each logical group except the final one, finalize explicit filesets with `jj commit`; this leaves other files in the new working-copy change and avoids including sensitive or unrelated files. For the final group, describe the current change and start a new empty working-copy change:
 
 ```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-type(scope): subject line here
-
-Optional body explaining why this change was made,
-not just what changed.
-EOF
-)"
+jj commit <files> -m "<message composed from the standards above>"
+jj describe -m "<message composed from the standards above>" && jj new
 ```
 
 ### Step 5: Confirm
 
-Run `git status` after the commit to verify success. Report the commit hash(es) and subject line(s).
+Run `jj status` and `jj log -r 'ancestors(@, 4)' --limit 4` after finalizing the changes to verify success. Report the change ID(s), commit ID(s), and subject line(s).

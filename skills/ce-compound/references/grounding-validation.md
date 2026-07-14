@@ -2,14 +2,14 @@
 
 Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted knowledge — future agents will act on its claims without re-verifying them. This phase checks the claims against reality before they compound: a deterministic mechanical pass (bundled script) plus a semantic pass (one read-only validator subagent). Neither pass is a hard gate — every flag is adjudicated, because solution docs legitimately cite deleted paths and pre-fix states.
 
-## Which tree is the ground truth
+## Which state is the ground truth
 
-Two claim categories verify against different trees:
+Two claim categories verify against different states:
 
-- **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree** — they describe what this session's work produced and verified here.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
+- **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local JJ working copy** — they describe what this session's work produced and verified here.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the workspace may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local JJ reachability is only the fallback. The script's staleness `INFO` line tells you how much to distrust the local working copy for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort — skip silently on failure or offline; the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Before running the script, optionally run `jj git fetch` (best-effort — skip silently on failure or offline; the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -18,11 +18,11 @@ The script reports flags; you decide each one. Three resolutions — **fix**, **
 | Flag | Likely meaning | Resolution |
 |------|----------------|------------|
 | path not found anywhere | Typo, or drafted from memory | Fix the citation or remove the claim |
-| path missing here, exists at upstream | Stale checkout | Verify the claim against upstream; annotate if the doc implies the file is present locally |
+| path missing from working copy, exists at upstream | Workspace behind upstream | Verify the claim against upstream; annotate if the doc implies the file is present locally |
 | path deliberately gone (doc says removed/renamed) | Historical citation | Confirm the surrounding prose marks it as historical ("removed by this fix", "pre-fix state"); add that marker if absent |
 | SHA does not resolve | Fabricated or from another repo | Replace with the PR number, or drop |
-| SHA reachable from HEAD only | Local-only commit; SHA will change on rebase/squash merge | Replace with the PR number |
-| SHA reachable from upstream only | Checkout predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
+| SHA reachable from `@` only | Local-only change; its commit ID may change before merge | Replace with the PR number |
+| SHA reachable from upstream only | Workspace predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
 | SHA exists but unreachable | Rebased-away commit | Replace with the PR number |
 | scaffold ("Learning 3", `{{…}}`) | Drafting-context leak | Always fix — rewrite as a real path or link |
 | relative link unresolved | Wrong target | Fix the path |
@@ -38,7 +38,7 @@ Dispatch **one generic read-only subagent** covering the written solution doc pl
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, JJ (non-mutating), and gh when available.
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.
@@ -47,15 +47,15 @@ Check every factual claim in three categories:
 
 1. CODE-BEHAVIOR CLAIMS — assertions about how code behaves: enum values,
    status semantics, limits, defaults, ordering, state transitions. For
-   each, locate the defining source in the current tree and quote the
+   each, locate the defining source in the current JJ working copy and quote the
    defining line(s) with file:line. Verdict: verified (with quote),
    contradicted (with the quote showing otherwise), or unverifiable
    (defining source not found).
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
    "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: git
-   reachability from the upstream default branch. Verdict: verified,
+   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: JJ
+   reachability from the remote default bookmark. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.
 
@@ -64,7 +64,7 @@ Check every factual claim in three categories:
    itself. Verdict: complete, or short (found M of N).
 
 Ignore session narrative ("we first tried X") — that describes the
-conversation, not the tree. Ignore style.
+conversation, not the working copy. Ignore style.
 
 Return a structured list, one entry per claim checked:
   claim (verbatim) | category | verdict | evidence (quote + file:line, or

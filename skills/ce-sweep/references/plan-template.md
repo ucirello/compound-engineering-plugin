@@ -11,7 +11,7 @@ Frontmatter — verbatim keys; `date` is the run date:
 title: Feedback Sweep - Plan
 date: 2026-07-02
 topic: feedback-sweep
-artifact_contract: ce-unified-plan/v1
+artifact_contract: unified-plan/v1
 artifact_readiness: requirements-only
 product_contract_source: ce-sweep
 ---

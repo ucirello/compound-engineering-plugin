@@ -13,8 +13,9 @@ Design rules (mirrors the repo's repo-profile-cache helper):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are atomic: a staging file under the JJ workspace's `.tmp/` tree (or
+    local `.tmp/` without JJ) + os.replace, so a concurrent reader never sees a
+    torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -40,8 +41,9 @@ are emitted as inline JSON flow on a single line — itself valid YAML.
 import argparse
 import json
 import os
+import secrets
+import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 
 try:
@@ -255,7 +257,7 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # A machine-local state file can live under world-shared /tmp, and
+            # A machine-local state file can contain correctness-critical data, and
             # it is a correctness dependency (lease, cursors, closed status) as
             # well as an injection sink (item bodies re-read into agent
             # context). Reject a file not owned by us so a co-tenant cannot
@@ -293,7 +295,17 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    try:
+        workspace = subprocess.run(
+            ["jj", "workspace", "root"], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        workspace = None
+    scratch_root = workspace.stdout.strip() if workspace and workspace.returncode == 0 else os.getcwd()
+    scratch_dir = os.path.join(scratch_root, ".tmp", "rocketclaw", "ce-sweep", "state-writes")
+    os.makedirs(scratch_dir, exist_ok=True)
+    tmp = os.path.join(scratch_dir, ".tmp-sweep-{}-{}.yml".format(os.getpid(), secrets.token_hex(8)))
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
@@ -543,8 +555,8 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
+    # the lease yet must still record its outcome. In local-change mode there
+    # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -752,7 +764,7 @@ _HANDLERS = {
 # (run-record for an aborted-locked run, validate, import-legacy). Two
 # concurrent invocations (an overlapping cron and manual sweep) could otherwise
 # interleave load -> mutate -> write and lose an update — e.g. an aborted run's
-# stale-snapshot write clobbering the holder's just-committed upsert. An OS
+# stale-snapshot write clobbering the holder's just-recorded upsert. An OS
 # advisory lock held across each mutating RMW makes them mutually exclusive
 # regardless of lease ownership.
 _MUTATING = {
@@ -764,6 +776,7 @@ _MUTATING = {
 def _run_locked(handler, args):
     lock_path = str(args.state) + ".lock"
     try:
+        os.makedirs(os.path.dirname(os.path.abspath(lock_path)), exist_ok=True)
         lock_fd = open(lock_path, "w")
     except OSError:
         return handler(args)  # cannot create a lock file; degrade to unlocked

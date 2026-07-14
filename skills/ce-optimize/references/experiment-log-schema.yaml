@@ -2,7 +2,7 @@
 # This is the canonical schema for the experiment log file that accumulates
 # across an optimization run.
 #
-# Location: .context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml
+# Location: .context/ce-optimize/<spec-name>/experiment-log.yaml
 #
 # PERSISTENCE MODEL:
 # The experiment log on disk is the SINGLE SOURCE OF TRUTH. The agent's
@@ -141,19 +141,19 @@ experiment_entry:
       type: enum
       values:
         - measured                # measurement finished and metrics were persisted, awaiting batch evaluation
-        - kept                    # primary metric improved, gates passed -> merged to optimization branch
+        - kept                    # primary metric improved, gates passed -> integrated at optimization bookmark
         - reverted                # primary metric did not improve or was worse -> changes discarded
         - degenerate              # degenerate gate failed -> immediately reverted, no judge evaluation
         - error                   # measurement command crashed, timed out, or produced malformed output
         - deferred_needs_approval # experiment needs an unapproved dependency -> set aside for batch approval
         - timeout                 # measurement command exceeded timeout_seconds
-        - runner_up_kept          # file-disjoint runner-up that was cherry-picked and re-measured successfully
-        - runner_up_reverted      # file-disjoint runner-up that was cherry-picked but combined measurement was not better
+        - runner_up_kept          # file-disjoint runner-up that was rebased and re-measured successfully
+        - runner_up_reverted      # file-disjoint runner-up that was rebased but combined measurement was not better
       description: >
         Load-bearing state: the loop branches on this value.
         'measured' is the only non-terminal state and exists so CP-3 can persist
         raw metrics before batch-level comparison decides the final outcome.
-        'kept' and 'runner_up_kept' advance the optimization branch.
+        'kept' and 'runner_up_kept' advance the optimization bookmark.
         'deferred_needs_approval' items are re-presented at wrap-up.
         All other states are terminal for that experiment.
 
@@ -200,9 +200,9 @@ experiment_entry:
       type: string
       description: "What was learned from this experiment. The agent reads these to avoid re-trying similar approaches and to inform new hypothesis generation."
 
-    commit:
+    change:
       type: string
-      description: "Git commit SHA on the optimization branch (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "JJ change ID reachable from the optimization bookmark (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string
@@ -212,9 +212,9 @@ experiment_entry:
       type: string
       description: "Error details (only for 'error' and 'timeout' outcomes)"
 
-    merged_with:
+    integrated_with:
       type: integer
-      description: "Iteration number of the experiment this was merged with (only for 'runner_up_kept' and 'runner_up_reverted')"
+      description: "Iteration number of the experiment this was integrated with (only for 'runner_up_kept' and 'runner_up_reverted')"
 
 # ============================================================================
 # OUTCOME STATE TRANSITIONS
@@ -231,13 +231,13 @@ experiment_entry:
 #           -> persist raw metrics   -> outcome: measured
 #           -> judge evaluated (if type: judge)
 #             -> best in batch, improved  -> outcome: kept
-#             -> runner-up, file-disjoint -> cherry-pick + re-measure
+#             -> runner-up, file-disjoint -> rebase + re-measure
 #               -> combined better        -> outcome: runner_up_kept
 #               -> combined not better    -> outcome: runner_up_reverted
 #             -> not improved             -> outcome: reverted
 #       -> needs unapproved dep    -> outcome: deferred_needs_approval
 #
-# Only 'kept' and 'runner_up_kept' produce a commit on the optimization branch.
+# Only 'kept' and 'runner_up_kept' produce a described change at the optimization bookmark.
 # Only 'deferred_needs_approval' items are re-presented at wrap-up for approval.
 
 # ============================================================================
@@ -245,7 +245,7 @@ experiment_entry:
 # ============================================================================
 #
 # Written after each batch to:
-#   .context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md
+#   .context/ce-optimize/<spec-name>/strategy-digest.md
 #
 # Contains a compressed summary of:
 # - What hypothesis categories have been tried

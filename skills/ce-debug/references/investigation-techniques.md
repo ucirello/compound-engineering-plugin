@@ -76,27 +76,15 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), use JJ's automated binary search to find the breaking change:
 
 ```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
+jj bisect run -r '<known-good-revision>..@' <test-command>
 ```
 
-The test command should exit 0 for good, non-zero for bad.
+The test command should exit 0 for good, 1 for bad, and 125 when the revision cannot be tested. JJ leaves the working copy unchanged while it evaluates the candidate revisions.
 
 ---
 

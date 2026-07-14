@@ -34,8 +34,8 @@
 #
 # Why config-before-prose: framework config files are the most reliable source
 # of truth for the intended port; instruction files and env files are often
-# stale or overridden. Prose files (AGENTS.md, CLAUDE.md) are deliberately NOT
-# scanned -- they carry natural language that may mention ports in contexts
+# stale or overridden. Agent-instruction prose is deliberately NOT scanned --
+# it may mention ports in contexts
 # unrelated to the dev server (documentation, examples, troubleshooting).
 # Scanning them produces false positives that are hard to debug.
 #

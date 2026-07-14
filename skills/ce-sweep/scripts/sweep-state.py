@@ -13,7 +13,7 @@ Design rules (mirrors the repo's repo-profile-cache helper):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a repository-local `.tmp/rocketclaw/` scratch file plus
+  - Writes are atomic: a workspace-local `.tmp/rocketclaw/` scratch file plus
     os.replace, so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
@@ -260,7 +260,7 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # Local-only state lives under repository-local .tmp/rocketclaw/.
+            # Local-only state lives under workspace-local .tmp/rocketclaw/.
             # It remains a correctness dependency and an injection sink, so
             # reject a file not owned by us. Skip where geteuid is unavailable.
             geteuid = getattr(os, "geteuid", None)
@@ -289,16 +289,18 @@ def new_state():
 
 
 def repo_scratch_dir(*parts):
-    root = subprocess.run(
-        ["jj", "workspace", "root"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if root.returncode != 0 or not root.stdout.strip():
-        raise OSError("could not resolve JJ workspace root for local scratch")
+    try:
+        root = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        root = None
+    workspace_root = root.stdout.strip() if root and root.returncode == 0 else os.getcwd()
     path = os.path.join(
-        root.stdout.strip(), ".tmp", "rocketclaw", "ce-sweep", *parts
+        workspace_root, ".tmp", "rocketclaw", "ce-sweep", *parts
     )
     os.makedirs(path, exist_ok=True)
     return path
@@ -585,7 +587,7 @@ def cmd_run_record(args):
 
 
 def cmd_import_legacy(args):
-    """Best-effort import of a Cora-style legacy state file. Liberal on input:
+    """Best-effort import of a legacy state file. Liberal on input:
     map what matches the known shapes, skip what doesn't, never fail."""
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -630,7 +632,7 @@ def _read_legacy(path):
             raw = f.read()
     except OSError:
         return None
-    # Try JSON first (Cora persists JSON); fall back to our YAML subset.
+    # Try JSON first; fall back to our YAML subset.
     try:
         return json.loads(raw)
     except ValueError:

@@ -23,7 +23,7 @@ gh pr view <ref> --json baseRefName,headRefName,headRefOid,url,body,state,isCros
 
 If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>`, `headRefName` as `<head-bookmark>`, and `headRefOid` to verify the exact head commit.
 
-For current-bookmark mode, resolve `<base>` in this order: caller-supplied `base:<ref>`, `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, then an explicit user answer. Do not guess among common bookmark names. Resolve `<head-revision>` from the explicit head bookmark chosen by `SKILL.md`, not from an assumed current branch.
+For current-bookmark mode, resolve `<base>` in this order: caller-supplied `base:<ref>`, `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, then an explicit user answer. Do not guess among common bookmark names. Resolve `<head-revision>` from the explicit head bookmark chosen by `SKILL.md`, not from an inferred working-copy bookmark.
 
 Use `jj git remote list` to identify the base remote. For fork PRs, match the PR base repository to a configured remote. If none matches, use the `gh` fallback instead of diffing against the fork's push remote.
 

@@ -21,7 +21,7 @@ You are a specialist code reviewer.
 You produce up to two outputs depending on whether a run ID was provided:
 
 1. **Artifact file (when run ID is present).** If a Run ID appears in <review-context> below, WRITE your full analysis (all schema fields, including why_it_matters, evidence, and suggested_fix) as JSON to:
-   .tmp/rocketclaw/ce-code-review/{run_id}/{reviewer_name}.json
+   {artifact_dir}/{reviewer_name}.json
    This is the ONE write operation you are permitted to make. Use the platform's file-write tool.
    If the write fails, continue -- the compact return still provides everything the merge needs.
    If no Run ID is provided (the field is empty or absent), skip this step entirely -- do not attempt any file write.
@@ -145,7 +145,7 @@ Rules:
 - Suppress any finding you cannot honestly anchor at `50` or higher (the actionable floor is `50`; anchors `0` and `25` are suppressed by synthesis anyway, so emitting them only adds noise). If your persona's domain description sets a stricter floor (e.g., anchor `75` minimum), honor it.
 - Every finding in the full artifact file MUST include at least one evidence item grounded in the actual code. The compact return omits evidence -- the evidence requirement applies to the disk artifact only.
 - Set `pre_existing` to true ONLY for issues in unchanged code that are unrelated to this diff. If the diff makes the issue newly relevant, it is NOT pre-existing.
-- You are operationally read-only. The one permitted exception is writing your full analysis to the `.tmp/rocketclaw/ce-code-review/{run_id}/` artifact path when a run ID is provided. You may also use non-mutating inspection commands, including read-oriented `jj` / `gh` commands, to gather evidence. Do not edit project files, change workspaces/bookmarks, commit, push, create PRs, or otherwise mutate the working copy or repository state.
+- You are operationally read-only. The one permitted exception is writing your full analysis to the resolved `{artifact_dir}` path when a run ID is provided. You may also use non-mutating inspection commands, including read-oriented `jj` / `gh` commands, to gather evidence. Do not edit project files, change workspaces/bookmarks, commit, push, create PRs, or otherwise mutate the working copy or repository state.
 - Set `autofix_class` and `owner` per `references/action-class-rubric.md`; if that file is not reachable from your working directory, the same `gated_auto` / `manual` / `advisory` and owner semantics are already in the schema above and this template's guidance. This skill does not apply fixes — classify for caller routing only.
 - Default `owner` to `downstream-resolver` for actionable findings unless the item is genuinely human-only or release-owned.
 - Set `requires_verification` to true whenever the likely fix needs targeted tests, a focused re-review, or operational validation before it should be trusted.
@@ -174,6 +174,7 @@ Rules:
 <review-context>
 Run ID: {run_id}
 Reviewer name: {reviewer_name}
+Artifact directory: {artifact_dir}
 
 Intent: {intent_summary}
 
@@ -199,3 +200,4 @@ Diff:
 | `{diff}` | Stage 1 output | The diff to review — inline hunks, or an artifact file path to Read for a large review |
 | `{run_id}` | Stage 4 output | Unique review run identifier for the artifact directory |
 | `{reviewer_name}` | Stage 3 output | Persona or agent name used as the artifact filename stem |
+| `{artifact_dir}` | Stage 4 output | Absolute workspace-local run directory under `$(jj workspace root)/.tmp`, or the current project directory's `.tmp` outside JJ |

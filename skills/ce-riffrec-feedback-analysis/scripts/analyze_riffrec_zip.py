@@ -122,7 +122,7 @@ def jj_tracked_media(output_dir: Path) -> tuple[Path | None, list[str]]:
     while not probe_dir.exists() and probe_dir != probe_dir.parent:
         probe_dir = probe_dir.parent
     try:
-        root_result = subprocess.run(["jj", "root"], cwd=probe_dir, capture_output=True, text=True, check=False)
+        root_result = subprocess.run(["jj", "workspace", "root"], cwd=probe_dir, capture_output=True, text=True, check=False)
     except (FileNotFoundError, OSError):
         return None, []
     if root_result.returncode != 0:
@@ -1128,7 +1128,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = Path.cwd()
+    repo_root = repo_root or Path.cwd()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"

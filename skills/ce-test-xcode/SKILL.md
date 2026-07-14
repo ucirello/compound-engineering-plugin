@@ -9,6 +9,8 @@ disable-model-invocation: true
 
 Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures screenshots, logs, and verifies app behavior.
 
+Identify the actor as `ai:assistant` in machine-readable output and `AI Assistant` in prose.
+
 ## Prerequisites
 
 - Xcode installed with command-line tools
@@ -78,7 +80,7 @@ Call `build_ios_sim_app` with the project path and scheme name.
 For each key screen in the app:
 
 **Take screenshot:**
-Call `take_screenshot` with the simulator UUID and a descriptive filename (e.g., `screen-home.png`).
+Call `take_screenshot` with the simulator UUID and a descriptive path under `$(jj workspace root)/.tmp/rocketclaw/ce-test-xcode/`. Outside a JJ workspace, use the current directory's `.tmp/rocketclaw/ce-test-xcode/` instead.
 
 **Review screenshot for:**
 - UI elements rendered correctly

@@ -1,6 +1,6 @@
 # Media-Analyzer Sub-agent Prompt Template
 
-The orchestrator spawns one media-analyzer sub-agent per feedback item that has media. Fill every slot at spawn time.
+The orchestrator delegates one media-analysis task per feedback item that has media. Fill every slot at dispatch time.
 
 ## Template
 
@@ -28,8 +28,9 @@ Bash call that runs the bundled analyzer, per the persona:
 </media-paths>
 
 <artifact>
-Write your full bug-report-shaped finding to this repository-local
-.tmp/rocketclaw/ path, and this path only:
+Write your full bug-report-shaped finding to this workspace-local
+scratch path, and this path only. Its root was resolved with `jj workspace root`,
+falling back to the dispatch working directory's `.tmp` when JJ was unavailable:
 {scratch_artifact_path}
 </artifact>
 
@@ -57,5 +58,5 @@ Write your full bug-report-shaped finding to this repository-local
 | `{item_id}` | Sweep state | The sweep's identifier for this feedback item |
 | `{origin_ref}` | Sweep state | Source connector name plus the item's id/url in that source |
 | `{media_paths}` | Fetch step output | Absolute paths to downloaded media in the run's scratch directory |
-| `{scratch_artifact_path}` | Orchestrator | The single file under repository-local `.tmp/rocketclaw/` that the sub-agent may write its full finding to |
+| `{scratch_artifact_path}` | Orchestrator | The single file under workspace-local `.tmp/rocketclaw/` that the delegated worker may write its full finding to |
 | `{sensitive_flag}` | Sweep state | Whether this item or its source is marked sensitive |

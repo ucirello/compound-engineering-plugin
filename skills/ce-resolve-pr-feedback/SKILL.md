@@ -30,7 +30,7 @@ GitHub only — **including GitHub Enterprise**. This skill speaks GitHub's API 
 
 ## Version Control
 
-Use Jujutsu for all repository operations. Do not run raw Git workflow commands. The working copy is the mutable change `@`, its parent is `@-`, and bookmarks are explicit pointers rather than an active branch. Use `jj status`, `jj diff`, `jj show`, `jj file show`, and `jj log`/`jj file annotate` for inspection; use `jj git fetch` and `jj git push` only for remote interoperability. Keep `gh` for GitHub PR and review APIs.
+Use Jujutsu for all repository operations. Do not run repository workflow commands outside JJ. The working copy is the mutable change `@`, its parent is `@-`, and bookmarks are explicit pointers rather than an active branch. Use `jj status`, `jj diff`, `jj show`, `jj file show`, and `jj log`/`jj file annotate` for inspection; use `jj git fetch` and `jj git push` only for remote interoperability. Keep `gh` for GitHub PR and review APIs.
 
 ---
 

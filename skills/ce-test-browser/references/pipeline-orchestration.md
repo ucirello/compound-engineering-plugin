@@ -13,9 +13,13 @@ Unattended execution does not mean hidden execution. Do not ask a visibility que
 
 Multiple workers may run on the same machine, so never assume the preferred port is free: scan upward to the first free port, then start the server there in the background.
 
-Run the whole thing as **one** command. Shell variables do not survive between separate Bash calls, so the free-port scan and the startup must share a single block, and that block must seed `PORT` itself — the `$PORT` computed in step 4 is gone by the time this runs. Set `PORT` on the first line to the preferred port step 4 printed ("Preferred dev server port: N"); it defaults to `3000` only if step 4 found nothing. Before running it, ensure `.tmp/` is present in the repository's `.gitignore`, adding only that missing entry when necessary.
+Run the whole thing as **one** command. Shell variables do not survive between separate Bash calls, so the free-port scan and the startup must share a single block, and that block must seed `PORT` itself — the `$PORT` computed in step 4 is gone by the time this runs. Set `PORT` in the block to the preferred port step 4 printed ("Preferred dev server port: N"); it defaults to `3000` only if step 4 found nothing. Before running it, preserve existing `.gitignore` entries while ensuring `.tmp/` is ignored, and refuse `.tmp` when it is a symlink or non-directory.
 
 ```bash
+ROOT="$(jj workspace root 2>/dev/null)"
+if [ -z "$ROOT" ]; then ROOT="$(pwd -P)"; fi
+SCRATCH_DIR="$ROOT/.tmp/ce-test-browser"
+mkdir -p -- "$SCRATCH_DIR"
 PORT=3000   # replace 3000 with the preferred port from step 4
 
 # scan upward to the first free port
@@ -31,13 +35,12 @@ echo "Using dev server port: $PORT"
 
 # start in the background (the scan guarantees this port is free), then wait up to 30s
 echo "Starting dev server on port ${PORT}..."
-mkdir -p .tmp/rocketclaw/ce-test-browser
 if [ -f "bin/dev" ]; then
-  PORT=${PORT} bin/dev > .tmp/rocketclaw/ce-test-browser/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} bin/dev > "$SCRATCH_DIR/dev-server-${PORT}.log" 2>&1 &
 elif [ -f "bin/rails" ]; then
-  bin/rails server -p ${PORT} > .tmp/rocketclaw/ce-test-browser/dev-server-${PORT}.log 2>&1 &
+  bin/rails server -p ${PORT} > "$SCRATCH_DIR/dev-server-${PORT}.log" 2>&1 &
 elif [ -f "package.json" ]; then
-  PORT=${PORT} npm run dev > .tmp/rocketclaw/ce-test-browser/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} npm run dev > "$SCRATCH_DIR/dev-server-${PORT}.log" 2>&1 &
 fi
 for i in $(seq 1 30); do
   lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1 && break
@@ -45,7 +48,7 @@ for i in $(seq 1 30); do
 done
 if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server did not start in 30s. Last output:"
-  tail -20 .tmp/rocketclaw/ce-test-browser/dev-server-${PORT}.log 2>/dev/null
+  tail -20 "$SCRATCH_DIR/dev-server-${PORT}.log" 2>/dev/null
   exit 1
 fi
 ```

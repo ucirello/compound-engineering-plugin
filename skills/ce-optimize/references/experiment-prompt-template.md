@@ -83,7 +83,7 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 ## Notes
 
 - This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch: write the filled template under the repository's ignored `.tmp/rocketclaw/ce-optimize/prompts/` directory and pass it via stdin (`codex exec - < .tmp/rocketclaw/ce-optimize/prompts/optimize-exp-<index>.txt`).
+- For Codex dispatch: write the filled template under the repository's ignored `<workspace-root>/.tmp/rocketclaw/ce-optimize/prompts/` directory and pass that absolute path via stdin (`codex exec - < "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-optimize/prompts/optimize-exp-<index>.txt"`). Resolve `WORKSPACE_ROOT` with `jj workspace root`, falling back to the current working directory outside a JJ workspace.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

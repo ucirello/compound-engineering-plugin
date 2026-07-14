@@ -80,6 +80,20 @@ def _run_checked(cmd, label):
     return r
 
 
+def _require_workspace_temp_state(state_dir):
+    """Reject state outside the JJ workspace's .tmp, or local .tmp without JJ."""
+    root_result = _run(["jj", "workspace", "root"])
+    root = root_result.stdout.strip() if root_result.returncode == 0 else os.getcwd()
+    temp_root = os.path.realpath(os.path.join(root, ".tmp"))
+    state_path = os.path.realpath(state_dir)
+    try:
+        inside = os.path.commonpath([temp_root, state_path]) == temp_root
+    except ValueError:
+        inside = False
+    if not inside:
+        raise SystemExit(f"--state-dir must be under {temp_root}")
+
+
 def _split_repo(repo):
     """Parse "[HOST/]OWNER/NAME" into (owner, name), or (None, None). A host-qualified ref (gh's
     documented `[HOST/]OWNER/REPO` selector) drops the host — the last two segments are what the
@@ -884,6 +898,7 @@ def main():
     w.set_defaults(func=cmd_watch)
 
     args = p.parse_args()
+    _require_workspace_temp_state(args.state_dir)
     args.func(args)
 
 

@@ -2,7 +2,7 @@
 
 Load this reference when `ce-code-review` has finished and **ce-work** (or another caller) should apply fixes before the Residual Work Gate.
 
-`ce-code-review` is invoked here with `mode:agent`, so it is **review-only** in this context — it reports findings and writes artifacts and does not mutate the JJ workspace change, describe/commit it, push, or file tickets. **The caller owns apply/fix policy.** (In its own default/interactive mode the review applies safe fixes itself; that path does not apply here.)
+`ce-code-review` is invoked here with `mode:agent`, so it is **review-only** in this context — it reports findings and writes artifacts and does not mutate or describe the JJ workspace change, push, or file tickets. **The caller owns apply/fix policy.** (In its own default/interactive mode the review applies safe fixes itself; that path does not apply here.)
 
 ## Consume the completed review (do not re-run it)
 
@@ -11,7 +11,7 @@ This reference loads **after** review has run. In the ce-work shipping flow, ste
 Reuse the review output already in hand:
 
 - Parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) **or** the markdown Actionable Findings summary captured by the caller
-- Run artifact dir: `.tmp/rocketclaw/ce-code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`)
+- Run artifact dir: use the repository-local `artifact_path` returned by `ce-code-review` (`review.json`, per-reviewer JSON for `why_it_matters`)
 
 If `status` is `failed`, stop shipping and surface `reason`. If `degraded`, note partial reviewer coverage before applying anything.
 
@@ -36,7 +36,7 @@ For human / interactive shipping, invoke `ce-code-review` without `mode:agent` i
 
 - `actionable_findings` from JSON, or the Actionable Findings section from markdown
 - Full finding detail when needed: `review.json` / artifact `findings`, or `{reviewer}.json` for `why_it_matters` and `evidence`
-- Stable finding `#` — reuse in change descriptions, residual sinks, and subagent prompts
+- Stable finding `#` — reuse in change descriptions, residual sinks, and delegated-worker prompts.
 
 ## What to apply
 
@@ -84,7 +84,7 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Do not re-run `ce-code-review`
 - Shared-workspace fallback: do not run JJ history/bookmark commands — return which `#` were applied or skipped and which files changed
 
-**After each wave:** orchestrator reviews with `jj diff` (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), then describes/rebases isolated `<workspace>@` changes or fileset-commits shared `@` edits per Phase 1. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary. Repeat until all batches complete.
+**After each wave:** orchestrator reviews with `jj diff` (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), then describes/rebases isolated `<workspace>@` changes or describes shared `@` edits by fileset per Phase 1. At this description checkpoint, derive the message from local instructions and past messages visible in `git log`; use compatible guidance from https://go.dev/wiki/CommitMessage only as a fallback. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

@@ -79,7 +79,7 @@ M_COMPOSER="composer-2.5-fast" # cursor-agent composer (no high tier; -fast is t
 # Emits the CLI + flags NUL-delimited. Read-only / no-prompt / high-reasoning.
 # Code-review isolation is IN-TREE (repo root), not empty-scratch tool-less:
 # peers may Read surrounding code. PEER_WORKDIR is the workspace root; RAW_OUT
-# lives under repo-local `.tmp` and is published to RUN_DIR only after normalize.
+# lives under `$(jj workspace root)/.tmp` and is published to RUN_DIR only after normalize.
 # NEVER emit: codex without `-s read-only`; grok `--always-approve` /
 # `--permission-mode bypassPermissions`; cursor-agent `-f` / `--force` / `--yolo`.
 adapter_argv() {

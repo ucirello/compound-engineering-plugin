@@ -18,10 +18,9 @@ gh pr view PR_NUMBER --repo OWNER/REPO --json headRefName,headRefOid,headReposit
 jj git remote list
 ```
 
-Record `headRefName` as `PR_BOOKMARK` and `headRefOid` as `PR_HEAD_OID`. Resolve `PUSH_REMOTE` exactly as Full Mode step 1 does: prefer a matching configured `git.push` remote, otherwise require one configured remote whose normalized URL matches the PR head repository. Do not assume `origin`.
+Record `headRefName` as `PR_BOOKMARK` and `headRefOid` as `PR_HEAD_OID`. Resolve `PUSH_REMOTE` exactly as Full Mode step 1 does: prefer a configured push remote whose URL matches the PR head repository, otherwise require exactly one configured remote with a matching normalized URL. Do not assume `origin`.
 
-Before reading code, dispatching a fixer, or making any edit, perform Full Mode's **Pin and verify the PR head before any edit** gate in `references/full-mode.md`. This includes validating the URL-derived owner/repository/PR number and all GitHub metadata, fetching only `--branch "exact:$PR_BOOKMARK"` from `--remote "exact:$PUSH_REMOTE"`, requiring the fetched remote bookmark to equal `headRefOid`, resolving content through `exactly(commit_id($PR_HEAD_OID), 1)`, and proving `@` equals or descends from that exact commit. If alignment fails, stop and require or offer the dedicated workspace child described there; never edit, commit, or push the unrelated `@`.
-
+Before reading code, dispatching a fixer, or making any edit, perform Full Mode's **Pin and verify the PR head before any edit** gate in `references/full-mode.md`. This includes validating the URL-derived owner/repository/PR number and all GitHub metadata, fetching only `--branch "exact:$PR_BOOKMARK"` from `--remote "exact:$PUSH_REMOTE"`, requiring the fetched remote bookmark to equal `headRefOid`, resolving content through `exactly(commit_id($PR_HEAD_OID), 1)`, and proving `@` equals or descends from that exact commit. If alignment fails, stop and require or offer the dedicated workspace child described there; never edit, describe, move a bookmark, or push the unrelated `@`.
 **Step 1** -- Get comment details and GraphQL node ID via REST (cheap, single comment):
 ```bash
 GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \

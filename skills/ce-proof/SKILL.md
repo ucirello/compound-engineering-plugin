@@ -321,8 +321,12 @@ SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-ROOT=$(jj root)
-TMP_DIR="$ROOT/.tmp/rocketclaw/ce-proof"
+ROOT="$(jj workspace root 2>/dev/null)"
+if [ -n "$ROOT" ]; then
+  TMP_DIR="$ROOT/.tmp/rocketclaw/ce-proof"
+else
+  TMP_DIR=".tmp/rocketclaw/ce-proof"
+fi
 mkdir -p "$TMP_DIR"
 STATE_TMP="$TMP_DIR/proof-state.$$"
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \

@@ -11,3 +11,4 @@ __pycache__/
 *.pyc
 
 .rocketclaw/*.local.yaml
+loop.old.sh

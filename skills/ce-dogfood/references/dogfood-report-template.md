@@ -75,7 +75,7 @@ For each issue found and fixed:
 - **What's broken:** <symptom / failing scenario>
 - **Why escalated:** <why it's not a safe autonomous fix — scope, risk, ambiguity, product trade-off>
 - **Options:** <option A (trade-offs) / option B (trade-offs)>
-- **Recommendation:** <the agent's suggested direction, for the human to confirm>
+- **Recommendation:** <the AI Assistant's suggested direction, for the human to confirm>
 
 ## Learnings
 

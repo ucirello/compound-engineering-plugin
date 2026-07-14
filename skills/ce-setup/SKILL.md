@@ -25,7 +25,7 @@ If a version is found, pass it to the check script via `--version`. Otherwise om
 Before running the script, display:
 
 ```text
-RocketClaw -- checking your environment...
+Checking your environment...
 ```
 
 Run the bundled check script. Set `SKILL_DIR` to the absolute directory you loaded this `ce-setup` SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, so a bare `scripts/` path will not resolve:
@@ -41,9 +41,8 @@ If the script is unavailable, perform the inline equivalent:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
 2. Resolve the workspace root without snapshotting with `jj --ignore-working-copy workspace root`; if there is no JJ workspace, use the current directory as the project root so filesystem checks still run.
-3. Check for obsolete `rocketclaw.local.md` at the workspace root.
-4. Check whether `.rocketclaw/config.local.yaml` exists and, if it does in a JJ workspace, whether JJ already tracks it with `jj --ignore-working-copy file list`. For an untracked file, create a disposable directory under `<workspace-root>/.tmp/rocketclaw/`, copy only the config plus applicable root and `.rocketclaw/` `.gitignore` files, initialize it with `jj git init --no-colocate`, and use `jj file list` there to determine whether JJ ignores the config. Remove the disposable directory afterward. Do not snapshot or otherwise mutate the real workspace, and do not use raw Git.
-5. Compare `.rocketclaw/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
+3. Check whether `.rocketclaw/config.local.yaml` exists and, if it does in a JJ workspace, whether JJ already tracks it with `jj --ignore-working-copy file list`. For an untracked file, atomically create a unique disposable directory under `<workspace-root>/.tmp/` without reusing an existing path, copy only the config plus applicable root and `.rocketclaw/` `.gitignore` files, initialize it with `jj git init --no-colocate`, and use `jj file list` there to determine whether JJ ignores the config. Remove the disposable directory afterward. Do not snapshot or otherwise mutate the real workspace, and do not use raw Git.
+4. Compare `.rocketclaw/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
 Display the diagnostic output to the user. Missing optional tools are not setup failures.
 
@@ -51,14 +50,13 @@ Display the diagnostic output to the user. Missing optional tools are not setup 
 
 Proceed to Phase 2 only if one or more workspace-local project issues exist:
 
-- obsolete `rocketclaw.local.md`
 - `.rocketclaw/config.local.yaml` exists but is not safely ignored
 - `.rocketclaw/config.local.example.yaml` is missing or outdated
 
 If no project issues exist, report:
 
 ```text
-✅ RocketClaw setup complete
+✅ Setup complete
 
 Project config: ✅
 Optional capabilities: see diagnostic report above
@@ -72,19 +70,13 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 Resolve the JJ workspace root (`jj --ignore-working-copy workspace root`). All paths below are relative to the workspace root, not the current working directory.
 
-### Step 4: Remove Obsolete Local Config
-
-If `rocketclaw.local.md` exists at the workspace root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.rocketclaw/config.local.yaml`.
-
-Ask whether to delete it now. Delete only if the user approves.
-
-### Step 5: Refresh Example Config
+### Step 4: Refresh Example Config
 
 Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.local.example.yaml`, creating the directory if needed. This file is repository-tracked and should always reflect the latest available settings.
 
 If the bundled template cannot be located by the current platform, print the source template path that failed and tell the user the example config could not be refreshed automatically.
 
-### Step 6: Create Local Config If Wanted
+### Step 5: Create Local Config If Wanted
 
 If `.rocketclaw/config.local.yaml` does not exist, ask:
 
@@ -99,7 +91,7 @@ Everything starts commented out -- you only enable what you need.
 
 If the user approves, copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.local.yaml`.
 
-### Step 7: Ensure Local Config Is Ignored by JJ
+### Step 6: Ensure Local Config Is Ignored by JJ
 
 If `.rocketclaw/config.local.yaml` exists and is not covered by JJ's `.gitignore` rules, offer to add:
 
@@ -114,7 +106,7 @@ Append the entry to the workspace-root `.gitignore` only if the user approves. D
 Display a brief summary:
 
 ```text
-✅ RocketClaw setup complete
+✅ Setup complete
 
 Fixed:     <workspace-local fixes applied, or none>
 Skipped:   <workspace-local fixes declined, or none>

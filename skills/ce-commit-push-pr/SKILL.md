@@ -24,7 +24,7 @@ Run each command as its own shell tool call, in order. Do not join commands with
 
 | Command | Purpose | Failure meaning |
 | --- | --- | --- |
-| `jj root` | Repository root | Not a JJ repository; report and stop |
+| `jj workspace root` | Repository root | Not a JJ repository; report and stop |
 | `jj status` | Working-copy and conflict state | Repository cannot be read |
 | `jj diff` | Current content changes | No output means no current content change |
 | `jj bookmark list --all-remotes` | Local and remote bookmark state | Bookmark state unavailable |
@@ -34,7 +34,7 @@ Run each command as its own shell tool call, in order. Do not join commands with
 | `jj git remote list` | Interoperability remotes and URLs | No configured remote |
 | `gh repo view --json nameWithOwner,defaultBranchRef,url` | Base repository and default bookmark | Authentication, connectivity, or forge resolution failed |
 
-The `git log` call is read-only interoperability required for local message conventions; all VCS mutation uses JJ. Determine the candidate head bookmark from an explicit argument, the existing PR, or bookmarks pointing to the pushed stack head. Never invent an active branch: JJ bookmarks do not follow the working copy automatically.
+The `git log` call is read-only interoperability required for local message conventions; all VCS mutation uses JJ. Determine the candidate head bookmark from an explicit argument, the existing PR, or bookmarks pointing to the pushed stack head. Never infer a current bookmark: JJ bookmarks do not follow the working copy automatically.
 
 When a candidate bookmark is known, query:
 
@@ -46,7 +46,7 @@ Pass the bookmark name only. On forks, target the base repository explicitly whe
 
 ## Step 1: Resolve base, head bookmark, and PR state
 
-**You MUST read `references/branch-creation.md` in full for every full workflow.** Apply its decision flow when the work starts from the default bookmark or must be based on a freshly fetched default remote bookmark; otherwise use its bookmark-safety rules to verify the already selected head. The reference determines or validates `<base-revision>` and `<head-bookmark>`; do not substitute an improvised workflow.
+**You MUST read `references/bookmark-creation.md` in full for every full workflow.** Apply its decision flow when the work starts from the default bookmark or must be based on a freshly fetched default remote bookmark; otherwise use its bookmark-safety rules to verify the already selected head. The reference determines or validates `<base-revision>` and `<head-bookmark>`; do not substitute an improvised workflow.
 
 Use the default bookmark reported by `gh`; confirm its remote counterpart exists in `jj bookmark list --all-remotes`. Do not silently fall back to a guessed default.
 
@@ -75,7 +75,7 @@ At every JJ change-description composition or edit in this step, apply:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Project-local instructions and `git log` syntax win over compatible Go guidance. Use neutral repository-derived descriptions, not a fixed message form. Finish each group with `jj commit`, using filesets for file-level groups and `--message-file <repo-root>/.tmp/rocketclaw/ce-commit-push-pr/<change-id>.txt` when a multiline message is needed.
+Project-local instructions and `git log` syntax win over compatible Go guidance. Use neutral repository-derived descriptions, not a fixed message form. Finish each group with `jj commit`, using filesets for file-level groups and `--message-file <workspace-local-message-file>` when a multiline message is needed. Store that file under `$(jj workspace root)/.tmp/ce-commit-push-pr/`; if no JJ repository exists, use the local fallback `.tmp/ce-commit-push-pr/`.
 
 Validate each completed change before pushing:
 
@@ -105,7 +105,7 @@ If no local content or stack change exists and the bookmark is already synchroni
 
 **Evidence decision:** Treat evidence as supplied context or validation prose. Incorporate supplied artifacts without inventing or uploading them. If evidence was explicitly requested but not supplied, ask for it. For behavior a reviewer must verify, include what was actually exercised and the result; state plainly when credentials, infrastructure, hardware, or setup prevented a run. Do not block PR creation solely because no visual artifact exists.
 
-**Concept teaching gate:** Read `<repo-root>/.rocketclaw/config.local.yaml`. Only active, non-commented keys count. `pr_teaching_section: false` disables concept handling; missing or other values keep it on. `pr_teaching_archive: true` enables archival; otherwise archival is off. `archive:on|off` overrides this run. Preserve any concept-section mechanics available in the installed reference.
+**Concept teaching gate:** Read the repository-local plugin configuration when present. Only active, non-commented keys count. `pr_teaching_section: false` disables concept handling; missing or other values keep it on. `pr_teaching_archive: true` enables archival; otherwise archival is off. `archive:on|off` overrides this run. Preserve any concept-section mechanics available in the installed reference.
 
 Audit the composed title and body against the actual resolved range, existing PR body, issue references, evidence, and local PR conventions before returning or applying it.
 
@@ -126,15 +126,15 @@ Project-local instructions and `git log` syntax win over compatible Go guidance.
 
 When a body applied by this run contains a concept section, report the concept names. In interactive full workflow, offer the functional `ce-explain` route.
 
-**Babysit handoff, default on:** After a new PR or newly pushed changes to an existing PR in interactive full workflow, invoke `ce-babysit-pr` automatically unless `babysit:off` was passed or active `auto_babysit: false` appears in `<repo-root>/.rocketclaw/config.local.yaml`. Explicit `babysit:continuous` or `babysit:checkpoint` selects the mode. Do not auto-invoke for pipeline, description-only, description-update, no applied PR change, a non-GitHub forge, or a head bookmark the user cannot push. Fork PRs remain eligible when the user controls the fork head.
+**Babysit handoff, default on:** After a new PR or newly pushed changes to an existing PR in interactive full workflow, invoke `ce-babysit-pr` automatically unless `babysit:off` was passed or active `auto_babysit: false` appears in the repository-local plugin configuration. Explicit `babysit:continuous` or `babysit:checkpoint` selects the mode. Do not auto-invoke for pipeline, description-only, description-update, no applied PR change, a non-GitHub forge, or a head bookmark the user cannot push. Fork PRs remain eligible when the user controls the fork head.
 
 ## Applying via gh
 
-Write the body under the repository-local temp namespace and pass it with `--body-file`; never depend on stdin or an OS-global temp path. Create `<repo-root>/.tmp/rocketclaw/ce-commit-push-pr/` with the available file capability and write the composed body verbatim to a unique file there.
+Write the body under the repository-local temp namespace and pass it with `--body-file`; never depend on stdin or an OS-global temp path. Create `$(jj workspace root)/.tmp/ce-commit-push-pr/` with the available file capability and write the composed body verbatim to a unique file there. If no JJ repository exists, use the local fallback `.tmp/ce-commit-push-pr/`.
 
 ```bash
-gh pr create --title "<composed-title>" --body-file <repo-root>/.tmp/rocketclaw/ce-commit-push-pr/<unique-body-file>.md
-gh pr edit <pr-ref> --title "<composed-title>" --body-file <repo-root>/.tmp/rocketclaw/ce-commit-push-pr/<unique-body-file>.md
+gh pr create --title "<composed-title>" --body-file <workspace-local-body-file>
+gh pr edit <pr-ref> --title "<composed-title>" --body-file <workspace-local-body-file>
 ```
 
 Remove the repository-local body file after the `gh` call succeeds or fails. Preserve the directory for concurrent runs.

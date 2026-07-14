@@ -67,8 +67,13 @@ On `HIT`, load the profile JSON — that is your agnostic project orientation; d
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_DIR=".tmp/rocketclaw/ce-pov/$(openssl rand -hex 4)"
-mkdir -p "$SCRATCH_DIR"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-pov"
+mkdir -p "$SCRATCH_ROOT"
+while :; do
+  SCRATCH_DIR="$SCRATCH_ROOT/$(openssl rand -hex 8)"
+  if (umask 077 && mkdir "$SCRATCH_DIR") 2>/dev/null; then break; fi
+done
 python3 -c 'import os; print(os.path.abspath("'"$SCRATCH_DIR"'"))'
 ```
 

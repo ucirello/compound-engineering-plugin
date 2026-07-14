@@ -112,7 +112,6 @@ Load the `ce-proof` skill to publish the markdown unified plan. Pass:
 
 - **source file:** `docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.md`
 - **doc title:** `Plan: <topic title> (requirements-only)`
-- **identity:** `ai:assistant` / `AI Assistant`
 
 ce-proof creates a shared Proof doc from the markdown plan file (Create and
 Share workflow), binds the display name, and returns the share URL. Surface

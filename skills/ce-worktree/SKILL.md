@@ -10,10 +10,10 @@ Create or select a Jujutsu workspace backed by the current JJ repository. The pu
 ## Choose The Mode
 
 - **New work**: create a new working-copy change whose parent is the chosen base revision, then create a local feature bookmark on that change.
-- **Continue from a target**: create a new working-copy change whose parent is an existing bookmark, remote bookmark, PR head, tag, change ID, or revision ID. This is the safe default for review fixes and follow-up work.
+- **Continue from a target**: create a new working-copy change whose parent is an existing bookmark, remote bookmark, PR source revision, JJ tag, change ID, or revision ID. This is the safe default for review fixes and follow-up work.
 - **Edit an existing change**: create the workspace, then explicitly `jj edit` the mutable target only when the caller intends to amend that exact change.
 
-`jj workspace add -r <target>` has the semantics of `jj new <target>`: the new workspace's `@` is a new child of `<target>`. It does not check out or edit `<target>`. Do not describe it as attaching directly to that revision.
+`jj workspace add -r <target>` has the semantics of `jj new <target>`: the new workspace's `@` is a new child of `<target>`. It does not edit `<target>`. Do not describe it as attaching directly to that revision.
 
 ## 1. Inspect Existing Workspaces
 

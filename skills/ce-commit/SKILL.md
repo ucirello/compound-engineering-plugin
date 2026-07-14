@@ -15,7 +15,7 @@ Run each command as its own shell tool call. Do not join commands with shell ope
 
 | Command | Purpose | Failure meaning |
 | --- | --- | --- |
-| `jj root` | Repository root | Not a JJ repository; report and stop |
+| `jj workspace root` | Repository root | Not a JJ repository; report and stop |
 | `jj status` | Working-copy and conflict state | Repository cannot be read; report and stop |
 | `jj diff` | Current content changes | No output means no content change |
 | `jj bookmark list -r @` | Bookmarks at the working-copy change | Empty output is normal |
@@ -33,7 +33,7 @@ If `jj status` reports no changes in `@`, report that there is nothing to finish
 
 If `jj status` reports conflicts, resolve them before finishing the change. Use `jj resolve` for an available merge tool or edit the materialized conflict directly, then rerun `jj status` and `jj diff`. Do not finish a conflicted change.
 
-Bookmarks are named pointers, not active branches. A working-copy change does not need a bookmark merely to be committed, so do not create or move one in this skill unless the user explicitly asks.
+Bookmarks are named pointers and do not follow the working copy. A working-copy change does not need a bookmark merely to be committed, so do not create or move one in this skill unless the user explicitly asks.
 
 ### Step 2: Determine the message standard
 
@@ -58,13 +58,13 @@ The project's active local instructions and conventions win first, and the synta
 For one change:
 
 ```bash
-jj commit -m "<repository-derived message>"
+jj commit -m "<repository-derived-message>"
 ```
 
-For a multiline description, use the available file-writing capability to create `<repo-root>/.tmp/rocketclaw/ce-commit/<change-id>.txt`, then run:
+For a multiline description, use the available file-writing capability to create `$(jj workspace root)/.tmp/ce-commit/<unique-id>.txt`. If no JJ repository exists, use the local fallback `.tmp/ce-commit/<unique-id>.txt`; this skill otherwise reports the missing repository and stops. Then run:
 
 ```bash
-jj commit --message-file <repo-root>/.tmp/rocketclaw/ce-commit/<change-id>.txt
+jj commit --message-file <workspace-local-message-file>
 ```
 
 For multiple file-level groups, pass the group's filesets before `-m` or `--message-file`. Each fileset selects changes retained in the change being finished; unselected changes move to the new working-copy child. Re-run `jj status` and `jj diff` after every path-limited commit before selecting the next group. Do not use staging-area or non-JJ commit commands.
@@ -77,6 +77,6 @@ For every completed change, inspect it with `jj log -r @- --no-graph` and, when 
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The project's active local instructions and conventions and the syntax visible in `git log` override compatible Go guidance. If the description does not match the actual change or present repository standard, edit it with `jj describe -r @- -m "<repository-derived corrected message>"` or `--message-file <repo-local-path>`, then validate it again.
+The project's active local instructions and conventions and the syntax visible in `git log` override compatible Go guidance. If the description does not match the actual change or present repository standard, edit it with `jj describe -r @- -m "<repository-derived-message>"` or `--message-file <workspace-local-message-file>`, then validate it again.
 
 Run `jj status` after the final commit. Report every completed change ID, commit ID, and first line. If `@` is not empty, report the remaining paths rather than claiming all changes were committed.

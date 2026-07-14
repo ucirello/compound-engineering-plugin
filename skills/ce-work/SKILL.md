@@ -26,7 +26,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
 **Plan document** (input is a file path to an existing plan or specification): read the plan's metadata first — YAML frontmatter for a markdown plan, or the visible header text for an HTML plan (both formats carry the same fields).
 
-- If it carries `artifact_contract: ce-unified-plan/v1`, classify `artifact_readiness` before reading the body.
+- If it carries unified-plan metadata, classify `artifact_readiness` before reading the body.
   - `artifact_readiness: requirements-only` -> stop and tell the user this Product Contract needs `ce-plan` enrichment before implementation. Offer the exact `ce-plan <plan-path>` handoff.
   - `artifact_readiness: implementation-ready` plus `execution: code` -> continue to Phase 1 using the unified-plan reader strategy below.
   - Any other readiness value or any non-code/unclassified execution mode -> do not auto-execute as code. Route `execution: knowledge-work` to the non-code carve-out; otherwise ask the user to return to `ce-plan` to produce an implementation-ready code plan.
@@ -157,11 +157,11 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    7. **Abort criteria:** if a batch produces broad unplanned edits, out-of-scope test failures, or repeated conflicts, stop parallelizing and finish the rest serially.
 
    **Isolation is the harness's job, never ce-work's** — never run `jj workspace add` yourself. Probe what your subagent mechanism provides and pick the parallel path:
-   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: a native isolated-agent tool, a coding worker with a forked workspace, or an equivalent best-of-N runner. When a repository-local harness path is needed, use `.rocketclaw/workspaces/`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's reconciliation-cost judgment). This works even when you are *already* inside a workspace — harness workspaces are peers of one repository, not nested, and their working-copy changes can be addressed as `<workspace>@`.
+   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: a native isolated-agent tool, a coding worker with a forked workspace, or an equivalent best-of-N runner. When a repository-local harness path is needed, resolve the workspace root with `jj workspace root`, falling back to the current directory when JJ is unavailable; preserve existing `.gitignore` entries while ensuring `.tmp/` is ignored, refuse `.tmp` when it is a symlink or non-directory, and create `<resolved-root>/.tmp/workspaces/`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's reconciliation-cost judgment). This works even when you are *already* inside a workspace — harness workspaces are peers of one repository, not nested, and their working-copy changes can be addressed as `<workspace>@`.
    - **Shared workspace only** — subagents run in your working directory (Cursor `Task` default, or any harness without isolation). Parallelize **disjoint-file units only**, under the shared-workspace constraints below; contending units run serial.
    - **No subagent mechanism:** run inline.
 
-   **Dispatch** uses your harness's subagent/worker mechanism. Give each worker:
+   **Dispatch** uses your harness's subagent/worker mechanism. Give each worker the neutral protocol identity `ai:assistant` and display identity `AI Assistant`, plus:
    - The plan path plus a **bounded unit packet** — Goal Capsule, Definition of Done, the unit's section, the Verification Contract entries relevant to it, and any referenced R/F/AE/KTD excerpts. Do not send "read the whole plan" as the worker prompt. (For a legacy non-unified plan, the plan path for reference is acceptable.)
    - The unit's Goal, Files, Approach, Execution note, Patterns, Test scenarios, Verification, and any resolved deferred questions for it.
    - Instruction to check whether the unit's test scenarios cover all applicable categories (happy paths, edge cases, error paths, integration) and supplement gaps before writing tests.
@@ -173,13 +173,13 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
    **Permission mode:** Omit the `mode` parameter when dispatching subagents so the user's configured permission settings apply. Do not pass `mode: "auto"` — it overrides user-level settings like `bypassPermissions`.
 
-   **After each serial unit:** review `jj diff` against the unit's scope and `Files:`, run the relevant tests, fix before dispatching the next, record the worker's verification evidence, then integrate it using the isolated-workspace describe/rebase/new sequence below or fileset-commit shared `@`. Update the task list; never edit the plan body. Then dispatch the next unit from the integrated tip.
+   **After each serial unit:** review `jj diff` against the unit's scope and `Files:`, run the relevant tests, fix before dispatching the next, record the worker's verification evidence, then integrate it using the isolated-workspace describe/rebase/new sequence below or describe the shared `@` by fileset. Update the task list; never edit the plan body. Then dispatch the next unit from the integrated tip.
 
    **After a parallel batch — the orchestrator integrates JJ changes; never trust the handoff summary alone:**
    1. Wait for every worker in the batch to finish.
    2. **Inspect the actual change, not reported paths.** For an isolated JJ workspace, use `jj -R <workspace-root> status`, `jj diff -r '<workspace-name>@'`, and `jj diff -r '<workspace-name>@' --name-only`; for a shared workspace inspect `jj status` and `jj diff -r @`. Reported paths are a hint; declared `Files:` are often incomplete.
    3. **Detect real collisions** — 2+ workers that actually modified the same file. In a shared workspace only the last writer survived: fileset-commit the non-colliding work first, then re-run colliding units serially. With isolated workspaces, serialize overlapping changes and expect JJ to record any conflict when the later change is rebased onto the integrated tip.
-   4. **Review, test, and integrate each unit in dependency order — the orchestrator owns change history.** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary. For an isolated worker, set its description with `jj describe -r '<workspace-name>@' -m '<message describing the completed unit>'`, then `jj rebase -s '<workspace-name>@' -o @` and advance the orchestrator with `jj new '<workspace-name>@'`; this preserves the worker's change identity and creates a fresh `@` for the next unit. For shared-workspace edits, commit only the unit's fileset with `jj commit <filesets> -m '<message describing the completed unit>'`. Run relevant tests and resolve any recorded conflicts before the next unit. Capture each worker's returned verification evidence into the roll-up; never fabricate a red-before-implementation observation.
+   4. **Review, test, and integrate each unit in dependency order — the orchestrator owns change history.** Based on https://go.dev/wiki/CommitMessage and past messages visible in `git log`, compose a message that follows the repository's present standards. Local instructions and history syntax win; use compatible Go guidance such as a concise imperative summary only as a fallback. For an isolated worker, set its description with `jj describe -r '<workspace-name>@' -m '<composed-message>'`, then `jj rebase -s '<workspace-name>@' -o @` and advance the orchestrator with `jj new '<workspace-name>@'`; this preserves the worker's change identity and creates a fresh `@` for the next unit. For shared-workspace edits, commit only the unit's fileset with `jj commit <filesets> -m '<composed-message>'`. Run relevant tests and resolve any recorded conflicts before the next unit. Capture each worker's returned verification evidence into the roll-up; never fabricate a red-before-implementation observation.
    5. Update the task list (progress lives in the described changes).
    6. **Release the workers** — close each worker handle, obtain its root with `jj workspace root --name <workspace>`, run `jj workspace forget <workspace>`, then remove that harness-created workspace directory. Delete a bookmark only if the harness explicitly created a disposable one; JJ workspaces do not inherently require bookmarks.
    7. Dispatch the next dependency layer.
@@ -187,7 +187,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **Per-harness integration (examples — the universal flow above is the contract):**
    - **Claude `Agent` `isolation:"workspace"`:** address each worker by its `<workspace-name>@` revset and use the describe/rebase/new sequence above. If the rebased change is conflicted, inspect with `jj status`/`jj diff`, resolve deliberately, and verify; if intent cannot be preserved confidently, `jj abandon <worker-change>` and re-run the unit serially from the integrated tip.
    - **Codex `spawn_agent` worker:** integrate the worker's "uploaded changes," then `close_agent`.
-   - **Cursor `Task` (shared workspace):** edits are already in your tree — review and commit per step 4; **`best-of-n-runner`:** integrate its workspace.
+   - **Cursor `Task` (shared workspace):** edits are already in your working-copy change — review and describe per step 4; **`best-of-n-runner`:** integrate its workspace.
 
 ### Phase 2: Execute
 
@@ -212,7 +212,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
      - Assess testing coverage: did this task change behavior? If yes, were existing tests inspected and were tests written, updated, strengthened, or deliberately left unchanged with a reason? If no tests were added or changed, is the justification deliberate (e.g., pure config, no behavioral change, manual-only surface) and paired with replacement verification?
      - Record verification evidence for the task: behavior-change signal, existing tests inspected, tests added/changed/used unchanged, red failure or characterization observed when applicable, verification run, and any exception reason
      - Mark task as completed
-     - Evaluate for incremental commit (see below)
+     - Evaluate whether to describe an incremental change (see below)
    ```
 
    When a unit carries an `Execution note`, honor its intent rather than matching a fixed vocabulary. For notes that ask for proof-first work, write or identify the relevant failing test before implementation for that unit. For notes that ask for characterization, capture existing behavior before changing it. For notes that point away from unit coverage, run the named replacement verification and record why ordinary tests were not the right proof. For units without an `Execution note`, make the same decision from code and test discovery: upgrade to proof-first or characterization-first when behavior changes and the seam is practical; proceed pragmatically only when the task is non-behavioral or the exception is deliberate.
@@ -277,7 +277,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
    **Change-description workflow:**
 
-   Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local conventions take precedence; otherwise retain compatible Go guidance such as a concise imperative summary.
+   Based on https://go.dev/wiki/CommitMessage and past messages visible in `git log`, compose a message that follows the repository's present standards. Local instructions and history syntax win; use compatible Go guidance such as a concise imperative summary only as a fallback.
    ```bash
    # 1. Verify tests pass (use project's test command)
    # Examples: bin/rails test, npm test, pytest, go test, etc.
@@ -286,15 +286,15 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    # There is no staging area; positional filesets remain in the described
    # change while all other edits move to the new working-copy change.
 
-   # 3. Describe the completed logical unit without imposing a fixed syntax.
-   jj commit <filesets for this logical unit> -m "<message describing the completed logical unit>"
+   # 3. Describe the completed logical unit with the composed message.
+   jj commit <filesets for this logical unit> -m "<composed-message>"
    ```
 
-   Use workspace-relative `root:`/`root-file:` filesets when commands may run below the workspace root; quote fileset expressions containing operators. Verify the remainder with `jj status` and the committed unit with `jj show @-`.
+   Use workspace-relative `root:`/`root-file:` filesets when commands may run below the workspace root; quote fileset expressions containing operators. Verify the remainder with `jj status` and the described unit with `jj show @-`.
 
    **Handling conflicts:** `jj rebase` and multi-parent `jj new <left> <right>` can succeed while recording first-class conflicts; there is no `--continue` step. Inspect `jj status` and `jj diff`, resolve markers or use `jj resolve`, and verify `conflicts()` is empty for the shipping stack before proceeding. Incremental changes keep resolution scoped.
 
-   **Note:** Change descriptions contain only repository-relevant semantic content; do not add non-project footers or identity metadata.
+   **Note:** Change descriptions contain only repository-relevant semantic content; do not add non-project footers, creator attribution, or identity metadata. At every description checkpoint, derive the message dynamically from local instructions and past messages visible in `git log`; use compatible guidance from https://go.dev/wiki/CommitMessage only as a fallback.
 
    **Parallel subagent mode:** History ownership stays with the orchestrator (see Phase 1 Step 4):
    - **Workspace-isolated:** each subagent leaves one working-copy change; the orchestrator describes and rebases `<workspace>@` changes in dependency order.
@@ -354,7 +354,7 @@ When all Phase 2 tasks are complete and execution transitions to quality check, 
 
 **Code review: one portable path.** Review with `ce-code-review`, which self-sizes (lite roster for small low-risk code-only diffs, full roster otherwise). No harness-native review detection and no escalation tiers — the size/sensitive-surface judgment lives inside `ce-code-review`. Skip dedicated review only for a purely mechanical diff (formatting, dep-bumps, lint-only, generated). Full rules (autonomous Residual Gate, infra fallback) in `shipping-workflow.md`.
 
-**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the workspace change, describes/commits it, or applies fixes.
+**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits or describes the workspace change, or applies fixes.
 
 1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:trunk()` (or the explicit base revset) when known, and `depth:full` when a deep/thorough review was explicitly requested. Inspect the same range directly with `jj diff --from 'trunk()' --to @` and `jj log -r 'trunk()..@'`.
 2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator integrates JJ changes, runs tests, and commits logical units — it does not pre-investigate findings.

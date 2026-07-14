@@ -57,7 +57,7 @@ Each call is a CLI shell-out, not a subagent, so it doesn't consume the subagent
 
 **Two modes — slice the trio, sweep the whole doc (R20, KTD6):**
 
-- **Trio peers, sliced.** On **unified artifacts**, pass each activated trio lens the *same reviewer-specific slice its in-process twin got* as `<document-path>` (write that slice under repo-local `.tmp` — e.g. product-lens/adversarial get the Product Contract), not the full document, so the peer is a true corroborating twin rather than an off-lens reviewer. On legacy docs the peer gets the same full document the twin does.
+- **Trio peers, sliced.** On **unified artifacts**, pass each activated trio lens the *same reviewer-specific slice its in-process twin got* as `<document-path>` (write that slice under `$(jj workspace root)/.tmp`; outside JJ, use the current project directory's `.tmp`), not the full document, so the peer is a true corroborating twin rather than an off-lens reviewer. On legacy docs the peer gets the same full document the twin does.
 - **One whole-doc sweep.** In the **same wave**, also launch **one** call with reviewer-name **`whole-doc`**, the **full** document (never sliced), and the same resolved provider — a broad different-model read of the entire doc. It runs **once per document** (not per lens), writes `whole-doc-<provider>.json`, and folds in as an independent reviewer that corroborates by fingerprint against *any* in-process finding (it has no in-process twin). Same gate, isolation, and non-blocking rules as the trio calls. A model following this contract MUST issue this `whole-doc` invocation whenever the pass runs, or the broad coverage R20/U9 promises is silently skipped.
 
 Invoke via the skill-dir anchor — set `SKILL_DIR` to the absolute directory of **this** skill's `SKILL.md` (the Bash tool's CWD is the user's project, not the skill dir, on every host):
@@ -73,7 +73,7 @@ bash "$SKILL_DIR/scripts/cross-model-doc-review.sh" "<host-provider>" "<candidat
 - `<document-path>` = the document under review.
 - `<document-type>` = the Phase 1 classification (`requirements` / `plan` / `unified-requirements` / `unified-plan`).
 - `<origin>` = the same `{origin_path}` slot the in-process personas receive.
-- `<run-dir>` = a repo-local run scratch dir (e.g. `.tmp/rocketclaw/ce-doc-review/<run-id>/`). The script writes `<reviewer-name>-<provider>.json` there per resolved peer **only after** forcing `reviewer` to `<reviewer-name>-<provider>` and downgrading peer `safe_auto` → `gated_auto`.
+- `<run-dir>` = a workspace-local run scratch dir (e.g. `$(jj workspace root)/.tmp/rocketclaw/ce-doc-review/<run-id>/`; outside JJ, use the current project directory's `.tmp`). The script writes `<reviewer-name>-<provider>.json` there per resolved peer **only after** forcing `reviewer` to `<reviewer-name>-<provider>` and downgrading peer `safe_auto` → `gated_auto`.
 
 Set the Bash tool `timeout` / `block_until_ms` high enough to cover the hard cap (default 600s) **and await completion** — the script self-bounds (codex idle-timeout default 180s with reasoning forced on for liveness; hard backstop `CROSS_MODEL_HARD_SECS` default 600s) and exits cleanly. If the harness can't background a shell command, run the calls inline before awaiting the reviewers; correctness is unaffected, only wall-clock. The script needs no prompt or schema passed in — it reads the persona brief, `findings-schema.json`, and the document itself from disk.
 

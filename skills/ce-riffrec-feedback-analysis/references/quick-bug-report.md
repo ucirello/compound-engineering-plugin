@@ -8,7 +8,13 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the ce-riffrec-feedback-analysis SKILL.md>";
-   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir <repo-root>/.tmp/rocketclaw/riffrec-quick/<run-id>
+   ROOT="$(jj workspace root 2>/dev/null)"
+   if [ -n "$ROOT" ]; then
+     OUTPUT_DIR="$ROOT/.tmp/rocketclaw/riffrec-quick/<run-id>"
+   else
+     OUTPUT_DIR=".tmp/rocketclaw/riffrec-quick/<run-id>"
+   fi
+   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$OUTPUT_DIR"
    ```
 
    Choose a run-unique `<run-id>`, ensure `.tmp/rocketclaw/` is covered by `.gitignore`, and capture the printed output directory; later steps read from it.

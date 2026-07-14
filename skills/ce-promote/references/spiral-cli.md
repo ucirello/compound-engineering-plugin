@@ -26,7 +26,7 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 Read the project config (resolve the JJ workspace root, never assume CWD):
 
 ```bash
-cat "$(jj root 2>/dev/null)/.rocketclaw/config.local.yaml" 2>/dev/null || echo '__NO_CONFIG__'
+cat "$(jj workspace root 2>/dev/null)/.rocketclaw/config.local.yaml" 2>/dev/null || echo '__NO_CONFIG__'
 ```
 
 If the contents have an **uncommented** top-level `ce_promote_spiral_optout: true` line, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template ships a `# ce_promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
@@ -35,9 +35,9 @@ If the contents have an **uncommented** top-level `ce_promote_spiral_optout: tru
 
 Use the platform's blocking-question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`) / Pi. If no blocking tool exists or the call errors, present the same options as a numbered list in chat and wait for a reply — never silently skip.
 
-For the **unauthed** state, the **agent itself** runs `spiral login --json` (CLI >= 1.8.0): it's non-blocking and the API key never passes through the agent — the agent shares the returned `auth_url`, the user approves in a browser, and the credential is delivered server->CLI. The blocking question is mainly the escape hatch.
+For the **unauthed** state, the **AI Assistant itself** runs `spiral login --json` (CLI >= 1.8.0): it's non-blocking and the API key never passes through the AI Assistant — the AI Assistant shares the returned `auth_url`, the user approves in a browser, and the credential is delivered server->CLI. The blocking question is mainly the escape hatch.
 
-Use the question stem to teach the mechanic, offer the escape hatch, AND disclose that declining is durable (so the permanent side effect isn't hidden behind a transient-sounding label): "Spiral personalizes and humanizes the copy in your voice. [It's installed but not signed in / It isn't installed yet] — sign in now, or have the agent draft directly without Spiral? (Declining drafts your copy now and won't bring up Spiral again in this project; you can set it up anytime by asking.)"
+Use the question stem to teach the mechanic, offer the escape hatch, AND disclose that declining is durable (so the permanent side effect isn't hidden behind a transient-sounding label): "Spiral personalizes and humanizes the copy in your voice. [It's installed but not signed in / It isn't installed yet] — sign in now, or have the AI Assistant draft directly without Spiral? (Declining drafts your copy now and won't bring up Spiral again in this project; you can set it up anytime by asking.)"
 
 Offer exactly **two** options (labels must be self-contained):
 
@@ -48,12 +48,12 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Act on the choice
 
-- **Sign in to Spiral** (installed, unauthed) — the agent runs `spiral login --json` itself. It's non-blocking, and the **API key never touches the agent** (the token is exchanged server->CLI via a device-code flow). Parse the JSON `status`:
+- **Sign in to Spiral** (installed, unauthed) — the AI Assistant runs `spiral login --json` itself. It's non-blocking, and the **API key never touches the AI Assistant** (the token is exchanged server->CLI via a device-code flow). Parse the JSON `status`:
   - `already_authenticated` — `{ "authenticated": true, "status": "already_authenticated", "prefix": "..." }`: a credential already exists; nothing to approve. Go to Path A. (To switch accounts the user runs `spiral logout` first.)
   - `pending` — `{ "status": "pending", "auth_url": "...", "user_code": "ABCD-2345", "expires_in": 900 }`: surface the `auth_url` for the user to open and approve in their browser (the `user_code` is embedded in the URL — show it too so they can confirm it matches), then wait. Once the user says they've approved, confirm by running `spiral auth status --json`: it returns `"authenticated": true` when claimed, or `"status": "pending"` if not yet (re-check, don't busy-loop with sleeps — let the user's confirmation drive the re-check). If it stays unclaimed or the code expires (~`expires_in`s), offer to retry or fall to Path B. On success -> Path A.
-  - **Never have the user paste an API key into chat** — with agent login the agent never handles the key at all.
-  - **Older CLI (< 1.8.0, no agent login):** if `spiral login --json` returns the legacy `API key required ... --token` text instead of JSON, suggest `npm i -g @every-env/spiral-cli@latest`, or have the user run `spiral login` themselves in their terminal (browser sign-in) and re-check `spiral auth status`. If they would rather not, go to Path B.
-- **Install Spiral** (absent) — the pairing-code command installs and connects in one step. Direct the user to Settings → Connect an Agent at https://app.writewithspiral.com to copy their command, which looks like:
+  - **Never have the user paste an API key into chat** — with AI Assistant login the AI Assistant never handles the key at all.
+  - **Older CLI (< 1.8.0, no AI Assistant login):** if `spiral login --json` returns the legacy `API key required ... --token` text instead of JSON, suggest `npm i -g @every-env/spiral-cli@latest`, or have the user run `spiral login` themselves in their terminal (browser sign-in) and re-check `spiral auth status`. If they would rather not, go to Path B.
+- **Install Spiral** (absent) — the pairing-code command installs and connects in one step. Direct the user to the provider's Settings > Connect an Agent page at https://app.writewithspiral.com to copy their command, which looks like:
   ```bash
   npx @every-env/spiral-cli@latest setup --pairing-code <code>
   ```
@@ -62,7 +62,7 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the JJ workspace root with `jj root`, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+Resolve the JJ workspace root with `jj workspace root`, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
 
 - **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
 - **File absent:** create it (and its `.rocketclaw/` directory) with the key, AND make sure the machine-local config will not be recorded in version control. Check the applicable ignore files for the root-relative path `<root>/.rocketclaw/config.local.yaml`. For a Git-backed JJ repository, use `jj git root` only to locate the backing repository's local exclude file and append `.rocketclaw/*.local.yaml` there if needed; JJ honors that exclude file. If no backing Git repository or local exclude is available, warn and ask before writing. Use the local exclude rather than a tracked ignore file so a drafts-only action does not change the working-copy revision. `ce-setup` is the canonical place that adds the shared ignore entry for teammates.

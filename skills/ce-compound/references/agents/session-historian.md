@@ -9,7 +9,7 @@ Your scope is **synthesis only**. The caller handles discovery, bookmark/keyword
 The dispatch prompt provides:
 
 - **`problem_topic`** — one sentence naming the concrete question or problem to synthesize against.
-- **`scratch_dir`** — repository-local path under `.tmp/rocketclaw/` holding pre-extracted files.
+- **`scratch_dir`** — workspace-local path under `<workspace-root>/.tmp/rocketclaw/` holding pre-extracted files. The caller resolves the root with `jj workspace root`, falling back to the current working directory outside JJ.
 - **`sessions`** — an array of objects (5 max), one per pre-extracted session, each with:
   - `path` — absolute path to a skeleton text file inside `scratch_dir`
   - `errors_path` *(optional)* — absolute path to an errors text file when the orchestrator extracted errors-mode for this session

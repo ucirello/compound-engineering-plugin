@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Plugin environment health check.
 # Reports optional tool capabilities and workspace-local config safety in one pass.
-
 set -o pipefail
 
 # =====================================================
@@ -69,14 +68,10 @@ done
 #  Project checks
 # =====================================================
 
-legacy_cfg="skip"
 local_cfg_ignored="skip"
 local_cfg="skip"
 example_cfg="skip"
 project_issues=0
-
-legacy_cfg="missing"
-[ -f "$project_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
 local_cfg="missing"
 if [ -e "$project_root/.rocketclaw/config.local.yaml" ]; then
@@ -100,8 +95,22 @@ if [ "$in_workspace" = "yes" ] && [ "$local_cfg" = "present" ]; then
   if [ "$tracked_path" = "$local_cfg_path" ]; then
     local_cfg_ignored="missing"
   else
-    inspection_root="$project_root/.tmp/rocketclaw/ce-setup-ignore-$$"
-    if mkdir -p "$inspection_root/.rocketclaw" 2>/dev/null; then
+    scratch_root="$project_root/.tmp"
+    inspection_parent="$scratch_root"
+    inspection_root=""
+    if [ ! -L "$scratch_root" ] &&
+       { [ -d "$scratch_root" ] || mkdir "$scratch_root" 2>/dev/null; } &&
+       [ ! -L "$inspection_parent" ] &&
+       { [ -d "$inspection_parent" ] || mkdir "$inspection_parent" 2>/dev/null; }; then
+      for attempt in {1..10}; do
+        candidate="$inspection_parent/ce-setup-ignore-$$-$RANDOM-$attempt"
+        if mkdir "$candidate" 2>/dev/null; then
+          inspection_root="$candidate"
+          break
+        fi
+      done
+    fi
+    if [ -n "$inspection_root" ] && mkdir "$inspection_root/.rocketclaw" 2>/dev/null; then
       cp "$project_root/.rocketclaw/config.local.yaml" "$inspection_root/$local_cfg_path"
       [ ! -f "$project_root/.gitignore" ] || cp "$project_root/.gitignore" "$inspection_root/.gitignore"
       [ ! -f "$project_root/.rocketclaw/.gitignore" ] || cp "$project_root/.rocketclaw/.gitignore" "$inspection_root/.rocketclaw/.gitignore"
@@ -109,8 +118,8 @@ if [ "$in_workspace" = "yes" ] && [ "$local_cfg" = "present" ]; then
         inspected_path=$(jj -R "$inspection_root" file list -- "root-file:$local_cfg_path" 2>/dev/null || true)
         [ "$inspected_path" != "$local_cfg_path" ] && local_cfg_ignored="ok" || local_cfg_ignored="missing"
       fi
-      rm -rf "$inspection_root"
     fi
+    [ -z "$inspection_root" ] || rm -rf -- "$inspection_root"
   fi
 fi
 
@@ -142,13 +151,6 @@ done
 
 section "Project config"
 detail "Project root: $project_root"
-
-if [ "$legacy_cfg" = "present" ]; then
-  warn "Obsolete rocketclaw.local.md exists"
-  project_issues=$((project_issues + 1))
-else
-  ok "No obsolete rocketclaw.local.md"
-fi
 
 if [ "$local_cfg" = "present" ]; then
   ok ".rocketclaw/config.local.yaml exists"

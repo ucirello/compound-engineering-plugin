@@ -205,7 +205,7 @@ def _append_pi_tool_call_targets(chunks, content):
 def _extract_user_assistant_text(filepath):
     """Return concatenated user + assistant text content from a session JSONL.
 
-    Skips JSONL metadata field names and values (sessionId, gitBranch, uuid,
+    Skips JSONL metadata field names and values (session IDs, branch metadata,
     timestamps, type tags), tool_use blocks (tool names + tool inputs),
     tool_result blocks (tool outputs), and thinking/reasoning blocks. Only
     content the user or assistant actually said is included.

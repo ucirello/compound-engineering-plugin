@@ -247,15 +247,19 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 - **Elsewhere mode surprise-me:** user-context synthesis extracts themes, recurring language, tensions, and omissions from whatever the user supplied, rather than just restating it. Web research broadens beyond narrow prior-art for a single subject toward the domain's landscape.
 - Specified mode keeps the current shallower scan — the user's named subject anchors what's relevant, so broader exploration is unnecessary.
 
-Generate a `<run-id>` once at the start of Phase 1 (8 hex chars). Reuse it for the V15 cache file (this phase) and the V17 checkpoints (Phases 2 and 4) so they share one per-run scratch directory.
+Generate a fresh `<run-id>` once at the start of Phase 1 (8 hex chars). Reuse it for the V15 cache file (this phase) and the V17 checkpoints (Phases 2 and 4) so they share one per-run scratch directory.
 
-**Pre-resolve the scratch directory path.** Scratch lives under `.tmp/rocketclaw/` at the JJ workspace root, or under the current working directory when no JJ workspace exists. Run one bash command to create the directory and its parents and capture its absolute path for downstream use.
+**Pre-resolve the scratch directory path.** Scratch lives under `.tmp/rocketclaw/` at the JJ workspace root, or under the current working directory when no JJ workspace exists. Run one bash command to resolve `jj workspace root` with a current-directory fallback, create the directory and its parents, and capture its absolute path for downstream use.
 
 ```bash
-SCRATCH_DIR="<workspace-root-or-current-working-directory>/.tmp/rocketclaw/ce-ideate/<run-id>"
-mkdir -p "$SCRATCH_DIR"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
+SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-ideate/<run-id>"
+mkdir -p "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-ideate"
+mkdir "$SCRATCH_DIR"
 printf '%s\n' "$SCRATCH_DIR"
 ```
+
+The final `mkdir` must create a new directory atomically. If it reports that the path exists, generate a new `<run-id>` and retry rather than reusing another run's directory.
 
 Use the resolved absolute `.tmp/rocketclaw/ce-ideate/<run-id>` path as `<scratch-dir>` for every subsequent checkpoint write and cache read in this run. The run directory is not deleted on completion — the V15 cache is session-scoped and reused across run-ids, the checkpoints follow the cross-invocation-reusable convention, and in the no-repo case the deliverable itself is written here (see `references/post-ideation-workflow.md` Phase 4 and §5.5).
 

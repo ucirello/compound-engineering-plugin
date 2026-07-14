@@ -4,7 +4,7 @@ description: Refresh docs/solutions learnings against the current codebase. Use 
 argument-hint: "[optional: scope hint — directory, filename, module, or keyword] [mode:headless] "
 ---
 
-# Compound Refresh
+# Refresh Learnings
 
 Maintain the quality of `docs/solutions/` over time. This workflow reviews existing learnings against the current codebase, then refreshes any derived pattern docs that depend on them.
 
@@ -137,10 +137,9 @@ Before making any edits, record the current JJ context so Phase 5 can distinguis
 2. Run `jj status` and `jj diff --summary` and retain the changed-path baseline.
 3. Run `jj bookmark list -r 'heads(::@ & bookmarks())'` to identify the nearest local bookmark(s) on the current line of history. A bookmark may point to `@`, an ancestor such as `@-`, or no revision on the current line.
 4. Resolve `trunk()` to identify the configured default-line revision, then use the project's conventions and bookmark names to label it for reporting and GitHub's `--base`. Do not assume the default is named `main`/`master` or that the nearest bookmark is the default bookmark.
-5. Inspect recent descriptions with `jj log -r '::@' -n 10 --no-graph` to learn the repository's change-description style. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Treat the repository's active syntax and conventions as authoritative; apply compatible Go quality guidance without imposing a fixed prefix, structure, or template.
+5. Inspect recent descriptions with `jj log -r '::@' -n 10 --no-graph` to learn the repository's change-description style. Do not compose the change description during baseline capture.
 
 Do not create or move a bookmark during baseline capture.
-
 ### Route by Scope
 
 | Scope | When to use it | Interaction style |
@@ -387,7 +386,7 @@ Search efficiently:
 
 Classify each citation by what it does in its citing context:
 
-- **Decorative** — principle stated inline, citation is a "see also" pointer or bare attribution. Delete is fine; clean up citations in the same commit.
+- **Decorative** — principle stated inline, citation is a "see also" pointer or bare source note. Delete is fine; clean up citations in the same commit.
 - **Substantive** — citing doc relies on the cited doc to provide content not stated inline (e.g., "see X for details on Y" with no inline Y). Signal Replace — write a successor at the same path, or **Keep with narrowed scope** if the doc's actual content is broader than its title implies.
 - **Mixed or unclear** — stale-mark.
 
@@ -540,7 +539,7 @@ Note: if this run **creates** `CONCEPTS.md` from scratch, the Discoverability Ch
 After processing the selected scope, output the following report:
 
 ```text
-Compound Refresh Summary
+Learning Refresh Summary
 ========================
 Scanned: N learnings
 
@@ -606,15 +605,15 @@ Use sensible defaults — no user to ask:
 
 | Context | Default action |
 |---------|---------------|
-| Default or unbookmarked line | Commit the refresh paths, create a bookmark named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`) at the new commit, push it, and attempt to open a PR. If push or PR creation fails, report the bookmark name and the failed step. |
+| Default or unbookmarked line | Commit the refresh paths, create a bookmark named specifically for what was refreshed at the new commit, push it, and attempt to open a PR. If push or PR creation fails, report the bookmark name and the failed step. |
 | Feature line | Commit the refresh paths as a separate commit and move the unique nearest feature bookmark forward to that commit. Do not push unless the invoking workflow already requires it. |
 | JJ operations fail | Include the recommended JJ commands in the report and continue |
 
-Commit only the exact files that compound-refresh modified by passing them as filesets to `jj commit -m '<description>' <path>...`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The repository's active syntax and conventions win; apply only compatible Go quality guidance and do not impose a fixed message template. With path arguments, the selected paths remain in the commit being described and all other changes move into the new working-copy commit on top. After that command, the completed refresh commit is `@-`; pre-existing paths remain in `@`.
+Commit only the exact files that compound-refresh modified by passing them as filesets to `jj commit -m '<description>' <path>...`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active local instructions and observed history syntax win; apply only compatible Go guidance and do not impose a fixed prefix, structure, or template. With path arguments, the selected paths remain in the commit being described and all other changes move into the new working-copy commit on top. After that command, the completed refresh commit is `@-`; pre-existing paths remain in `@`.
 
 If any path modified by compound-refresh was already present in the Phase 0 baseline, path selection alone cannot separate the pre-existing and refresh edits within that file. In interactive mode, disclose the overlap and offer `jj commit -i` to select only the intended diff or "Don't commit"; never commit the whole overlapping path while claiming it contains only refresh work. In headless mode, do not commit: report the overlap and the recommended interactive `jj commit -i` step.
 
-For a feature line, advance its bookmark with `jj bookmark move <bookmark> --to @-`. For a new review line, create it with `jj bookmark create <bookmark> -r @-`, then run `jj git push --bookmark <bookmark>`. Use `gh pr create --head <bookmark> --base <default-bookmark>` for GitHub; in a non-colocated JJ workspace, set `GIT_DIR="$(jj git root)"` for the `gh` invocation as described by the official JJ GitHub guide.
+For a feature line, advance its bookmark with `jj bookmark move <bookmark> --to @-`. For a new review line, create it with `jj bookmark create <bookmark> -r @-`, then run `jj git push --bookmark <bookmark>`. Resolve the GitHub repository from the URL returned by `jj git remote list`, then use `gh pr create --repo <repository> --head <bookmark> --base <default-bookmark>` so non-colocated JJ workspaces do not require raw Git environment state.
 
 ### Interactive mode
 
@@ -702,4 +701,4 @@ After the refresh report is generated, check whether the project's instruction f
 
    **Skip this step entirely if `CONCEPTS.md` does not exist** — never nag for an artifact the project has not adopted. When skipped, this step produces no output and no edit.
 
-6. **Adjust the change or create a follow-up commit when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, commit only the newly edited instruction path with `jj commit -m '<description>' <instruction-path>`, then move the same bookmark to `@-` if Phase 5 associated the refresh with one. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The repository's active syntax and conventions win; use compatible Go quality guidance without copying a fixed example or template. If Phase 5 already pushed that bookmark, run `jj git push --bookmark <bookmark>` again so the open PR includes the follow-up commit. This leaves unrelated paths in `@` and keeps the remote bookmark current. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits in the working-copy commit alongside the other refresh changes — no separate commit logic needed.
+6. **Create a follow-up change when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, commit only the newly edited instruction path with `jj commit -m '<description>' <instruction-path>`, then move the same bookmark to `@-` if Phase 5 associated the refresh with one. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active local instructions and observed history syntax win; apply only compatible Go guidance and do not impose fixed syntax. If Phase 5 already pushed that bookmark, run `jj git push --bookmark <bookmark>` again so the open PR includes the follow-up change. This leaves unrelated paths in `@` and keeps the remote bookmark current. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits in the working-copy change alongside the other refresh changes — no separate commit logic needed.

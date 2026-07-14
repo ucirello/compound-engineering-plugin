@@ -262,7 +262,7 @@ jj diff -r @ --name-only
 
 Filter the output against the scope paths. If the current change contains in-scope files:
 - Report which files are part of the change
-- Ask the user to finish and describe that change, then start a clean child with `jj new`, or park it as a sibling with `jj new @-`; confirm whether the optimization bookmark should instead start from that change. If composing or recommending its description, apply this policy: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository syntax wins; apply only compatible Go guidance and do not impose a fixed message shape.
+- Ask the user to finish and describe that change, then start a clean child with `jj new`, or park it as a sibling with `jj new @-`; confirm whether the optimization bookmark should instead start from that change. If composing or recommending its description, apply this policy: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and the syntax observed in `git log` always win. Use compatible Go-style clarity and structure without imposing fixed prefixes, types, scopes, subjects, templates, or examples.
 - Do NOT continue until the intended baseline revision and the treatment of the existing change are explicit
 
 ### 1.2 Build or Validate Measurement Harness
@@ -475,10 +475,11 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
    test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .jj
    ```
 2. Fill the experiment prompt template
-3. Write the filled prompt to `.tmp/rocketclaw/ce-optimize/prompts/optimize-exp-<index>.txt`, creating the ignored parent directory first
+3. Write the filled prompt to `<workspace-root>/.tmp/rocketclaw/ce-optimize/prompts/optimize-exp-<index>.txt`, creating the ignored parent directory first
 4. Dispatch via Codex:
    ```bash
-   codex exec - < .tmp/rocketclaw/ce-optimize/prompts/optimize-exp-<index>.txt
+   WORKSPACE_ROOT=$(jj workspace root 2>/dev/null) || WORKSPACE_ROOT=$(pwd -P)
+   codex exec - < "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-optimize/prompts/optimize-exp-<index>.txt"
    ```
 5. Security posture: use the user's selection (ask once per session if not set in spec)
 
@@ -538,8 +539,7 @@ After all experiments in the batch have been measured:
 
 3. **If best improves on current best: KEEP**
    - Re-read `jj -R "<workspace_path>" diff -r @ --name-only` and restore any out-of-scope paths before integration; if no mutable-scope diff remains, treat the experiment as non-improving and abandon it during cleanup
-   - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-   - Repository syntax wins. Apply compatible Go guidance, preserve the hypothesis and measurable intent, set `MESSAGE` to the composed text, then finalize the winning working-copy change with `jj -R "<workspace_path>" describe -m "$MESSAGE"`.
+   - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and the syntax observed in `git log` always win. Use compatible Go-style clarity and structure without imposing fixed prefixes, types, scopes, subjects, templates, or examples. Preserve the hypothesis and measurable intent, set `MESSAGE` to the composed text, then finalize the winning working-copy change with `jj -R "<workspace_path>" describe -m "$MESSAGE"`.
    - Advance the long-lived bookmark to the workspace revision with `jj bookmark move "optimize/<spec-name>" --to "optimize-<spec-name>-exp-<NNN>@"`; no merge change is needed because every experiment started as a child of the previous bookmark target
    - Record the revision's JJ change ID from `jj -R "<workspace_path>" log -r @ --no-graph -T change_id`
    - Clean up the winner's experiment workspace. The helper preserves a change selected by a bookmark and abandons unselected experiment changes.
@@ -549,7 +549,7 @@ After all experiments in the batch have been measured:
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
    - If disjoint: in the runner-up workspace run `jj rebase -r @ -o "optimize/<spec-name>"`, then re-run full measurement there. This rewrites that experiment change onto the new best without creating a merge or duplicate change.
-   - If combined measurement is strictly better: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository syntax wins; apply compatible Go guidance, preserve the runner-up hypothesis and measurable intent, describe the runner-up change with that message, advance `optimize/<spec-name>` to that workspace revision, record its change ID (outcome: `runner_up_kept`), then clean up its workspace.
+   - If combined measurement is strictly better: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and the syntax observed in `git log` always win. Use compatible Go-style clarity and structure without imposing fixed prefixes, types, scopes, subjects, templates, or examples. Preserve the runner-up hypothesis and measurable intent, describe the runner-up change with that message, advance `optimize/<spec-name>` to that workspace revision, record its change ID (outcome: `runner_up_kept`), then clean up its workspace.
    - Otherwise: leave the optimization bookmark unchanged, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_abandoned`), then clean up the workspace so the helper abandons the rebased runner-up change
    - Stop after first failed combination
 
@@ -664,7 +664,7 @@ Present post-completion options via the platform question tool:
 
 1. **Run `/ce-code-review`** on the cumulative diff (`jj diff --from "$TRUNK_REF" --to "optimize/<spec-name>"`). Load the `ce-code-review` skill with the optimization bookmark revision and the retained exact trunk base as its review target (interactive or `mode:agent`). To land eligible fixes before the next option, apply the mechanical-apply bar below.
 
-   **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not push from this step. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository syntax wins; apply compatible Go guidance, describe any review-fix change, and advance the optimization bookmark only after tests pass.
+   **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not push from this step. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and the syntax observed in `git log` always win. Use compatible Go-style clarity and structure without imposing fixed prefixes, types, scopes, subjects, templates, or examples. Describe any review-fix change and advance the optimization bookmark only after tests pass.
 2. **Run `/ce-compound`** to document the winning strategy as an institutional learning.
 3. **Create PR**: push the bookmark with `jj git push --bookmark "optimize/<spec-name>" --remote "$TRUNK_REMOTE"`, then create the GitHub PR from that pushed bookmark to the retained `TRUNK_BOOKMARK` base using the available GitHub interface.
 4. **Continue** with more experiments: re-enter Phase 3 with the current state. State re-read first.

@@ -107,7 +107,7 @@ Let the user override the path if they want a different repository-local locatio
 
 **Skip this section entirely if the user chose local-only state in section 4** — the shared-bookmark topology only applies to versioned state.
 
-**Ask:** "Is this a multi-agent setup where dedicated JJ workspaces publish sweep state through one shared bookmark? Answer yes only if more than one machine or agent uses the same bookmark and Git remote. Default is no — one workspace records changes locally."
+**Ask:** "Is this a multi-agent setup where dedicated JJ workspaces publish sweep state through one shared bookmark? Answer yes only if more than one machine or agent uses the same bookmark and JJ remote. Default is no — one workspace records changes locally."
 
 - **No** (default) -> omit `sweep_shared_bookmark` and `sweep_shared_remote`. The state-engine lease serializes overlapping sweeps within one workspace.
 - **Yes** -> ask for an existing dedicated bookmark (for example `feedback-sweep`) and its Git remote (default `origin`). Require bookmark shape `^[A-Za-z0-9][A-Za-z0-9._/-]*$` and remote shape `^[A-Za-z0-9][A-Za-z0-9._-]*$`; reject `@`, quotes, whitespace, and revset operators. Explain that the lease is **push-gated**: before any source-side write, the sweep publishes and fetch-confirms its lease change on that exact tracked bookmark. The workspace must be dedicated and clean because the sweep creates `@` from the remote bookmark before acquiring the lease. Run `jj bookmark track <bookmark>@<remote>` once so `jj git fetch --remote <remote> --tracked` propagates remote updates.
@@ -120,7 +120,7 @@ Let the user override the path if they want a different repository-local locatio
 
 Offer to seed state from an existing legacy feedback-tracking file so prior work is not re-ingested and already-acknowledged items are not acknowledged again.
 
-**Ask:** "Do you have an existing feedback state file to import — for example a prior dogfood tracker like `docs/dogfood-reports/cora-v2-alpha-feedback-state.yml`? Importing carries over its cursors and items so the first sweep skips what's already been processed. Skip if this is a clean start."
+**Ask:** "Do you have an existing feedback state file to import, such as `docs/feedback-sweep/legacy-state.yml`? Importing carries over its cursors and items so the first sweep skips what's already been processed. Skip if this is a clean start."
 
 - **No / skip** -> proceed to section 8.
 - **Yes** -> ask for the file path. Then build a `--source-map`: for each legacy channel/source id in the file, pair it with the configured source id from section 1 (the short name the live connector reads by), as a JSON object like `{"C0AQLMQBGBD":"slack-alpha"}`. This is load-bearing — without it, an imported `C0AQLMQBGBD` cursor lands under `C0AQLMQBGBD` while the connector reads under `slack-alpha`, orphaning the cursor and re-ingesting everything on the first sweep. Run the import from **this skill's directory**; set `SKILL_DIR` inline to the absolute path of the directory containing the `SKILL.md` you loaded:
@@ -181,7 +181,7 @@ sweep_state_path: docs/feedback-sweep/state.yml   # versioned, or .tmp/rocketcla
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
 sweep_shared_bookmark: feedback-sweep             # omit for local-only; exact tracked bookmark
-sweep_shared_remote: origin                       # omit for local-only; Git remote for the bookmark
+sweep_shared_remote: origin                       # omit for local-only; JJ remote for the bookmark
 ~~~
 
 Notes:

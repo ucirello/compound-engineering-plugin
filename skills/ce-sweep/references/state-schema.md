@@ -11,7 +11,7 @@ rules below are enforced in one place. Read this before touching state.
 ```yaml
 schema_version: 1
 lease:
-  writer: "sweep-2026-07-02-cron"
+  writer: "ai:assistant/2026-07-02-example"
   timestamp: "2026-07-02T12:00:00+00:00"
   ttl_minutes: 60
 sources:
@@ -26,7 +26,7 @@ items:
 last_run:
   timestamp: "2026-07-02T12:05:00+00:00"
   outcome: "completed"
-  writer: "sweep-2026-07-02-cron"
+  writer: "ai:assistant/2026-07-02-example"
   counts: {"ingested": 5, "closed": 1}
 ```
 

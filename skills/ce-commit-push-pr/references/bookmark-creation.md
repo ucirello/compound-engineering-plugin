@@ -45,7 +45,7 @@ jj rebase -s @ -o <base-revision>
 
 Jujutsu records rebase conflicts as first-class state and completes the operation. If `jj status` reports conflicts, resolve mechanical conflicts with `jj resolve` or direct edits. A semantic conflict that requires intent is a blocker to surface, not a reason to discard the working-copy change.
 
-Do not create a temporary stash, switch a checkout, or create a raw Git branch. The working-copy change already preserves uncommitted content while JJ changes its parent.
+Do not create auxiliary snapshots or pointers outside JJ. The working-copy change already preserves uncommitted content while JJ changes its parent.
 
 After the final content change is finished, `SKILL.md` creates or advances the explicit head bookmark at the actual stack head and publishes only that bookmark through `jj git`.
 

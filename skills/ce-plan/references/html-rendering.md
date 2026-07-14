@@ -47,9 +47,9 @@ These hold regardless of which skill produced the artifact.
 - **Source / composition signal.** A visible footer at the bottom of
   the doc names the composition timestamp and the source identifier
   (the user prompt context, the upstream brainstorm doc when one
-  exists, or just the composing skill name when there's no external
-  source). Example shape:
-  `<footer class="composition-signal">Composed 2026-05-17T14:23Z by ce-plan from <code>docs/brainstorms/...-requirements.md</code></footer>`.
+  exists, or the current request when there's no external source).
+  Example shape:
+  `<footer class="composition-signal">Composed 2026-05-17T14:23Z from <code>docs/brainstorms/...-requirements.md</code></footer>`.
   Under exclusive output mode this signal is the artifact's own
   provenance — there's no markdown sibling to reference. Omitting it
   leaves readers unable to tell how stale the rendering is.

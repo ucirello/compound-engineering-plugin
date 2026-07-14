@@ -54,7 +54,7 @@ Allowed:
 
 Avoid:
 
-- polished branding
+- polished visual identity
 - final colors or typography
 - component-library precision
 - pixel-perfect layout
@@ -133,7 +133,7 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use workspace-local scratch because visual probes are disposable:
+Use workspace-local scratch because visual probes are disposable. Resolve `<workspace-root>` with `jj workspace root`; outside a JJ workspace, use the current working directory so the fallback remains in its local `.tmp/`:
 
 ```text
 .tmp/rocketclaw/ce-brainstorm-visual/<run-id>/

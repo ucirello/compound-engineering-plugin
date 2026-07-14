@@ -21,7 +21,7 @@ The needed capability is generic — *run a background process and be woken when
 
 **Checkpoint (the floor):** when no background-and-wake capability exists, run one tick, persist, report, and print the exact re-run command (`/ce-babysit-pr <PR-url>`) — monitoring is *paused*, say so plainly. Because every tick is disk-resumable, checkpoint is the same loop hand-cranked; the in-session watch only automates the crank. Never fake a loop with a foreground `sleep` (blocked on Claude Code, discouraged elsewhere) or a detached `nohup` (reaped/unsupported on several harnesses).
 
-**Durability:** the in-session watch dies with the session; re-invoking resumes from the repository-local `.tmp/rocketclaw/` state. For an unattended multi-day watch, use a durable harness scheduler that runs from the same repository workspace; a fresh headless run is context-blind, so persist consequential decisions to the same repository-local state. **Shell env vars do not persist between separate tool calls** on any harness — re-set `SKILL_DIR`/`STATE_DIR` inline in every command.
+**Durability:** the in-session watch dies with the session; re-invoking resumes from `$(jj workspace root)/.tmp/rocketclaw/`, with local `$PWD/.tmp/rocketclaw/` as the fallback when there is no JJ repository. No watch state may use a system-wide temporary directory, an environment-selected temp directory, or a global temp API. For an unattended multi-day watch, use a durable harness scheduler that runs from the same repository workspace; a fresh headless run is context-blind, so persist consequential decisions to the same workspace-local state. **Shell env vars do not persist between separate tool calls** on any harness — re-set `SKILL_DIR`/`STATE_DIR` inline in every command.
 
 ## Cadence (the watch interval)
 
@@ -55,13 +55,13 @@ A loop can churn without finishing: CI ping-pong, a review treadmill, or wrong-a
 
 **Guards:**
 
-- **Moving-target ≠ non-convergence.** Base-branch merges, dep bumps, flaky infra, and bot-rule changes create unrelated new failures. Recurrence already excludes same-SHA flapping; still, don't park a failure the leaf attributes to an external cause rather than the approach.
+- **Moving-target ≠ non-convergence.** Base-bookmark updates, dep bumps, flaky infra, and bot-rule changes create unrelated new failures. Recurrence already excludes same-SHA flapping; still, don't park a failure the leaf attributes to an external cause rather than the approach.
 - **Cross-stream contradiction.** If `ce-debug` concludes the review-requested behavior is invalid while `ce-resolve-pr-feedback` concludes it's required, that's a single **cross-stream** residual — don't arbitrarily park one side.
 - **Parked = hard blocker, re-openable.** A parked stream makes the PR *not* merge-ready (never "done"), but re-open it on material change (a human pushed a new head, the parked thread was superseded/resolved, or the failing-check universe changed). **How:** CI re-opens itself — a new head SHA clears the SHA-scoped dispatch state, so just re-snapshot. A parked **review thread** does *not* auto-re-open; `mark --thread <id> --disposition open` re-actionizes it for a fresh pass. Un-park deliberately, on judged material change — not on the resolver's own reply.
 
 ## On-disk state contract
 
-State lives at `<repo-root>/.tmp/rocketclaw/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`, a stable repository-local path shared by later ticks. The `<host>` segment is load-bearing for GitHub Enterprise: without it, two PRs sharing `owner/repo#N` on different hosts would cross-contaminate dispositions. The `pr-snapshot` script owns all reads and writes under a file lock. Shape:
+State lives at `$(jj workspace root)/.tmp/rocketclaw/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`, or local `$PWD/.tmp/rocketclaw/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.json` when there is no JJ repository. This stable workspace-local path is shared by later ticks. The `<host>` segment is load-bearing for GitHub Enterprise: without it, two PRs sharing `owner/repo#N` on different hosts would cross-contaminate dispositions. The `pr-snapshot` script owns all reads and writes under a file lock. Shape:
 
 ```json
 {
@@ -119,8 +119,8 @@ The settle window guards the most damaging false positive: "CI went green, told 
 ## Edge cases
 
 - **Behind base** (`merge_state_status == "BEHIND"`): when currency is required, run `gh pr update-branch` once, then `jj git fetch` and synchronize the explicit local head bookmark to its remote counterpart before more work.
-- **Merge conflict mid-flight** (`mergeable == "CONFLICTING"`): create a JJ merge working-copy change from the head and base revisions. Resolve mechanical conflicts as first-class JJ conflicts, describe and validate the resulting change under the skill's mandatory message policy, move the explicit head bookmark, and push it with `jj git`. Immediately `jj undo` the merge-change creation for a semantic conflict and surface `needs-human`; never rewrite published history.
-- **External head change / force-push:** the head SHA moved under the loop. The snapshot clears SHA-scoped CI state automatically; just re-snapshot. Never clobber unrelated pushed work.
+- **Merge conflict mid-flight** (`mergeable == "CONFLICTING"`): create a JJ merge working-copy change from the head and base revisions. Resolve mechanical conflicts as first-class JJ conflicts. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and history syntax win; apply only compatible guidance from the Go commit-message guide. Use a neutral repository-derived description, apply it with `jj describe -m "$DESCRIPTION"`, then validate it with `jj show -r @`. Move the explicit head bookmark to `@` and push it with `jj git`. Immediately `jj undo` the merge-change creation for a semantic conflict and surface `needs-human`; never rewrite published history.
+- **External head rewrite:** the head SHA moved under the loop. The snapshot clears SHA-scoped CI state automatically; just re-snapshot. Never clobber unrelated published work.
 - **PR closed or merged externally:** detected as `pr_state != "OPEN"` on any tick → clean exit with a final status.
 - **needs-human feedback:** `ce-resolve-pr-feedback` leaves those threads open and returns them as escalations; record each with `mark ... --disposition needs-human`, keep doing independent CI work, and surface them. Never auto-decline or auto-resolve a thread you did not fix. A parked `needs-human` is a **standing residual** (SKILL.md Step 3): it blocks *declaring* merge-ready but does **not** end the watch — keep handling new CI and later review rounds around it. Only a true stop (terminal / looks-ready / the budget cap) ends the loop, not a count of accumulated escalations.
 - **No push access / fork PR:** a delegated push will fail. Detect that from the delegated skill's result, report it, and stop — the loop cannot make progress it has no permission to make.

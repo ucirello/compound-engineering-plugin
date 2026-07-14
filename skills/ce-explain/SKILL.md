@@ -42,8 +42,10 @@ Read `references/intake.md` now and classify the request into one of the four in
 Match grounding to the input shape. Create the run directory first — every run gets one, before any artifact exists:
 
 ```bash
-RUN_DIR=".tmp/rocketclaw/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)"
-mkdir -p "$RUN_DIR"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-explain"
+mkdir -p "$SCRATCH_ROOT"
+while :; do RUN_DIR="$SCRATCH_ROOT/$(date +%Y%m%d)-$(openssl rand -hex 3)"; mkdir "$RUN_DIR" 2>/dev/null && break; done
 python3 -c 'import os; print(os.path.abspath("'"$RUN_DIR"'"))'
 ```
 

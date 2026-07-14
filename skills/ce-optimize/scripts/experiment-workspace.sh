@@ -236,7 +236,7 @@ Commands:
   cleanup-all  Remove all experiment workspaces for a spec
   count        Count active experiment workspaces (for budget checking)
 
-Workspaces: .tmp/rocketclaw/ce-optimize/workspaces/<repo-key>/optimize-<spec>-exp-<NNN>/
+Workspaces: <workspace-root>/.tmp/rocketclaw/ce-optimize/workspaces/<repo-key>/optimize-<spec>-exp-<NNN>/
 EOF
       ;;
     *)

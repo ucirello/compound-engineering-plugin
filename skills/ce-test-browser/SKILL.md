@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current JJ change stack or PR.
+argument-hint: "[PR number, JJ bookmark/revision, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch changes using the `agent-browser` CLI.
+Run end-to-end browser tests on pages affected by a PR or JJ change-stack changes using the `agent-browser` CLI.
 
 ## Modes
 
@@ -30,7 +30,7 @@ command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 
 If not installed, tell the user: "`agent-browser` is not installed. Run `/ce-setup` for the current install command, then install agent-browser and retry." Then stop — this skill cannot function without it.
 
-This also requires a git repository with changes to test.
+This also requires a JJ workspace with changes to test.
 
 ### 2. Determine Test Scope
 
@@ -41,12 +41,12 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj diff --from 'trunk()' --to @ --name-only
 ```
 
-**If branch name provided:**
+**If JJ bookmark or revision provided:**
 ```bash
-git diff --name-only main...[branch]
+jj diff --from 'trunk()' --to '<bookmark-or-revision>' --name-only
 ```
 
 ### 3. Map Changed Files to Routes
@@ -131,6 +131,18 @@ agent-browser snapshot -i
 
 ### 7. Test Each Affected Page
 
+Resolve the screenshot directory once. Use the echoed absolute path as `<screenshot-dir>` in every screenshot command below:
+
+```bash
+if WORKSPACE_ROOT=$(jj workspace root 2>/dev/null); then
+  SCREENSHOT_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/browser-tests"
+else
+  SCREENSHOT_DIR="$(pwd -P)/.tmp/rocketclaw/browser-tests"
+fi
+mkdir -p "$SCREENSHOT_DIR"
+printf '%s\n' "$SCREENSHOT_DIR"
+```
+
 For each affected route:
 
 **Navigate and capture snapshot:**
@@ -160,8 +172,8 @@ agent-browser snapshot -i
 
 **Take screenshots:**
 ```bash
-agent-browser screenshot page-name.png
-agent-browser screenshot --full page-name-full.png
+agent-browser screenshot "<screenshot-dir>/page-name.png"
+agent-browser screenshot --full "<screenshot-dir>/page-name-full.png"
 ```
 
 ### 8. Human Verification (When Required)
@@ -195,7 +207,7 @@ Did it work correctly?
 When a test fails (**pipeline mode:** do not ask how to proceed — capture the error screenshot and repro steps, log the failure, and continue):
 
 1. **Document the failure:**
-   - Screenshot the error state: `agent-browser screenshot error.png`
+   - Screenshot the error state: `agent-browser screenshot "<screenshot-dir>/error.png"`
    - Note the exact reproduction steps
 
 2. **Ask the user how to proceed:**
@@ -221,7 +233,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [JJ bookmark or revision]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -249,13 +261,13 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test current JJ change-stack changes (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test specific branch
+# Test specific JJ bookmark or revision
 /ce-test-browser feature/new-dashboard
 
 # Test on a specific port
@@ -285,8 +297,8 @@ agent-browser type @e1 "text"      # Type without clearing
 agent-browser press Enter          # Press key
 
 # Screenshots
-agent-browser screenshot out.png       # Viewport screenshot
-agent-browser screenshot --full out.png # Full page screenshot
+agent-browser screenshot "<screenshot-dir>/out.png"        # Viewport screenshot
+agent-browser screenshot --full "<screenshot-dir>/out.png" # Full page screenshot
 
 # Headed mode (visible browser)
 agent-browser --headed open <url>      # Open with visible browser

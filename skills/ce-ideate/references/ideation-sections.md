@@ -30,6 +30,10 @@ HTML renders it as visible header text (per the html-rendering hard
 invariant: one visible source of truth per value, no hidden
 machine-readable copy).
 
+Metadata must not include the generating model, provider, platform, product,
+`ce-ideate`, or any other `ce-*` attribution.
+Those are operational routing details, not ideation content or authorship.
+
 **No status field — not on the doc, not per idea.** An ideation doc is a
 point-in-time discovery artifact, not a tracked work item: it carries no
 `active → completed` lifecycle and no per-idea "explored" marker.
@@ -186,6 +190,5 @@ mode: <repo-grounded | elsewhere-software | elsewhere-non-software>
 
 Keep engineering-process metadata out of the artifact — no "captured at
 Phase X" notes, no skill-pointer "next steps", no italic provenance
-lines. The reader wants the ideas and their basis. (HTML carries a
-single visible composition-signal footer per the html-rendering
-invariant; that is the one provenance element that belongs in the doc.)
+lines, author credits, or source footers. The reader wants the ideas and
+their basis.

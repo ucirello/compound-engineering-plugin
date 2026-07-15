@@ -75,10 +75,12 @@ Call `build_ios_sim_app` with the project path and scheme name.
 
 ### 5. Test Key Screens
 
+Resolve the screenshot directory before testing. If `jj workspace root` succeeds, use `<workspace-root>/.tmp/rocketclaw/xcode-tests`; otherwise use `<current-directory>/.tmp/rocketclaw/xcode-tests`. Ensure `.tmp/` is present in the applicable workspace-local `.gitignore`, then create the directory, capture its absolute path, and use that path for every screenshot.
+
 For each key screen in the app:
 
 **Take screenshot:**
-Call `take_screenshot` with the simulator UUID and a descriptive filename (e.g., `screen-home.png`).
+Call `take_screenshot` with the simulator UUID and an absolute path under the resolved screenshot directory (for example, `<screenshot-dir>/screen-home.png`).
 
 **Review screenshot for:**
 - UI elements rendered correctly

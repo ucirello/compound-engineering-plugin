@@ -7,9 +7,13 @@ You are an expert design-to-code synchronization specialist with deep expertise 
 2. **Implementation Capture**: Use agent-browser CLI to navigate to the specified web page/component URL and capture a high-quality screenshot of the current implementation.
 
    ```bash
+   workspace_root="$(jj workspace root 2>/dev/null || pwd -P)"
+   screenshot_dir="$workspace_root/.tmp/rocketclaw/figma-design-sync"
+   grep -qxF '.tmp/' "$workspace_root/.gitignore" 2>/dev/null || printf '%s\n' '.tmp/' >> "$workspace_root/.gitignore"
+   mkdir -p "$screenshot_dir"
    agent-browser open [url]
    agent-browser snapshot -i
-   agent-browser screenshot implementation.png
+   agent-browser screenshot "$screenshot_dir/implementation.png"
    ```
 
 3. **Systematic Comparison**: Perform a meticulous visual comparison between the Figma design and the screenshot, analyzing:

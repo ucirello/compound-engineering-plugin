@@ -80,8 +80,8 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 
 | field | meaning |
 | --- | --- |
-| `fix_ref` | Reference to the fix (PR/commit/issue link). |
-| `verified_merge_sha` | The merge commit SHA the fix landed on. |
+| `fix_ref` | Reference to the fix (PR/change/issue link). |
+| `verified_merge_sha` | The Git-backed merge commit ID on which the fix landed. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
 `validate` scans every item and downgrades any `closed` item missing (or with a
@@ -145,11 +145,16 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-commit mode (default) | Single writer **per checkout**. | The lease serializes overlapping sweeps in the same working tree (e.g. a cron sweep and a manual one). The file is written in-tree (and may be committed locally). No cross-machine guarantee. |
-| pushed-shared-branch | One writer **per repo**. | The state file lives on a shared branch multiple checkouts push to. `lease-acquire` must be committed, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
+| local-change mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same working copy (e.g. a cron sweep and a manual one). The file is written in-tree and may be included in a local change. No cross-machine guarantee. |
+| pushed-shared-bookmark | One writer **per repository**. | The state file lives on a shared bookmark multiple workspaces push to. `lease-acquire` must be included in a finished change, pushed with `jj git push`, and confirmed after `jj git fetch` **before any source-side write**. This makes the lease a repository-wide mutex across machines. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and conventions already in context take precedence, followed by recent history inspected at runtime with the repository's preferred `git log` syntax. Apply Go guidance only where compatible: imperative clarity, a concise subject, a body that explains why when useful, and repository-preferred wrapping. Treat the lease acquisition's repository-relevant semantic facts as composition context, not fixed subject or body requirements. Derive all wording and structure at runtime; do not impose fixed syntax, messages, prefixes, types, scopes, subjects, bodies, templates, or examples. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
+
+When a lease push is rejected, fetch the winning remote bookmark, abandon the
+rejected local lease change, and create a fresh working-copy change directly on
+the fetched remote bookmark. Re-run `lease-acquire` there and commit/push only
+when it acquires the lease. Never rebase or reuse the losing lease payload.
 
 ## run-record
 
@@ -166,12 +171,13 @@ Records the outcome of a sweep run under `last_run`.
 because the lease was `LOCKED` (`outcome: aborted-locked`) must still be able to
 record that fact — but that write happens while the lease holder is mid-sweep.
 To keep it from clobbering the holder's concurrent upserts, every mutating
-subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
-whole load-modify-write, so two concurrent invocations serialize their writes
+subcommand holds an **OS advisory lock** (`flock` on a deterministic state-path
+hash under `<workspace-root>/.tmp/rocketclaw/sweep/locks/`, with local `.tmp`
+fallback) across its whole load-modify-write, so two concurrent invocations serialize their writes
 regardless of lease ownership. The lease decides *who owns the sweep*; the file
 lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never committed (the skill's commit step adds only the state file and the
-plan, never `-A`).
+and never included in a change (the skill's path-scoped `jj commit` includes
+only the state file and the plan).
 
 ## Engine status words
 

@@ -201,9 +201,13 @@ Engineering process metadata stays out of the artifact:
 - No italic provenance lines ("*Brainstorm completed 2026-05-13*")
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
+- No generator, model, platform, product, or `ce-*`
+  attribution. Skill names remain operational routing terms outside the
+  artifact, never visible authorship or branding inside it.
 
-This information belongs in commit messages, tool output, and agent
-transcripts — not in the artifact a reader returns to weeks later.
+This information belongs in change descriptions, tool output, and agent
+transcripts — not in the artifact a reader returns to weeks later. When
+composing a JJ change description, derive its form at runtime. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and conventions take precedence; next follow the repository's existing description style observed at runtime using its preferred `git log` syntax; use only compatible Go guidance as fallback: imperative clarity, a concise subject, a body that explains why when useful, and repository-preferred wrapping. Treat the relevant process metadata as composition context, not fixed subject or body requirements. Do not impose fixed messages, prefixes, types, scopes, subjects, bodies, templates, or examples.
 
 ## Frontmatter shape
 
@@ -218,7 +222,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from git, not stored in the doc.
+  the work shipped is derived from JJ history, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit
@@ -232,5 +236,7 @@ slips:
 - Horizontal rule separators between H2s (for Standard / Deep artifacts).
 - No process exhaust (Phase X notes, Next Steps pointers, provenance
   lines).
+- No generator, model, platform, product, or
+  `ce-*` attribution.
 - Tables only where 5+ uniform-shape items justify them.
 - Frontmatter has all the per-skill required fields with reasonable values.

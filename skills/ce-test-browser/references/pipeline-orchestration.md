@@ -28,12 +28,19 @@ echo "Using dev server port: $PORT"
 
 # start in the background (the scan guarantees this port is free), then wait up to 30s
 echo "Starting dev server on port ${PORT}..."
+if WORKSPACE_ROOT=$(jj workspace root 2>/dev/null); then
+  LOG_DIR="${WORKSPACE_ROOT}/.tmp/rocketclaw"
+else
+  LOG_DIR="$(pwd -P)/.tmp/rocketclaw"
+fi
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/dev-server-${PORT}.log"
 if [ -f "bin/dev" ]; then
-  PORT=${PORT} bin/dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} bin/dev > "$LOG_FILE" 2>&1 &
 elif [ -f "bin/rails" ]; then
-  bin/rails server -p ${PORT} > /tmp/dev-server-${PORT}.log 2>&1 &
+  bin/rails server -p ${PORT} > "$LOG_FILE" 2>&1 &
 elif [ -f "package.json" ]; then
-  PORT=${PORT} npm run dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} npm run dev > "$LOG_FILE" 2>&1 &
 fi
 for i in $(seq 1 30); do
   lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1 && break
@@ -41,7 +48,7 @@ for i in $(seq 1 30); do
 done
 if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server did not start in 30s. Last output:"
-  tail -20 /tmp/dev-server-${PORT}.log 2>/dev/null
+  tail -20 "$LOG_FILE" 2>/dev/null
   exit 1
 fi
 ```

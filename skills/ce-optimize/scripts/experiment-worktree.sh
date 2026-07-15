@@ -1,241 +1,207 @@
 #!/bin/bash
 
-# Experiment Worktree Manager
-# Creates, cleans up, and manages worktrees for optimization experiments.
-# Each experiment gets an isolated worktree with copied shared resources.
+# Experiment Workspace Manager
+# Creates, cleans up, and manages JJ workspaces for optimization experiments.
+# Each experiment gets an isolated workspace with copied shared resources.
 #
 # Usage:
-#   experiment-worktree.sh create <spec_name> <exp_index> <base_branch> [shared_file ...]
+#   experiment-worktree.sh create <spec_name> <exp_index> <base_bookmark> [shared_file ...]
 #   experiment-worktree.sh cleanup <spec_name> <exp_index>
 #   experiment-worktree.sh cleanup-all <spec_name>
 #   experiment-worktree.sh count
 #
-# Worktrees are created at: .worktrees/optimize-<spec>-exp-<NNN>/
-# Branches are named: optimize-exp/<spec>/exp-<NNN>
+# Workspaces are created at: .worktrees/optimize-<spec>-exp-<NNN>/
+# Bookmarks are named: optimize-exp/<spec>/exp-<NNN>
 
 set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m'
 
-GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
-  echo -e "${RED}Error: Not in a git repository${NC}" >&2
+JJ_ROOT=$(jj workspace root 2>/dev/null) || {
+  echo -e "${RED}Error: Not in a JJ repository${NC}" >&2
   exit 1
 }
 
-WORKTREE_DIR="$GIT_ROOT/.worktrees"
+WORKSPACE_DIR="$JJ_ROOT/.worktrees"
 
-experiment_branch_name() {
+experiment_bookmark_name() {
   local spec_name="${1:?Error: spec_name required}"
   local padded_index="${2:?Error: padded_index required}"
-
-  # Keep experiment refs outside optimize/<spec> so they do not collide
-  # with the long-lived optimization branch namespace.
   echo "optimize-exp/${spec_name}/exp-${padded_index}"
 }
 
-ensure_worktree_exclude() {
-  local exclude_file
-  exclude_file=$(git rev-parse --git-path info/exclude)
+experiment_workspace_name() {
+  local spec_name="${1:?Error: spec_name required}"
+  local padded_index="${2:?Error: padded_index required}"
+  echo "optimize-${spec_name}-exp-${padded_index}"
+}
 
+ensure_workspace_exclude() {
+  local git_root
+  git_root=$(jj git root 2>/dev/null || true)
+  if [[ -z "$git_root" ]]; then
+    return
+  fi
+
+  local exclude_file="$git_root/info/exclude"
   mkdir -p "$(dirname "$exclude_file")"
-
-  if ! grep -q "^\.worktrees$" "$exclude_file" 2>/dev/null; then
-    echo ".worktrees" >> "$exclude_file"
+  if ! grep -q '^\.worktrees/$' "$exclude_file" 2>/dev/null; then
+    echo '.worktrees/' >> "$exclude_file"
   fi
 }
 
-is_registered_worktree() {
-  local worktree_path="${1:?Error: worktree_path required}"
-
-  git worktree list --porcelain | awk -v target="$worktree_path" '
-    $1 == "worktree" && $2 == target { found = 1 }
-    END { exit(found ? 0 : 1) }
-  '
+is_registered_workspace() {
+  local workspace_name="${1:?Error: workspace_name required}"
+  jj -R "$JJ_ROOT" workspace list -T 'name ++ "\n"' |
+    grep -Fxq "$workspace_name"
 }
 
-is_branch_checked_out() {
-  local branch_name="${1:?Error: branch_name required}"
-  local branch_ref="refs/heads/$branch_name"
-
-  git worktree list --porcelain | awk -v target="$branch_ref" '
-    $1 == "branch" && $2 == target { found = 1 }
-    END { exit(found ? 0 : 1) }
-  '
+registered_workspace_commit() {
+  local workspace_name="${1:?Error: workspace_name required}"
+  jj -R "$JJ_ROOT" workspace list -T 'name ++ "\t" ++ target.commit_id() ++ "\n"' |
+    while IFS=$'\t' read -r name commit_id; do
+      if [[ "$name" == "$workspace_name" ]]; then
+        echo "$commit_id"
+        return 0
+      fi
+    done
 }
 
-reset_worktree_to_base() {
-  local worktree_path="${1:?Error: worktree_path required}"
-  local branch_name="${2:?Error: branch_name required}"
-  local base_branch="${3:?Error: base_branch required}"
-  local current_branch
-
-  current_branch=$(git -C "$worktree_path" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-  if [[ "$current_branch" != "$branch_name" ]]; then
-    echo -e "${RED}Error: Existing worktree is on unexpected branch: ${current_branch:-detached} (expected $branch_name)${NC}" >&2
-    echo -e "${RED}Clean up the stale worktree before rerunning this experiment.${NC}" >&2
-    return 1
-  fi
-
-  echo -e "${YELLOW}Resetting existing experiment worktree to base: $branch_name -> $base_branch${NC}" >&2
-  git -C "$worktree_path" reset --hard "$base_branch" >/dev/null
-  git -C "$worktree_path" clean -fdx >/dev/null
+bookmark_change_id() {
+  local bookmark_name="${1:?Error: bookmark_name required}"
+  jj -R "$JJ_ROOT" bookmark list "exact:$bookmark_name" -T 'target.change_id() ++ "\n"' 2>/dev/null
 }
 
-# Create an experiment worktree
-create_worktree() {
+create_workspace() {
   local spec_name="${1:?Error: spec_name required}"
   local exp_index="${2:?Error: exp_index required}"
-  local base_branch="${3:?Error: base_branch required}"
+  local base_bookmark="${3:?Error: base_bookmark required}"
   shift 3
 
   local padded_index
-  padded_index=$(printf "%03d" "$exp_index")
-  local worktree_name="optimize-${spec_name}-exp-${padded_index}"
-  local branch_name
-  branch_name=$(experiment_branch_name "$spec_name" "$padded_index")
-  local worktree_path="$WORKTREE_DIR/$worktree_name"
+  padded_index=$(printf '%03d' "$exp_index")
+  local workspace_name
+  workspace_name=$(experiment_workspace_name "$spec_name" "$padded_index")
+  local bookmark_name
+  bookmark_name=$(experiment_bookmark_name "$spec_name" "$padded_index")
+  local workspace_path="$WORKSPACE_DIR/$workspace_name"
 
-  # Check if worktree already exists
-  if [[ -d "$worktree_path" ]]; then
-    if ! git -C "$worktree_path" rev-parse --is-inside-work-tree >/dev/null 2>&1 || \
-       ! is_registered_worktree "$worktree_path"; then
-      echo -e "${RED}Error: Existing path is not a valid registered git worktree: $worktree_path${NC}" >&2
-      echo -e "${RED}Remove or repair that directory before rerunning the experiment.${NC}" >&2
-      return 1
-    fi
+  if [[ -d "$workspace_path" ]] && [[ -e "$workspace_path/.jj" ]] && is_registered_workspace "$workspace_name"; then
+    local registered_commit
+    registered_commit=$(registered_workspace_commit "$workspace_name")
+    local workspace_commit
+    workspace_commit=$(jj -R "$workspace_path" log -r @ --no-graph -T 'commit_id ++ "\n"' 2>/dev/null || true)
+    local workspace_change
+    workspace_change=$(jj -R "$workspace_path" log -r @ --no-graph -T 'change_id ++ "\n"' 2>/dev/null || true)
+    local existing_bookmark_change
+    existing_bookmark_change=$(bookmark_change_id "$bookmark_name" || true)
 
-    echo -e "${YELLOW}Worktree already exists: $worktree_path${NC}" >&2
-    reset_worktree_to_base "$worktree_path" "$branch_name" "$base_branch"
-  else
-    mkdir -p "$WORKTREE_DIR"
-    ensure_worktree_exclude
-
-    # Create worktree from the base branch
-    if ! git worktree add -b "$branch_name" "$worktree_path" "$base_branch" --quiet 2>/dev/null; then
-      if git show-ref --verify --quiet "refs/heads/$branch_name"; then
-        if is_branch_checked_out "$branch_name"; then
-          echo -e "${RED}Error: Existing experiment branch is already checked out: $branch_name${NC}" >&2
-          echo -e "${RED}Clean up the stale worktree before rerunning this experiment.${NC}" >&2
-          return 1
-        fi
-
-        echo -e "${YELLOW}Resetting existing experiment branch to base: $branch_name -> $base_branch${NC}" >&2
-        git branch -f "$branch_name" "$base_branch" >/dev/null
-        git worktree add "$worktree_path" "$branch_name" --quiet
-      else
-        echo -e "${RED}Error: Failed to create worktree for $branch_name from $base_branch${NC}" >&2
-        return 1
+    if [[ -n "$workspace_commit" ]] && [[ "$workspace_commit" == "$registered_commit" ]] &&
+       { [[ -z "$existing_bookmark_change" ]] || [[ "$existing_bookmark_change" == "$workspace_change" ]]; }; then
+      if [[ -z "$existing_bookmark_change" ]]; then
+        jj -R "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
       fi
+      echo "$workspace_path"
+      return 0
     fi
   fi
 
-  # Copy .env files from main repo
-  for f in "$GIT_ROOT"/.env*; do
+  if [[ -e "$workspace_path" ]] || is_registered_workspace "$workspace_name" || [[ -n "$(bookmark_change_id "$bookmark_name" || true)" ]]; then
+    echo -e "${RED}Error: Experiment workspace collision: $workspace_path${NC}" >&2
+    echo -e "${RED}The path, registered workspace, or bookmark does not identify one matching resumable experiment.${NC}" >&2
+    return 1
+  fi
+
+  mkdir -p "$WORKSPACE_DIR"
+  ensure_workspace_exclude
+  jj -R "$JJ_ROOT" workspace add --name "$workspace_name" -r "$base_bookmark" "$workspace_path" >/dev/null
+  jj -R "$workspace_path" bookmark set "$bookmark_name" -r @ >/dev/null
+
+  for f in "$JJ_ROOT"/.env*; do
     if [[ -f "$f" ]]; then
       local basename
       basename=$(basename "$f")
       if [[ "$basename" != ".env.example" ]]; then
-        cp "$f" "$worktree_path/$basename"
+        cp "$f" "$workspace_path/$basename"
       fi
     fi
   done
 
-  # Copy shared files
   for shared_file in "$@"; do
-    if [[ -f "$GIT_ROOT/$shared_file" ]]; then
+    if [[ -f "$JJ_ROOT/$shared_file" ]]; then
       local dir
-      dir=$(dirname "$worktree_path/$shared_file")
+      dir=$(dirname "$workspace_path/$shared_file")
       mkdir -p "$dir"
-      cp "$GIT_ROOT/$shared_file" "$worktree_path/$shared_file"
-    elif [[ -d "$GIT_ROOT/$shared_file" ]]; then
+      cp "$JJ_ROOT/$shared_file" "$workspace_path/$shared_file"
+    elif [[ -d "$JJ_ROOT/$shared_file" ]]; then
       local dir
-      dir=$(dirname "$worktree_path/$shared_file")
+      dir=$(dirname "$workspace_path/$shared_file")
       mkdir -p "$dir"
-      rm -rf "$worktree_path/$shared_file"
-      cp -R "$GIT_ROOT/$shared_file" "$worktree_path/$shared_file"
+      rm -rf "$workspace_path/$shared_file"
+      cp -R "$JJ_ROOT/$shared_file" "$workspace_path/$shared_file"
     fi
   done
 
-  echo "$worktree_path"
+  echo "$workspace_path"
 }
 
-# Clean up a single experiment worktree
-cleanup_worktree() {
+cleanup_workspace() {
   local spec_name="${1:?Error: spec_name required}"
   local exp_index="${2:?Error: exp_index required}"
-
   local padded_index
-  padded_index=$(printf "%03d" "$exp_index")
-  local worktree_name="optimize-${spec_name}-exp-${padded_index}"
-  local branch_name
-  branch_name=$(experiment_branch_name "$spec_name" "$padded_index")
-  local worktree_path="$WORKTREE_DIR/$worktree_name"
+  padded_index=$(printf '%03d' "$exp_index")
+  local workspace_name
+  workspace_name=$(experiment_workspace_name "$spec_name" "$padded_index")
+  local bookmark_name
+  bookmark_name=$(experiment_bookmark_name "$spec_name" "$padded_index")
+  local workspace_path="$WORKSPACE_DIR/$workspace_name"
 
-  if [[ -d "$worktree_path" ]]; then
-    git worktree remove "$worktree_path" --force 2>/dev/null || {
-      # If worktree remove fails, try manual cleanup
-      rm -rf "$worktree_path" 2>/dev/null || true
-      git worktree prune 2>/dev/null || true
-    }
+  jj -R "$JJ_ROOT" bookmark forget "$bookmark_name" >/dev/null 2>&1 || true
+  if is_registered_workspace "$workspace_name"; then
+    jj -R "$JJ_ROOT" workspace forget "$workspace_name" >/dev/null
+  fi
+  if [[ -d "$workspace_path" ]]; then
+    rm -rf "$workspace_path"
   fi
 
-  # Delete the experiment branch
-  git branch -D "$branch_name" 2>/dev/null || true
-
-  echo -e "${GREEN}Cleaned up: $worktree_name${NC}" >&2
+  echo -e "${GREEN}Cleaned up: $workspace_name${NC}" >&2
 }
 
-# Clean up all experiment worktrees for a spec
 cleanup_all() {
   local spec_name="${1:?Error: spec_name required}"
   local prefix="optimize-${spec_name}-exp-"
   local count=0
 
-  if [[ ! -d "$WORKTREE_DIR" ]]; then
-    echo -e "${YELLOW}No worktrees directory found${NC}" >&2
+  if [[ ! -d "$WORKSPACE_DIR" ]]; then
+    echo -e "${YELLOW}No experiment workspace directory found${NC}" >&2
     return 0
   fi
 
-  for worktree_path in "$WORKTREE_DIR"/${prefix}*; do
-    if [[ -d "$worktree_path" ]]; then
-      local worktree_name
-      worktree_name=$(basename "$worktree_path")
-      # Extract index from name
-      local index_str="${worktree_name#$prefix}"
-
-      git worktree remove "$worktree_path" --force 2>/dev/null || {
-        rm -rf "$worktree_path" 2>/dev/null || true
-      }
-
-      # Delete the branch
-      local branch_name
-      branch_name=$(experiment_branch_name "$spec_name" "$index_str")
-      git branch -D "$branch_name" 2>/dev/null || true
-
+  for workspace_path in "$WORKSPACE_DIR"/${prefix}*; do
+    if [[ -d "$workspace_path" ]]; then
+      local workspace_name
+      workspace_name=$(basename "$workspace_path")
+      local index_str="${workspace_name#$prefix}"
+      cleanup_workspace "$spec_name" "$((10#$index_str))"
       count=$((count + 1))
     fi
   done
 
-  git worktree prune 2>/dev/null || true
-
-  # Clean up empty worktree directory
-  if [[ -d "$WORKTREE_DIR" ]] && [[ -z "$(ls -A "$WORKTREE_DIR" 2>/dev/null)" ]]; then
-    rmdir "$WORKTREE_DIR" 2>/dev/null || true
+  if [[ -d "$WORKSPACE_DIR" ]] && [[ -z "$(ls -A "$WORKSPACE_DIR" 2>/dev/null)" ]]; then
+    rmdir "$WORKSPACE_DIR" 2>/dev/null || true
   fi
 
-  echo -e "${GREEN}Cleaned up $count experiment worktree(s) for $spec_name${NC}" >&2
+  echo -e "${GREEN}Cleaned up $count experiment workspace(s) for $spec_name${NC}" >&2
 }
 
-# Count total worktrees (for budget check)
-count_worktrees() {
+count_workspaces() {
   local count=0
-  if [[ -d "$WORKTREE_DIR" ]]; then
-    for worktree_path in "$WORKTREE_DIR"/*; do
-      if [[ -d "$worktree_path" ]] && [[ -e "$worktree_path/.git" ]]; then
+  if [[ -d "$WORKSPACE_DIR" ]]; then
+    for workspace_path in "$WORKSPACE_DIR"/*; do
+      if [[ -d "$workspace_path" ]] && [[ -e "$workspace_path/.jj" ]]; then
         count=$((count + 1))
       fi
     done
@@ -243,44 +209,43 @@ count_worktrees() {
   echo "$count"
 }
 
-# Main
 main() {
   local command="${1:-help}"
 
   case "$command" in
     create)
       shift
-      create_worktree "$@"
+      create_workspace "$@"
       ;;
     cleanup)
       shift
-      cleanup_worktree "$@"
+      cleanup_workspace "$@"
       ;;
     cleanup-all)
       shift
       cleanup_all "$@"
       ;;
     count)
-      count_worktrees
+      count_workspaces
       ;;
     help)
       cat << 'EOF'
-Experiment Worktree Manager
+Experiment Workspace Manager
 
 Usage:
-  experiment-worktree.sh create <spec_name> <exp_index> <base_branch> [shared_file ...]
+  experiment-worktree.sh create <spec_name> <exp_index> <base_bookmark> [shared_file ...]
   experiment-worktree.sh cleanup <spec_name> <exp_index>
   experiment-worktree.sh cleanup-all <spec_name>
   experiment-worktree.sh count
 
 Commands:
-  create       Create an experiment worktree with copied shared files
-  cleanup      Remove a single experiment worktree and its branch
-  cleanup-all  Remove all experiment worktrees for a spec
-  count        Count total active worktrees (for budget checking)
+  create       Create an experiment JJ workspace with copied shared files
+  cleanup      Forget and remove one experiment workspace and bookmark
+  cleanup-all  Forget and remove all experiment workspaces for a spec
+  count        Count active experiment workspaces for budget checking
 
-Worktrees:  .worktrees/optimize-<spec>-exp-<NNN>/
-Branches:   optimize-exp/<spec>/exp-<NNN>
+Workspaces: .worktrees/optimize-<spec>-exp-<NNN>/
+Bookmarks:  optimize-exp/<spec>/exp-<NNN>
 EOF
       ;;
     *)

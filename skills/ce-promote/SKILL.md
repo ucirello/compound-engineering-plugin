@@ -5,13 +5,13 @@ disable-model-invocation: true
 argument-hint: "[optional: what shipped and/or channels, e.g. 'a tweet thread and a LinkedIn post']"
 ---
 
-# /ce-promote
+# Promote
 
 Turn a feature that just shipped into copy-pasteable, user-facing announcement copy — right inside the engineering workflow.
 
 ## Purpose
 
-After you ship, the messaging shouldn't wait for a separate marketing pass. `ce-promote` figures out what shipped, picks the right channels, and drafts the copy. It is **spiral-agnostic by default**: with nothing installed it draws on a lite layer of editorial and social-media expertise to produce strong channel-specific copy. When the Spiral CLI (see `references/spiral-cli.md`) is present and authed, it uses Spiral so the drafts are voice-matched to your brand — a subtle enhancement, never a requirement.
+After you ship, the messaging shouldn't wait for a separate marketing pass. This skill figures out what shipped, picks the right channels, and drafts the copy. It is **spiral-agnostic by default**: with nothing installed it draws on a lite layer of editorial and social-media expertise to produce strong channel-specific copy. When the Spiral CLI (see `references/spiral-cli.md`) is present and authed, it uses Spiral so the drafts are voice-matched to your brand — a subtle enhancement, never a requirement.
 
 **This skill drafts only. It never posts, publishes, commits, or opens PRs.** Posting is a human action. The output is always drafts for you to review, edit, and ship yourself.
 
@@ -30,10 +30,10 @@ If the user gave a free-form description of the feature, use it as the source of
 
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
-- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current branch). The title and body usually state the user-facing value.
-- **The diff** — `git diff main...HEAD --stat` and skim notable changes to ground the claim in what actually changed.
+- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null`; for a current JJ bookmark, run `jj git export` before `gh pr view <bookmark> --json title,body,url`. In a non-colocated JJ repository, run `jj git export`, then provide `gh` the Git store with `GIT_DIR="$(jj git root)" gh pr view <bookmark> --json title,body,url`. The title and body usually state the user-facing value.
+- **The diff** — `jj diff -r 'trunk()..@' --stat` and skim notable changes to ground the claim in what actually changed.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
-- **Recent commits** — `git log --oneline -15` for the arc of the change.
+- **Recent changes** — `jj log -r '::@' -n 15` for the arc of the change.
 
 Then write a 1–3 sentence summary of the **user-facing value** — what a user can now do that they couldn't before, and why they'd care. Describe the outcome, not the implementation. ("You can now export any report to CSV in one click" — not "Added a CsvSerializer and an export endpoint.")
 

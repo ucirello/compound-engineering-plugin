@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip, standalone video, standalone audio, and
 meeting notes text/markdown. The script extracts transcript, high-signal
-video frames when available, and CE-friendly markdown artifacts.
+video frames when available, and downstream-friendly markdown artifacts.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted evidence/kickoff artifacts. Defaults to docs/brainstorms/riffrec-feedback/<source-stem> when available; durable ce-brainstorm outputs live in docs/plans/.",
+        help="Directory for extracted evidence/kickoff artifacts. Defaults to workspace-local .tmp/rocketclaw/riffrec-feedback/<source-stem>; durable ce-brainstorm outputs live in docs/plans/.",
     )
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
@@ -102,12 +102,24 @@ def safe_extract(zip_path: Path, dest: Path) -> None:
                     shutil.copyfileobj(source, target)
 
 
-def default_output_dir(zip_path: Path) -> Path:
-    cwd = Path.cwd()
-    stem = slugify(zip_path.stem)
-    if (cwd / "docs" / "brainstorms").is_dir():
-        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return cwd / "riffrec-feedback" / stem
+def resolve_workspace_root() -> Path:
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return Path.cwd()
+    if result.returncode == 0 and result.stdout.strip():
+        return Path(result.stdout.strip()).resolve()
+    return Path.cwd()
+
+
+def default_output_dir(source_path: Path, workspace_root: Path) -> Path:
+    stem = slugify(source_path.stem)
+    return workspace_root / ".tmp" / "rocketclaw" / "riffrec-feedback" / stem
 
 
 def classify_source(source_path: Path) -> str:
@@ -238,15 +250,15 @@ def prepare_source(source_path: Path, raw_dir: Path) -> dict[str, Any]:
     }
 
 
-def repo_relative(path: Path, base: Path) -> str:
+def workspace_relative(path: Path, base: Path) -> str:
     try:
         return str(path.resolve().relative_to(base.resolve()))
     except ValueError:
         return str(path)
 
 
-def display_path(path: Path, repo_root: Path) -> str:
-    relative = repo_relative(path, repo_root)
+def display_path(path: Path, workspace_root: Path) -> str:
+    relative = workspace_relative(path, workspace_root)
     return relative if not relative.startswith("/") else str(path)
 
 
@@ -610,12 +622,12 @@ def summarize_candidate_findings(moments: list[dict[str, Any]], transcript: str)
     return findings
 
 
-def markdown_link(path: str | None, output_dir: Path, repo_root: Path) -> str:
+def markdown_link(path: str | None, output_dir: Path, workspace_root: Path) -> str:
     if not path:
         return "n/a"
     path_obj = Path(path)
     if path_obj.exists():
-        return repo_relative(path_obj, repo_root)
+        return workspace_relative(path_obj, workspace_root)
     return path
 
 
@@ -628,7 +640,7 @@ def write_analysis_md(
     transcript: dict[str, Any],
     moments: list[dict[str, Any]],
     findings: list[dict[str, Any]],
-    repo_root: Path,
+    workspace_root: Path,
 ) -> None:
     lines: list[str] = []
     lines.append("# Product Feedback Analysis")
@@ -656,7 +668,7 @@ def write_analysis_md(
         lines.append("| ID | Time | Why selected | Screenshot | Event evidence |")
         lines.append("|---|---:|---|---|---|")
         for moment in moments:
-            screenshot = markdown_link(moment.get("screenshot"), output_path.parent, repo_root)
+            screenshot = markdown_link(moment.get("screenshot"), output_path.parent, workspace_root)
             evidence = "<br>".join(compact_text(event_label(event), 140) for event in moment.get("events", [])) or "n/a"
             lines.append(
                 f"| {moment['id']} | {format_time(moment['t'])} | {moment['reason']} | `{screenshot}` | {evidence} |"
@@ -680,7 +692,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use workspace-relative screenshot paths when moving evidence into a requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -690,7 +702,7 @@ def write_requirements_kickoff(
     session: dict[str, Any],
     findings: list[dict[str, Any]],
     moments: list[dict[str, Any]],
-    repo_root: Path,
+    workspace_root: Path,
 ) -> None:
     title = topic.replace("-", " ").title()
     date = datetime.now(timezone.utc).date().isoformat()
@@ -698,12 +710,12 @@ def write_requirements_kickoff(
     screenshot_refs = []
     for moment in moments:
         if moment.get("screenshot"):
-            screenshot_refs.append(f"{moment['id']}: `{markdown_link(moment['screenshot'], output_path.parent, repo_root)}`")
+            screenshot_refs.append(f"{moment['id']}: `{markdown_link(moment['screenshot'], output_path.parent, workspace_root)}`")
     evidence_text = "; ".join(screenshot_refs[:6]) or "See analysis.md selected moments."
-    source_materials = markdown_link(str(output_path.parent / "source-materials.md"), output_path.parent, repo_root)
-    analysis_path = markdown_link(str(output_path.parent / "analysis.md"), output_path.parent, repo_root)
-    problem_analysis_path = markdown_link(str(output_path.parent / "problem-analysis.md"), output_path.parent, repo_root)
-    review_prompt_path = markdown_link(str(output_path.parent / "review-prompt.md"), output_path.parent, repo_root)
+    source_materials = markdown_link(str(output_path.parent / "source-materials.md"), output_path.parent, workspace_root)
+    analysis_path = markdown_link(str(output_path.parent / "analysis.md"), output_path.parent, workspace_root)
+    problem_analysis_path = markdown_link(str(output_path.parent / "problem-analysis.md"), output_path.parent, workspace_root)
+    review_prompt_path = markdown_link(str(output_path.parent / "review-prompt.md"), output_path.parent, workspace_root)
 
     lines = [
         "---",
@@ -830,10 +842,10 @@ def write_source_materials(
     moments: list[dict[str, Any]],
     raw_dir: Path,
     frames_dir: Path,
-    repo_root: Path,
+    workspace_root: Path,
 ) -> None:
     def link(path: Path) -> str:
-        return markdown_link(str(path), output_path.parent, repo_root)
+        return markdown_link(str(path), output_path.parent, workspace_root)
 
     raw_files = sorted(path for path in raw_dir.rglob("*") if path.is_file())
     frame_files = sorted(path for path in frames_dir.rglob("*.png") if path.is_file())
@@ -853,7 +865,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Commit policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; commit generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
+        "- JJ revision policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; retain generated Markdown/JSON/manifests in durable revisions when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -874,10 +886,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not commit-safe by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; do not retain in durable JJ revisions by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be committed by default.")
+    lines.append("Extracted screenshots are retained locally for agent inspection and should not be retained in durable JJ revisions by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -885,7 +897,7 @@ def write_source_materials(
         for moment in moments:
             screenshot = moment.get("screenshot")
             lines.append(
-                f"| {moment['id']} | {format_time(moment['t'])} | `{markdown_link(screenshot, output_path.parent, repo_root)}` | {moment['reason']} |"
+                f"| {moment['id']} | {format_time(moment['t'])} | `{markdown_link(screenshot, output_path.parent, workspace_root)}` | {moment['reason']} |"
             )
     else:
         lines.append("_No video frames were available for this source._")
@@ -896,7 +908,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not commit these unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally local-only by default. Do not retain these in durable JJ revisions unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")
@@ -911,7 +923,7 @@ def write_problem_analysis(
     transcript: dict[str, Any],
     moments: list[dict[str, Any]],
     findings: list[dict[str, Any]],
-    repo_root: Path,
+    workspace_root: Path,
 ) -> None:
     complaint_text = transcript.get("text") or ""
     lines = [
@@ -952,7 +964,7 @@ def write_problem_analysis(
     )
 
     for index, moment in enumerate(moments, start=1):
-        screenshot = markdown_link(moment.get("screenshot"), output_path.parent, repo_root)
+        screenshot = markdown_link(moment.get("screenshot"), output_path.parent, workspace_root)
         lines.append(
             f"{index}. Moment {moment['id']} at {format_time(moment['t'])}: Review `{screenshot}` for UX friction related to `{moment['reason']}`."
         )
@@ -967,11 +979,11 @@ def write_review_prompt(
     output_path: Path,
     transcript: dict[str, Any],
     moments: list[dict[str, Any]],
-    repo_root: Path,
+    workspace_root: Path,
 ) -> None:
     frame_lines: list[str] = []
     for moment in moments:
-        screenshot = markdown_link(moment.get("screenshot"), output_path.parent, repo_root)
+        screenshot = markdown_link(moment.get("screenshot"), output_path.parent, workspace_root)
         event_summary = "; ".join(event_label(event) for event in moment.get("events", [])) or "no event metadata"
         frame_lines.append(
             f"- {moment['id']} ({format_time(moment['t'])}, {moment['reason']}): `{screenshot}`. Events: {event_summary}"
@@ -1035,7 +1047,8 @@ def main() -> int:
         print(f"Source file not found: {source_path}", file=sys.stderr)
         return 1
 
-    output_dir = (args.output_dir or default_output_dir(source_path)).expanduser().resolve()
+    workspace_root = resolve_workspace_root()
+    output_dir = (args.output_dir or default_output_dir(source_path, workspace_root)).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     raw_dir = output_dir / "raw"
     frames_dir = output_dir / "frames"
@@ -1070,17 +1083,16 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = Path.cwd()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
     source_materials_md = output_dir / "source-materials.md"
     kickoff_md = output_dir / "requirements-kickoff.md"
-    write_analysis_md(analysis_md, source_path, source_kind, session, events, transcript, moments, findings, repo_root)
-    write_problem_analysis(problem_analysis_md, transcript, moments, findings, repo_root)
-    write_review_prompt(review_prompt_md, transcript, moments, repo_root)
-    write_source_materials(source_materials_md, source_path, source_kind, session, transcript, moments, raw_dir, frames_dir, repo_root)
-    write_requirements_kickoff(kickoff_md, topic, session, findings, moments, repo_root)
+    write_analysis_md(analysis_md, source_path, source_kind, session, events, transcript, moments, findings, workspace_root)
+    write_problem_analysis(problem_analysis_md, transcript, moments, findings, workspace_root)
+    write_review_prompt(review_prompt_md, transcript, moments, workspace_root)
+    write_source_materials(source_materials_md, source_path, source_kind, session, transcript, moments, raw_dir, frames_dir, workspace_root)
+    write_requirements_kickoff(kickoff_md, topic, session, findings, moments, workspace_root)
 
     structured = {
         "source": str(source_path),
@@ -1111,9 +1123,9 @@ def main() -> int:
     print(f"Frames written to: {frames_dir}")
     print("")
     print("Analysis complete. Ready to brainstorm the findings.")
-    print(f"Source materials: {display_path(source_materials_md, repo_root)}")
-    print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Source materials: {display_path(source_materials_md, workspace_root)}")
+    print(f"Problem statements: {display_path(problem_analysis_md, workspace_root)}")
+    print(f"Brainstorm handoff: ce-brainstorm {display_path(kickoff_md, workspace_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under docs/plans/.")
     return 0
 

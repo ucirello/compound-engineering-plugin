@@ -5,6 +5,8 @@ node_modules/
 todos/
 .worktrees
 .context/
+.tmp/
+loop.old.sh
 .claude/worktrees/
 __pycache__/
 *.pyc

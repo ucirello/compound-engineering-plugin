@@ -6,9 +6,17 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current branch:
+If no PR number was provided, detect the nearest local bookmark among the working-copy revision's ancestors, then find its open PR. Jujutsu has no current bookmark. If the first command returns zero or multiple bookmarks, ask the user which PR bookmark to use.
 ```bash
-gh pr view --json number -q .number
+PR_BOOKMARK=$(jj bookmark list -r 'heads(::@ & bookmarks())' -T 'name ++ "\n"')
+REPO=$(GIT_DIR="$(jj git root)" gh repo view --json nameWithOwner -q .nameWithOwner)
+PR_NUMBER=$(gh pr list --repo "$REPO" --head "$PR_BOOKMARK" --state open --json number -q '.[0].number')
+```
+
+If a PR number was provided, resolve the repository and existing PR bookmark explicitly:
+```bash
+REPO=$(GIT_DIR="$(jj git root)" gh repo view --json nameWithOwner -q .nameWithOwner)
+PR_BOOKMARK=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName -q .headRefName)
 ```
 
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments):
@@ -65,7 +73,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -128,24 +136,25 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and carry the specific pre-existing failure into the semantic description requirements there.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Commit and Push
+## 6. Describe and Push
 
-1. Stage only files reported by fixers and commit with a message referencing the PR:
+1. Jujutsu has no staging area. Commit only the paths reported by fixers; `jj commit` leaves any unselected paths in the new working-copy revision. Compose the description using the review fixes, PR reference, and validation outcome as semantic context. If validation found a pre-existing failure, represent that specific failure without implying this change caused or fixed it. These facts do not prescribe a subject, body, or where they appear.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and conventions already in context take precedence, followed by recent history inspected with the repository's preferred `git log` syntax. Apply Go guidance only where compatible, using its quality principles for clear imperative phrasing, concision, rationale when useful, and readable wrapping. Derive all wording and structure at runtime; do not impose a fixed message, prefix, type, scope, subject, body, template, or example. Treat the review fixes, PR reference, and validation outcome as semantic context rather than prescribed message structure, and validate the resulting description against the same runtime-derived standards before continuing.
 
 ```bash
-git add [files from fixer summaries]
-git commit -m "Address PR review feedback (#PR_NUMBER)
-
-- [list changes from fixer summaries]"
+jj commit [files from fixer summaries] -m "$message"
 ```
 
-2. Push to remote:
+2. Move the PR bookmark to the newly committed parent revision and push only that bookmark through the Git interoperability layer:
 ```bash
-git push
+PR_BOOKMARK="<headRefName resolved in step 1>"
+jj bookmark move "$PR_BOOKMARK" --to @-
+jj git push --bookmark "$PR_BOOKMARK"
 ```
 
 ## 7. Reply and Resolve

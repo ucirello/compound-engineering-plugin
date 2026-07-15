@@ -50,7 +50,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 
 # Bump when the profile schema changes so a newer reader never reuses an
@@ -415,9 +414,17 @@ def do_put(profile_file: str) -> int:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         # Atomic write: temp file in the same dir + os.replace (atomic on
         # POSIX) so a concurrent reader never sees a torn JSON.
-        fd, tmp = tempfile.mkstemp(
-            dir=os.path.dirname(path), prefix=".tmp-", suffix=".json"
-        )
+        for attempt in range(100):
+            tmp = os.path.join(
+                os.path.dirname(path), f".tmp-{os.getpid()}-{attempt}.json"
+            )
+            try:
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise OSError("cannot allocate cache scratch file")
         try:
             with os.fdopen(fd, "w") as f:
                 json.dump(doc, f)

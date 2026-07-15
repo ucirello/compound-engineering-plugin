@@ -224,10 +224,24 @@ fi
 # across providers/routes.
 SCRATCH_ROOT="$REPO_ROOT/.tmp/rocketclaw/cross-model-code-review"
 mkdir -p "$SCRATCH_ROOT" || skip "cannot create repo-local scratch dir; skipping"
-BASE_PROMPT="$(mktemp "$SCRATCH_ROOT/xmodel-base-XXXXXX")"
-PROMPT_FILE="$(mktemp "$SCRATCH_ROOT/xmodel-prompt-XXXXXX")"
-PEERLOG="$(mktemp "$SCRATCH_ROOT/xmodel-log-XXXXXX")"
-RAW_DIR="$(mktemp -d "$SCRATCH_ROOT/xmodel-raw-XXXXXX")" || skip "cannot create raw-out dir; skipping"
+scratch_file() {
+  local prefix="$1" candidate
+  while :; do
+    candidate="$SCRATCH_ROOT/$prefix-$(date +%s)-$$-$RANDOM"
+    (set -o noclobber; : > "$candidate") 2>/dev/null && { printf '%s\n' "$candidate"; return 0; }
+  done
+}
+scratch_dir() {
+  local prefix="$1" candidate
+  while :; do
+    candidate="$SCRATCH_ROOT/$prefix-$(date +%s)-$$-$RANDOM"
+    mkdir "$candidate" 2>/dev/null && { printf '%s\n' "$candidate"; return 0; }
+  done
+}
+BASE_PROMPT="$(scratch_file xmodel-base)"
+PROMPT_FILE="$(scratch_file xmodel-prompt)"
+PEERLOG="$(scratch_file xmodel-log)"
+RAW_DIR="$(scratch_dir xmodel-raw)" || skip "cannot create raw-out dir; skipping"
 trap 'rm -f "$BASE_PROMPT" "$PROMPT_FILE" "$PEERLOG"; rm -rf "$RAW_DIR"' EXIT
 
 {
@@ -242,7 +256,7 @@ trap 'rm -f "$BASE_PROMPT" "$PROMPT_FILE" "$PEERLOG"; rm -rf "$RAW_DIR"' EXIT
 
 # Cache the embedded-diff appendix once (expensive on large diffs); reuse across
 # non-codex routes within this invocation.
-DIFF_APPENDIX="$(mktemp "$SCRATCH_ROOT/xmodel-diff-XXXXXX")"
+DIFF_APPENDIX="$(scratch_file xmodel-diff)"
 DIFF_APPENDIX_READY=0
 trap 'rm -f "$BASE_PROMPT" "$PROMPT_FILE" "$PEERLOG" "$DIFF_APPENDIX"; rm -rf "$RAW_DIR"' EXIT
 
@@ -436,7 +450,7 @@ run_provider() {
 
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "$SCRATCH_ROOT/xmodel-norm-XXXXXX")"
+    _norm="$(scratch_file xmodel-norm)"
     if jq --arg r "adversarial-$provider" --arg route "$ACTUAL_ROUTE" \
          'if (.findings|type)=="array"
           then { reviewer: $r,

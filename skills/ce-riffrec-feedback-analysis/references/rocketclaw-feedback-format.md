@@ -1,4 +1,4 @@
-# Compound Engineering Feedback Format
+# RocketClaw Feedback Format
 
 Use this shape when converting Riffrec evidence into a durable brainstorm or planning input.
 
@@ -35,7 +35,6 @@ topic: <topic>
 
 - A1. User: <Role in the recorded workflow>
 - A2. Product surface: <System under test>
-- A3. Agent/assistant, if relevant: <Role in the workflow>
 
 ---
 
@@ -113,4 +112,4 @@ topic: <topic>
 - Prefer moment IDs and screenshot links over prose-only claims.
 - Mark visual interpretation as an inference when the screenshot does not prove intent.
 - Requirements should describe product behavior, not implementation details.
-- Do not include absolute local paths in CE docs; use repo-relative paths when possible.
+- Do not include absolute local paths in generated docs; use repo-relative paths when possible.

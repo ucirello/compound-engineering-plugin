@@ -5,7 +5,7 @@ argument-hint: "[scheme name or 'current' to use default]"
 disable-model-invocation: true
 ---
 
-# Xcode Test Skill
+# Xcode Testing
 
 Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures screenshots, logs, and verifies app behavior.
 
@@ -203,6 +203,6 @@ After testing:
 /ce-test-xcode current
 ```
 
-## Integration with ce-code-review
+## Review Integration
 
-When reviewing PRs that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.
+When reviewing PRs that touch iOS code, the `/ce-code-review` route can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.

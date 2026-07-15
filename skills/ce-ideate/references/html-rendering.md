@@ -44,15 +44,6 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
-- **Source / composition signal.** A visible footer at the bottom of
-  the doc names the composition timestamp and the source identifier
-  (the user prompt context, the upstream brainstorm doc when one
-  exists, or just the composing skill name when there's no external
-  source). Example shape:
-  `<footer class="composition-signal">Composed 2026-05-17T14:23Z by ce-plan from <code>docs/brainstorms/...-requirements.md</code></footer>`.
-  Under exclusive output mode this signal is the artifact's own
-  provenance — there's no markdown sibling to reference. Omitting it
-  leaves readers unable to tell how stale the rendering is.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -103,15 +94,15 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Worktree root (resolve via `git rev-parse --show-toplevel`).
+1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
-3. `.compound-engineering/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Worktree-root only — do not fall through to a main checkout. Users
-working from a worktree who want HTML defaults can add DESIGN.md to the
-worktree.
+Workspace-root only — do not fall through to another workspace. Users
+working from an auxiliary workspace who want HTML defaults can add DESIGN.md
+to that workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -230,8 +221,10 @@ every entry into a browser or IDE.
 Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-git remote get-url origin
+jj git remote list
 ```
+
+Use the URL shown for `origin`.
 
 Apply linking to three reference shapes:
 
@@ -303,7 +296,7 @@ chip) is being styled.
 Status chips, ID chips, and metric pills in the same row share one shape
 — same border-radius, border weight, and fill treatment. Differentiate
 categories only by the chip's overall fill/text color (applied to the
-whole pill, like a soft-tint badge), never by an accent on one edge. A
+  whole pill with a soft tint), never by an accent on one edge. A
 colored stripe or arc on a single side of a pill reads as broken and
 asymmetric — as if a border half-failed to render — so avoid it. The same
 holds for any element, not just chips: differentiate by a full tint, not
@@ -436,7 +429,7 @@ labeled arrow, each shape edge, and each text label:
 - **Avoid long curves that traverse the diagram** to connect a
   component on one side to one on the other. If A and D need a labeled
   connection across a multi-component layout, prefer reordering boxes
-  so A and D are adjacent, numbered step badges next to each
+  so A and D are adjacent, numbered step markers next to each
   participant that the caption ties together, or a short
   labeled-channel notation — rather than one curve crossing multiple
   unrelated elements.
@@ -600,8 +593,7 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
-- **Source / composition signal** is present as a visible footer at
-  the bottom of the doc (composition timestamp + source identifier).
+- **No creator metadata** appears in the artifact.
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

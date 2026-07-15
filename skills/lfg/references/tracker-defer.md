@@ -56,7 +56,7 @@ Availability probes run **at most once per session** and **only when Defer execu
 Typical probe sequence:
 
 1. Consult the project's instructions already in context for tracker references — don't open or name specific instruction files; read one directly only when the relevant instructions aren't in context (subdirectory scope, or a fresh subagent). If nothing found, set `tracker_name = null`, `confidence = low`.
-2. **Probe the named tracker when one was found.** For GitHub Issues, run `gh auth status` and `gh repo view --json hasIssuesEnabled`. For Linear or other connector/MCP-backed trackers, first discover available tools via the platform's tool-discovery primitive (e.g., `ToolSearch` in Claude Code) rather than assuming absence from an unloaded tool, then verify the discovered tool is responsive. For API-backed trackers, verify credentials wherever the platform exposes them (environment, connector auth, or a documented secrets location) — not only shell env vars. Set `named_sink_available` from the probe result.
+2. **Probe the named tracker when one was found.** For GitHub Issues, run `gh auth status` and `gh repo view --json hasIssuesEnabled`. For Linear or other connector/MCP-backed trackers, first discover available tools via the platform's tool-discovery primitive rather than assuming absence from an unloaded tool, then verify the discovered tool is responsive. For API-backed trackers, verify credentials wherever the platform exposes them (environment, connector auth, or a documented secrets location) — not only shell env vars. Set `named_sink_available` from the probe result.
 3. **Probe the GitHub Issues fallback to compute `any_sink_available`.** Even when the named tracker was found and probed, `gh` matters for the `no_sink` bucket decision so that a run with no documented tracker but working `gh` still offers Defer.
    - If `named_sink_available = true`: `any_sink_available = true` (no further probes needed).
    - Otherwise, probe GitHub Issues via `gh auth status` + `gh repo view --json hasIssuesEnabled` (skip if already probed in step 2). If it works, `any_sink_available = true`.
@@ -94,12 +94,12 @@ Every Defer action creates a ticket with the following content, adapted to the t
 
 - **Title:** the merged finding's `title` (schema-capped at 10 words).
 - **Body:**
-  - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `/tmp/compound-engineering/ce-code-review/<run-id>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
+  - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `$(jj workspace root)/.tmp/rocketclaw/ce-code-review/<run-id>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). If `jj workspace root` cannot be resolved, use `.tmp/rocketclaw/ce-code-review/<run-id>/{reviewer}.json`. Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
   - Suggested fix (when present in the finding's `suggested_fix`).
   - Evidence (direct quotes from the reviewer's artifact).
-  - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Reviewer(s): <list>`, `Finding ID: <fingerprint>`.
-- **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`) and, when the tracker convention supports it, a category label sourced from the reviewer name.
-- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in ce-code-review run artifact: /tmp/compound-engineering/ce-code-review/<run-id>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
+  - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Finding ID: <fingerprint>`.
+- **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`).
+- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in ce-code-review run artifact: $(jj workspace root)/.tmp/rocketclaw/ce-code-review/<run-id>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable. If the workspace root cannot be resolved, name `.tmp/rocketclaw/ce-code-review/<run-id>/` instead.
 
 The finding_id is a stable fingerprint composed as `normalize(file) + line_bucket(line, +/-3) + normalize(title)` — the same fingerprint used by the merge pipeline.
 
@@ -144,6 +144,6 @@ When uncertain, prefer "drop with explicit user-facing notice" over "pass throug
 
 ## Cross-platform notes
 
-The question-tool name varies by platform. In Interactive mode, use the platform's blocking question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension)). In Claude Code the tool should already be loaded from the Interactive-mode pre-load step — if it isn't, call `ToolSearch` with query `select:AskUserQuestion` now. Fall back to numbered options in chat only when the harness genuinely lacks a blocking tool — `ToolSearch` returns no match, the tool call explicitly fails, or the runtime mode does not expose it (e.g., Codex edit modes without `request_user_input`). A pending schema load is not a fallback trigger. Never silently skip the question.
+The question-tool name varies by platform. In Interactive mode, use the platform's blocking question tool and discover it through the platform's tool-discovery primitive when needed. Fall back to numbered options in chat only when the harness genuinely lacks a blocking tool: discovery returns no match, the tool call explicitly fails, or the runtime mode does not expose one. A pending schema load is not a fallback trigger. Never silently skip the question.
 
 Non-interactive mode is platform-agnostic: it never prompts, so the platform's question tool is not relevant.

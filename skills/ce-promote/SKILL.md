@@ -30,10 +30,10 @@ If the user gave a free-form description of the feature, use it as the source of
 
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
-- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current branch). The title and body usually state the user-facing value.
-- **The diff** — `git diff main...HEAD --stat` and skim notable changes to ground the claim in what actually changed.
+- **Merged/active PR** — use `jj bookmark list -r 'heads(::@ & bookmarks())'` to identify the nearest bookmark, then run `gh pr view <bookmark> --json title,body,url 2>/dev/null`. The title and body usually state the user-facing value.
+- **The diff** — `jj diff --from 'trunk()' --to @ --stat` and skim notable changes to ground the claim in what actually changed.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
-- **Recent commits** — `git log --oneline -15` for the arc of the change.
+- **Recent changes** — `jj log -r 'ancestors(@, 15)' --no-graph` for the arc of the change.
 
 Then write a 1–3 sentence summary of the **user-facing value** — what a user can now do that they couldn't before, and why they'd care. Describe the outcome, not the implementation. ("You can now export any report to CSV in one click" — not "Added a CsvSerializer and an export endpoint.")
 
@@ -73,7 +73,7 @@ When Spiral isn't ready, offer to set it up **once** — unless the user previou
 
 Read `references/spiral-cli.md` for the exact setup prompt (built with the platform's blocking-question tool), the connect/install steps, and how the opt-out is recorded so later runs skip this. In short:
 
-- **Unauthed** → the agent runs `spiral login --json` (CLI >= 1.8.0; non-blocking, the API key never passes through the agent). On `status: already_authenticated` → use Path A. On `status: pending` → surface the `auth_url`, the user approves in their browser, then poll `spiral auth status --json` until `authenticated: true` → Path A. Never have the user paste a key into chat. (Older CLI without agent login → suggest `npm i -g @every-env/spiral-cli@latest`, or have the user run `spiral login` themselves.) Escape hatch: "or the agent can just draft directly, without Spiral's personalization and humanization."
+- **Unauthed** → run `spiral login --json` (CLI >= 1.8.0; non-blocking, the API key never passes through the agent). On `status: already_authenticated` → use Path A. On `status: pending` → surface the `auth_url`, the user approves in their browser, then poll `spiral auth status --json` until `authenticated: true` → Path A. Never have the user paste a key into chat. (With an older CLI, suggest `npm i -g @every-env/spiral-cli@latest`, or have the user run `spiral login` themselves.) Escape hatch: "or I can draft directly, without Spiral's personalization and humanization."
 - **Absent** → guide the user to install + connect in one step via the pairing-code command from Settings → Connect an Agent.
 - **Decline** → record the opt-out (best-effort) and go to Path B.
 

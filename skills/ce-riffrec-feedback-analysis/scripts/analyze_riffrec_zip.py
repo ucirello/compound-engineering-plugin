@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip, standalone video, standalone audio, and
 meeting notes text/markdown. The script extracts transcript, high-signal
-video frames when available, and CE-friendly markdown artifacts.
+video frames when available, and structured markdown artifacts.
 """
 
 from __future__ import annotations
@@ -103,11 +103,19 @@ def safe_extract(zip_path: Path, dest: Path) -> None:
 
 
 def default_output_dir(zip_path: Path) -> Path:
-    cwd = Path.cwd()
+    root = workspace_root()
     stem = slugify(zip_path.stem)
-    if (cwd / "docs" / "brainstorms").is_dir():
-        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return cwd / "riffrec-feedback" / stem
+    if (root / "docs" / "brainstorms").is_dir():
+        return root / "docs" / "brainstorms" / "riffrec-feedback" / stem
+    return root / "riffrec-feedback" / stem
+
+
+def workspace_root() -> Path:
+    if shutil.which("jj"):
+        result = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout.strip():
+            return Path(result.stdout.strip()).resolve()
+    return Path.cwd().resolve()
 
 
 def classify_source(source_path: Path) -> str:
@@ -680,7 +688,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -729,7 +737,6 @@ def write_requirements_kickoff(
         "",
         "- A1. User: Operates the product in the recorded session and verbalizes friction.",
         "- A2. Product surface: The UI and backend behavior visible in the recording.",
-        "- A3. Brainstorm agent: Uses the evidence bundle to confirm, correct, and group requirements before planning.",
         "",
         "---",
         "",
@@ -737,7 +744,7 @@ def write_requirements_kickoff(
         "",
         "- F1. Evidence-backed feedback triage",
         "  - **Trigger:** A feedback zip, video, audio file, or meeting notes file is available.",
-        "  - **Actors:** A1, A2, A3",
+        "  - **Actors:** A1, A2",
         "  - **Steps:** Extract or copy the source, transcribe media or read notes, select high-signal moments when video exists, inspect screenshots when available, confirm problems, and write requirements with supporting evidence.",
         "  - **Outcome:** Confirmed product problems are represented as requirements with transcript support and screenshot support when visual evidence exists.",
         "  - **Covered by:** R1, R2, R3",
@@ -853,7 +860,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Commit policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; commit generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
+        "- Tracking policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; track generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -874,10 +881,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not commit-safe by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not safe to track by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be committed by default.")
+    lines.append("Extracted screenshots are retained locally for agent inspection and should not be tracked by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -896,7 +903,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not commit these unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally local-only by default. Do not include them in a repository change unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")
@@ -1070,7 +1077,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = Path.cwd()
+    repo_root = workspace_root()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
@@ -1113,7 +1120,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under docs/plans/.")
     return 0
 

@@ -38,7 +38,7 @@ Before proceeding to post-generation options:
 - Confirm origin decisions were preserved when an origin document exists
 
 If artifact-backed mode was used:
-- Clean up the temporary scratch directory after the plan is safely updated
+- Clean up the workspace-local scratch directory after the plan is safely updated
 - If cleanup is not practical on the current platform, note where the artifacts were left
 
 **Format-specific composition.** When `OUTPUT_FORMAT=html` (resolved in SKILL.md Phase 0.0), the plan is written as a single self-contained `.html` file — there is no markdown sibling. Read `references/html-rendering.md` for composition rules: invariants, precedence stack, format principles, agent-consumability rules, and the post-compose audit. The `.html` file is the artifact downstream consumers (ce-work, human readers) read. `ce-doc-review` is not a current HTML consumer — its mutation mechanics are markdown-only today, and HTML plans skip the 5.3.8 doc-review pass until that gap closes.
@@ -87,7 +87,9 @@ Based on selection (the bare per-option routing is also stated inline in the SKI
 - **Publish to Proof — shareable link** -> Load the `ce-proof` skill to publish the plan. Pass:
   - source file: `docs/plans/<plan_filename>.md`
   - doc title: `Plan: <plan title from frontmatter>`
-  - identity: `ai:compound-engineering` / `Compound Engineering`
+  - identity: `ai:assistant` / `AI Assistant`
+
+  Do not add an attribution badge, byline, generated-by line, or standalone workflow branding to the published artifact.
 
   ce-proof creates a shared Proof doc from the plan file (Create and Share workflow), binds the display name, and returns the share URL. Surface the URL to the user — they can open it to read, comment, or share with others — then return to the post-generation options. This is a one-way publish: the local plan file stays canonical and nothing syncs back, so no re-review is needed and the menu re-renders with the same residual findings as before.
 
@@ -105,7 +107,7 @@ When the user selects "Create Issue":
 1. **Identify the project's issue tracker from the active instructions and conventions already in your context** — the issue / project-management tool the project uses (e.g., GitHub Issues, Linear, Jira). Don't open or name specific instruction files to do this; the project's instructions are already available to you. Look for an explicit `project_tracker:` declaration (`github`, `linear`, …) or any documented tracker convention. Only if your context doesn't already carry the project's instructions (e.g., you're a fresh subagent) or they're silent, consult supplementary signals: `README.md`, `CONTRIBUTING.md`, PR templates under `.github/`, or visible tracker URLs.
 
 2. **Create the issue through whatever interface that tracker actually exposes in this environment** — a platform connector/MCP tool, documented API/GraphQL credentials, or a documented CLI. First actively discover what's available: use the platform's tool-discovery primitive (e.g., `ToolSearch` in Claude Code) to look for a tracker connector or MCP tool before assuming none exists — lazy-loaded connectors and credentials stored outside the shell won't surface in a passive check. Do not assume a tracker means a particular CLI, and do not treat a missing binary, env var, or unloaded MCP server as proof the tracker is unavailable — those are false negatives when access comes through a connector or a raw API with credentials stored outside the shell. When using a direct API, never print secret values; read the plan body from disk and send it as the issue's markdown/description per the API contract. Worked examples for the common cases:
-   - **GitHub** — `gh issue create --title "<type>: <title>" --body-file <plan_path>`
+   - **GitHub** — `gh issue create --title "<issue-title>" --body-file <plan_path>`
    - **Linear** (no guaranteed first-party CLI) — prefer, in order: a Linear connector or MCP tool that can create issues → documented direct API/GraphQL credentials and endpoint → a documented local Linear CLI, only when the project or user explicitly states it is installed and authenticated.
 
 3. If no tracker is configured, ask the user which tracker they use with the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to asking in chat only when no blocking tool exists or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip. Offer three explicit options — `GitHub`, `Linear`, `Skip` — and let the user name a different tracker (Jira, etc.) through the tool's built-in free-form / "Other" input: `AskUserQuestion` always provides it, and `request_user_input` / `ask_user` supply their own. Don't add an explicit fourth `Other` option — that's redundant where the tool already offers free-form and can exceed the option cap on tools that accept only 2–3 explicit choices (e.g., Codex `request_user_input`). When the tool exposes no free-form path, capture the other-tracker name via the chat fallback. Then:

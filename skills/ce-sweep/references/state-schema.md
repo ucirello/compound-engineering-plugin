@@ -1,6 +1,6 @@
 # Sweep state schema (v1)
 
-This is the canonical, versioned contract for the ce-sweep state file. The
+This is the canonical, versioned contract for the sweep state file. The
 deterministic state engine (`scripts/sweep-state.py`) is the **only** writer;
 every peer agent (source connectors, the analyzer, the orchestrator) reads the
 file and mutates it **exclusively** through the engine's subcommands so the
@@ -80,8 +80,8 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 
 | field | meaning |
 | --- | --- |
-| `fix_ref` | Reference to the fix (PR/commit/issue link). |
-| `verified_merge_sha` | The merge commit SHA the fix landed on. |
+| `fix_ref` | Reference to the fix (PR/change/issue link). |
+| `verified_merge_sha` | The Git commit SHA exported for the merged fix. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
 `validate` scans every item and downgrades any `closed` item missing (or with a
@@ -145,8 +145,8 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-commit mode (default) | Single writer **per checkout**. | The lease serializes overlapping sweeps in the same working tree (e.g. a cron sweep and a manual one). The file is written in-tree (and may be committed locally). No cross-machine guarantee. |
-| pushed-shared-branch | One writer **per repo**. | The state file lives on a shared branch multiple checkouts push to. `lease-acquire` must be committed, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
+| local-change mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same JJ workspace (e.g. a cron sweep and a manual one). The file is written in-tree and may participate in a local change. No cross-machine guarantee. |
+| pushed-shared-bookmark | One writer **per repo**. | The state file lives on a bookmark shared by multiple JJ workspaces. `lease-acquire` must be described, advanced to the bookmark, pushed, and confirmed with `jj git fetch` **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -170,8 +170,8 @@ subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
 whole load-modify-write, so two concurrent invocations serialize their writes
 regardless of lease ownership. The lease decides *who owns the sweep*; the file
 lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never committed (the skill's commit step adds only the state file and the
-plan, never `-A`).
+and never included in a change (the skill verifies that the working-copy change
+contains only the state file and plan before describing it).
 
 ## Engine status words
 

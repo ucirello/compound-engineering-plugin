@@ -60,7 +60,7 @@ SCHEMA_VERSION = 1
 
 # A `closed` item MUST carry all three evidence fields; `validate` downgrades
 # any closed item missing any of them back to `fix_pending`.
-EVIDENCE_FIELDS = ("fix_ref", "verified_merge_sha", "verified_at")
+EVIDENCE_FIELDS = ("fix_ref", "verified_commit_id", "verified_at")
 
 DEFAULT_TTL_MINUTES = 60
 
@@ -88,7 +88,7 @@ _DOC_ORDER = ("schema_version", "lease", "sources", "items", "last_run")
 _LEASE_ORDER = ("writer", "timestamp", "ttl_minutes")
 _ITEM_ORDER = (
     "source", "status", "sensitive", "title", "url", "body", "quote",
-    "fix_ref", "verified_merge_sha", "verified_at",
+    "fix_ref", "verified_commit_id", "verified_at",
 )
 _LAST_RUN_ORDER = ("timestamp", "outcome", "writer", "counts")
 

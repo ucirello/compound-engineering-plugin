@@ -81,7 +81,7 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 | field | meaning |
 | --- | --- |
 | `fix_ref` | Reference to the fix (PR/commit/issue link). |
-| `verified_merge_sha` | The merge commit SHA the fix landed on. |
+| `verified_commit_id` | The full commit ID JJ resolved for the fix on the configured trunk. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
 `validate` scans every item and downgrades any `closed` item missing (or with a

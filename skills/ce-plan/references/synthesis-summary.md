@@ -359,7 +359,7 @@ When the skill is invoked from an automated workflow such as LFG or any `disable
 **Shared behavior across both variants:**
 
 - **No user prompt; no stage 2; no auto-proceed announcement.** All three are moot.
-- **Route internal-draft content with mode-aware shape** (nested under Product Contract / Planning Contract in a `ce-unified-plan/v1` artifact; top-level `##` headings in a legacy standalone plan):
+- **Route internal-draft content with mode-aware shape** (nested under Product Contract / Planning Contract in a `unified-plan/v1` artifact; top-level `##` headings in a legacy standalone plan):
   - **Stated** content → Product Contract `### Requirements` (user-stated constraints, traced to origin's R-IDs when present)
   - **Out-of-scope** content → Product Contract `### Scope Boundaries`
   - **Inferred** content → Planning Contract `### Assumptions` — explicitly labeled as un-validated agent bets. Do NOT route Inferred items into Key Technical Decisions or Implementation Units; that would make un-validated bets indistinguishable from user-confirmed decisions.
@@ -383,7 +383,7 @@ In either case: stop ce-plan, suggest the alternative skill, offer to load it in
 
 ## Doc shape after confirmation
 
-After user confirmation (or after the soft-cut decision proceeds), Phase 5.2 writes the plan doc. The internal draft does NOT carry into the plan as a `## Synthesis` section. Only the stage-2 summary embeds, under the Product Contract's `### Summary`. Internal-draft content dissolves into the unified plan's sections. In a `ce-unified-plan/v1` artifact these destinations are nested — Summary, Problem Frame, Requirements, and Scope Boundaries live under `## Product Contract`; Key Technical Decisions and Assumptions live under `## Planning Contract`; Implementation Units is its own top-level section. (Legacy standalone plans without `artifact_contract` keep these as top-level `##` headings.)
+After user confirmation (or after the soft-cut decision proceeds), Phase 5.2 writes the plan doc. The internal draft does NOT carry into the plan as a `## Synthesis` section. Only the stage-2 summary embeds, under the Product Contract's `### Summary`. Internal-draft content dissolves into the unified plan's sections. In a `unified-plan/v1` artifact these destinations are nested — Summary, Problem Frame, Requirements, and Scope Boundaries live under `## Product Contract`; Key Technical Decisions and Assumptions live under `## Planning Contract`; Implementation Units is its own top-level section. (Legacy standalone plans without `artifact_contract` keep these as top-level `##` headings.)
 
 | Internal-draft element | Where it goes in the unified plan |
 |---|---|

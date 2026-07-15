@@ -26,7 +26,7 @@ New `ce-brainstorm` outputs live under `docs/plans/` and use the unified plan
 artifact contract:
 
 - **Path:** `docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>`.
-- **`artifact_contract: ce-unified-plan/v1`**.
+- **`artifact_contract: unified-plan/v1`**.
 - **`artifact_readiness: requirements-only`**.
 - **`product_contract_source: ce-brainstorm`**.
 - **`execution`** only when the brainstorm has enough signal to classify the
@@ -289,7 +289,7 @@ artifact.
   `surface-scope-earlier`, `demo-reel-local-save`). Used in the filename and
   as the resume-detection key when `ce-brainstorm` scans for an existing
   artifact to continue.
-- **`artifact_contract`** — always `ce-unified-plan/v1` for new outputs.
+- **`artifact_contract`** — always `unified-plan/v1` for new outputs.
 - **`artifact_readiness`** — always `requirements-only` for new
   `ce-brainstorm` outputs. Do not use `active`, `in_progress`, `completed`,
   or `done`.

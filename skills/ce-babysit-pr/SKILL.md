@@ -24,7 +24,7 @@ If any of these holds, the PR is **not** ready no matter how long it has been qu
 
 **Mutation envelope (what running this authorizes):** on the target PR's head the loop fixes failing checks, creates JJ changes, moves the explicit head bookmark, pushes through `jj git`, replies to and resolves review threads, and refreshes the PR description when incremental changes have left it stale — autonomously, as its normal operation. It **never** merges the PR, rewrites published history, or approves a gated CI run; those stay with the user. Being asked to babysit the PR is what authorizes this envelope — see Step 2's pre-authorization and the bounded scope it passes to the skills it delegates to.
 
-At every delegated or local JJ change-description composition, edit, validation, or recommendation site, include this exact instruction: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active local instructions and conventions win first, and syntax visible in `git log` wins next; compatible Go guidance is only a quality backstop. Never impose a fixed message syntax or stock example without local evidence.
+At every delegated or local JJ change-description composition, edit, validation, or recommendation site, include this exact instruction: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited.
 
 **Asking the user:** When this skill says "ask the user", use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi. Fall back to presenting the question in chat only when no blocking tool exists or the call errors. Never silently skip the question.
 
@@ -70,7 +70,7 @@ Same tick engine, three deltas:
 
    Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-   Pass that exact instruction to either delegate at every JJ change-description composition, edit, validation, or recommendation site. Project-local instructions and `git log` syntax win over compatible Go guidance; no fixed message form is permitted.
+   Pass that exact instruction to either delegate at every JJ change-description composition, edit, validation, or recommendation site. The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited.
 2. **Bounded stop, not merge-ready.** Exit when no actionable backlog remains AND either CI is **clean** (`all_checks_ok` — every check terminal, **none failing**, and at least one observed) → **success**, or a fix/round/time budget is hit → **return with residuals**. **Report success only on `all_checks_ok`.** A terminal-but-**red** check that `ce-debug` marked dispatched but left failing (`diagnosed-no-fix`/`needs-human` → `has_failing_checks` stays true) is a **residual, not a pass**; and an **empty** `statusCheckRollup` right after PR creation (`checks_present` false — Actions hasn't created check-runs *yet*, not that CI passed) is not success either — keep ticking until checks materialize or the budget, then return `no-checks-observed`. **Never** wait for the merge-ready settle window or human approval (interactive-only). This is what stops `lfg`/auto-babysit from exiting "successful" on red or not-yet-started CI, preserving the orchestrator's terminate-and-exit contract.
 3. **Native residual surfacing + structured return.** Needs-human review threads stay open (the resolver posts `decision_context` there). Anything with no thread home — CI you could not fix after budget, a `needs-human` from `ce-debug` — goes into **one run-report PR comment** (a point-in-time narrative), never a PR-body section. Return a structured result: `{ status, checks_terminal, fixes_applied, residuals: [...] }`.
 
@@ -113,7 +113,7 @@ Before the resolver composes, edits, validates, or recommends any JJ change desc
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Project-local instructions and `git log` syntax win over compatible Go guidance; no fixed message form is permitted.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited.
 ```bash
 SKILL_DIR="<absolute path of this skill's directory>"; TEMP_ROOT="$(jj workspace root 2>/dev/null || pwd)/.tmp"; STATE_DIR="$TEMP_ROOT/rocketclaw/ce-babysit-pr/<host>-<owner>-<repo>-<N>";
 python3 "$SKILL_DIR/scripts/pr-snapshot" mark --pr <N> --repo <[host/]owner/repo> --state-dir "$STATE_DIR" --thread <ID> --disposition needs-human
@@ -131,7 +131,7 @@ These are decisions the resolver judged would change intended behavior or need a
 
    Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-   Project-local instructions and `git log` syntax win over compatible Go guidance; no fixed message form is permitted.
+   The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited.
    Then record each check you acted on so it is not re-dispatched at this head (re-set the vars inline):
 
    ```bash
@@ -146,7 +146,7 @@ These are decisions the resolver judged would change intended behavior or need a
 
    Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-   Project-local instructions and syntax visible in `git log` win over compatible Go guidance. Use a neutral repository-derived description for the mechanical conflict resolution, not a fixed template. Apply it with `jj describe -m "$DESCRIPTION"`, validate it with `jj show -r @`, then use `jj bookmark set <head-bookmark> -r @` and `jj git push --remote <head-remote> --bookmark "exact:<head-bookmark>"`.
+   The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Use a neutral repository-derived description for the mechanical conflict resolution. Apply it with `jj describe -m "$DESCRIPTION"`, validate it with `jj show -r @`, then use `jj bookmark set <head-bookmark> -r @` and `jj git push --remote <head-remote> --bookmark "exact:<head-bookmark>"`.
 7. **After any mutation, re-snapshot** at the start of the next tick — the head SHA and CI universe have changed. Do not run a second `snapshot` mid-tick to re-derive CI; that is what caused stale-SHA confusion.
 
 **Before any write** (rerun, delegated `jj git` push, or reply), the delegated skills revalidate remote state. A local state lock does not prevent another watcher or a human from acting, so never assume the snapshot is current. `ce-resolve-pr-feedback` and `ce-debug` own their JJ change, bookmark, push, reply, and resolve mutations; this skill orchestrates, records, and reports.

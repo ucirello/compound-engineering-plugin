@@ -58,7 +58,7 @@ Do not proceed until you have a feature description from the user.
 
 Determine `OUTPUT_FORMAT` before any other phase fires. Output mode is **exclusive** — the requirements-only unified plan is written as either markdown (`.md`) OR HTML (`.html`), never both. Precedence: in-prompt request > user-stated preference > config > default (`md`), with a hard pipeline-mode override.
 
-**Read config.** Resolve `<workspace-root>` at runtime by running `jj workspace root` with the shell tool. Then read `<workspace-root>/.rocketclaw/config.local.yaml` with the native file-read tool. If the root cannot be resolved (not a JJ workspace) or the file does not exist, fall through to the defaults below.
+**Read config.** Resolve `<workspace-root>` at runtime by running `jj workspace root` with the shell tool. If the root cannot be resolved (not a JJ workspace), set `<workspace-root>` to the current directory so local `.tmp` paths remain project-local. Then read `<workspace-root>/.rocketclaw/config.local.yaml` with the native file-read tool. If the file does not exist, fall through to the defaults below.
 
 Resolution steps:
 
@@ -78,7 +78,7 @@ The `output:` preference does NOT auto-propagate to `ce-plan` on handoff — ce-
 
 #### 0.1 Resume Existing Work When Appropriate
 
-If the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `docs/plans/` with `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`:
+If the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `docs/plans/` with `artifact_contract: unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`:
 - Read the document
 - Confirm with the user before resuming: "Found an existing requirements-only plan for [topic]. Should I continue from this, or start fresh?"
 - If resuming, summarize the current state briefly, continue from its existing decisions and outstanding questions, and update the existing document instead of creating a duplicate
@@ -100,7 +100,7 @@ Before proceeding to Phase 0.2, classify whether this is a software task. The ke
 
 **Verdict-shape carve-out — do not exit before the 0.1c gate.** A request weighing whether to **adopt / switch to / replace** a *named external technology, library, pattern, platform, or architecture* for this project is a **software** decision even when it only names the tool and asks the bare question ("should we adopt Biome here?"). Classify it as **Software** and continue so the 0.1c gate below can catch it — do **not** route it to *Neither* or *Non-software*, which would skip the gate and lose the exact verdict-shape prompts that gate is for.
 
-**If non-software brainstorming is detected:** Read `references/universal-brainstorming.md` now and follow it — it replaces Phases 0.2–4 entirely. Scope assessment, exploration moves, convergence, and the wrap-up menu for this route live there, not in this main body; improvising them produces an unstructured chat with no synthesis and no handoff. The non-software route does **not** write `artifact_contract: ce-unified-plan/v1` or `artifact_readiness: requirements-only`; those fields are reserved for software Product Contracts that can later become implementation-ready code plans. The **Core Principles and Interaction Rules above still apply unchanged** — including one-question-per-turn and the default to the platform's blocking question tool — and are the only part of this file that survives the route.
+**If non-software brainstorming is detected:** Read `references/universal-brainstorming.md` now and follow it — it replaces Phases 0.2–4 entirely. Scope assessment, exploration moves, convergence, and the wrap-up menu for this route live there, not in this main body; improvising them produces an unstructured chat with no synthesis and no handoff. The non-software route does **not** write `artifact_contract: unified-plan/v1` or `artifact_readiness: requirements-only`; those fields are reserved for software Product Contracts that can later become implementation-ready code plans. The **Core Principles and Interaction Rules above still apply unchanged** — including one-question-per-turn and the default to the platform's blocking question tool — and are the only part of this file that survives the route.
 
 #### 0.1c Route a Verdict Question to ce-pov
 
@@ -269,7 +269,7 @@ When a doc is warranted, compose it using:
 
 **Write tight.** A section being material is not license to pad it. Hold every kept section to the prose-economy discipline in `references/brainstorm-sections.md`: lead with the decision or outcome, one idea per sentence, a requirement is intent plus at most one qualifier, defer forks to Outstanding Questions rather than specifying both arms, resolve superseded text in place rather than stacking strata. Before declaring the doc written, run the named test there — could a reader find a contradiction in each section in one pass?
 
-Write to `docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>` — extension follows `OUTPUT_FORMAT`. Include `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`. Title is `<Name> - Plan` (matching the H1; no change-description prefix). Keep the doc light and standalone-readable: a Goal Capsule (objective, product authority, open blockers) and the Product Contract. Do **not** emit a Goal Launch Block or Reader Index. See `references/brainstorm-sections.md` — which owns the artifact content rules, including repo-relative file paths inside the doc. When confirming in chat, report the written artifact with its absolute path so the reference is clickable.
+Write to `docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>` — extension follows `OUTPUT_FORMAT`. Include `artifact_contract: unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`. Title is `<Name> - Plan` (matching the H1; no change-description prefix). Keep the doc light and standalone-readable: a Goal Capsule (objective, product authority, open blockers) and the Product Contract. Do **not** emit a Goal Launch Block or Reader Index. See `references/brainstorm-sections.md` — which owns the artifact content rules, including repo-relative file paths inside the doc. When confirming in chat, report the written artifact with its absolute path so the reference is clickable.
 
 #### Vocabulary Capture — after the requirements-only unified plan (only if CONCEPTS.md already exists)
 

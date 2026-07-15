@@ -84,7 +84,7 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Do not re-run `ce-code-review`
 - Shared-workspace fallback: do not run JJ history/bookmark commands — return which `#` were applied or skipped and which files changed
 
-**After each wave:** orchestrator reviews with `jj diff` (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), then describes/rebases isolated `<workspace>@` changes or describes shared `@` edits by fileset per Phase 1. At this description checkpoint, derive the message from local instructions and past messages visible in `git log`; use compatible guidance from https://go.dev/wiki/CommitMessage only as a fallback. Repeat until all batches complete.
+**After each wave:** orchestrator reviews with `jj diff` (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), then describes/rebases isolated `<workspace>@` changes or describes shared `@` edits by fileset per Phase 1. At this description checkpoint: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and syntax visible in `git log` always win; apply Go guidance only when compatible. Derive the message syntax dynamically; do not impose fixed prefixes, types, scopes, subjects, templates, or examples. Preserve the applied findings' repository-relevant semantic content. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

@@ -63,7 +63,7 @@ These are coverage shapes, not fixed sentence counts or length templates.
 
 ## Step B: Compose the title dynamically
 
-Derive title syntax from the project's active local instructions and conventions, then from the syntax visible in `git log` and existing repository PRs. Those local sources always win. Do not impose a predetermined prefix, scope, capitalization pattern, punctuation pattern, or fixed length.
+Derive title syntax dynamically from the repository-local instructions and conventions, then from repository history inspected through JJ and existing repository PRs. Those local sources always win. Do not impose a predetermined prefix, type, scope, subject form, template, example, capitalization pattern, punctuation pattern, or fixed length.
 
 The title must accurately identify the shipped value or corrected behavior, remain distinguishable in review lists and release history, and avoid implementation-only wording when behavior is the meaningful change. Classify intent from behavior rather than file extension when the local syntax includes an intent marker.
 
@@ -73,7 +73,7 @@ If composing or recommending a JJ change description while reconciling the title
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The project's active local instructions and conventions win first, and syntax visible in `git log` wins next; compatible Go guidance is only a quality backstop. Use a neutral repository-derived description, never a fixed message form or example.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Use a neutral repository-derived description.
 
 ## Step B1: Resolve related work
 

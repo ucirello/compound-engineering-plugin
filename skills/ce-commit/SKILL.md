@@ -21,9 +21,9 @@ Run each command as its own shell tool call. Do not join commands with shell ope
 | `jj bookmark list -r @` | Bookmarks at the working-copy change | Empty output is normal |
 | `jj bookmark list -r @-` | Bookmarks at its parent | Empty output is normal |
 | `jj log -r '::@' --limit 10 --no-graph` | Recent local descriptions and topology | No prior history is available |
-| `git log -10 --format=%B` | Repository message syntax and style | No compatible history is available |
+| `jj log -r '::@' --limit 10 --no-graph -T 'description ++ "\n"'` | Repository message syntax and style | No compatible history is available |
 
-The final command is read-only interoperability for the required local message-style check; all VCS mutation remains JJ-native. Re-read `jj status` and `jj diff` immediately before each commit because commands snapshot the working copy and concurrent edits may change it.
+The final command reads JJ description history for the required local message-style check; all VCS mutation remains JJ-native. Re-read `jj status` and `jj diff` immediately before each commit because commands snapshot the working copy and concurrent edits may change it.
 
 ## Workflow
 
@@ -39,7 +39,7 @@ Bookmarks are named pointers and do not follow the working copy. A working-copy 
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Apply authority in this order: the project's active local instructions and conventions already in context; the syntax and style visible in `git log`; then compatible Go commit-message quality guidance. Local instructions and `git log` syntax always win. Use the Go guidance only where compatible: communicate the change's purpose clearly, keep the first line useful in history, and add explanatory context when a future reader needs it. Do not impose a fixed prefix, type list, scope form, capitalization rule, line-length rule, or body template that local evidence does not require.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Communicate the change's purpose clearly, keep the first line useful in history, and add explanatory context when a future reader needs it. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited; do not add capitalization, line-length, or body rules without repository-local evidence.
 
 ### Step 3: Choose coherent changes
 
@@ -53,7 +53,7 @@ At each change-description composition site, apply this instruction exactly:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The project's active local instructions and conventions win first, and the syntax visible in `git log` wins next; compatible Go guidance is a quality backstop only. Describe the purpose and material effect accurately. Add a body only when it carries motivation, tradeoffs, compatibility notes, or other context not clear from the first line. Do not use a fixed message syntax or stock wording.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Describe the purpose and material effect accurately. Add a body only when it carries motivation, tradeoffs, compatibility notes, or other context not clear from the first line. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited.
 
 For one change:
 
@@ -77,6 +77,6 @@ For every completed change, inspect it with `jj log -r @- --no-graph` and, when 
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The project's active local instructions and conventions and the syntax visible in `git log` override compatible Go guidance. If the description does not match the actual change or present repository standard, edit it with `jj describe -r @- -m "<repository-derived-message>"` or `--message-file <workspace-local-message-file>`, then validate it again.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. If the description does not match the actual change or present repository standard, edit it with `jj describe -r @- -m "<repository-derived-message>"` or `--message-file <workspace-local-message-file>`, then validate it again.
 
 Run `jj status` after the final commit. Report every completed change ID, commit ID, and first line. If `@` is not empty, report the remaining paths rather than claiming all changes were committed.

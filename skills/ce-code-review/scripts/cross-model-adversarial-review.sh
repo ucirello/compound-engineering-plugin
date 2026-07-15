@@ -78,8 +78,9 @@ M_COMPOSER="composer-2.5-fast" # cursor-agent composer (no high tier; -fast is t
 # --- adapter argv (single source of truth for route flags) -----------------
 # Emits the CLI + flags NUL-delimited. Read-only / no-prompt / high-reasoning.
 # Code-review isolation is IN-TREE (repo root), not empty-scratch tool-less:
-# peers may Read surrounding code. PEER_WORKDIR is the workspace root; RAW_OUT
-# lives under `$(jj workspace root)/.tmp` and is published to RUN_DIR only after normalize.
+# peers may Read surrounding code. PEER_WORKDIR is the workspace root, or the
+# current project directory outside JJ; RAW_OUT lives under its `.tmp` and is
+# published to RUN_DIR only after normalize.
 # NEVER emit: codex without `-s read-only`; grok `--always-approve` /
 # `--permission-mode bypassPermissions`; cursor-agent `-f` / `--force` / `--yolo`.
 adapter_argv() {
@@ -155,8 +156,8 @@ SCHEMA="$SKILL_ROOT/references/findings-schema.json"
 SCHEMA_CONTENT="$(cat "$SCHEMA")" || skip "cannot read findings schema; skipping"
 SCHEMA_REF="$SCHEMA_CONTENT"
 
-# --- derive repo root (read-only in-tree review) ---------------------------
-REPO_ROOT="$(jj workspace root 2>/dev/null)" || skip "not inside a JJ workspace; skipping"
+# --- derive project root (read-only in-tree review) ------------------------
+REPO_ROOT="$(jj workspace root 2>/dev/null)" || REPO_ROOT="$(pwd -P)" || skip "cannot resolve current project directory; skipping"
 PEER_WORKDIR="$REPO_ROOT"
 
 # --- resolve which provider(s) to run (exclude host, allowlist, availability) --

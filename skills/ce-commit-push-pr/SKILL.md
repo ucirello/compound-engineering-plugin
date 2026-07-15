@@ -30,11 +30,11 @@ Run each command as its own shell tool call, in order. Do not join commands with
 | `jj bookmark list --all-remotes` | Local and remote bookmark state | Bookmark state unavailable |
 | `jj log -r 'remote_bookmarks()..@' --no-graph` | Local stack not represented remotely | Empty output may mean nothing to push |
 | `jj log -r '::@' --limit 10 --no-graph` | Recent local descriptions | No prior JJ history |
-| `git log -10 --format=%B` | Repository commit and PR-title syntax | No compatible history |
+| `jj log -r '::@' --limit 10 --no-graph -T 'description ++ "\n"'` | Repository commit and PR-title syntax | No compatible history |
 | `jj git remote list` | Interoperability remotes and URLs | No configured remote |
 | `gh repo view --json nameWithOwner,defaultBranchRef,url` | Base repository and default bookmark | Authentication, connectivity, or forge resolution failed |
 
-The `git log` call is read-only interoperability required for local message conventions; all VCS mutation uses JJ. Determine the candidate head bookmark from an explicit argument, the existing PR, or bookmarks pointing to the pushed stack head. Never infer a current bookmark: JJ bookmarks do not follow the working copy automatically.
+The description-history call is the JJ-native read required for local message conventions; all VCS mutation uses JJ. Determine the candidate head bookmark from an explicit argument, the existing PR, or bookmarks pointing to the pushed stack head. Never infer a current bookmark: JJ bookmarks do not follow the working copy automatically.
 
 When a candidate bookmark is known, query:
 
@@ -63,7 +63,7 @@ If `jj status` reports conflicts, resolve them before committing or pushing. Juj
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The project's active local instructions and conventions win first; syntax and style visible in `git log` win next; compatible Go guidance is only a quality backstop. Do not impose fixed prefixes, type lists, scopes, capitalization, punctuation, or body templates without local evidence. Derive PR-title style from the same local sources and existing PRs where available.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited; do not add capitalization or punctuation rules without repository-local evidence. Derive PR-title style from the same local sources and existing PRs where available.
 
 ## Step 3: Commit and push
 
@@ -75,13 +75,13 @@ At every JJ change-description composition or edit in this step, apply:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Project-local instructions and `git log` syntax win over compatible Go guidance. Use neutral repository-derived descriptions, not a fixed message form. Finish each group with `jj commit`, using filesets for file-level groups and `--message-file <workspace-local-message-file>` when a multiline message is needed. Store that file under `$(jj workspace root)/.tmp/ce-commit-push-pr/`; if no JJ repository exists, use the local fallback `.tmp/ce-commit-push-pr/`.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Use neutral repository-derived descriptions. Finish each group with `jj commit`, using filesets for file-level groups and `--message-file <workspace-local-message-file>` when a multiline message is needed. Store that file under `$(jj workspace root)/.tmp/ce-commit-push-pr/`; if no JJ repository exists, use the local fallback `.tmp/ce-commit-push-pr/`.
 
 Validate each completed change before pushing:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Inspect `jj show -r <revision>` and correct an inaccurate or nonconforming description with `jj describe -r <revision>`; project-local instructions and `git log` syntax remain authoritative.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Inspect `jj show -r <revision>` and correct an inaccurate or nonconforming description with `jj describe -r <revision>`.
 
 Set the head bookmark to the actual stack head, normally `@-` after the final `jj commit`:
 
@@ -122,7 +122,7 @@ At the archival change-description composition and validation site, apply:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Project-local instructions and `git log` syntax win over compatible Go guidance. Compose a neutral repository-derived description that accurately identifies the archived material, finish only those files with `jj commit`, validate with `jj show -r @-`, move the head bookmark to `@-`, and push it with `jj git push --bookmark exact:<head-bookmark> --remote <push-remote>`. If nothing changed, retain the existing link. Build host-correct links with `gh browse`; never hardcode a public host. If writing, committing, or pushing archival fails, warn and continue without the link.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Compose a neutral repository-derived description that accurately identifies the archived material, finish only those files with `jj commit`, validate with `jj show -r @-`, move the head bookmark to `@-`, and push it with `jj git push --bookmark exact:<head-bookmark> --remote <push-remote>`. If nothing changed, retain the existing link. Build host-correct links with `gh browse`; never hardcode a public host. If writing, committing, or pushing archival fails, warn and continue without the link.
 
 When a body applied by this run contains a concept section, report the concept names. In interactive full workflow, offer the functional `ce-explain` route.
 

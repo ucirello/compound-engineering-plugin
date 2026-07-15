@@ -146,7 +146,7 @@ If a reviewer flags any file in these directories for cleanup or removal, discar
 When a plan is provided via `plan:<path>` or discovered from PR/bookmark context,
 classify readiness before checking completeness:
 
-- Unified artifact: metadata includes `artifact_contract: ce-unified-plan/v1`.
+- Unified artifact: metadata includes `artifact_contract: unified-plan/v1`.
   - `artifact_readiness: requirements-only` can inform product intent, but it
     must not trigger implementation-unit completeness findings. Report that the
     artifact was not implementation-ready if the diff appears to implement it.
@@ -655,7 +655,7 @@ If this self-review changes files, rerun the affected tests or lint for those fo
 
 **Finalize when the pre-review JJ working-copy change was empty.** Before applying, record `PRE_APPLY_COMMIT_ID=$(jj log -r @ --no-graph -T commit_id)` and test whether `jj diff --summary` is empty. The permanence gate is the **push**, not a local JJ revision — local operations remain undoable with `jj undo`.
 
-- **Empty working-copy change before the review:** after applying and verifying, compose a message using the repository's active instructions and the syntax visible in recent history, then run `jj commit -m '<message derived from repository conventions>'`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository instructions and the syntax visible in `git log` take precedence; apply compatible Go guidance such as a concise subject and explanatory body where useful. This describes the fix revision and creates a new empty working-copy change on top.
+- **Empty working-copy change before the review:** after applying and verifying, compose a message, then run `jj commit -m '<message derived from repository conventions>'`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and syntax visible in `git log` always win; apply Go guidance only when compatible. Derive the message syntax dynamically; do not impose fixed prefixes, types, scopes, subjects, templates, or examples. Preserve the applied fixes' repository-relevant semantic content. This describes the fix revision and creates a new empty working-copy change on top.
 - **Non-empty working-copy change before the review:** apply but do **not** run `jj commit` — the fixes share the user's in-flight change. The Applied section lists what changed.
 - **Never push, open a PR, or file tickets** — that's the outward-facing step the user owns.
 

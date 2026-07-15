@@ -28,7 +28,7 @@ readiness states, not a requirements doc plus a separate implementation doc.
 
 When the artifact is meant to be consumed by implementation agents, use:
 
-- **`artifact_contract: ce-unified-plan/v1`** — declares this contract.
+- **`artifact_contract: unified-plan/v1`** — declares this contract.
 - **`artifact_readiness`** — document completeness, not work progress. Valid
   values are:
   - `requirements-only` — Product Contract exists; planning sections are not

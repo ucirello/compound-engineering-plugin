@@ -8,9 +8,9 @@
 ## Diff Summary
 
 - **Workspace:** `<workspace>`
-- **Target:** `<label>` — change `<change-id>`, commit `<git-commit-id>`, bookmark `<bookmark-or-none>`, PR `<number-or-none>`
-- **Comparison tip:** `<trunk() or PR-base revset>` — commit `<git-commit-id>`
-- **Fork point:** change `<change-id>`, commit `<git-commit-id>`
+- **Target:** `<label>` — change `<change-id>`, commit `<commit-id>`, bookmark `<bookmark-or-none>`, PR `<number-or-none>`
+- **Comparison tip:** `<trunk() or PR-base revset>` — commit `<commit-id>`
+- **Fork point:** change `<change-id>`, commit `<commit-id>`
 
 <What the target-only revset and fork-point diff introduce: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
 
@@ -35,7 +35,7 @@ flowchart TD
 
 ## Test Matrix & Results
 
-| # | Flow | Journey / Scenario | Status | Issue | Fix | JJ Change / Git Commit |
+| # | Flow | Journey / Scenario | Status | Issue | Fix | JJ Change ID / Commit ID |
 |---|------|--------------------|--------|-------|-----|------------------------|
 | 1 |      |                    | Pass   | -     | -   | -                      |
 | 2 |      |                    | Fixed  |       |     | `change-id` / `abc123` |
@@ -47,7 +47,7 @@ Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human veri
 
 For each issue found and fixed:
 
-### <Short issue title> — `<change-id>` / `<git-commit-id>`
+### <Short issue title> — `<change-id>` / `<commit-id>`
 - **Symptom:** <what the user saw / what failed in the browser>
 - **Root cause:** <why it happened>
 - **Fix:** <what changed, repo-relative file paths>
@@ -57,7 +57,7 @@ For each issue found and fixed:
 
 <Experiential friction found while walking each flow as each persona. A scenario can `Pass` functionally and still carry paper cuts. Note the persona, severity, and whether it was fixed (sharp ones, via the Phase 5 loop) or deferred. "None" if clean.>
 
-- **<Persona>** — <paper cut> — <severity> — <fixed `<change-id>` / `<git-commit-id>` / deferred>
+- **<Persona>** — <paper cut> — <severity> — <fixed `<change-id>` / `<commit-id>` / deferred>
 
 ## Console Errors
 

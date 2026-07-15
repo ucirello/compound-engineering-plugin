@@ -171,7 +171,7 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and preserve the failure's meaning in the change description. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and history syntax win; apply only compatible guidance from the Go commit-message guide. Do not impose a fixed syntax.
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and preserve the failure's meaning in the change description. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Derive the syntax dynamically from repository-local instructions and the commit syntax visible in `git log`; both win over generic guidance, and apply Go guidance only when compatible. Do not impose fixed prefixes, types, scopes, subjects, templates, or examples.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
@@ -185,13 +185,13 @@ jj diff --summary
 jj diff --git [files from fixer summaries]
 ```
 
-Jujutsu has no staging area. With path arguments, `jj commit` keeps the selected paths in the current change, gives that change the description, and moves all remaining changes into a new working-copy change on top. Commit only paths reported by fixers. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository instructions and the syntax visible in `git log` take precedence; apply only compatible Go guidance and do not impose fixed syntax or examples.
+Jujutsu has no staging area. With path arguments, `jj commit` keeps the selected paths in the current change, gives that change the description, and moves all remaining changes into a new working-copy change on top. Commit only paths reported by fixers. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Derive the syntax dynamically from repository-local instructions and the commit syntax visible in `git log`; both win over generic guidance, and apply Go guidance only when compatible. Do not impose fixed prefixes, types, scopes, subjects, templates, or examples.
 
 ```bash
-jj commit [files from fixer summaries] -m "<message derived from repository conventions; preserve the semantic summary of the review fixes and any pre-existing validation failure>"
+jj commit [files from fixer summaries] -m "<dynamically-derived-message>"
 ```
 
-If a reported path also contains unrelated edits, use `jj commit --interactive [files from fixer summaries] -m "<message derived from repository conventions>"` and select only the feedback changes. After either form, the recorded feedback change is `@-` and `@` is the new working-copy change. Verify with `jj show -r @-` and `jj status` before moving any bookmark.
+The dynamically derived message must preserve the semantic summary of the review fixes and any pre-existing validation failure. If a reported path also contains unrelated edits, use `jj commit --interactive [files from fixer summaries] -m "<dynamically-derived-message>"` and select only the feedback changes. After either form, the recorded feedback change is `@-` and `@` is the new working-copy change. Verify with `jj show -r @-` and `jj status` before moving any bookmark.
 
 2. Move the PR's exact head bookmark to the recorded change and push only that bookmark to the previously identified head-repository remote:
 ```bash

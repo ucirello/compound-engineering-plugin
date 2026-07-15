@@ -17,8 +17,8 @@ Run the whole thing as **one** command. Shell variables do not survive between s
 
 ```bash
 ROOT="$(jj workspace root 2>/dev/null)"
-if [ -z "$ROOT" ]; then ROOT="$(pwd -P)"; fi
-SCRATCH_DIR="$ROOT/.tmp/ce-test-browser"
+if [ -z "$ROOT" ]; then ROOT="$(pwd -P)"; fi # current project directory outside JJ
+SCRATCH_DIR="$ROOT/.tmp/rocketclaw/ce-test-browser"
 mkdir -p -- "$SCRATCH_DIR"
 PORT=3000   # replace 3000 with the preferred port from step 4
 

@@ -8,8 +8,6 @@ argument-hint: "[PR number, bookmark/revset, 'current', or --port PORT]"
 
 Run end-to-end browser tests on pages affected by a PR or JJ revision using the best approved browser driver available in the active harness.
 
-Identify the actor as `ai:assistant` in machine-readable output and `AI Assistant` in prose.
-
 ## Modes
 
 - **Manual (default):** the user controls the dev server. When the fallback driver is `agent-browser`, ask whether to run headed or headless.

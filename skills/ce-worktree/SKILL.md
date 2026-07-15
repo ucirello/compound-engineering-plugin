@@ -26,7 +26,7 @@ jj --ignore-working-copy bookmark list --all-remotes
 jj --ignore-working-copy log -r '@ | @-'
 ```
 
-Match the current root and target revision against `jj workspace list`. If a suitable workspace already exists, report its path from `jj workspace root --name <workspace-name>` and use it. Do not create a workspace inside another workspace.
+Match the current root and target revision against `jj workspace list`. If a suitable workspace already exists, locate it with `jj workspace list -T 'if(self.name() == "<workspace-name>", self.root() ++ "\n")'` and require exactly one nonempty absolute-path result before reporting and using that path. Stop on zero or multiple results. Do not create a workspace inside another workspace.
 
 If that existing isolated workspace must be repositioned, use `jj new <target>` to preserve its current working-copy change and start a child on the target. Use `jj edit <target>` only for intentional direct amendment after applying the direct-edit checks below.
 
@@ -125,9 +125,10 @@ If creation fails because of permissions or sandboxing, stop and ask whether to 
 List and locate workspaces:
 
 ```bash
-jj workspace list
-jj workspace root --name <workspace-name>
+jj workspace list -T 'self.name() ++ "\t" ++ self.root() ++ "\n"'
 ```
+
+For a selected name, filter with `jj workspace list -T 'if(self.name() == "<workspace-name>", self.root() ++ "\n")'` and require exactly one nonempty absolute-path result. Retain that validated path before any cleanup operation.
 
 If JJ reports that the selected workspace is stale, run this from that workspace, after checking that its files do not contain work that must be recovered:
 
@@ -143,11 +144,11 @@ Cleanup is two separate operations. `forget` removes the workspace's working-cop
 jj -R <another-workspace-root> workspace forget <workspace-name>
 ```
 
-Delete the workspace directory separately, before or after `forget`, only after confirming it is the intended path and its working-copy change and files are no longer needed. Never forget or delete the workspace currently being used, and never delete a bookmark as an implicit part of workspace cleanup.
+Delete the workspace directory separately, before or after `forget`, only after confirming the retained validated path is the intended workspace and its working-copy change and files are no longer needed. Never forget or delete the workspace currently being used, and never delete a bookmark as an implicit part of workspace cleanup.
 
 ## Failure Rules
 
-- **Name or destination exists**: locate it with `jj workspace list` and `jj workspace root --name`; reuse it only if it is the intended workspace. Otherwise choose a new name/path.
+- **Name or destination exists**: locate it with the cardinality-checked `jj workspace list -T` name/path lookup above; reuse it only if exactly one result identifies the intended workspace. Otherwise stop or choose a new name/path.
 - **Stale workspace**: inspect its files, then run `jj workspace update-stale` in that workspace. Do not recreate it over the stale path.
 - **Target is already a working copy**: use the existing workspace or create a child change; do not `jj edit` it in a second workspace.
 - **Missing remote revision**: use `jj git fetch` against a configured JJ remote. For a fork, request permission before `jj git remote add`.

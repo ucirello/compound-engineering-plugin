@@ -9,8 +9,6 @@ disable-model-invocation: true
 
 Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures screenshots, logs, and verifies app behavior.
 
-Identify the actor as `ai:assistant` in machine-readable output and `AI Assistant` in prose.
-
 ## Prerequisites
 
 - Xcode installed with command-line tools

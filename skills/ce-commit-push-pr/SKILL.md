@@ -75,7 +75,7 @@ At every JJ change-description composition or edit in this step, apply:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Use neutral repository-derived descriptions. Finish each group with `jj commit`, using filesets for file-level groups and `--message-file <workspace-local-message-file>` when a multiline message is needed. Store that file under `$(jj workspace root)/.tmp/ce-commit-push-pr/`; if no JJ repository exists, use the local fallback `.tmp/ce-commit-push-pr/`.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Use neutral repository-derived descriptions. Finish each group with `jj commit`, using filesets for file-level groups. When a multiline message is needed, store it in a unique file at `$(jj workspace root)/.tmp/rocketclaw/ce-commit-push-pr/<unique-id>.txt`; if no JJ repository exists, use the current project directory's `.tmp/rocketclaw/ce-commit-push-pr/<unique-id>.txt` as the matching local fallback. Load the file contents into `MESSAGE` and pass `-m "$MESSAGE"`.
 
 Validate each completed change before pushing:
 
@@ -130,7 +130,7 @@ When a body applied by this run contains a concept section, report the concept n
 
 ## Applying via gh
 
-Write the body under the repository-local temp namespace and pass it with `--body-file`; never depend on stdin or an OS-global temp path. Create `$(jj workspace root)/.tmp/ce-commit-push-pr/` with the available file capability and write the composed body verbatim to a unique file there. If no JJ repository exists, use the local fallback `.tmp/ce-commit-push-pr/`.
+Write the body under the repository-local temp namespace and pass it with `--body-file`; never depend on stdin or an OS-global temp path. Create `$(jj workspace root)/.tmp/rocketclaw/ce-commit-push-pr/` with the available file capability and write the composed body verbatim to a unique file there. If no JJ repository exists, use the current project directory's `.tmp/rocketclaw/ce-commit-push-pr/` as the matching local fallback.
 
 ```bash
 gh pr create --title "<composed-title>" --body-file <workspace-local-body-file>

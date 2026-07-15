@@ -9,8 +9,6 @@ argument-hint: "[PR number, JJ bookmark/revision, or blank for current workspace
 
 Act as a QA engineer who dogfoods the **target JJ change stack** end-to-end: understand every change, test every change in a real browser as a user would, and fix what's broken — autonomously — until the target is genuinely ready.
 
-Identify the actor as `ai:assistant` in machine-readable output and `AI Assistant` in prose.
-
 This is **diff-scoped**, not whole-app exploration. You test what the target introduced or modified since its fork point with trunk.
 
 ## Use `agent-browser` Only For Browser Automation
@@ -128,7 +126,7 @@ Map changed files to concrete routes (views -> their pages, components -> pages 
 
 ### Phase 3: Detect Port and Start the Dev Server
 
-Determine the port (priority: explicit `--port` > a port explicitly stated in your in-context project instructions > `package.json` dev script > `.env*` `PORT=` > default `3000`). If a server is already listening on it, reuse it. Otherwise start the project's dev command (`bin/dev`, `rails server`, `npm run dev`, etc.) in the background and poll the port until it accepts connections before opening the browser. This skill is hands-off, so start the server automatically without asking — do not block on a confirmation. Resolve the workspace root with `jj workspace root`, falling back to the current directory outside JJ; ensure `.tmp/` is present in the repository's `.gitignore` without replacing existing entries, refuse `.tmp` when it is a symlink or non-directory, and create `<resolved-root>/.tmp/ce-dogfood/screenshots/`.
+Determine the port (priority: explicit `--port` > a port explicitly stated in your in-context project instructions > `package.json` dev script > `.env*` `PORT=` > default `3000`). If a server is already listening on it, reuse it. Otherwise start the project's dev command (`bin/dev`, `rails server`, `npm run dev`, etc.) in the background and poll the port until it accepts connections before opening the browser. This skill is hands-off, so start the server automatically without asking — do not block on a confirmation. Resolve the workspace root with `jj workspace root`, falling back to the current project directory outside JJ; ensure `.tmp/` is present in the repository's `.gitignore` without replacing existing entries, refuse `.tmp` when it is a symlink or non-directory, and create `<resolved-root>/.tmp/rocketclaw/ce-dogfood/screenshots/`.
 
 ```bash
 agent-browser open "http://localhost:${PORT}"
@@ -147,11 +145,11 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
    agent-browser snapshot -i
    agent-browser click @e1
    agent-browser fill @e2 "value"
-   agent-browser screenshot "<resolved-root>/.tmp/ce-dogfood/screenshots/<scenario>.png"
+   agent-browser screenshot "<resolved-root>/.tmp/rocketclaw/ce-dogfood/screenshots/<scenario>.png"
    agent-browser errors      # check console/page errors
    ```
 
-   Write transient screenshots to `<resolved-root>/.tmp/ce-dogfood/screenshots/`. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+   Write transient screenshots to `<resolved-root>/.tmp/rocketclaw/ce-dogfood/screenshots/`. Only copy a screenshot into the report's location if you intend to embed it in the final report.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product?
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity.

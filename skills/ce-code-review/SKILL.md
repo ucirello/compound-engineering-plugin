@@ -229,7 +229,7 @@ Set the reported scope marker to `pr:<number-or-url>` (not a JJ revision). Keep 
 
 **Diff by scope mode** (do not mix remote and local diffs — contradictory hunks cause false positives):
 
-- **`local-aligned`:** Resolve the PR base remote bookmark, usually `<baseRefName>@origin` after `jj git fetch --remote origin`, then set `BASE` with `jj log -r 'exactly(fork_point(<base-bookmark> | @), 1)' --no-graph -T commit_id`. This preserves GitHub PR three-dot semantics when the base bookmark has advanced and fails rather than choosing among ambiguous fork points. Set `FILES:` from `jj diff --from "$BASE" --to @ --name-only` and `DIFF:` from `jj diff --from "$BASE" --to @ --git --context 10`. Do **not** call `gh pr diff` or append remote hunks — when local fixes exist, the working-copy revision is canonical. Note in Coverage: `scope: local-aligned (PR; local JJ diff)`.
+- **`local-aligned`:** Derive the base GitHub repository identity (`host/owner/repo`) from the PR `url`. Normalize the configured URLs from `jj git remote list` (HTTPS and SSH forms) to the same identity and require exactly one matching remote entry/URL; zero matches cannot supply a fresh base, and multiple matches are ambiguous, so stop with the matching URLs instead of guessing. Fetch that saved remote name, resolve the base as the exact remote bookmark `<baseRefName>@<base-remote>`, then set `BASE` with `jj log -r 'exactly(fork_point(<base-bookmark> | @), 1)' --no-graph -T commit_id`. This preserves GitHub PR three-dot semantics when the base bookmark has advanced and fails rather than choosing among ambiguous fork points. Set `FILES:` from `jj diff --from "$BASE" --to @ --name-only` and `DIFF:` from `jj diff --from "$BASE" --to @ --git --context 10`. Do **not** call `gh pr diff` or append remote hunks — when local fixes exist, the working-copy revision is canonical. Note in Coverage: `scope: local-aligned (PR; local JJ diff)`.
 - **`pr-remote`:** Keep `BASE` as the logical `pr:<number-or-url>` marker, set `FILES:` from the PR `files` array, and set `DIFF:` from `gh pr diff <number-or-url> --color=never`. If `gh pr diff` fails, stop with an actionable error — do not change the active revision as a fallback.
 
 When **`pr-remote`**, include `<pr-scope-mode>pr-remote</pr-scope-mode>` in the Stage 4 review context bundle. Reviewers and Stage 5b validators in **`pr-remote`** mode must **not** Read/Grep workspace paths for files in `FILES:`. Use only the provided `gh pr diff` hunks unless the PR head/base commit IDs are already known to JJ and included as `<pr-head-ref>` / `<pr-base-ref>`; if so, inspect with `jj file show -r <rev> <path>` and history with `jj file annotate -r <rev> <path>`. **`local-aligned`** uses normal workspace inspection.
@@ -239,8 +239,8 @@ When **`pr-remote`**, include `<pr-scope-mode>pr-remote</pr-scope-mode>` in the 
 Substitute it as `<target>`. Do **not** edit/switch to `<target>`.
 
 1. Try `gh pr view <target> --json baseRefName,url,headRefName` — if a PR exists, prefer the **PR number/URL path** above.
-2. Else resolve `<target>` as a JJ bookmark/revision, fetching with `jj git fetch --remote origin` first if needed.
-3. Resolve the trunk revision with `trunk()`, using the repository's default remote bookmark (the `gh repo view --json defaultBranchRef` result as `<default>@origin`) if `trunk()` only resolves to `root()` and that remote bookmark is available. Resolve `<base>` as `exactly(fork_point(<trunk> | <target>), 1)` so the review contains only the target stack even when trunk advanced and fails on ambiguous fork points.
+2. Else try to resolve `<target>` as exactly one local JJ bookmark/revision **before fetching**. If it resolves, use it and skip fetch. If it does not, resolve its owning configured remote without assuming `origin`: use an explicit `@<remote>` qualifier, an associated GitHub repository identity mapped to exactly one normalized URL from `jj git remote list`, or a unique matching remote-bookmark owner from `jj bookmark list --all-remotes`. Fetch only that remote and retry exact resolution. If ownership is absent or ambiguous, stop rather than fetching an arbitrary remote.
+3. Resolve the trunk revision with `trunk()`. If it only resolves to `root()`, get the default branch and repository URL from `gh repo view --json defaultBranchRef,url`, map that GitHub `host/owner/repo` identity to exactly one configured remote entry/URL using the same `jj git remote list` rule as `local-aligned`, fetch that remote, and use `<default>@<resolved-remote>` when available. Resolve `<base>` as `exactly(fork_point(<trunk> | <target>), 1)` so the review contains only the target stack even when trunk advanced and fails on ambiguous fork points.
 4. Produce a remote-scope review with `FILES:` from `jj diff --from <base> --to <target> --name-only` and `DIFF:` from `jj diff --from <base> --to <target> --git --context 10`.
 5. If `<target>` cannot be resolved locally, stop: "Cannot diff target `<target>` without a JJ revision. Fetch it, pass its open PR URL/number, or review the current workspace with `base:`."
 
@@ -248,7 +248,7 @@ On success for target diff, set **bookmark-remote scope**. The working-copy revi
 
 **If no argument (standalone on current workspace):**
 
-Use `gh pr view --json baseRefName,url` as a hint when an associated PR exists; otherwise resolve trunk with `trunk()` or the default remote bookmark. Resolve `BASE` as `exactly(fork_point(<trunk-or-pr-base> | @), 1)` so the complete current stack is reviewed without including later trunk-only revisions. `root()` is a valid base for a repository whose stack starts there. Only when no single base revision resolves, fall back to the current JJ change (`jj diff`) and state in Coverage that only `@` was reviewed.
+Use `gh pr view --json baseRefName,url` as a hint when an associated PR exists; otherwise resolve trunk with `trunk()` or the default remote bookmark. Whenever the PR base or default branch needs a remote bookmark, derive its GitHub `host/owner/repo` identity from that `url`, map it to exactly one configured remote entry/URL using normalized `jj git remote list` output, fetch that saved remote, and use `<baseRefName>@<resolved-remote>` or `<default>@<resolved-remote>` — never assume `origin`. Zero or multiple matching URLs are an actionable scope error rather than permission to guess. Resolve `BASE` as `exactly(fork_point(<trunk-or-pr-base> | @), 1)` so the complete current stack is reviewed without including later trunk-only revisions. `root()` is a valid base for a repository whose stack starts there. Only when no single base revision resolves, fall back to the current JJ change (`jj diff`) and state in Coverage that only `@` was reviewed.
 
 On success, produce the diff:
 
@@ -320,7 +320,7 @@ Understand what the change is trying to accomplish. The source of intent depends
 
 **PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
 
-**Bookmark/revision mode:** Run `jj log -r '${BASE}..<target>' --no-graph` using the resolved base and target from Stage 1. Use the resolved target revision, not an ambiguous raw name.
+**Bookmark/revision mode:** Run `jj log -r "$BASE..<resolved-target>" --no-graph` using the resolved base and target from Stage 1. Use the resolved target revision, not an ambiguous raw name.
 
 **Standalone (current workspace):** Run:
 

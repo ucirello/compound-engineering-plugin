@@ -61,13 +61,14 @@ For one change:
 jj commit -m "<repository-derived-message>"
 ```
 
-For a multiline description, use the available file-writing capability to create `$(jj workspace root)/.tmp/ce-commit/<unique-id>.txt`. If no JJ repository exists, use the local fallback `.tmp/ce-commit/<unique-id>.txt`; this skill otherwise reports the missing repository and stops. Then run:
+For a multiline description, use the available file-writing capability to create `$(jj workspace root)/.tmp/rocketclaw/ce-commit/<unique-id>.txt`. If no JJ repository exists, use the current project directory's `.tmp/rocketclaw/ce-commit/<unique-id>.txt` as the matching local fallback; this skill otherwise reports the missing repository and stops. Then run:
 
 ```bash
-jj commit --message-file <workspace-local-message-file>
+MESSAGE=$(<workspace-local-message-file>)
+jj commit -m "$MESSAGE"
 ```
 
-For multiple file-level groups, pass the group's filesets before `-m` or `--message-file`. Each fileset selects changes retained in the change being finished; unselected changes move to the new working-copy child. Re-run `jj status` and `jj diff` after every path-limited commit before selecting the next group. Do not use staging-area or non-JJ commit commands.
+For multiple file-level groups, pass the group's filesets before `-m`. Each fileset selects changes retained in the change being finished; unselected changes move to the new working-copy child. Re-run `jj status` and `jj diff` after every path-limited commit before selecting the next group. Do not use staging-area or non-JJ commit commands.
 
 Without filesets, `jj commit` is equivalent to describing `@` and creating a new empty working-copy change on top. Do not run an additional `jj new`.
 
@@ -77,6 +78,6 @@ For every completed change, inspect it with `jj log -r @- --no-graph` and, when 
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. If the description does not match the actual change or present repository standard, edit it with `jj describe -r @- -m "<repository-derived-message>"` or `--message-file <workspace-local-message-file>`, then validate it again.
+The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. If the description does not match the actual change or present repository standard, edit it with `jj describe -r @- -m "<repository-derived-message>"`; for a message file, load its contents into `MESSAGE` and pass `-m "$MESSAGE"`, then validate it again.
 
 Run `jj status` after the final commit. Report every completed change ID, commit ID, and first line. If `@` is not empty, report the remaining paths rather than claiming all changes were committed.

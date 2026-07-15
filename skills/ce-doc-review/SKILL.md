@@ -39,7 +39,7 @@ If `mode:headless` is not present, run in default interactive mode with the rout
 
 **If no document is specified (headless mode):** Output "Review failed: headless mode requires a document path. Expected arguments: mode:headless <path>" and stop without dispatching reviewers.
 
-**Missing-document gate — verify before any dispatch.** Persona reviewers read documents from the filesystem, and several run without Bash, so they cannot read JJ revisions directly — a path that exists only on another bookmark/workspace wastes the entire persona team discovering they cannot proceed (issue #925). Before Phase 2, confirm every resolved document path is readable on disk (the Read above succeeded). Location does not matter: a workspace-local scratch path under `$(jj workspace root)/.tmp` (or the current project directory's `.tmp` outside JJ) or a doc in another workspace reviews fine. If any path is not readable, do not dispatch any personas:
+**Missing-document gate — verify before any dispatch.** Persona reviewers read documents from the filesystem, and several run without Bash, so they cannot read JJ revisions directly — a path that exists only on another bookmark/workspace wastes the entire persona team discovering they cannot proceed (issue #925). Before Phase 2, confirm every resolved document path is readable on disk (the Read above succeeded). Location does not matter: a workspace-local scratch path under `$(jj workspace root)/.tmp/rocketclaw/ce-doc-review/` (or the current project directory's `.tmp/rocketclaw/ce-doc-review/` outside JJ) or a doc in another workspace reviews fine. If any path is not readable, do not dispatch any personas:
 
 - **Interactive mode:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. If they only exist on another bookmark/revision, open a workspace where they exist and re-invoke; otherwise provide corrected readable paths."
 - **Headless mode:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; open a workspace containing them or provide corrected paths." and return without dispatching reviewers.
@@ -181,6 +181,12 @@ full artifact to every reviewer by default: unified plans can be large, so
 section slices (per the `{document_content}` slot above) are the default.
 Escalate to a broader slice only when the reviewer needs cross-section
 traceability that the initial slice cannot assess.
+
+When a reviewer slice must be materialized as a file, create one run directory
+at `$(jj workspace root)/.tmp/rocketclaw/ce-doc-review/<run-id>/`; outside JJ,
+use `<current-project-directory>/.tmp/rocketclaw/ce-doc-review/<run-id>/`.
+Write every reviewer slice for that review under this run directory. Do not use
+another scratch root.
 
 ### Decision primer
 

@@ -1,6 +1,6 @@
 # Pipeline-Mode Server Orchestration
 
-Read and follow this file only when invoked with `mode:pipeline` (LFG or another automated runner). It overrides three things in the main workflow: the headed/headless question, free-port selection, and dev-server startup. In pipeline mode you run unattended — never block on a question.
+Read and follow this file only when invoked with `mode:pipeline` by an automated runner. It overrides three things in the main workflow: the headed/headless question, free-port selection, and dev-server startup. In pipeline mode you run unattended — never block on a question.
 
 ## 1. No headed/headless question
 
@@ -11,6 +11,8 @@ Default to headless. Do not ask. Skip the "Choose Headed or Headless" step entir
 Multiple agents may run on the same machine, so never assume the preferred port is free: scan upward to the first free port, then start the server there in the background.
 
 Run the whole thing as **one** command. Shell variables do not survive between separate Bash calls, so the free-port scan and the startup must share a single block, and that block must seed `PORT` itself — the `$PORT` computed in step 4 is gone by the time this runs. Set `PORT` on the first line to the preferred port step 4 printed ("Preferred dev server port: N"); it defaults to `3000` only if step 4 found nothing.
+
+Before running the block, inspect the repository's root ignore rules. If `.tmp/` is not already ignored, add `.tmp/` to the root `.gitignore` while preserving every existing entry. Do not create or write the log directory until that ignore rule is in place.
 
 ```bash
 PORT=3000   # replace 3000 with the preferred port from step 4
@@ -26,14 +28,20 @@ find_free_port() {
 PORT=$(find_free_port "$PORT")
 echo "Using dev server port: $PORT"
 
+# Keep transient logs in the JJ workspace; use the current directory's .tmp on fallback.
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
+TMP_DIR="${WORKSPACE_ROOT}/.tmp"
+mkdir -p "$TMP_DIR"
+SERVER_LOG="${TMP_DIR}/dev-server-${PORT}.log"
+
 # start in the background (the scan guarantees this port is free), then wait up to 30s
 echo "Starting dev server on port ${PORT}..."
 if [ -f "bin/dev" ]; then
-  PORT=${PORT} bin/dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} bin/dev > "$SERVER_LOG" 2>&1 &
 elif [ -f "bin/rails" ]; then
-  bin/rails server -p ${PORT} > /tmp/dev-server-${PORT}.log 2>&1 &
+  bin/rails server -p ${PORT} > "$SERVER_LOG" 2>&1 &
 elif [ -f "package.json" ]; then
-  PORT=${PORT} npm run dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} npm run dev > "$SERVER_LOG" 2>&1 &
 fi
 for i in $(seq 1 30); do
   lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1 && break
@@ -41,7 +49,7 @@ for i in $(seq 1 30); do
 done
 if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server did not start in 30s. Last output:"
-  tail -20 /tmp/dev-server-${PORT}.log 2>/dev/null
+  tail -20 "$SERVER_LOG" 2>/dev/null
   exit 1
 fi
 ```

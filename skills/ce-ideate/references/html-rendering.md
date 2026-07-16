@@ -44,15 +44,13 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
-- **Source / composition signal.** A visible footer at the bottom of
-  the doc names the composition timestamp and the source identifier
-  (the user prompt context, the upstream brainstorm doc when one
-  exists, or just the composing skill name when there's no external
-  source). Example shape:
-  `<footer class="composition-signal">Composed 2026-05-17T14:23Z by ce-plan from <code>docs/brainstorms/...-requirements.md</code></footer>`.
-  Under exclusive output mode this signal is the artifact's own
-  provenance — there's no markdown sibling to reference. Omitting it
-  leaves readers unable to tell how stale the rendering is.
+- **Composition timestamp and input provenance.** A visible footer at the
+  bottom of the doc names the composition timestamp and, when an external
+  input exists, its source identifier (for example a user-supplied artifact
+  or upstream document):
+  `<footer class="composition-signal">Composed 2026-05-17T14:23Z from <code>docs/inputs/research.md</code></footer>`.
+  With no external input, name only the timestamp. Never name the composing
+  skill or add a creator field.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -103,15 +101,15 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Worktree root (resolve via `git rev-parse --show-toplevel`).
+1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
-3. `.compound-engineering/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Worktree-root only — do not fall through to a main checkout. Users
-working from a worktree who want HTML defaults can add DESIGN.md to the
-worktree.
+Workspace-root only — do not fall through to another workspace. Users
+working from an added workspace who want HTML defaults can add DESIGN.md to
+that workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -227,16 +225,20 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time:
+Resolve the repo's GitHub URL and immutable `trunk()` target once at compose
+time. Match the provider URL to exactly one normalized configured remote, then
+require `trunk()` to resolve to one non-root revision:
 
 ```bash
-git remote get-url origin
+GIT_DIR="$(jj git root)" gh repo view --json url
+jj git remote list
+jj log -r 'trunk()' --no-graph -T 'commit_id'
 ```
 
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/<trunk-commit-id>/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -244,7 +246,7 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
+**Do not invent URLs.** If the selected remote isn't a GitHub URL (GitLab,
 Bitbucket, internal host) and the equivalent main-tree URL pattern
 isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
@@ -600,8 +602,9 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
-- **Source / composition signal** is present as a visible footer at
-  the bottom of the doc (composition timestamp + source identifier).
+- **Composition timestamp** is present as a visible footer at the bottom
+  of the doc; external input provenance is retained when useful, and no
+  composing-skill or creator attribution appears.
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

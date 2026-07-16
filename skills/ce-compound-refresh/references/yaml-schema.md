@@ -114,5 +114,5 @@ Example — after (parses cleanly):
       - "`sudo dscacheutil -flushcache` does not restore in-container mDNS"
 
 This rule applies to all array-of-strings frontmatter fields. Scalar string
-fields like `description:` have their own quoting rules (see plugin
-`AGENTS.md` under "YAML Frontmatter").
+fields like `description:` have their own quoting rules; the bundled
+frontmatter validator documents and checks the supported scalar cases.

@@ -103,7 +103,7 @@ Substitutions:
 - **`suggested_fix`** — from the merged finding's `suggested_fix` field. Render as prose describing intent, not as raw markup. The user's job is to trust or reject the action — they don't need to review exact text. Rules:
   - **Default — one sentence describing the effect.** What does the fix achieve, and where does it live? Prefer intent language over quoted text.
     - Good: `Drop the Advisory tier from the enum; advisory-style findings surface in an FYI subsection at the presentation layer.`
-    - Good: `Add a deployment-ordering constraint requiring Units 3 and 4 in a single commit.`
+    - Good: `Add a deployment-ordering constraint requiring Units 3 and 4 in a single JJ change.`
     - Bad: `Change "autofix_class: [auto, gated_auto, advisory, present]" to "autofix_class: [safe_auto, gated_auto, manual]" in findings-schema.json on line 48.` — too syntax-focused for a decision loop
   - **Code-span budget** — at most 2 inline backtick spans per sentence, each a single identifier, flag, or short phrase (e.g., `` `safe_auto` ``, `` `<work-context>` ``). Always leave a space before and after each backtick span.
   - **Raw code blocks** — only for short (≤5-line) genuinely additive content where no before-state exists. Above 5 lines, switch to a summary.
@@ -220,7 +220,7 @@ Walk-through state is **in-memory only**. The orchestrator maintains:
 
 Nothing is written to disk per-decision except the in-doc Open Questions appends (which are external side effects — those cannot be rolled back). An interrupted walk-through (user cancels the prompt, session compacts, network dies) discards all in-memory state. Apply decisions have not been dispatched yet (they batch at end-of-walk-through), so they are cleanly lost with no document changes.
 
-Cross-session persistence is out of scope. Mirrors `ce-code-review`'s walk-through state rules.
+Cross-session persistence is out of scope.
 
 ---
 
@@ -228,7 +228,7 @@ Cross-session persistence is out of scope. Mirrors `ce-code-review`'s walk-throu
 
 After the loop terminates — either every finding has been answered, or the user took `Auto-resolve with best judgment on the rest → Proceed` — the walk-through hands off to the execution phase:
 
-1. **Apply set:** in a single pass, the orchestrator applies every accumulated Apply-set finding's `suggested_fix` to the document. Document edits happen inline via the platform's edit tool — ce-doc-review has no batch-fixer subagent (per scope boundary); the orchestrator performs the edits directly, since `gated_auto` and `manual` fixes for documents are single-file markdown changes with no cross-file dependencies. **Defensive no-fix check:** before dispatching the edit for each Apply-set entry, verify the merged finding carries a `suggested_fix`. If it does not (the decision-time no-fix guard in "Per-finding routing" should prevent this, but treat it as a defensive fallback), skip the edit, record the finding in the completion report's failure section with reason `Apply skipped — no suggested_fix available`, and continue the batch. Do not fail the entire pass because one Apply-set entry lacks a fix.
+1. **Apply set:** in a single pass, the orchestrator applies every accumulated Apply-set finding's `suggested_fix` to the document. Document edits happen inline via the platform's edit tool — this workflow has no batch-fixer subagent (per scope boundary); the orchestrator performs the edits directly, since `gated_auto` and `manual` fixes for documents are single-file markdown changes with no cross-file dependencies. **Defensive no-fix check:** before dispatching the edit for each Apply-set entry, verify the merged finding carries a `suggested_fix`. If it does not (the decision-time no-fix guard in "Per-finding routing" should prevent this, but treat it as a defensive fallback), skip the edit, record the finding in the completion report's failure section with reason `Apply skipped — no suggested_fix available`, and continue the batch. Do not fail the entire pass because one Apply-set entry lacks a fix.
 2. **Defer set:** already executed inline during the walk-through via `references/open-questions-defer.md`. Nothing to dispatch here.
 3. **Skip:** no-op.
 
@@ -281,4 +281,4 @@ Verdict: Ready.
 
 ## Execution posture
 
-The walk-through is operationally read-only with respect to the project except for three permitted writes: the in-memory Apply set / decision list (managed by the orchestrator), the in-doc Open Questions appends (external side effects managed by `references/open-questions-defer.md`), and the end-of-walk-through batch document edits (the orchestrator's final Apply pass). Persona agents remain strictly read-only. Unlike `ce-code-review`, there is no fixer subagent — the orchestrator owns the document edit directly.
+The walk-through is operationally read-only with respect to the project except for three permitted writes: the in-memory Apply set / decision list (managed by the orchestrator), the in-doc Open Questions appends (external side effects managed by `references/open-questions-defer.md`), and the end-of-walk-through batch document edits (the orchestrator's final Apply pass). Persona agents remain strictly read-only. There is no fixer subagent; the orchestrator owns the document edit directly.

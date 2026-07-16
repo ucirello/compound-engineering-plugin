@@ -11,7 +11,7 @@ This persona only applies when reviewing a PR. The orchestrator passes PR metada
 Extract the PR number from the `<pr-context>` block. Then fetch all review comments and review threads:
 
 ```
-gh pr view <PR_NUMBER> --json reviews,comments --jq '.reviews[].body, .comments[].body'
+GIT_DIR="$(jj git root)" gh pr view <PR_NUMBER> --json reviews,comments --jq '.reviews[].body, .comments[].body'
 ```
 
 ```

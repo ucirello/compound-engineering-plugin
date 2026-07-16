@@ -26,7 +26,7 @@ Valid scopes and the phases they control:
 - Multiple scopes combine: `Scope: technology, architecture, patterns` runs three phases.
 - When scoped, produce output sections only for the requested scopes. Omit sections for phases that did not run.
 - Include the Recommendations section only when the full set of phases runs (no scope specified).
-- When `technology` is not in scope but other phases are **and no cached project profile was supplied** (see the next rule), still run Phase 0.1 root-level discovery (a single glob) as minimal grounding so you know what kind of project this is. Do not run 0.1b, 0.2, or 0.3. Do not include Technology & Infrastructure in the output.
+- When `technology` is not in scope but other phases are **and no cached project profile was supplied** (see the next rule), still run Phase 0.1 workspace-root discovery (a single glob) as minimal grounding so you know what kind of project this is. Do not run 0.1b, 0.2, or 0.3. Do not include Technology & Infrastructure in the output.
 - **When a cached project profile is supplied in your context** (the consumer resolved it from the shared repo-profile cache), use it for `technology`/`architecture`/`conventions` grounding instead of re-deriving — do **not** run Phase 0 or the Phase 0.1 baseline discovery. Run only the question-specific scopes you were asked for (`patterns`/`issues`/`templates`).
 - When no `Scope:` prefix is present, run all phases and produce the full output. This is the default behavior.
 
@@ -40,9 +40,9 @@ Before open-ended exploration, run a structured scan to identify the project's t
 
 Phase 0 is designed to be fast and cheap. The goal is signal, not exhaustive enumeration. Prefer a small number of broad tool calls over many narrow ones.
 
-**0.1 Root-Level Discovery (single tool call)**
+**0.1 Workspace-Root Discovery (single tool call)**
 
-Start with one broad glob of the repository root (`*` or a root-level directory listing) to see which files and directories exist. Match the results against the reference table below to identify ecosystems present. Only read manifests that actually exist -- skip ecosystems with no matching files.
+Resolve `jj workspace root`, then start with one broad glob there (`*` or a top-level directory listing) to see which files and directories exist. Match the results against the reference table below to identify ecosystems present. Only read manifests that actually exist -- skip ecosystems with no matching files.
 
 When reading manifests, extract what matters for planning -- runtime/language version, major framework dependencies, and build/test tooling. Skip transitive dependency lists and lock files.
 
@@ -83,10 +83,10 @@ Check for monorepo signals in manifests already read in 0.1 and directories alre
 
 If monorepo signals are detected:
 
-1. **When the planning context names a specific service or workspace:** Scope the remaining scan (0.2--0.4) to that subtree. Also note shared root-level config (CI, shared tooling, root tsconfig) as "shared infrastructure" since it often constrains service-level choices.
+1. **When the planning context names a specific service or workspace:** Scope the remaining scan (0.2--0.4) to that subtree. Also note shared workspace-root config (CI, shared tooling, root tsconfig) as "shared infrastructure" since it often constrains service-level choices.
 2. **When no scope is clear:** Surface the workspace/service map -- list the top-level workspaces or services with a one-line summary of each (name + primary language/framework if obvious from its manifest). Do not enumerate every dependency across every service. Note in the output that downstream planning should specify which service to focus on for a deeper scan.
 
-Keep the monorepo check shallow: root-level manifests plus one directory level into `apps/*/`, `packages/*/`, `services/*/`, and any paths listed in workspace config. Do not recurse unboundedly.
+Keep the monorepo check shallow: workspace-root manifests plus one directory level into `apps/*/`, `packages/*/`, `services/*/`, and any paths listed in workspace config. Do not recurse unboundedly.
 
 **0.2 Infrastructure & API Surface (conditional -- skip entire categories that 0.1 rules out)**
 

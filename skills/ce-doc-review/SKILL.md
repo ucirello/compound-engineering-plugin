@@ -10,6 +10,7 @@ Review requirements or plan documents through multi-persona analysis. Dispatches
 
 ## Interactive mode rules
 
+- **Use the harness's concrete blocking question tool:** `AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), and `ask_user` in Pi (requires the `pi-ask-user` extension).
 - **Pre-load the platform question tool before any question fires.** In Claude Code, `AskUserQuestion` is a deferred tool — its schema is not available at session start. At the start of Interactive-mode work (before the routing question, per-finding walk-through questions, bulk-preview Proceed/Cancel, and Phase 5 terminal question), call `ToolSearch` with query `select:AskUserQuestion` to load the schema. Load it once, eagerly, at the top of the Interactive flow — do not wait for the first question site. On Codex, Gemini, and Pi this preload is not required.
 - **The numbered-list fallback applies only when the harness genuinely lacks a blocking question tool** — `ToolSearch` returns no match, the tool call explicitly fails, or the runtime mode does not expose it (e.g., Codex edit modes where `request_user_input` is unavailable). A pending schema load is not a fallback trigger; call `ToolSearch` first per the pre-load rule. In genuine-fallback cases, present options as a numbered list and wait for the user's reply — never silently skip the question. Rendering a question as narrative text because the tool feels inconvenient, because the model is in report-formatting mode, or because the instruction was buried in a long skill is a bug. A question that calls for a user decision must either fire the tool or fall back loudly.
 
@@ -19,7 +20,7 @@ Check the skill arguments for `mode:headless`. Arguments may contain a document 
 
 If `mode:headless` is present, set **headless mode** for the rest of the workflow.
 
-**Headless mode** changes the interaction model, not the classification boundaries. ce-doc-review still applies the same judgment about which tier each finding belongs in. The only difference is how non-safe_auto findings are delivered:
+**Headless mode** changes the interaction model, not the classification boundaries. The workflow still applies the same judgment about which tier each finding belongs in. The only difference is how non-safe_auto findings are delivered:
 
 - `safe_auto` fixes are applied silently (same as interactive)
 - `gated_auto`, `manual`, and FYI findings are returned as structured text for the caller to handle — no blocking-question prompts, no interactive routing
@@ -49,8 +50,8 @@ Classify the document by reading its **content shape**, not its file path. Path 
 
 First check for the unified artifact contract:
 
-- `artifact_contract: ce-unified-plan/v1` plus `artifact_readiness: requirements-only` -> classify as `unified-requirements`. Review the Product Contract only; the absence of Planning Contract, Implementation Units, Verification Contract, or Definition of Done is expected and must not be flagged.
-- `artifact_contract: ce-unified-plan/v1` plus `artifact_readiness: implementation-ready` -> classify as `unified-plan`. Review Product Contract and Planning Contract with different lenses, then review Implementation Units/Verification/DoD for execution completeness.
+- `artifact_contract: rocketclaw-unified-plan/v1` plus `artifact_readiness: requirements-only` -> classify as `unified-requirements`. Review the Product Contract only; the absence of Planning Contract, Implementation Units, Verification Contract, or Definition of Done is expected and must not be flagged.
+- `artifact_contract: rocketclaw-unified-plan/v1` plus `artifact_readiness: implementation-ready` -> classify as `unified-plan`. Review Product Contract and Planning Contract with different lenses, then review Implementation Units/Verification/DoD for execution completeness.
 - HTML unified artifacts (`.html`) are read/reviewed in report-only mode. Do not apply markdown mutation paths to HTML. If a caller requested mutation/autofix behavior, skip with the existing markdown-only message or return report-only findings.
 - Invalid progress-like readiness values (`active`, `in_progress`, `completed`, `done`) are a document-contract finding, not an execution state to honor.
 

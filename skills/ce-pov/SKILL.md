@@ -55,9 +55,9 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ### Phase 1: Ground (dispatch scouts, never inline)
 
-Grounding searches code, git, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
+Grounding searches code, JJ revision history, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
 
-**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this commit, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
+**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this revision, so reuse it instead of re-deriving. Before the helper can write under `.tmp/`, inspect the repository-root `.gitignore` and add `.tmp/` if needed, preserving existing entries. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
@@ -66,11 +66,22 @@ python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 
 On `HIT`, load the profile JSON — that is your agnostic project orientation; do not re-derive it. On `MISS`, dispatch a generic subagent with `references/agents/repo-profiler.md` to derive the profile, write its JSON to a file, then persist with `python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <file>` (re-set `SKILL_DIR` in that call — shell vars don't persist between Bash invocations). On `NO-CACHE` — or if the call errors or returns nothing — derive it inline via that persona and skip the `put`; never block on the cache. The profile supplies the agnostic facts; the scouts below only run the **candidate-specific** slice on top of it.
 
-Create the scratch dir once, and reuse the echoed path for every scout this run:
+Create the scratch dir once, and reuse the echoed path for every scout this run. Before writing under `.tmp/`, inspect the repository-root `.gitignore` and add `.tmp/` if needed, preserving existing entries:
 
 ```bash
-SCRATCH_DIR="/tmp/compound-engineering/ce-pov/$(openssl rand -hex 4)"
-mkdir -p "$SCRATCH_DIR"
+LOCAL_ROOT="$(pwd -P)"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || true)"
+if [ -n "$WORKSPACE_ROOT" ]; then
+  SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/pov"
+  mkdir -p "$SCRATCH_ROOT" || exit 1
+else
+  SCRATCH_ROOT="$LOCAL_ROOT/.tmp/rocketclaw/pov"
+  mkdir -p "$SCRATCH_ROOT" || exit 1
+fi
+while :; do
+  SCRATCH_DIR="$SCRATCH_ROOT/$(openssl rand -hex 8)"
+  mkdir "$SCRATCH_DIR" 2>/dev/null && break
+done
 echo "$SCRATCH_DIR"
 ```
 
@@ -92,7 +103,7 @@ echo "$SCRATCH_DIR"
 
 ### Phase 3: Verdict
 
-Emit the verdict contract defined in `references/method.md` — grade vocabulary, schema fields, tier sizing, and output economy are all specified there. The verdict is a **compact chat block, not a research report**: lead with the grade, keep each schema field terse, and never reprint scout dossiers or raw search output. Size it to the tier — a Tier 1 verdict fits one screen; Tier 2/3 carries the full workup but still leads with the verdict and cites evidence rather than pasting it.
+Emit the verdict contract defined in `references/method.md` — grade vocabulary, schema fields, tier sizing, and output economy are all specified there. The verdict is a **compact chat block, not a research report**: lead with the grade, keep each schema field terse, and never reprint scout dossiers or raw search output. Size it to the tier — a Tier 1 verdict fits one screen; Tier 2/3 carries the full workup but still leads with the verdict and cites evidence rather than pasting it. Do not add product attribution, badges, bylines, or branded prefixes; `ce-*` names may appear only as functional skill routes.
 
 ### Phase 4: Follow-up
 
@@ -112,12 +123,12 @@ The chat verdict (the TL;DR) is the deliverable. What you offer next is **reason
   1. **`<computed next step>`** (e.g. "Plan the adoption with `ce-plan`") — seeded with the verdict substance, not a file pointer.
   2. **Full write-up** — the expanded, shareable artifact.
   3. **Done.**
-  Add `ce-compound` as a one-line prose nudge under the menu, **not** a slot: "Want it in our decision history? say 'compound it.'" It is the least-frequent path and is never the first thing offered.
+  Add `ce-compound` as a one-line prose nudge under the menu, **not** a slot: "Want this recorded in the decision history? Run `ce-compound`." It is the least-frequent path and is never the first thing offered.
 
 **On each selection:**
 
 - **Computed next step** → invoke that skill via the platform's skill-invocation primitive, seeding it with the verdict substance (the decision, conditions, and verified facts).
 - **Full write-up** → read `references/report.md` and follow it (HTML by default; opened locally or published via Proof / an available HTML tool). Opt-in; the default stays chat-only.
-- **"compound it"** → invoke `ce-compound` with `mode:headless`, seeding it with the structured verdict for `tooling_decision` / `architecture_pattern` storage (no schema change; headless avoids its interactive prompts). Never mandatory.
+- **`ce-compound`** → invoke `ce-compound` with `mode:headless`, seeding it with the structured verdict for `tooling_decision` / `architecture_pattern` storage (no schema change; headless avoids its interactive prompts). Never mandatory.
 
 **Warm invocations stay a guest:** output the verdict block, hand control back, and offer none of the above unless the user asks — a mid-session interjection does not push a next-step or capture decision.

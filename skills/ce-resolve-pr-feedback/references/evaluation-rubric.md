@@ -19,7 +19,7 @@ Read enough to decide the verdict, no more:
 
 - **Clear nit or clearly-valid finding** (typo, a bug the diff already shows, naming, a missing guard the comment pinpoints) -> the comment plus the line already in the diff is enough. Mark to fix.
 - **Contestable finding, or code that looks deliberate** (the finding asserts a bug where the code reads intentional, touches an invariant, or contradicts a nearby pattern) -> deep-read before accepting: open the referenced file, read the callers, check for the invariant or test that would make the reviewer wrong. **This is where a confidently-wrong reviewer gets caught.** A fresh reviewer -- especially a bot -- usually couldn't see the blast radius or the reason the code is the way it is.
-- **Recover the author's intent before overriding deliberate-looking code.** `git log`/`git blame` the lines, read the PR description and the surrounding code. The intent the author had is the thing an isolated reviewer lacked; weigh it against the finding rather than assuming the reviewer saw more.
+- **Recover the author's intent before overriding deliberate-looking code.** Use `jj log` and `jj file annotate`, then read the PR description and surrounding code. The intent the author had is the thing an isolated reviewer lacked; weigh it against the finding rather than assuming the reviewer saw more.
 - **Dedup reads by file.** Multiple threads on the same file: read it once, judge them together.
 
 ## Cross-item reasoning (when judging more than one item)
@@ -79,7 +79,7 @@ For `declined`:
 Declined: [specific harm cited, e.g., "this would add a defensive null check the type system already guarantees" or "violates the no-premature-abstraction rule in the project's conventions"]
 ```
 
-For `needs-human`, the **reply_text** posted to the thread sounds natural -- it's posted as the user, so avoid AI boilerplate like "Flagging for human review." Write it as the PR author would:
+For `needs-human`, the **reply_text** posted to the thread sounds natural because it is posted as the user; avoid generic automation boilerplate. Write it as the PR author would:
 ```markdown
 > [quote the relevant part of the reviewer's comment]
 

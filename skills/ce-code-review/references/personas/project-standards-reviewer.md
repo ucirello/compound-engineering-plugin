@@ -9,7 +9,7 @@ The orchestrator passes a `<standards-paths>` block listing the file paths of al
 If no `<standards-paths>` block is present (standalone usage), discover the paths yourself:
 
 1. Use the native file-search/glob tool to find all `CLAUDE.md` and `AGENTS.md` files in the repository.
-2. For each changed file, check its ancestor directories up to the repo root for standards files. A file like root `AGENTS.md` applies to the whole checkout, while `skills/AGENTS.md` applies to all changes under `skills/`.
+2. For each changed file, check its ancestor directories up to the repo root for standards files. A file like root `AGENTS.md` applies to the whole workspace, while `skills/AGENTS.md` applies to all changes under `skills/`.
 3. Read each relevant standards file found.
 
 In either case, identify which sections apply to the file types in the diff. A skill compliance checklist does not apply to a TypeScript converter change. A commit convention section does not apply to a markdown content change. Match rules to the files they govern.
@@ -30,7 +30,7 @@ In either case, identify which sections apply to the file types in the diff. A s
 
 - **Writing style violations** -- second person ("you should") where the standards require imperative/objective form. Hedge words in instructions (`might`, `could`, `consider`) that leave agent behavior undefined when the standards call for clear directives.
 
-- **Protected artifact violations** -- findings, suggestions, or instructions that recommend deleting or gitignoring files in paths the standards designate as protected (e.g., `docs/brainstorms/`, `docs/plans/`, `docs/solutions/`).
+- **Protected artifact violations** -- findings, suggestions, or instructions that recommend deleting files or adding ignore rules for paths the standards designate as protected (e.g., `docs/brainstorms/`, `docs/plans/`, `docs/solutions/`).
 
 ## Confidence calibration
 

@@ -2,18 +2,18 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, branch name, or blank for current branch]"
+argument-hint: "[PR number, bookmark name, or blank for current workspace]"
 ---
 
 # Polish
 
 Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
 
-## Phase 0: Get on the right branch
+## Phase 0: Get on the right change
 
-1. If a PR number or branch name was provided, check it out (probe for existing worktrees first).
-2. If blank, use the current branch.
-3. Verify the current branch is not main/master.
+1. If a PR number or bookmark name was provided, inspect the host's available skill entries and invoke the unique entry whose final component is `ce-worktree` with that target, so it can reuse or create the appropriate JJ workspace. Do not assume the callable entry is the bare name. If none or more than one match exists, report the ambiguity and stop. Preserve `gh` and GitHub behavior when resolving a PR.
+2. If blank, use the current JJ workspace and working-copy change.
+3. Verify the working-copy change is not `trunk()` before editing.
 
 ## Phase 1: Start the dev server
 
@@ -67,7 +67,7 @@ bash "$SKILL_DIR/scripts/resolve-port.sh" --type <type>
 
 ### 1.3 Start the server
 
-Start the dev server in the background, log output to a temp file. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
+Start the dev server in the background and log output under `$(jj workspace root)/.tmp/rocketclaw/polish/`, creating that directory and its parents if needed. Outside a JJ workspace, use the current project directory's `.tmp/rocketclaw/polish/` as the local fallback. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
 
 ### 1.4 Open in browser
 
@@ -85,7 +85,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → commit the fixes and stop
+- When the user says they're done -> run `jj status` and review `jj diff` for the working-copy change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. At composition time, inspect the repository-local instructions and run `git log`; repository-local instructions take precedence over `git log`, and both take precedence over compatible Go guidance. `jj log` may provide supplemental context but never replaces `git log`. Derive the message syntax dynamically; do not impose a fixed prefix, type, scope, subject, body structure, template, or example. Do not attribute the message to the executing agent, model, harness, plugin, or vendor brand, and do not add generated-by metadata; preserve requested human authorship and factual research/source attribution. Preserve the semantic requirement to describe the fixes accurately. Commit the fixes with `jj commit`, summarize them, and stop.
 
 No checklist. No envelope. Just conversation.
 

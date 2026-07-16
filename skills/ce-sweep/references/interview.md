@@ -1,6 +1,6 @@
 # Sweep First-Run Interview
 
-Loaded by `SKILL.md` when `/ce-sweep` runs with no `feedback_sources` configured. Captures the setup that will be merged into `<repo-root>/.compound-engineering/config.local.yaml` (the unified CE local config, gitignored, machine-local) and re-read on every subsequent run.
+Loaded by `SKILL.md` when `/ce-sweep` runs with no `feedback_sources` configured. Captures the setup that will be merged into `<repo-root>/.rocketclaw/config.local.yaml` (ignored, repository-local config) and re-read on every subsequent run.
 
 This interview is **interactive only**. The caller refuses first-run setup in headless mode — a scheduled or piped run with no config aborts and tells the user to run `/ce-sweep` interactively once. Do not attempt to infer sources, actions, or approvals without asking.
 
@@ -86,10 +86,10 @@ For email sources there are no source-side actions, so approval is moot — reco
 
 Ask where the sweep's state file lives:
 
-- **Committed to the repo** (recommended when multiple agents or machines share branches — one source of truth everyone reads and writes). Sets `sweep_state_path` to the committed default `docs/feedback-sweep/state.yml`.
-- **Machine-local under `/tmp`** (solo setups; keeps sweep bookkeeping out of the repo, no commit noise). Sets `sweep_state_path` to `/tmp/compound-engineering/ce-sweep/<repo-slug>/state.yml`, where `<repo-slug>` is derived from the repo (e.g. the basename of the repo root).
+- **Versioned in the repo** (recommended when multiple agents or machines share a bookmark). Sets `sweep_state_path` to `docs/feedback-sweep/state.yml`.
+- **Local-only under `.tmp/rocketclaw/sweep/`** (solo setups; keeps sweep bookkeeping out of JJ changes). Sets `sweep_state_path` to `.tmp/rocketclaw/sweep/state.yml`.
 
-Let the user override the path if they want a different location. If they pick machine-local, note that a fresh checkout or a teammate's machine will not see this state — it is per-machine by design.
+Let the user override the path if they want a different repository-local location. If they pick local-only, note that a fresh workspace or a teammate's machine will not see this state because `.tmp/rocketclaw/` remains untracked.
 
 **Capture:** `sweep_state_path` (string).
 
@@ -103,16 +103,16 @@ Let the user override the path if they want a different location. If they pick m
 
 ---
 
-## 6. Shared branch (only if committed state)
+## 6. Shared bookmark (only if versioned state)
 
-**Skip this section entirely if the user chose machine-local state in section 4** — the shared-branch topology only applies to committed state.
+**Skip this section entirely if the user chose local-only state in section 4** — the shared-bookmark topology only applies to versioned state.
 
-**Ask:** "Is this a multi-agent setup where several checkouts push the sweep state to a shared docs branch? Answer yes only if more than one machine or agent commits and pushes to the same branch. Default is no — a single checkout committing locally."
+**Ask:** "Is this a multi-agent setup where dedicated JJ workspaces publish sweep state through one shared bookmark? Answer yes only if more than one machine or agent uses the same bookmark and JJ remote. Default is no — one workspace records changes locally."
 
-- **No** (default) -> `sweep_shared_branch: false`. The single-writer lease serializes overlapping sweeps within one checkout.
-- **Yes** -> `sweep_shared_branch: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep commits and pushes the lease acquisition on the shared branch and confirms its writer won, making the lease a repo-wide mutex across machines.
+- **No** (default) -> omit `sweep_shared_bookmark` and `sweep_shared_remote`.
+- **Yes** -> list remotes with `jj git remote list`, then ask for an existing dedicated bookmark and the exact configured JJ remote that contains it. Do not supply a conventional default. Validate both names, run `jj bookmark track <bookmark>@<remote>` during setup, and explain the push-confirmed lease protocol.
 
-**Capture:** `sweep_shared_branch` (`true` | `false`).
+**Capture:** `sweep_shared_bookmark` and `sweep_shared_remote` (omit both for no).
 
 ---
 
@@ -126,7 +126,7 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 - **Yes** -> ask for the file path. Then build a `--source-map`: for each legacy channel/source id in the file, pair it with the configured source id from section 1 (the short name the live connector reads by), as a JSON object like `{"C0AQLMQBGBD":"slack-alpha"}`. This is load-bearing — without it, an imported `C0AQLMQBGBD` cursor lands under `C0AQLMQBGBD` while the connector reads under `slack-alpha`, orphaning the cursor and re-ingesting everything on the first sweep. Run the import from **this skill's directory**; set `SKILL_DIR` inline to the absolute path of the directory containing the `SKILL.md` you loaded:
 
   ```bash
-  SKILL_DIR="<absolute path of this skill's directory>"
+  SKILL_DIR="<absolute path of this skill's directory>";
   python3 "$SKILL_DIR/scripts/sweep-state.py" import-legacy --state <sweep_state_path> --file <legacy-path> --source-map '{"<legacy-id>":"<config-source-id>"}'
   ```
 
@@ -136,18 +136,19 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 
 ## 8. Write config
 
-Merge the captured settings into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `git rev-parse --show-toplevel`.
+Merge the captured settings into `<repo-root>/.rocketclaw/config.local.yaml`. Resolve the repo root with `jj workspace root`.
 
-- If the directory or file does not exist, create `.compound-engineering/` and write the file.
+- If the directory or file does not exist, create `.rocketclaw/` and write the file.
 - If the file exists, merge the sweep keys into the existing YAML, **preserving every unrelated key untouched** (e.g. `work_delegate_*`, `pulse_*`, `plan_*`). Only add or update the sweep keys.
-- If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing.
+- If the existing file has the legacy `sweep_shared_branch` key, migrate its value to `sweep_shared_bookmark` when that key is absent, then remove `sweep_shared_branch`. If both keys exist, preserve `sweep_shared_bookmark` and remove the legacy key. This config-key migration does not touch sweep state or lease data.
+- If `.rocketclaw/config.local.yaml` or `.tmp/rocketclaw/` is not already covered by `.gitignore`, offer to add the relevant entry. JJ honors `.gitignore`; use `jj file track --include-ignored` only for exact versioned-state filesets.
 
 Write these keys (see "Config File Shape" below for the exact form):
 
 - `feedback_sources` — the list of source maps assembled across sections 1-3.
 - `sweep_state_path` — from section 4.
 - `sweep_ack_cap` — from section 5.
-- `sweep_shared_branch` — from section 6 (default `false`; only meaningful with committed state).
+- `sweep_shared_bookmark` and `sweep_shared_remote` — from section 6; omit both for local-only state.
 
 Then surface the resulting Sweep section to the user in chat and offer **one round of edits**.
 
@@ -158,7 +159,7 @@ Then surface the resulting Sweep section to the user in chat and offer **one rou
 **Ask:** "Want the sweep to run on a recurring schedule so feedback gets triaged automatically, or run it on demand? On-demand works fully without a schedule."
 
 - **On demand** -> nothing to register. Note that `/ce-sweep` is ready to run any time.
-- **Recurring** -> hand off to whichever scheduling primitive the harness exposes — the in-plugin `schedule` skill if it is installed, otherwise name the platform-native mechanism (cron, GitHub Actions, the host's own automation) and emit a brief hint of what would need to run. **The registered invocation must include `mode:headless`** — e.g. `/ce-sweep mode:headless` — so the scheduled run knows it is unattended and defers instead of prompting. Never schedule inline; always hand off to the scheduling primitive.
+- **Recurring** -> hand off to whichever scheduling primitive the harness exposes — the bundled `schedule` skill if it is installed, otherwise name the platform-native mechanism (cron, GitHub Actions, the host's own automation) and emit a brief hint of what would need to run. **The registered invocation must include `mode:headless`** — e.g. `/ce-sweep mode:headless` — so the scheduled run knows it is unattended and defers instead of prompting. Never schedule inline; always hand off to the scheduling primitive.
 
 Declining a schedule leaves on-demand use fully working.
 
@@ -168,19 +169,20 @@ Declining a schedule leaves on-demand use fully working.
 
 ## Config File Shape
 
-After the interview completes, merge these flat keys into `<repo-root>/.compound-engineering/config.local.yaml`, preserving any unrelated keys already present.
+After the interview completes, merge these flat keys into `<repo-root>/.rocketclaw/config.local.yaml`, preserving any unrelated keys already present.
 
 ~~~yaml
-# --- Sweep (ce-sweep) ---
+# --- Feedback Sweep ---
 
 feedback_sources:
   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
-sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+sweep_state_path: docs/feedback-sweep/state.yml   # versioned, or .tmp/rocketclaw/sweep/state.yml for local-only use
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
-sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
+sweep_shared_bookmark: feedback-sweep             # omit for local-only; exact tracked bookmark
+sweep_shared_remote: <configured-remote>          # omit for local-only; required JJ remote for the bookmark
 ~~~
 
 Notes:
@@ -188,4 +190,5 @@ Notes:
 - Each `feedback_sources` entry carries: `type` (`slack` | `github-issues` | `email`), `id` (short handle), `target` (channel ID / `owner/repo` / mailbox hint), `ack_action` and `closeout_action` (emoji/label names; omit both for email), `sensitive` (`true` withholds body/quote from committed state and plan text), and `approved` (standing approval for source-side writes; `false` keeps the source read-only with `ack_deferred` items).
 - `feedback_sources` is a generic key — other skills may read this list.
 - `sweep_lease_ttl_minutes` is not asked in the interview; it is written with its default of `60` and left as a tunable the user can edit.
+- `sweep_shared_branch` is a legacy config key accepted only for migration; all writes use `sweep_shared_bookmark`.
 - Email sources are read-only: omit `ack_action`/`closeout_action`, and record `approved: false`.

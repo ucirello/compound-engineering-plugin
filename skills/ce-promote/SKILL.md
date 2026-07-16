@@ -30,10 +30,10 @@ If the user gave a free-form description of the feature, use it as the source of
 
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
-- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current branch). The title and body usually state the user-facing value.
-- **The diff** — `git diff main...HEAD --stat` and skim notable changes to ground the claim in what actually changed.
+- **Merged/active PR** — inspect `jj bookmark list -r 'heads(::@ & bookmarks())'` and identify the unique feature bookmark relevant to the current stack, excluding the repository's default bookmark. When exactly one is relevant, run `gh pr view <bookmark> --json title,body,url 2>/dev/null`; never use argumentless/current-branch PR discovery. If no unique relevant bookmark exists, ask for the PR number and pass that explicit number to `gh pr view`. The title and body usually state the user-facing value.
+- **The diff** — `jj diff --from 'trunk()' --to @ --stat` and skim notable changes to ground the claim in what actually changed.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
-- **Recent commits** — `git log --oneline -15` for the arc of the change.
+- **Recent changes** — `jj log -r 'trunk()..@' --limit 15 --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'` for the feature's change arc.
 
 Then write a 1–3 sentence summary of the **user-facing value** — what a user can now do that they couldn't before, and why they'd care. Describe the outcome, not the implementation. ("You can now export any report to CSV in one click" — not "Added a CsvSerializer and an export endpoint.")
 

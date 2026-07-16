@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic state engine for the feedback sweep (ce-sweep).
+"""Deterministic state engine for the feedback sweep.
 
 This helper owns ALL reads and writes of the sweep state file. Peer agents
 (source connectors, the analyzer, the orchestrator) never edit the file by
@@ -13,8 +13,8 @@ Design rules (mirrors the repo's repo-profile-cache helper):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are atomic: a workspace-local `.tmp/rocketclaw/` scratch file plus
+    os.replace, so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -38,10 +38,12 @@ JSON tokens (strings always double-quoted on one line); lists and empty dicts
 are emitted as inline JSON flow on a single line — itself valid YAML.
 """
 import argparse
+import hashlib
 import json
 import os
+import secrets
+import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 
 try:
@@ -50,7 +52,7 @@ try:
 except ImportError:  # non-POSIX; degrade to unlocked (single-writer by convention)
     _HAS_FCNTL = False
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # The closed lifecycle status enum is documented in references/state-schema.md.
 # Unknown statuses are preserved on write-back, never dropped — nothing here
@@ -58,7 +60,7 @@ SCHEMA_VERSION = 1
 
 # A `closed` item MUST carry all three evidence fields; `validate` downgrades
 # any closed item missing any of them back to `fix_pending`.
-EVIDENCE_FIELDS = ("fix_ref", "verified_merge_sha", "verified_at")
+EVIDENCE_FIELDS = ("fix_ref", "verified_commit_id", "verified_at")
 
 DEFAULT_TTL_MINUTES = 60
 
@@ -86,7 +88,7 @@ _DOC_ORDER = ("schema_version", "lease", "sources", "items", "last_run")
 _LEASE_ORDER = ("writer", "timestamp", "ttl_minutes")
 _ITEM_ORDER = (
     "source", "status", "sensitive", "title", "url", "body", "quote",
-    "fix_ref", "verified_merge_sha", "verified_at",
+    "fix_ref", "verified_commit_id", "verified_at",
 )
 _LAST_RUN_ORDER = ("timestamp", "outcome", "writer", "counts")
 
@@ -250,41 +252,66 @@ def _item_key(source, item_id):
     return "{}:{}".format(source, item_id)
 
 
+def _migrate_state(data):
+    """Migrate known older schemas in memory; the next mutation persists it."""
+    if data.get("schema_version") != 1:
+        return False
+    for item in data.get("items", {}).values():
+        if not isinstance(item, dict):
+            continue
+        legacy_value = item.pop("verified_merge_sha", None)
+        if legacy_value and not item.get("verified_commit_id"):
+            item["verified_commit_id"] = legacy_value
+    data["schema_version"] = SCHEMA_VERSION
+    return True
+
+
 def load_state(path):
-    """Return (status, data): ('absent', None), ('corrupt', None), or
-    ('ok', dict). A file that parses but lacks schema_version is corrupt."""
+    """Return (status, data, migrated). Missing schema_version is corrupt."""
     try:
         with open(path) as f:
-            # A machine-local state file can live under world-shared /tmp, and
-            # it is a correctness dependency (lease, cursors, closed status) as
-            # well as an injection sink (item bodies re-read into agent
-            # context). Reject a file not owned by us so a co-tenant cannot
-            # plant a forged lease/cursor or attacker-authored item text. Skip
-            # where geteuid is unavailable (non-POSIX), where the threat does
-            # not apply.
+            # Local-only state lives under workspace-local .tmp/rocketclaw/.
+            # It remains a correctness dependency and an injection sink, so
+            # reject a file not owned by us. Skip where geteuid is unavailable.
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
-                return ("corrupt", None)
+                return ("corrupt", None, False)
             text = f.read()
     except FileNotFoundError:
-        return ("absent", None)
+        return ("absent", None, False)
     except OSError:
-        return ("corrupt", None)
+        return ("corrupt", None, False)
     if not text.strip():
-        return ("absent", None)
+        return ("absent", None, False)
     try:
         data = parse_document(text)
     except Exception:
-        return ("corrupt", None)
+        return ("corrupt", None, False)
     if not isinstance(data, dict) or "schema_version" not in data:
-        return ("corrupt", None)
+        return ("corrupt", None, False)
     data.setdefault("sources", {})
     data.setdefault("items", {})
-    return ("ok", data)
+    return ("ok", data, _migrate_state(data))
 
 
 def new_state():
     return {"schema_version": SCHEMA_VERSION, "sources": {}, "items": {}}
+
+
+def repo_scratch_dir(*parts):
+    try:
+        root = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        root = None
+    workspace_root = root.stdout.strip() if root and root.returncode == 0 else os.getcwd()
+    path = os.path.join(workspace_root, ".tmp", "rocketclaw", "sweep", *parts)
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def write_state(path, state):
@@ -293,7 +320,9 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    scratch_dir = repo_scratch_dir("atomic-writes")
+    tmp = os.path.join(scratch_dir, f"state-{os.getpid()}-{secrets.token_hex(8)}.yml")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
@@ -380,7 +409,7 @@ def owns_lease(state, writer):
 # --------------------------------------------------------------------------- #
 
 def cmd_read(args):
-    st, data = load_state(args.state)
+    st, data, _ = load_state(args.state)
     if st == "absent":
         return emit("NO-STATE")
     if st == "corrupt":
@@ -389,7 +418,7 @@ def cmd_read(args):
 
 
 def cmd_validate(args):
-    st, data = load_state(args.state)
+    st, data, migrated = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
     if st == "absent":
@@ -403,7 +432,7 @@ def cmd_validate(args):
         ):
             item["status"] = "fix_pending"
             downgraded.append(item_id)
-    if downgraded:
+    if migrated or downgraded:
         write_state(args.state, data)
     return emit("OK", {"downgraded": sorted(downgraded)})
 
@@ -412,7 +441,7 @@ def _load_owned_state(args):
     """Load state for a lease-gated mutation. Returns (data, None) when
     args.writer holds the lease, else (None, status_word) for the caller to
     emit. Absent state means no lease to own -> the caller is not the owner."""
-    st, data = load_state(args.state)
+    st, data, _ = load_state(args.state)
     if st == "corrupt":
         return None, "CORRUPT"
     if st == "absent" or not owns_lease(data, args.writer):
@@ -462,7 +491,7 @@ def cmd_upsert_item(args):
 
 
 def cmd_cursor_get(args):
-    st, data = load_state(args.state)
+    st, data, _ = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
     if st == "absent":
@@ -501,7 +530,7 @@ def _cursor_lt(a, b):
 
 
 def cmd_lease_acquire(args):
-    st, data = load_state(args.state)
+    st, data, _ = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
     if st == "absent":
@@ -526,7 +555,7 @@ def cmd_lease_acquire(args):
 
 
 def cmd_lease_release(args):
-    st, data = load_state(args.state)
+    st, data, _ = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
     if st == "absent":
@@ -543,9 +572,10 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
-    st, data = load_state(args.state)
+    # the lease yet must still record its outcome. In local-only mode there is
+    # a single writer per workspace, so this bookkeeping write is safe. A
+    # shared-bookmark loser is required not to call this command.
+    st, data, _ = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
     if st == "absent":
@@ -567,7 +597,7 @@ def cmd_run_record(args):
 def cmd_import_legacy(args):
     """Best-effort import of a Cora-style legacy state file. Liberal on input:
     map what matches the known shapes, skip what doesn't, never fail."""
-    st, data = load_state(args.state)
+    st, data, migrated = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
     if st == "absent":
@@ -596,7 +626,7 @@ def cmd_import_legacy(args):
 
     # Persist only when something changed: a fresh state file was seeded, or
     # the import actually brought data in. A no-op import writes nothing.
-    if st == "absent" or cursors_imported or items_imported:
+    if st == "absent" or migrated or cursors_imported or items_imported:
         write_state(args.state, data)
     return emit("OK", {
         "cursors_imported": cursors_imported,
@@ -680,7 +710,7 @@ def _import_legacy_items(legacy, data):
 # --------------------------------------------------------------------------- #
 
 def build_parser():
-    p = argparse.ArgumentParser(description="ce-sweep deterministic state engine")
+    p = argparse.ArgumentParser(description="Feedback sweep deterministic state engine")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def with_state(sp):
@@ -762,7 +792,15 @@ _MUTATING = {
 
 
 def _run_locked(handler, args):
-    lock_path = str(args.state) + ".lock"
+    state_dir = os.path.dirname(os.path.abspath(args.state))
+    try:
+        os.makedirs(state_dir, exist_ok=True)
+        if not os.path.isdir(state_dir):
+            return emit("ERROR")
+    except OSError:
+        return emit("ERROR")
+    state_key = hashlib.sha256(os.path.abspath(args.state).encode()).hexdigest()
+    lock_path = os.path.join(repo_scratch_dir("locks"), state_key + ".lock")
     try:
         lock_fd = open(lock_path, "w")
     except OSError:

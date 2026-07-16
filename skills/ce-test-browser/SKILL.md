@@ -1,17 +1,17 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current JJ change stack, a revision, or a PR.
+argument-hint: "[PR number, JJ revision/bookmark, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch changes using the `agent-browser` CLI.
+Run end-to-end browser tests on pages affected by a PR, the current JJ change stack, or another JJ revision using the `agent-browser` CLI.
 
 ## Modes
 
 - **Manual (default):** the user controls the dev server. Follow the steps below as written, including the headed/headless question.
-- **Pipeline (`mode:pipeline`):** invoked by LFG or another automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and the headed/headless question (step 6). It still uses the preferred port that step 4 computes.
+- **Pipeline (`mode:pipeline`):** invoked by an automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and the headed/headless question (step 6). It still uses the preferred port that step 4 computes.
 
 ## Use `agent-browser` Only
 
@@ -30,24 +30,31 @@ command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 
 If not installed, tell the user: "`agent-browser` is not installed. Run `/ce-setup` for the current install command, then install agent-browser and retry." Then stop — this skill cannot function without it.
 
-This also requires a git repository with changes to test.
+This also requires a JJ repository with changes to test.
 
 ### 2. Determine Test Scope
 
 **If PR number provided:**
 ```bash
-gh pr view [number] --json files -q '.files[].path'
+GIT_DIR="$(jj git root)" gh pr view [number] --json files -q '.files[].path'
 ```
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj diff --from 'trunk()' --to @ --name-only
 ```
 
-**If branch name provided:**
+**If a JJ revision, change ID, or bookmark is provided:**
 ```bash
-git diff --name-only main...[branch]
+TARGET='<provided-JJ-revision-change-ID-or-bookmark>'
+if [ "$(jj log -r "$TARGET" --count 2>/dev/null)" != "1" ]; then
+  echo "Target must resolve to exactly one JJ revision" >&2
+  exit 1
+fi
+jj diff --from 'trunk()' --to "$TARGET" --name-only
 ```
+
+In the last command, assign `TARGET` the provided revision, change ID, or bookmark. The explicit `--from` and `--to` revisions compare the configured trunk snapshot directly with the target snapshot without passing a multi-revision revset to `jj diff`.
 
 ### 3. Map Changed Files to Routes
 
@@ -113,7 +120,7 @@ In pipeline mode, do not stop here — `references/pipeline-orchestration.md` au
 
 Manual mode only — in pipeline mode, skip this step (see Modes; it defaults to headless).
 
-Ask the user whether to run headed or headless using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question:
+Ask the user whether to run headed or headless using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema is not loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), or `ask_user` in Pi (via the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors, not merely because its schema requires loading. Never silently skip the question:
 
 ```
 Do you want to watch the browser tests run?
@@ -159,9 +166,13 @@ agent-browser snapshot -i
 ```
 
 **Take screenshots:**
+Before creating or writing the screenshot directory, inspect the repository's root ignore rules. If `.tmp/` is not already ignored, add `.tmp/` to the root `.gitignore` while preserving every existing entry.
+
 ```bash
-agent-browser screenshot page-name.png
-agent-browser screenshot --full page-name-full.png
+SCREENSHOT_ROOT="$(jj workspace root 2>/dev/null || pwd)/.tmp/browser-tests"
+mkdir -p "$SCREENSHOT_ROOT"
+agent-browser screenshot "$SCREENSHOT_ROOT/page-name.png"
+agent-browser screenshot --full "$SCREENSHOT_ROOT/page-name-full.png"
 ```
 
 ### 8. Human Verification (When Required)
@@ -195,7 +206,7 @@ Did it work correctly?
 When a test fails (**pipeline mode:** do not ask how to proceed — capture the error screenshot and repro steps, log the failure, and continue):
 
 1. **Document the failure:**
-   - Screenshot the error state: `agent-browser screenshot error.png`
+   - Screenshot the error state under `$(jj workspace root)/.tmp/browser-tests/`, falling back to `.tmp/browser-tests/` under the current project directory when no JJ workspace root resolves.
    - Note the exact reproduction steps
 
 2. **Ask the user how to proceed:**
@@ -221,7 +232,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / JJ revision [revision]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -249,13 +260,13 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test current JJ change stack (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test specific branch
+# Test a specific JJ bookmark or revision
 /ce-test-browser feature/new-dashboard
 
 # Test on a specific port
@@ -285,8 +296,8 @@ agent-browser type @e1 "text"      # Type without clearing
 agent-browser press Enter          # Press key
 
 # Screenshots
-agent-browser screenshot out.png       # Viewport screenshot
-agent-browser screenshot --full out.png # Full page screenshot
+agent-browser screenshot <browser-test-scratch>/out.png       # Viewport screenshot
+agent-browser screenshot --full <browser-test-scratch>/out.png # Full page screenshot
 
 # Headed mode (visible browser)
 agent-browser --headed open <url>      # Open with visible browser

@@ -1,86 +1,198 @@
 ---
 name: ce-worktree
-description: Set up isolated git worktrees — create a new branch for fresh work, or attach a worktree to an existing branch/PR/commit to work on it in isolation. Use when starting isolated work or isolating an existing ref; detects existing isolation first.
+description: Set up isolated JJ workspaces for fresh work or an existing bookmark, PR, change, or revision. Use when starting isolated work or attaching an existing target without disturbing another workspace; detects existing isolation first.
 ---
 
-# Worktree Isolation
+# JJ Workspace Isolation
 
-Ensure the current work happens in an isolated workspace, without disturbing the user's main checkout. Most coding harnesses now create a worktree by default at session start, so the common case is that **isolation already exists** — detect that first and do not create a redundant one.
+Ensure the current work happens in an isolated workspace without disturbing the user's main workspace. Create or select a Jujutsu workspace backed by the current JJ repository.
 
-Order of operations: **detect existing isolation -> prefer a native worktree tool -> fall back to plain git.** Never create a worktree the harness cannot see.
+Order of operations: **detect existing isolation -> use a harness-native JJ workspace primitive when available -> use `jj workspace add`.** Never create a workspace the harness cannot see.
 
-**Two modes, set by the caller's need:**
+## Choose The Mode
 
-- **New work (default).** No specific ref named — create a fresh branch from a base (trunk). This is what `ce-work` uses.
-- **Isolate an existing ref.** The caller names a ref to work on in isolation — a PR head, an existing branch, or a commit. Attach the worktree to that ref instead of creating a new branch. One hard git rule governs this mode: **a branch can be checked out in only one worktree at a time.** If the named ref is already checked out somewhere (most commonly because it is the current branch in the primary checkout), do **not** create a second worktree for it — report that it is already checked out at `<path>` and let the caller act (work there in place; or, only if a clean separate tree is essential, create a *detached* worktree at the same commit). Never put one branch in two worktrees.
+- **New work**: create a new working-copy change whose parent is the chosen base revision, then create a local feature bookmark on that change.
+- **Continue from a target**: create a new working-copy change whose parent is an existing bookmark, remote bookmark, PR source revision, JJ tag, change ID, or revision ID. This is the safe default for review fixes and follow-up work.
+- **Edit an existing change**: create the workspace, then explicitly `jj edit` the mutable target only when the caller intends to amend that exact change.
 
-The steps below (detect -> native tool -> git fallback) apply to both modes; the mode only changes what gets checked out and is reported back to the caller.
+`jj workspace add -r <target>` creates a new working-copy change with `<target>` as its parent, as if `jj new <target>` had been run. It does not edit `<target>`. Do not describe it as attaching directly to that revision.
 
-## Step 0: Detect existing isolation
+## 1. Inspect Existing Workspaces
 
-Before creating anything, check whether the current directory is already a linked worktree. Compare the **resolved absolute** git dir against the **resolved absolute** common git dir — resolve each to an absolute path first and compare those, not the raw `git rev-parse` output. Git mixes absolute and relative forms depending on the current directory (from a subdirectory of a normal checkout, `--git-dir` comes back absolute while `--git-common-dir` may be relative), so a raw string compare yields a false "already isolated":
-
-```bash
-git rev-parse --absolute-git-dir                     # absolute git dir for this worktree
-(cd "$(git rev-parse --git-common-dir)" && pwd -P)   # absolute shared (common) git dir
-```
-
-If the two absolute paths are **equal**, this is a normal checkout — continue to Step 1.
-
-If they **differ**, you are in a linked worktree *or* a submodule. Distinguish them:
+Use read-only inspection without snapshotting the current working copy:
 
 ```bash
-git rev-parse --show-superproject-working-tree
+jj --ignore-working-copy workspace root
+jj --ignore-working-copy workspace list
+jj --ignore-working-copy bookmark list --all-remotes
+jj --ignore-working-copy log -r '@ | @-'
 ```
 
-- **Non-empty** output -> you are in a submodule; treat it as a normal checkout and continue to Step 1.
-- **Empty** output -> you are **already in an isolated worktree**. Report the worktree path (`git rev-parse --show-toplevel`) and current branch. Do not create another worktree — a worktree-from-worktree lands in the wrong tree and is invisible to the harness that made the current one. Then **work in place**: in new-work mode, continue here; in isolate-an-existing-ref mode, check that ref out here (unless it is already the current branch) rather than nesting a worktree.
+Match the current root and target revision against `jj workspace list`. If a suitable workspace already exists, locate it with `jj workspace list -T 'if(self.name() == "<workspace-name>", self.root() ++ "\n")'` and require exactly one nonempty absolute-path result before reporting and using that path. Stop on zero or multiple results. Do not create a workspace inside another workspace.
 
-## Step 1: Prefer the harness's native worktree tool
+If that existing isolated workspace must be repositioned, use `jj new <target>` to preserve its current working-copy change and start a child on the target. Use `jj edit <target>` only for intentional direct amendment after applying the direct-edit checks below.
 
-If the harness provides a native worktree primitive — for example an `EnterWorktree` / `WorktreeCreate` tool, a `/worktree` command, or a `--worktree` flag — use it and stop. Native tools place, track, and clean up the worktree so the harness can manage it. A behind-the-back `git worktree add` creates phantom state the harness cannot see, navigate to, or clean up.
+A generic alternate-workspace primitive may have incompatible semantics. Use a native harness primitive only when it explicitly creates a JJ workspace in this same JJ repository; otherwise use `jj workspace add` below.
 
-## Step 2: Git fallback
+If the current workspace already provides the requested isolation and target, work in place. Do not create a redundant or nested workspace.
 
-Only when there is no native tool **and** Step 0 found no existing isolation.
+## 2. Resolve The Revision
 
-1. **Run from the repo root.** The `.worktrees/` and `.gitignore` paths below are repo-root-relative, but the skill runs from the user's current directory, which may be a subdirectory — so move to the root first: `cd "$(git rev-parse --show-toplevel)"`. Without this, `.worktrees/<branch>` and the `.gitignore` edit would land in the subdirectory (e.g. `src/.worktrees/...`, `src/.gitignore`) instead of at the repo root.
-2. Choose a meaningful branch name from the work description (e.g. `feat/login`, `fix/email-validation`) — avoid opaque auto-generated names. Pick a base branch (default: origin's default branch, else `main`).
-3. **Ensure `.worktrees/` is gitignored before creating anything**, so worktree contents are never committed: check `git check-ignore -q .worktrees/` — **with the trailing slash**, so an existing directory-only `.worktrees/` rule is honored even before the directory exists (`git check-ignore .worktrees` without the slash would miss it and dirty a correctly-configured repo). If it is not ignored, add a `.worktrees/` line to `.gitignore`.
-4. Best-effort refresh the base branch without disturbing the current checkout: `git fetch origin <from-branch>`. This is **non-fatal** — if it errors (no `origin` remote, a differently-named remote, or a local-only branch), do not abort; continue to the next step and use the local ref.
-5. Create the worktree — the command depends on the mode:
-   - **New work:** `git worktree add -b <branch-name> .worktrees/<branch-name> origin/<from-branch>` (use the local `<from-branch>` ref if `origin/<from-branch>` does not exist). This creates a new branch from the base.
-   - **Isolate an existing ref:** attach to the ref instead of branching — for an existing branch or tag, `git worktree add .worktrees/<slug> <target-ref>`. For a **PR**, check it out **on a local branch** (never a detached `FETCH_HEAD` — that orphans the fix loop's commits instead of updating the PR): `git fetch origin pull/<n>/head:pr-<n>` then `git worktree add .worktrees/pr-<n> pr-<n>`. (To get push-tracking back to the PR instead, create the worktree detached first — `git worktree add --detach .worktrees/pr-<n>` — then `cd` in and run `gh pr checkout <n>`, which is fork-safe.) If git reports the ref is already checked out elsewhere, follow the already-checked-out rule under **Two modes** — do not force a second worktree.
-6. Switch into it: `cd .worktrees/<branch-name>` (or `.worktrees/<slug>`).
+Resolve names before creating files. Accept JJ revsets and unambiguous bookmark, tag, change-ID, or revision-ID prefixes. Use `jj --ignore-working-copy log -r '<rev>'` and require exactly one revision. If a bookmark is conflicted or a prefix is ambiguous, stop and ask the user which target to use.
 
-If `git worktree add` fails with a sandbox or permission error, the requested isolation could not be created. This needs a **blocking** user decision before touching the current checkout — do not silently continue there (the user chose isolation specifically to avoid it, especially when `ce-work` / `ce-code-review` routed here for the worktree option). Report the failure and ask via the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (via the `pi-ask-user` extension) — offering options such as "work in the current checkout" vs "stop and resolve the permission issue". If no blocking tool exists in the harness or the call errors, present the numbered options in chat and wait for the reply; never skip the confirmation. Only work in the current checkout on explicit confirmation, and do not retry alternative paths automatically.
+Map provider or caller naming at the boundary, then use only JJ names:
 
-## Other worktree operations
+| Input identity | JJ form |
+| --- | --- |
+| local line of work | local bookmark `<name>` |
+| provider source bookmark with a known remote | remote bookmark `<name>@<remote>` |
+| named release | JJ tag `<name>` |
+| full or abbreviated revision ID | revision ID, after exact cardinality validation |
+| JJ change ID | change ID, after exact cardinality validation |
 
-Use `git` directly — no wrapper is needed:
+Do not preserve provider namespace wrappers or remote-name prefixes in newly created bookmark names. Preserve slashes that are part of the source bookmark's own name. Never guess whether an ambiguous slash-separated name is local or remote; inspect `jj bookmark list --all-remotes`.
+
+For new work, prefer the project's configured or documented trunk bookmark. Otherwise inspect local and remote bookmarks instead of assuming fixed names:
 
 ```bash
-git worktree list                          # list worktrees
-git worktree remove .worktrees/<branch>    # remove a worktree
-cd .worktrees/<branch>                     # switch to a worktree
-cd "$(git rev-parse --show-toplevel)"      # return to the current checkout root
+jj --ignore-working-copy bookmark list --all-remotes
+jj git remote list
 ```
 
-## When to create a worktree
+Remote bookmarks are addressed as `<bookmark>@<remote>`. Fetch only when fresh remote state is useful and network access is allowed:
 
-Create one (Step 1/2) only when you are **not** already isolated and you need a separate workspace:
+```bash
+jj git fetch --remote <remote>
+```
 
-- Reviewing a PR while keeping the current checkout free for other work
-- Running multiple features in parallel without branch-switching overhead
+A failed fetch is non-fatal only when the user accepts the already-resolved local revision. Never substitute a different base silently.
 
-Do not create a worktree for single-task work that can happen on a branch in the current checkout — and never when Step 0 shows you are already in one.
+Use JJ for every local repository operation, including workspace, revision, bookmark, description, synchronization, and publication operations. At the description-composition site below, follow its mandated message-history bridge; `jj git ...` remains JJ syntax.
+
+### Pull Requests
+
+Keep GitHub access through `gh`, but use it only to read PR metadata or interact with the PR. Supply the JJ backing store with `GIT_DIR="$(jj git root)"` on every `gh` invocation so this also works in non-colocated JJ repositories. Do not let `gh` create, switch, or mutate the local workspace.
+
+1. Read the PR's source repository URL, source bookmark, and source revision ID with `GIT_DIR="$(jj git root)" gh pr view` or `GIT_DIR="$(jj git root)" gh api`; then inspect `jj git remote list`.
+2. Normalize the GitHub repository URL and every configured JJ remote URL only for comparison (equate HTTPS and SSH/scp forms for the same host/path, and ignore a trailing `.git`). Require exactly one URL match and use that configured JJ remote name. Never assume `origin` or choose the first remote.
+3. With the matched JJ remote, validate the source bookmark, fetch it directly with `jj git fetch --remote "<remote>" --branch "<validated-source-bookmark>"`, and resolve the authoritative source revision ID from GitHub metadata. Treat `<source-bookmark>@<remote>` as naming context, not content identity.
+4. For a fork with no matching remote, ask before adding one with `jj git remote add <remote> <url>`, then fetch its source bookmark. Adding a remote changes shared repository configuration.
+5. If the PR revision ID is already present locally, use it directly without creating or tracking a bookmark.
+6. If URL matching is ambiguous or no JJ-visible revision can be obtained, stop rather than selecting an arbitrary remote or switching repository models.
+
+Use `jj bookmark track <bookmark>@<remote>` only when the user wants a same-named local bookmark that follows future fetches. Merely reviewing or basing a child change on a remote bookmark does not require tracking it.
+
+When the caller intends to update the PR, use the validated source bookmark name for the local bookmark, track the corresponding remote bookmark, move the local bookmark to the publishable change, and publish with `jj git push --bookmark <bookmark> --remote <remote>`. Confirm the destination repository and bookmark from GitHub metadata before pushing. Never invent a replacement bookmark for a PR source or use a local-workspace mutation command from `gh`.
+
+## 3. Compose Names And Descriptions
+
+Choose a unique ASCII workspace name and, for new work, a bookmark name derived from the work description. Follow the repository's active naming conventions and inspect existing workspace and bookmark names. Do not use a fixed namespace, prefix, or example name. Generated names, descriptions, and other visible artifacts must not contain product branding, tool or model names, badges, attribution, generation metadata, co-author attribution, or decorative footers. When validating a description against these constraints, apply this guidance: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Do not validate against fixed message syntax or examples.
+
+Compose the new change description from the requested work. At this composition site, apply this guidance: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Do not impose fixed message syntax or examples. Resolve the JJ base to the underlying ID required by the message-history bridge, then inspect nearby messages with the mandated read-only `git log` command:
+
+```bash
+base_id=$(jj --ignore-working-copy log -r '<base-rev>' --no-graph -T 'commit_id ++ "\n"')
+git log -n 10 --format='%s' "$base_id"
+```
+
+At every description composition, edit, validation, or recommendation site, apply this guidance: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Do not impose fixed message syntax or examples.
+
+Before passing a description to `jj workspace add -m`, apply this guidance: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Do not impose fixed message syntax or examples.
+
+If the description must be revised with `jj describe -m`, apply this guidance: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Do not impose fixed message syntax or examples.
+
+Before any later `jj commit -m` use, apply this guidance: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Do not impose fixed message syntax or examples. Pass descriptions directly as arguments. Do not create an intermediate message file unless the content cannot be passed safely as an argument.
+
+## 4. Choose A Workspace Path
+
+Choose an absolute destination outside every existing workspace root. A sibling directory grouped under the current repository's parent is a good default. Do not put a JJ workspace inside a working copy: JJ snapshots working-copy files automatically, and nesting mixes workspace contents with tracked project content.
+
+Create only the destination's parent directory, then let JJ create the destination. Refuse to reuse a non-empty path or a workspace name already shown by `jj workspace list`.
+
+If an operation requires transient storage inside a JJ workspace, use exactly `$(jj workspace root)/.tmp`. Before creating or writing it, inspect the repository's root ignore rules and, if `.tmp/` is not covered, add `.tmp/` to the root `.gitignore` while preserving every existing entry. Outside a JJ repository, use only a local `.tmp` directory under the current working directory and ensure it is excluded from that directory's deliverable content before writing. If the applicable `.tmp` cannot be made safe, keep the content in memory or ask for an allowed local path. Never use OS-global scratch storage, environment-selected temp roots, home-directory caches, or global temporary-file APIs. A `.tmp` directory is scratch only; it is never the workspace destination.
+
+## 5. Create The Workspace
+
+Run the command against the current workspace root so repository discovery is unambiguous:
+
+```bash
+# The destination and description are derived above.
+jj -R <current-workspace-root> workspace add --name <workspace-name> -r <base-rev> -m <change-description> <absolute-destination>
+```
+
+At this creation site, apply this guidance before replacing the neutral `<change-description>` placeholder: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Do not impose fixed message syntax or examples.
+
+This preserves the current workspace's working-copy change and files. By default the new workspace copies the current workspace's sparse patterns; use `--sparse-patterns full` only when a full working copy is required.
+
+For new work, create a local bookmark at the new working-copy change:
+
+```bash
+jj -R <absolute-destination> bookmark create <feature-bookmark> -r @
+```
+
+JJ has no current or selected bookmark. A bookmark follows rewrites of its target change, but it does not automatically advance when `jj new` or `jj commit` creates a child. Move it deliberately when the publishable tip changes:
+
+```bash
+jj -R <absolute-destination> bookmark move <feature-bookmark> --to <tip-rev>
+```
+
+For an existing target, `workspace add` already creates the recommended child change on that target. Do not create a duplicate local bookmark unless the workflow needs one.
+
+### Directly Editing The Target
+
+Use direct editing only when the caller explicitly wants to amend the target rather than add a child change:
+
+1. Confirm the target is mutable and is not conflicted.
+2. Compare it with every working-copy revision shown by `jj workspace list`. A revision cannot safely be the working-copy change of two workspaces; if another workspace already edits it, use that workspace or choose child-change mode.
+3. Create the workspace as above, then switch its working-copy revision explicitly with `jj -R <absolute-destination> edit <target-rev>`.
+
+Prefer child-change mode followed by `jj squash --into <target-rev>` because it keeps the new edits inspectable before amending the target.
+
+After creation, verify and report the workspace name, absolute path, `@`, parent revision, mode, description, and bookmark if any. When validating or recommending a description, apply this guidance: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Do not validate against or recommend fixed message syntax or examples.
+
+```bash
+jj -R <absolute-destination> workspace root
+jj -R <absolute-destination> log -r '@ | @-'
+jj -R <absolute-destination> bookmark list -r '@ | @-'
+```
+
+Then perform all requested work with the tool working directory set to `<absolute-destination>`. A shell `cd` in one tool call does not move later calls.
+
+If creation fails because of permissions or sandboxing, stop and ask whether to work in the current workspace or resolve access. Use the host's concrete blocking question interface: `AskUserQuestion` in Claude Code (discover it with `ToolSearch select:AskUserQuestion` if needed), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), or `ask_user` in Pi through the `pi-ask-user` extension. Fall back to numbered options only when the host has no blocking interface or the call errors. Never silently sacrifice isolation or retry inside the current working copy.
+
+## Lifecycle
+
+List and locate workspaces:
+
+```bash
+jj workspace list -T 'self.name() ++ "\t" ++ self.root() ++ "\n"'
+```
+
+For a selected name, filter with `jj workspace list -T 'if(self.name() == "<workspace-name>", self.root() ++ "\n")'` and require exactly one nonempty absolute-path result. Retain that validated path before any cleanup operation.
+
+If JJ reports that the selected workspace is stale, run `jj -R <workspace-root> workspace update-stale` from that workspace after checking that its files do not contain work that must be recovered. `update-stale` reconciles a workspace whose working-copy state was changed by another operation; it is not a fetch or general refresh command.
+
+Cleanup is two separate operations. `forget` removes the workspace's working-copy record from the JJ repository but does not delete files:
+
+```bash
+jj -R <another-workspace-root> workspace forget <workspace-name>
+```
+
+Delete the workspace directory separately, before or after `forget`, only after confirming the retained validated path is the intended workspace and its working-copy change and files are no longer needed. Never forget or delete the workspace currently being used, and never delete a bookmark as an implicit part of workspace cleanup.
+
+## When To Create A Workspace
+
+Create a workspace only when the current workspace does not already provide the requested isolation and a separate working directory is useful, such as reviewing a PR while keeping the current workspace free or running multiple features in parallel. For single-task work already isolated in the current JJ workspace, proceed in place.
 
 ## Integration
 
-`ce-work` and `ce-code-review` offer this skill as an option. When the user selects "worktree" in those flows, run Step 0 first: if the work is already isolated, proceed in place; otherwise create one (native tool preferred) with a meaningful branch name derived from the work description.
+When another workflow requests workspace isolation, inspect existing JJ workspaces first. If the work is already isolated at the intended target, proceed there; otherwise create a workspace with names and a description derived from the work and repository conventions. When recommending that description, apply this guidance: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Do not recommend fixed message syntax or examples.
 
-## Troubleshooting
+## Failure Rules
 
-**"Worktree already exists"**: the path is in use. Switch to it (`cd .worktrees/<branch>`) or remove it (`git worktree remove .worktrees/<branch>`) before recreating.
-
-**"Cannot remove worktree: it is the current worktree"**: `cd` out of the worktree first, then `git worktree remove`.
+- **Name or destination exists**: locate it with the cardinality-checked `jj workspace list -T` name/path lookup above; reuse it only if exactly one result identifies the intended workspace. Otherwise stop or choose a new name/path.
+- **Stale workspace**: inspect its files, then run `jj workspace update-stale` in that workspace. Do not recreate it over the stale path.
+- **Target is already a working copy**: use the existing workspace or create a child change; do not `jj edit` it in a second workspace.
+- **Missing remote revision**: use `jj git fetch` against a configured JJ remote. For a fork, request permission before `jj git remote add`.
+- **Bookmark conflict or ambiguous revision**: stop for an explicit revision choice. Do not resolve by moving a bookmark arbitrarily.
+- **Remote synchronization needed**: prefer `jj git fetch`, JJ remote bookmarks, and `jj git push`. In colocated repositories synchronization is automatic; in non-colocated repositories `jj git import` and `jj git export` are explicit synchronization tools, not workspace-selection mechanisms.

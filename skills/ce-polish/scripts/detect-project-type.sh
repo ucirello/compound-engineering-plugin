@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# detect-project-type.sh — inspect signature files at the repo root (and, if
+# detect-project-type.sh — inspect signature files at the workspace root (and, if
 # no root match is found, probe shallow subdirectories) to emit a project-type
 # identifier on stdout.
 #
@@ -31,7 +31,7 @@
 #   signature files. Deeper nesting is ignored to avoid false positives.
 #
 #   Excluded directories (not real project roots):
-#     node_modules .git vendor dist build coverage .next .nuxt
+#     node_modules .jj backing-store vendor dist build coverage .next .nuxt
 #     .svelte-kit .turbo tmp fixtures
 #
 # `multiple` vs `rails`: Rails apps commonly ship a Procfile.dev alongside
@@ -41,13 +41,15 @@
 
 set -u
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a git repository" >&2
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+if [ -z "$WORKSPACE_ROOT" ]; then
+  echo "ERROR: not in a JJ workspace" >&2
   exit 1
 fi
 
-cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }
+BACKING_ROOT=$(jj git root 2>/dev/null || true)
+
+cd "$WORKSPACE_ROOT" || { echo "ERROR: cannot cd to workspace root" >&2; exit 1; }
 
 MATCHES=()
 
@@ -120,7 +122,16 @@ esac
 # Exclusion list: directories that ship framework configs as fixtures or build
 # output, not as real project roots.
 
-EXCLUDE_DIRS="node_modules .git vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
+EXCLUDE_DIRS="node_modules .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
+case "$BACKING_ROOT" in
+  "$WORKSPACE_ROOT"/*)
+    BACKING_REL=${BACKING_ROOT#"$WORKSPACE_ROOT"/}
+    case "$BACKING_REL" in
+      */*) ;;
+      *) EXCLUDE_DIRS="$EXCLUDE_DIRS $BACKING_REL" ;;
+    esac
+    ;;
+esac
 EXCLUDE_ARGS=""
 for d in $EXCLUDE_DIRS; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS -path './$d' -prune -o -path '*/$d' -prune -o"

@@ -1,6 +1,6 @@
 # Strategy Template
 
-Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `STRATEGY.md`.
+Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to the absolute `<strategy-path>` resolved there.
 
 ## Rules for filling in
 
@@ -10,6 +10,7 @@ Loaded by `SKILL.md` after the interview is complete. Fill it in using the captu
 - Optional sections: delete entirely if unused. Do not leave empty headers.
 - Set `last_updated` in the YAML frontmatter to today's ISO date (YYYY-MM-DD). Do not duplicate the date in prose.
 - Set `name` in the frontmatter to the product or initiative name (the same value used in the H1 title).
+- Do not attribute the strategy to the executing agent, model, harness, plugin, or vendor brand, and do not add generated-by metadata or badges. Preserve requested human authorship and factual research/source attribution.
 
 ## Template
 

@@ -10,12 +10,12 @@
 # Usage:  cross-model-adversarial-review.sh <peer: codex|claude> <base-ref> <run-dir>
 #   <peer>     codex  -> use Codex (when the host is Claude or Cursor)
 #              claude -> use Claude (when the host is Codex)
-#   <base-ref> the diff base (e.g. a merge-base SHA or branch); the peer reviews
-#              only `git diff <base-ref>` in the current repository
+#   <base-ref> the diff base (e.g. a fork-point commit or bookmark); the peer reviews
+#              only `jj diff --from <base-ref> --to @` in the current repository
 #   <run-dir>  an existing dir; output is written to <run-dir>/adversarial-<peer>.json
 #
 # Self-locates its sibling reference files via BASH_SOURCE (NOT the CWD, which is
-# the user's project on every host), and derives the repo root from git. The agent
+# the user's project on every host), and derives the workspace root from JJ. The agent
 # only has to pass the three values above.
 #
 # NON-BLOCKING BY DESIGN: every failure logs to stderr and exits 0 without an output
@@ -45,12 +45,14 @@ SCHEMA="$SKILL_ROOT/references/findings-schema.json"
 [ -f "$PERSONA" ] || skip "persona brief not found at $PERSONA; skipping"
 [ -f "$SCHEMA" ]  || skip "findings schema not found at $SCHEMA; skipping"
 
-# --- derive repo root (read-only) ------------------------------------------
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || skip "not inside a git repository; skipping"
+# --- derive workspace root (read-only) -------------------------------------
+REPO_ROOT="$(jj workspace root 2>/dev/null)" || skip "not inside a JJ workspace; skipping"
+TMP_ROOT="$REPO_ROOT/.tmp/rocketclaw/cross-model"
+mkdir -p "$TMP_ROOT" || skip "cannot create workspace-local temporary directory; skipping"
 
 OUT="$RUN_DIR/adversarial-$PEER.json"
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-log-XXXXXX")"
+PROMPT_FILE="$TMP_ROOT/xmodel-prompt-$$-${RANDOM:-0}"
+PEERLOG="$TMP_ROOT/xmodel-log-$$-${RANDOM:-0}"
 trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 
 # --- compose the peer prompt from the canonical persona (single source) ----
@@ -61,7 +63,7 @@ trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 {
   cat "$PERSONA"
   printf '\n\n---\n\n'
-  printf 'This is an authorized review of the maintainer\047s own repository.\n'
+  printf 'This is an authorized code review.\n'
   printf 'Think like an attacker and a chaos engineer: find the ways this change fails in production.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   cat "$SCHEMA"
@@ -69,12 +71,12 @@ trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 } > "$PROMPT_FILE"
 # Per-peer diff delivery (composed below): codex fetches its own diff inside its
 # read-only sandbox; claude is hard-denied shell (see below), so it gets the diff
-# embedded and needs no git.
+# embedded and needs no JJ access.
 if [ "$PEER" = codex ]; then
-  printf '\nRun: git diff %q — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
+  printf '\nRun: jj --ignore-working-copy diff --from %q --to @ --git — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
 else
-  { printf '\nReview ONLY the change below (the output of `git diff %q`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
-    printf '\n=== BEGIN DIFF ===\n'; git -C "$REPO_ROOT" diff "$BASE"; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
+  { printf '\nReview ONLY the change below (the output of `jj --ignore-working-copy diff --from %q --to @ --git`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
+    printf '\n=== BEGIN DIFF ===\n'; jj -R "$REPO_ROOT" --ignore-working-copy diff --from "$BASE" --to @ --git; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
 fi
 
 # --- run the peer: idle-timeout for streaming codex, hard cap for claude ----
@@ -199,7 +201,7 @@ esac
 # instead of "adversarial-<peer>", Stage 5 would fold it as the in-process reviewer
 # and lose the cross-model agreement signal. Force the distinct name.
 if [ -s "$OUT" ]; then
-  _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-norm-XXXXXX")"
+  _norm="$TMP_ROOT/xmodel-norm-$$-${RANDOM:-0}"
   # Force the distinct reviewer name AND satisfy Stage 5's full top-level contract
   # (reviewer string + findings/residual_risks/testing_gaps arrays). Backfill the two
   # soft arrays if the peer omitted them; drop the return entirely if findings is not

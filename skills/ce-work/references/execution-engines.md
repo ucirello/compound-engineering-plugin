@@ -25,7 +25,7 @@ When more than one engine is callable, choose by the plan's decomposition shape:
 | Plan shape | Engine | Why |
 |---|---|---|
 | Sequential or modest U-ID decomposition; units share files or depend on each other | **Inline / subagent** (default), or a **goal-mode** prompt for sustained focus when callable | The DoD already defines the end condition; ordinary persistence finishes it. |
-| Many independent U-IDs with disjoint file ownership; codebase-wide sweep; large migration; adversarial cross-checking | **Dynamic-workflow** when callable; otherwise parallel subagents | Workflow scripts hold branching, loops, and intermediate worker state outside the main context and coordinate many agents. Prefer this over goal-mode for large fan-out. |
+| Many independent U-IDs with disjoint file ownership; codebase-wide sweep; large migration; adversarial cross-checking | **Dynamic-workflow** when callable; otherwise parallel subagents | Workflow scripts hold control flow, loops, and intermediate worker state outside the main context and coordinate many agents. Prefer this over goal-mode for large fan-out. |
 | Host exposes no callable goal/workflow primitive (e.g. Claude Code in-session) | **Inline / subagent** | Preserve the same heading-scan / DoD / U-ID discipline without relying on unavailable host features. |
 
 Recommend exactly one path. Present a non-default engine as an "advanced / large-scale option" only when the plan shape plausibly warrants it — never as an equal coin-flip.
@@ -34,7 +34,7 @@ Recommend exactly one path. Present a non-default engine as an "advanced / large
 
 ### Inline / subagent (default)
 
-Follow the dispatch strategy in `SKILL.md` Phase 1 Step 4 (inline, serial subagents, or parallel subagents) and the Phase 2 execution loop. `ce-work` owns task creation, unit sequencing, dispatch, verification, and commits.
+Follow the dispatch strategy in `SKILL.md` Phase 1 Step 4 (inline, serial subagents, or parallel subagents) and the Phase 2 execution loop. `ce-work` owns task creation, unit sequencing, dispatch, verification, and JJ change boundaries/descriptions. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. At that site, inspect the project's active instructions and run `git log`; the project's active instructions take precedence over `git log`, and both take precedence over compatible Go guidance. `jj log` may provide supplemental context but never replaces `git log`. Derive the message syntax dynamically; do not impose a fixed syntax, prefix, type, scope, subject, body structure, template, or example.
 
 ### Goal-mode and dynamic-workflow
 
@@ -43,7 +43,7 @@ Follow the dispatch strategy in `SKILL.md` Phase 1 Step 4 (inline, serial subage
 **No callable goal tool, or dynamic-workflow (Claude Code today):** do **not** attempt to invoke them. Instead:
 
 - **Standalone interactive use:** print a copyable prompt block for the user to paste, then continue inline/subagents if the user does not paste it. Do not stall waiting for a paste.
-- **Return-to-caller use (e.g. under `lfg`):** do **not** emit a copyable prompt — a manual paste step strands the caller. Run inline/subagents instead, or return a blocker if the plan genuinely requires an unavailable engine.
+- **Return-to-caller use:** do **not** emit a copyable prompt — a manual paste step strands the caller. Run inline/subagents instead, or return a blocker if the plan genuinely requires an unavailable engine.
 
 Whichever path, the goal/workflow must not open a PR, finalize the session, or bypass the owning workflow's gates.
 
@@ -54,9 +54,9 @@ Copyable goal-mode prompt (standalone — emit verbatim, substituting only the l
 
 The plan is the authority — don't read it whole. Scan headings, read the Goal Capsule, then work the units in dependency order, reading each unit plus its cited R/F/AE/KTD as you go. Run the plan's Verification Contract gates and satisfy each unit's test scenarios. Track progress outside the plan file, not in it.
 
-This top-level goal owns the implementation tail: run simplification and code review when the diff meets the repo's normal criteria, apply eligible fixes, and surface residual findings. Follow the plan's PR/landing strategy if it defines one; the repo's conventions and the user's preferences override it. Surface a genuine blocker — something that changes scope or contradicts the plan — instead of guessing; use your judgment on details the plan leaves open.
+This top-level goal owns the implementation tail: run simplification and code review when `jj diff --git` meets the repo's normal criteria, apply eligible fixes, and surface residual findings. Follow the plan's PR/landing strategy if it defines one; the repo's conventions and the user's preferences override it. Surface a genuine blocker — something that changes scope or contradicts the plan — instead of guessing; use your judgment on details the plan leaves open.
 
-Done when the transcript shows: every non-deferrable Per-Unit DoD row has an observed verification result; the Verification Contract's required checks passed or are documented as not applicable; applicable simplification/review gates ran or were explicitly skipped with reason; dead-end or experimental code from approaches that did not pan out has been removed from the diff; and no progress/status was written into the plan file. Before declaring done, re-open the plan and re-check the active units, Verification Contract, and Definition of Done against the diff — context may have been compacted to a summary that dropped detail.
+Done when the transcript shows: every non-deferrable Per-Unit DoD row has an observed verification result; the Verification Contract's required checks passed or are documented as not applicable; applicable simplification/review gates ran or were explicitly skipped with reason; dead-end or experimental code from approaches that did not pan out has been removed from `jj diff --git`; and no progress/status was written into the plan file. Before declaring done, re-open the plan and re-check the active units, Verification Contract, and Definition of Done against `jj diff --git` — context may have been compacted to a summary that dropped detail.
 ```
 
 Copyable dynamic-workflow prompt (large fan-out — emit verbatim):
@@ -71,15 +71,15 @@ Keep emitted prompts under 4,000 characters and always substitute the literal pl
 
 ## Step 4: Resume the correct tail
 
-After any engine finishes implementation, inspect the diff and continue at the tail that matches the caller. The engine never owns more than implementation + local verification on its own.
+After any engine finishes implementation, inspect `jj diff --git` and continue at the tail that matches the caller. The engine never owns more than implementation + local verification on its own.
 
 | Mode | After implementation, `ce-work` ... |
 |---|---|
-| **Standalone** (user invoked `ce-work` directly, or `ce-plan` handed off interactively) | Resumes its normal post-implementation tail — Phase 3-4 quality gates, simplification, review, commit, and handoff in `references/shipping-workflow.md`. A goal-mode run does not skip these; verify they ran or were explicitly skipped with reason. |
-| **Return-to-caller** (`mode:return-to-caller`, e.g. under `lfg`) | Performs implementation and local verification only, then returns the structured summary in `SKILL.md` § Return-to-Caller Mode (`standalone_shipping_skipped: true`). Does not run simplify/review/PR/CI — the caller owns those. |
+| **Standalone** (user invoked `ce-work` directly, or `ce-plan` handed off interactively) | Resumes its normal post-implementation tail — Phase 3-4 quality gates, simplification, review, JJ change finalization, and handoff in `references/shipping-workflow.md`. A goal-mode run does not skip these; verify they ran or were explicitly skipped with reason. |
+| **Return-to-caller** (`mode:return-to-caller`) | Performs implementation and local verification only, then returns the structured summary in `SKILL.md` § Return-to-Caller Mode (`standalone_shipping_skipped: true`). Does not run simplify/review/PR/CI — the caller owns those. |
 
 Using goal-mode or a dynamic workflow is a way to get better sustained implementation focus, not a way to skip the owning workflow's finish discipline.
 
 ## Progress visibility (independent of tail ownership)
 
-Tail ownership decides who opens the **final** PR; it does not forbid progress signals during a long run. For multi-hour goals, meaningful commits as units complete and an optional scratch progress artifact (outside the plan body) are encouraged so a long trajectory stays observable. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when it explicitly owns that channel; in return-to-caller mode `ce-work` must not open any PR, but may commit and return a progress report in its structured envelope. Never write progress or status into the plan body — git, commits, and the envelope carry it.
+Tail ownership decides who opens the **final** PR; it does not forbid progress signals during a long run. For multi-hour goals, meaningful JJ changes as units complete and an optional progress artifact under `$(jj workspace root)/.tmp/work/<run-id>/` (outside the plan body) are encouraged so a long trajectory stays observable. Before writing that artifact, ensure the repository's root ignore rules cover `.tmp/`; if not, add `.tmp/` to the root `.gitignore` while preserving existing entries. If `jj workspace root` is unavailable, use `.tmp/work/<run-id>/` under the current project directory. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when it explicitly owns that channel; in return-to-caller mode `ce-work` must not open any PR, but may finalize JJ changes and return a progress report in its structured envelope. Never write progress or status into the plan body — JJ changes and the envelope carry it.

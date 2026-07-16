@@ -16,7 +16,7 @@ Before going online, check if curated knowledge already exists in skills:
    - Use the platform's native file-search/glob capability to find `SKILL.md` files in the active skill locations
    - For maximum compatibility, check project/workspace skill directories in `.claude/skills/**/SKILL.md`, `.codex/skills/**/SKILL.md`, and `.agents/skills/**/SKILL.md`
    - Also check user/home skill directories in `~/.claude/skills/**/SKILL.md`, `~/.codex/skills/**/SKILL.md`, and `~/.agents/skills/**/SKILL.md`
-   - In Codex environments, `.agents/skills/` may be discovered from the current working directory upward to the repository root, not only from a single fixed repo root location
+   - In Codex environments, `.agents/skills/` may be discovered from the current working directory upward to the Jujutsu workspace root, not only from one fixed location
    - If the current environment provides an `AGENTS.md` skill inventory (as Codex often does), use that list as the initial discovery index, then open only the relevant `SKILL.md` files
    - Use the platform's native file-read capability to examine skill descriptions and understand what each covers
 
@@ -27,7 +27,7 @@ Before going online, check if curated knowledge already exists in skills:
    - TypeScript/React → `react-best-practices`
    - AI/Agents → available agent-architecture guidance, repo conventions, and active examples
    - Documentation → available durable-learning, documentation, or writing guidance
-   - File operations → available file-operation or worktree guidance
+   - File operations → available file-operation or Jujutsu workspace guidance
    - Image generation → the platform's image-generation capability when available
 
 3. **Extract Patterns from Skills**:

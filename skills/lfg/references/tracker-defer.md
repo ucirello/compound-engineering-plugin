@@ -1,6 +1,6 @@
 # Tracker Detection and Defer Execution
 
-This reference covers how Defer actions file tickets in the project's tracker. It is loaded by `SKILL.md` when Interactive mode's routing question needs to decide whether to offer option C (File tickets), when the walk-through's Defer option executes, and when the bulk-preview of option C is shown. It is also loaded by autonomous callers (e.g., `lfg`) that need to file residual actionable findings without user prompts — see Execution Modes below.
+This reference covers how Defer actions file tickets in the project's tracker. It is loaded by `SKILL.md` when Interactive mode's routing question needs to decide whether to offer option C (File tickets), when the walk-through's Defer option executes, and when the bulk-preview of option C is shown. It is also loaded by autonomous callers that need to file residual actionable findings without user prompts - see Execution Modes below.
 
 ---
 
@@ -18,7 +18,7 @@ Used by `ce-code-review` Interactive mode's routing question, walk-through Defer
 
 ### Non-interactive mode
 
-Used by autonomous callers like `lfg` that must not prompt. All blocking questions are skipped; the fallback chain is executed silently in order. Behavior:
+Used by autonomous callers that must not prompt. All blocking questions are skipped; the fallback chain is executed silently in order. Behavior:
 
 - No confirmation on the first generic-label Defer; proceed directly.
 - On execution failure, automatically fall to the next tier without prompting. Record the failure.
@@ -34,6 +34,8 @@ The caller decides how to surface the result to the user. The non-interactive mo
 The agent determines the project's tracker from whatever documentation is obvious. Primary source: the project's active instructions and conventions already in its context — no need to open or name specific instruction files. Read a file directly only when the relevant instructions aren't already in context: a subdirectory-scoped instruction file governing the area you're working in, or when you're a fresh subagent that wasn't given the project's instructions. Supplementary signals (when primary documentation is ambiguous): `CONTRIBUTING.md`, `README.md`, PR templates under `.github/`, visible tracker URLs in the repo.
 
 A tracker can be surfaced via MCP tool (e.g., a Linear MCP server), CLI (e.g., `gh`), or direct API. All are acceptable. The detection output is a tuple with two availability flags — one for the named tracker specifically (drives label confidence in Interactive mode) and one for the full fallback chain (drives whether Defer is offered at all):
+
+When `jj git root` resolves, prefix every `gh` invocation with `GIT_DIR="$(jj git root)"`; when it does not, invoke `gh` without `GIT_DIR`.
 
 ```
 { tracker_name, confidence, named_sink_available, any_sink_available }
@@ -56,7 +58,7 @@ Availability probes run **at most once per session** and **only when Defer execu
 Typical probe sequence:
 
 1. Consult the project's instructions already in context for tracker references — don't open or name specific instruction files; read one directly only when the relevant instructions aren't in context (subdirectory scope, or a fresh subagent). If nothing found, set `tracker_name = null`, `confidence = low`.
-2. **Probe the named tracker when one was found.** For GitHub Issues, run `gh auth status` and `gh repo view --json hasIssuesEnabled`. For Linear or other connector/MCP-backed trackers, first discover available tools via the platform's tool-discovery primitive (e.g., `ToolSearch` in Claude Code) rather than assuming absence from an unloaded tool, then verify the discovered tool is responsive. For API-backed trackers, verify credentials wherever the platform exposes them (environment, connector auth, or a documented secrets location) — not only shell env vars. Set `named_sink_available` from the probe result.
+2. **Probe the named tracker when one was found.** For GitHub Issues, run `gh auth status` and `gh repo view --json hasIssuesEnabled`. For Linear or other connector/MCP-backed trackers, first discover available tools through the active tool-discovery interface rather than assuming absence from an unloaded tool, then verify the discovered tool is responsive. For API-backed trackers, verify credentials wherever the active environment exposes them (environment, connector auth, or a documented secrets location) — not only shell env vars. Set `named_sink_available` from the probe result.
 3. **Probe the GitHub Issues fallback to compute `any_sink_available`.** Even when the named tracker was found and probed, `gh` matters for the `no_sink` bucket decision so that a run with no documented tracker but working `gh` still offers Defer.
    - If `named_sink_available = true`: `any_sink_available = true` (no further probes needed).
    - Otherwise, probe GitHub Issues via `gh auth status` + `gh repo view --json hasIssuesEnabled` (skip if already probed in step 2). If it works, `any_sink_available = true`.
@@ -94,12 +96,12 @@ Every Defer action creates a ticket with the following content, adapted to the t
 
 - **Title:** the merged finding's `title` (schema-capped at 10 words).
 - **Body:**
-  - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `/tmp/compound-engineering/ce-code-review/<run-id>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
+  - Plain-English problem statement — reads the review-produced `why_it_matters` from the artifact path returned by the review. If no path was returned, look under `$(jj workspace root)/.tmp/code-review/<run-id>/{reviewer}.json`, falling back to local `./.tmp/code-review/<run-id>/{reviewer}.json` when JJ is unavailable. It uses the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
   - Suggested fix (when present in the finding's `suggested_fix`).
   - Evidence (direct quotes from the reviewer's artifact).
-  - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Reviewer(s): <list>`, `Finding ID: <fingerprint>`.
-- **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`) and, when the tracker convention supports it, a category label sourced from the reviewer name.
-- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in ce-code-review run artifact: /tmp/compound-engineering/ce-code-review/<run-id>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
+  - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Finding ID: <fingerprint>`.
+- **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`). Do not add identity-derived or decorative labels.
+- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with a continuation note containing the actual review artifact path and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable. If no path was returned, use `$(jj workspace root)/.tmp/code-review/<run-id>/`, or the local `./.tmp/code-review/<run-id>/` fallback when JJ is unavailable.
 
 The finding_id is a stable fingerprint composed as `normalize(file) + line_bucket(line, +/-3) + normalize(title)` — the same fingerprint used by the merge pipeline.
 
@@ -123,7 +125,9 @@ Options:
 
 When a high-confidence named tracker fails at execution, the cached `named_sink_available` is set to `false` for the rest of the session. Subsequent Defer actions fall straight through to the next tier without retrying a confirmed-broken sink. `any_sink_available` is only downgraded to `false` when every tier has been confirmed broken — a failed Linear call that succeeds via `gh` keeps `any_sink_available = true`.
 
-Only when `ToolSearch` explicitly returns no match or the tool call errors — or on a platform with no blocking question tool — fall back to numbered options and waiting for the user's reply (Interactive mode only).
+Only when tool discovery explicitly returns no match, the tool call errors, or no blocking question interface exists, fall back to numbered options and wait for the user's reply (Interactive mode only).
+
+Use the host's concrete blocking question interface: `AskUserQuestion` in Claude Code (discover it with `ToolSearch select:AskUserQuestion` when needed), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), or `ask_user` in Pi through the `pi-ask-user` extension. A pending schema load is not a fallback trigger.
 
 ---
 
@@ -142,8 +146,8 @@ When uncertain, prefer "drop with explicit user-facing notice" over "pass throug
 
 ---
 
-## Cross-platform notes
+## Question interface
 
-The question-tool name varies by platform. In Interactive mode, use the platform's blocking question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension)). In Claude Code the tool should already be loaded from the Interactive-mode pre-load step — if it isn't, call `ToolSearch` with query `select:AskUserQuestion` now. Fall back to numbered options in chat only when the harness genuinely lacks a blocking tool — `ToolSearch` returns no match, the tool call explicitly fails, or the runtime mode does not expose it (e.g., Codex edit modes without `request_user_input`). A pending schema load is not a fallback trigger. Never silently skip the question.
+In Interactive mode, use the concrete host mapping above. Fall back to numbered options in chat only when tool discovery returns no match, the tool call explicitly fails, or the active runtime exposes no blocking question interface. A pending schema load is not a fallback trigger. Never silently skip the question.
 
-Non-interactive mode is platform-agnostic: it never prompts, so the platform's question tool is not relevant.
+Non-interactive mode never prompts, so the question interface is not relevant.

@@ -1,4 +1,4 @@
-# Compound Engineering Feedback Format
+# Feedback Format
 
 Use this shape when converting Riffrec evidence into a durable brainstorm or planning input.
 
@@ -113,4 +113,5 @@ topic: <topic>
 - Prefer moment IDs and screenshot links over prose-only claims.
 - Mark visual interpretation as an inference when the screenshot does not prove intent.
 - Requirements should describe product behavior, not implementation details.
-- Do not include absolute local paths in CE docs; use repo-relative paths when possible.
+- Do not include absolute local paths in durable documents; use repository-relative paths when possible.
+- Keep the artifact repository-authored. Preserve requested human authorship and factual source citations. Product and provider names may identify source evidence or operational configuration; `ce-*` names may appear only as functional skill routes.

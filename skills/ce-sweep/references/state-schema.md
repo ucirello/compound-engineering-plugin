@@ -1,6 +1,6 @@
-# Sweep state schema (v1)
+# Sweep state schema (v2)
 
-This is the canonical, versioned contract for the ce-sweep state file. The
+This is the canonical, versioned contract for the feedback sweep state file. The
 deterministic state engine (`scripts/sweep-state.py`) is the **only** writer;
 every peer agent (source connectors, the analyzer, the orchestrator) reads the
 file and mutates it **exclusively** through the engine's subcommands so the
@@ -9,7 +9,7 @@ rules below are enforced in one place. Read this before touching state.
 ## Top-level shape
 
 ```yaml
-schema_version: 1
+schema_version: 2
 lease:
   writer: "sweep-2026-07-02-cron"
   timestamp: "2026-07-02T12:00:00+00:00"
@@ -32,7 +32,7 @@ last_run:
 
 | key | type | meaning |
 | --- | --- | --- |
-| `schema_version` | int | Contract version. Currently `1`. A file missing this key is treated as corrupt. |
+| `schema_version` | int | Contract version. Currently `2`. A file missing this key is treated as corrupt. |
 | `lease` | map | Single-writer mutex (see Lease). Absent when no writer holds it. |
 | `sources` | map keyed by source id | Per-source resume cursor and optional flags. |
 | `items` | map keyed by `<source-id>:<item-id>` | Per-item lifecycle record. The key is source-scoped so a source-native id (a Slack ts, a GitHub issue number) never collides with the same id from another source. Personas pass a source-native `id` plus `--source`; the engine composes the storage key and records both `source` and `id` on the item so it stays self-describing. |
@@ -51,8 +51,18 @@ can share a file:
 | File parses but has no `schema_version` | Treated as `CORRUPT`; the engine refuses to write over it. |
 | `schema_version` greater than the engine knows | Still read/written field-preservingly; the engine only *adds* rules per version, never removes fields. |
 
-Bump `schema_version` only for a change that a v1 reader could misinterpret;
+Bump `schema_version` only for a change that an older reader could misinterpret;
 purely additive fields do not require a bump.
+
+### v1 -> v2 migration
+
+Version 2 renames closed-item evidence field `verified_merge_sha` to
+`verified_commit_id` without changing JJ verification semantics. On load, the
+engine maps a truthy legacy value to `verified_commit_id` when the new field is
+absent, removes the legacy key, and marks the document v2 in memory. The next
+mutating command persists the migration; startup `validate` always does so even
+when no item is downgraded. A closed v1 item with complete legacy evidence
+therefore remains closed.
 
 ## Status enum
 
@@ -81,7 +91,7 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 | field | meaning |
 | --- | --- |
 | `fix_ref` | Reference to the fix (PR/commit/issue link). |
-| `verified_merge_sha` | The merge commit SHA the fix landed on. |
+| `verified_commit_id` | The full commit ID JJ resolved for the fix on the configured trunk. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
 `validate` scans every item and downgrades any `closed` item missing (or with a
@@ -145,8 +155,9 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-commit mode (default) | Single writer **per checkout**. | The lease serializes overlapping sweeps in the same working tree (e.g. a cron sweep and a manual one). The file is written in-tree (and may be committed locally). No cross-machine guarantee. |
-| pushed-shared-branch | One writer **per repo**. | The state file lives on a shared branch multiple checkouts push to. `lease-acquire` must be committed, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
+| local versioned mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in one working copy. The state and plan may be selected into a local JJ change. No cross-machine guarantee. |
+| local-only mode | Single writer **per workspace**. | The state lives under `.tmp/rocketclaw/sweep/` and is never selected into a JJ change. No cross-machine guarantee. |
+| pushed shared bookmark | One writer **per repo**. | A dedicated clean workspace creates and push-confirms the lease change on an exact tracked bookmark before any source-side write. A loser starts fresh from the fetched winner and never rebases or merges competing lease states. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -162,16 +173,7 @@ Records the outcome of a sweep run under `last_run`.
 | `writer` | `--writer` | The writer id that recorded the run. |
 | `counts` | `--counts` (JSON object) | Free-form tallies (per status, per source, etc.). |
 
-`run-record` is intentionally **lease-agnostic**: a run that aborted precisely
-because the lease was `LOCKED` (`outcome: aborted-locked`) must still be able to
-record that fact — but that write happens while the lease holder is mid-sweep.
-To keep it from clobbering the holder's concurrent upserts, every mutating
-subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
-whole load-modify-write, so two concurrent invocations serialize their writes
-regardless of lease ownership. The lease decides *who owns the sweep*; the file
-lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never committed (the skill's commit step adds only the state file and the
-plan, never `-A`).
+`run-record` is intentionally **lease-agnostic** so a locally aborted run can record `aborted-locked` while the holder is mid-sweep. Every mutating subcommand therefore holds an **OS advisory lock** on a state-path-keyed file under `.tmp/rocketclaw/sweep/locks/`. Shared-bookmark losers do not call `run-record`; writing bookkeeping into fetched winner state would violate the remote lease. The lock file remains workspace-local and is never selected into a JJ change.
 
 ## Engine status words
 

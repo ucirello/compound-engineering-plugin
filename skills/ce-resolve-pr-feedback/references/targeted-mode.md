@@ -11,7 +11,7 @@ https://github.com/OWNER/REPO/pull/NUMBER#discussion_rCOMMENT_ID
 
 **Step 1** -- Get comment details and GraphQL node ID via REST (cheap, single comment):
 ```bash
-gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
+GIT_DIR="$(jj git root)" gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
   --jq '{node_id, path, line, body}'
 ```
 
@@ -23,7 +23,7 @@ gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>"
 SCRIPT_DIR="$SKILL_DIR/scripts"
 if [ ! -f "$SCRIPT_DIR/get-thread-for-comment" ]; then
-  echo "ce-resolve-pr-feedback bundled scripts not found under $SCRIPT_DIR; use Full Mode's fallback gh commands to inspect the PR comments." >&2
+  echo "Bundled scripts not found under $SCRIPT_DIR; use Full Mode's fallback gh commands to inspect the PR comments." >&2
   exit 1
 fi
 
@@ -32,14 +32,16 @@ bash "$SCRIPT_DIR/get-thread-for-comment" PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]
 
 This fetches thread IDs and their first comment IDs (minimal fields, no bodies) and returns the matching thread with full comment details.
 
+Before making a code fix, resolve and validate `BOOKMARK`, `PR_HEAD_OID`, and the head-repository-matched `PUSH_REMOTE` exactly as Full Mode step 1 specifies. Retain that remote through the run. Targeted mode uses the same immutable-head ancestry gate before it may record a change, move the bookmark, or push the exact bookmark with `--remote PUSH_REMOTE`.
+
 ## 2. Judge, Fix, Reply, Resolve
 
-**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read (callers, invariants, `git blame`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
+**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
 
 **Then act on the verdict:**
 
-- **`fixed` / `fixed-differently`** — read `references/agents/pr-comment-resolver.md` and spawn a single generic subagent seeded with that fixer prompt to implement it. Do not dispatch a standalone agent by type/name. Pass the file/location fields (resolved location or anchor if outdated), the comment text, and your note on what to change and why it's valid. The fixer is a pure executor.
+- **`fixed` / `fixed-differently`** — read `references/agents/pr-comment-resolver.md` and spawn a single generic subagent seeded with that fixer prompt using the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex, `subagent` in Pi). If the harness has no subagent primitive, implement the fix inline. Do not dispatch a standalone agent by type/name. Pass the file/location fields (resolved location or anchor if outdated), the comment text, and your note on what to change and why it's valid. The fixer is a pure executor.
 - **`replied` / `not-addressing` / `declined`** — no subagent. Compose the reply text per the rubric and proceed to reply/resolve.
 - **`needs-human`** — compose `decision_context` and the natural-sounding reply per the rubric, leave the thread open (don't resolve), and present the decision to the user (use the platform's blocking question tool as in Full Mode step 9). The shared reply step below posts the reply once — do not post it here.
 
-Then follow the same validate -> commit -> push -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validate/commit when no code changed.
+Then follow the same validate -> describe -> `jj git push` -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validation and change recording when no code changed.

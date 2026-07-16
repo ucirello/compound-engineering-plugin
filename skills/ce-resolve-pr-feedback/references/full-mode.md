@@ -6,10 +6,14 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current branch:
+Resolve the PR, its head bookmark, immutable head commit, and head repository from GitHub metadata. If no PR number was provided, list local bookmarks on the current stack with `jj bookmark list -r 'heads(::@ & bookmarks())'` and identify the unique feature bookmark relevant to the work. Exclude the repository's default bookmark. A stacked history can contain several feature bookmarks: if zero or multiple bookmarks are relevant, stop and ask for a PR number. Never use argumentless/current-branch `gh` discovery and never pick a bookmark merely because it appears in `::@`.
 ```bash
-gh pr view --json number -q .number
+GIT_DIR="$(jj git root)" gh pr view PR_NUMBER_OR_UNIQUE_BOOKMARK --json number,headRefName,headRefOid,isCrossRepository,url,headRepository
+jj bookmark list --all-remotes 'exact:HEAD_REF_NAME'
+jj git remote list
 ```
+
+Set `PR_NUMBER` from `.number`, `BOOKMARK` from `.headRefName`, and `PR_HEAD_OID` from `.headRefOid`. Require `PR_HEAD_OID` to match `^[0-9a-fA-F]{40}$`; this validated value is the immutable PR head used by the ancestry gate in step 6. Derive the head repository URL from `headRepository.nameWithOwner` (use `gh api` for the explicit PR when that identity is unavailable), normalize SSH and HTTPS forms, and match it against configured URLs from `jj git remote list`. Require exactly one writable configured match and retain its name as `PUSH_REMOTE` for fetching and pushing throughout this run; never replace it with a default or base-repository remote. The exact JJ bookmark query must yield one logical bookmark matching `BOOKMARK` on `PUSH_REMOTE`: a synchronized local `BOOKMARK` plus its tracked `BOOKMARK@PUSH_REMOTE` is one logical match, and a single remote-only match is acceptable because step 6 creates/moves the local bookmark. Stop and ask the user to disambiguate if the repository has zero or multiple remote matches, the bookmark has no match on `PUSH_REMOTE`, there is more than one remote candidate, the bookmark is conflicted, or matching local/remote bookmarks point to divergent changes. Do not guess which bookmark or remote to push.
 
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments):
 
@@ -20,7 +24,7 @@ Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](..
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>"
 SCRIPT_DIR="$SKILL_DIR/scripts"
 if [ ! -f "$SCRIPT_DIR/get-pr-comments" ]; then
-  echo "ce-resolve-pr-feedback bundled scripts not found under $SCRIPT_DIR; use the fallback gh commands below." >&2
+  echo "Bundled scripts not found under $SCRIPT_DIR; use the fallback gh commands below." >&2
   exit 1
 fi
 
@@ -37,8 +41,8 @@ Returns a JSON object with three keys:
 
 If the script fails, fall back to:
 ```bash
-gh pr view PR_NUMBER --json reviews,comments
-gh api repos/{owner}/{repo}/pulls/PR_NUMBER/comments
+GIT_DIR="$(jj git root)" gh pr view PR_NUMBER --json reviews,comments
+GIT_DIR="$(jj git root)" gh api repos/{owner}/{repo}/pulls/PR_NUMBER/comments
 ```
 
 ## 2. Triage: Separate New from Pending
@@ -49,12 +53,12 @@ Before processing, classify each piece of feedback as **new** or **already handl
 
 **PR comments and review bodies**: These have no resolve mechanism, so they reappear on every run. Apply two filters in order:
 
-1. **Actionability**: Skip items that contain no actionable feedback or questions to answer. Examples: review wrapper text ("Here are some automated review suggestions..."), approvals ("this looks great!"), status badges ("Validated"), CI summaries with no follow-up asks. If there's nothing to fix, answer, or decide, it's not actionable -- drop it from the count entirely.
+1. **Actionability**: Skip items that contain no actionable feedback or questions to answer, including review wrapper text, approvals, status-only markers, and CI summaries with no follow-up asks. If there's nothing to fix, answer, or decide, it's not actionable -- drop it from the count entirely.
 2. **Already replied**: For actionable items, check the PR conversation for an existing reply that quotes and addresses the feedback. If a reply already exists, skip. If not, it's new.
 
 The distinction is about content, not who posted what. A deferral from a teammate, a previous skill run, or a manual reply all count. Similarly, actionability is about content -- bot feedback that requests a specific code change is actionable; a bot's boilerplate header wrapping those requests is not.
 
-**Silent drop.** Non-actionable items are dropped without narration. Do not announce, list, or count dropped items in conversation, the task list, or the step 9 summary. Review-bot wrappers from CodeRabbit, Codex, Gemini Code Assist, and Copilot (bodies like "Here are some automated review suggestions...") commonly appear here -- recognize them by their boilerplate content, drop silently. Only CI/status bot summaries (Codecov) are pre-filtered at the script level; everything else relies on this content-aware check so bot format changes cannot silently hide actionable findings.
+**Silent drop.** Non-actionable items are dropped without narration. Do not announce, list, or count dropped items in conversation, the task list, or the step 9 summary. Review wrappers from providers such as CodeRabbit, Codex, Gemini Code Assist, and Copilot commonly appear here; recognize them by boilerplate content, not author identity, and drop only the wrapper. Only structurally non-actionable CI/status summaries such as Codecov are pre-filtered at the script level. Codex can post actionable findings as top-level PR comments with no inline counterpart, so provider-wide filtering would lose feedback.
 
 If there are no new items across all feedback types, skip steps 3-8 and go straight to step 9.
 
@@ -65,7 +69,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -85,7 +89,7 @@ Dispatch fixers **only** for fix-list items. Reply-list and human-list items nev
 
 ### Dispatch
 
-Read [references/agents/pr-comment-resolver.md](agents/pr-comment-resolver.md) and spawn a generic subagent seeded with that fixer prompt for each fix-list item. Do not dispatch a standalone agent by type/name. The fixer is a pure executor: the validity judgment is already done, so it implements and returns — it does not re-judge worthwhileness.
+Read [references/agents/pr-comment-resolver.md](agents/pr-comment-resolver.md) and spawn a generic subagent seeded with that fixer prompt for each fix-list item using the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex, `subagent` in Pi). If the harness has no subagent primitive, run the fixers inline or serially. Do not dispatch a standalone agent by type/name. The fixer is a pure executor: the validity judgment is already done, so it implements and returns — it does not re-judge worthwhileness.
 
 Each fixer receives:
 - The feedback_id (thread ID or comment ID) and feedback type.
@@ -126,31 +130,33 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 2. **Green** -> proceed to step 6.
 
-3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
+3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** record or push the change.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but include a neutral change-description note identifying the pre-existing failure and stating that this PR does not address it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Derive the note's syntax dynamically; do not impose a fixed prefix, type, scope, subject, body structure, wording, template, or example.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Commit and Push
+## 6. Describe and Push the JJ Change
 
-1. Stage only files reported by fixers and commit with a message referencing the PR:
+1. **Prove the fixes are on the validated PR stack before recording anything.** Resolve the validated `PR_HEAD_OID` through `commit_id()` and `exactly()`, then require that exact commit to be in `::@`. If JJ does not know the commit, run `jj git fetch --remote PUSH_REMOTE --branch BOOKMARK` once using the retained remote and retry. If the exact PR head is still absent or is not an ancestor of the current working-copy change, stop without committing, moving a bookmark, or pushing; the fixes were made on the wrong stack. Do not substitute the bookmark's current local target for `PR_HEAD_OID`.
+
+2. Use path filesets so only files reported by fixers are recorded. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the project's active instructions first, then the syntax established by `git log`, and use Go guidance only when compatible. Derive the description syntax dynamically without imposing a prefix, type, scope, subject, body structure, template, example, or decorative marker. Keep the description repository-authored, preserving requested human authorship and factual source citations. Retain the semantic PR reference and any pre-existing-failure note from step 5 in the repository's established syntax.
 
 ```bash
-git add [files from fixer summaries]
-git commit -m "Address PR review feedback (#PR_NUMBER)
-
-- [list changes from fixer summaries]"
+git log -20 --format=full
+jj diff --git FILESETS_FROM_FIXER_SUMMARIES
+jj commit FILESETS_FROM_FIXER_SUMMARIES -m "$COMPOSED_DESCRIPTION"
 ```
 
-2. Push to remote:
+3. After `jj commit`, the recorded change is `@-` and `@` is the new empty working-copy change. Re-run the exact ancestry proof against `@-`; only then move the PR bookmark and push that bookmark. If the proof fails, do not move or push the bookmark:
 ```bash
-git push
+jj bookmark set BOOKMARK -r @-
+jj git push --remote "$PUSH_REMOTE" --bookmark "exact:$BOOKMARK"
 ```
 
 ## 7. Reply and Resolve
 
-After the push succeeds, post replies and resolve where applicable. Post for every handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. The mechanism depends on the feedback type.
+After `jj git push` succeeds, post replies and resolve where applicable. Post for every handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. The mechanism depends on the feedback type.
 
 ### Reply format
 
@@ -165,12 +171,12 @@ For `needs-human` verdicts, post the natural-sounding reply but do NOT resolve t
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>"
 SCRIPT_DIR="$SKILL_DIR/scripts"
 if [ ! -f "$SCRIPT_DIR/get-thread-for-comment" ]; then
-  echo "ce-resolve-pr-feedback bundled scripts not found under $SCRIPT_DIR; use gh api to inspect the review thread." >&2
+  echo "Bundled scripts not found under $SCRIPT_DIR; use gh api to inspect the review thread." >&2
   exit 1
 fi
 
 # Extract numeric comment ID from the comment URL (e.g. discussion_r2589700 → 2589700)
-GH_REPO=OWNER/REPO gh api repos/{owner}/{repo}/pulls/comments/COMMENT_ID --jq .node_id
+GH_REPO=OWNER/REPO GIT_DIR="$(jj git root)" gh api repos/{owner}/{repo}/pulls/comments/COMMENT_ID --jq .node_id
 bash "$SCRIPT_DIR/get-thread-for-comment" PR_NUMBER COMMENT_NODE_ID OWNER/REPO
 ```
 The returned `id` is the authoritative thread ID to use for reply and resolve. If it differs from what `get-pr-comments` returned, use the one from this script.
@@ -180,7 +186,7 @@ The returned `id` is the authoritative thread ID to use for reply and resolve. I
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>"
 SCRIPT_DIR="$SKILL_DIR/scripts"
 if [ ! -f "$SCRIPT_DIR/reply-to-pr-thread" ]; then
-  echo "ce-resolve-pr-feedback bundled scripts not found under $SCRIPT_DIR; post the reply with gh api or gh pr comment as appropriate." >&2
+  echo "Bundled scripts not found under $SCRIPT_DIR; post the reply with gh api or gh pr comment as appropriate." >&2
   exit 1
 fi
 
@@ -193,7 +199,7 @@ Check that the returned comment URL contains the correct `OWNER/REPO` and PR num
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>"
 SCRIPT_DIR="$SKILL_DIR/scripts"
 if [ ! -f "$SCRIPT_DIR/resolve-pr-thread" ]; then
-  echo "ce-resolve-pr-feedback bundled scripts not found under $SCRIPT_DIR; resolve the thread with gh api if supported." >&2
+  echo "Bundled scripts not found under $SCRIPT_DIR; resolve the thread with gh api if supported." >&2
   exit 1
 fi
 
@@ -205,7 +211,7 @@ bash "$SCRIPT_DIR/resolve-pr-thread" THREAD_ID
 These cannot be resolved via GitHub's API. Reply with a top-level PR comment referencing the original:
 
 ```bash
-gh pr comment PR_NUMBER --body "REPLY_TEXT"
+GIT_DIR="$(jj git root)" gh pr comment PR_NUMBER --body "REPLY_TEXT"
 ```
 
 Include enough quoted context in the reply so the reader can follow which comment is being addressed without scrolling.
@@ -218,7 +224,7 @@ Re-fetch feedback to confirm resolution:
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>"
 SCRIPT_DIR="$SKILL_DIR/scripts"
 if [ ! -f "$SCRIPT_DIR/get-pr-comments" ]; then
-  echo "ce-resolve-pr-feedback bundled scripts not found under $SCRIPT_DIR; use the fallback gh commands from Step 1." >&2
+  echo "Bundled scripts not found under $SCRIPT_DIR; use the fallback gh commands from Step 1." >&2
   exit 1
 fi
 
@@ -250,7 +256,7 @@ Replied (count): [what questions were answered]
 Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm cited]
 
-Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were committed]
+Validation: [validation result and any pre-existing failure note; omit when no code changes were recorded]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries a `decision_context` (composed in step 3, or by a fixer's escalation): what the reviewer said, what was investigated, why it needs a decision, concrete options with tradeoffs, and a lean if any.

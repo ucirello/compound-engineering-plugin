@@ -34,9 +34,9 @@ Confidence anchor: {finding_confidence}
 <scope-context>
 The diff above is the full change being reviewed. The finding is about file {finding_file} around line {finding_line}. (If the `<diff>` block contains a file path rather than inline hunks — large-diff path-staging — Read that file first to get the full diff.)
 
-When `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>branch-remote</pr-scope-mode>` is in context, do **not** Read/Grep the workspace copy of {finding_file}. Inspect via `git show <pr-head-ref>:{finding_file}` or `git show <branch-head-ref>:{finding_file}` when a remote head ref is set; otherwise use diff hunks only.
+When `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>` is in context, do **not** Read/Grep the workspace copy of {finding_file}. Inspect via `jj file show -r <pr-head-ref> {finding_file}` or `jj file show -r <bookmark-head-ref> {finding_file}` when a remote head ref is set; otherwise use diff hunks only.
 
-When scope is local-aligned (default), use read tools (Read, Grep, Glob, git blame) to inspect the cited code and its callers, guards, middleware, or framework defaults that might handle the concern elsewhere.
+When scope is local-aligned (default), use read tools (Read, Grep, Glob, `jj file annotate`) to inspect the cited code and its callers, guards, middleware, or framework defaults that might handle the concern elsewhere.
 </scope-context>
 
 Your task is to answer three questions:
@@ -46,7 +46,7 @@ Your task is to answer three questions:
    - The persona misread types or signatures
    - The persona flagged a pattern that is intentional in this codebase (check comments, parallel handlers, project conventions)
 
-2. **Is the issue introduced by THIS diff?** Use git blame or diff inspection. If the cited line predates this PR's commits and the diff does not interact with it (does not call into it, does not change its callers in a way that newly exposes the issue), the finding is pre-existing — not validated for externalization regardless of whether it is a real issue.
+2. **Is the issue introduced by THIS diff?** Use `jj file annotate` or diff inspection. If the cited line predates this PR's changes and the diff does not interact with it (does not call into it, does not change its callers in a way that newly exposes the issue), the finding is pre-existing — not validated for externalization regardless of whether it is a real issue.
 
 3. **Is the issue not handled elsewhere?** Look for guards in callers, middleware in the request chain, framework defaults, type system constraints, or parallel handlers that already address the concern. If the issue is functionally prevented by surrounding infrastructure, the finding is invalid.
 

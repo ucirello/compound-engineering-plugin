@@ -49,6 +49,8 @@ Call XcodeBuildMCP's `discover_projs` tool to find available projects, then `lis
 
 If an argument was provided, use that scheme name. If "current", use the default/last-used scheme.
 
+Resolve `WORKSPACE_ROOT` with `jj workspace root` and store generated screenshots and exported logs under `$WORKSPACE_ROOT/.tmp/xcode-test/`. Only when no JJ workspace root is available, use the current directory's `.tmp/xcode-test/` as the local fallback. Before creating or writing the directory, inspect the repository's root ignore rules; if `.tmp/` is not already ignored, add `.tmp/` to the root `.gitignore` while preserving existing entries. Retain the resulting absolute path as `<xcode-test-dir>` for every later tool call.
+
 ### 2. Boot Simulator
 
 Call `list_simulators` to find available simulators. Boot the preferred simulator (iPhone 15 Pro recommended) using `boot_simulator` with the simulator's UUID.
@@ -78,7 +80,7 @@ Call `build_ios_sim_app` with the project path and scheme name.
 For each key screen in the app:
 
 **Take screenshot:**
-Call `take_screenshot` with the simulator UUID and a descriptive filename (e.g., `screen-home.png`).
+Call `take_screenshot` with the simulator UUID and a descriptive filename under `<xcode-test-dir>`.
 
 **Review screenshot for:**
 - UI elements rendered correctly
@@ -203,6 +205,6 @@ After testing:
 /ce-test-xcode current
 ```
 
-## Integration with ce-code-review
+## Integration with `ce-code-review`
 
-When reviewing PRs that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.
+When `ce-code-review` reviews a JJ change stack or PR that touches iOS code, it can dispatch a worker to invoke this skill, build on the simulator, test key screens, and check for crashes. Resolve `ce-code-review` through the host's exact available skill name rather than synthesizing an invocation name.

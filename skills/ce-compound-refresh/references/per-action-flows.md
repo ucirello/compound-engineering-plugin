@@ -36,7 +36,7 @@ The orchestrator handles consolidation directly (no subagent needed — the docs
 2. **Extract unique content** from the subsumed doc(s) — anything the canonical doc does not already cover. This might be specific edge cases, additional prevention rules, or alternative debugging approaches.
 3. **Merge unique content** into the canonical doc in a natural location. Do not just append — integrate it where it logically belongs. If the unique content is small (a bullet point, a sentence), inline it. If it is a substantial sub-topic, add it as a clearly labeled section.
 4. **Update cross-references** — if any other docs reference the subsumed doc, update those references to point to the canonical doc.
-5. **Delete the subsumed doc.** Do not archive it, do not add redirect metadata — just delete the file. Git history preserves it.
+5. **Delete the subsumed doc.** Do not archive it, do not add redirect metadata — just delete the file. JJ history preserves it.
 
 If a doc cluster has 3+ overlapping docs, process pairwise: consolidate the two most overlapping docs first, then evaluate whether the merged result should be consolidated with the next doc.
 
@@ -64,24 +64,20 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
    - The target path and category (same category as the old learning unless the category itself changed)
    - The relevant contents of the three support files listed above
 2. The subagent writes the new learning using the support files as the source of truth: `references/schema.yaml` for frontmatter fields and enum values, `references/yaml-schema.md` for category mapping and YAML-safety rules for array items, and `assets/resolution-template.md` for section order. It should use dedicated file search and read tools if it needs additional context beyond what was passed.
-3. **Validate parser-safety of the new learning's frontmatter** to catch silent-corruption issues the prose rules miss: malformed `---` delimiter lines, unquoted ` #` in scalar values (silent comment truncation), and unquoted `: ` in scalar values (silent mapping confusion). The bundled validator ships **inside the skill bundle**; on Claude Code `${CLAUDE_SKILL_DIR}` resolves to the skill directory, but the runtime Bash tool's CWD is the user's project, so a project-relative path (without the `${CLAUDE_SKILL_DIR}` prefix) would miss. Run it through an existence guard so platforms that cannot locate the script (e.g. native Codex/Gemini installs, where `${CLAUDE_SKILL_DIR}` is unset) fall back to a manual check instead of silently skipping the protection:
+3. **Validate parser-safety of the new learning's frontmatter** to catch silent-corruption issues the prose rules miss: malformed `---` delimiter lines, unquoted ` #` in scalar values (silent comment truncation), and unquoted `: ` in scalar values (silent mapping confusion). The bundled validator ships **inside the skill bundle**; resolve it from this skill's directory because the runtime shell's working directory is the user's project:
 
    ```bash
-   if [ -n "${CLAUDE_SKILL_DIR}" ] && [ -f "${CLAUDE_SKILL_DIR}/scripts/validate-frontmatter.py" ]; then
-     python3 "${CLAUDE_SKILL_DIR}/scripts/validate-frontmatter.py" <new-learning-path>
-   else
-     echo "Bundled validate-frontmatter.py not resolvable on this platform; applying the parser-safety checklist manually."
-   fi
+   SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+   python3 "$SKILL_DIR/scripts/validate-frontmatter.py" <new-learning-path>
    ```
 
-   - **If the script ran:** exit 0 means parser-safe; exit 1 means stderr names the offending field(s) — quote the value(s), re-write the doc, and re-run until exit 0. Do not declare success while validation fails.
-   - **If the script did not run** (else branch): apply the validator's checks by hand, matching its exact scope — checking more broadly risks edits the validator would not require. Fix any violation by quoting the whole value before continuing:
+   Exit 0 means parser-safe; exit 1 means stderr names the offending field(s) — quote the value(s), re-write the doc, and re-run until exit 0. Do not declare success while validation fails. If the script cannot be resolved, apply the validator's checks by hand, matching its exact scope — checking more broadly risks edits the validator would not require. Fix any violation by quoting the whole value before continuing:
      1. The opening and closing frontmatter delimiters are each a line whose content is `---` (trailing whitespace is fine; `----` or `---extra` is not a valid delimiter).
      2. For each **top-level** mapping entry (`key: value`, no leading indentation) whose value is **not already quoted or structured** (does not start with `"`, `'`, `[`, `{`, `|`, or `>`): the value must contain no unquoted ` #` (space-then-hash — YAML treats it as a comment and silently truncates) and no unquoted `: ` (colon-then-space — strict YAML may read it as a nested mapping). Quote the whole value if either appears.
-     Nested values, array items, and already-quoted values are out of scope here (array-item quoting is handled by the schema/YAML-safety step above). Then note in the completion output that the bundled script validator was unavailable on this platform and the checks were applied manually.
+   Nested values, array items, and already-quoted values are out of scope here (array-item quoting is handled by the schema/YAML-safety step above). Then note in the completion output that the bundled script validator was unavailable and the checks were applied manually.
 
    The validator does not enforce schema rules and does not flag YAML reserved-indicator characters (those produce loud parser errors downstream rather than silent corruption — out of scope). Uses Python 3 stdlib only (no PyYAML or other deps).
-4. **Run the mechanical claims check on the successor doc.** The bundled `scripts/validate-doc-claims.py` flags cited repo paths missing from the tree, commit SHAs that do not resolve or are unreachable, relative doc links that do not resolve, and dangling drafting scaffold ("Learning 3", unresolved `{{...}}` tokens):
+4. **Run the mechanical claims check on the successor doc.** The bundled `scripts/validate-doc-claims.py` flags cited repo paths missing from the working copy, commit IDs that do not resolve or are unreachable, relative doc links that do not resolve, and dangling drafting scaffold ("Learning 3", unresolved `{{...}}` tokens):
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
@@ -89,7 +85,7 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
    ```
 
    Exit 1 flags are **adjudication input, not failures** — a successor doc describing removed code legitimately cites paths that no longer exist. Resolve each flag by fixing the citation, annotating it as historical, or confirming it intentional; always fix scaffold flags. If the script is not resolvable on this platform, scan the body for those same patterns manually and say so in the report.
-5. After the subagent completes, the orchestrator deletes the old learning file. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional — the git history and commit message provide the same information.
+5. After the subagent completes, the orchestrator deletes the old learning file. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional — JJ history and the commit message provide the same information.
 
 **When evidence is insufficient:**
 
@@ -102,7 +98,7 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
 
 Delete only when a learning is clearly obsolete, redundant (with no unique content to merge), or its problem domain is gone. Do not delete a document just because it is old — age alone is not a signal.
 
-Before unlinking the file, run a final inbound-link check across the repo's markdown content to catch any references missed during Phase 1 investigation. Prefer the platform's native content-search tool (e.g., Grep in Claude Code) for efficiency; use ranged or context-line reads around matches rather than loading whole files.
+Before unlinking the file, run a final inbound-link check across the repo's markdown content to catch any references missed during Phase 1 investigation. Prefer the platform's native content-search tool for efficiency; use ranged or context-line reads around matches rather than loading whole files.
 
 Each match is a citation that will dangle after delete. Cleanup is mechanical — Phase 2 already classified the citations and confirmed Delete was right. Don't re-litigate.
 

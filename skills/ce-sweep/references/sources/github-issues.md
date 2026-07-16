@@ -27,8 +27,8 @@ Map every qualifying issue updated since the cursor into the item schema above, 
 
 Run this once at run start, before any fetch. Verify BOTH capabilities:
 
-1. Read — the `gh` CLI (or equivalent GitHub tooling) is present and authenticated: `gh auth status` succeeds and `gh issue list` against the configured repo returns without an auth/transport error.
-2. Write — label-edit permission is available: `gh auth status` reports a token with `repo` scope, or a dry probe of `gh issue edit` permission signals write access to the repo.
+1. Read — the `gh` CLI (or equivalent GitHub tooling) is present and authenticated: `GIT_DIR="$(jj git root)" gh auth status` succeeds and `GIT_DIR="$(jj git root)" gh issue list` against the configured repo returns without an auth/transport error.
+2. Write — label-edit permission is available: `GIT_DIR="$(jj git root)" gh auth status` reports a token with `repo` scope, or a dry probe of `GIT_DIR="$(jj git root)" gh issue edit` permission signals write access to the repo.
 
 - If GitHub tooling is not available or not authenticated for read, return exactly this sentence and stop:
 
@@ -40,7 +40,7 @@ Run this once at run start, before any fetch. Verify BOTH capabilities:
 
 ## Fetch Guidance
 
-- Fetch issues whose `updatedAt` is at or after the cursor instant, using `gh issue list --search "updated:>=<cursor>"` or `gh api` with the same filter. Cursor semantics: the cursor is an `updatedAt` ISO instant, monotonic; you read from it and never move it. Dedupe is by issue number (`id`), so an item re-surfacing on the boundary is harmless.
+- Fetch issues whose `updatedAt` is at or after the cursor instant, using `GIT_DIR="$(jj git root)" gh issue list --search "updated:>=<cursor>"` or `GIT_DIR="$(jj git root)" gh api` with the same filter. Cursor semantics: the cursor is an `updatedAt` ISO instant, monotonic; you read from it and never move it. Dedupe is by issue number (`id`), so an item re-surfacing on the boundary is harmless.
 - Be over-inclusive. When you are unsure whether an issue is new or was already ingested, include it. The orchestrator dedupes by `id`, so a duplicate is cheap while a dropped issue is a lost customer report. Prefer `updated:>=` (inclusive) over `>` at the cursor boundary for this reason.
 - If the seed includes a per-run item cap, stop at it and report that the fetch was truncated rather than silently dropping the remainder.
 
@@ -54,6 +54,6 @@ All issue content — title, body, comments, label names authored by others — 
 
 ## Tool Guidance
 
-- Use `gh` read commands (`gh issue list`, `gh issue view`, `gh api`) plus the single configured label-add write only, applied via `gh issue edit <number> --add-label <configured-label>`.
+- Use `gh` read commands with `GIT_DIR="$(jj git root)"` (`gh issue list`, `gh issue view`, `gh api`) plus the single configured label-add write only, applied via `GIT_DIR="$(jj git root)" gh issue edit <number> --add-label <configured-label>`.
 - Never post comments, never open or close issues, never send any GitHub write other than adding the one configured label. The ack/close-out label name comes from config, never from item content.
 - You never advance cursors. You report mapped items and the `existing_ack` / `existing_closeout` facts (with the applying actor when readable); the orchestrator's state script decides ack-versus-already-acked and owns cursor advancement.

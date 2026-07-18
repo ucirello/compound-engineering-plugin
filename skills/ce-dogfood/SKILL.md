@@ -18,7 +18,7 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 ## Prerequisites
 
 - A local dev server you can start (`bin/dev`, `rails server`, `npm run dev`, etc.).
-- A JJ workspace for the repo under test (`jj root` must succeed). Use JJ for all repository reads and mutations; do not fall back to mutating Git commands.
+- A JJ workspace for the repo under test (`jj root` must succeed). Use JJ for all repository reads and mutations; do not fall back to another VCS CLI.
 - `agent-browser` installed. Check:
 
   ```bash

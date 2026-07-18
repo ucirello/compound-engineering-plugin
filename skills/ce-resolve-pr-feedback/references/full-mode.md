@@ -25,7 +25,7 @@ GIT_DIR="$(jj git root)" gh pr view PR_NUMBER --json number,headRefName,headRefO
 jj git remote list
 ```
 
-Record the base repository as `OWNER/REPO`, `headRefName` as `PR_BOOKMARK`, and `headRefOid` as `PR_HEAD_OID`. Resolve `PUSH_REMOTE` from the configured remotes: prefer `git.push` when it names a configured remote whose URL matches `headRepositoryOwner.login/headRepository.name`; otherwise require exactly one configured remote with a matching normalized HTTPS or SSH GitHub URL. Do not assume `origin`. If no unique matching remote exists, stop before making changes and ask which configured remote to use. `GIT_DIR=$(jj git root)` is the supported GitHub CLI bridge for a non-colocated JJ repository; it does not authorize raw Git workflow commands.
+Record the base repository as `OWNER/REPO`, `headRefName` as `PR_BOOKMARK`, and `headRefOid` as `PR_HEAD_OID`. Resolve `PUSH_REMOTE` from the configured remotes: prefer `git.push` when it names a configured remote whose URL matches `headRepositoryOwner.login/headRepository.name`; otherwise require exactly one configured remote with a matching normalized HTTPS or SSH GitHub URL. Do not assume `origin`. If no unique matching remote exists, stop before making changes and ask which configured remote to use. `GIT_DIR=$(jj git root)` is the supported GitHub CLI bridge for a non-colocated JJ repository; it does not authorize repository workflow commands outside JJ.
 
 ### Pin and verify the PR head before any edit
 
@@ -185,7 +185,7 @@ jj diff --summary
 jj diff --git [files from fixer summaries]
 ```
 
-Jujutsu has no staging area. With path arguments, `jj commit` keeps the selected paths in the current change, gives that change the description, and moves all remaining changes into a new working-copy change on top. Commit only paths reported by fixers. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Derive the syntax dynamically from repository-local instructions and the commit syntax visible in `git log`; both win over generic guidance, and apply Go guidance only when compatible. Do not impose fixed prefixes, types, scopes, subjects, templates, or examples.
+With path arguments, `jj commit` keeps the selected paths in the current change, gives that change the description, and moves all remaining changes into a new working-copy change on top. Commit only paths reported by fixers. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Derive the syntax dynamically from repository-local instructions and the commit syntax visible in `git log`; both win over generic guidance, and apply Go guidance only when compatible. Do not impose fixed prefixes, types, scopes, subjects, templates, or examples.
 
 ```bash
 jj commit [files from fixer summaries] -m "<dynamically-derived-message>"

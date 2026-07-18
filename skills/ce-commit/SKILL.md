@@ -7,7 +7,7 @@ description: Create a JJ commit with a clear, repository-appropriate message. Us
 
 Describe and finish one or more coherent JJ changes from the working-copy commit. Done means each intended change has a validated description, the resulting change and commit IDs are reported, and any remainder in `@` is named explicitly.
 
-Jujutsu has no staging area: the working copy is a commit (`@`), and most `jj` commands snapshot file-system changes into it. `jj commit` describes `@` and creates a new working-copy change on top. With filesets, selected changes remain in the commit being finished and unselected changes move to the new working-copy child.
+The working copy is a commit (`@`), and most `jj` commands snapshot file-system changes into it. `jj commit` describes `@` and creates a new working-copy change on top. With filesets, selected changes remain in the commit being finished and unselected changes move to the new working-copy child.
 
 ## Context
 

@@ -104,7 +104,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
    **Option A: Create a new change in the current workspace**
    ```bash
-   jj git fetch
+   jj git fetch --all-remotes
    jj new 'trunk()'
    ```
    A bookmark is optional until shipping. If one is useful for naming the stack early, create it explicitly with `jj bookmark create <meaningful-name> -r @`, then remember that later `jj commit` calls leave it behind until `jj bookmark move <name> --to @-` or `jj bookmark advance <name> --to @-`.
@@ -283,7 +283,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
    # 2. Select only files related to this logical unit with JJ filesets.
-   # There is no staging area; positional filesets remain in the described
+   # Positional filesets remain in the described
    # change while all other edits move to the new working-copy change.
 
    # 3. Describe the completed logical unit with the composed message.

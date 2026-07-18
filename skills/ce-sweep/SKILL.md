@@ -51,7 +51,7 @@ Parse a `mode:headless` token from anywhere in the arguments, strip it, and trea
 - `sweep_state_path` — path to the state file, established at setup; fallback `docs/feedback-sweep/state.yml`. A path under `.tmp/rocketclaw/` means local-only mode (the state file is never included; only the plan is); other repo-internal paths use versioned mode.
 - `sweep_lease_ttl_minutes` — single-writer lease staleness threshold; default `60`. Passed to `lease-acquire` in 2a.
 - `sweep_shared_bookmark` — exact JJ bookmark name used to publish versioned state from multiple workspaces; absent means local-only mode. Never infer an "active" bookmark — JJ has none.
-- `sweep_shared_remote` — exact JJ remote backing `sweep_shared_bookmark`; default `origin`.
+- `sweep_shared_remote` — exact configured JJ remote backing `sweep_shared_bookmark`; required when the shared bookmark is set.
 - `sweep_ack_cap` — integer circuit-breaker threshold; default `25`.
 
 ### Phase 1: First-Run Setup
@@ -77,7 +77,7 @@ Run the phases in order.
 
 #### 2a. Establish shared base, then acquire lease + validate
 
-**JJ artifact selection.** For each repo-internal artifact, normalize it under `<repo-root>` and construct an exact workspace-root fileset `root-file:"<JSON-escaped-relative-path>"`. Reject a path that escapes the workspace. Use those filesets with `jj diff --summary`, `jj file list`, `jj file track`, and `jj commit`; there is no add/index step. `jj status` accepts no filesets: run it without path arguments for repository-wide working-copy and conflict state, then use `jj diff --summary <filesets>` to inspect selected changes and `jj file list <filesets>` to confirm the selected paths. Run `jj file track --include-ignored <state-fileset>` for versioned state so an existing `.gitignore` rule cannot silently omit it. Never use `all()`, `.`, or a complement fileset: unrelated working-copy changes must remain in the fresh `@` that `jj commit` creates.
+**JJ artifact selection.** For each repo-internal artifact, normalize it under `<repo-root>` and construct an exact workspace-root fileset `root-file:"<JSON-escaped-relative-path>"`. Reject a path that escapes the workspace. Use those filesets with `jj diff --summary`, `jj file list`, `jj file track`, and `jj commit`. `jj status` accepts no filesets: run it without path arguments for repository-wide working-copy and conflict state, then use `jj diff --summary <filesets>` to inspect selected changes and `jj file list <filesets>` to confirm the selected paths. Run `jj file track --include-ignored <state-fileset>` for versioned state so an existing `.gitignore` rule cannot silently omit it. Never use `all()`, `.`, or a complement fileset: unrelated working-copy changes must remain in the fresh `@` that `jj commit` creates.
 
 In shared-bookmark mode, complete step 1 below first so the state file comes from a clean child of the exact fetched remote bookmark. Only then run `lease-acquire --state <state> --writer <writer> --ttl-minutes <sweep_lease_ttl_minutes>` once. Do not acquire on the old working-copy parent and acquire again after `jj new`.
 

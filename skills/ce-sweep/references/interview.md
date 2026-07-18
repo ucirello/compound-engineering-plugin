@@ -110,9 +110,9 @@ Let the user override the path if they want a different repository-local locatio
 **Ask:** "Is this a multi-agent setup where dedicated JJ workspaces publish sweep state through one shared bookmark? Answer yes only if more than one machine or agent uses the same bookmark and JJ remote. Default is no — one workspace records changes locally."
 
 - **No** (default) -> omit `sweep_shared_bookmark` and `sweep_shared_remote`. The state-engine lease serializes overlapping sweeps within one workspace.
-- **Yes** -> ask for an existing dedicated bookmark (for example `feedback-sweep`) and its Git remote (default `origin`). Require bookmark shape `^[A-Za-z0-9][A-Za-z0-9._/-]*$` and remote shape `^[A-Za-z0-9][A-Za-z0-9._-]*$`; reject `@`, quotes, whitespace, and revset operators. Explain that the lease is **push-gated**: before any source-side write, the sweep publishes and fetch-confirms its lease change on that exact tracked bookmark. The workspace must be dedicated and clean because the sweep creates `@` from the remote bookmark before acquiring the lease. Run `jj bookmark track <bookmark>@<remote>` once so `jj git fetch --remote <remote> --tracked` propagates remote updates.
+- **Yes** -> list remotes with `jj git remote list`, then ask for an existing dedicated bookmark (for example `feedback-sweep`) and the exact configured JJ remote that contains it. Do not supply a conventional default. Require bookmark shape `^[A-Za-z0-9][A-Za-z0-9._/-]*$` and remote shape `^[A-Za-z0-9][A-Za-z0-9._-]*$`; reject `@`, quotes, whitespace, and revset operators. Explain that the lease is **push-gated**: before any source-side write, the sweep publishes and fetch-confirms its lease change on that exact tracked bookmark. The workspace must be dedicated and clean because the sweep creates `@` from the remote bookmark before acquiring the lease. Run `jj bookmark track <bookmark>@<remote>` once so `jj git fetch --remote <remote> --tracked` propagates remote updates.
 
-**Capture:** `sweep_shared_bookmark` (string, omitted for no) and `sweep_shared_remote` (string, default `origin`, omitted for no).
+**Capture:** `sweep_shared_bookmark` and `sweep_shared_remote` (strings, both omitted for no; the remote is required for yes).
 
 ---
 

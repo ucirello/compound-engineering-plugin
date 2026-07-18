@@ -218,7 +218,7 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL and immutable `trunk()` target once at compose time. From `jj git remote list`, select a nonempty GitHub remote URL, preferring `upstream`, then `origin`, then another GitHub remote. Resolve the full commit ID from the JJ `trunk()` revset:
+Resolve the repo's GitHub URL and immutable `trunk()` target once at compose time. Match the provider repository URL to exactly one normalized URL from `jj git remote list`, then resolve the full commit ID from the JJ `trunk()` revset:
 
 ```bash
 jj git remote list

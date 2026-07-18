@@ -219,7 +219,7 @@ the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
 Resolve the repo's GitHub URL and immutable `trunk()` target once at compose
-time. List remotes, prefer `upstream` over `origin`, then resolve the JJ revset:
+time. Match the provider repository URL to exactly one normalized configured remote, then resolve the JJ revset:
 
 ```bash
 jj git remote list

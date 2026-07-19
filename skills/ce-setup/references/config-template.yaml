@@ -1,5 +1,5 @@
-# Compound Engineering -- local config
-# Copy to .compound-engineering/config.local.yaml in your project root.
+# RocketClaw -- local config
+# Copy to .rocketclaw/config.local.yaml in your workspace root.
 # All settings are optional. Invalid values fall through to defaults.
 
 # --- Work delegation (Codex) ---
@@ -15,7 +15,7 @@
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
 # argument `setup` or `reconfigure` to edit interactively.
 
-# pulse_product_name: "Spiral"                          # used in report titles (no default)
+# pulse_product_name: "Example Product"                 # used in report titles (no default)
 # pulse_lookback_default: 24h                           # 1h | 24h | 7d | 30d (default: 24h)
 # pulse_primary_event: "session_started"                # the event that means "user showed up"
 # pulse_value_event: "task_completed"                   # the event that means "user got value"
@@ -51,8 +51,8 @@
 # the single gate: off disables judgment, the section, the /ce-explain offer,
 # and archival. Archival additionally writes the explainer to docs/explainers/
 # and links it from the PR (full-workflow runs only; override per run with
-# archive:on|off). Note: this file is gitignored and per-checkout -- fresh
-# worktrees don't inherit it.
+# archive:on|off). Note: this file is ignored by JJ and workspace-local -- fresh
+# workspaces don't inherit it.
 
 # pr_teaching_section: false     # true | false (default: true)
 # pr_teaching_archive: true      # true | false (default: false; full-workflow runs only)
@@ -69,7 +69,7 @@
 # plan_skip_scoping_confirm: true   # true | false (default: false)
 
 # --- ce-promote ---
-# Written automatically when you decline the Spiral setup offer in /ce-promote.
+# Written automatically when you decline the setup offer in /ce-promote.
 # Suppresses that one-time setup nudge in this project. Remove the key to re-enable.
 
 # ce_promote_spiral_optout: true   # true | (absent) (default: absent -- offer once)
@@ -85,7 +85,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or .tmp/feedback-sweep/state.yml workspace fallback (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
-# sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
+# sweep_shared_bookmark: false                      # true: push-gated lease for shared-docs-bookmark topology

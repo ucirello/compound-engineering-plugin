@@ -24,9 +24,12 @@ def try_claude(lines):
         try:
             obj = json.loads(line.strip())
             if obj.get("type") == "user" and "gitBranch" in obj:
+                provider_branch = obj["gitBranch"]
                 return {
                     "platform": "claude",
-                    "branch": obj["gitBranch"],
+                    "branch": provider_branch,
+                    "provider_gitBranch": provider_branch,
+                    "provider_fields": {"gitBranch": provider_branch},
                     "ts": obj.get("timestamp", ""),
                     "session": obj.get("sessionId", ""),
                 }
@@ -87,8 +90,47 @@ def try_cursor(lines):
     return None
 
 
+def extract_session_jj_context(lines):
+    context = {}
+    aliases = {
+        "workspace_root": ("workspace_root", "workspaceRoot", "jjWorkspaceRoot"),
+        "workspace_name": ("workspace_name", "workspaceName", "jjWorkspaceName"),
+        "change_id": ("change_id", "changeId", "jjChangeId"),
+        "bookmarks": ("bookmarks", "jjBookmarks"),
+    }
+    for line in lines:
+        try:
+            obj = json.loads(line.strip())
+        except (json.JSONDecodeError, ValueError):
+            continue
+        sources = [obj]
+        payload = obj.get("payload")
+        if isinstance(payload, dict):
+            sources.append(payload)
+        for source in sources:
+            for canonical, names in aliases.items():
+                if canonical in context:
+                    continue
+                for name in names:
+                    value = source.get(name)
+                    if isinstance(value, str) and value:
+                        context[canonical] = value
+                        break
+                    if canonical == "bookmarks" and isinstance(value, list):
+                        context[canonical] = [
+                            item for item in value if isinstance(item, str) and item
+                        ]
+                        break
+    return context
+
+
 def extract_from_lines(lines):
-    return try_claude(lines) or try_codex(lines) or try_pi(lines) or try_cursor(lines)
+    result = try_claude(lines) or try_codex(lines) or try_pi(lines) or try_cursor(lines)
+    if result:
+        jj_context = extract_session_jj_context(lines)
+        if jj_context:
+            result["session_jj_context"] = jj_context
+    return result
 
 
 TAIL_BYTES = 16384  # Read last 16KB to find final timestamp past trailing metadata
@@ -373,10 +415,14 @@ def cwd_matches_filter(session_cwd, cwd_filter):
     return cwd_filter in session_cwd
 
 
-# Parse arguments: files and optional --cwd-filter / --keyword
+# Parse arguments: files and optional filters/JJ workspace context.
 files = []
 cwd_filter = None
 keywords = None
+jj_workspace_root = None
+jj_workspace_name = None
+jj_change_id = None
+jj_bookmarks = None
 args = sys.argv[1:]
 i = 0
 while i < len(args):
@@ -386,11 +432,48 @@ while i < len(args):
     elif args[i] == "--keyword" and i + 1 < len(args):
         keywords = [k for k in args[i + 1].split(",") if k]
         i += 2
+    elif args[i] == "--jj-workspace-root" and i + 1 < len(args):
+        jj_workspace_root = args[i + 1]
+        i += 2
+    elif args[i] == "--jj-workspace-name" and i + 1 < len(args):
+        jj_workspace_name = args[i + 1]
+        i += 2
+    elif args[i] == "--jj-change-id" and i + 1 < len(args):
+        jj_change_id = args[i + 1]
+        i += 2
+    elif args[i] == "--jj-bookmarks" and i + 1 < len(args):
+        jj_bookmarks = [name for name in args[i + 1].split(",") if name]
+        i += 2
     elif not args[i].startswith("-"):
         files.append(args[i])
         i += 1
     else:
         i += 1
+
+
+def add_jj_context(result, filepath=None):
+    context = {}
+    if jj_workspace_root:
+        context["workspace_root"] = jj_workspace_root
+    if jj_workspace_name:
+        context["workspace_name"] = jj_workspace_name
+    if jj_change_id:
+        context["change_id"] = jj_change_id
+    if jj_bookmarks:
+        context["bookmarks"] = jj_bookmarks
+    if context:
+        result["query_jj_context"] = context
+
+    session_cwd = result.get("cwd")
+    workspace_match = {}
+    if jj_workspace_root and session_cwd:
+        workspace_match["root"] = cwd_matches_filter(session_cwd, jj_workspace_root)
+    if jj_workspace_name:
+        evidence = session_cwd or filepath or ""
+        workspace_match["name"] = jj_workspace_name in evidence
+    if workspace_match:
+        result["jj_workspace_match"] = workspace_match
+    return result
 
 if files:
     # Batch mode: process all files
@@ -404,6 +487,7 @@ if files:
         result, error = process_file(filepath)
         processed += 1
         if result:
+            add_jj_context(result, filepath)
             # Apply CWD filter first: cheap metadata-only check. Skip Codex
             # sessions from other repos before paying the full-file keyword
             # scan cost — Codex discovery returns sessions across all repos,
@@ -452,5 +536,5 @@ else:
         # Genuine single-file stdin mode (backward compatible)
         result = extract_from_lines(lines)
         if result:
-            print(json.dumps(result))
+            print(json.dumps(add_jj_context(result)))
         print(json.dumps({"_meta": True, "files_processed": 1, "parse_errors": 0 if result else 1}))

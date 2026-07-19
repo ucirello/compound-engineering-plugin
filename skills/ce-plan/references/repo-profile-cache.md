@@ -1,6 +1,6 @@
 # Shared Repo-Grounding Profile Cache
 
-Read this when a repo-grounding skill needs the question-agnostic **project profile** (stack, deps, conventions, structure). The profile is derived once and reused within a session and across sessions and skills at an unchanged commit — only the *question-specific* grounding for the current run is ever re-derived.
+Read this when a repo-grounding skill needs the question-agnostic **project profile** (stack, deps, conventions, structure). The profile is derived once and reused within a session and across sessions and skills at an unchanged JJ commit — only the *question-specific* grounding for the current run is ever re-derived.
 
 This file is **byte-duplicated** into every consuming skill (the plugin has no cross-skill import mechanism). All copies must stay identical; `tests/repo-profile-cache-parity.test.ts` enforces it. The deterministic cache I/O lives in the co-located `scripts/repo-profile-cache.py`; the derivation-on-miss is done by the co-located `references/agents/repo-profiler.md` persona.
 
@@ -20,18 +20,19 @@ Never read from the cache — recompute every run:
 
 - The `docs/solutions/` enumeration (a new learning, even uncommitted, must be visible — re-globbing it is ~free and the match reads files fresh anyway).
 - Subdirectory-scoped instruction files (area-scoped `CLAUDE.md`/`AGENTS.md`).
-- All question-specific grounding: a candidate's call-sites/footprint, prior-decision matches, feature patterns, git history of touched files, tracker/PR activity, external research.
+- All question-specific grounding: a candidate's call-sites/footprint, prior-decision matches, feature patterns, JJ history of touched files, tracker/PR activity, external research.
 
 ## Cache location & key
 
 ```
-/tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json
+<workspace-root>/.tmp/rocketclaw/repo-profile/<root-commit-id>/<commit-id>.json
 ```
 
-- `<root-sha>` = lexicographically-first `git rev-list --max-parents=0 HEAD` — the repo identity (stable, shared across worktrees and clones).
-- `<head-sha>` = `git rev-parse HEAD` — the working state.
+- `<workspace-root>` = `jj workspace root`; when JJ is unavailable, storage falls back to local `.tmp` and the helper returns `NO-CACHE` because no JJ key can be proven.
+- `<root-commit-id>` = the lexicographically first real root commit ID in `::@` (excluding JJ's synthetic root).
+- `<commit-id>` = the current working-copy commit ID rendered by `jj log -r @`.
 
-Two checkouts at the same commit share the same entry. Lookup is git metadata only; on a hit, only this one file is read.
+Each workspace keeps its own entry. Lookup uses JJ metadata only; on a hit, only this one file is read.
 
 ## Protocol — how a skill uses it
 
@@ -50,14 +51,14 @@ python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
   SKILL_DIR="<absolute path of this skill's directory>"
   python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <profile-json-file>
   ```
-- `NO-CACHE` → no git repo or no writable cache. Derive the profile fresh for this run and **skip** `put` (nothing to persist).
+- `NO-CACHE` → no usable JJ state or no writable workspace-local cache. Derive the profile fresh for this run and **skip** `put` (nothing to persist).
 
 In all three cases, after the agnostic profile is in hand, run **this skill's question-specific grounding fresh** on top of it.
 
 ## Freshness (delta-aware)
 
-A cached entry is a `HIT` only when, at the current `HEAD`, its `profile_schema_version` matches and **no profile-input path** is dirty or newly-added. Freshness is checked with `git status --porcelain --untracked-files=all`, so untracked (`??`) new inputs invalidate too. The profile-input set is a conservative **superset** of every file the schema derives from — dependency manifests + lockfiles (any depth), license, root instruction/doc files, `CONCEPTS.md`/`STRATEGY.md`, topology sources (`Dockerfile`, `.github/workflows/`, `.cursor/rules`). A dirty source file, `docs/plans/*`, or other non-input path does **not** invalidate. Completeness of this set is the cardinal-rule safety requirement: over-invalidating costs a re-derive; under-invalidating would serve a stale profile.
+A cached entry is a `HIT` only when its `profile_schema_version` and root/current JJ commit IDs match and **no profile-input path** differs in the working-copy commit. Freshness uses `jj diff --name-only -r @ <profile-input-fileset>`; JJ snapshots non-ignored working-copy files into `@`, so newly added inputs are included. The fileset is generated from the same conservative **superset** used by the classifier — dependency manifests + lockfiles (any depth), license, root instruction/doc files, `CONCEPTS.md`/`STRATEGY.md`, topology sources (`Dockerfile`, `.github/workflows/`, `.cursor/rules`). A changed source file, `docs/plans/*`, or other non-input path does **not** invalidate. Root/current IDs are resolved again after freshness checks and before atomic replacement, so a snapshot or rewritten ancestor fails closed instead of publishing or serving under stale keys. Completeness of the input set is the cardinal-rule safety requirement: over-invalidating costs a re-derive; under-invalidating would serve a stale profile.
 
 ## Degradation
 
-The cache is an optimization, never a correctness dependency. Outside a git repo, with no writable `/tmp`, or on an unreadable/malformed entry, the helper returns `NO-CACHE`/`MISS` (exit 0) and the skill derives fresh. It never blocks and never serves a profile it cannot prove fresh. And if the helper *invocation itself* fails — a non-zero exit, empty output, or an unresolved `SKILL_DIR` so the script isn't found — treat it exactly like `NO-CACHE`: derive the profile fresh this run and proceed. Never stall waiting on the cache.
+The cache is an optimization, never a correctness dependency. Outside a JJ workspace, with no writable `<workspace-root>/.tmp`, or on an unreadable/malformed entry, the helper returns `NO-CACHE`/`MISS` (exit 0) and the skill derives fresh. When JJ is unavailable, it resolves storage relative to the current directory's `.tmp` but does not persist without a trustworthy JJ key. It never blocks and never serves a profile it cannot prove fresh. If the helper invocation itself fails — a non-zero exit, empty output, or an unresolved `SKILL_DIR` so the script isn't found — treat it exactly like `NO-CACHE`: derive the profile fresh this run and proceed. Never stall waiting on the cache.

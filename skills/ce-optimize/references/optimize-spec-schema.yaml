@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for git refs and worktree paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
     example: "improve-issue-clustering"
 
   description:
@@ -272,14 +272,14 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # git worktrees for isolation (default)
+          - worktree  # compatibility backend name; implemented with JJ workspaces (default)
           - codex     # Codex sandboxes for isolation
         default: worktree
       max_concurrent:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for worktree backend. 8+ only valid for Codex backend."
+        description: "Maximum experiments to run in parallel. Capped at 6 for the worktree backend, which uses JJ workspaces. 8+ only valid for Codex backend."
       codex_security:
         type: enum
         values:
@@ -311,7 +311,7 @@ optional_fields:
       shared_files:
         type: array
         default: []
-        description: "Files that must be copied into each experiment worktree (e.g., SQLite databases)"
+        description: "Files that must be copied into each experiment workspace (e.g., SQLite databases)"
         items:
           type: string
       exclusive_resources:
@@ -365,10 +365,10 @@ optional_fields:
         default: true
         description: "Stop when the primary metric reaches the target value (if set)"
 
-  max_runner_up_merges_per_batch:
+  max_runner_up_integrations_per_batch:
     type: integer
     default: 1
-    description: "Maximum number of file-disjoint runner-up experiments to attempt merging per batch after keeping the best experiment"
+    description: "Maximum number of file-disjoint runner-up experiments to integrate per batch after keeping the best experiment"
 
 # ============================================================================
 # VALIDATION RULES

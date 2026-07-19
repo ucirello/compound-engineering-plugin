@@ -19,7 +19,7 @@ Read enough to decide the verdict, no more:
 
 - **Clear nit or clearly-valid finding** (typo, a bug the diff already shows, naming, a missing guard the comment pinpoints) -> the comment plus the line already in the diff is enough. Mark to fix.
 - **Contestable finding, or code that looks deliberate** (the finding asserts a bug where the code reads intentional, touches an invariant, or contradicts a nearby pattern) -> deep-read before accepting: open the referenced file, read the callers, check for the invariant or test that would make the reviewer wrong. **This is where a confidently-wrong reviewer gets caught.** A fresh reviewer -- especially a bot -- usually couldn't see the blast radius or the reason the code is the way it is.
-- **Recover the author's intent before overriding deliberate-looking code.** `git log`/`git blame` the lines, read the PR description and the surrounding code. The intent the author had is the thing an isolated reviewer lacked; weigh it against the finding rather than assuming the reviewer saw more.
+- **Recover the author's intent before overriding deliberate-looking code.** Read relevant `jj log` history, the PR description, and the surrounding code. The intent the author had is the thing an isolated reviewer lacked; weigh it against the finding rather than assuming the reviewer saw more.
 - **Dedup reads by file.** Multiple threads on the same file: read it once, judge them together.
 
 ## Cross-item reasoning (when judging more than one item)
@@ -56,51 +56,13 @@ Do the investigation work before escalating. Don't punt with "this is complex." 
 
 ## Reply text for reply-list and human-list items
 
-Compose these now -- you have the evidence. Quote the specific sentence being addressed, not the whole comment if it's long.
+Compose these now -- you have the evidence. Quote the specific sentence being addressed, not the whole comment if it is long. Do not apply a fixed opening, verdict prefix, or prose template.
 
-For `replied` (a question, discussion, or a correct-but-immaterial point you're not changing):
-```markdown
-> [quote the relevant part of the reviewer's comment]
+- For `replied`, directly answer the question, explain the design decision, or state the concrete reason an immaterial point does not warrant a change.
+- For `not-addressing`, give the evidence showing that the finding does not hold or no longer applies.
+- For `declined`, identify the specific harm the requested change would cause or the project convention it would violate.
+- For `needs-human`, write a natural acknowledgment in the PR author's voice without automation branding. The posted reply briefly identifies the tradeoff and defers the decision; it does not contain the full internal analysis.
 
-[Direct answer to the question, explanation of the design decision, or brief reason no change is warranted]
-```
+The **decision_context** presented to the user, not posted, contains the quoted ask, what was investigated with file and line references, the precise ambiguity requiring a decision, concrete options and tradeoffs, and a recommendation or the information that would change it. Do not impose fixed headings or option labels.
 
-For `not-addressing`:
-```markdown
-> [quote the relevant part of the reviewer's comment]
-
-Not addressing: [reason with evidence, e.g., "null check already exists at line 85"]
-```
-
-For `declined`:
-```markdown
-> [quote the relevant part of the reviewer's comment]
-
-Declined: [specific harm cited, e.g., "this would add a defensive null check the type system already guarantees" or "violates the no-premature-abstraction rule in the project's conventions"]
-```
-
-For `needs-human`, the **reply_text** posted to the thread sounds natural -- it's posted as the user, so avoid AI boilerplate like "Flagging for human review." Write it as the PR author would:
-```markdown
-> [quote the relevant part of the reviewer's comment]
-
-[Natural acknowledgment, e.g., "Good question -- this is a tradeoff between X and Y. Going to think through this before making a call." or "Need to align with the team on this one -- [brief why]."]
-```
-
-The **decision_context** (presented to the user, not posted) is where the depth goes:
-```markdown
-## What the reviewer said
-[Quoted feedback -- the specific ask or concern]
-
-## What I found
-[What you investigated and discovered. Reference specific files, lines, and code.]
-
-## Why this needs your decision
-[The specific ambiguity. Not "this is complex" -- what exactly are the competing concerns?]
-
-## Options
-(a) [First option] -- [tradeoff: what you gain, what you lose or risk]
-(b) [Second option] -- [tradeoff]
-
-## My lean
-[A recommendation and why, or what additional context would tip the decision.]
-```
+Whenever the recommendation includes how a change should be described, apply the complete rule at this site: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.

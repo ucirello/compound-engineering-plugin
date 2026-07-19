@@ -17,12 +17,12 @@ Proof is a collaborative document editor for humans and agents. It supports two 
 
 ## Identity and Attribution
 
-Every write to a Proof doc must be attributed. Two fields carry the agent's identity:
+Every write to a Proof doc must be attributed. Two fields carry the writer's identity:
 
-- **Machine ID (`by` on every op, `X-Agent-Id` header):** `ai:compound-engineering` — stable, lowercase-hyphenated, machine-parseable. Appears in marks, events, and the API response.
-- **Display name (`name` on `POST /presence`):** `Compound Engineering` — human-readable, shown in Proof's presence chips and comment-author badges.
+- **Machine ID (`by` on every op, `X-Agent-Id` header):** use `ai:<provider-slug>` for an agent or `human:<human-slug>` when the operation is performed on behalf of an identified human. Keep slugs stable, lowercase, and hyphenated. These IDs appear in marks, events, and API responses.
+- **Display name (`name` on `POST /presence`):** use the provider's human-readable name for an agent or the person's name for a human. Proof shows it in presence chips and comment-author badges.
 
-Set the display name once per doc session by posting to presence with the `X-Agent-Id` header; Proof binds the name to that agent ID for the session. These values are the defaults for any caller of this skill; a caller may pass a different `identity` pair if a distinct sub-agent should own the doc. Do not use `ai:compound` or other ad-hoc variants — identity stays uniform unless a caller explicitly overrides it.
+Set the display name once per doc session by posting to presence with the `X-Agent-Id` header; Proof binds the name to that ID for the session. Preserve an identity pair supplied by the caller, and never replace a human identity with an agent identity. `ce-*` names are routing identifiers, not attribution values.
 
 ## Publish Mode
 
@@ -98,7 +98,7 @@ Comment, suggestion, and rewrite operations go to `POST https://www.proofeditor.
 **Authentication for protected docs:**
 - Header: `x-share-token: <token>` or `Authorization: Bearer <token>`
 - Token comes from the URL parameter: `?token=xxx` or the `accessToken` from create response
-- Header: `X-Agent-Id: ai:compound-engineering` (required for presence; include on ops for consistent attribution)
+- Header: `X-Agent-Id: <writer-id>` (required for presence; include on ops for consistent attribution)
 
 **Wire-format reminder.** `/api/agent/{slug}/ops` uses a top-level `type` field; `/api/agent/{slug}/edit/v2` uses an `operations` array where each entry has `op`. Do not mix — sending `op` to `/ops` returns 422.
 
@@ -131,22 +131,22 @@ Duplicate-mark incidents usually come from retrying a `comment.add` or `suggesti
 
 **Comment on text:**
 ```json
-{"type": "comment.add", "quote": "text to comment on", "by": "ai:compound-engineering", "text": "Your comment here", "baseToken": "<token>"}
+{"type": "comment.add", "quote": "text to comment on", "by": "<writer-id>", "text": "Your comment here", "baseToken": "<token>"}
 ```
 
 **Reply to a comment:**
 ```json
-{"type": "comment.reply", "markId": "<id>", "by": "ai:compound-engineering", "text": "Reply text", "baseToken": "<token>"}
+{"type": "comment.reply", "markId": "<id>", "by": "<writer-id>", "text": "Reply text", "baseToken": "<token>"}
 ```
 
 **Reply and resolve in one mutation:**
 ```json
-{"type": "comment.reply", "markId": "<id>", "by": "ai:compound-engineering", "text": "Fixed.", "resolve": true, "baseToken": "<token>"}
+{"type": "comment.reply", "markId": "<id>", "by": "<writer-id>", "text": "Fixed.", "resolve": true, "baseToken": "<token>"}
 ```
 
 **Batch existing-thread comment mutations:**
 ```json
-{"by": "ai:compound-engineering", "baseToken": "<token>", "operations": [
+{"by": "<writer-id>", "baseToken": "<token>", "operations": [
   {"type": "comment.reply", "markId": "<id-1>", "text": "Fixed.", "resolve": true},
   {"type": "comment.reply", "markId": "<id-2>", "text": "Leaving this open because X."}
 ]}
@@ -156,33 +156,33 @@ Batch `/ops` supports `comment.reply`, `comment.resolve`, and `comment.unresolve
 
 **Resolve / unresolve a comment:**
 ```json
-{"type": "comment.resolve", "markId": "<id>", "by": "ai:compound-engineering", "baseToken": "<token>"}
-{"type": "comment.unresolve", "markId": "<id>", "by": "ai:compound-engineering", "baseToken": "<token>"}
+{"type": "comment.resolve", "markId": "<id>", "by": "<writer-id>", "baseToken": "<token>"}
+{"type": "comment.unresolve", "markId": "<id>", "by": "<writer-id>", "baseToken": "<token>"}
 ```
 
 **Suggest a replacement (pending — user must accept/reject):**
 ```json
-{"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "ai:compound-engineering", "content": "replacement text", "baseToken": "<token>"}
+{"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "<writer-id>", "content": "replacement text", "baseToken": "<token>"}
 ```
 
 **Suggest and immediately apply (tracked but committed — user can reject to revert):**
 ```json
-{"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "ai:compound-engineering", "content": "replacement text", "status": "accepted", "baseToken": "<token>"}
+{"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "<writer-id>", "content": "replacement text", "status": "accepted", "baseToken": "<token>"}
 ```
 
 `status: "accepted"` creates the suggestion mark and commits the change in one call. The mark persists as an audit trail with per-edit attribution and a reject-to-revert affordance. Works with `kind: "insert" | "delete" | "replace"`.
 
 **Accept or reject an existing suggestion:**
 ```json
-{"type": "suggestion.accept", "markId": "<id>", "by": "ai:compound-engineering", "baseToken": "<token>"}
-{"type": "suggestion.reject", "markId": "<id>", "by": "ai:compound-engineering", "baseToken": "<token>"}
+{"type": "suggestion.accept", "markId": "<id>", "by": "<writer-id>", "baseToken": "<token>"}
+{"type": "suggestion.reject", "markId": "<id>", "by": "<writer-id>", "baseToken": "<token>"}
 ```
 
 `suggestion.resolve` is not supported — use accept or reject instead.
 
 **Whole-doc rewrite (last resort):**
 ```json
-{"type": "rewrite.apply", "content": "full new markdown", "by": "ai:compound-engineering", "baseToken": "<token>"}
+{"type": "rewrite.apply", "content": "full new markdown", "by": "<writer-id>", "baseToken": "<token>"}
 ```
 
 Prefer `find_replace_in_doc` or block-level `/edit/v2` operations first. `rewrite.apply` is broad, disruptive, and blocked while live clients are connected.
@@ -192,10 +192,10 @@ Prefer `find_replace_in_doc` or block-level `/edit/v2` operations first. `rewrit
 curl -X POST "https://www.proofeditor.ai/api/agent/{slug}/edit/v2" \
   -H "Content-Type: application/json" \
   -H "x-share-token: <token>" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: <writer-id>" \
   -H "Idempotency-Key: <uuid>" \
   -d '{
-    "by": "ai:compound-engineering",
+    "by": "<writer-id>",
     "baseToken": "mt1:<token>",
     "operations": [
       {"op": "replace_block", "ref": "b3", "block": {"markdown": "Updated paragraph."}},
@@ -233,7 +233,7 @@ For literal doc-wide sweeps, prefer `find_replace_in_doc` over many block replac
 Requires Proof.app running. Bridge at `http://localhost:9847`.
 
 **Required headers:**
-- `X-Agent-Id: ai:compound-engineering` (identity for presence; keep aligned with `by`)
+- `X-Agent-Id: <writer-id>` (identity for presence; keep aligned with `by`)
 - `Content-Type: application/json`
 - `X-Window-Id: <uuid>` (when multiple docs open)
 
@@ -244,15 +244,15 @@ Requires Proof.app running. Bridge at `http://localhost:9847`.
 | GET | `/windows` | List open documents |
 | GET | `/state` | Read markdown, cursor, word count |
 | GET | `/marks` | List all suggestions and comments |
-| POST | `/marks/suggest-replace` | `{"quote":"old","by":"ai:compound-engineering","content":"new"}` |
-| POST | `/marks/suggest-insert` | `{"quote":"after this","by":"ai:compound-engineering","content":"insert"}` |
-| POST | `/marks/suggest-delete` | `{"quote":"delete this","by":"ai:compound-engineering"}` |
-| POST | `/marks/comment` | `{"quote":"text","by":"ai:compound-engineering","text":"comment"}` |
-| POST | `/marks/reply` | `{"markId":"<id>","by":"ai:compound-engineering","text":"reply"}` |
-| POST | `/marks/resolve` | `{"markId":"<id>","by":"ai:compound-engineering"}` |
+| POST | `/marks/suggest-replace` | `{"quote":"old","by":"<writer-id>","content":"new"}` |
+| POST | `/marks/suggest-insert` | `{"quote":"after this","by":"<writer-id>","content":"insert"}` |
+| POST | `/marks/suggest-delete` | `{"quote":"delete this","by":"<writer-id>"}` |
+| POST | `/marks/comment` | `{"quote":"text","by":"<writer-id>","text":"comment"}` |
+| POST | `/marks/reply` | `{"markId":"<id>","by":"<writer-id>","text":"reply"}` |
+| POST | `/marks/resolve` | `{"markId":"<id>","by":"<writer-id>"}` |
 | POST | `/marks/accept` | `{"markId":"<id>"}` |
 | POST | `/marks/reject` | `{"markId":"<id>"}` |
-| POST | `/rewrite` | Last-resort whole-doc replacement: `{"content":"full markdown","by":"ai:compound-engineering"}` |
+| POST | `/rewrite` | Last-resort whole-doc replacement: `{"content":"full markdown","by":"<writer-id>"}` |
 | POST | `/presence` | `{"status":"reading","summary":"..."}` |
 | GET | `/events/pending` | Poll for user actions |
 
@@ -271,6 +271,7 @@ When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 ```bash
 SHARE_URL="https://www.proofeditor.ai/d/abc123?token=xxx"
+WRITER_ID="ai:<provider-slug>"
 curl -s -H "Accept: application/json" "$SHARE_URL"
 curl -s -H "Accept: text/markdown" "$SHARE_URL"
 
@@ -285,9 +286,9 @@ BASE=$(printf '%s' "$STATE" | jq -r '.mutationBase.token')
 OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/abc123/ops" \
   -H "Content-Type: application/json" \
   -H "x-share-token: xxx" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: $WRITER_ID" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$BASE" '{type:"comment.add",quote:"text",by:"ai:compound-engineering",text:"comment",baseToken:$base}')")
+  -d "$(jq -n --arg base "$BASE" --arg by "$WRITER_ID" '{type:"comment.add",quote:"text",by:$by,text:"comment",baseToken:$base}')")
 NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 [ -n "$NEXT_BASE" ] && BASE="$NEXT_BASE"
 
@@ -295,9 +296,9 @@ NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/abc123/ops" \
   -H "Content-Type: application/json" \
   -H "x-share-token: xxx" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: $WRITER_ID" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$BASE" '{type:"suggestion.add",kind:"replace",quote:"old",by:"ai:compound-engineering",content:"new",baseToken:$base}')")
+  -d "$(jq -n --arg base "$BASE" --arg by "$WRITER_ID" '{type:"suggestion.add",kind:"replace",quote:"old",by:$by,content:"new",baseToken:$base}')")
 NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 [ -n "$NEXT_BASE" ] && BASE="$NEXT_BASE"
 
@@ -305,9 +306,9 @@ NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/abc123/ops" \
   -H "Content-Type: application/json" \
   -H "x-share-token: xxx" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: $WRITER_ID" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$BASE" '{type:"suggestion.add",kind:"replace",quote:"old",by:"ai:compound-engineering",content:"new",status:"accepted",baseToken:$base}')")
+  -d "$(jq -n --arg base "$BASE" --arg by "$WRITER_ID" '{type:"suggestion.add",kind:"replace",quote:"old",by:$by,content:"new",status:"accepted",baseToken:$base}')")
 NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 [ -n "$NEXT_BASE" ] && BASE="$NEXT_BASE"
 
@@ -318,9 +319,9 @@ EDIT_BASE=$(printf '%s' "$SNAPSHOT" | jq -r '.mutationBase.token')
 curl -X POST "https://www.proofeditor.ai/api/agent/abc123/edit/v2?return=minimal" \
   -H "Content-Type: application/json" \
   -H "x-share-token: xxx" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: $WRITER_ID" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$EDIT_BASE" '{by:"ai:compound-engineering",baseToken:$base,operations:[{op:"find_replace_in_doc",find:"old",replace:"new",occurrence:"all"}]}')"
+  -d "$(jq -n --arg base "$EDIT_BASE" --arg by "$WRITER_ID" '{by:$by,baseToken:$base,operations:[{op:"find_replace_in_doc",find:"old",replace:"new",occurrence:"all"}]}')"
 ```
 
 ## Workflow: Create and Share a New Document
@@ -330,6 +331,8 @@ curl -X POST "https://www.proofeditor.ai/api/agent/abc123/edit/v2?return=minimal
 ```bash
 SRC="docs/plans/2026-05-04-001-feat-foo-plan.md"   # source file from the caller
 TITLE="Plan: Foo"                                   # caller-provided title
+WRITER_ID="ai:<provider-slug>"                      # or human:<human-slug>; preserve caller identity
+DISPLAY_NAME="<provider display name>"
 
 # 1. Create — from a local source file:
 RESPONSE=$(jq -n --arg title "$TITLE" --rawfile md "$SRC" '{title:$title, markdown:$md}' \
@@ -347,8 +350,8 @@ TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken')
 curl -s -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "x-share-token: $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Uploaded doc"}'
+  -H "X-Agent-Id: $WRITER_ID" \
+  -d "$(jq -n --arg name "$DISPLAY_NAME" '{name:$name,status:"reading",summary:"Uploaded doc"}')"
 
 # 4. Share the URL
 echo "$URL"
@@ -359,9 +362,9 @@ BASE=$(curl -s "https://www.proofeditor.ai/api/agent/$SLUG/state" \
 OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/$SLUG/ops" \
   -H "Content-Type: application/json" \
   -H "x-share-token: $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: $WRITER_ID" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$BASE" '{type:"comment.add",quote:"Content here",by:"ai:compound-engineering",text:"Added a note",baseToken:$base}')")
+  -d "$(jq -n --arg base "$BASE" --arg by "$WRITER_ID" '{type:"comment.add",quote:"Content here",by:$by,text:"Added a note",baseToken:$base}')")
 NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 [ -n "$NEXT_BASE" ] && BASE="$NEXT_BASE"
 
@@ -372,9 +375,9 @@ EDIT_BASE=$(printf '%s' "$SNAPSHOT" | jq -r '.mutationBase.token')
 curl -X POST "https://www.proofeditor.ai/api/agent/$SLUG/edit/v2?return=minimal" \
   -H "Content-Type: application/json" \
   -H "x-share-token: $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: $WRITER_ID" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$EDIT_BASE" '{by:"ai:compound-engineering",baseToken:$base,operations:[{op:"find_replace_in_doc",find:"Content",replace:"Updated content",occurrence:"all"}]}')"
+  -d "$(jq -n --arg base "$EDIT_BASE" --arg by "$WRITER_ID" '{by:$by,baseToken:$base,operations:[{op:"find_replace_in_doc",find:"Content",replace:"Updated content",occurrence:"all"}]}')"
 ```
 
 ## Workflow: Pull a Proof Doc to Local
@@ -390,16 +393,24 @@ SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-# One read to a temp file — avoids passing markdown through $(...), which would strip trailing newlines.
-STATE_TMP=$(mktemp)
+# Keep temporary files in the JJ workspace. Outside a workspace, use .tmp under the current directory.
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null) || WORKSPACE_ROOT=$PWD
+TMP_ROOT="$WORKSPACE_ROOT/.tmp"
+mkdir -p "$TMP_ROOT"
+STATE_TMP="$TMP_ROOT/ce-proof-state.$$"
+WRITE_TMP="$TMP_ROOT/ce-proof-write.$$"
+cleanup() { rm -f "$STATE_TMP" "$WRITE_TMP"; }
+trap cleanup EXIT HUP INT TERM
+
+# One read to a temporary file avoids passing markdown through $(...), which strips trailing newlines.
 curl -s "https://www.proofeditor.ai/api/agent/$SLUG/state" \
   -H "x-share-token: $TOKEN" > "$STATE_TMP"
 REVISION=$(jq -r '.revision' "$STATE_TMP")
 
-# Atomic write: stream .markdown bytes directly to a temp sibling, then rename.
-TMP="${LOCAL}.proof-sync.$$"
-jq -jr '.markdown' "$STATE_TMP" > "$TMP" && mv "$TMP" "$LOCAL"
-rm "$STATE_TMP"
+# LOCAL must be on the workspace filesystem so this final rename remains atomic.
+jq -jr '.markdown' "$STATE_TMP" > "$WRITE_TMP" && mv "$WRITE_TMP" "$LOCAL"
+cleanup
+trap - EXIT HUP INT TERM
 ```
 
 `jq -jr` (`-j` no trailing newline, `-r` raw string) streams the markdown bytes straight to the temp file without going through a shell variable, so trailing newlines survive intact. `mv` within the same filesystem is atomic — a crashed write leaves the original untouched rather than a half-written file.
@@ -412,5 +423,5 @@ rm "$STATE_TMP"
 - During active collab use `edit/v2` (direct block changes) or `suggestion.add` (tracked changes); reserve `rewrite.apply` for no-client scenarios since it's blocked by `LIVE_CLIENTS_PRESENT` when anyone is connected
 - Prefer `find_replace_in_doc` and block-level `/edit/v2` edits before considering `rewrite.apply`
 - Don't span table cells in a single replace
-- Always include `by: "ai:compound-engineering"` on every op and `X-Agent-Id: ai:compound-engineering` in headers for consistent attribution
+- Always include the resolved `by: "<writer-id>"` on every op and the same `X-Agent-Id: <writer-id>` in headers for consistent attribution
 - Reuse `baseToken` from your most recent `/state` or `/snapshot` read; on `STALE_BASE`, re-read and retry once

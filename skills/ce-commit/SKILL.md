@@ -1,105 +1,96 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communication message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate, value-communicating message.
+description: Create one or more coherent JJ commits from the working-copy change with repository-appropriate descriptions. Use when the user asks to commit or save current working-copy changes.
 ---
 
-# Git Commit
+# JJ Commit
 
-Create a single, well-crafted git commit from the current working tree changes.
+Finish one or more coherent changes from JJ's working-copy commit (`@`). Done means every intended change has a validated description, completed change and commit IDs are reported, and any remainder in `@` is named explicitly.
 
-## Context
+The working copy is already a change. Most JJ commands snapshot file-system edits into `@`; `jj commit` finishes that change and creates a new working-copy change on top. When given filesets, it finishes the selected content while moving unselected content into the new working-copy child.
 
-**On platforms other than Claude Code**, skip to the "Context fallback" section below and run the command there to gather context.
+## Command Discipline
 
-**In Claude Code**, the five labeled sections below (Git status, Working tree diff, Current branch, Recent commits, Remote default branch) contain pre-populated data. Use them directly throughout this skill -- do not re-run these commands.
+Run each command as a separate shell-tool call. Do not combine commands with shell operators, pipes, substitutions, or redirects. Interpret non-zero exits and report unrecoverable failures rather than hiding them.
 
-**Git status:**
-!`git status`
-
-**Working tree diff:**
-!`git diff HEAD`
-
-**Current branch:**
-!`git branch --show-current`
-
-**Recent commits:**
-!`git log --oneline -10`
-
-**Remote default branch:**
-!`git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'`
-
-### Context fallback
-
-**In Claude Code, skip this section — the data above is already available.**
-
-Run this single command to gather all context:
-
-```bash
-printf '=== STATUS ===\n'; git status; printf '\n=== DIFF ===\n'; git diff HEAD; printf '\n=== BRANCH ===\n'; git branch --show-current; printf '\n=== LOG ===\n'; git log --oneline -10; printf '\n=== DEFAULT_BRANCH ===\n'; git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'
-```
-
----
+Use only JJ for repository inspection and mutation. There is no staging area, index, detached-head condition, or branch gate in this workflow. Bookmarks are named pointers that do not automatically follow the working copy; do not create or move one unless the user explicitly asks.
 
 ## Workflow
 
-### Step 1: Gather context
+### Step 1: Inspect the working-copy change
 
-Use the context above (git status, working tree diff, current branch, recent commits, remote default branch). All data needed for this step is already available -- do not re-run those commands.
-
-The remote default branch value returns something like `origin/main`. Strip the `origin/` prefix to get the branch name. If it returned `__DEFAULT_BRANCH_UNRESOLVED__` or a bare `HEAD`, try:
+Run:
 
 ```bash
-gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
+jj workspace root
+jj status
+jj diff
+jj log -r '::@' --limit 10 --no-graph
+jj log -r '::@' --limit 10 --no-graph -T 'description ++ "\n"'
 ```
 
-If both fail, fall back to `main`.
+`jj workspace root` must identify a repository. If it does not, report that and stop. If `jj status` and `jj diff` show no content changes in `@`, report that there is nothing to finish and stop; do not create an empty change.
 
-If the git status from the context above shows a clean working tree (no staged, modified, or untracked files), report that there is nothing to commit and stop.
+If `@` contains conflicts, resolve them with the available merge tool through `jj resolve` or by editing the materialized conflict, then rerun `jj status` and `jj diff`. Do not finish a conflicted change.
 
-If the current branch from the context above is empty, the repository is in detached HEAD state. Explain that a branch is required before committing if the user wants this work attached to a branch. Ask whether to create a feature branch now. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+Re-run `jj status` and `jj diff` immediately before every `jj commit`. JJ snapshots the file system, so concurrent edits can alter `@` after the initial inspection.
 
-- If the user chooses to create a branch, derive the name from the change content, create it with `git checkout -b <branch-name>`, then run `git branch --show-current` again and use that result as the current branch name for the rest of the workflow.
-- If the user declines, continue with the detached HEAD commit.
+### Step 2: Derive the description standard
 
-### Step 2: Determine commit message convention
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Follow this priority order:
+Active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, including in command-message examples; use any such form only when the active project instructions or `jj log` establish it.
 
-1. **Repo conventions already in context** -- If project instructions (AGENTS.md, CLAUDE.md, or similar) are already loaded and specify commit message conventions, follow those. Do not re-read these files; they are loaded at session start.
-2. **Recent commit history** -- If no explicit convention is documented, examine the 10 most recent commits from Step 1. If a clear pattern emerges (e.g., conventional commits, ticket prefixes, emoji prefixes), match that pattern.
-3. **Default: conventional commits** -- If neither source provides a pattern, use conventional commit format: `type(scope): description` where type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `style`, `build`.
+Infer the active standard from the nearest relevant history, not from a universal fallback. If history is sparse or inconsistent, use a clear description of the change's purpose and material effect without inventing syntax.
 
-When using conventional commits, choose the type that most precisely describes the change (the type list above). Where `fix:` and `feat:` both seem to fit, default to `fix:`: a change that remedies broken or missing behavior is `fix:` even when implemented by adding code. Reserve `feat:` for capabilities the user could not previously accomplish. Other types remain primary when they fit better. The user may override for a specific change.
+### Step 3: Select coherent changes
 
-### Step 3: Consider logical commits
+Inspect every changed path reported by `jj status` and its content in `jj diff`. Group changes only when distinct reviewable purposes are clear. Keep related implementation, tests, generated output, and documentation together unless repository-local conventions indicate otherwise.
 
-Before staging everything together, scan the changed files for naturally distinct concerns. If modified files clearly group into separate logical changes (e.g., a refactor in one directory and a new feature in another, or test files for a different change than source files), create separate commits for each group.
+Use JJ filesets for file-level groups. Do not perform interactive or hunk-level splitting unless the user explicitly requests it. If separation is ambiguous, finish one coherent change rather than guessing.
 
-Keep this lightweight:
-- Group at the **file level only** -- do not use `git add -p` or try to split hunks within a file.
-- If the separation is obvious (different features, unrelated fixes), split. If it's ambiguous, one commit is fine.
-- Two or three logical commits is the sweet spot. Do not over-slice into many tiny commits.
+Before each path-limited commit, derive a fileset from the current `jj status`; do not reuse a stale path list. Treat fileset expressions as repository inputs requiring careful quoting, especially when paths contain spaces or fileset operators.
 
-### Step 4: Stage and commit
+### Step 4: Compose and finish each change
 
-If the current branch from the context above is `main`, `master`, or the resolved default branch from Step 1, automatically create a feature branch before committing. Derive the branch name from the change content, create it with `git checkout -b <branch-name>`, run `git branch --show-current` to confirm, and use the new branch as the current branch for the rest of the workflow. Do not ask whether to branch — committing on the default branch is not an option here.
+For every description, apply this instruction exactly:
 
-Write the commit message:
-- **Subject line**: Concise, imperative mood, focused on *why* not *what*. Follow the convention determined in Step 2.
-- **Body** (when needed): Add a body separated by a blank line for non-trivial changes. Explain motivation, trade-offs, or anything a future reader would need. Omit the body for obvious single-purpose changes.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-For each commit group, stage and commit in a single call. Prefer staging specific files by name over `git add -A` or `git add .` to avoid accidentally including sensitive files (.env, credentials) or unrelated changes. Use a heredoc to preserve formatting:
+Active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, including in command-message examples; use any such form only when the active project instructions or `jj log` establish it.
 
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-type(scope): subject line here
+Describe the purpose and material effect accurately; include further context only when it helps a future reader understand motivation, constraints, or trade-offs.
 
-Optional body explaining why this change was made,
-not just what changed.
-EOF
-)"
+For the whole working-copy change, invoke `jj commit` with the dynamically composed description. For a file-level group, pass the dynamically derived fileset arguments to `jj commit` before the description option. The conceptual forms are:
+
+```text
+jj commit -m <description-composed-from-runtime-conventions>
+jj commit <dynamically-derived-fileset> -m <description-composed-from-runtime-conventions>
 ```
 
-### Step 5: Confirm
+The placeholders are runtime values, not literal examples. Pass the description as one argument through the shell tool's argument handling. Do not interpolate repository content into a compound shell command.
 
-Run `git status` after the commit to verify success. Report the commit hash(es) and subject line(s).
+If a multiline-description handoff requires a file, resolve `<workspace-root>` by running `jj workspace root`; if that root is unavailable at handoff time, use the current project directory. Use `<workspace-root>/.tmp/rocketclaw/ce-commit/<run-id>/message.txt`. First verify the resolved root, then create the parent directory in a separate shell call with `mkdir -p "<workspace-root>/.tmp/rocketclaw/ce-commit/<run-id>"`; the quoted placeholders must be replaced with the runtime values. Write the message with the available file-writing capability, read it with the available file-reading capability, and pass the resulting content as the description argument. Do not combine root resolution, directory creation, file writing, or committing in one shell command.
+
+After a fileset-limited commit, run `jj status` and `jj diff` again. Selected content belongs to the completed parent; unselected content remains in the new `@`. Recompute the next fileset from that state. Do not run `jj new` after `jj commit` because the latter already creates the new working-copy change.
+
+### Step 5: Validate and report
+
+Inspect each completed parent with:
+
+```text
+jj log -r <completed-revision> --no-graph
+jj show -r <completed-revision>
+```
+
+Immediately after each commit, `<completed-revision>` is normally `@-`; retain its reported change ID before finishing another change so validation and reporting remain unambiguous.
+
+Validate every completed description with this instruction:
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, including in command-message examples; use any such form only when the active project instructions or `jj log` establish it.
+
+If the description is inaccurate or violates the observed repository standard, invoke `jj describe -r <completed-revision> -m <description-composed-from-runtime-conventions>`, then inspect it again with `jj log` and `jj show`. The placeholders must be replaced with the revision and description derived at runtime.
+
+Run `jj status` after the final commit. Report each completed change ID, commit ID, and description first line. If `@` still contains content or conflicts, report the remaining paths and state rather than claiming that all changes were committed.

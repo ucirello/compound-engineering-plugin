@@ -1,24 +1,24 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current JJ change stack, a revision, or a PR.
+argument-hint: "[PR number, JJ revision/bookmark, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch changes using the `agent-browser` CLI.
+Run end-to-end browser tests on pages affected by a PR or JJ changes using the `agent-browser` CLI.
 
 ## Modes
 
 - **Manual (default):** the user controls the dev server. Follow the steps below as written, including the headed/headless question.
-- **Pipeline (`mode:pipeline`):** invoked by LFG or another automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and the headed/headless question (step 6). It still uses the preferred port that step 4 computes.
+- **Pipeline (`mode:pipeline`):** invoked by an automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and the headed/headless question (step 6). It still uses the preferred port that step 4 computes.
 
 ## Use `agent-browser` Only
 
 Use the `agent-browser` CLI for every browser action in this skill — opening pages, clicking, filling forms, snapshots, screenshots — and use it exclusively. Do not use any other browser-automation tool, including a browser MCP integration, a built-in browser-control tool, Playwright, or Puppeteer. If the host offers several ways to drive a browser, always choose `agent-browser`.
 
-- Claude Code: do not use Chrome MCP tools (`mcp__claude-in-chrome__*`).
-- Codex: do not substitute unrelated browsing tools.
+- Do not use Chrome-control MCP tools (`mcp__browser__*` or the active provider's equivalent namespace).
+- Do not substitute unrelated browsing tools supplied by another provider.
 
 ## Workflow
 
@@ -30,7 +30,7 @@ command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 
 If not installed, tell the user: "`agent-browser` is not installed. Run `/ce-setup` for the current install command, then install agent-browser and retry." Then stop — this skill cannot function without it.
 
-This also requires a git repository with changes to test.
+This also requires a JJ workspace with changes to test.
 
 ### 2. Determine Test Scope
 
@@ -41,12 +41,16 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj log
+jj diff --from <base-revision-selected-from-jj-log> --to @ --name-only
 ```
 
-**If branch name provided:**
+Use the installed JJ version's `jj log` output and accepted revision syntax when selecting the base; do not assume a fixed bookmark or revset. The phrase `git log` may appear in composed messages when required, but operational history inspection remains `jj log`.
+
+**If JJ revision or bookmark provided:**
 ```bash
-git diff --name-only main...[branch]
+jj log
+jj diff --from <base-revision-selected-from-jj-log> --to <target-selected-from-jj-log> --name-only
 ```
 
 ### 3. Map Changed Files to Routes
@@ -113,7 +117,7 @@ In pipeline mode, do not stop here — `references/pipeline-orchestration.md` au
 
 Manual mode only — in pipeline mode, skip this step (see Modes; it defaults to headless).
 
-Ask the user whether to run headed or headless using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question:
+Ask the user whether to run headed or headless using the active provider's blocking question tool: `AskUserQuestion` (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input`, `ask_question` (`agy`), or `ask_user` (requires the `pi-ask-user` extension), as appropriate for that provider. Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (for example, in provider edit modes) — not because a schema load is required. Never silently skip the question:
 
 ```
 Do you want to watch the browser tests run?
@@ -221,7 +225,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / JJ [change, bookmark, or revision]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -249,13 +253,13 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test current JJ changes (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test specific branch
+# Test a specific JJ revision or bookmark
 /ce-test-browser feature/new-dashboard
 
 # Test on a specific port

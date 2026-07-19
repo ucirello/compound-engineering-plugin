@@ -4,7 +4,7 @@ description: Refresh docs/solutions learnings against the current codebase. Use 
 argument-hint: "[optional: scope hint — directory, filename, module, or keyword] [mode:headless] "
 ---
 
-# Compound Refresh
+# Learning Refresh
 
 Maintain the quality of `docs/solutions/` over time. This workflow reviews existing learnings against the current codebase, then refreshes any derived pattern docs that depend on them.
 
@@ -28,9 +28,9 @@ Check if `$ARGUMENTS` contains `mode:headless`. If present, strip it from argume
 
 ## CONCEPTS.md bootstrap requests
 
-If invoked specifically to create or bootstrap `CONCEPTS.md` (e.g., "create a CONCEPTS.md", "build the concept map", "set up shared vocabulary"), the intent is ambiguous between two jobs — building the vocabulary file and running a docs/solutions refresh — so disambiguate before proceeding. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. Two options:
+If invoked specifically to create or bootstrap `CONCEPTS.md`, the intent is ambiguous between building the vocabulary file and running a docs/solutions refresh, so disambiguate before proceeding. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors — not because a schema load is required. Never silently skip the question. Two options:
 
-1. **Create CONCEPTS.md (build the concept map)** — seed the repo-wide concept map and commit it; skip only the docs/solutions classification phases (Phases 0–4). Read `references/concepts-vocabulary.md` and follow its **Seed goal** and **Scope of a seed** (repo-wide) rules: seed the project's core domain nouns from the declared domain model (schema, core types, primary models, top-level domain docs), each meeting the qualifying bar, the codebase setting the count. Write the preamble (see Phase 4.5), cluster per the organization rules, and run the Discoverability Check so `AGENTS.md`/`CLAUDE.md` surface the new file. Then **enter Phase 5 (Commit Changes)** to commit/PR the new `CONCEPTS.md` and any instruction-file edit through the same durable-write flow the refresh uses — do not leave the bootstrap uncommitted.
+1. **Create CONCEPTS.md (build the concept map)** — seed the repo-wide concept map and record it as a JJ change; skip only the docs/solutions classification phases (Phases 0–4). Read `references/concepts-vocabulary.md` and follow its **Seed goal** and **Scope of a seed** (repo-wide) rules: seed the project's core domain nouns from the declared domain model (schema, core types, primary models, top-level domain docs), each meeting the qualifying bar, the codebase setting the count. Write the preamble (see Phase 4.5), cluster per the organization rules, and run the Discoverability Check so the project's runtime instructions surface the new file. Then **enter Phase 5 (Record Changes)** and use the same durable-write flow as the refresh — do not leave the bootstrap undescribed.
 2. **Run a refresh cycle** — proceed with the normal refresh flow below; `CONCEPTS.md` is seeded (if absent) and reconciled as part of Phase 4.5.
 
 In headless mode there is no user to ask: default to the refresh cycle (vocabulary is seeded and reconciled within Phase 4.5 regardless) and note in the report that a standalone repo-wide bootstrap was not run.
@@ -75,7 +75,7 @@ For each candidate artifact, classify it into one of five outcomes:
 | **Update** | Core solution is still correct, but references drifted | Apply evidence-backed in-place edits |
 | **Consolidate** | Two or more docs overlap heavily but are both correct | Merge unique content into the canonical doc, delete the subsumed doc |
 | **Replace** | The old artifact is now misleading, but there is a known better replacement | Create a trustworthy successor, then delete the old artifact |
-| **Delete** | No longer useful, applicable, or distinct | Delete the file — git history preserves it if anyone needs to recover it later |
+| **Delete** | No longer useful, applicable, or distinct | Delete the file — JJ history preserves it if anyone needs to recover it later |
 
 ## Core Rules
 
@@ -92,7 +92,8 @@ For each candidate artifact, classify it into one of five outcomes:
    - newer docs, pattern docs, PRs, or issues provide strong successor evidence.
 8. **Delete when the code is gone, and only after checking for inbound links.** If the referenced code, controller, or workflow no longer exists in the codebase and no successor can be found, delete the file — don't default to Keep just because the general advice is still "sound." When in doubt between Keep and Delete, ask the user (in interactive mode) or mark as stale (in headless mode). Inbound links inform classification, not cleanup: cleanup is always mechanical, but **decorative** citations (principle stated inline) allow Delete, while **substantive** citations (citing doc relies on the cited doc) signal Replace. The auto-delete case is missing code, no matching successor, and citations absent or decorative.
 9. **Evaluate document-set design, not just accuracy.** In addition to checking whether each doc is accurate, evaluate whether it is still the right unit of knowledge. If two or more docs overlap heavily, determine whether they should remain separate, be cross-scoped more clearly, or be consolidated into one canonical document. Redundant docs are dangerous because they drift silently — two docs saying the same thing will eventually say different things.
-10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. Git history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, `git log --diff-filter=D -- docs/solutions/` will find it.
+10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. JJ history is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. Use `jj log -- docs/solutions/` and inspect the relevant historical change when recovery is needed; repository-local runtime instructions and syntax take precedence.
+11. **Keep scratch workspace-local.** Put temporary refresh artifacts under the workspace's `.tmp/ce-compound-refresh/` namespace. If that path cannot be created, continue without scratch artifacts rather than writing to a global temporary directory.
 
 ## Scope Selection
 
@@ -107,19 +108,14 @@ Find all `.md` files under `docs/solutions/`, excluding `README.md` files and an
 
 If `$ARGUMENTS` is provided, use it to narrow scope before proceeding. Try these matching strategies in order, stopping at the first that produces results:
 
-1. **Directory match** — check if the argument matches a subdirectory name under `docs/solutions/` (e.g., `performance-issues`, `database-issues`)
+1. **Directory match** — check if the argument matches a subdirectory name under `docs/solutions/`
 2. **Frontmatter match** — search `module`, `component`, or `tags` fields in learning frontmatter for the argument
 3. **Filename match** — match against filenames (partial matches are fine)
 4. **Content search** — search file contents for the argument as a keyword (useful for feature names or feature areas)
 
 If no matches are found, report that and ask the user to clarify. In headless mode, when a scope hint was provided but matched nothing, report the miss in the summary and exit without widening to all docs — do not silently fall back to processing everything. (The "process everything" rule from Headless mode rules applies only when **no** scope hint was provided.)
 
-If no candidate docs are found, report:
-
-```text
-No candidate docs found in docs/solutions/.
-Run `ce-compound` after solving problems to start building your knowledge base.
-```
+If no candidate docs are found, report the empty scope and route the user to `ce-compound` after a problem has been solved. Match the surrounding response style rather than copying fixed output text.
 
 ## Phase 0: Assess and Route
 
@@ -146,19 +142,10 @@ When scope is broad (9+ candidate docs), do a lightweight triage before deep inv
 3. **Spot-check drift** — for each cluster, check whether the primary referenced files still exist. Missing references in a high-impact cluster = strongest signal for where to start.
 4. **Recommend a starting area** — present the highest-impact cluster with a brief rationale and ask the user to confirm or redirect. In headless mode, skip the question and process all clusters in impact order.
 
-Example:
-
-```text
-Found 24 learnings across 5 areas.
-
-The auth module has 5 learnings and 2 pattern docs that cross-reference
-each other — and 3 of those reference files that no longer exist.
-I'd start there.
-
-1. Start with auth (recommended)
-2. Pick a different area
-3. Review everything
-```
+Present the candidate count, area count, strongest impact cluster, drift evidence,
+and a recommendation to start there. Offer the semantic choices to accept that
+cluster, select another area, or review everything; derive wording and option
+syntax from the active provider and project conventions.
 
 Do not ask action-selection questions yet. First gather evidence.
 
@@ -255,7 +242,7 @@ Before recommending that two docs stay separate, apply this test: "If a maintain
 
 Separate docs earn their keep only when:
 - They cover genuinely different sub-problems that someone might search for independently
-- They target different audiences or contexts (e.g., one is about debugging, another about prevention)
+- They target meaningfully different audiences or contexts
 - Merging them would create an unwieldy doc that is harder to navigate than two focused ones
 
 If none of these apply, prefer consolidation. Two docs covering the same ground will eventually drift apart and contradict each other — that is worse than a slightly longer single doc.
@@ -323,7 +310,7 @@ Choose **Consolidate** when Phase 1.75 identified docs that overlap heavily but 
 
 **Consolidate vs Delete:** If the subsumed doc has unique content worth preserving (edge cases, alternative approaches, extra prevention rules), use Consolidate to merge that content first. If the subsumed doc adds nothing the canonical doc doesn't already say, skip straight to Delete.
 
-The Consolidate action is: merge unique content from the subsumed doc into the canonical doc, then delete the subsumed doc. Not archive — delete. Git history preserves it.
+The Consolidate action is: merge unique content from the subsumed doc into the canonical doc, then delete the subsumed doc. Not archive — delete. JJ history preserves it.
 
 ### Replace
 
@@ -350,7 +337,7 @@ Choose **Delete** when:
 - The learning is fully redundant with another doc (use Consolidate if there is unique content to merge first)
 - There is no meaningful successor evidence suggesting it should be replaced instead
 
-Action: delete the file. No archival directory, no metadata — just delete it. Git history preserves every deleted file if recovery is ever needed.
+Action: delete the file. No archival directory, no metadata — just delete it. JJ history preserves every deleted file if recovery is ever needed.
 
 ### Before deleting: check if the problem domain is still active
 
@@ -367,16 +354,16 @@ A doc that other files cite is load-bearing in a way the doc itself does not ann
 
 Search efficiently:
 
-- Prefer the platform's native content-search tool (e.g., Grep in Claude Code) over shell. Drop to shell when materially better for the case.
+- Prefer the platform's native content-search tool over shell. Drop to shell when materially better for the case.
 - Search the filename slug (without `.md`); narrow to the full path only if matches are noisy.
-- Read context lines around each match (e.g., Grep's `-B`/`-A`), not whole files.
+- Read context lines around each match, not whole files.
 
 **Inbound links inform the classification, not the cleanup.** Removing a citation is always mechanical (drop the parenthetical, the bare entry, or the deferring clause). The judgment is upstream: given these citations, is Delete still right, or is Replace closer to right?
 
 Classify each citation by what it does in its citing context:
 
-- **Decorative** — principle stated inline, citation is a "see also" pointer or bare attribution. Delete is fine; clean up citations in the same commit.
-- **Substantive** — citing doc relies on the cited doc to provide content not stated inline (e.g., "see X for details on Y" with no inline Y). Signal Replace — write a successor at the same path, or **Keep with narrowed scope** if the doc's actual content is broader than its title implies.
+- **Decorative** — principle stated inline and the citation is only a secondary pointer. Delete is fine; clean up citations in the same change.
+- **Substantive** — citing doc relies on the cited doc to provide content not stated inline. Signal Replace — write a successor at the same path, or **Keep with narrowed scope** if the doc's actual content is broader than its title implies.
 - **Mixed or unclear** — stale-mark.
 
 In headless mode, Delete + decorative cleanup is fine. Any substantive citation, or any genuine ambiguity, downgrades to stale-marking — writing a Replace successor is judgment-heavy and should not happen unattended.
@@ -440,19 +427,10 @@ For a single artifact, present:
 - 2-4 bullets of evidence
 - recommended action
 
-Then ask:
-
-```text
-This [learning/pattern] looks like a [Keep/Update/Consolidate/Replace/Delete].
-
-Why: [one-sentence rationale based on the evidence]
-
-What would you like to do?
-
-1. [Recommended action]
-2. [Second plausible action]
-3. Skip for now
-```
+Then ask the user to choose the recommended action, the one other genuinely
+plausible action, or skip for now. Include a one-sentence evidence-based
+rationale. Derive wording and option syntax from the provider rather than
+copying a fixed question template.
 
 Do not list all five actions unless all five are genuinely plausible.
 
@@ -494,7 +472,7 @@ For each candidate, execute the flow that matches its classification from Phase 
 - **Replace** — write a successor learning via subagent (passing the documentation contract files), validate frontmatter and cited claims, then delete the old. When evidence is insufficient, mark stale instead.
 - **Delete** — final inbound-link check, then remove. Reclassify if late-discovered substantive citations surface.
 
-Only one flow runs per candidate; the reference contains the per-action criteria, examples, and step-by-step instructions.
+Only one flow runs per candidate; the reference contains the per-action criteria and step-by-step instructions.
 
 ## Phase 4.5: Vocabulary Capture
 
@@ -508,14 +486,10 @@ After the per-learning actions execute, aggregate the domain terms flagged acros
 2. **If `CONCEPTS.md` exists**, add missing terms and refine existing entries when the corpus surfaced new precision. Do not duplicate entries already present. **Then reconcile the in-scope core nouns:** re-derive the core domain nouns of the area in scope from its declared model (per the **Seed goal** in the reference) and backfill any that are central but missing. This is the every-run safety net for stable-central terms that friction never surfaces — bounded to the area in scope, defining only terms investigated this run, never a repo-wide sweep.
 3. **If `CONCEPTS.md` does not exist** and at least one qualifying term was surfaced, **bootstrap it — and seed, don't write a single term.** Alongside the surfaced term(s), seed the core domain nouns of the area in scope per the reference's **Seed goal**, so the file is anchored from creation rather than a lone peripheral entry (and so captured terms don't dangle against undefined siblings). The seed stays scoped to the area in scope — a repo-wide concept map comes only from the explicit bootstrap path above, not from a scoped refresh. **At creation, hold the qualifying bar conservatively for borderline terms** — a borderline term or a class/table/file name dressed up as an entity defers to a later run; clear core nouns are seeded, borderline ones wait. The conservatism is about quality, not count; updates to an existing file follow normal criteria.
 4. **Scope discipline and citation hygiene.** Bootstrap, seed, and reconcile reflect only the area in scope — do not expand to other categories, and do not retroactively inject `(see CONCEPTS.md)` pointers into existing learnings. (The repo-wide bootstrap path above is the deliberate exception — it intentionally covers the whole declared model.) The report should note that additional entries are likely from refresh runs on other scopes.
-5. **Initial structure.** When bootstrapping, start the file with this preamble under the `# Concepts` heading:
-
-   > Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
-
-   Then add entries. Let term count drive shape: 1-4 terms → flat headings, more → cluster by domain relationship per the rules in `references/concepts-vocabulary.md`.
+5. **Initial structure.** When bootstrapping, add a style-matched heading and a concise preamble stating that the file is shared project-specific domain vocabulary, begins with seeded core terms, grows through `ce-compound` and `ce-compound-refresh`, accepts direct edits, and is a glossary rather than a specification or catch-all. Then add entries. Let term count drive shape: a small set may stay flat; larger sets cluster by domain relationship per `references/concepts-vocabulary.md`. Do not copy fixed wording or numeric layout thresholds.
 6. **Scrub violations.** Scan existing entries for content that violates `references/concepts-vocabulary.md` criteria — implementation specifics (file paths, class names, function signatures, code references), current-config values (thresholds, counts, enum values that will drift), status/owner/date metadata, duplicates of terms covered under a different name, or entries that lean on an undefined project-specific sibling (add the sibling or rephrase). Rewrite or consolidate. The full sweep is appropriate here because refresh is an audit; ce-compound's same-named phase scopes corrections to the coherence neighborhood of entries being touched.
 
-If no Phase 1 signals qualified after applying the reference's criteria, record that outcome explicitly in the report's `CONCEPTS.md` line (e.g., "scanned, no qualifying terms"). Do not silently skip — the visible scan-and-no-result record is the audit signal that the reference was consulted.
+If no Phase 1 signals qualified after applying the reference's criteria, record the scan and zero qualifying terms explicitly in the report's `CONCEPTS.md` line. Do not silently skip — the visible scan-and-no-result record is the audit signal that the reference was consulted.
 
 Note: if this run **creates** `CONCEPTS.md` from scratch, the Discoverability Check below also surfaces it so future agents can discover it — by editing `AGENTS.md`/`CLAUDE.md` in interactive mode (with consent), or, in headless mode, by emitting a "Discoverability recommendation" line in the report rather than editing instruction files (per the headless boundary in step 4c — headless does doc maintenance, not project config). Either way the created file is surfaced or flagged for surfacing; subsequent runs skip this because the instruction file is already current or the recommendation was already reported.
 
@@ -525,23 +499,11 @@ Note: if this run **creates** `CONCEPTS.md` from scratch, the Discoverability Ch
 
 **The full report MUST be printed as markdown output.** Do not summarize findings internally and then output a one-liner. The report is the deliverable — print every section in full, formatted as readable markdown with headers, tables, and bullet points.
 
-After processing the selected scope, output the following report:
-
-```text
-Compound Refresh Summary
-========================
-Scanned: N learnings
-
-Kept: X
-Updated: Y
-Consolidated: C
-Replaced: Z
-Deleted: W
-Skipped: V
-Marked stale: S
-
-CONCEPTS.md: <scanned, no qualifying terms | created with N entries (M seeded) | updated — N added, N refined, N reconciled, N scrubbed | repo-wide map created with N entries>
-```
+After processing the selected scope, output a style-matched Learning Refresh
+Summary containing counts for scanned, kept, updated, consolidated, replaced,
+deleted, skipped, and stale artifacts. Include one `CONCEPTS.md` outcome with
+the applicable creation, seed, addition, refinement, reconciliation, or scrub
+counts. Do not copy a fixed heading syntax, table, or placeholder format.
 
 Then for EVERY file processed, list:
 - The file path
@@ -550,7 +512,7 @@ Then for EVERY file processed, list:
 - What action was taken (or recommended)
 - For Consolidate: which doc was canonical, what unique content was merged, what was deleted
 
-For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating git churn.
+For **Keep** outcomes, list them under a reviewed-without-edits section so the result is visible without creating change churn.
 
 ### Headless mode report
 
@@ -574,56 +536,55 @@ If all writes succeed, the Recommended section is empty. If no writes succeed (e
 **Legacy cleanup** (if `docs/solutions/_archived/` exists):
 - List archived files found and recommend disposition: restore (if still relevant), delete (if truly obsolete), or consolidate (if overlapping with active docs)
 
-## Phase 5: Commit Changes
+## Phase 5: Record Changes
 
-After all actions are executed and the report is generated, handle committing the changes. Skip this phase if no files were modified (all Keep, or all writes failed).
+After all actions are executed and the report is generated, record the work as a JJ change. Skip this phase if no files were modified (all Keep, or all writes failed).
 
-### Detect git context
+### Detect JJ context
 
-Before offering options, check:
-1. Which branch is currently checked out (main/master vs feature branch)
-2. Whether the working tree has other uncommitted changes beyond what compound-refresh modified
-3. Recent commit messages to match the repo's commit style
+Before offering options, use read-only JJ commands to inspect:
+1. The working-copy change and its parents with `jj log -r '@ | parents(@)'`.
+2. Existing bookmarks on the working-copy change with `jj bookmark list -r @`.
+3. All paths changed in `@` with `jj status`, distinguishing pre-existing work from paths changed by this refresh.
+4. Recent change descriptions with `jj log` to match the repository's conventions.
+
+Repository-local runtime instructions and JJ syntax discovered during execution override this generic flow. If the workspace is not a JJ repository, report that durable recording is unavailable and stop this phase; do not fall back to Git.
+
+### Mandatory description-quality sentence
+
+Include this exact sentence verbatim at every site that composes, recommends, or validates a change description:
+
+> Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+At every complete composition, recommendation, or validation site, state that active project instructions and change-description syntax inferred at runtime from `jj log` always win. Apply compatible Go quality, clarity, and structure generally, regardless of repository language. Ban every fixed prefix, type, scope, subject, body, layout, template, and example.
 
 ### Headless mode
 
-Use sensible defaults — no user to ask:
+Use the lightest safe JJ action without asking:
 
 | Context | Default action |
 |---------|---------------|
-| On main/master | Create a branch named for what was refreshed (e.g., `docs/refresh-auth-and-ci-learnings`), commit, attempt to open a PR. If PR creation fails, report the branch name. |
-| On a feature branch | Commit as a separate commit on the current branch |
-| Git operations fail | Include the recommended git commands in the report and continue |
+| `@` contains only refresh paths | Describe `@`; create or move a specific bookmark when publication is appropriate; attempt publication with `jj git push --bookmark <bookmark>` and open a review request through the available provider. |
+| `@` also contains unrelated paths | Do not rewrite or split the user's change automatically. Leave the refresh paths in place and report a JJ-native recommendation for isolating and describing them. |
+| JJ or provider operations fail | Report the intended semantic operation, relevant change ID/bookmark, and failure; do not emit fixed command sequences. |
 
-Stage only the files that compound-refresh modified — not other dirty files in the working tree.
+Every description recommendation at this site must include this exact sentence verbatim: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Active project instructions and change-description syntax inferred at runtime from `jj log` always win. Apply compatible Go quality, clarity, and structure generally, regardless of repository language. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. JJ records the working copy as a change, and unrelated work must remain untouched.
 
 ### Interactive mode
 
-First, run `git branch --show-current` to determine the current branch. Then present the correct options based on the result. Stage only compound-refresh files regardless of which option the user picks.
+Present options based on the inspected JJ state, using change IDs and bookmarks rather than branches or staged files:
 
-**If the current branch is main, master, or the repo's default branch:**
+- If `@` contains only refresh paths, recommend describing the current change, placing a specific bookmark on it when publication is wanted, publishing it, and opening a provider review request.
+- If `@` contains unrelated paths, recommend leaving the working copy untouched unless the user explicitly chooses a repository-approved JJ operation to isolate the refresh paths.
+- Always offer a leave-undescribed option.
 
-1. Create a branch, commit, and open a PR (recommended) — the branch name should be specific to what was refreshed, not generic (e.g., `docs/refresh-auth-learnings` not `docs/compound-refresh`)
-2. Commit directly to `{current branch name}`
-3. Don't commit — I'll handle it
+Do not prescribe a fixed bookmark namespace or command sequence. Every option that composes or recommends a description must include this exact sentence verbatim: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Active project instructions and change-description syntax inferred at runtime from `jj log` always win. Apply compatible Go quality, clarity, and structure generally, regardless of repository language. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
 
-**If the current branch is a feature branch, clean working tree:**
+### Change description
 
-1. Commit to `{current branch name}` as a separate commit (recommended)
-2. Create a separate branch and commit
-3. Don't commit
+Compose a succinct description that summarizes the refresh outcomes at the level used by the repository, then validate it before running `jj describe`.
 
-**If the current branch is a feature branch, dirty working tree (other uncommitted changes):**
-
-1. Commit only the compound-refresh changes to `{current branch name}` (selective staging — other dirty files stay untouched)
-2. Don't commit
-
-### Commit message
-
-Write a descriptive commit message that:
-- Summarizes what was refreshed (e.g., "update 3 stale learnings, consolidate 2 overlapping docs, delete 1 obsolete doc")
-- Follows the repo's existing commit conventions (check recent git log for style)
-- Is succinct — the details are in the changed files themselves
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Active project instructions and change-description syntax inferred at runtime from `jj log` always win. Apply compatible Go quality, clarity, and structure generally, regardless of repository language. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
 
 ## Relationship to ce-compound
 
@@ -636,9 +597,9 @@ Use **Consolidate** proactively when the document set has grown organically and 
 
 ## Discoverability Check
 
-After the refresh report is generated, check whether the project's instruction files would lead an agent to discover and search `docs/solutions/` before starting work in a documented area. This runs every time — the knowledge store only compounds value when agents can find it. If this check produces edits, they are committed as part of (or immediately after) the Phase 5 commit flow — see step 5 below.
+After the refresh report is generated, check whether the project's runtime instructions would lead an agent to discover and search `docs/solutions/` before starting work in a documented area. This runs every time so agents can find the knowledge store. If this check produces edits, they are recorded as part of (or immediately after) the Phase 5 change flow — see step 6 below.
 
-1. Identify which root-level instruction files exist (AGENTS.md, CLAUDE.md, or both). Read the file(s) and determine which holds the substantive content — one file may just be a shim that `@`-includes the other (e.g., `CLAUDE.md` containing only `@AGENTS.md`, or vice versa). The substantive file is the assessment and edit target; ignore shims. If neither file exists, skip this check entirely.
+1. Use the project's active runtime instructions already in context to identify the substantive repository-local instruction source. One surfaced file may only include another; assess and edit the substantive source and ignore compatibility shims. If no repository-local instruction source exists, skip this check entirely.
 2. Assess whether an agent reading the instruction files would learn three things:
    - That a searchable knowledge store of documented solutions exists
    - Enough about its structure to search effectively (category organization, YAML frontmatter fields like `module`, `tags`, `problem_type`)
@@ -649,31 +610,15 @@ After the refresh report is generated, check whether the project's instruction f
 3. If the spirit is already met, no action needed.
 4. If not:
    a. Based on the file's existing structure, tone, and density, identify where a mention fits naturally. Before creating a new section, check whether the information could be a single line in the closest related section — an architecture tree, a directory listing, a documentation section, or a conventions block. A line added to an existing section is almost always better than a new headed section. Only add a new section as a last resort when the file has clear sectioned structure and nothing is even remotely related.
-   b. Draft the smallest addition that communicates the three things. Match the file's existing style and density. The addition should describe the knowledge store itself, not the plugin.
+   b. Draft the smallest addition that communicates the three things. Match the file's existing style and density. Describe the knowledge store itself without product branding.
 
       Keep the tone informational, not imperative. Express timing as description, not instruction — "relevant when implementing or debugging in documented areas" rather than "check before implementing or debugging." Imperative directives like "always search before implementing" cause redundant reads when a workflow already includes a dedicated search step. The goal is awareness: agents learn the folder exists and what's in it, then use their own judgment about when to consult it.
 
-      Examples of calibration (not templates — adapt to the file):
+      Calibrate rather than copy fixed syntax: in an existing directory or architecture section, add one style-matched entry describing the store, its categories, and searchable metadata. Only when no natural location exists, add the smallest style-matched documentation section carrying the same semantics. Derive wording and markup from the target file.
+   c. In interactive mode, explain that fresh sessions, other tools, and collaborators will not know to check `docs/solutions/` unless the runtime instructions surface it. Show the proposed change and where it would go, then use the platform's blocking question tool to get consent before making the edit: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting the proposal in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. In headless mode, include it as a "Discoverability recommendation" line in the report — do not attempt to edit instruction files (headless scope is doc maintenance, not project config).
 
-      When there's an existing directory listing or architecture section — add a line:
-      ```
-      docs/solutions/  # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
-      ```
-
-      When nothing in the file is a natural fit — a small headed section is appropriate:
-      ```
-      ## Documented Solutions
-
-      `docs/solutions/` — documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
-      ```
-   c. In interactive mode, explain to the user why this matters — agents working in this repo (including fresh sessions, other tools, or collaborators without the plugin) won't know to check `docs/solutions/` unless the instruction file surfaces it. Show the proposed change and where it would go, then use the platform's blocking question tool to get consent before making the edit: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting the proposal in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. In headless mode, include it as a "Discoverability recommendation" line in the report — do not attempt to edit instruction files (headless scope is doc maintenance, not project config).
-
-5. **If `CONCEPTS.md` exists at repo root, run a parallel discoverability check for it.** Use the same workflow as the `docs/solutions/` check above: same target file, same edit-placement judgment, same consent-then-edit interaction shape per mode. Example calibration when a directory listing is present:
-
-   ```
-   CONCEPTS.md  # shared domain vocabulary — read when orienting to the codebase or before discussing domain concepts
-   ```
+5. **If `CONCEPTS.md` exists at repo root, run a parallel discoverability check for it.** Use the same workflow as the `docs/solutions/` check above: same target file, same edit-placement judgment, same consent-then-edit interaction shape per mode. Preserve the semantic requirement that this is shared domain vocabulary relevant to codebase orientation and domain discussions, but derive the wording and syntax from the target file rather than copying a fixed example.
 
    **Skip this step entirely if `CONCEPTS.md` does not exist** — never nag for an artifact the project has not adopted. When skipped, this step produces no output and no edit.
 
-6. **Amend or create a follow-up commit when the check produces edits.** If step 4 or step 5 resulted in an edit to an instruction file and Phase 5 already committed the refresh changes, stage the newly edited file and either amend the existing commit (if still on the same branch and no push has occurred) or create a small follow-up commit (e.g., `docs: add docs/solutions/ discoverability to AGENTS.md`, or `docs: add CONCEPTS.md discoverability to AGENTS.md`, or a combined message when both edits landed). If Phase 5 already pushed the branch to a remote (e.g., the branch+PR path), push the follow-up commit as well so the open PR includes the discoverability change. This keeps the working tree clean and the remote in sync at the end of the run. If the user chose "Don't commit" in Phase 5, leave the instruction-file edits unstaged alongside the other uncommitted refresh changes — no separate commit logic needed.
+6. **Describe the final change shape when the check produces edits.** If step 4 or step 5 edits a runtime-instruction file before publication, keep it in the current refresh change and update that change's description. If publication already occurred, create a follow-up JJ change only when repository-local workflow requires one, describe it, advance the relevant bookmark, and publish it so the review request includes the edit. If the user chose to leave the work undescribed, leave these edits in the working-copy change too. Every composed, recommended, or validated description at this site must include this exact sentence verbatim: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Active project instructions and change-description syntax inferred at runtime from `jj log` always win. Apply compatible Go quality, clarity, and structure generally, regardless of repository language. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.

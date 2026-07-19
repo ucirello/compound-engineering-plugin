@@ -1,6 +1,6 @@
 # Extensive analysis path
 
-Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full Compound Engineering-compatible artifact set that feeds `ce-brainstorm`.
+Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full Rocketclaw-compatible artifact set that feeds `ce-brainstorm`.
 
 ## Workflow
 
@@ -97,7 +97,7 @@ The analyzer writes:
 - `problem-analysis.md`: a categorized problem statement scaffold for visual, functional, requirement, and UX findings.
 - `review-prompt.md`: a filled prompt containing screenshot paths and transcript for a deeper visual analysis pass.
 - `source-materials.md`: a manifest linking the original source location, local-only raw files, transcript locations, chunks, local-only frames, and generated artifacts.
-- `requirements-kickoff.md`: a CE-friendly requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
+- `requirements-kickoff.md`: a Rocketclaw-friendly requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
 - `analysis.json`: structured session, event, transcript, moment, and artifact metadata.
 - `frames/`: extracted PNG screenshots for selected moments. Local-only by default.
 - `raw/`: extracted zip contents and copied source media. Local-only by default.

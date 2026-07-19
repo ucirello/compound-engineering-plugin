@@ -17,22 +17,12 @@ For `pr_comment` / `review_body` items there is no file/line -- identify the rel
 
 1. **Read the code** at the referenced location (or the orchestrator's resolved location/anchor for outdated threads).
 2. **Implement the fix.** Keep it focused -- address the feedback, don't refactor the neighborhood. If the suggested approach would work but a clearly better one exists, use the better one and say so in the reply (verdict `fixed-differently`). Write a test when the fix warrants one and none exists. Maintain consistency with the existing codebase style and patterns.
-3. **Run targeted tests only** for what you changed: a specific test file, a test pattern, or the test you just wrote. Examples: `bun test path/foo.test.ts`, `pytest tests/module/test_foo.py`, `rspec spec/models/user_spec.rb`. **Never run the full project test suite** (bare `bun test`, `pytest`, `rspec` with no path) -- the parent runs it once against the combined diff from all fixers. Skip targeted tests for pure doc/comment/string-literal edits with no behavioral impact. If you can't locate targeted tests, note it in `reason` and let the combined run catch any issues.
+3. **Run targeted tests only** for what you changed: a specific test file, a test pattern, or the test you just wrote, using the project's active test conventions. **Never run the full project test suite** -- the parent runs it once against the combined diff from all fixers. Skip targeted tests for pure doc/comment/string-literal edits with no behavioral impact. If you can't locate targeted tests, note it in `reason` and let the combined run catch any issues.
 4. **Compose the reply text** for the parent to post. Quote the specific sentence being addressed, not the whole comment if it's long.
 
-For `fixed`:
-```markdown
-> [quote the relevant part of the reviewer's comment]
+For `fixed`, state briefly what changed. For `fixed-differently`, state what changed and why that approach was preferable. Do not use a fixed prefix, sentence, or reply template.
 
-Addressed: [brief description of the fix]
-```
-
-For `fixed-differently`:
-```markdown
-> [quote the relevant part of the reviewer's comment]
-
-Addressed differently: [what was done instead and why]
-```
+If you compose, recommend, or validate a change description, apply the complete rule at that site: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
 
 5. **Return the summary:**
 

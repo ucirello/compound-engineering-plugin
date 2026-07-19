@@ -186,6 +186,6 @@ mode: <repo-grounded | elsewhere-software | elsewhere-non-software>
 
 Keep engineering-process metadata out of the artifact — no "captured at
 Phase X" notes, no skill-pointer "next steps", no italic provenance
-lines. The reader wants the ideas and their basis. (HTML carries a
-single visible composition-signal footer per the html-rendering
-invariant; that is the one provenance element that belongs in the doc.)
+lines, and no attribution-only composition footer. The reader wants the
+ideas, their basis, actual source citations, and functional metadata such
+as the artifact date.

@@ -1,4 +1,4 @@
-# Compound Engineering Feedback Format
+# Rocketclaw Feedback Format
 
 Use this shape when converting Riffrec evidence into a durable brainstorm or planning input.
 
@@ -113,4 +113,4 @@ topic: <topic>
 - Prefer moment IDs and screenshot links over prose-only claims.
 - Mark visual interpretation as an inference when the screenshot does not prove intent.
 - Requirements should describe product behavior, not implementation details.
-- Do not include absolute local paths in CE docs; use repo-relative paths when possible.
+- Do not include absolute local paths in requirements documents; use workspace-relative paths when possible.

@@ -26,9 +26,9 @@ New `ce-brainstorm` outputs live under `docs/plans/` and use the unified plan
 artifact contract:
 
 - **Path:** `docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>`.
-- **`artifact_contract: ce-unified-plan/v1`**.
+- **`artifact_contract: unified-plan/v1`**.
 - **`artifact_readiness: requirements-only`**.
-- **`product_contract_source: ce-brainstorm`**.
+- **`product_contract_source: brainstorm`**.
 - **`execution`** only when the brainstorm has enough signal to classify the
   eventual execution domain. For software features, use `execution: code`.
   For non-code deliverables, follow the universal-brainstorming route instead
@@ -288,18 +288,17 @@ artifact.
   `surface-scope-earlier`, `demo-reel-local-save`). Used in the filename and
   as the resume-detection key when `ce-brainstorm` scans for an existing
   artifact to continue.
-- **`artifact_contract`** — always `ce-unified-plan/v1` for new outputs.
+- **`artifact_contract`** — always `unified-plan/v1` for new outputs.
 - **`artifact_readiness`** — always `requirements-only` for new
   `ce-brainstorm` outputs. Do not use `active`, `in_progress`, `completed`,
   or `done`.
-- **`product_contract_source`** — always `ce-brainstorm`.
-
+- **`product_contract_source`** — always `brainstorm` for new outputs.
 ### No status field
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No CE artifact carries mutable progress state; whether work shipped
-is derived from git, not stored in the doc. Do not introduce one.
+progress. No plan artifact carries mutable progress state; whether work shipped
+is derived from JJ, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 
@@ -323,6 +322,12 @@ Same shape as plan rules.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to ce-plan, no italic provenance lines. Engineering process
   metadata belongs in commit messages and tool output, not the artifact.
+- Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+  At every JJ description or commit-message composition, recommendation, or
+  validation site, the active project instructions and description syntax
+  inferred at runtime from `jj log` always win. Apply compatible Go guidance
+  only for quality, clarity, and structure. Do not impose a fixed prefix, type,
+  scope, subject, body, layout, template, or example.
 - **No implementation details by default.** Libraries, schemas, endpoints,
   file layouts, code structure stay out unless the brainstorm itself is
   inherently about a technical or architectural change and those details are

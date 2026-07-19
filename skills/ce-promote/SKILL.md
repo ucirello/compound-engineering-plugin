@@ -30,10 +30,10 @@ If the user gave a free-form description of the feature, use it as the source of
 
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
-- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current branch). The title and body usually state the user-facing value.
-- **The diff** — `git diff main...HEAD --stat` and skim notable changes to ground the claim in what actually changed.
+- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` for the current JJ bookmark/change when GitHub can resolve one. The title and body usually state the user-facing value.
+- **The diff** — inspect the JJ diff from the relevant trunk/merge base through the working-copy change, using the runtime's supported `jj diff` revset style, and skim notable changes to ground the claim in what actually changed.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
-- **Recent commits** — `git log --oneline -15` for the arc of the change.
+- **Recent changes** — inspect the recent `jj log` output using the runtime's supported style for the arc of the change; do not force a fixed template or revision syntax.
 
 Then write a 1–3 sentence summary of the **user-facing value** — what a user can now do that they couldn't before, and why they'd care. Describe the outcome, not the implementation. ("You can now export any report to CSV in one click" — not "Added a CsvSerializer and an export endpoint.")
 
@@ -126,6 +126,7 @@ Show every draft as a clean, copy-pasteable block, labeled by channel. For each:
 
 - If Spiral produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app.
 - Offer to revise (tone, length, angle, more variations, another channel).
+- Do not add generated-by, model, tool, or agent attribution to any draft.
 - **Do not post, publish, schedule, commit, or open a PR.** End by reminding the user the drafts are theirs to ship.
 
 ## Examples

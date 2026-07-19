@@ -56,23 +56,11 @@ Cluster concepts by domain relationship — entities with their states, processe
 
 When two terms were used interchangeably and the team settled on a distinction, record the resolution as a one-line note: *"'account' had been used for both Customer and User — these are distinct."* This section is the audit trail for opinions the team has formed.
 
-## One illustrative entry — the shape, not a template
+## Entry shape
 
-```
-## Booking
-
-### Reservation
-A future commitment to seat a Party at a specified date and time.
-*Avoid:* Booking, appointment
-
-A Reservation owns its Party but does not own a Table — Tables are acquired only when the Party arrives, through a Seating. Lifecycle: Booked, Seated, Completed, No-Show. Cancellation before a Seating is non-destructive; cancellation after a Seating is recorded as a No-Show.
-
-### Party
-The guests committed to a Reservation. Each Reservation has exactly one Party. Party size is the count promised at booking, not the count who arrive.
-
-### Table
-A physical seating unit with fixed capacity. Tables are shared resources — they do not belong to Reservations and are allocated only on the day-of through Seatings.
-
-### Seating
-The act of placing a Party at a Table once the Party arrives. A Reservation has at most one Seating; a Table accumulates many Seatings across its lifetime.
-```
+Derive headings and grouping from the project's existing vocabulary style. Each
+entry contains the term, its concise domain definition, an optional retired-
+aliases line, and only the non-obvious lifecycle or ownership rules needed to
+distinguish it. Relationship prose belongs with the entry or in the optional
+Relationships section according to which placement best preserves local
+coherence; do not copy a fixed entity example or lifecycle vocabulary.

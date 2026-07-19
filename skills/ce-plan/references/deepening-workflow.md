@@ -97,7 +97,7 @@ Strengthening [section names] — [brief reason for each, e.g., "decision ration
 
 For each selected section, choose the smallest useful agent set. Do **not** run every agent. Use at most **1-3 agents per section** and usually no more than **8 agents total**.
 
-The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed `Agent` names, or platform-level agent registration.
+The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed `Agent` names, or platform-level skill agent registration.
 
 **Deterministic Section-to-Agent Mapping:**
 
@@ -174,11 +174,14 @@ Signals that justify artifact-backed mode:
 
 If artifact-backed mode is not clearly warranted, stay in direct mode.
 
-Artifact-backed mode uses a per-run workspace-local scratch directory. Create it and its parents once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b). Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
+Artifact-backed mode uses a per-run workspace-local scratch directory under `<workspace-root>/.tmp`. Resolve the root with `jj workspace root`, falling back to the current directory when JJ is unavailable; create the safe parent and a collision-resistant run directory before dispatching sub-agents. Capture its **absolute path** and pass that path to each sub-agent so they write to it directly. Do not use `.context/`. Do not pass unresolved shell-variable strings to sub-agents.
 
 ```bash
-SCRATCH_DIR="<workspace-root>/.tmp/rocketclaw/ce-plan-deepen/<run-id>"
-mkdir -p "$SCRATCH_DIR"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
+SCRATCH_PARENT="$WORKSPACE_ROOT/.tmp/ce-plan-deepen"
+mkdir -p "$SCRATCH_PARENT"
+SCRATCH_DIR="$SCRATCH_PARENT/$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
+(umask 077 && mkdir "$SCRATCH_DIR")
 printf '%s\n' "$SCRATCH_DIR"
 ```
 
@@ -222,7 +225,7 @@ When presenting findings from multiple agents targeting the same section, presen
 
 After all agents have been reviewed, carry only the accepted findings forward to 5.3.7.
 
-If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. Leave `$SCRATCH_DIR` in place for debugging when findings are rejected; normal accepted-finding cleanup remains in 5.3.9.
+If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. Remove `$SCRATCH_DIR` after the review; if rejected artifacts must be retained for debugging, report their workspace-local path and leave them only with the user's approval.
 
 If findings were accepted and the plan was modified, proceed through 5.3.7 and 5.3.8 as normal — document-review acts as a quality gate on the changes.
 
@@ -248,7 +251,7 @@ Allowed changes:
 
 Do **not**:
 - Add implementation code — no imports, exact method signatures, or framework-specific syntax. Pseudo-code sketches and DSL grammars are allowed
-- Add VCS commands, JJ revision choreography, or exact test command recipes
+- Add JJ command choreography, change-description choreography, or exact test command recipes
 - Add generic `Research Insights` subsections everywhere
 - Rewrite the entire plan from scratch
 - Invent new product requirements, scope changes, or success criteria without surfacing them explicitly

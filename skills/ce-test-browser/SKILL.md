@@ -1,44 +1,38 @@
 ---
 name: ce-test-browser
 description: Run browser tests for pages affected by the current JJ change stack, a revision, or a PR.
-argument-hint: "[PR number, bookmark/revset, 'current', or --port PORT]"
+argument-hint: "[PR number, JJ revision/bookmark, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or JJ revision using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a PR or JJ changes using the `agent-browser` CLI.
 
 ## Modes
 
-- **Manual (default):** the user controls the dev server. When the fallback driver is `agent-browser`, ask whether to run headed or headless.
-- **Pipeline (`mode:pipeline`):** invoked by LFG or another automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and visibility prompts (step 6). It still uses the preferred port that step 4 computes.
+- **Manual (default):** the user controls the dev server. Follow the steps below as written, including the headed/headless question.
+- **Pipeline (`mode:pipeline`):** invoked by an automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and the headed/headless question (step 6). It still uses the preferred port that step 4 computes.
 
-## Browser Driver Policy
+## Use `agent-browser` Only
 
-Select the driver before the first browser action:
+Use the `agent-browser` CLI for every browser action in this skill — opening pages, clicking, filling forms, snapshots, screenshots — and use it exclusively. Do not use any other browser-automation tool, including a browser MCP integration, a built-in browser-control tool, Playwright, or Puppeteer. If the host offers several ways to drive a browser, always choose `agent-browser`.
 
-1. **Prefer a host-native integrated browser.** Use a browser-control surface embedded in or directly owned by the active harness when it can navigate local URLs, inspect rendered and interactive state, click/fill/press, capture screenshots, and inspect console errors. A separately configured browser extension or integration is not host-native. Load and follow the selected capability's own instructions before browser work.
-2. **Otherwise fall back to `agent-browser`.** Read `references/agent-browser-driver.md` before running any command.
-3. **Do not introduce a third browser stack.** Never install or substitute standalone Playwright, Puppeteer, a separately configured browser extension or MCP, or other ad hoc browser automation. A Playwright API exposed inside the selected host-native browser remains host-native; it is not standalone Playwright.
-
-Use one driver for the entire run. A selected host-native driver may fall back to `agent-browser` only if initialization fails before the first route is tested. After testing begins, do not mix driver sessions, element references, screenshots, or authentication state.
+- Do not use Chrome-control MCP tools (`mcp__browser__*` or the active provider's equivalent namespace).
+- Do not substitute unrelated browsing tools supplied by another provider.
 
 ## Workflow
 
-### 1. Select the Browser Driver
-
-Apply the Browser Driver Policy above and record the selected driver. This also requires a JJ workspace containing the content to test. If the selected fallback is `agent-browser`, read `references/agent-browser-driver.md` and perform its installation check before continuing.
-
-### 2. Determine Test Scope
-
-For every scope, first establish the JJ workspace and inspect its status:
+### 1. Verify `agent-browser` Is Installed
 
 ```bash
-jj root
-jj status
+command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 ```
 
-Run subsequent project discovery from the workspace root printed by `jj root`. If `jj root` fails, stop and report that the current path is not in a JJ workspace. If `jj status` reports unresolved conflicts, stop and report them rather than testing conflicted content.
+If not installed, tell the user: "`agent-browser` is not installed. Run `/ce-setup` for the current install command, then install agent-browser and retry." Then stop — this skill cannot function without it.
+
+This also requires a JJ workspace with changes to test.
+
+### 2. Determine Test Scope
 
 **If PR number provided:**
 ```bash
@@ -47,24 +41,17 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-jj log -r 'exactly(trunk(), 1)' --no-graph -T 'change_id.short() ++ "\n"'
-jj log -r 'trunk() & root()' --count
-jj diff --from 'trunk()' --to @ --name-only
+jj log
+jj diff --from <base-revision-selected-from-jj-log> --to @ --name-only
 ```
 
-`@` is the current workspace's working-copy revision. JJ has no active bookmark; use `@` for the content currently being tested. `trunk()` is JJ's configured default-remote trunk revision. The first command must resolve exactly one trunk revision, and the second must print `0`. If `trunk()` is unresolved, ambiguous, or has fallen back to `root()`, stop and ask the user to configure or provide the intended base revision instead of treating every project file as changed.
+Use the installed JJ version's `jj log` output and accepted revision syntax when selecting the base; do not assume a fixed bookmark or revset. The phrase `git log` may appear in composed messages when required, but operational history inspection remains `jj log`.
 
-**If bookmark or revset provided:**
+**If JJ revision or bookmark provided:**
 ```bash
-jj log -r 'exactly(<bookmark-or-revset>, 1)' --no-graph -T 'change_id.short() ++ "\n"'
-jj log -r 'exactly(trunk(), 1)' --no-graph -T 'change_id.short() ++ "\n"'
-jj log -r 'trunk() & root()' --count
-jj diff --from 'trunk()' --to '<bookmark-or-revset>' --name-only
+jj log
+jj diff --from <base-revision-selected-from-jj-log> --to <target-selected-from-jj-log> --name-only
 ```
-
-Substitute the user-provided bookmark or revset literally; do not assume a current bookmark because JJ has no active bookmark concept. Require it to resolve to exactly one revision before passing it to `--to`. Apply the same `trunk()` checks as the current scope. A bookmark, change ID, or other single-revision revset is valid. If the changed-file list is empty, report that the selected scope has no net file changes from `trunk()` and stop.
-
-The PR, bookmark, or revset selects the affected files and pages; browser actions always exercise the content in the current workspace at `@`. If the requested content is not present at `@`, stop and ask the user to open a JJ workspace at the intended revision rather than moving or rewriting the current workspace.
 
 ### 3. Map Changed Files to Routes
 
@@ -113,50 +100,73 @@ Confirm the server is up before asking the headed/headless question — a manual
 
 ```bash
 if lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
-  echo "Server running on port ${PORT}";
+  echo "Server running on port ${PORT}"
 else
-  echo "Server not running on port ${PORT}";
-  echo "Start your dev server, then re-run:";
-  echo "  Rails: bin/dev  or  rails server -p ${PORT}";
-  echo "  Node/Next.js: npm run dev";
-  echo "  Custom port: run this skill again with --port <your-port>";
-  exit 0;
+  echo "Server not running on port ${PORT}"
+  echo "Start your dev server, then re-run:"
+  echo "  Rails: bin/dev  or  rails server -p ${PORT}"
+  echo "  Node/Next.js: npm run dev"
+  echo "  Custom port: run this skill again with --port <your-port>"
+  exit 0
 fi
 ```
 
 In pipeline mode, do not stop here — `references/pipeline-orchestration.md` auto-starts the server in the background instead.
 
-### 6. Set Browser Visibility and Verify the Root
+### 6. Choose Headed or Headless
 
-Visibility is independent from unattended execution:
+Manual mode only — in pipeline mode, skip this step (see Modes; it defaults to headless).
 
-- **Host-native integrated browser:** keep its normal integrated surface visible and non-blocking so the user can watch progress when useful. Do not repeatedly steal focus as routes change. This applies in both manual and pipeline modes.
-- **`agent-browser` fallback, pipeline mode:** run headless without asking.
-- **`agent-browser` fallback, manual mode:** ask the user whether to run headed or headless using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors. Never silently skip the question:
+Ask the user whether to run headed or headless using the active provider's blocking question tool: `AskUserQuestion` (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input`, `ask_question` (`agy`), or `ask_user` (requires the `pi-ask-user` extension), as appropriate for that provider. Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (for example, in provider edit modes) — not because a schema load is required. Never silently skip the question:
 
-  ```
-  Do you want to watch the browser tests run?
+```
+Do you want to watch the browser tests run?
 
-  1. Headed (watch) - Opens a visible browser window
-  2. Headless (faster) - Runs without a visible window
-  ```
+1. Headed (watch) - Opens visible browser window so you can see tests run
+2. Headless (faster) - Runs in background, faster but invisible
+```
 
-Then use the selected driver to navigate to `http://localhost:<port>`, capture its rendered or interactive state, and confirm the root is served before iterating.
+Store the choice and use the `--headed` flag when the user selects option 1. Then confirm the server serves the root before iterating (add `--headed` if the user chose headed):
+
+```bash
+agent-browser open http://localhost:${PORT}
+agent-browser snapshot -i
+```
 
 ### 7. Test Each Affected Page
 
-For each affected route, use the selected driver to navigate and capture fresh rendered or interactive state.
+For each affected route:
+
+**Navigate and capture snapshot:**
+```bash
+agent-browser open "http://localhost:${PORT}/[route]"
+agent-browser snapshot -i
+```
+
+**For headed mode:**
+```bash
+agent-browser --headed open "http://localhost:${PORT}/[route]"
+agent-browser --headed snapshot -i
+```
 
 **Verify key elements:**
+- Use `agent-browser snapshot -i` to get interactive elements with refs
 - Page title/heading present
 - Primary content rendered
 - No error messages visible
 - Forms have expected fields
-- No new console errors attributable to the tested flow
 
-**Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
+**Test critical interactions:**
+```bash
+agent-browser click @e1
+agent-browser snapshot -i
+```
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:**
+```bash
+agent-browser screenshot page-name.png
+agent-browser screenshot --full page-name-full.png
+```
 
 ### 8. Human Verification (When Required)
 
@@ -189,7 +199,7 @@ Did it work correctly?
 When a test fails (**pipeline mode:** do not ask how to proceed — capture the error screenshot and repro steps, log the failure, and continue):
 
 1. **Document the failure:**
-   - Capture a screenshot of the error state with the selected driver
+   - Screenshot the error state: `agent-browser screenshot error.png`
    - Note the exact reproduction steps
 
 2. **Ask the user how to proceed:**
@@ -215,7 +225,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / `@` against `trunk()` / [bookmark or revset] against `trunk()`
+**Test Scope:** PR #[number] / JJ [change, bookmark, or revision]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -243,19 +253,50 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test the current JJ change stack through @ (auto-detects port)
+# Test current JJ changes (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test a specific JJ bookmark or single-revision revset
+# Test a specific JJ revision or bookmark
 /ce-test-browser feature/new-dashboard
 
 # Test on a specific port
 /ce-test-browser --port 5000
 ```
 
-## Driver Reference
+## agent-browser CLI Reference
 
-When `agent-browser` is selected as the fallback, read `references/agent-browser-driver.md` from this skill's directory before running its commands. Host-native drivers follow their harness-provided instructions instead.
+Run `agent-browser --help` for all commands.
+
+Key commands:
+
+```bash
+# Navigation
+agent-browser open <url>           # Navigate to URL
+agent-browser back                 # Go back
+agent-browser close                # Close browser
+
+# Snapshots (get element refs)
+agent-browser snapshot -i          # Interactive elements with refs (@e1, @e2, etc.)
+agent-browser snapshot -i --json   # JSON output
+
+# Interactions (use refs from snapshot)
+agent-browser click @e1            # Click element
+agent-browser fill @e1 "text"      # Fill input
+agent-browser type @e1 "text"      # Type without clearing
+agent-browser press Enter          # Press key
+
+# Screenshots
+agent-browser screenshot out.png       # Viewport screenshot
+agent-browser screenshot --full out.png # Full page screenshot
+
+# Headed mode (visible browser)
+agent-browser --headed open <url>      # Open with visible browser
+agent-browser --headed click @e1       # Click in visible browser
+
+# Wait
+agent-browser wait @e1             # Wait for element
+agent-browser wait 2000            # Wait milliseconds
+```

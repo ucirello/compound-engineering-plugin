@@ -2,34 +2,29 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, JJ bookmark/revision, or blank for current workspace]"
+argument-hint: "[PR number, bookmark name, or blank for current workspace]"
 ---
 
 # Polish
 
 Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
 
-## Phase 0: Work in the right JJ workspace and revision
+## Phase 0: Get in the right workspace
 
-1. Require a JJ workspace: resolve its root with `jj workspace root`. Use that root as the project root for every detection script and project-relative path below.
-2. Run `jj workspace list`, `jj status`, and `jj bookmark list -r @`. JJ has no current branch: `@` is the current workspace's working-copy revision, and bookmarks are movable labels that may or may not point to it.
-3. Resolve the target:
-   - With no argument, use `@` in the current workspace.
-   - For a JJ bookmark/revision, resolve exactly one revision with `jj log -r 'exactly(<target>, 1)' --no-graph`.
-   - For a PR number, read `baseRefName`, `headRefName`, `headRefOid`, and `isCrossRepository` with `GIT_DIR="$(jj git root)" gh pr view <number> --json baseRefName,headRefName,headRefOid,isCrossRepository`; setting `GIT_DIR` this way keeps `gh` working in non-colocated JJ repositories. Require `headRefOid` to be a 40-character hexadecimal object ID. Before using `headRefName`, require a nonempty slash-separated forge head-ref shape containing only ASCII letters, digits, `.`, `_`, `/`, and `-`: no empty component, component beginning or ending `.`, component ending `.lock`, `..`, or `@{`, and the whole name must not begin `-` or end `/`. Reject invalid metadata rather than interpolating it. Resolve content only with `jj log -r 'exactly(commit_id(<validated-headRefOid>), 1)' --no-graph`; never resolve content from the head-ref name. If the object ID is not present, inspect existing remotes with `jj git remote list`, then fetch with the exact JJ string pattern `jj git fetch --remote "<remote>" --branch "exact:\"<validated-headRefName>\""` and resolve the validated object ID again. Do not pass a bare head-ref name or a glob pattern. Do not use `gh pr checkout`; use the JJ resolution and fetch flow above. If a cross-repository head is unavailable through any existing remote, stop and ask the user to provide a local JJ revision or workspace; do not add a remote implicitly.
-4. Before changing the current workspace, inspect the revisions checked out by `jj workspace list`. If an existing workspace is already at the target or at an empty child of it, obtain workspace names and paths with `jj workspace list -T 'self.name() ++ "\t" ++ self.root() ++ "\n"'`, select the exact workspace name, and require exactly one matching nonempty path. Continue from that path; stop on zero or multiple matches rather than guessing.
-5. Otherwise, if the target is not the current `@`, run `jj status` first. If `@` contains changes, ask before leaving it. Then create a dedicated working-copy change with `jj new <target>`; do not `jj edit` the target, because polish fixes should be a new change rather than a rewrite of the feature revision.
-6. Resolve `trunk()` to exactly one revision rather than guessing `main` or `master`. Stop if the selected target is `trunk()`, or if a blank target is an empty `@` directly on `trunk()`; there is no feature to polish.
-7. Record the selected target's change ID and commit ID with `jj log -r <target> --no-graph -T 'change_id.short() ++ " " ++ commit_id.short() ++ "\n"'`. The commit ID is retained only because GitHub identifies PR revisions by object ID. To understand the feature scope, use the PR's resolved base remote bookmark for a PR and `trunk()` otherwise, resolve `<base>` with `exactly(fork_point(<comparison-tip> | <target>), 1)`, inspect history with `jj log -r '<base>..<target>'`, and inspect changed paths with `jj diff --from <base> --to <target> --name-only`.
+1. If a PR number or bookmark name was provided, use `ce-worktree` to attach it in an existing or new JJ workspace.
+2. If blank, use the current workspace.
+3. Resolve the project's protected/default bookmark from the active project instructions and remote metadata shown by `jj bookmark list --all-remotes`; do not infer it from a conventional bookmark name. If those sources do not identify it unambiguously, ask the user rather than guessing.
+4. Use `jj bookmark list --all-remotes -r @` to determine which local or remote bookmarks point exactly at the working-copy commit, and use `jj log -r '@ & immutable()'` to check whether that commit is immutable. A bookmark pointing at `@` does not mean the working copy is "on" that bookmark.
+5. Before editing, if the resolved protected/default bookmark points at `@`, or if `@` is immutable, run `jj new @` to create a mutable descendant. Otherwise, keep the current working-copy commit so existing unbookmarked work remains intact.
 
 ## Phase 1: Start the dev server
 
 The scripts below ship in this skill's `scripts/` directory. The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each command must carry it); replace the `<absolute path …>` placeholder with the directory you loaded this `ce-polish` SKILL.md from before running.
 
-### 1.1 Check for `.claude/launch.json`
+### 1.1 Check for `.agents/launch.json`
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
+SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
 bash "$SKILL_DIR/scripts/read-launch-json.sh"
 ```
 
@@ -40,7 +35,7 @@ If it finds a configuration, use it — the user already told us how to start th
 Identify the framework:
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
+SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
 bash "$SKILL_DIR/scripts/detect-project-type.sh"
 ```
 
@@ -58,33 +53,31 @@ Route by type to the matching recipe reference for start command and port defaul
 | `procfile` | `references/dev-server-procfile.md` |
 | `unknown` | Ask the user how to start the project |
 
-Interpret the detector's complete output grammar before routing:
-
-- For `<type>`, set `PROJECT_TYPE` to that type and `PROJECT_DIR` to the JJ workspace root.
-- For `<type>@<relative-dir>`, split at `@`, set `PROJECT_TYPE` to the type, and set `PROJECT_DIR` to that subdirectory under the JJ workspace root.
-- For `multiple:<type>@<dir>,...`, show the listed candidates and ask the user which project to run. Set `PROJECT_TYPE` and `PROJECT_DIR` from the selected candidate.
-- For bare `multiple`, explain that multiple root signatures matched and ask the user to select the project type and project directory; do not guess.
-- For `unknown`, ask how to start the project.
-
-Run the selected recipe's start command with `PROJECT_DIR` as its working directory.
-
 For framework types that need a package manager, run the resolver and substitute the result into the start command:
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/resolve-package-manager.sh" "$PROJECT_DIR"
+SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
+bash "$SKILL_DIR/scripts/resolve-package-manager.sh"
 ```
 
 Resolve the port:
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/resolve-port.sh" "$PROJECT_DIR" --type "$PROJECT_TYPE"
+SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
+bash "$SKILL_DIR/scripts/resolve-port.sh" --type <type>
 ```
 
 ### 1.3 Start the server
 
-Start the dev server in the background and log output under `<JJ-workspace-root>/.tmp/rocketclaw/ce-polish/`, creating that directory and its parents if needed. Outside a JJ workspace, use the current project directory's `.tmp/rocketclaw/ce-polish/` as the matching local fallback. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
+Resolve the workspace-local temp directory before starting the server:
+
+```bash
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
+TMP_DIR="$WORKSPACE_ROOT/.tmp"
+mkdir -p "$TMP_DIR"
+```
+
+Start the dev server in the background with output logged under `$TMP_DIR`. Do not use an OS-global temp directory, `$TMPDIR`, `mktemp`, or `tempfile`. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
 
 ### 1.4 Open in browser
 
@@ -102,7 +95,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → run `jj status`, review `jj diff` for the current working-copy change, summarize the fixes, and stop. JJ snapshots tracked files automatically.
+- When the user says they're done → create a JJ commit for the fixes and stop
 
 No checklist. No envelope. Just conversation.
 

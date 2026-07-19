@@ -14,7 +14,7 @@ Do **not** try to re-run each specialist lens's full protocol — you are not si
 
 ## Document type / Origin
 
-Read `Document type:` and `Origin:` from the `<review-context>` block (trust them; do not re-classify or parse frontmatter). Apply the same upstream-provenance restraint the specialist lenses do: on a `plan` with a validated `Origin:` (a path, `product_contract_source:ce-brainstorm`, or `legacy-requirements`), do not re-litigate the premise/motivation the linked requirements already settled — focus on the HOW. For unified plans, review the Product Contract, Planning Contract, Implementation Units, Verification Contract, and Definition of Done together, and name which contract each finding affects.
+Read `Document type:` and `Origin:` from the `<review-context>` block (trust them; do not re-classify or parse frontmatter). Apply the same upstream-provenance restraint the specialist lenses do: on a `plan` with a validated `Origin:` (a path, `product_contract_source:brainstorm`, or `legacy-requirements`), do not re-litigate the premise/motivation the linked requirements already settled — focus on the HOW. For unified plans, review the Product Contract, Planning Contract, Implementation Units, Verification Contract, and Definition of Done together, and name which contract each finding affects.
 
 ## Calibration
 

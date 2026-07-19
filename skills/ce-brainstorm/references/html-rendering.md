@@ -54,7 +54,7 @@ These hold regardless of which skill produced the artifact.
   sections exist. Requirements-only artifacts omit links to absent
   implementation sections.
 - **Visible readiness metadata.** If the artifact has `artifact_contract`,
-  `artifact_readiness`, `product_contract_source`, or `execution`, render
+  `artifact_readiness`, or `execution`, render
   those values in the visible header metadata. Do not hide a duplicate copy in
   JSON, `data-*`, or `<meta>` tags.
 
@@ -94,15 +94,14 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj workspace root`).
+1. Workspace root (resolve via `jj workspace root`, falling back to the current local directory).
 2. `docs/DESIGN.md`.
 3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to a primary workspace. Users
-working from another workspace who want HTML defaults can add DESIGN.md to that
-workspace.
+Workspace-root only. Users working from another workspace who want HTML
+defaults can add DESIGN.md to that workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -218,17 +217,19 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL and immutable `trunk()` target once at compose time. Match the provider repository URL to exactly one normalized URL from `jj git remote list`, then resolve the full commit ID from the JJ `trunk()` revset:
+Resolve the repository's GitHub URL once at compose time:
 
 ```bash
 jj git remote list
-jj log -r 'trunk()' --no-graph -T 'commit_id'
 ```
+
+Use the URL on the `origin` line. If no `origin` is listed, leave repository
+references as text.
 
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/<trunk-commit-id>/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -236,8 +237,8 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If no selected remote is a GitHub URL (GitLab,
-Bitbucket, internal host) and the equivalent tree URL pattern
+**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
+Bitbucket, internal host) and the equivalent main-tree URL pattern
 isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.
@@ -295,7 +296,7 @@ chip) is being styled.
 Status chips, ID chips, and metric pills in the same row share one shape
 — same border-radius, border weight, and fill treatment. Differentiate
 categories only by the chip's overall fill/text color (applied to the
-  whole pill, like a soft-tint label), never by an accent on one edge. A
+whole pill, like a soft-tint badge), never by an accent on one edge. A
 colored stripe or arc on a single side of a pill reads as broken and
 asymmetric — as if a border half-failed to render — so avoid it. The same
 holds for any element, not just chips: differentiate by a full tint, not
@@ -428,7 +429,7 @@ labeled arrow, each shape edge, and each text label:
 - **Avoid long curves that traverse the diagram** to connect a
   component on one side to one on the other. If A and D need a labeled
   connection across a multi-component layout, prefer reordering boxes
-  so A and D are adjacent, numbered step labels next to each
+  so A and D are adjacent, numbered step badges next to each
   participant that the caption ties together, or a short
   labeled-channel notation — rather than one curve crossing multiple
   unrelated elements.

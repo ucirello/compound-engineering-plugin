@@ -1,83 +1,96 @@
 ---
 name: ce-commit
-description: Create a JJ commit with a clear, repository-appropriate message. Use when the user asks to commit or save current working-copy changes.
+description: Create one or more coherent JJ commits from the working-copy change with repository-appropriate descriptions. Use when the user asks to commit or save current working-copy changes.
 ---
 
 # JJ Commit
 
-Describe and finish one or more coherent JJ changes from the working-copy commit. Done means each intended change has a validated description, the resulting change and commit IDs are reported, and any remainder in `@` is named explicitly.
+Finish one or more coherent changes from JJ's working-copy commit (`@`). Done means every intended change has a validated description, completed change and commit IDs are reported, and any remainder in `@` is named explicitly.
 
-The working copy is a commit (`@`), and most `jj` commands snapshot file-system changes into it. `jj commit` describes `@` and creates a new working-copy change on top. With filesets, selected changes remain in the commit being finished and unselected changes move to the new working-copy child.
+The working copy is already a change. Most JJ commands snapshot file-system edits into `@`; `jj commit` finishes that change and creates a new working-copy change on top. When given filesets, it finishes the selected content while moving unselected content into the new working-copy child.
 
-## Context
+## Command Discipline
 
-Run each command as its own shell tool call. Do not join commands with shell operators, pipes, substitutions, or redirects. A non-zero exit is state to interpret, not a failure to hide.
+Run each command as a separate shell-tool call. Do not combine commands with shell operators, pipes, substitutions, or redirects. Interpret non-zero exits and report unrecoverable failures rather than hiding them.
 
-| Command | Purpose | Failure meaning |
-| --- | --- | --- |
-| `jj workspace root` | Repository root | Not a JJ repository; report and stop |
-| `jj status` | Working-copy and conflict state | Repository cannot be read; report and stop |
-| `jj diff` | Current content changes | No output means no content change |
-| `jj bookmark list -r @` | Bookmarks at the working-copy change | Empty output is normal |
-| `jj bookmark list -r @-` | Bookmarks at its parent | Empty output is normal |
-| `jj log -r '::@' --limit 10 --no-graph` | Recent local descriptions and topology | No prior history is available |
-| `jj log -r '::@' --limit 10 --no-graph -T 'description ++ "\n"'` | Repository message syntax and style | No compatible history is available |
-
-The final command reads JJ description history for the required local message-style check; all VCS mutation remains JJ-native. Re-read `jj status` and `jj diff` immediately before each commit because commands snapshot the working copy and concurrent edits may change it.
+Use only JJ for repository inspection and mutation. There is no staging area, index, detached-head condition, or branch gate in this workflow. Bookmarks are named pointers that do not automatically follow the working copy; do not create or move one unless the user explicitly asks.
 
 ## Workflow
 
-### Step 1: Validate the working copy
+### Step 1: Inspect the working-copy change
 
-If `jj status` reports no changes in `@`, report that there is nothing to finish and stop. Do not create an empty change.
+Run:
 
-If `jj status` reports conflicts, resolve them before finishing the change. Use `jj resolve` for an available merge tool or edit the materialized conflict directly, then rerun `jj status` and `jj diff`. Do not finish a conflicted change.
+```bash
+jj workspace root
+jj status
+jj diff
+jj log -r '::@' --limit 10 --no-graph
+jj log -r '::@' --limit 10 --no-graph -T 'description ++ "\n"'
+```
 
-Bookmarks are named pointers and do not follow the working copy. A working-copy change does not need a bookmark merely to be committed, so do not create or move one in this skill unless the user explicitly asks.
+`jj workspace root` must identify a repository. If it does not, report that and stop. If `jj status` and `jj diff` show no content changes in `@`, report that there is nothing to finish and stop; do not create an empty change.
 
-### Step 2: Determine the message standard
+If `@` contains conflicts, resolve them with the available merge tool through `jj resolve` or by editing the materialized conflict, then rerun `jj status` and `jj diff`. Do not finish a conflicted change.
+
+Re-run `jj status` and `jj diff` immediately before every `jj commit`. JJ snapshots the file system, so concurrent edits can alter `@` after the initial inspection.
+
+### Step 2: Derive the description standard
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Communicate the change's purpose clearly, keep the first line useful in history, and add explanatory context when a future reader needs it. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited; do not add capitalization, line-length, or body rules without repository-local evidence.
+Active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, including in command-message examples; use any such form only when the active project instructions or `jj log` establish it.
 
-### Step 3: Choose coherent changes
+Infer the active standard from the nearest relevant history, not from a universal fallback. If history is sparse or inconsistent, use a clear description of the change's purpose and material effect without inventing syntax.
 
-Scan the changed paths for distinct concerns. If file-level groups are clearly independent, finish them separately. If separation is ambiguous, keep one change. Do not use interactive splitting unless the user explicitly requests hunk-level separation.
+### Step 3: Select coherent changes
 
-Each change must preserve one reviewable purpose. Include related tests, generated outputs, and documentation with the behavior they validate or describe unless local conventions require another grouping.
+Inspect every changed path reported by `jj status` and its content in `jj diff`. Group changes only when distinct reviewable purposes are clear. Keep related implementation, tests, generated output, and documentation together unless repository-local conventions indicate otherwise.
 
-### Step 4: Describe and finish
+Use JJ filesets for file-level groups. Do not perform interactive or hunk-level splitting unless the user explicitly requests it. If separation is ambiguous, finish one coherent change rather than guessing.
 
-At each change-description composition site, apply this instruction exactly:
+Before each path-limited commit, derive a fileset from the current `jj status`; do not reuse a stale path list. Treat fileset expressions as repository inputs requiring careful quoting, especially when paths contain spaces or fileset operators.
+
+### Step 4: Compose and finish each change
+
+For every description, apply this instruction exactly:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Describe the purpose and material effect accurately. Add a body only when it carries motivation, tradeoffs, compatibility notes, or other context not clear from the first line. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited.
+Active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, including in command-message examples; use any such form only when the active project instructions or `jj log` establish it.
 
-For one change:
+Describe the purpose and material effect accurately; include further context only when it helps a future reader understand motivation, constraints, or trade-offs.
 
-```bash
-jj commit -m "<repository-derived-message>"
+For the whole working-copy change, invoke `jj commit` with the dynamically composed description. For a file-level group, pass the dynamically derived fileset arguments to `jj commit` before the description option. The conceptual forms are:
+
+```text
+jj commit -m <description-composed-from-runtime-conventions>
+jj commit <dynamically-derived-fileset> -m <description-composed-from-runtime-conventions>
 ```
 
-For a multiline description, use the available file-writing capability to create `$(jj workspace root)/.tmp/rocketclaw/ce-commit/<unique-id>.txt`. If no JJ repository exists, use the current project directory's `.tmp/rocketclaw/ce-commit/<unique-id>.txt` as the matching local fallback; this skill otherwise reports the missing repository and stops. Then run:
+The placeholders are runtime values, not literal examples. Pass the description as one argument through the shell tool's argument handling. Do not interpolate repository content into a compound shell command.
 
-```bash
-MESSAGE=$(<workspace-local-message-file>)
-jj commit -m "$MESSAGE"
-```
+If a multiline-description handoff requires a file, resolve `<workspace-root>` by running `jj workspace root`; if that root is unavailable at handoff time, use the current project directory. Use `<workspace-root>/.tmp/rocketclaw/ce-commit/<run-id>/message.txt`. First verify the resolved root, then create the parent directory in a separate shell call with `mkdir -p "<workspace-root>/.tmp/rocketclaw/ce-commit/<run-id>"`; the quoted placeholders must be replaced with the runtime values. Write the message with the available file-writing capability, read it with the available file-reading capability, and pass the resulting content as the description argument. Do not combine root resolution, directory creation, file writing, or committing in one shell command.
 
-For multiple file-level groups, pass the group's filesets before `-m`. Each fileset selects changes retained in the change being finished; unselected changes move to the new working-copy child. Re-run `jj status` and `jj diff` after every path-limited commit before selecting the next group. Do not use staging-area or non-JJ commit commands.
-
-Without filesets, `jj commit` is equivalent to describing `@` and creating a new empty working-copy change on top. Do not run an additional `jj new`.
+After a fileset-limited commit, run `jj status` and `jj diff` again. Selected content belongs to the completed parent; unselected content remains in the new `@`. Recompute the next fileset from that state. Do not run `jj new` after `jj commit` because the latter already creates the new working-copy change.
 
 ### Step 5: Validate and report
 
-For every completed change, inspect it with `jj log -r @- --no-graph` and, when needed, `jj show -r @-`. Validate its description with this instruction:
+Inspect each completed parent with:
+
+```text
+jj log -r <completed-revision> --no-graph
+jj show -r <completed-revision>
+```
+
+Immediately after each commit, `<completed-revision>` is normally `@-`; retain its reported change ID before finishing another change so validation and reporting remain unambiguous.
+
+Validate every completed description with this instruction:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. If the description does not match the actual change or present repository standard, edit it with `jj describe -r @- -m "<repository-derived-message>"`; for a message file, load its contents into `MESSAGE` and pass `-m "$MESSAGE"`, then validate it again.
+Active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, including in command-message examples; use any such form only when the active project instructions or `jj log` establish it.
 
-Run `jj status` after the final commit. Report every completed change ID, commit ID, and first line. If `@` is not empty, report the remaining paths rather than claiming all changes were committed.
+If the description is inaccurate or violates the observed repository standard, invoke `jj describe -r <completed-revision> -m <description-composed-from-runtime-conventions>`, then inspect it again with `jj log` and `jj show`. The placeholders must be replaced with the revision and description derived at runtime.
+
+Run `jj status` after the final commit. Report each completed change ID, commit ID, and description first line. If `@` still contains content or conflicts, report the remaining paths and state rather than claiming that all changes were committed.

@@ -7,19 +7,18 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Current JJ change.** If `jj diff` is non-empty, review the current working-copy revision.
-3. **Stack vs base bookmark.** If the current change is empty but the stack has work, review `jj diff --from <base> --to @` where `<base>` is the default remote bookmark such as `main@origin`.
+2. **Working-copy change.** If `jj diff -r @` is non-empty, include the current working-copy commit.
+3. **Bookmark history vs base.** Review `jj diff --from 'fork_point(@ | <base>)' --to @`, where `<base>` is the resolved default remote bookmark.
 
-The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run VCS commands yourself unless revision-specific inspection is required below.
+The scope step in SKILL.md passes the resolved diff. Use only read-only JJ commands for additional inspection.
 
 ## Remote scope (`pr-remote` and `bookmark-remote`)
 
-When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>`, the working-copy revision is **not** the reviewed head. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark/revision or PR under review.
+When review context is remote, the working copy is not the reviewed revision. Do not use Read/Grep on workspace paths for changed files.
 
 Instead:
 
-- Prefer `jj file show -r <remote-head-ref> <path>` when `<pr-head-ref>` or `<bookmark-head-ref>` is provided in context.
-- Use `jj file annotate -r <remote-head-ref> <path>` when line history is needed at that revision.
+- Prefer `jj file show -r <remote-head-rev> <path>` when `<pr-head-rev>` or `<bookmark-head-rev>` is provided.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 
@@ -37,6 +36,6 @@ Unchanged code within the same function, method, or block as a changed line. If 
 
 ### Pre-existing (unrelated to this diff)
 
-Issues in unchanged code that the diff didn't touch and doesn't interact with. Mark these as `"pre_existing": true` in your output. They're reported separately and don't count toward the review verdict. When history is what makes the pre-existing call, attach one concise provenance evidence line from targeted `jj file annotate` / `jj log` inspection (see the load-bearing line provenance rule in `subagent-template.md`).
+Issues in unchanged code that the diff didn't touch and doesn't interact with. Mark these as `"pre_existing": true` in your output. They're reported separately and don't count toward the review verdict.
 
 **The rule:** If you'd flag the same issue on an identical diff that didn't include the surrounding file, it's pre-existing. If the diff makes the issue *newly relevant* (e.g., a new caller hits an existing buggy function), it's secondary.

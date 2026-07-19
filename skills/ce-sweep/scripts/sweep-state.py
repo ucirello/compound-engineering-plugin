@@ -13,7 +13,7 @@ Design rules (mirrors the repo's repo-profile-cache helper):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a workspace-local `.tmp/rocketclaw/` scratch file plus
+  - Writes use a workspace-local staging file under .tmp/rocketclaw plus
     os.replace, so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
@@ -49,7 +49,7 @@ from datetime import datetime, timezone
 try:
     import fcntl  # POSIX advisory locks (macOS, Linux — this repo's Unix targets)
     _HAS_FCNTL = True
-except ImportError:  # non-POSIX; mutating commands fail closed below
+except ImportError:  # non-POSIX; degrade to unlocked (single-writer by convention)
     _HAS_FCNTL = False
 
 SCHEMA_VERSION = 1
@@ -60,7 +60,7 @@ SCHEMA_VERSION = 1
 
 # A `closed` item MUST carry all three evidence fields; `validate` downgrades
 # any closed item missing any of them back to `fix_pending`.
-EVIDENCE_FIELDS = ("fix_ref", "verified_commit_id", "verified_at")
+EVIDENCE_FIELDS = ("fix_ref", "verified_merge_sha", "verified_at")
 
 DEFAULT_TTL_MINUTES = 60
 
@@ -88,7 +88,7 @@ _DOC_ORDER = ("schema_version", "lease", "sources", "items", "last_run")
 _LEASE_ORDER = ("writer", "timestamp", "ttl_minutes")
 _ITEM_ORDER = (
     "source", "status", "sensitive", "title", "url", "body", "quote",
-    "fix_ref", "verified_commit_id", "verified_at",
+    "fix_ref", "verified_merge_sha", "verified_at",
 )
 _LAST_RUN_ORDER = ("timestamp", "outcome", "writer", "counts")
 
@@ -249,10 +249,7 @@ def _item_key(source, item_id):
     source that reuses numeric ids). Namespacing by source keeps each source's
     id space independent, matching the composite keys documented in
     references/state-schema.md."""
-    def escape(component):
-        return str(component).replace("%", "%25").replace(":", "%3A")
-
-    return "{}:{}".format(escape(source), escape(item_id))
+    return "{}:{}".format(source, item_id)
 
 
 def load_state(path):
@@ -260,9 +257,13 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # Local-only state lives under workspace-local .tmp/rocketclaw/.
-            # It remains a correctness dependency and an injection sink, so
-            # reject a file not owned by us. Skip where geteuid is unavailable.
+            # A workspace-local state file can contain security-sensitive data, and
+            # it is a correctness dependency (lease, cursors, closed status) as
+            # well as an injection sink (item bodies re-read into agent
+            # context). Reject a file not owned by us so a co-tenant cannot
+            # plant a forged lease/cursor or attacker-authored item text. Skip
+            # where geteuid is unavailable (non-POSIX), where the threat does
+            # not apply.
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return ("corrupt", None)
@@ -288,33 +289,23 @@ def new_state():
     return {"schema_version": SCHEMA_VERSION, "sources": {}, "items": {}}
 
 
-def repo_scratch_dir(*parts):
-    try:
-        root = subprocess.run(
-            ["jj", "workspace", "root"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except (FileNotFoundError, OSError):
-        root = None
-    workspace_root = root.stdout.strip() if root and root.returncode == 0 else os.getcwd()
-    path = os.path.join(
-        workspace_root, ".tmp", "rocketclaw", "ce-sweep", *parts
-    )
-    os.makedirs(path, exist_ok=True)
-    return path
-
-
 def write_state(path, state):
     """Atomic write of the state file. Returns True on success."""
     state["schema_version"] = SCHEMA_VERSION
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    scratch_dir = repo_scratch_dir("atomic-writes")
-    tmp = os.path.join(scratch_dir, f"state-{os.getpid()}-{secrets.token_hex(8)}.yml")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    staging_dir = os.path.join(
+        _workspace_root(), ".tmp", "rocketclaw", "ce-sweep", "state-writes"
+    )
+    os.makedirs(staging_dir, exist_ok=True)
+    while True:
+        tmp = os.path.join(staging_dir, f"state-{secrets.token_hex(12)}.yml")
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            break
+        except FileExistsError:
+            continue
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
@@ -326,6 +317,23 @@ def write_state(path, state):
             pass
         raise
     return True
+
+
+def _workspace_root():
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        root = result.stdout.strip()
+        if result.returncode == 0 and os.path.isabs(root):
+            return root
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.getcwd()
 
 
 # --------------------------------------------------------------------------- #
@@ -441,7 +449,7 @@ def _load_owned_state(args):
     return data, None
 
 
-def _commit_owned(args, data):
+def _persist_owned(args, data):
     """Shared tail for lease-gated mutations: re-stamp the lease, persist."""
     restamp_lease(data, args.writer, resolve_now(args))
     write_state(args.state, data)
@@ -479,7 +487,7 @@ def cmd_upsert_item(args):
             merged.pop(f, None)
 
     items[key] = merged
-    return _commit_owned(args, data)
+    return _persist_owned(args, data)
 
 
 def cmd_cursor_get(args):
@@ -508,7 +516,7 @@ def cmd_cursor_advance(args):
     if current is not None and _cursor_lt(str(args.to), str(current)):
         return emit("REFUSED")
     entry["cursor"] = args.to
-    return _commit_owned(args, data)
+    return _persist_owned(args, data)
 
 
 def _cursor_lt(a, b):
@@ -564,9 +572,8 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-only mode there is
-    # a single writer per workspace, so this bookkeeping write is safe. A
-    # shared-bookmark loser is required not to call this command.
+    # the lease yet must still record its outcome. In local revision mode there
+    # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -587,7 +594,7 @@ def cmd_run_record(args):
 
 
 def cmd_import_legacy(args):
-    """Best-effort import of a legacy state file. Liberal on input:
+    """Best-effort import of a Cora-style legacy state file. Liberal on input:
     map what matches the known shapes, skip what doesn't, never fail."""
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -614,7 +621,7 @@ def cmd_import_legacy(args):
     items_imported = 0
     if isinstance(legacy, dict):
         cursors_imported = _import_channels(legacy, data, source_map)
-        items_imported = _import_legacy_items(legacy, data, source_map)
+        items_imported = _import_legacy_items(legacy, data)
 
     # Persist only when something changed: a fresh state file was seeded, or
     # the import actually brought data in. A no-op import writes nothing.
@@ -632,7 +639,7 @@ def _read_legacy(path):
             raw = f.read()
     except OSError:
         return None
-    # Try JSON first; fall back to our YAML subset.
+    # Try JSON first (Cora persists JSON); fall back to our YAML subset.
     try:
         return json.loads(raw)
     except ValueError:
@@ -670,27 +677,20 @@ def _import_channels(legacy, data, source_map=None):
     return count
 
 
-def _import_legacy_items(legacy, data, source_map=None):
+def _import_legacy_items(legacy, data):
     raw_items = legacy.get("items")
     items = data.setdefault("items", {})
     count = 0
 
-    source_map = source_map or {}
-
     def add(item_id, fields):
         if not item_id:
             return 0
-        legacy_source = fields.get("source") or fields.get("channel") or "legacy"
-        source = source_map.get(str(legacy_source), str(legacy_source))
-        key = _item_key(source, item_id)
-        merged = dict(items.get(key, {}))
+        merged = dict(items.get(str(item_id), {}))
         for k in ("status", "source", "channel", "title", "url"):
             if k in fields and fields[k] is not None:
                 key = "source" if k == "channel" else k
                 merged.setdefault(key, fields[k])
-        merged["source"] = source
-        merged["id"] = str(item_id)
-        items[key] = merged
+        items[str(item_id)] = merged
         return 1
 
     if isinstance(raw_items, dict):
@@ -781,7 +781,7 @@ _HANDLERS = {
 # (run-record for an aborted-locked run, validate, import-legacy). Two
 # concurrent invocations (an overlapping cron and manual sweep) could otherwise
 # interleave load -> mutate -> write and lose an update — e.g. an aborted run's
-# stale-snapshot write clobbering the holder's just-committed upsert. An OS
+# stale-snapshot write clobbering the holder's just-persisted upsert. An OS
 # advisory lock held across each mutating RMW makes them mutually exclusive
 # regardless of lease ownership.
 _MUTATING = {
@@ -791,24 +791,18 @@ _MUTATING = {
 
 
 def _run_locked(handler, args):
-    state_dir = os.path.dirname(os.path.abspath(args.state))
-    try:
-        os.makedirs(state_dir, exist_ok=True)
-        if not os.path.isdir(state_dir):
-            return emit("ERROR")
-    except OSError:
-        return emit("ERROR")
+    lock_dir = os.path.join(
+        _workspace_root(), ".tmp", "rocketclaw", "ce-sweep", "locks"
+    )
+    os.makedirs(lock_dir, exist_ok=True)
     state_key = hashlib.sha256(os.path.abspath(args.state).encode()).hexdigest()
-    lock_path = os.path.join(repo_scratch_dir("locks"), state_key + ".lock")
+    lock_path = os.path.join(lock_dir, f"{state_key}.lock")
     try:
         lock_fd = open(lock_path, "w")
     except OSError:
-        return emit("ERROR")
+        return handler(args)  # cannot create a lock file; degrade to unlocked
     try:
-        try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        except OSError:
-            return emit("ERROR")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
         return handler(args)
     finally:
         try:
@@ -821,9 +815,7 @@ def main(argv):
     args = build_parser().parse_args(argv[1:])
     handler = _HANDLERS[args.cmd]
     try:
-        if args.cmd in _MUTATING:
-            if not _HAS_FCNTL:
-                return emit("ERROR")
+        if _HAS_FCNTL and args.cmd in _MUTATING:
             return _run_locked(handler, args)
         return handler(args)
     except Exception as exc:  # never leak a traceback to the caller

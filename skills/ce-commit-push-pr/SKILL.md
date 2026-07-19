@@ -1,140 +1,202 @@
 ---
 name: ce-commit-push-pr
-description: Commit with JJ, push through `jj git` interoperability, and open or update a GitHub PR. Use when asked to ship/open a PR or only write, rewrite, or apply a PR description.
-argument-hint: "[PR ref] [mode:pipeline] [archive:on|off] [babysit:off|continuous|checkpoint]"
+description: Describe changes, create or update a JJ bookmark, push it, and open or update a PR. Use when asked to ship/open a PR, or for PR-description-only flows like writing, rewriting, or describing a PR body.
+argument-hint: "[PR ref] [mode:pipeline] [archive:on|off]"
 ---
 
 # JJ Commit, Push, and PR
 
-Produce a pushed JJ change stack and the correct GitHub PR, or only a PR description when requested. Preserve existing PR state, avoid duplicate PRs, and leave every mutation tied to an explicit bookmark.
+**Required actor:** `ai:assistant` (AI Assistant). Preserve provider, human, and research attribution supplied by the project or user. Add no generated-by footer or execution metadata.
 
-**Asking the user:** Use the harness's blocking-question capability. Fall back to chat only when no blocking capability exists or it errors. Never silently skip a required question.
+**Asking the user:** When this skill says "ask the user", use the provider's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting the question in chat only when no blocking tool exists in the provider or the call errors (e.g., Codex edit modes). Never silently skip the question.
 
 ## Mode
 
-- **Description-only**: compose and print only the title and body. If a PR ref was supplied, use it to resolve the comparison range. Apply nothing unless asked.
-- **Description update**: require a confirmed open PR, compose against that PR, preview, and apply with `gh pr edit`. Exit-zero `[]` means no open PR; a non-zero query means unknown and requires resolving authentication or connectivity.
-- **Full workflow**: run Steps 1-5.
+- **Description-only** - user wants just a description ("write/draft a PR description", "describe this PR", or pasted a PR URL/number alone). Run Step 4 only; print the result. Apply only if the user asks. If a PR ref was pasted, pass it to Step 4 so Pre-A resolves the right range.
+- **Description update** - user wants to refresh/rewrite an existing PR's description with no commit/push intent. If no open PR, report and stop. Otherwise run Step 4 (PR mode using the existing PR's URL), then Step 5 to preview, confirm, and apply via `gh pr edit`.
+- **Full workflow** - otherwise. Run Steps 1-5 in order.
 
-`mode:pipeline` suppresses blocking questions. It does not rewrite an existing PR unless description-update mode itself requested that mutation. If base, head, or PR identity remains ambiguous, stop rather than guess.
+**`mode:pipeline` modifier** - set by orchestrated callers (e.g., `lfg`). Run the resolved mode non-interactively: suppress every blocking ask. Step 5's existing-PR rewrite question defaults to **not rewriting**; in description-update mode the preview ask is skipped and the rewrite applies directly (the update invocation itself is the apply intent); any other suppressed ask takes its conservative documented default (keep the current stack; if Pre-A cannot resolve a base or push bookmark, stop and report rather than guess).
+
+## JJ semantics
+
+- JJ snapshots working-copy changes into `@` at the start of nearly every command.
+- A bookmark is a named pointer. Determine attachment from revisions and bookmarks; never infer a current bookmark.
+- Use filesets to select paths for a change. Unselected paths remain in the working-copy change.
+- A normal `jj commit` describes the selected content and creates a new empty working-copy change on top. After that, the committed head is usually `@-`; verify rather than assuming.
+- Use JJ for repository state and Git interoperability. Retain `gh` only for GitHub metadata and PR operations. In a non-colocated repo, run `gh` with `GIT_DIR="$(jj git root)"` if it cannot discover the backing repository.
 
 ## Context
 
-Run each command as its own shell tool call, in order. Do not join commands with shell operators, pipes, substitutions, or redirects. Non-zero status is state to interpret.
+**On platforms without pre-populated command sections**, run the Context fallback below. **Where the labeled sections are pre-populated**, use them directly.
 
-| Command | Purpose | Failure meaning |
-| --- | --- | --- |
-| `jj workspace root` | Repository root | Not a JJ repository; report and stop |
-| `jj status` | Working-copy and conflict state | Repository cannot be read |
-| `jj diff` | Current content changes | No output means no current content change |
-| `jj bookmark list --all-remotes` | Local and remote bookmark state | Bookmark state unavailable |
-| `jj log -r 'remote_bookmarks()..@' --no-graph` | Local stack not represented remotely | Empty output may mean nothing to push |
-| `jj log -r '::@' --limit 10 --no-graph` | Recent local descriptions | No prior JJ history |
-| `jj log -r '::@' --limit 10 --no-graph -T 'description ++ "\n"'` | Repository commit and PR-title syntax | No compatible history |
-| `jj git remote list` | Interoperability remotes and URLs | No configured remote |
-| `gh repo view --json nameWithOwner,defaultBranchRef,url` | Base repository and default bookmark | Authentication, connectivity, or forge resolution failed |
+**JJ status:**
+!`jj status`
 
-The description-history call is the JJ-native read required for local message conventions; all VCS mutation uses JJ. Determine the candidate head bookmark from an explicit argument, the existing PR, or bookmarks pointing to the pushed stack head. Never infer a current bookmark: JJ bookmarks do not follow the working copy automatically.
+**Working-copy diff:**
+!`jj diff`
 
-When a candidate bookmark is known, query:
+**Bookmarks at the working copy and parent:**
+!`jj bookmark list --all-remotes -r '@ | @-'`
+
+**Recent changes:**
+!`jj log --no-graph -n 10`
+
+**Remotes:**
+!`jj git remote list`
+
+**Existing PR check:**
+!`gh pr view --json url,title,body,state,headRefName,baseRefName 2>/dev/null || echo 'NO_OPEN_PR'`
+
+**Workspace root (pre-resolved):**
+!`jj workspace root 2>/dev/null || true`
+
+### Context fallback
+
+Run these as separate commands so failures remain visible:
 
 ```bash
-gh pr list --head <bookmark> --state open --json number,url,title,body,state,headRefName,headRepositoryOwner
+jj status
+jj diff
+jj bookmark list --all-remotes -r '@ | @-'
+jj log --no-graph -n 10
+jj git remote list
+gh pr view --json url,title,body,state,headRefName,baseRefName 2>/dev/null || echo 'NO_OPEN_PR'
+jj workspace root 2>/dev/null || true
 ```
 
-Pass the bookmark name only. On forks, target the base repository explicitly when default resolution points at the fork. Exit-zero `[]` means no open PR; non-zero means unknown. If multiple forks use the same bookmark name, match both head owner and `headRefName`; stop on unresolved ambiguity.
+---
 
-## Step 1: Resolve base, head bookmark, and PR state
+## Step 1: Resolve bookmark, remote, base, and PR state
 
-**You MUST read `references/bookmark-creation.md` in full for every full workflow.** Apply its decision flow when the work starts from the default bookmark or must be based on a freshly fetched default remote bookmark; otherwise use its bookmark-safety rules to verify the already selected head. The reference determines or validates `<base-revision>` and `<head-bookmark>`; do not substitute an improvised workflow.
+Resolve the Git push remote from project-local instructions, then JJ configuration and `jj git remote list`. Do not assume `origin` when the repository names another push remote. Resolve the default base bookmark from project-local instructions, an existing PR's `baseRefName`, or `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. Confirm that `<base>@<remote>` exists with `jj bookmark list --all-remotes <base>`. If any required value remains ambiguous, ask; in pipeline mode, stop and report.
 
-Use the default bookmark reported by `gh`; confirm its remote counterpart exists in `jj bookmark list --all-remotes`. Do not silently fall back to a guessed default.
+Inspect `jj bookmark list --all-remotes -r '@ | @-'` and `jj log -r '<base>@<remote>..@'`:
 
-JJ has no active-branch requirement. Route by bookmark state:
+- **No feature work** - `@` has no diff and the range contains no change intended for a PR. Report and stop.
+- **Existing feature bookmark** - a non-base local bookmark identifies the intended stack head or an open PR supplies `headRefName`. Keep that bookmark and continue.
+- **No feature bookmark** - continue without creating one yet. Derive a non-conflicting bookmark name from the change, but create it only after Step 3 has identified the final stack head.
+- **Working copy directly bookmarked as the default base** - do not rewrite or push the default bookmark. Read `references/branch-creation.md` and follow its separation flow before continuing.
 
-- **Existing open PR**: use its exact head bookmark and owner. Confirm the corresponding local or remote bookmark identifies the intended stack head.
-- **New PR with work**: derive a non-conflicting bookmark name from the change's purpose, but do not create it until the stack head is known after Step 3.
-- **Default bookmark only with no work beyond it**: report that there is no feature work and stop.
-- **Ambiguous bookmark or fork ownership**: ask in interactive mode; stop in pipeline mode.
+Note an open PR's URL and body. Step 5 routes between create and edit; Step 4 uses the existing body as preservation context.
 
-If `jj status` reports conflicts, resolve them before committing or pushing. Jujutsu records conflicts as first-class state: use `jj resolve` or edit materialized conflicts, then verify `jj status`. Never push unresolved conflicts to a GitHub PR.
-
-## Step 2: Determine conventions
+## Step 2: Determine description conventions
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited; do not add capitalization or punctuation rules without repository-local evidence. Derive PR-title style from the same local sources and existing PRs where available.
+Active project instructions and syntax inferred at runtime from `jj log` always take precedence. Apply compatible Go guidance only to improve quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, capitalization, punctuation, layout, template, or example. Infer PR-title and change-description conventions independently at runtime.
 
-## Step 3: Commit and push
+## Step 3: Describe changes, create or move a bookmark, and push
 
-Run `jj git fetch` for the relevant remotes before deciding stack ancestry. If the working copy is based on stale local state, compare it with the default remote bookmark. Do not rewrite or discard local changes. When ancestry must be updated, use a JJ operation appropriate to the repository's policy and inspect resulting first-class conflicts before continuing; stop for a semantic conflict that requires product intent.
-
-Scan changed paths for clearly independent file-level concerns. Keep one change when separation is ambiguous. Do not use interactive splitting unless explicitly requested.
-
-At every JJ change-description composition or edit in this step, apply:
+If the working copy is based directly on the default bookmark, or local and remote default bookmarks differ, read `references/branch-creation.md` before continuing.
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Use neutral repository-derived descriptions. Finish each group with `jj commit`, using filesets for file-level groups. When a multiline message is needed, store it in a unique file at `$(jj workspace root)/.tmp/rocketclaw/ce-commit-push-pr/<unique-id>.txt`; if no JJ repository exists, use the current project directory's `.tmp/rocketclaw/ce-commit-push-pr/<unique-id>.txt` as the matching local fallback. Load the file contents into `MESSAGE` and pass `-m "$MESSAGE"`.
+Active project instructions and syntax inferred at runtime from `jj log` always take precedence. Apply compatible Go guidance only to improve quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, capitalization, punctuation, layout, template, or example.
 
-Validate each completed change before pushing:
+Scan the working-copy diff for naturally distinct concerns. If they clearly group into separate logical changes, create 2-3 changes at most. Use filesets, including `file1 file2` or `glob:"path/**"`, to select each group. When lines in one file belong to different concerns, use `jj split` only when that separation materially improves reviewability. When ambiguous, one change is fine.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+JJ auto-tracks new non-ignored files under its configured snapshot policy. Before committing, inspect `jj status` and exclude secrets, generated output, and unrelated files from the filesets. If a needed new file is not tracked because of repository snapshot configuration, use `jj file track <fileset>` deliberately.
 
-The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Inspect `jj show -r <revision>` and correct an inaccurate or nonconforming description with `jj describe -r <revision>`.
-
-Set the head bookmark to the actual stack head, normally `@-` after the final `jj commit`:
+Describe and finish each selected group with a neutral message placeholder:
 
 ```bash
-jj bookmark set <head-bookmark> -r <stack-head-revision>
+jj commit -m "<description-composed-from-runtime-conventions>" <fileset>...
 ```
 
-For an existing tracked bookmark, push it explicitly. For a new bookmark, explicitly allow creation on the intended push remote. Use the repository-configured push remote when present; otherwise resolve the correct fork or remote from `jj git remote list` rather than assuming.
+For an already-separated change that only lacks or needs a corrected description:
 
 ```bash
-jj git push --remote <push-remote> --bookmark exact:<head-bookmark>
+jj describe -m "<description-composed-from-runtime-conventions>" <revision>
 ```
 
-Selecting the exact new bookmark explicitly authorizes publishing that bookmark without sweeping in others. Re-read bookmark and remote state immediately before pushing. Never push a stale remembered name, an unresolved bookmark conflict, or unrelated bookmarks.
+After each operation, re-read `jj status`, `jj diff`, and the relevant stack with `jj log`. Do not accidentally commit the empty working-copy change. Resolve the final non-empty stack head explicitly; it is commonly `@-` after `jj commit`, but may be `@` after `jj describe`.
 
-If no local content or stack change exists and the bookmark is already synchronized, this step is a no-op.
+Create the derived bookmark at the final head, or move the existing feature bookmark there:
+
+```bash
+jj bookmark create <bookmark> -r <stack-head>
+jj bookmark move <bookmark> --to <stack-head>
+```
+
+Use only the command matching the observed state. Never move the default bookmark as part of this workflow. Fetch immediately before pushing so JJ's remote-bookmark lease is current, inspect any bookmark conflict, then push only the intended bookmark:
+
+```bash
+jj git fetch --remote <remote>
+jj git push --remote <remote> --bookmark <bookmark>
+```
+
+If the push reports a remote movement or bookmark conflict, fetch again, show `jj status`, `jj bookmark list --all-remotes <bookmark>`, and the relevant `jj log`, then stop for an explicit resolution. Do not force or broaden the push. A successful first push automatically establishes remote tracking. If the working-copy change is empty and the bookmark already matches `<bookmark>@<remote>`, this step is a no-op.
 
 ## Step 4: Compose the PR title and body
 
-**You MUST read `references/pr-description-writing.md` in full** and follow its range resolution, sizing, title derivation, related-reference, concept-teaching, preservation, assembly, and coverage-audit rules. This reference is required in every mode that composes or updates a PR title or body; do not use a fallback summary workflow.
-
-**Evidence decision:** Treat evidence as supplied context or validation prose. Incorporate supplied artifacts without inventing or uploading them. If evidence was explicitly requested but not supplied, ask for it. For behavior a reviewer must verify, include what was actually exercised and the result; state plainly when credentials, infrastructure, hardware, or setup prevented a run. Do not block PR creation solely because no visual artifact exists.
-
-**Concept teaching gate:** Read the repository-local plugin configuration when present. Only active, non-commented keys count. `pr_teaching_section: false` disables concept handling; missing or other values keep it on. `pr_teaching_archive: true` enables archival; otherwise archival is off. `archive:on|off` overrides this run. Preserve any concept-section mechanics available in the installed reference.
-
-Audit the composed title and body against the actual resolved range, existing PR body, issue references, evidence, and local PR conventions before returning or applying it.
-
-## Step 5: Apply and report
-
-- **Description-only**: print the title and body; stop unless application was requested.
-- **New PR**: immediately rerun the exact open-PR query for the head bookmark. Resolve non-zero status before proceeding. If a matching PR appeared, switch to the existing-PR path; otherwise create with `gh pr create` and report its URL.
-- **Existing PR in full workflow**: report the URL and ask whether to rewrite the description. Pipeline mode defaults to no rewrite.
-- **Description update or confirmed rewrite**: preview title, opening summary, and body length. Apply with `gh pr edit` after confirmation; description-update pipeline mode applies directly.
-
-**Explainer archival:** Only in full workflow when archival is enabled, a concept section exists, and PR-body application is confirmed. Resolve paths from the repository root. Check whether each target path is ignored using JJ's tracked-file and status view; if policy cannot be established without a non-JJ ignore query, skip archival with a warning rather than forcing the file. Write one file per concept under `docs/explainers/`, then finish those files as one JJ change.
-
-At the archival change-description composition and validation site, apply:
+**You MUST read `references/pr-description-writing.md` in full.** The core principle at the top governs every step. The only input it needs from this skill is the PR ref, if one was identified by mode dispatch. If Step 1 found an existing PR, pass its URL when rewriting so PR mode fetches the existing body and preserves related references.
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The repository-local instructions and the `git log` syntax dynamically derived from repository history through JJ always win; apply Go guidance only when compatible. Fixed prefixes, types, scopes, subjects, templates, and examples are prohibited. Compose a neutral repository-derived description that accurately identifies the archived material, finish only those files with `jj commit`, validate with `jj show -r @-`, move the head bookmark to `@-`, and push it with `jj git push --bookmark exact:<head-bookmark> --remote <push-remote>`. If nothing changed, retain the existing link. Build host-correct links with `gh browse`; never hardcode a public host. If writing, committing, or pushing archival fails, warn and continue without the link.
+Active project instructions and syntax inferred at runtime from `jj log` always take precedence. Apply compatible Go guidance only to improve quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, capitalization, punctuation, layout, template, or example.
 
-When a body applied by this run contains a concept section, report the concept names. In interactive full workflow, offer the functional `ce-explain` route.
+**Evidence decision** before composition. Evidence is user-supplied context or validation prose, not a separate skill dispatch.
 
-**Babysit handoff, default on:** After a new PR or newly pushed changes to an existing PR in interactive full workflow, invoke `ce-babysit-pr` automatically unless `babysit:off` was passed or active `auto_babysit: false` appears in the repository-local plugin configuration. Explicit `babysit:continuous` or `babysit:checkpoint` selects the mode. Do not auto-invoke for pipeline, description-only, description-update, no applied PR change, a non-GitHub forge, or a head bookmark the user cannot push. Fork PRs remain eligible when the user controls the fork head.
+1. **User supplied evidence** (URL, markdown image/embed, local artifact path they want referenced) - incorporate it as `## Demo`, `## Screenshots`, or `## Evidence`, matching the artifact type. Do not invent or upload evidence.
+2. **User asks to include evidence but has not supplied it** - ask for the URL/markdown/path, or tell them to use their provider's capture flow and return with the artifact. Do not launch another ce-* skill.
+3. **Agent judgment on authored changes** - if you authored the changes and know they are non-observable (internal plumbing, type-only, backend refactor without user-facing effect, docs/markdown/changelog/CI/test-only, pure refactors), skip evidence handling without asking.
+
+Otherwise, if the stack diff changes observable behavior, include a concise validation note describing what was exercised and how it behaved. If no real run was possible, say why plainly. Do not block PR creation solely because no visual artifact exists, and do not label test output as "Demo" or "Screenshots."
+
+**Concept teaching gate** before composition. Use the pre-resolved workspace root (if empty or literal, resolve it with `jj workspace root`) and read `<workspace-root>/.rocketclaw/config.local.yaml` with the native file-read tool. Only an active, non-commented `pr_teaching_section:` key counts. The gate is off only when its active value is exactly `false`; missing data or any other value means on. `pr_teaching_archive:` is on only when exactly `true`; a per-run `archive:on|off` token overrides it.
+
+- Gate **on** - judge concept novelty and compose the section per Step B2 of the reference.
+- Gate **off** - skip concept judgment, section, trailer, offer, and archival.
+
+Continue through Steps A-D of the reference.
+
+## Step 5: Apply and report
+
+**Description-only mode** - print the title and body. Stop unless the user asks to apply.
+
+**New PR** - apply via `gh pr create` as described below and report the URL. Pass `--head <bookmark>` when `gh` cannot infer JJ's pushed bookmark.
+
+**Existing PR in full workflow** - the pushed bookmark updates the PR. Report the URL, then ask whether to rewrite the description. If no, stop. If yes, run Step 4 if needed, then preview and apply.
+
+**Description update, or confirmed rewrite** - preview: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, accept focus text for regeneration and do not apply. If confirmed, use `gh pr edit` and report the URL.
+
+**Explainer archival** runs only in full workflow, with archival on, a composed `## New concepts` section, and apply confirmed. All paths resolve from the workspace root, never an incidental CWD. With two concepts, write one file per concept and include both in one JJ change immediately before the `gh` call:
+
+1. Write the file with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. If it exists from a prior run, overwrite it.
+2. Run `jj file track docs/explainers/YYYY-MM-DD-<concept-slug>.md`. If JJ rejects the path as ignored, remove the just-written file, warn, and skip archival entirely. Never use `--include-ignored`.
+3. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+4. Active project instructions and syntax inferred at runtime from `jj log` always take precedence. Apply compatible Go guidance only to improve quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, capitalization, punctuation, layout, template, or example.
+5. Commit only those files with `jj commit -m "<description-composed-from-runtime-conventions>" docs/explainers/<file>...`, move the feature bookmark to the resulting non-empty head, and `jj git push --remote <remote> --bookmark <bookmark>`. If there is no diff, the docs are already recorded; keep the link and continue.
+6. Splice a head-bookmark blob URL per doc into `## New concepts` before applying.
+
+If writing, committing, moving the bookmark, or pushing fails, warn and continue to PR creation without the link. Never leave the workflow stopped between a successful push and PR creation.
+
+**Concept trailer** - when a body applied by this run contains `## New concepts`, print `New concepts: <name>[, <name>]` after the PR URL. In interactive full-workflow runs follow it with `Run /ce-explain <name> to go deeper.` per concept. Preserve ce-* routing. Print no trailer when this run applied no body or no PR exists.
+
+---
 
 ## Applying via gh
 
-Write the body under the repository-local temp namespace and pass it with `--body-file`; never depend on stdin or an OS-global temp path. Create `$(jj workspace root)/.tmp/rocketclaw/ce-commit-push-pr/` with the available file capability and write the composed body verbatim to a unique file there. If no JJ repository exists, use the current project directory's `.tmp/rocketclaw/ce-commit-push-pr/` as the matching local fallback.
+Write the body to a collision-safe file under `<workspace-root>/.tmp` and pass `--body-file <path>`. If the workspace root cannot be resolved or its `.tmp` cannot be created, use `./.tmp`. Never use a system temporary directory, stdin, a heredoc directly into `gh`, or command substitution for the body.
 
 ```bash
-gh pr create --title "<composed-title>" --body-file <workspace-local-body-file>
-gh pr edit <pr-ref> --title "<composed-title>" --body-file <workspace-local-body-file>
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd -P)
+BODY_DIR="$WORKSPACE_ROOT/.tmp"
+mkdir -p "$BODY_DIR" 2>/dev/null || { BODY_DIR="./.tmp"; mkdir -p "$BODY_DIR"; }
+while :; do
+  BODY_FILE="$BODY_DIR/pr-body.$(date +%Y%m%d%H%M%S).$$.$RANDOM.md"
+  (set -C; : > "$BODY_FILE") 2>/dev/null && break
+done
+cat >> "$BODY_FILE" <<'__PR_BODY_END__'
+<the composed body markdown goes here, verbatim>
+__PR_BODY_END__
 ```
 
-Remove the repository-local body file after the `gh` call succeeds or fails. Preserve the directory for concurrent runs.
+The quoted sentinel prevents expansion. Remove the body file after the `gh` command succeeds or fails. Substitute the title verbatim with shell-safe quoting.
+
+```bash
+gh pr create --head <bookmark> --title "<title>" --body-file "$BODY_FILE"
+gh pr edit <pr-ref> --title "<title>" --body-file "$BODY_FILE"
+rm -f "$BODY_FILE"
+```

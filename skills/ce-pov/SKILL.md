@@ -8,7 +8,9 @@ argument-hint: "[the external thing to judge, plus any links] — or invoke bare
 
 Return a decisive, **graded verdict** on something from the outside world — judged against *this project*, not in the abstract.
 
-The subject of this point of view — the thing to judge — is the input this skill was invoked with, present in the current prompt or conversation (whether the user asked directly or a calling skill passed it).
+<pov_request> #$ARGUMENTS </pov_request>
+
+*(If `$ARGUMENTS` above appears as a literal token rather than the user's words — it was not substituted on this host — use the user's actual request from the conversation as the input.)*
 
 **Note: The current year is 2026.** Use this when weighting source recency and dating any captured record.
 
@@ -53,12 +55,12 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ### Phase 1: Ground (dispatch scouts, never inline)
 
-Grounding searches code, JJ revision history and bookmarks/workspaces, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
+Grounding searches code, JJ history, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
 
-**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at the same profile revision, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
+**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this commit, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
 python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 ```
 
@@ -67,14 +69,10 @@ On `HIT`, load the profile JSON — that is your agnostic project orientation; d
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-pov"
-mkdir -p "$SCRATCH_ROOT"
-while :; do
-  SCRATCH_DIR="$SCRATCH_ROOT/$(openssl rand -hex 8)"
-  if (umask 077 && mkdir "$SCRATCH_DIR") 2>/dev/null; then break; fi
-done
-python3 -c 'import os; print(os.path.abspath("'"$SCRATCH_DIR"'"))'
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"
+SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-pov/$(openssl rand -hex 4)"
+mkdir -p "$SCRATCH_DIR"
+echo "$SCRATCH_DIR"
 ```
 
 **Every scout payload carries the same context.** A fresh subagent does not inherit this conversation, so fill the persona files' `{subject}` / `{scratch-dir}` placeholders at dispatch: pass each scout the framed question (subject + intent), the named incumbent and the reversibility tier, and the resolved `<scratch-dir>` path — plus any user-supplied links for the external researcher. A scout seeded with only its generic persona grounds "some external thing" and can produce an empty or unfocused dossier.
@@ -91,7 +89,7 @@ python3 -c 'import os; print(os.path.abspath("'"$SCRATCH_DIR"'"))'
 
 ### Phase 2: Verify against the two floors
 
-**Read `references/method.md` now**, before reasoning about the verdict — it defines the Verify and Verdict steps, the skeptic stance and reversibility tiering as cross-cutting properties, and the two-floor Invalid-Verdict gate. Apply that gate as a pass/fail checklist over the dossiers: a failed floor forbids Adopt/Reject and returns the matching Hold subtype. Do this reasoning in the uncluttered context — read a dossier on demand, never pull its bulk in.
+**Read `references/method.md` now**, before reasoning about the verdict — it defines the Verify and Verdict steps, the skeptic stance and reversibility tiering as cross-cutting properties, and the two-floor Invalid-Verdict gate. Apply that gate as a pass/fail checklist over the dossiers: a failed floor forbids Adopt/Reject and returns the matching Hold subtype. Do this reasoning on the clean context — read a dossier on demand, never pull its bulk in.
 
 ### Phase 3: Verdict
 

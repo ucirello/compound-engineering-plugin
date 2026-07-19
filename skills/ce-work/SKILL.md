@@ -14,7 +14,7 @@ This command takes a work document (plan or specification) or a bare prompt desc
 
 ## Input Document
 
-The **input document** for this run is the input this skill was invoked with — present in the current prompt or conversation, whether the user provided it directly or a calling skill passed it (e.g. `lfg` in `mode:pipeline`, which passes a plan path). It may be a plan or spec path, a `mode:` token followed by a path, or a bare work prompt. The rest of this skill refers to it as `<input_document>`; if nothing was provided, treat `<input_document>` as blank.
+<input_document> #$ARGUMENTS </input_document>
 
 ## Execution Workflow
 
@@ -26,7 +26,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
 **Plan document** (input is a file path to an existing plan or specification): read the plan's metadata first — YAML frontmatter for a markdown plan, or the visible header text for an HTML plan (both formats carry the same fields).
 
-- If it carries unified-plan metadata, classify `artifact_readiness` before reading the body.
+- If it carries `artifact_contract: unified-plan/v1`, classify `artifact_readiness` before reading the body.
   - `artifact_readiness: requirements-only` -> stop and tell the user this Product Contract needs `ce-plan` enrichment before implementation. Offer the exact `ce-plan <plan-path>` handoff.
   - `artifact_readiness: implementation-ready` plus `execution: code` -> continue to Phase 1 using the unified-plan reader strategy below.
   - Any other readiness value or any non-code/unclassified execution mode -> do not auto-execute as code. Route `execution: knowledge-work` to the non-code carve-out; otherwise ask the user to return to `ce-plan` to produce an implementation-ready code plan.
@@ -70,59 +70,33 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    - If anything is unclear or ambiguous, ask clarifying questions now
    - If clarifying questions were needed above, get user approval on the resolved answers. If no clarifications were needed, proceed without a separate approval step — plan scope is the plan's authority, not something to renegotiate
    - **Do not skip this** - better to ask questions now than build the wrong thing
-   - **Do not edit the plan body during execution.** The plan is a decision artifact; progress lives in JJ changes and the task tracker, not the plan. `ce-work` does not mutate the plan — whether it shipped is derived from JJ history, not recorded in the doc. Legacy plans may contain `- [ ]` / `- [x]` marks on unit headings or a `status:` field — ignore them as state; per-unit completion is determined during execution by reading the current file state.
+   - **Do not edit the plan body during execution.** The plan is a decision artifact; progress lives in JJ changes and the task tracker, not the plan. `ce-work` does not mutate the plan — whether it shipped is derived from `jj log` and the current tree, not recorded in the doc. Legacy plans may contain `- [ ]` / `- [x]` marks on unit headings or a `status:` field — ignore them as state; per-unit completion is determined during execution by reading the current file state.
 
 2. **Setup Environment**
 
-   First, inspect the current workspace change, its nearest bookmark ancestors, and the trunk-relative stack:
+   Resolve the workspace root and inspect the current JJ change before editing:
 
    ```bash
+   workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
    jj status
-   jj workspace list
-   jj log -r '@ | @- | trunk() | heads(::@ & bookmarks())'
+   jj log -r 'ancestors(@, 3)' --no-graph
    jj log -r 'trunk()..@'
-   jj log -r 'trunk()..@ & ~empty()'
+   jj diff --from 'fork_point(@ | trunk())' --to @
+   jj bookmark list
    ```
 
-   `@` is this workspace's working-copy change and `trunk()` resolves the configured default remote bookmark. JJ has no active/current bookmark: a bookmark is only a named pointer, and `jj commit` does not advance it. Treat `heads(::@ & bookmarks())` as naming context, not as a selected line of development.
+   Treat the current change ID, not a branch name, as the work boundary. Bookmarks are optional publication pointers and do not need to exist during implementation.
 
-   **If `trunk()..@ & ~empty()` contains feature work:**
+   - If `@` is empty and undescribed, use it for the first logical unit.
+   - If `@` already contains work for this plan, continue only when its description and diff match the requested scope.
+   - If `@` contains unrelated work, recommend `ce-worktree` for isolation. If the user elects to remain in this workspace, start a descendant with `jj new` only after confirming the current change is a sound parent; never rewrite or mix unrelated work.
+   - If the requested base is not the current parent, use `ce-worktree` to attach an isolated workspace at the intended revision. Do not fetch, rebase, abandon, or move bookmarks implicitly.
+   - Resolve every run artifact under `"$workspace_root/.tmp/rocketclaw/<workflow>/<run-id>/"`. If `jj workspace root` is unavailable, the local `pwd -P` fallback above is authoritative. Do not use process-global temporary locations or generators.
 
-   Check whether the nearest non-trunk bookmark, if any, is **meaningful** — a name like `feat/crowd-sniff` or `fix/email-validation` tells future readers what the stack is about. Auto-generated workspace names (e.g., `workspace-jolly-beaming-raven`) or other opaque names do not imply a meaningful bookmark. If there is no feature bookmark, continuing the unnamed stack is valid; create one only when naming or pushing the stack is useful.
-
-   If an existing feature bookmark is meaningless or auto-generated, suggest renaming it before continuing:
-   ```bash
-   jj bookmark rename <old-name> <meaningful-name>
-   ```
-   Derive the new name from the plan title or work description (e.g., `feat/crowd-sniff`). Present the rename as a recommended option alongside continuing as-is.
-
-   Then ask: "Continue the current change stack, or start a new change/workspace from `trunk()`?"
-   - If continuing (with or without a bookmark rename), proceed to step 3
-   - If starting new, follow Option A or B below
-
-   **If `trunk()..@ & ~empty()` has no feature work**, choose how to proceed. Do not edit `trunk()` itself; create a mutable descendant change.
-
-   **Option A: Create a new change in the current workspace**
-   ```bash
-   jj git fetch --all-remotes
-   jj new 'trunk()'
-   ```
-   A bookmark is optional until shipping. If one is useful for naming the stack early, create it explicitly with `jj bookmark create <meaningful-name> -r @`, then remember that later `jj commit` calls leave it behind until `jj bookmark move <name> --to @-` or `jj bookmark advance <name> --to @-`.
-
-   **Option B: Use a workspace (recommended for parallel development)**
-   ```bash
-   skill: ce-worktree
-   # Ensures isolation: detects an existing workspace, prefers the harness's
-   # native workspace tool, else creates one from the default bookmark
-   ```
-
-   **Recommendation**: Use workspace if:
-   - You want to work on multiple features simultaneously
-   - You want to keep the default bookmark clean while experimenting
-   - You plan to switch between changes frequently
+   Use a separate workspace when parallel work, experiments, or an existing unrelated `@` would make the change boundary ambiguous. Workspace names are operational identifiers, not commit-message or bookmark conventions.
 
 3. **Create Task List** _(skip if Phase 0 already built one, or if Phase 0 routed as Trivial)_
-   - Use the platform's task tracking tool (`TaskCreate`/`TaskUpdate`/`TaskList` in Claude Code, `update_plan` in Codex, or the equivalent on other harnesses) to break the plan into actionable tasks
+   - Use the available task tracking tool to break the plan into actionable tasks: `TaskCreate`/`TaskUpdate`/`TaskList` on Claude Code, `update_plan` on Codex, or the provider equivalent
    - Derive tasks from the plan's implementation units, dependencies, files, test targets, and verification criteria
    - When the plan defines U-IDs for Implementation Units, preserve the unit's U-ID as a prefix in the task subject (e.g., "U3: Add parser coverage"). This keeps blocker references, deferred-work notes, and final summaries anchored to the same identifier the plan uses, so progress and traceability remain unambiguous across plan edits
    - Carry each unit's `Execution note` into the task when present
@@ -136,58 +110,61 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
 4. **Choose Execution Engine, then Strategy**
 
-   For an implementation-ready unified code plan, first pick the **engine** that runs implementation: inline/subagent (default and only callable engine on Claude Code), goal-mode, or dynamic-workflow. Goal-mode and dynamic-workflow are usable only when the host exposes a callable primitive for them — Codex exposes `create_goal` (a skill can start a goal directly), while Claude Code exposes no goal tools, so on Claude Code they are prompt-emission only (never invoked from inside this skill). Prefer dynamic-workflow over goal-mode for large fan-out plans (many independent U-IDs, codebase-wide sweeps, migrations, adversarial cross-checking). Read `references/execution-engines.md` for the host-capability probe, the plan-shape selection table, the copyable goal-mode/`ultracode:` prompts, and the resume-tail rules. An engine choice never changes tail ownership — after implementation, resume standalone quality gates in normal use, or return the return-to-caller envelope when invoked by `lfg`. Legacy and bare-prompt work skip this and use the inline/subagent engine directly.
+   For an implementation-ready unified code plan, first pick the **engine** that runs implementation: inline/subagent, goal-mode, or dynamic-workflow. Goal-mode and dynamic-workflow are usable only when the provider exposes a callable primitive for them. Prefer dynamic-workflow over goal-mode for large fan-out plans (many independent U-IDs, codebase-wide sweeps, migrations, adversarial cross-checking). Read `references/execution-engines.md` for the capability probe, provider tool mappings, plan-shape selection table, copyable prompts, and resume-tail rules. An engine choice never changes tail ownership — after implementation, resume standalone quality gates in normal use, or return the return-to-caller envelope when invoked by `lfg`. Legacy and bare-prompt work skip this and use the inline/subagent engine directly.
 
-   For the inline/subagent engine, **prefer subagents for any structured multi-unit plan** — each worker gets a fresh context window for one unit. **Parallelize independent units whenever it is safe**; fall back to serial only when parallel isn't safe or the harness can't isolate concurrent writes. Let the plan's `Dependencies` and `Files` drive batching: run an independent dependency layer together, then the next.
+   For the inline/subagent engine, **prefer subagents for any structured multi-unit plan** — each worker gets a fresh context window for one unit. **Parallelize independent units whenever it is safe**; fall back to serial only when parallel isn't safe or the provider can't isolate concurrent writes. Let the plan's `Dependencies` and `Files` drive batching: run an independent dependency layer together, then the next.
 
    | Strategy | When to use |
    |----------|-------------|
    | **Inline** | Trivial work (1-2 files, no real decomposition), work needing user interaction mid-flight, or bare prompts that lack structured units |
    | **Serial subagents** | The default for structured multi-unit plans whose units are dependent, few, or whose parallel-safety is uncertain. Fresh context per unit, executed in dependency order |
-   | **Parallel subagents** | Independent units (per the Parallel Safety Check) when you want the speed and the harness can isolate concurrent work. Run a dependency layer at once, then the next |
+   | **Parallel subagents** | Independent units (per the Parallel Safety Check) when you want the speed and the provider can isolate concurrent work. Run a dependency layer at once, then the next |
 
    **Parallel Safety Check** — before dispatching a batch in parallel:
 
    1. Map files to units from each candidate unit's `Files:` section (Create/Modify/Test paths).
    2. **File overlap is necessary but not sufficient.** Also serialize units that contend on things absent from `Files:`: shared types/APIs/interfaces, DB migrations, generated artifacts or clients, lockfiles, snapshots, shared config/schema — or an **environment singleton** (one dev server/port, a shared database, browser sessions, package installs, MCP rate limits). Reason about these; don't just diff paths.
    3. **No contention:** dispatch the batch in parallel.
-   4. **Contention with harness-native isolation:** parallel is *recoverable* (isolated workers don't lose each other's writes) but **not automatically safe** — overlapping edits still need deliberate reconciliation after rebasing the JJ changes together. Serialize contending units by default; run them parallel-isolated only when the expected reconciliation is trivial. Log the predicted overlap.
+   4. **Contention with isolated workspaces:** parallel is *recoverable* (isolated workers don't lose each other's writes) but **not automatically safe** — overlapping edits still need a real integration. Serialize contending units by default; run them parallel-isolated only when the expected integration is trivial. Log the predicted overlap.
    5. **Contention without isolation (shared workspace):** serialize — in a shared directory only the last writer survives.
-   6. **Cap concurrency** at a bounded batch (~3-5 workers) even when more units are independent; over-parallelizing costs more in contention, conflict resolution, and integration than it saves.
+   6. **Cap concurrency** at a bounded batch (~3-5 workers) even when more units are independent; over-parallelizing costs more in contention and integration than it saves.
    7. **Abort criteria:** if a batch produces broad unplanned edits, out-of-scope test failures, or repeated conflicts, stop parallelizing and finish the rest serially.
 
-   **Isolation is the harness's job, never ce-work's** — never run `jj workspace add` yourself. Probe what your subagent mechanism provides and pick the parallel path:
-   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: a native isolated-agent tool, a coding worker with a forked workspace, or an equivalent best-of-N runner. When a repository-local harness path is needed, resolve the workspace root with `jj workspace root`; when JJ is unavailable, use the current directory as the local fallback. Preserve existing `.gitignore` entries while ensuring `.tmp/` is ignored, refuse `.tmp` when it is a symlink or non-directory, and create `<resolved-root>/.tmp/rocketclaw/ce-work/workspaces/`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's reconciliation-cost judgment). This works even when you are *already* inside a workspace — harness workspaces are peers of one repository, not nested, and their working-copy changes can be addressed as `<workspace>@`.
-   - **Shared workspace only** — subagents run in your working directory (Cursor `Task` default, or any harness without isolation). Parallelize **disjoint-file units only**, under the shared-workspace constraints below; contending units run serial.
-   - **No subagent mechanism:** run inline.
+   **Use each provider's native isolation and integrate the result as JJ changes. Do not replace these mappings with a generic shared-worker path:**
 
-   **Dispatch** uses your harness's subagent/worker mechanism. Give each worker the neutral protocol identity `ai:assistant` and display identity `AI Assistant`, plus:
+   | Provider | Dispatch and isolation | JJ integration | Cleanup |
+   |---|---|---|---|
+   | **Claude Code** | `Agent` with `isolation: "worktree"` and `run_in_background: true`; the provider creates the isolated worktree under `.claude/worktrees/`. Require the worker to return its workspace path plus exact changed, created, and deleted paths. | A linked worktree is not a JJ workspace, so run no JJ command inside it. If Claude returns a provider checkpoint/ref, run `jj git import` from the parent JJ workspace, resolve and inspect `<worker-revision>`, then `jj rebase -s <worker-revision> -d <accepted-parent>`. If no ref exists, create a fresh JJ workspace at `<accepted-parent>` with `jj workspace add`, transfer only the worker's reported changed/created files and deletions into it, snapshot with `jj status`, and verify its complete diff before integration. Keep the result as the unit's JJ change or squash it only when both changes form one atomic boundary. Never invoke standalone Git. | After verification, finish the `Agent` result and use Claude Code's native isolated-worktree cleanup when exposed. If the provider retains a changed worktree for recovery, report its path rather than deleting it with standalone Git. Forget the fallback JJ workspace only after its change is integrated and recoverable; delete no imported JJ change or bookmark. |
+   | **Codex** | `spawn_agent` coding worker in its forked workspace; use `wait` for the dependency layer. | Integrate the worker's uploaded changes through the Codex upload/apply mechanism. Let JJ snapshot them in the parent workspace, inspect `jj status`/`jj diff`, and use `jj split` when uploads from different units need separate changes. If Codex returns a revision/ref instead, import it with `jj git import` and rebase it onto the accepted JJ parent. | Call `close_agent` after its upload or imported revision is verified and recoverable. |
+   | **Cursor** | Use `best-of-n-runner` for native isolated candidates; use `Task` only for explicit shared-workspace execution. | Select the runner's winner through its native result integration. If it returns a ref, use `jj git import`, inspect the imported revision, and rebase it onto the accepted parent; if it applies the winner to the parent tree, let JJ snapshot it and split by unit as needed. | Use the runner's native close/cleanup operation after the winning result is represented by a recoverable JJ change. Do not clean its worktree with standalone Git. |
+   | **Pi** | `subagent` is shared-workspace by default. If an installed Pi extension exposes an isolated workspace/fork, preserve that mapping and its returned workspace/change handle. | Shared mode follows the shared-workspace constraints below. For an isolated extension, integrate its returned JJ change directly, or use `jj git import` for a returned colocated ref, then rebase onto the accepted parent. | Close the `subagent` or extension handle. Forget a JJ workspace only after its change is integrated; otherwise report the recovery path. |
+   | **Other providers** | Preserve the provider's native isolated workspace/fork primitive when it returns a patch, upload, ref, or change handle; otherwise use shared mode. | Apply/upload into the parent for JJ to snapshot, integrate a returned JJ change, or import a returned colocated ref with `jj git import`. | Use the provider's native cleanup primitive; do not substitute standalone Git cleanup. |
+
+   No subagent mechanism means run inline.
+
+   **Dispatch** uses the available subagent/worker mechanism. Give each worker:
    - The plan path plus a **bounded unit packet** — Goal Capsule, Definition of Done, the unit's section, the Verification Contract entries relevant to it, and any referenced R/F/AE/KTD excerpts. Do not send "read the whole plan" as the worker prompt. (For a legacy non-unified plan, the plan path for reference is acceptable.)
    - The unit's Goal, Files, Approach, Execution note, Patterns, Test scenarios, Verification, and any resolved deferred questions for it.
    - Instruction to check whether the unit's test scenarios cover all applicable categories (happy paths, edge cases, error paths, integration) and supplement gaps before writing tests.
    - **Instruction to choose the unit's evidence strategy and gather the evidence** (see Evidence Strategy in Phase 2) — for behavior-bearing changes, honor the Execution note and default to proof-first or characterization-first: create/update/strengthen the test and observe the red failure or characterization baseline **before** changing production code. The worker is the only party that witnesses this, so it must capture it as it goes.
-   - **Instruction to report, in its final message, both (a) the file paths it changed, (b) its JJ workspace name when isolated, and (c) the unit's verification evidence** — `behavior_changed`, existing tests inspected, tests added/changed or used unchanged, the red failure or characterization observed (when applicable), the verification run and result, and any deliberate no-test exception with its reason. The handoff is a text summary on most harnesses with no guaranteed diff, so reported paths are the orchestrator's starting hint (it still verifies the actual change); the evidence fields are **not** reconstructable from the tree afterward, so a worker that omits them forces the orchestrator to re-derive or leave `verification_evidence` incomplete.
-   - **Do not run `jj commit`, `jj split`, `jj describe`, or move/create bookmarks.** JJ automatically snapshots edits into the worker workspace's working-copy change. Leave the unit in that single change; the **orchestrator owns describing, splitting, rebasing, and authoritative test runs**. (Capability note: a harness that reaps its isolated workspace on completion would need a different handoff; confirm before assuming it.)
+   - **Instruction to report, in its final message, both (a) the file paths it changed and (b) the unit's verification evidence** — `behavior_changed`, existing tests inspected, tests added/changed or used unchanged, the red failure or characterization observed (when applicable), the verification run and result, and any deliberate no-test exception with its reason. A text handoff has no guaranteed diff, so reported paths are only the orchestrator's starting hint; evidence fields are **not** reconstructable afterward.
+   - **Do not publish or move bookmarks.** In a shared workspace, workers leave edits in `@` and the orchestrator owns change boundaries and authoritative test runs. In an isolated workspace, each worker returns exactly one coherent provider checkpoint, upload, ref, patch, or JJ change ID and leaves integration to the orchestrator.
+   - Before writing a JJ description, active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` as the neutral placeholder. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-   **Shared-workspace constraints** — when subagents share your working directory (no isolation): they must not run `jj commit`, `jj split`, `jj describe`, `jj rebase`, or bookmark commands, and must not run the full test suite concurrently; the orchestrator separates the combined `@` with filesets after the batch. A worker may run a single focused unit test only if it touches no shared state.
+   **Shared-workspace constraints** — workers must not run `jj describe`, `jj new`, `jj split`, `jj squash`, `jj rebase`, `jj abandon`, move bookmarks, or run the full test suite concurrently. The orchestrator owns the shared `@` boundary after the batch. A worker may run a single focused unit test only if it touches no shared state.
 
    **Permission mode:** Omit the `mode` parameter when dispatching subagents so the user's configured permission settings apply. Do not pass `mode: "auto"` — it overrides user-level settings like `bypassPermissions`.
 
-   **After each serial unit:** review `jj diff` against the unit's scope and `Files:`, run the relevant tests, fix before dispatching the next, record the worker's verification evidence, then integrate it using the isolated-workspace describe/rebase/new sequence below or describe the shared `@` by fileset. Update the task list; never edit the plan body. Then dispatch the next unit from the integrated tip.
+   **After each serial unit:** review `jj diff` against the unit's scope and `Files:`, run the relevant tests, fix before dispatching the next (never on a broken tree), record the unit's verification evidence, update the task list (never edit the plan body — progress lives in JJ changes), describe the coherent change, and run `jj new` before the next unit. Active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` as the neutral placeholder. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-   **After a parallel batch — the orchestrator integrates JJ changes; never trust the handoff summary alone:**
+   **After a parallel batch — the orchestrator integrates; never trust the handoff summary alone:**
    1. Wait for every worker in the batch to finish.
-   2. **Inspect the actual change, not reported paths.** For an isolated JJ workspace, use `jj -R <workspace-root> status`, `jj diff -r '<workspace-name>@'`, and `jj diff -r '<workspace-name>@' --name-only`; for a shared workspace inspect `jj status` and `jj diff -r @`. Reported paths are a hint; declared `Files:` are often incomplete.
-   3. **Detect real collisions** — 2+ workers that actually modified the same file. In a shared workspace only the last writer survived: fileset-commit the non-colliding work first, then re-run colliding units serially. With isolated workspaces, serialize overlapping changes and expect JJ to record any conflict when the later change is rebased onto the integrated tip.
-   4. **Review, test, and integrate each unit in dependency order — the orchestrator owns change history.** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and syntax visible in `git log` always win; apply Go guidance only when compatible. Derive the message syntax dynamically; do not impose fixed prefixes, types, scopes, subjects, templates, or examples. Preserve the unit's repository-relevant semantic content. For an isolated worker, set its description with `jj describe -r '<workspace-name>@' -m '<composed-message>'`, then `jj rebase -s '<workspace-name>@' -o @` and advance the orchestrator with `jj new '<workspace-name>@'`; this preserves the worker's change identity and creates a fresh `@` for the next unit. For shared-workspace edits, commit only the unit's fileset with `jj commit <filesets> -m '<composed-message>'`. Run relevant tests and resolve any recorded conflicts before the next unit. Capture each worker's returned verification evidence into the roll-up; never fabricate a red-before-implementation observation.
-   5. Update the task list (progress lives in the described changes).
-   6. **Release the workers** — close each worker handle, locate its root with `jj workspace list -T 'if(self.name() == "<workspace-name>", self.root() ++ "\n")'`, and require exactly one nonempty absolute-path result. Retain that validated path before running `jj workspace forget <workspace-name>`, then remove only that retained harness-created workspace directory. Stop rather than forgetting or removing anything if the lookup has zero or multiple results. Delete a bookmark only if the harness explicitly created a disposable one; JJ workspaces do not inherently require bookmarks.
+   2. **Inspect the actual result, not reported paths.** For imported or native JJ changes, run `jj status` and `jj diff -r <worker-revision>` from the parent workspace. For provider uploads/applied winners, inspect parent `jj status` and `jj diff`. Reported paths are hints; declared `Files:` are often incomplete.
+   3. **Detect real collisions** — 2+ workers that modified the same file or contract. Shared mode can lose earlier writes: preserve non-colliding work as a coherent JJ change, then re-run collisions serially. Isolated Claude/Codex/Cursor/Pi results remain recoverable; integrate them in dependency order and stop on JJ conflicts rather than guessing at intent.
+   4. **Review, test, and integrate each unit in dependency order.** Use each provider row above to import, upload, apply, or directly integrate the worker result. Rebase its JJ revision onto the accepted parent, or squash it into the accepted unit only when both form one atomic boundary. If uploads mix units in `@`, use `jj split` with explicit paths and inspect both resulting changes. Capture returned verification evidence into the run roll-up; mark omitted evidence unverified rather than fabricating it.
+   5. Describe each accepted coherent change, run `jj new` before the next dependency unit, and update the task list. Active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` as the neutral placeholder. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+   6. **Release the workers** — perform the provider-specific cleanup in the table only after each result is represented by a verified, recoverable JJ change. Close handles, let native worktree/fork cleanup run, and forget only JJ workspaces that no longer own unique work. Never abandon accepted changes or delete bookmarks as cleanup.
    7. Dispatch the next dependency layer.
-
-   **Per-harness integration (examples — the universal flow above is the contract):**
-   - **Claude `Agent` `isolation:"workspace"`:** address each worker by its `<workspace-name>@` revset and use the describe/rebase/new sequence above. If the rebased change is conflicted, inspect with `jj status`/`jj diff`, resolve deliberately, and verify; if intent cannot be preserved confidently, `jj abandon <worker-change>` and re-run the unit serially from the integrated tip.
-   - **Codex `spawn_agent` worker:** integrate the worker's "uploaded changes," then `close_agent`.
-   - **Cursor `Task` (shared workspace):** edits are already in your working-copy change — review and describe per step 4; **`best-of-n-runner`:** integrate its workspace.
 
 ### Phase 2: Execute
 
@@ -199,7 +176,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    while (tasks remain):
      - Mark task as in-progress
      - Read any referenced files from the plan or discovered during Phase 0
-     - **If the unit's work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped on a prior bookmark or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
+      - **If the unit's work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), inspect `jj log` to determine whether it landed in an earlier change. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
      - Look for similar patterns in codebase
      - Find existing test files for implementation files being changed (Test Discovery — see below)
      - Choose the evidence strategy for this task before changing behavior: use an existing failing test, update or strengthen an existing test, add a new failing test, add characterization coverage, or record a deliberate no-test exception with replacement verification
@@ -212,7 +189,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
      - Assess testing coverage: did this task change behavior? If yes, were existing tests inspected and were tests written, updated, strengthened, or deliberately left unchanged with a reason? If no tests were added or changed, is the justification deliberate (e.g., pure config, no behavioral change, manual-only surface) and paired with replacement verification?
      - Record verification evidence for the task: behavior-change signal, existing tests inspected, tests added/changed/used unchanged, red failure or characterization observed when applicable, verification run, and any exception reason
      - Mark task as completed
-     - Evaluate whether to describe an incremental change (see below)
+      - Evaluate whether to close the current JJ change boundary (see below)
    ```
 
    When a unit carries an `Execution note`, honor its intent rather than matching a fixed vocabulary. For notes that ask for proof-first work, write or identify the relevant failing test before implementation for that unit. For notes that ask for characterization, capture existing behavior before changing it. For notes that point away from unit coverage, run the named replacement verification and record why ordinary tests were not the right proof. For units without an `Execution note`, make the same decision from code and test discovery: upgrade to proof-first or characterization-first when behavior changes and the seam is practical; proceed pragmatically only when the task is non-behavioral or the exception is deliberate.
@@ -260,45 +237,38 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **When this matters most:** Any change that touches models with callbacks, error handling with fallback/retry, or functionality exposed through multiple interfaces.
 
 
-2. **Incremental Changes**
+2. **Incremental JJ Changes**
 
-   After completing each task, evaluate whether to describe an incremental change:
+   After completing each task, evaluate whether to close the current change boundary:
 
-   | Describe when... | Wait when... |
+   | Close and describe the change when... | Keep working in the change when... |
    |----------------|---------------------|
    | Logical unit complete (model, service, component) | Small part of a larger unit |
    | Tests pass + meaningful progress | Tests failing |
    | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-   | About to attempt risky/uncertain changes | The change does not yet express complete value |
+   | About to attempt risky/uncertain changes | The current state is partial or incoherent |
 
-   **Heuristic:** describe the change when it expresses complete, valuable work; otherwise wait.
+   **Heuristic:** close the boundary only when the current change is complete, reviewable, and independently valuable.
 
-   If the plan has Implementation Units, use them as a starting guide for change boundaries, but adapt based on what you find during implementation. A unit might need multiple changes if it is larger than expected, or small related units might land together. Use each unit's Goal to inform the description.
+   If the plan has Implementation Units, use them as a starting guide for change boundaries — but adapt based on what you find. A unit might need multiple changes, or small related units might belong in one atomic change.
 
-   **Change-description workflow:**
-
-   Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and syntax visible in `git log` always win; apply Go guidance only when compatible. Derive the message syntax dynamically; do not impose fixed prefixes, types, scopes, subjects, templates, or examples. Preserve the completed logical unit's repository-relevant semantic content.
+   **Change-boundary workflow:**
    ```bash
-   # 1. Verify tests pass (use project's test command)
-   # Examples: bin/rails test, npm test, pytest, go test, etc.
-
-   # 2. Select only files related to this logical unit with JJ filesets.
-   # Positional filesets remain in the described
-   # change while all other edits move to the new working-copy change.
-
-   # 3. Describe the completed logical unit with the composed message.
-   jj commit <filesets for this logical unit> -m "<composed-message>"
+   jj status
+   jj diff
+   jj describe -m "<description-composed-from-runtime-conventions>"
+   jj new
    ```
 
-   Use workspace-relative `root:`/`root-file:` filesets when commands may run below the workspace root; quote fileset expressions containing operators. Verify the remainder with `jj status` and the described unit with `jj show @-`.
+   Active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` as the neutral placeholder. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-   **Handling conflicts:** `jj rebase` and multi-parent `jj new <left> <right>` can succeed while recording first-class conflicts; there is no `--continue` step. Inspect `jj status` and `jj diff`, resolve markers or use `jj resolve`, and verify `conflicts()` is empty for the shipping stack before proceeding. Incremental changes keep resolution scoped.
+   Before describing, inspect relevant history with `jj log`; the compatibility history view named above is read-only. If unrelated edits are present, use `jj split` to separate explicit paths, inspect both changes, and describe each independently. Never stage files: JJ snapshots the working copy automatically.
 
-   **Note:** Change descriptions contain only repository-relevant semantic content; do not add non-project footers, creator attribution, or identity metadata. At every description checkpoint: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and syntax visible in `git log` always win; apply Go guidance only when compatible. Derive the message syntax dynamically; do not impose fixed prefixes, types, scopes, subjects, templates, or examples.
+   **Handling conflicts:** If conflicts arise during `jj rebase` or worker integration, inspect the conflicted change and resolve immediately when intent is clear. Otherwise undo that integration operation or re-run the unit serially from the accepted parent. Small atomic changes make resolution and rollback easier.
 
-   **Parallel subagent mode:** History ownership stays with the orchestrator (see Phase 1 Step 4):
-   - **Workspace-isolated:** each subagent leaves one working-copy change; the orchestrator describes and rebases `<workspace>@` changes in dependency order.
-   - **Shared-workspace fallback:** subagents leave combined edits in `@`; the orchestrator separates each unit with fileset arguments to `jj commit`.
+   Do not add creator, model, provider, tool, or runtime attribution to JJ descriptions or pull-request text.
+
+   **Parallel subagent mode:** Claude isolated `Agent` worktrees, Codex worker forks/uploads, Cursor `best-of-n-runner` candidates, and isolated Pi extensions return provider-native results that the orchestrator translates into JJ changes using the provider table. In a shared workspace, only the orchestrator changes boundaries or descriptions after the full batch completes.
 
 3. **Follow Existing Patterns**
 
@@ -352,19 +322,19 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
 When all Phase 2 tasks are complete and execution transitions to quality check, you must read `references/shipping-workflow.md` for the full shipping workflow. Do not skip this.
 
-**Code review: one portable path.** Review with `ce-code-review`, which self-sizes (lite roster for small low-risk code-only diffs, full roster otherwise). No harness-native review detection and no escalation tiers — the size/sensitive-surface judgment lives inside `ce-code-review`. Skip dedicated review only for a purely mechanical diff (formatting, dep-bumps, lint-only, generated). Full rules (autonomous Residual Gate, infra fallback) in `shipping-workflow.md`.
+**Code review: one portable path.** Review with `ce-code-review`, which self-sizes (lite roster for small low-risk code-only diffs, full roster otherwise). Skip dedicated review only for a purely mechanical diff (formatting, dep-bumps, lint-only, generated). Full rules are in `shipping-workflow.md`.
 
-**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits or describes the workspace change, or applies fixes.
+**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the workspace, changes JJ boundaries, or applies fixes.
 
-1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:trunk()` (or the explicit base revset) when known, and `depth:full` when a deep/thorough review was explicitly requested. Inspect the same range directly with `jj diff --from 'trunk()' --to @` and `jj log -r 'trunk()..@'`.
-2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator integrates JJ changes, runs tests, and commits logical units — it does not pre-investigate findings.
+1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<jj-revision-or-revset>` when the stack base is known, and `depth:full` when a deep/thorough review was explicitly requested.
+2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator integrates JJ changes, runs tests, and closes coherent boundaries — it does not pre-investigate findings.
 3. **Residual Work Gate** — Only after followup; unresolved actionable findings go through the gate in `shipping-workflow.md` (autonomous sessions auto-accept + record residuals; interactive sessions ask).
 
 ## Return-to-Caller Mode
 
 `mode:return-to-caller <plan-path>` (legacy alias: `mode:caller-owned-tail`) is
 reserved for orchestrators such as `lfg` that own simplification, code review,
-PR creation, and CI watching after implementation. In this mode `ce-work`
+pull-request creation, and CI watching after implementation. In this mode `ce-work`
 performs implementation and local verification only, then returns a structured
 summary instead of running the standalone shipping tail.
 
@@ -387,7 +357,7 @@ Engine selection (`references/execution-engines.md`) still applies in this mode,
 but only for implementation. In return-to-caller mode do not emit a copyable
 goal/workflow prompt — a manual paste step strands the caller; run
 inline/subagents or return a blocker instead. Any goal/workflow engine used here
-must not open a PR, run the owner workflow tail, or bypass the caller-owned
+must not open a pull request, run the owner workflow tail, or bypass the caller-owned
 gates.
 
 ## Key Principles

@@ -78,17 +78,13 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking change:
+When a bug is a regression ("it worked before"), use JJ's binary search to find the first bad change. Supply a revset range whose heads are bad and whose ancestors outside the range are good:
 
 ```bash
-jj bisect run --range <known-good-ref>..@ -- <test-command>
+jj bisect run --range '<known-good-revision>..<bad-revision>' -- <test-command>
 ```
 
-The range head (`@`) is assumed bad; ancestors outside the range, including `<known-good-ref>`, are assumed good. The command edits each candidate directly as the working-copy revision. Before starting, use `jj status` to identify pre-existing changes, record the original full commit ID with `jj log -r @ --no-graph -T 'commit_id ++ "\n"'`, and prefer a clean dedicated workspace. Return afterward with `jj edit <original-full-commit-id>` if needed. A change ID may be useful for reporting, but it is not a safe recovery handle when bisect hides or rewrites an empty working-copy change.
-
-For a manual test, pass an interactive shell as `<test-command>`, investigate each selected revision, then `exit 0` for good, `exit 125` to skip, or any other non-zero status for bad. There are no separate `jj bisect good`/`bad` state commands.
-
-For automated tests, exit 0 for good, 125 to skip, 127 only for command-not-found/abort, and any other non-zero status for bad. The candidate commit ID is available as `$JJ_BISECT_TARGET`.
+JJ directly edits each candidate revision into the current working copy and restores the original working copy when the run finishes. The test command must exit 0 for good, 125 to skip a revision, 127 to abort because the command is unavailable, and any other non-zero status for bad. For manual testing, pass a shell as the command and exit it with the corresponding status after each candidate.
 
 ---
 
@@ -124,7 +120,7 @@ A 5% reproduction rate confirms the bug exists but suggests timing or data sensi
 - Run the suite with randomized test order (most runners support a seed flag) — a different failing-test neighbor each run implies global state mutation
 - Bisect the preceding tests: run the failing test with just the first half of the earlier tests, then the second half, then narrow
 
-Common culprits once isolated: module-level state, mocks not torn down, repo-local `.tmp/` files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
+Common culprits once isolated: module-level state, mocks not torn down, temporary files under the workspace-root `.tmp/rocketclaw/` namespace not cleaned up, database rows not rolled back, environment variables mutated and not restored.
 
 ---
 

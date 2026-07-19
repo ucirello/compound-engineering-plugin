@@ -11,7 +11,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 ```markdown
 ## Code Review Results
 
-**Scope:** JJ fork point with `main@origin` -> working-copy revision `@` (14 files, 342 lines)
+**Scope:** JJ fork point with the review base bookmark -> working copy (14 files, 342 lines)
 **Intent:** Add order export endpoint with CSV and JSON format support
 **Mode:** interactive
 
@@ -27,7 +27,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 | 7 | `orders_controller.rb:88` (+test) | Tightened export file perms `0644 -> 0600` (security-posture — verify in diff) | security |
 
 Validation: export tests 11 -> 13; suite 214 pass, lint clean.
-Finalized: `jj commit -m '<message derived from repository conventions>'` (the original working-copy change was empty).
+Closed fix checkpoint: `<dynamic-change-id>` / `<dynamic-commit-id>` with `<dynamic-description>`; fresh `@` created and empty.
 
 ### Triage Groups
 
@@ -77,8 +77,6 @@ Finalized: `jj commit -m '<message derived from repository conventions>'` (the o
 | # | File | Issue | Reviewer |
 |---|------|-------|----------|
 | 1 | `orders_controller.rb:12` | Broad rescue masking failed permission check | correctness |
-
-Detail lines for Pre-existing and history-dependent P0/P1 findings may include the same short provenance string the artifact `evidence` carries (e.g. `provenance: <revision> <author> <date> - <description>`) when that history was load-bearing — do not dump full-file annotation into the report.
 
 ### Learnings & Past Solutions
 
@@ -145,7 +143,7 @@ This fails because of the **box-drawing `────` separators between items*
 - **Header includes** scope, intent, and reviewer team with per-conditional justifications
 - **Mode line** -- include `interactive` or `agent`
 - **Triage Groups section (when groups exist)** -- pipe table `| Group | Findings | Context | Preferred Resolution | Why |` rendered after Applied and before the severity tables. The `Findings` cell lists stable `#`s (e.g. `#2, #3`); every referenced `#` must appear in a severity table below. Groups are a triage lens over the findings -- they never replace the severity tables, merge findings, or renumber them. Omit when `grouping:off` is active or no groups survived Stage 5b/5c pruning.
-- **Applied section (default mode only)** -- when the review applied fixes (Stage 5c), list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome (e.g. "suite 214 pass, lint clean") and the **JJ revision status** — finalized with `jj commit -m '<message derived from repository conventions>'` when the original working-copy change was empty, or retained in the existing non-empty working-copy change. A fix spanning multiple files is **one row with one `#`** (e.g. `controller.rb:88 (+test)`) -- never duplicate the number across rows. Flag green-but-unverifiable edits (auth/contract/concurrency) inline in the `Fix` cell, e.g. `(security-posture — verify in diff)`. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit in `mode:agent` and when nothing was applied
+- **Applied section (default mode only)** -- list fixes, validation, and JJ description/checkpoint status. If `@` was empty before review, report the closed fix change/commit IDs and that `jj new` left a fresh empty `@`; otherwise report that the existing description was preserved.
 - **Actionable Findings section** -- include when the actionable queue is non-empty (findings for the caller to handle)
 - **Pre-existing section** -- separate table, no confidence column (these are informational)
 - **Learnings & Past Solutions section** -- results from the `learnings-researcher` local prompt asset, with links to docs/solutions/ files
@@ -158,7 +156,7 @@ This fails because of the **box-drawing `────` separators between items*
 
 ## Agent mode (JSON)
 
-When `mode:agent` is active, **do not** emit the markdown table report above. Emit **one parseable JSON object** as the primary response and write the same payload to `review.json` under the resolved `<temp-root>/rocketclaw/ce-code-review/<run-id>/` directory.
+When `mode:agent` is active, emit one parseable JSON object and write it to `<workspace-root>/.tmp/rocketclaw/code-review/<run-id>/review.json`.
 
 The contract is defined in SKILL.md under **`### JSON output format (`mode:agent` only)`**. Minimum fields: `status`, `verdict`, `scope`, `intent`, `reviewers`, `findings`, `actionable_findings`, `artifact_path`, `run_id`.
 

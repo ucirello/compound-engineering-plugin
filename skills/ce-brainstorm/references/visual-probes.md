@@ -54,7 +54,7 @@ Allowed:
 
 Avoid:
 
-- polished visual identity
+- polished branding
 - final colors or typography
 - component-library precision
 - pixel-perfect layout
@@ -71,15 +71,17 @@ Use the bundled display-only helper when the current platform can run a bundled 
 Start (detached):
 
 ```bash
-SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-node "$SKILL_DIR/scripts/visual-probe-server.js" start --root <workspace-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>
+SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
+node "$SKILL_DIR/scripts/visual-probe-server.js" start --root "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>"
 ```
 
 Append `--foreground` to that `start` command for foreground mode. Status and stop take the same anchor — and because `SKILL_DIR` does not persist between Bash invocations, each must re-set it in its own call rather than reuse the `start` block's value:
 
 ```bash
-SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-node "$SKILL_DIR/scripts/visual-probe-server.js" status --root <workspace-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>
+SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
+node "$SKILL_DIR/scripts/visual-probe-server.js" status --root "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>"
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)
 ```
 
@@ -133,10 +135,10 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use workspace-local scratch because visual probes are disposable. Resolve `<workspace-root>` with `jj workspace root`; outside a JJ workspace, use the current working directory so the fallback remains in its local `.tmp/`:
+Use workspace-local scratch for visual probes:
 
 ```text
-.tmp/rocketclaw/ce-brainstorm-visual/<run-id>/
+<workspace-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/

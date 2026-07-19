@@ -15,11 +15,11 @@ Review requirements or plan documents through multi-persona analysis. Dispatches
 
 ## Phase 0: Detect Mode
 
-Check the invocation arguments for `mode:headless`. Arguments may contain a document path, `mode:headless`, or both. Tokens starting with `mode:` are flags, not file paths — strip them from the arguments and use the remaining token (if any) as the document path for Phase 1.
+Check the skill arguments for `mode:headless`. Arguments may contain a document path, `mode:headless`, or both. Tokens starting with `mode:` are flags, not file paths — strip them from the arguments and use the remaining token (if any) as the document path for Phase 1.
 
 If `mode:headless` is present, set **headless mode** for the rest of the workflow.
 
-**Headless mode** changes the interaction model, not the classification boundaries. Apply the same judgment about which tier each finding belongs in. Only the delivery of non-`safe_auto` findings changes:
+**Headless mode** changes the interaction model, not the classification boundaries. ce-doc-review still applies the same judgment about which tier each finding belongs in. The only difference is how non-safe_auto findings are delivered:
 
 - `safe_auto` fixes are applied silently (same as interactive)
 - `gated_auto`, `manual`, and FYI findings are returned as structured text for the caller to handle — no blocking-question prompts, no interactive routing
@@ -27,22 +27,19 @@ If `mode:headless` is present, set **headless mode** for the rest of the workflo
 
 The caller receives findings with their original classifications intact and decides what to do with them.
 
-**Headless argument contract:** Require `mode:headless <document-path>`, for example `mode:headless docs/plans/my-plan.md`.
+Callers invoke `ce-doc-review` headlessly by including `mode:headless` with the document path, e.g. `mode:headless docs/plans/my-plan.md`. Use the current harness's `ce-doc-review` routing mechanism rather than embedding provider-specific invocation syntax.
 
-If `mode:headless` is not present, run in default interactive mode with the routing question, walk-through, and bulk-preview behaviors documented in `references/walkthrough.md` and `references/bulk-preview.md`.
+If `mode:headless` is not present, the skill runs in its default interactive mode with the routing question, walk-through, and bulk-preview behaviors documented in `references/walkthrough.md` and `references/bulk-preview.md`.
+
+If this workflow needs temporary run artifacts, place them under the workspace root at `.tmp/ce-doc-review/<run-id>/`. Never use a global temporary directory. If the workspace is unavailable or `.tmp` cannot be created, keep the state in memory and continue without a run artifact.
 
 ## Phase 1: Get and Analyze Document
 
-**If a document path is provided:** Read it, then proceed. If the Read fails or the file is not on disk, apply the missing-document gate below instead of continuing.
+**If a document path is provided:** Read it, then proceed.
 
 **If no document is specified (interactive mode):** Ask which document to review, or find the most recent in `docs/brainstorms/` or `docs/plans/` using a file-search/glob tool (e.g., Glob in Claude Code).
 
-**If no document is specified (headless mode):** Output "Review failed: headless mode requires a document path. Expected arguments: mode:headless <path>" and stop without dispatching reviewers.
-
-**Missing-document gate — verify before any dispatch.** Persona reviewers read documents from the filesystem, and several run without Bash, so they cannot read JJ revisions directly — a path that exists only on another bookmark/workspace wastes the entire persona team discovering they cannot proceed (issue #925). Before Phase 2, confirm every resolved document path is readable on disk (the Read above succeeded). Location does not matter: a workspace-local scratch path under `$(jj workspace root)/.tmp/rocketclaw/ce-doc-review/` (or the current project directory's `.tmp/rocketclaw/ce-doc-review/` outside JJ) or a doc in another workspace reviews fine. If any path is not readable, do not dispatch any personas:
-
-- **Interactive mode:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. If they only exist on another bookmark/revision, open a workspace where they exist and re-invoke; otherwise provide corrected readable paths."
-- **Headless mode:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; open a workspace containing them or provide corrected paths." and return without dispatching reviewers.
+**If no document is specified (headless mode):** Output "Review failed: headless mode requires a document path. Re-invoke ce-doc-review with mode:headless <path>." without dispatching agents.
 
 ### Classify Document Type
 
@@ -65,7 +62,7 @@ Use these signals to decide:
 - No implementation units, no per-unit file lists, no test scenarios attached to units
 
 **`plan` signals (how-to-build documents):**
-- Frontmatter fields like `type: feat|fix|refactor`, `origin: docs/brainstorms/...`, or `product_contract_source: ce-brainstorm|ce-plan-bootstrap|legacy-requirements`
+- Frontmatter fields like `type: feat|fix|refactor`, `origin: docs/brainstorms/...`, or `product_contract_source: brainstorm|plan-bootstrap|legacy-requirements`
 - Section headings such as `Implementation Units`, `Output Structure`, `Key Technical Decisions`, `Risks & Dependencies`, `System-Wide Impact`
 - Numbered identifiers in the form `U1`, `U2` — implementation unit IDs
 - Per-unit fields named `Goal`, `Files`, `Approach`, `Test scenarios`, `Verification`
@@ -118,11 +115,11 @@ Analyze the document content to determine which conditional personas to activate
 - The document is a **requirements document** with 2+ challengeable claims (problem framing, solution selection, prioritization, predicted outcomes) -- premise scrutiny is core to the brainstorm phase
 - The document touches a **high-stakes domain** -- auth, payments, billing, data migrations, privacy/compliance, external integrations, cryptography -- regardless of doc type or size
 - The document **proposes a new abstraction, framework, or significant architectural pattern** -- regardless of doc type
-- The document is a **plan with no validated upstream Product Contract signal** (no legacy `origin:` requirements doc and no `product_contract_source: ce-brainstorm` or `legacy-requirements`) -- premise wasn't validated upstream
+- The document is a **plan with no validated upstream Product Contract signal** (no legacy `origin:` requirements doc and no `product_contract_source: brainstorm` or `legacy-requirements`) -- premise wasn't validated upstream
 - The document is a **plan that explicitly extends scope** beyond its origin requirements doc (new actors, new flows, deferred-then-restored features)
 - The document contains an **explicit alternatives section** or unresolved tradeoffs -- adversarial helps stress-test the chosen direction
 
-Do NOT activate adversarial on a routine plan document that derives from a validated upstream Product Contract, stays within scope, and does not introduce high-stakes domains or new abstractions. Validated upstream provenance includes legacy `origin: docs/brainstorms/...`, `product_contract_source: ce-brainstorm`, and `product_contract_source: legacy-requirements`. A direct `product_contract_source: ce-plan-bootstrap` plan is greenfield and does not suppress premise-level techniques by itself. The plan's structural decisions (more units, more rationale) are not by themselves adversarial signal -- those are the plan doing its job.
+Do NOT activate adversarial on a routine plan document that derives from a validated upstream Product Contract, stays within scope, and does not introduce high-stakes domains or new abstractions. Validated upstream provenance includes legacy `origin: docs/brainstorms/...`, `product_contract_source: brainstorm`, and `product_contract_source: legacy-requirements`. A direct `product_contract_source: plan-bootstrap` plan is greenfield and does not suppress premise-level techniques by itself. The plan's structural decisions (more units, more rationale) are not by themselves adversarial signal -- those are the plan doing its job.
 
 ## Phase 2: Announce and Dispatch Personas
 
@@ -160,8 +157,8 @@ For each selected reviewer, read the matching skill-local prompt asset at `refer
 **Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. Apply these dispatch-time preferences when the platform exposes a known model override; otherwise omit the override and inherit the parent model rather than guessing a platform-specific model name:
 
 - `coherence-reviewer`: cheapest capable extraction/reasoning tier.
-- `design-lens-reviewer`, `scope-guardian-reviewer`: platform mid-tier model.
-- `security-lens-reviewer`, `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: inherit the parent model unless the harness has an established high-capability review tier.
+- `design-lens-reviewer`, `security-lens-reviewer`, `scope-guardian-reviewer`: platform mid-tier model.
+- `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: inherit the parent model unless the harness has an established high-capability review tier.
 
 Each subagent receives the prompt built from the subagent template included below with these variables filled:
 
@@ -181,12 +178,6 @@ full artifact to every reviewer by default: unified plans can be large, so
 section slices (per the `{document_content}` slot above) are the default.
 Escalate to a broader slice only when the reviewer needs cross-section
 traceability that the initial slice cannot assess.
-
-When a reviewer slice must be materialized as a file, create one run directory
-at `$(jj workspace root)/.tmp/rocketclaw/ce-doc-review/<run-id>/`; outside JJ,
-use `<current-project-directory>/.tmp/rocketclaw/ce-doc-review/<run-id>/`.
-Write every reviewer slice for that review under this run directory. Do not use
-another scratch root.
 
 ### Decision primer
 
@@ -223,19 +214,15 @@ Each entry carries an `Evidence:` line because synthesis R29 (rejected-finding s
 
 Accumulate across all rounds in the current session. Skip, Defer, and Acknowledge actions all count as "rejected" for suppression purposes — each signals the user decided the finding wasn't worth actioning this round (Acknowledge is the no-fix-guard variant: the user saw a finding with no `suggested_fix`, chose not to defer or skip explicitly, and recorded acknowledgement instead; for round-to-round suppression that is semantically equivalent to Skip). Applied findings stay on the applied list so round-N+1 personas can verify fixes landed (see R30 in `references/synthesis-and-presentation.md`).
 
-Cross-session persistence is out of scope. A later review of the same document starts with a fresh round 1 and no carried primer, even if prior sessions deferred findings into the document's Open Questions section.
+Cross-session persistence is out of scope. A new invocation of ce-doc-review on the same document starts with a fresh round 1 and no carried primer, even if prior sessions deferred findings into the document's Open Questions section.
 
 **Error handling:** If a subagent fails or times out, proceed with findings from subagents that completed. Note the failed reviewer in the Coverage section. Do not block the entire review on a single reviewer failure.
 
 **Dispatch limit:** Even at maximum (7 agents), use bounded parallel dispatch. If the harness cap is lower than the selected team size, queue the remainder and launch them as active reviewers complete.
 
-### Cross-Model Judgment Pass
-
-If any of the **conditional judgment trio** — `adversarial-document-reviewer`, `product-lens-reviewer`, `security-lens-reviewer` — was activated for this document, also run each activated one through **one different model provider than the host** in a separate read-only, least-privilege process. Load `references/cross-model-review.md` and follow it. You must do two things only you can — the script cannot see your conversation or system prompt: (1) **attest the host provider** from your own harness (Claude Code → `claude`; Codex → `codex`; Cursor → its active serving provider; un-attestable → skip the pass entirely, never guess) so it can be excluded and the pass never self-reviews; (2) **resolve the peer preference** (conversation > `.rocketclaw/config.local.yaml` `cross_model_peer:` > a preference already in your active project instructions > default order `codex→claude→grok→composer`) and front-load it into a comma-separated candidate list. **Resolve one peer for the whole document review first**, then **front-load that provider ahead of the full candidate order** (e.g. `codex,claude,grok,composer` when you resolve to codex) so concurrent lens calls share one peer while the trailing order preserves the cross-provider fallback if the resolved provider is installed-but-unauthed. Pass the attested `host_provider` and that candidate list to the script — it owns availability probing, the grok-CLI→cursor-agent fallback, host exclusion, and the one-model-per-provider-at-high-reasoning mapping. Run one bundled-script call per activated trio lens (each a background CLI shell-out that does not consume the subagent concurrency budget) in the **same dispatch wave** as the in-process persona reviewers so runtime overlaps, then **await every script exit before synthesis** (do not orphan background launches); each writes a `findings-schema.json`-shaped `<reviewer-name>-<provider>.json` return only after normalize. **Slice trio peers to match their twin:** for unified artifacts, pass each trio lens the *same reviewer-specific slice its in-process twin got* (the `{document_content}` slice you already computed — e.g. product-lens/adversarial get the Product Contract), not the full document, so the peer is a true corroborating twin rather than an off-lens reviewer — write that slice to a repo-local `.tmp` file and pass it as `<document-path>` (the script embeds whatever path it is given). **Also run one whole-document sweep:** in the same wave, launch one additional call with reviewer-name `whole-doc`, the **full** document (never sliced), and the same resolved provider — a broad different-model read of the entire doc that catches blind spots across every section, folding in as `whole-doc-<provider>` (KTD6 / R20). It runs **once per document** (not per lens), obeys the same gate, isolation, and never-`safe_auto` rules, and — having no in-process twin — corroborates by dedup fingerprint against *any* in-process finding. A second provider is opt-in only (`CROSS_MODEL_MAX_PEERS=2`). The pass is **non-blocking**: skip silently when the host is un-attestable, no different provider is reachable, the lens didn't activate, or it errors/times out. Announce per that reference's rules — on interactive hosts in default mode, a prominent line that frames it as an **independent cross-model review**, names the concrete **model + reasoning** (and, for a cursor-agent route, the route so Grok-via-cursor-agent vs Composer vs Grok-via-grok-CLI is unambiguous), names the document-content egress **scope** (the front-loaded provider can fail at runtime and fall through, so name that the doc goes to whichever candidate actually runs and reconcile the actual provider from the fold-in filename afterward); silent in headless mode (the script still emits a stderr audit log of the cross-model document egress). Feasibility and the convergent lenses (coherence, scope-guardian) do **not** run cross-model.
-
 ## Phases 3-5: Synthesis, Presentation, and Next Action
 
-After all dispatched agents return — **including any cross-model `<reviewer-name>-<provider>.json` returns**, which enter synthesis as independent reviewer returns exactly like a persona artifact — read `references/synthesis-and-presentation.md` for the synthesis pipeline (validate, anchor-based gate, dedup, cross-persona agreement promotion — where a cross-model return agreeing with its in-process twin is the strongest signal, resolve contradictions, auto-promotion, route by three tiers with FYI subsection), `safe_auto` fix application, headless-envelope output, and the handoff to the routing question.
+After all dispatched agents return, read `references/synthesis-and-presentation.md` for the synthesis pipeline (validate, anchor-based gate, dedup, cross-persona agreement promotion, resolve contradictions, auto-promotion, route by three tiers with FYI subsection), `safe_auto` fix application, headless-envelope output, and the handoff to the routing question.
 
 For the four-option routing question and per-finding walk-through (interactive mode), read `references/walkthrough.md`. For the bulk-action preview used by best-judgment routing, Append-to-Open-Questions, and walk-through `Auto-resolve with best judgment on the rest`, read `references/bulk-preview.md`. Do not load these files before agent dispatch completes.
 

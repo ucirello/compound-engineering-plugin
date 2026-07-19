@@ -29,7 +29,7 @@ as specified.
    for non-activated lenses.
 
 2. **Activation gate — does not fire (R2, R3).** A routine plan with validated
-   upstream provenance (`product_contract_source: ce-brainstorm`), no high-stakes
+   upstream provenance (`product_contract_source: brainstorm`), no high-stakes
    domain, and no new abstraction → no trio lens activates → **no** cross-model
    call is launched. Assert: zero peer calls; the review completes normally.
 

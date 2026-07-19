@@ -6,8 +6,7 @@
 #   resolve-port.sh [path] [--type <type>] [--port <n>]
 #
 # Arguments:
-#   path   (optional) -- project root directory. Defaults to the JJ workspace root,
-#                        or the current directory outside JJ.
+#   path   (optional) -- project root directory. Defaults to the JJ workspace root.
 #   --type (optional) -- framework type to scope probes (rails|next|vite|nuxt|
 #                        astro|remix|sveltekit|procfile). Unset runs all probes.
 #   --port (optional) -- explicit port override. Emitted immediately when present.
@@ -34,8 +33,8 @@
 #
 # Why config-before-prose: framework config files are the most reliable source
 # of truth for the intended port; instruction files and env files are often
-# stale or overridden. Agent-instruction prose is deliberately NOT scanned --
-# it may mention ports in contexts
+# stale or overridden. Prose files (AGENTS.md, CLAUDE.md) are deliberately NOT
+# scanned -- they carry natural language that may mention ports in contexts
 # unrelated to the dev server (documentation, examples, troubleshooting).
 # Scanning them produces false positives that are hard to debug.
 #
@@ -70,11 +69,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Default to the JJ workspace root, then the current directory, when no path is given.
+# Default to the JJ workspace root when no positional path is given.
 if [ -z "$PROJECT_ROOT" ]; then
   PROJECT_ROOT=$(jj workspace root 2>/dev/null)
   if [ -z "$PROJECT_ROOT" ]; then
-    PROJECT_ROOT=$(pwd -P)
+    echo "ERROR: not in a JJ workspace and no path provided" >&2
+    exit 1
   fi
 fi
 

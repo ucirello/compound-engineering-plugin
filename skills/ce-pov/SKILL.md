@@ -55,7 +55,7 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ### Phase 1: Ground (dispatch scouts, never inline)
 
-Grounding searches code, git, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
+Grounding searches code, JJ history, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
 
 **Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this commit, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
@@ -69,7 +69,8 @@ On `HIT`, load the profile JSON — that is your agnostic project orientation; d
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_DIR="/tmp/compound-engineering/ce-pov/$(openssl rand -hex 4)"
+workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
+SCRATCH_DIR="$workspace_root/.tmp/rocketclaw/ce-pov/$(openssl rand -hex 4)"
 mkdir -p "$SCRATCH_DIR"
 echo "$SCRATCH_DIR"
 ```

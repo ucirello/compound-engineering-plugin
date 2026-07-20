@@ -11,7 +11,7 @@ This reference loads **after** review has run. In the ce-work shipping flow, ste
 Reuse the review output already in hand:
 
 - Parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) **or** the markdown Actionable Findings summary captured by the caller
-- Run artifact dir: `/tmp/compound-engineering/ce-code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`)
+- Run artifact dir: `$(jj workspace root 2>/dev/null || pwd)/.tmp/rocketclaw/ce-code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`)
 
 If `status` is `failed`, stop shipping and surface `reason`. If `degraded`, note partial reviewer coverage before applying anything.
 
@@ -27,7 +27,7 @@ ce-code-review mode:agent plan:<plan-path> base:<merge-base-or-ref>
 
 - `mode:agent` — JSON output (`review.json` + primary JSON response) for programmatic parsing; same review pipeline as default.
 - `plan:` — when Phase 1 used a plan file (requirements completeness).
-- `base:` — when the diff base is already resolved on the current checkout; omit when reviewing a PR number/URL or standalone current branch.
+- `base:` — when the diff base is already resolved for the current JJ workspace/change; omit when reviewing a PR number/URL or a standalone current change.
 - Do **not** pass deprecated `mode:autofix`.
 
 For human / interactive shipping, invoke `ce-code-review` without `mode:agent` if markdown tables are preferred. Capture the same JSON / Actionable Findings and artifact dir listed above before applying.
@@ -82,9 +82,9 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Work through assigned `#` in severity order; at each `file:line`, skip with a one-line reason if evidence no longer matches
 - Apply the mechanical bar from § What to apply / What not to apply — skip anything that needs design judgment
 - Do not re-run `ce-code-review`
-- Shared-directory fallback: do not stage or commit — return which `#` were applied or skipped and which files changed
+- Shared-directory fallback: do not split, describe, or commit the JJ change — return which `#` were applied or skipped and which files changed
 
-**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After each wave:** the orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and commits through JJ unless workspace-isolated subagents are integrated per Phase 1. Repeat until all batches complete. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions take precedence, followed by syntax and style observed in `jj log`; apply only compatible Go commit-message quality guidance. Do not impose fixed syntax, examples, or templates, and use neutral placeholders where an interface requires fields.
 
 ### Optional inline shortcut (skip subagent spawn)
 

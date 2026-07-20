@@ -185,7 +185,5 @@ mode: <repo-grounded | elsewhere-software | elsewhere-non-software>
 ## No process exhaust
 
 Keep engineering-process metadata out of the artifact — no "captured at
-Phase X" notes, no skill-pointer "next steps", no italic provenance
-lines. The reader wants the ideas and their basis. (HTML carries a
-single visible composition-signal footer per the html-rendering
-invariant; that is the one provenance element that belongs in the doc.)
+Phase X" notes, no skill-pointer "next steps", and no provenance lines.
+The reader wants the ideas and their basis.

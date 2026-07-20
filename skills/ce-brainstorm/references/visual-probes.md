@@ -72,14 +72,16 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
-node "$SKILL_DIR/scripts/visual-probe-server.js" start --root /tmp/compound-engineering/ce-brainstorm-visual/<run-id>
+WORKSPACE_ROOT="$(jj workspace root)"
+node "$SKILL_DIR/scripts/visual-probe-server.js" start --root "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>"
 ```
 
-Append `--foreground` to that `start` command for foreground mode. Status and stop take the same anchor — and because `SKILL_DIR` does not persist between Bash invocations, each must re-set it in its own call rather than reuse the `start` block's value:
+Append `--foreground` to that `start` command for foreground mode. Status and stop take the same anchors — and because shell variables do not persist between Bash invocations, each call must re-set both `SKILL_DIR` and `WORKSPACE_ROOT` rather than reuse the `start` block's values:
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
-node "$SKILL_DIR/scripts/visual-probe-server.js" status --root /tmp/compound-engineering/ce-brainstorm-visual/<run-id>
+WORKSPACE_ROOT="$(jj workspace root)"
+node "$SKILL_DIR/scripts/visual-probe-server.js" status --root "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>"
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)
 ```
 
@@ -133,14 +135,14 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use OS temp by default because visual probes are disposable scratch:
+Use workspace-local scratch:
 
 ```text
-/tmp/compound-engineering/ce-brainstorm-visual/<run-id>/
+<workspace-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/
     display-info.json
 ```
 
-Use `.context/compound-engineering/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.
+If the user explicitly wants to preserve or curate the sketches after the session, move the selected artifacts to an appropriate durable project path. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.

@@ -44,7 +44,8 @@ Read `references/intake.md` now and classify the request into one of the four in
 Match grounding to the input shape. Create the run directory first — every run gets one, before any artifact exists:
 
 ```bash
-RUN_DIR="/tmp/compound-engineering/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)"
+workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
+RUN_DIR="$workspace_root/.tmp/rocketclaw/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)"
 mkdir -p "$RUN_DIR"
 echo "$RUN_DIR"
 ```
@@ -59,8 +60,8 @@ python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 On `HIT`, load the profile JSON — stack, conventions, vocabulary — and take orientation from it. On `MISS`, dispatch a generic subagent with `references/agents/repo-profiler.md` to derive the profile, write its JSON to a file, then persist with `python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <file>` (re-set `SKILL_DIR` in that call — shell vars don't persist between Bash invocations). On `NO-CACHE` — or if the call errors — derive orientation inline and skip the `put`. The cache is an optimization, never a correctness dependency. The topic-specific evidence (the diff, the concept's call-sites, the window's commits) is always gathered fresh.
 
 - **Diff mode:** resolve the change (the `diff:` ref, or the most recent substantial change when the request points at one implicitly) and gather its evidence — the diff itself, the files it touches, any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied.
-- **Recap mode:** dispatch a generic subagent seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the repo root, and `$RUN_DIR`. It returns an evidence summary with commit shas and `file:line` pointers. **Empty window** (no git activity, no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
-- **External concepts** (no footprint in this repo): skip repo grounding entirely — do not force repo context into the output. Research with whatever web tools are reachable. When none are, you may explain from model knowledge, but the artifact must label that content **Unverified — from model knowledge, not checked against current sources** in its metadata header.
+- **Recap mode:** dispatch a generic subagent seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the workspace root, and `$RUN_DIR`. It returns an evidence summary with commit IDs and `file:line` pointers. **Empty window** (no JJ activity, no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
+- **External concepts** (no footprint in this repo): skip repo grounding entirely — do not force repo context into the output. Research with whatever web tools are reachable. When none are, you may explain from existing knowledge, but the artifact must label that content **Unverified — not checked against current sources** in its metadata header.
 - **Idea mode:** the idea is a fixed given. Explain its implications, mechanics, and trade-offs for the user's understanding. Never scope it (`ce-brainstorm`'s job), never generate and rank alternatives (`ce-ideate`'s job).
 
 ### Phase 3: Check-in gate — before anything is revealed
@@ -85,7 +86,7 @@ Detect destinations by capability — probe the agent's own toolset and session 
 - **Local file** — copy the artifact out of `$RUN_DIR` to the path the user names, then where the platform exposes a browser-opening primitive (`open` on macOS, `xdg-open` on Linux, `start` on Windows) offer to open it; otherwise print the absolute path.
 - **Publish to Proof** (markdown output only) — publish per `references/destinations.md` and surface the returned share URL; on failure retry once, then report and move on.
 - **Send to Thinkroom** (offered only when a Thinkroom skill or CLI capability is detected) — send per `references/destinations.md`.
-- **Leave it** — report the `$RUN_DIR` path and state it is a temporary location that does not survive reboot; nothing else is written.
+- **Leave it** — report the `$RUN_DIR` path and state it is workspace-local scratch under `.tmp`; nothing else is written.
 
 **Non-interactive degradation:** when no interaction is possible at this ask (no blocking tool and no reply), do not hang and do not discard — the artifact is already at `$RUN_DIR`; report that path and end, skipping the improvement-observation handoffs below (they are offers, and an offer cannot fire without a user).
 

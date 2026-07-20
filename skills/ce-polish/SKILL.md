@@ -2,18 +2,18 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, branch name, or blank for current branch]"
+argument-hint: "[PR number, bookmark name, or blank for current workspace]"
 ---
 
 # Polish
 
 Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
 
-## Phase 0: Get on the right branch
+## Phase 0: Get on the right change
 
-1. If a PR number or branch name was provided, check it out (probe for existing worktrees first).
-2. If blank, use the current branch.
-3. Verify the current branch is not main/master.
+1. If a PR number or bookmark name was provided, inspect existing JJ workspaces first. Reuse a workspace already attached to the target; otherwise route through `ce-worktree` to attach the PR or bookmark without disturbing another workspace. Keep `gh` for PR metadata and `jj git` for remote interoperability.
+2. If blank, use the current JJ workspace and working-copy change.
+3. Verify the working-copy change is not the protected default-bookmark change identified by the project's active instructions and conventions.
 
 ## Phase 1: Start the dev server
 
@@ -67,7 +67,15 @@ bash "$SKILL_DIR/scripts/resolve-port.sh" --type <type>
 
 ### 1.3 Start the server
 
-Start the dev server in the background, log output to a temp file. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
+Start the dev server in the background and keep its log inside the workspace:
+
+```bash
+workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
+mkdir -p "$workspace_root/.tmp/rocketclaw/ce-polish"
+dev_server_log="$workspace_root/.tmp/rocketclaw/ce-polish/dev-server.log"
+```
+
+Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of `$dev_server_log` and ask the user what to do.
 
 ### 1.4 Open in browser
 
@@ -85,7 +93,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → commit the fixes and stop
+- When the user says they're done, compose or edit the current JJ change description and stop. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active runtime instructions and conventions and the repository's `jj log` syntax and history take precedence; apply the Go guidance only where compatible for message quality, clarity, and structure. Do not impose fixed prefixes, types, scopes, messages, examples, or templates.
 
 No checklist. No envelope. Just conversation.
 

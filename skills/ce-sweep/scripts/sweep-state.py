@@ -13,8 +13,8 @@ Design rules (mirrors the repo's repo-profile-cache helper):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are atomic: a unique temp file under the workspace-local atomic
+    directory + os.replace, so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -40,8 +40,9 @@ are emitted as inline JSON flow on a single line — itself valid YAML.
 import argparse
 import json
 import os
+import secrets
+import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 
 try:
@@ -255,13 +256,12 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # A machine-local state file can live under world-shared /tmp, and
-            # it is a correctness dependency (lease, cursors, closed status) as
-            # well as an injection sink (item bodies re-read into agent
-            # context). Reject a file not owned by us so a co-tenant cannot
-            # plant a forged lease/cursor or attacker-authored item text. Skip
-            # where geteuid is unavailable (non-POSIX), where the threat does
-            # not apply.
+            # The state file is a correctness dependency (lease, cursors,
+            # closed status) as well as an injection sink (item bodies are
+            # re-read into agent context). Reject a file not owned by us so a
+            # co-tenant cannot plant a forged lease/cursor or attacker-authored
+            # item text. Skip where geteuid is unavailable (non-POSIX), where
+            # the threat does not apply.
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return ("corrupt", None)
@@ -287,13 +287,40 @@ def new_state():
     return {"schema_version": SCHEMA_VERSION, "sources": {}, "items": {}}
 
 
+def _workspace_root():
+    """Resolve the JJ workspace root, falling back to the physical cwd."""
+    cwd = os.getcwd()
+    try:
+        root = subprocess.check_output(
+            ["jj", "workspace", "root"],
+            cwd=cwd,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return cwd
+    return os.path.realpath(root) if root else cwd
+
+
 def write_state(path, state):
     """Atomic write of the state file. Returns True on success."""
     state["schema_version"] = SCHEMA_VERSION
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    atomic_dir = os.path.join(
+        _workspace_root(), ".tmp", "rocketclaw", "ce-sweep", "atomic"
+    )
+    os.makedirs(atomic_dir, exist_ok=True)
+    while True:
+        tmp = os.path.join(
+            atomic_dir, f".tmp-sweep-{secrets.token_hex(16)}.yml"
+        )
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            break
+        except FileExistsError:
+            continue
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
@@ -543,8 +570,8 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
+    # the lease yet must still record its outcome. In local-change mode there
+    # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -752,7 +779,7 @@ _HANDLERS = {
 # (run-record for an aborted-locked run, validate, import-legacy). Two
 # concurrent invocations (an overlapping cron and manual sweep) could otherwise
 # interleave load -> mutate -> write and lose an update — e.g. an aborted run's
-# stale-snapshot write clobbering the holder's just-committed upsert. An OS
+# stale-snapshot write clobbering the holder's just-written upsert. An OS
 # advisory lock held across each mutating RMW makes them mutually exclusive
 # regardless of lease ownership.
 _MUTATING = {

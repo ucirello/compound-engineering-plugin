@@ -5,10 +5,10 @@ How an explainer renders as HTML. Load at compose time (Phase 4), not earlier. T
 ## Hard invariants
 
 - **Single self-contained HTML5 file.** No companion `.css`, `.js`, or `.svg` files. CSS lives in `<style>`. SVG lives inline. Images are base64 data URIs or inline SVG. No external requests of any kind — explainers must read identically offline and inside CSP-restricted viewers, so unlike the plan-artifact convention there is **no webfont exception**: use a system font stack.
-- **All metadata appears as visible text — single source of truth.** A visible header block carries: title, date, input shape (concept / diff / idea / recap), the subject (topic, ref, or window), and — when Phase 2 fell back to model knowledge — the label `Unverified — from model knowledge, not checked against current sources`. No hidden machine-readable copy: no JSON script block, no `data-*` mirror, no `<meta>` duplication. This header is what a future library layer indexes, so keep the field names stable.
+- **All metadata appears as visible text — single source of truth.** A visible header block carries: title, date, input shape (concept / diff / idea / recap), the subject (topic, ref, or window), and — when Phase 2 used unverified existing knowledge — the label `Unverified — not checked against current sources`. No hidden machine-readable copy: no JSON script block, no `data-*` mirror, no `<meta>` duplication. This header is what a future library layer indexes, so keep the field names stable.
 - **Display-only.** No forms, no click handlers, no embedded quizzes, no "submit" affordances, no scripts. The check-in lives in the session.
 - **ASCII identifiers.** Class names and element IDs are ASCII-only.
-- **Composition signal.** A visible footer names the composition timestamp and the composing skill: `Composed 2026-07-02 by ce-explain`.
+- **Composition signal.** A visible footer names the composition timestamp.
 
 ## Show-n-tell: match the form to the material
 

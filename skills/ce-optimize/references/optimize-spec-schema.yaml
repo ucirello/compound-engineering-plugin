@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for git refs and worktree paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
     example: "improve-issue-clustering"
 
   description:
@@ -260,7 +260,7 @@ optional_fields:
 
   execution:
     type: object
-    default: { mode: "parallel", backend: "worktree", max_concurrent: 4 }
+    default: { mode: "parallel", backend: "workspace", max_concurrent: 4 }
     description: "How experiments are executed"
     optional_children:
       mode:
@@ -272,14 +272,14 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # git worktrees for isolation (default)
+          - workspace # JJ workspaces with isolated changes (default)
           - codex     # Codex sandboxes for isolation
-        default: worktree
+        default: workspace
       max_concurrent:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for worktree backend. 8+ only valid for Codex backend."
+        description: "Maximum experiments to run in parallel. Capped at 6 for workspace backend. 8+ only valid for Codex backend."
       codex_security:
         type: enum
         values:
@@ -311,7 +311,7 @@ optional_fields:
       shared_files:
         type: array
         default: []
-        description: "Files that must be copied into each experiment worktree (e.g., SQLite databases)"
+        description: "Files that must be copied into each experiment workspace (e.g., SQLite databases)"
         items:
           type: string
       exclusive_resources:
@@ -368,7 +368,7 @@ optional_fields:
   max_runner_up_merges_per_batch:
     type: integer
     default: 1
-    description: "Maximum number of file-disjoint runner-up experiments to attempt merging per batch after keeping the best experiment"
+    description: "Maximum number of file-disjoint runner-up experiments to attempt integrating per batch after keeping the best experiment"
 
 # ============================================================================
 # VALIDATION RULES
@@ -385,7 +385,7 @@ validation_rules:
   - "scope.immutable must have at least one entry"
   - "Gate check operators must be one of: >=, <=, >, <, ==, !="
   - "execution.max_concurrent must be >= 1"
-  - "execution.max_concurrent must not exceed 6 when execution.backend is 'worktree'"
+  - "execution.max_concurrent must not exceed 6 when execution.backend is 'workspace'"
   - "If parallel.exclusive_resources is non-empty, execution.mode should be 'serial'"
   - "If metric.judge.singleton_sample > 0, metric.judge.singleton_rubric must be present"
   - "If metric.primary.type is 'judge' and metric.judge.max_total_cost_usd is null, the user should explicitly approve uncapped spend"

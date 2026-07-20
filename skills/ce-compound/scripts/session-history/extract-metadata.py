@@ -50,7 +50,6 @@ def try_codex(lines):
                 meta["cli_version"] = p.get("cli_version", "")
             elif obj.get("type") == "turn_context":
                 p = obj.get("payload", {})
-                meta["model"] = p.get("model", "")
                 meta["cwd"] = meta.get("cwd") or p.get("cwd", "")
         except (json.JSONDecodeError, KeyError):
             pass

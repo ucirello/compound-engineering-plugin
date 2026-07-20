@@ -145,8 +145,10 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-commit mode (default) | Single writer **per checkout**. | The lease serializes overlapping sweeps in the same working tree (e.g. a cron sweep and a manual one). The file is written in-tree (and may be committed locally). No cross-machine guarantee. |
-| pushed-shared-branch | One writer **per repo**. | The state file lives on a shared branch multiple checkouts push to. `lease-acquire` must be committed, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
+| local-change mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same JJ workspace (e.g. a cron sweep and a manual one). The file is written in-tree and may remain in a local change. No cross-machine guarantee. |
+| pushed-shared-bookmark | One writer **per repo**. | The state file is published through a shared bookmark that multiple workspaces update. `lease-acquire` must be described, published with `jj git push`, and confirmed after `jj git fetch` **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
+
+At either site that describes or recommends publishing a lease change, follow the project's active runtime instructions and conventions first; next, use `jj log` to inspect and follow the repository's present change-description syntax and wording. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description syntax inferred via `jj log` always win. Compatible Go guidance applies only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, examples, or templates; use `<description-composed-from-runtime-conventions>` as the neutral placeholder.
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -170,8 +172,8 @@ subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
 whole load-modify-write, so two concurrent invocations serialize their writes
 regardless of lease ownership. The lease decides *who owns the sweep*; the file
 lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never committed (the skill's commit step adds only the state file and the
-plan, never `-A`).
+and never included in the sweep change (the skill includes only the state file
+and the plan, never unrelated paths).
 
 ## Engine status words
 

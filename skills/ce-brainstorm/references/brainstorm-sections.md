@@ -26,9 +26,9 @@ New `ce-brainstorm` outputs live under `docs/plans/` and use the unified plan
 artifact contract:
 
 - **Path:** `docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>`.
-- **`artifact_contract: ce-unified-plan/v1`**.
+- **`artifact_contract: unified-plan/v1`**.
 - **`artifact_readiness: requirements-only`**.
-- **`product_contract_source: ce-brainstorm`**.
+- **`product_contract_source: brainstorm`**.
 - **`execution`** only when the brainstorm has enough signal to classify the
   eventual execution domain. For software features, use `execution: code`.
   For non-code deliverables, follow the universal-brainstorming route instead
@@ -288,18 +288,18 @@ artifact.
   `surface-scope-earlier`, `demo-reel-local-save`). Used in the filename and
   as the resume-detection key when `ce-brainstorm` scans for an existing
   artifact to continue.
-- **`artifact_contract`** — always `ce-unified-plan/v1` for new outputs.
+- **`artifact_contract`** — always `unified-plan/v1` for new outputs.
 - **`artifact_readiness`** — always `requirements-only` for new
   `ce-brainstorm` outputs. Do not use `active`, `in_progress`, `completed`,
   or `done`.
-- **`product_contract_source`** — always `ce-brainstorm`.
+- **`product_contract_source`** — always `brainstorm`.
 
 ### No status field
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No CE artifact carries mutable progress state; whether work shipped
-is derived from git, not stored in the doc. Do not introduce one.
+progress. No plan artifact carries mutable progress state; whether work shipped
+is derived from JJ history, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 

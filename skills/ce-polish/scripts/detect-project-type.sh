@@ -41,11 +41,8 @@
 
 set -u
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a git repository" >&2
-  exit 1
-fi
+workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
+REPO_ROOT="$workspace_root"
 
 cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }
 

@@ -1,7 +1,7 @@
 ---
 name: ce-simplify-code
 description: "Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving behavior. Use for tidy/refactor passes; use ce-debug for bugs."
-argument-hint: "[blank to simplify current branch changes, or describe what to simplify]"
+argument-hint: "[blank to simplify the current JJ change stack, or describe what to simplify]"
 ---
 
 Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
@@ -11,8 +11,9 @@ Simplify recently changed code for clarity, reuse, quality, and efficiency while
 Resolve the simplification scope in this order:
 
 1. **If the user explicitly named a scope** (a file, a directory, "the function I just wrote", "the changes from this morning"), use that scope. Treat user-named scope as authoritative — do not widen it.
-2. **Otherwise, in a git repository**, default to the diff between the current branch and its base branch (e.g., `git diff origin/main...` or against the configured upstream). This covers the common case of "simplify everything I've added on this feature branch before opening a PR." If the branch has no upstream or base ref, fall back to staged + unstaged changes (`git diff HEAD`).
-3. **Outside a git repository or when no diff is available**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
+2. **Otherwise, in a JJ workspace**, default to the diff for the current change stack relative to its base. Resolve the stack and base with the project's active JJ revset conventions, inspecting history with `jj log` and the resulting changes with `jj diff`. This covers the common case of simplifying everything added to a stack before opening a PR. If no stack base can be resolved, fall back to the current working-copy change with `jj diff -r @`.
+3. **For GitHub PR scope or Git interoperability**, retain `gh` and JJ's Git interoperability where they provide authoritative PR metadata, diffs, refs, or remote state. Do not replace a JJ-native local workflow with standalone Git commands.
+4. **Outside a JJ workspace or when no diff is available**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
 
 If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
@@ -58,5 +59,7 @@ If no test suite, lint, or typecheck is configured, state that explicitly in the
 ## Step 5: Summarize
 
 Briefly summarize what was good vs improved and fixed, including which checks were run and their results. If there were no findings to act on, confirm the code didn't require any changes.
+
+When composing or revising the change description, use this precedence: the project's runtime instructions, the project's established `jj log` and revset conventions, then repository history. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Treat `git log` here as history inspection through JJ/Git interoperability, not as a replacement for the JJ workflow. For Go changes, apply compatible Go quality guidance only where it agrees with the project's instructions and established history. Do not impose fixed syntax, examples, or templates; use neutral placeholders when discussing variable content.
 
 **Quantify the impact by dimension.** Report what was actually applied, not a line count: fixes applied per reviewer dimension (reuse, quality, efficiency), how many findings were skipped as false-positive or not worth addressing, and the behavior-preservation result (checks run and outcome). For example: "Applied 6 — reuse 2, quality 3, efficiency 1; skipped 2 false positives; typecheck + lint clean, 11 scoped tests pass." Do not headline a net-lines-removed figure or frame fewer lines as the win — many clarity, safety, and efficiency fixes preserve or add lines. The measure is what improved and that behavior held, not how much code shrank.

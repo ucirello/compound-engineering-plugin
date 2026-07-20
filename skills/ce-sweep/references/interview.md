@@ -87,7 +87,7 @@ For email sources there are no source-side actions, so approval is moot — reco
 Ask where the sweep's state file lives:
 
 - **Recorded in the repo** (recommended when multiple agents or machines share a bookmark: one source of truth everyone reads and writes). Sets `sweep_state_path` to the tracked default `docs/feedback-sweep/state.yml`.
-- **Workspace-local under `.tmp`** (solo setups; keeps sweep bookkeeping out of revisions). Sets `sweep_state_path` to `<repo-root>/.tmp/rocketclaw/ce-sweep/state.yml`, where `<repo-root>` comes from `jj workspace root`, falling back to the current directory when no JJ workspace is available.
+- **Workspace-local under `.tmp`** (solo setups; keeps sweep bookkeeping out of revisions). Sets `sweep_state_path` to `<repo-root>/.tmp/rocketclaw/sweep/state.yml`, where `<repo-root>` comes from `jj workspace root`, falling back to the current directory when no JJ workspace is available.
 
 Let the user override the path if they want a different workspace-relative location, but keep it under `<repo-root>/.tmp/rocketclaw/`. If they pick workspace-local, note that another workspace or teammate's machine will not see this state.
 

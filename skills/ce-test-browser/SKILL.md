@@ -45,7 +45,7 @@ jj log
 jj diff --from <base-revision-selected-from-jj-log> --to @ --name-only
 ```
 
-Use the installed JJ version's `jj log` output and accepted revision syntax when selecting the base; do not assume a fixed bookmark or revset. The phrase `git log` may appear in composed messages when required, but operational history inspection remains `jj log`.
+Use the installed JJ version's `jj log` output and accepted revision syntax when selecting the base; do not assume a fixed bookmark or revset.
 
 **If JJ revision or bookmark provided:**
 ```bash
@@ -164,8 +164,11 @@ agent-browser snapshot -i
 
 **Take screenshots:**
 ```bash
-agent-browser screenshot page-name.png
-agent-browser screenshot --full page-name-full.png
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
+RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/test-browser/<run-id>";
+mkdir -p "$RUN_DIR"
+agent-browser screenshot "$RUN_DIR/page-name.png"
+agent-browser screenshot --full "$RUN_DIR/page-name-full.png"
 ```
 
 ### 8. Human Verification (When Required)
@@ -199,7 +202,7 @@ Did it work correctly?
 When a test fails (**pipeline mode:** do not ask how to proceed — capture the error screenshot and repro steps, log the failure, and continue):
 
 1. **Document the failure:**
-   - Screenshot the error state: `agent-browser screenshot error.png`
+   - Screenshot the error state under `<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/error.png`, using the current directory's `.tmp` when no JJ repository exists
    - Note the exact reproduction steps
 
 2. **Ask the user how to proceed:**
@@ -289,8 +292,8 @@ agent-browser type @e1 "text"      # Type without clearing
 agent-browser press Enter          # Press key
 
 # Screenshots
-agent-browser screenshot out.png       # Viewport screenshot
-agent-browser screenshot --full out.png # Full page screenshot
+agent-browser screenshot "<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/out.png"       # Viewport screenshot
+agent-browser screenshot --full "<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/out-full.png" # Full page screenshot
 
 # Headed mode (visible browser)
 agent-browser --headed open <url>      # Open with visible browser

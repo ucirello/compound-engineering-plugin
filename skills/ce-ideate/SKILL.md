@@ -1,6 +1,6 @@
 ---
 name: ce-ideate
-description: "Generate and evaluate grounded ideas. Use when the user asks for ideas, improvements, surprising options, or AI-generated directions before choosing one to develop; use ce-brainstorm to refine the user's own idea."
+description: "Generate and evaluate grounded ideas. Use when the user asks for ideas, improvements, surprising options, or candidate directions before choosing one to develop; use ce-brainstorm to refine the user's own idea."
 argument-hint: "[feature, focus area, or constraint] [output:md]"
 
 ---
@@ -256,12 +256,12 @@ Generate a `<run-id>` once at the start of Phase 1 (8 hex chars). Reuse it for t
 
 ```bash
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
-SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-ideate/<run-id>"
+SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ideate/<run-id>"
 mkdir -p "$SCRATCH_DIR"
 printf '%s\n' "$SCRATCH_DIR"
 ```
 
-Use the echoed absolute path (`<jj-workspace-root>/.tmp/rocketclaw/ce-ideate/<run-id>` or `$PWD/.tmp/rocketclaw/ce-ideate/<run-id>`) as `<scratch-dir>` for every subsequent checkpoint write and cache read in this run. The run directory is not deleted on completion — the V15 cache is session-scoped and reused across run-ids, the checkpoints are reusable across invocations, and in the no-repo case the deliverable itself is written here (see `references/post-ideation-workflow.md` Phase 4 and §5.5).
+Use the echoed absolute path (`<jj-workspace-root>/.tmp/rocketclaw/ideate/<run-id>` or `$PWD/.tmp/rocketclaw/ideate/<run-id>`) as `<scratch-dir>` for every subsequent checkpoint write and cache read in this run. The run directory is not deleted on completion — the V15 cache is session-scoped and reused across run-ids, the checkpoints are reusable across invocations, and in the no-repo case the deliverable itself is written here (see `references/post-ideation-workflow.md` Phase 4 and §5.5).
 
 Run grounding agents in parallel in the **foreground** (do not background — results are needed before Phase 2):
 

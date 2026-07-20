@@ -93,7 +93,7 @@ For each candidate artifact, classify it into one of five outcomes:
 8. **Delete when the code is gone, and only after checking for inbound links.** If the referenced code, controller, or workflow no longer exists in the codebase and no successor can be found, delete the file — don't default to Keep just because the general advice is still "sound." When in doubt between Keep and Delete, ask the user (in interactive mode) or mark as stale (in headless mode). Inbound links inform classification, not cleanup: cleanup is always mechanical, but **decorative** citations (principle stated inline) allow Delete, while **substantive** citations (citing doc relies on the cited doc) signal Replace. The auto-delete case is missing code, no matching successor, and citations absent or decorative.
 9. **Evaluate document-set design, not just accuracy.** In addition to checking whether each doc is accurate, evaluate whether it is still the right unit of knowledge. If two or more docs overlap heavily, determine whether they should remain separate, be cross-scoped more clearly, or be consolidated into one canonical document. Redundant docs are dangerous because they drift silently — two docs saying the same thing will eventually say different things.
 10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. JJ history is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. Use `jj log -- docs/solutions/` and inspect the relevant historical change when recovery is needed; repository-local runtime instructions and syntax take precedence.
-11. **Keep scratch workspace-local.** Put temporary refresh artifacts under the workspace's `.tmp/ce-compound-refresh/` namespace. If that path cannot be created, continue without scratch artifacts rather than writing to a global temporary directory.
+11. **Keep scratch workspace-local.** Put temporary refresh artifacts under the workspace's `.tmp/rocketclaw/compound-refresh/` namespace. If that path cannot be created, continue without scratch artifacts rather than writing to a global temporary directory.
 
 ## Scope Selection
 
@@ -548,7 +548,7 @@ Before offering options, use read-only JJ commands to inspect:
 3. All paths changed in `@` with `jj status`, distinguishing pre-existing work from paths changed by this refresh.
 4. Recent change descriptions with `jj log` to match the repository's conventions.
 
-Repository-local runtime instructions and JJ syntax discovered during execution override this generic flow. If the workspace is not a JJ repository, report that durable recording is unavailable and stop this phase; do not fall back to Git.
+Repository-local runtime instructions and JJ syntax discovered during execution override this generic flow. If the workspace is not a JJ repository, report that durable recording is unavailable and stop this phase.
 
 ### Mandatory description-quality sentence
 

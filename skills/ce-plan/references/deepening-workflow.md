@@ -178,7 +178,7 @@ Artifact-backed mode uses a per-run workspace-local scratch directory under `<wo
 
 ```bash
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
-SCRATCH_PARENT="$WORKSPACE_ROOT/.tmp/ce-plan-deepen"
+SCRATCH_PARENT="$WORKSPACE_ROOT/.tmp/rocketclaw/plan-deepen"
 mkdir -p "$SCRATCH_PARENT"
 SCRATCH_DIR="$SCRATCH_PARENT/$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
 (umask 077 && mkdir "$SCRATCH_DIR")

@@ -296,7 +296,7 @@ def write_state(path, state):
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
     staging_dir = os.path.join(
-        _workspace_root(), ".tmp", "rocketclaw", "ce-sweep", "state-writes"
+        _workspace_root(), ".tmp", "rocketclaw", "sweep", "state-writes"
     )
     os.makedirs(staging_dir, exist_ok=True)
     while True:
@@ -792,7 +792,7 @@ _MUTATING = {
 
 def _run_locked(handler, args):
     lock_dir = os.path.join(
-        _workspace_root(), ".tmp", "rocketclaw", "ce-sweep", "locks"
+        _workspace_root(), ".tmp", "rocketclaw", "sweep", "locks"
     )
     os.makedirs(lock_dir, exist_ok=True)
     state_key = hashlib.sha256(os.path.abspath(args.state).encode()).hexdigest()

@@ -45,7 +45,7 @@ Match grounding to the input shape. Create the run directory first — every run
 
 ```bash
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
-RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)"
+RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/explain/$(date +%Y%m%d)-$(openssl rand -hex 3)"
 mkdir -p "$RUN_DIR"
 echo "$RUN_DIR"
 ```

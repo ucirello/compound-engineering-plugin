@@ -11,7 +11,7 @@ This reference loads **after** review has run. In the ce-work shipping flow, ste
 Reuse the review output already in hand:
 
 - Parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) **or** the markdown Actionable Findings summary captured by the caller
-- Run artifact dir: `<workspace-root>/.tmp/rocketclaw/ce-code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`). Resolve `<workspace-root>` with `jj workspace root`, falling back to `pwd -P`.
+- Run artifact dir: `<workspace-root>/.tmp/rocketclaw/code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`). Resolve `<workspace-root>` with `jj workspace root`, falling back to `pwd -P`.
 
 If `status` is `failed`, stop shipping and surface `reason`. If `degraded`, note partial reviewer coverage before applying anything.
 

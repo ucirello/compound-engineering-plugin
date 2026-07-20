@@ -51,7 +51,7 @@ For a friendly overview of what this skill is for, when to use hard metrics vs L
 
 **CRITICAL: The experiment log on disk is the single source of truth. The conversation context is NOT durable storage. Results that exist only in the conversation WILL be lost.**
 
-The files under `.context/ce-optimize/<spec-name>/` are local scratch state. They are excluded by the repository's ignore rules, so they survive local resumes on the same machine but are not preserved by changes, bookmarks, or `jj git push` unless the user exports them separately.
+The files under `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/` are local scratch state. Resolve `<workspace-root>` with `jj workspace root`, falling back to the current directory when no JJ repository exists. These files are excluded by the repository's ignore rules, so they survive local resumes on the same machine but are not preserved by changes, bookmarks, or `jj git push` unless the user exports them separately.
 
 Every piece of state that matters MUST live on disk, not in the agent's memory.
 
@@ -92,7 +92,7 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 3. Confirm the expected content is present
 4. If verification fails, retry the write. If it fails twice, alert the user.
 
-### File Locations (all under `.context/ce-optimize/<spec-name>/`)
+### File Locations (all under `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/`)
 
 | File | Purpose | Written When |
 |------|---------|-------------|
@@ -203,7 +203,7 @@ Check whether the input is:
    - Any constraints or dependencies?
    - If this is the first run: recommend `execution.mode: serial`, `execution.max_concurrent: 1`, `stopping.max_iterations: 4`, and `stopping.max_hours: 1`
    - If `type: judge`: recommend `sample_size: 10`, `batch_size: 5`, and `max_total_cost_usd: 5` until the rubric and harness are trusted
-6. Write the spec to `.context/ce-optimize/<spec-name>/spec.yaml`
+6. Write the spec to `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/spec.yaml`
 7. Present the spec to the user for approval before proceeding
 
 ### 0.3 Search Prior Learnings
@@ -218,7 +218,7 @@ Check whether the `optimize/<spec-name>` bookmark already exists:
 jj bookmark list "optimize/<spec-name>"
 ```
 
-**If the bookmark exists**, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
+**If the bookmark exists**, check for an existing experiment log at `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
 - **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning experiment workspace directories for `result.yaml` markers. Continue from the last iteration number in the log.
@@ -232,7 +232,8 @@ jj bookmark create "optimize/<spec-name>" -r @  # omit when resuming an existing
 
 Create scratch directory:
 ```bash
-mkdir -p .context/ce-optimize/<spec-name>/
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
+mkdir -p "$WORKSPACE_ROOT/.tmp/rocketclaw/optimize/<spec-name>/"
 ```
 
 ---
@@ -241,7 +242,7 @@ mkdir -p .context/ce-optimize/<spec-name>/
 
 **This phase is a HARD GATE. The user must approve baseline and parallel readiness before Phase 2.**
 
-**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `parallel-probe.sh`, `experiment-worktree.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it); just replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from before running. The shape:
+**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `parallel-probe.sh`, `experiment-workspace.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it); just replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from before running. The shape:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
@@ -324,7 +325,7 @@ Read the JSON output. Present any blockers to the user with suggested mitigation
 Count existing experiment workspaces:
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
-bash "$SKILL_DIR/scripts/experiment-worktree.sh" count
+bash "$SKILL_DIR/scripts/experiment-workspace.sh" count
 ```
 
 If count + `execution.max_concurrent` would exceed 12:
@@ -336,7 +337,7 @@ If count + `execution.max_concurrent` would exceed 12:
 
 **MANDATORY CHECKPOINT.** Before presenting results to the user, write the initial experiment log with baseline metrics to disk:
 
-1. Create the experiment log file at `.context/ce-optimize/<spec-name>/experiment-log.yaml`
+1. Create the experiment log file at `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml`
 2. Include all required top-level sections from `references/experiment-log-schema.yaml`: `spec`, `run_id`, `started_at`, `baseline`, `experiments`, and `best`
 3. Seed `experiments` as an empty array and seed `best` from the baseline snapshot (use `iteration: 0`, baseline metrics, and baseline judge scores if present) so later phases have a valid current-best state to compare against
 4. Optionally seed `hypothesis_backlog: []` here as well so the log shape is stable before Phase 2 populates it
@@ -451,11 +452,11 @@ For each hypothesis in the batch, dispatch according to `execution.mode`. In `se
 
 The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-optimize` skill directory; see the Bundled scripts note in Phase 1) — shell state does not persist from Phase 1, so each block carries its own assignment.
 
-**Worktree backend (implemented with JJ workspaces):**
+**Workspace backend:** Normalize the persisted compatibility value `execution.backend: worktree` to `workspace` before dispatch; both values use this same JJ workspace path.
 1. Create an experiment workspace and bookmark:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
-   WORKSPACE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)
+   WORKSPACE_PATH=$(bash "$SKILL_DIR/scripts/experiment-workspace.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)
    ```
 2. Apply port parameterization if configured (set env vars for the measurement script)
 3. Fill the experiment prompt template (`references/experiment-prompt-template.md`) with:
@@ -474,12 +475,12 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
    test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}"
    ```
 2. Fill the experiment prompt template
-3. Resolve the workspace root with `jj workspace root` (fall back to the current directory when JJ is unavailable), create `.tmp/rocketclaw/ce-optimize/<spec-name>/prompts/`, and atomically write the filled prompt there
+3. Resolve the workspace root with `jj workspace root` (fall back to the current directory when JJ is unavailable), create `.tmp/rocketclaw/optimize/<spec-name>/prompts/`, and atomically write the filled prompt there
 4. Dispatch via Codex:
    ```bash
    WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
-   mkdir -p "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-optimize/<spec-name>/prompts"
-   codex exec - < "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-optimize/<spec-name>/prompts/experiment-<NNN>.md" 2>&1
+   mkdir -p "$WORKSPACE_ROOT/.tmp/rocketclaw/optimize/<spec-name>/prompts"
+   codex exec - < "$WORKSPACE_ROOT/.tmp/rocketclaw/optimize/<spec-name>/prompts/experiment-<NNN>.md" 2>&1
    ```
 5. Security posture: use the user's selection (ask once per session if not set in spec)
 
@@ -519,7 +520,7 @@ For each completed experiment, **immediately**:
 6. **If gates pass AND primary type is `hard`**:
    - Use the metric value directly from the measurement output
 
-7. **IMMEDIATELY append to experiment log on disk (CP-3)** — do not defer this to batch evaluation. Write the experiment entry (iteration, hypothesis, outcome, metrics, learnings) to `.context/ce-optimize/<spec-name>/experiment-log.yaml` right now. Use the transitional outcome `measured` once the experiment has valid metrics but has not yet been compared to the current best. Update the outcome to `kept`, `reverted`, or another terminal state in the evaluation step, but the raw metrics are on disk and safe from context compaction.
+7. **IMMEDIATELY append to experiment log on disk (CP-3)** — do not defer this to batch evaluation. Write the experiment entry (iteration, hypothesis, outcome, metrics, learnings) to `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml` right now. Use the transitional outcome `measured` once the experiment has valid metrics but has not yet been compared to the current best. Update the outcome to `kept`, `reverted`, or another terminal state in the evaluation step, but the raw metrics are on disk and safe from context compaction.
 
 8. **VERIFY the write (CP-3 verification)** — read the experiment log back from disk and confirm the entry just written is present. If verification fails, retry the write. Do NOT proceed to the next experiment until this entry is confirmed on disk.
 
@@ -569,7 +570,7 @@ After all experiments in the batch have been measured:
 
 3. **Update the `best` section** in the experiment log if a new best was found. Write to disk.
 
-4. **Write strategy digest** to `.context/ce-optimize/<spec-name>/strategy-digest.md`:
+4. **Write strategy digest** to `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/strategy-digest.md`:
    - Categories tried so far (with success/failure counts)
    - Key learnings from this batch and overall
    - Exploration frontier: what categories and approaches remain untried
@@ -658,7 +659,7 @@ Key improvements:
 ### 4.3 Preserve and Offer Next Steps
 
 The optimization bookmark (`optimize/<spec-name>`) is preserved with all changes from kept experiments.
-The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the bookmark because `.context/` is excluded by repository ignore rules.
+The experiment log and strategy digest remain in `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/` for resume and audit on this machine only; they do not travel with the bookmark because `.tmp/` is excluded by repository ignore rules.
 
 Present post-completion options via the platform question tool:
 
@@ -676,7 +677,7 @@ Clean up scratch space:
 ```bash
 # Keep the experiment log for local resume/audit on this machine
 # Remove temporary batch artifacts
-rm -f .context/ce-optimize/<spec-name>/strategy-digest.md
+rm -f "<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/strategy-digest.md"
 ```
 
 Do NOT delete the experiment log if the user may resume locally or wants a local audit trail. If they need a durable shared artifact, summarize or export the results into a tracked path before cleanup.

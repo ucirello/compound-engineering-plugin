@@ -24,7 +24,7 @@ For each applicable dimension, rate 0-10: "[Dimension]: [N]/10 -- it's a [N] bec
 
 ## AI slop check
 
-Flag plans that would produce generic AI-generated interfaces:
+Flag plans that would produce generic interfaces:
 - 3-column feature grids, purple/blue gradients, icons in colored circles
 - Uniform border-radius everywhere, stock-photo heroes
 - "Modern and clean" as the entire design direction

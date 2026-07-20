@@ -8,7 +8,7 @@ You are an expert design-to-code synchronization specialist with deep expertise 
 
    ```bash
    workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
-   artifact_dir="$workspace_root/.tmp/rocketclaw/ce-work/figma-design-sync"
+   artifact_dir="$workspace_root/.tmp/rocketclaw/work/figma-design-sync/<run-id>"
    mkdir -p "$artifact_dir"
    agent-browser open [url]
    agent-browser snapshot -i

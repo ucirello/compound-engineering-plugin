@@ -10,7 +10,7 @@
 #   experiment-worktree.sh cleanup-all <spec_name>
 #   experiment-worktree.sh count
 #
-# Workspaces are created at: .workspaces/optimize-<spec>-exp-<NNN>/
+# Workspaces are created under: .tmp/rocketclaw/optimize/workspaces/
 # Bookmarks are named: optimize-exp/<spec>/exp-<NNN>
 
 set -euo pipefail
@@ -25,7 +25,9 @@ WORKSPACE_ROOT=$(jj workspace root 2>/dev/null) || {
   exit 1
 }
 
-WORKSPACE_DIR="$WORKSPACE_ROOT/.workspaces"
+canonical_root=$(cd "$WORKSPACE_ROOT" && pwd -P)
+repo_key=$(printf '%s' "$canonical_root" | cksum | cut -d ' ' -f 1)
+WORKSPACE_DIR="$canonical_root/.tmp/rocketclaw/optimize/workspaces/$repo_key"
 
 experiment_bookmark_name() {
   local spec_name="${1:?Error: spec_name required}"
@@ -217,7 +219,7 @@ Commands:
   cleanup-all  Remove all experiment workspaces for a spec
   count        Count active experiment workspaces
 
-Workspaces: .workspaces/optimize-<spec>-exp-<NNN>/
+Workspaces: <workspace-root>/.tmp/rocketclaw/optimize/workspaces/optimize-<spec>-exp-<NNN>/
 Bookmarks:  optimize-exp/<spec>/exp-<NNN>
 EOF
       ;;

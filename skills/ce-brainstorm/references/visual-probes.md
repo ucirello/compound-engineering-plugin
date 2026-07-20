@@ -73,7 +73,7 @@ Start (detached):
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
-node "$SKILL_DIR/scripts/visual-probe-server.js" start --root "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>"
+node "$SKILL_DIR/scripts/visual-probe-server.js" start --root "$WORKSPACE_ROOT/.tmp/rocketclaw/brainstorm-visual/<run-id>"
 ```
 
 Append `--foreground` to that `start` command for foreground mode. Status and stop take the same anchor — and because `SKILL_DIR` does not persist between Bash invocations, each must re-set it in its own call rather than reuse the `start` block's value:
@@ -81,7 +81,7 @@ Append `--foreground` to that `start` command for foreground mode. Status and st
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
-node "$SKILL_DIR/scripts/visual-probe-server.js" status --root "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>"
+node "$SKILL_DIR/scripts/visual-probe-server.js" status --root "$WORKSPACE_ROOT/.tmp/rocketclaw/brainstorm-visual/<run-id>"
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)
 ```
 
@@ -138,11 +138,11 @@ The user's chat response is authoritative. The visual artifact is supporting con
 Use workspace-local scratch for visual probes:
 
 ```text
-<workspace-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>/
+<workspace-root>/.tmp/rocketclaw/brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/
     display-info.json
 ```
 
-Use `.context/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.
+Keep inspectable session sketches in the workspace-local path above. Move any user-curated sketch that must persist into an appropriate tracked project path; the normal durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.

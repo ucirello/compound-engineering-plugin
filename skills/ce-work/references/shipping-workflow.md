@@ -39,7 +39,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 4. **Residual Work Gate** (REQUIRED when `ce-code-review` ran and left actionable residuals)
 
-   After code review and review-findings followup, inspect the **Actionable Findings** summary. If truncated, read `<workspace-root>/.tmp/rocketclaw/ce-code-review/<run-id>/`, where `<workspace-root>` comes from `jj workspace root` with `pwd -P` fallback. If actionable `downstream-resolver` findings remain, do not proceed until they are resolved or durably recorded.
+   After code review and review-findings followup, inspect the **Actionable Findings** summary. If truncated, read `<workspace-root>/.tmp/rocketclaw/code-review/<run-id>/`, where `<workspace-root>` comes from `jj workspace root` with `pwd -P` fallback. If actionable `downstream-resolver` findings remain, do not proceed until they are resolved or durably recorded.
 
    **Non-interactive / autonomous sessions:** do not call a blocking tool. After step 3b applies eligible findings, take `Accept and proceed` automatically: record remaining residuals verbatim in the pull-request description's Known Residuals section, or `docs/residual-review-findings/<change-id>.md` on the no-pull-request path, then continue. Residuals are never dropped.
 

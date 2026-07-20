@@ -31,7 +31,7 @@ Callers invoke `ce-doc-review` headlessly by including `mode:headless` with the 
 
 If `mode:headless` is not present, the skill runs in its default interactive mode with the routing question, walk-through, and bulk-preview behaviors documented in `references/walkthrough.md` and `references/bulk-preview.md`.
 
-If this workflow needs temporary run artifacts, place them under the workspace root at `.tmp/ce-doc-review/<run-id>/`. Never use a global temporary directory. If the workspace is unavailable or `.tmp` cannot be created, keep the state in memory and continue without a run artifact.
+If this workflow needs temporary run artifacts, place them under the workspace root at `.tmp/rocketclaw/doc-review/<run-id>/`. Never use a global temporary directory. If the workspace is unavailable or `.tmp` cannot be created, keep the state in memory and continue without a run artifact.
 
 ## Phase 1: Get and Analyze Document
 

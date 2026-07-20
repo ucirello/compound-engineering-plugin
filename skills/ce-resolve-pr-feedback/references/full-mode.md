@@ -161,14 +161,14 @@ jj log -r @ --no-graph
 3. If `@` contains only fixer work, set the dynamically composed description with `jj describe`, then finish the change with `jj commit`. At this composition site: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
 
 ```bash
-jj describe -m "$DYNAMIC_DESCRIPTION"
+jj describe -m "<description-composed-from-runtime-conventions>"
 jj commit
 ```
 
 If unrelated work shares `@`, do not describe or commit that whole change. Commit only the fixer fileset and supply a dynamically composed description. At this composition site: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
 
 ```bash
-jj commit <FIXER_FILESET> -m "$DYNAMIC_DESCRIPTION"
+jj commit <FIXER_FILESET> -m "<description-composed-from-runtime-conventions>"
 ```
 
 After either form, the completed fix change is `@-`. Verify it with `jj status`, `jj diff -r @-`, and `jj log -r @- --no-graph`. If the installed JJ syntax differs, adapt to the syntax shown by the runtime repository and JJ while preserving the fileset boundary.
@@ -180,7 +180,7 @@ jj bookmark set <PR_BOOKMARK> -r @-
 jj git push --bookmark <PR_BOOKMARK>
 ```
 
-Do not use Git directly.
+Use only the JJ commands specified by this workflow.
 
 ## 7. Reply and Resolve
 

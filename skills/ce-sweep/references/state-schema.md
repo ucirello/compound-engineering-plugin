@@ -167,7 +167,7 @@ because the lease was `LOCKED` (`outcome: aborted-locked`) must still be able to
 record that fact — but that write happens while the lease holder is mid-sweep.
 To keep it from clobbering the holder's concurrent upserts, every mutating
 subcommand holds an **OS advisory lock** (`flock` on a state-keyed file under
-`<workspace-root>/.tmp/rocketclaw/ce-sweep/locks/`) across its
+`<workspace-root>/.tmp/rocketclaw/sweep/locks/`) across its
 whole load-modify-write, so two concurrent invocations serialize their writes
 regardless of lease ownership. The lease decides *who owns the sweep*; the file
 lock decides *who is writing the file right now*. The lock file is workspace-local

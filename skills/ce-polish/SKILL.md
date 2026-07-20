@@ -77,7 +77,7 @@ TMP_DIR="$WORKSPACE_ROOT/.tmp"
 mkdir -p "$TMP_DIR"
 ```
 
-Start the dev server in the background with output logged under `$TMP_DIR`. Do not use an OS-global temp directory, `$TMPDIR`, `mktemp`, or `tempfile`. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
+Start the dev server in the background with output logged only under `$TMP_DIR`; never use process-global temporary storage or generators. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
 
 ### 1.4 Open in browser
 
@@ -95,7 +95,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → create a JJ commit for the fixes and stop
+- When the user says they're done -> create a JJ commit for the fixes and stop. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local commit-message syntax established by project instructions and history always wins when it differs from the Go guidance; inspect that history operationally with `jj log`. Apply compatible Go guidance only to message quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example. Use `jj commit -m "<description-composed-from-runtime-conventions>"`.
 
 No checklist. No envelope. Just conversation.
 

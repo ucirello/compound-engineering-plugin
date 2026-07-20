@@ -66,7 +66,7 @@ Resolve once and reuse for the entire run:
 - `<state>` = `sweep_state_path` from config (fallback above).
 - `<writer>` = a run-unique writer id identifying harness + session + host, e.g. `sweep-<host>-<session>-<YYYY-MM-DD>`. Use the same string for every state-engine call this run.
 - `<run-id>` = a short unique token for scratch paths, e.g. the date plus a random suffix.
-- `<scratch-root>` = `<repo-root>/.tmp/rocketclaw/ce-sweep/<run-id>/`. Create it as needed. Never use an OS-global temporary directory.
+- `<scratch-root>` = `<repo-root>/.tmp/rocketclaw/sweep/<run-id>/`. Create it as needed. Never use an OS-global temporary directory.
 
 **Every Bash call that runs the bundled engine sets `SKILL_DIR` inline** (shell state does not persist between calls):
 

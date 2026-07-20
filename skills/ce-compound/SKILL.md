@@ -106,7 +106,7 @@ If the user says yes, run the internal session-history step in Phase 1 (see step
 <critical_requirement>
 **The primary deliverable is ONE file - the final documentation.**
 
-Phase 1 subagents write their full structured output to a per-run scratch artifact under `<workspace-root>/.tmp/rocketclaw/ce-compound/runs/<run-id>/` and return only a compact confirmation containing the artifact path. If `jj workspace root` is unavailable, use `<current-directory>/.tmp/rocketclaw/ce-compound/runs/<run-id>/`. The orchestrator Reads those artifacts back in Phase 2 assembly. This scratch space does not make the files additional deliverables. **Only the orchestrator writes product files** — the final solution doc and the maintenance side effects below. Subagents must not touch `docs/`, project instruction files, or any tracked path outside the namespaced `.tmp` tree. Beyond the Phase 2 solution doc, the orchestrator's other writes are maintenance side effects — not additional deliverables, and creating one when absent is expected, not a violation of this rule:
+Phase 1 subagents write their full structured output to a per-run scratch artifact under `<workspace-root>/.tmp/rocketclaw/compound/runs/<run-id>/` and return only a compact confirmation containing the artifact path. If `jj workspace root` is unavailable, use `<current-directory>/.tmp/rocketclaw/compound/runs/<run-id>/`. The orchestrator Reads those artifacts back in Phase 2 assembly. This scratch space does not make the files additional deliverables. **Only the orchestrator writes product files** — the final solution doc and the maintenance side effects below. Subagents must not touch `docs/`, project instruction files, or any tracked path outside the namespaced `.tmp` tree. Beyond the Phase 2 solution doc, the orchestrator's other writes are maintenance side effects — not additional deliverables, and creating one when absent is expected, not a violation of this rule:
 - **`CONCEPTS.md`** — create or update in Phase 2.4 (Vocabulary Capture) when a qualifying domain term surfaces.
 - **A project instruction file** (AGENTS.md or CLAUDE.md) — a small edit when the Discoverability Check finds a gap.
 
@@ -145,7 +145,7 @@ Launch research subagents. Each writes its full output to a per-run scratch arti
 ```bash
 WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
 RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ')
-RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-compound/runs/$RUN_ID"
+RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/compound/runs/$RUN_ID"
 mkdir -p "$RUN_DIR"
 ```
 
@@ -622,7 +622,7 @@ Knowledge track:
 
 | ❌ Wrong | ✅ Correct |
 |----------|-----------|
-| Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `<workspace-root>/.tmp/rocketclaw/ce-compound/runs/<run-id>/` and return the path; orchestrator writes the one final doc |
+| Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `<workspace-root>/.tmp/rocketclaw/compound/runs/<run-id>/` and return the path; orchestrator writes the one final doc |
 | Subagent returns a long prose body only as its inline response | Subagent writes full output to its run artifact; orchestrator Reads it back (inline return is fallback only) |
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Multiple files created during workflow | One solution doc written or updated: `docs/solutions/[category]/[filename].md` (plus optional maintenance writes: a `CONCEPTS.md` create/update from Phase 2.4 and a small instruction-file edit for discoverability) |

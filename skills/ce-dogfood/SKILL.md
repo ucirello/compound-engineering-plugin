@@ -157,16 +157,16 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
    agent-browser fill @e2 "value"
    make_local_scratch() {
      local root="$1" path
-     SCRATCH_DIR="$root/.tmp/rocketclaw/ce-dogfood/$RUN_ID"
+     SCRATCH_DIR="$root/.tmp/rocketclaw/dogfood/$RUN_ID"
      case "$SCRATCH_DIR" in
-       "$root"/.tmp/rocketclaw/ce-dogfood/*) ;;
+       "$root"/.tmp/rocketclaw/dogfood/*) ;;
        *) return 1 ;;
      esac
-     for path in "$root/.tmp" "$root/.tmp/rocketclaw" "$root/.tmp/rocketclaw/ce-dogfood" "$SCRATCH_DIR"; do
+     for path in "$root/.tmp" "$root/.tmp/rocketclaw" "$root/.tmp/rocketclaw/dogfood" "$SCRATCH_DIR"; do
        [ ! -L "$path" ] || return 1
      done
      (umask 077 && mkdir -p "$SCRATCH_DIR") || return 1
-     for path in "$root/.tmp" "$root/.tmp/rocketclaw" "$root/.tmp/rocketclaw/ce-dogfood" "$SCRATCH_DIR"; do
+     for path in "$root/.tmp" "$root/.tmp/rocketclaw" "$root/.tmp/rocketclaw/dogfood" "$SCRATCH_DIR"; do
        [ -d "$path" ] && [ ! -L "$path" ] || return 1
      done
    }
@@ -176,14 +176,14 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
    SCRATCH_DIR=""
    [ -n "$WORKSPACE_ROOT" ] && make_local_scratch "$WORKSPACE_ROOT" || SCRATCH_DIR=""
    [ -n "$SCRATCH_DIR" ] || make_local_scratch "$CURRENT_DIR" || {
-     printf '%s\n' 'Unable to safely create local .tmp/rocketclaw/ce-dogfood scratch directory' >&2
+     printf '%s\n' 'Unable to safely create local .tmp/rocketclaw/dogfood scratch directory' >&2
      exit 1
    }
    agent-browser screenshot "$SCRATCH_DIR/<scenario>.png"
    agent-browser errors      # check console/page errors
    ```
 
-   Write transient screenshots under `<workspace-root>/.tmp/rocketclaw/ce-dogfood/<run-id>/` and do not add them to the JJ change. If the workspace root cannot be resolved or that local path cannot be safely created, try `<current-directory>/.tmp/rocketclaw/ce-dogfood/<run-id>/`. Reject symlinked path components; if both local paths fail, stop and report the failure. Never fall back to OS-global temporary storage. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+   Write transient screenshots under `<workspace-root>/.tmp/rocketclaw/dogfood/<run-id>/` and do not add them to the JJ change. If the workspace root cannot be resolved or that local path cannot be safely created, try `<current-directory>/.tmp/rocketclaw/dogfood/<run-id>/`. Reject symlinked path components; if both local paths fail, stop and report the failure. Never fall back to OS-global temporary storage. Only copy a screenshot into the report's location if you intend to embed it in the final report.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product?
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity.

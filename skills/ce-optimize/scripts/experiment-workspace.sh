@@ -26,7 +26,7 @@ JJ_ROOT=$(jj workspace root 2>/dev/null) || {
 
 canonical_root=$(cd "$JJ_ROOT" && pwd -P)
 repo_key=$(printf '%s' "$canonical_root" | cksum | cut -d ' ' -f 1)
-WORKSPACE_DIR="$canonical_root/.tmp/rocketclaw/ce-optimize/workspaces/$repo_key"
+WORKSPACE_DIR="$canonical_root/.tmp/rocketclaw/optimize/workspaces/$repo_key"
 
 validate_spec_name() {
   local spec_name="${1:?Error: spec_name required}"
@@ -236,7 +236,7 @@ Commands:
   cleanup-all  Remove all experiment workspaces for a spec
   count        Count active experiment workspaces (for budget checking)
 
-Workspaces: <workspace-root>/.tmp/rocketclaw/ce-optimize/workspaces/<repo-key>/optimize-<spec>-exp-<NNN>/
+Workspaces: <workspace-root>/.tmp/rocketclaw/optimize/workspaces/<repo-key>/optimize-<spec>-exp-<NNN>/
 EOF
       ;;
     *)

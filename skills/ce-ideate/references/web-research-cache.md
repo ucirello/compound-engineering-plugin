@@ -18,7 +18,7 @@ Read this when checking the V15 cache before dispatching `web-researcher`, or wh
 ]
 ```
 
-Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` is `<jj-workspace-root>/.tmp/rocketclaw/ce-ideate/<run-id>` with `$PWD/.tmp/rocketclaw/ce-ideate/<run-id>` as the no-workspace fallback, resolved once in SKILL.md Phase 1.
+Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` is `<jj-workspace-root>/.tmp/rocketclaw/ideate/<run-id>` with `$PWD/.tmp/rocketclaw/ideate/<run-id>` as the no-workspace fallback, resolved once in SKILL.md Phase 1.
 
 ## Reuse check
 
@@ -26,7 +26,7 @@ Before dispatching `web-researcher`, resolve the scratch root (the parent of `<s
 
 ```bash
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-ideate"
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ideate"
 find "$SCRATCH_ROOT" -maxdepth 2 -name 'web-research-cache.json' -type f 2>/dev/null
 ```
 

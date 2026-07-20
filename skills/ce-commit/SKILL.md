@@ -1,105 +1,80 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communication message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate, value-communicating message.
+description: Create one or more coherent JJ changes from the working-copy change with repository-appropriate descriptions. Use when the user asks to commit or save current working-copy changes.
 ---
 
-# Git Commit
+# Describe JJ Changes
 
-Create a single, well-crafted git commit from the current working tree changes.
+Turn the current Jujutsu working-copy change into one or more coherent, described changes, then start a fresh working-copy change.
 
 ## Context
 
-**On platforms other than Claude Code**, skip to the "Context fallback" section below and run the command there to gather context.
+**On platforms other than Claude Code**, skip to "Context fallback" and run the commands there.
 
-**In Claude Code**, the five labeled sections below (Git status, Working tree diff, Current branch, Recent commits, Remote default branch) contain pre-populated data. Use them directly throughout this skill -- do not re-run these commands.
+**In Claude Code**, the labeled sections below contain pre-populated data. Use them throughout this skill; do not rerun them.
 
-**Git status:**
-!`git status`
+**Working-copy status:**
+!`jj status`
 
-**Working tree diff:**
-!`git diff HEAD`
+**Working-copy diff:**
+!`jj diff`
 
-**Current branch:**
-!`git branch --show-current`
+**Recent change history:**
+!`jj log -r '::@' --limit 10`
 
-**Recent commits:**
-!`git log --oneline -10`
-
-**Remote default branch:**
-!`git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'`
+**Workspace root:**
+!`jj workspace root`
 
 ### Context fallback
 
-**In Claude Code, skip this section — the data above is already available.**
+**In Claude Code, skip this section because the data above is already available.**
 
-Run this single command to gather all context:
+Run these commands to gather the same context:
 
 ```bash
-printf '=== STATUS ===\n'; git status; printf '\n=== DIFF ===\n'; git diff HEAD; printf '\n=== BRANCH ===\n'; git branch --show-current; printf '\n=== LOG ===\n'; git log --oneline -10; printf '\n=== DEFAULT_BRANCH ===\n'; git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo '__DEFAULT_BRANCH_UNRESOLVED__'
+jj status
+jj diff
+jj log -r '::@' --limit 10
+jj workspace root
 ```
-
----
 
 ## Workflow
 
-### Step 1: Gather context
+### Step 1: Inspect the working-copy change
 
-Use the context above (git status, working tree diff, current branch, recent commits, remote default branch). All data needed for this step is already available -- do not re-run those commands.
+Use the status, diff, recent history, and workspace root above. If the working-copy change has no file changes, report that there is nothing to save and stop.
 
-The remote default branch value returns something like `origin/main`. Strip the `origin/` prefix to get the branch name. If it returned `__DEFAULT_BRANCH_UNRESOLVED__` or a bare `HEAD`, try:
+Review every changed path before changing descriptions or splitting. Exclude credentials, environment files, unrelated user changes, and local runtime or scratch paths such as `.rocketclaw/`, `.tmp/rocketclaw/`, and `.context/` unless the user explicitly put them in scope and the repository tracks them intentionally. Respect `.gitignore` and the repository's active instructions. Preserve historical records and test fixtures unless changing them is part of the requested behavior.
 
-```bash
-gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
-```
+Jujutsu snapshots files without a staging area. Do not introduce a staging step.
 
-If both fail, fall back to `main`.
+If temporary files are necessary, place them under `$(jj workspace root)/.tmp/rocketclaw/`. If the workspace root cannot be resolved, use `./.tmp/rocketclaw/` as the local fallback. Remove per-run temporary files when finished.
 
-If the git status from the context above shows a clean working tree (no staged, modified, or untracked files), report that there is nothing to commit and stop.
+### Step 2: Decide the change boundaries
 
-If the current branch from the context above is empty, the repository is in detached HEAD state. Explain that a branch is required before committing if the user wants this work attached to a branch. Ask whether to create a feature branch now. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+Scan the diff for naturally distinct concerns. Keep one change when the work is cohesive or separation is ambiguous. Split when file-level groups are clearly independent.
 
-- If the user chooses to create a branch, derive the name from the change content, create it with `git checkout -b <branch-name>`, then run `git branch --show-current` again and use that result as the current branch name for the rest of the workflow.
-- If the user declines, continue with the detached HEAD commit.
+Keep splitting lightweight:
 
-### Step 2: Determine commit message convention
+- Use Jujutsu filesets with `jj split`; do not stage files or invoke another VCS.
+- Split at the file level only. Do not split hunks within a file.
+- Keep tests with the behavior they verify and documentation with the behavior it explains.
+- Avoid turning one coherent change into many tiny changes.
+- Before each split, use `jj diff` with the intended fileset to verify that it selects exactly the desired paths.
+- After each split, inspect the resulting changes with `jj status`, `jj diff`, and `jj log` before continuing. Do not assume which resulting revision contains a group when the output can establish it.
 
-Follow this priority order:
+### Step 3: Compose, edit, and validate descriptions
 
-1. **Repo conventions already in context** -- If project instructions (AGENTS.md, CLAUDE.md, or similar) are already loaded and specify commit message conventions, follow those. Do not re-read these files; they are loaded at session start.
-2. **Recent commit history** -- If no explicit convention is documented, examine the 10 most recent commits from Step 1. If a clear pattern emerges (e.g., conventional commits, ticket prefixes, emoji prefixes), match that pattern.
-3. **Default: conventional commits** -- If neither source provides a pattern, use conventional commit format: `type(scope): description` where type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `style`, `build`.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-When using conventional commits, choose the type that most precisely describes the change (the type list above). Where `fix:` and `feat:` both seem to fit, default to `fix:`: a change that remedies broken or missing behavior is `fix:` even when implemented by adding code. Reserve `feat:` for capabilities the user could not previously accomplish. Other types remain primary when they fit better. The user may override for a specific change.
+This policy applies every time a description is composed, edited, or validated. The syntax required by the repository's active local instructions and the syntax visible in `git log` ALWAYS wins. Apply the Go guidance only where it is compatible with those sources. Determine all syntax at runtime; do not impose a message format, type, scope, prefix, or other convention that those sources do not establish.
 
-### Step 3: Consider logical commits
+For each resulting change, use `jj describe` to set its description. Communicate the value or reason for the change rather than a file inventory. Preserve motivation, trade-offs, constraints, or other information a future reader needs, while keeping an obvious single-purpose description brief.
 
-Before staging everything together, scan the changed files for naturally distinct concerns. If modified files clearly group into separate logical changes (e.g., a refactor in one directory and a new feature in another, or test files for a different change than source files), create separate commits for each group.
+After setting or editing each description, inspect it with `jj log` and compare it with the actual change shown by `jj diff`. Correct descriptions that are empty, misleading, incomplete, or inconsistent with the runtime convention before proceeding.
 
-Keep this lightweight:
-- Group at the **file level only** -- do not use `git add -p` or try to split hunks within a file.
-- If the separation is obvious (different features, unrelated fixes), split. If it's ambiguous, one commit is fine.
-- Two or three logical commits is the sweet spot. Do not over-slice into many tiny commits.
+### Step 4: Finish the operation
 
-### Step 4: Stage and commit
+Once every intended change has the correct contents and description, run `jj new` to create a fresh empty working-copy change. Do not create or move bookmarks unless the user requested that separately.
 
-If the current branch from the context above is `main`, `master`, or the resolved default branch from Step 1, automatically create a feature branch before committing. Derive the branch name from the change content, create it with `git checkout -b <branch-name>`, run `git branch --show-current` to confirm, and use the new branch as the current branch for the rest of the workflow. Do not ask whether to branch — committing on the default branch is not an option here.
-
-Write the commit message:
-- **Subject line**: Concise, imperative mood, focused on *why* not *what*. Follow the convention determined in Step 2.
-- **Body** (when needed): Add a body separated by a blank line for non-trivial changes. Explain motivation, trade-offs, or anything a future reader would need. Omit the body for obvious single-purpose changes.
-
-For each commit group, stage and commit in a single call. Prefer staging specific files by name over `git add -A` or `git add .` to avoid accidentally including sensitive files (.env, credentials) or unrelated changes. Use a heredoc to preserve formatting:
-
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-type(scope): subject line here
-
-Optional body explaining why this change was made,
-not just what changed.
-EOF
-)"
-```
-
-### Step 5: Confirm
-
-Run `git status` after the commit to verify success. Report the commit hash(es) and subject line(s).
+Run `jj status` to verify that the new working-copy change is empty, then use `jj log` to collect the completed changes' change IDs, commit IDs, and description first lines. Report those details and mention any paths deliberately left in the working copy.

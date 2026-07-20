@@ -11,11 +11,11 @@
 #   <peer>     codex  -> use Codex (when the host is Claude or Cursor)
 #              claude -> use Claude (when the host is Codex)
 #   <base-ref> the diff base (e.g. a merge-base SHA or branch); the peer reviews
-#              only `git diff <base-ref>` in the current repository
+#              only `jj diff --from <base-ref> --to @` in the current repository
 #   <run-dir>  an existing dir; output is written to <run-dir>/adversarial-<peer>.json
 #
 # Self-locates its sibling reference files via BASH_SOURCE (NOT the CWD, which is
-# the user's project on every host), and derives the repo root from git. The agent
+# the user's project on every host), and derives the workspace root from JJ. The agent
 # only has to pass the three values above.
 #
 # NON-BLOCKING BY DESIGN: every failure logs to stderr and exits 0 without an output
@@ -35,8 +35,10 @@ skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no o
 case "$PEER" in codex|claude) ;; *) skip "invalid peer '${PEER:-<empty>}' (want codex|claude); skipping cross-model pass" ;; esac
 [ -n "$BASE" ]                  || skip "no base ref given; skipping"
 [ -n "$RUN_DIR" ] && [ -d "$RUN_DIR" ] || skip "run-dir '${RUN_DIR:-<empty>}' is not a directory; skipping"
+RUN_DIR="$(cd "$RUN_DIR" && pwd -P)" || skip "cannot resolve run-dir; skipping"
 command -v "$PEER" >/dev/null 2>&1 || skip "$PEER CLI not installed; skipping"
 command -v jq      >/dev/null 2>&1 || skip "jq not installed; skipping"
+command -v jj      >/dev/null 2>&1 || skip "jj CLI not installed; skipping"
 
 # --- self-locate skill root + canonical sibling files ----------------------
 SKILL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" || skip "cannot resolve skill root; skipping"
@@ -45,13 +47,22 @@ SCHEMA="$SKILL_ROOT/references/findings-schema.json"
 [ -f "$PERSONA" ] || skip "persona brief not found at $PERSONA; skipping"
 [ -f "$SCHEMA" ]  || skip "findings schema not found at $SCHEMA; skipping"
 
-# --- derive repo root (read-only) ------------------------------------------
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || skip "not inside a git repository; skipping"
+# --- derive workspace root (read-only) -------------------------------------
+REPO_ROOT="$(jj workspace root 2>/dev/null)" || skip "not inside a JJ workspace; skipping"
+case "$RUN_DIR/" in
+  "$REPO_ROOT/.tmp/rocketclaw/"*) ;;
+  *) skip "run-dir must be under $REPO_ROOT/.tmp/rocketclaw; skipping" ;;
+esac
 
 OUT="$RUN_DIR/adversarial-$PEER.json"
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-log-XXXXXX")"
-trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
+umask 077
+SCRATCH_DIR="$RUN_DIR/.xmodel-$$"
+mkdir -m 700 "$SCRATCH_DIR" 2>/dev/null || skip "cannot create workspace-local scratch directory; skipping"
+PROMPT_FILE="$SCRATCH_DIR/prompt"
+PEERLOG="$SCRATCH_DIR/log"
+trap 'rm -f "$PROMPT_FILE" "$PEERLOG" "$SCRATCH_DIR/norm"; rmdir "$SCRATCH_DIR" 2>/dev/null || true' EXIT
+: > "$PROMPT_FILE" || skip "cannot create workspace-local prompt file; skipping"
+: > "$PEERLOG" || skip "cannot create workspace-local log file; skipping"
 
 # --- compose the peer prompt from the canonical persona (single source) ----
 # The full findings schema is embedded so BOTH peers know every required field
@@ -69,12 +80,12 @@ trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 } > "$PROMPT_FILE"
 # Per-peer diff delivery (composed below): codex fetches its own diff inside its
 # read-only sandbox; claude is hard-denied shell (see below), so it gets the diff
-# embedded and needs no git.
+# embedded and needs no JJ access.
 if [ "$PEER" = codex ]; then
-  printf '\nRun: git diff %q — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
+  printf '\nRun: jj diff --from %q --to @ — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
 else
-  { printf '\nReview ONLY the change below (the output of `git diff %q`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
-    printf '\n=== BEGIN DIFF ===\n'; git -C "$REPO_ROOT" diff "$BASE"; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
+  { printf '\nReview ONLY the change below (the output of `jj diff --from %q --to @`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
+    printf '\n=== BEGIN DIFF ===\n'; jj --repository "$REPO_ROOT" diff --from "$BASE" --to @; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
 fi
 
 # --- run the peer: idle-timeout for streaming codex, hard cap for claude ----
@@ -199,7 +210,7 @@ esac
 # instead of "adversarial-<peer>", Stage 5 would fold it as the in-process reviewer
 # and lose the cross-model agreement signal. Force the distinct name.
 if [ -s "$OUT" ]; then
-  _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-norm-XXXXXX")"
+  _norm="$SCRATCH_DIR/norm"
   # Force the distinct reviewer name AND satisfy Stage 5's full top-level contract
   # (reviewer string + findings/residual_risks/testing_gaps arrays). Backfill the two
   # soft arrays if the peer omitted them; drop the return entirely if findings is not

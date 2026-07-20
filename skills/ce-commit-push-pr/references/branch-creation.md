@@ -1,55 +1,47 @@
-# Branch creation from default branch
+# Bookmark setup from the default line
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+JJ bookmarks are named pointers, not checked-out branches. Preserve the snapshotted working-copy change while deciding which base belongs under it; no stash or branch checkout is needed.
 
 ## Decision flow
 
-### 1. Fetch fresh remote base
+### 1. Snapshot and fetch the remote base
+
+Run `jj status` first so `@` records the current working-copy content, then fetch only through JJ's Git interoperability layer:
 
 ```bash
-git fetch --no-tags origin <base>
+jj status
+jj git fetch --remote <base-remote>
 ```
 
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
+If fetch fails because of network, authentication, or remote configuration, use the fallback below.
 
-### 2. Check for unpushed local commits on `<base>`
+### 2. Inspect local-only default-line revisions
 
 ```bash
-git log origin/<base>..HEAD --oneline
+jj log -r '<base>@<base-remote>..<base>'
 ```
 
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
+- **No revisions:** use `<base>@<base-remote>` as the destination.
+- **Revisions present:** show them and ask whether they belong in the feature stack or should remain only on the local default line. Never carry them silently.
+- **Carry them:** use `<base>` as the destination.
+- **Leave them:** use `<base>@<base-remote>` as the destination.
 
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
+If pipeline mode suppresses the question, leave the local-only revisions out of the feature stack.
 
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
+### 3. Place the working-copy change on the selected base
 
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
-
-### 3. Create the feature branch
+Inspect `jj log -r 'ancestors(@, 20)'` before moving anything. If `@` is the sole feature revision, rebase it directly:
 
 ```bash
-git checkout -b <branch-name> "$BASE_REF"
+jj rebase -s @ -d <selected-base>
 ```
 
-If checkout fails because uncommitted changes would be overwritten, stash and retry:
+If the feature already contains multiple revisions, identify its earliest revision after the selected base and rebase the whole feature branch with `jj rebase -b <feature-root> -d <selected-base>`. Do not rebase local-only default-line revisions that the user chose to leave behind.
 
-```bash
-git stash push -u -m "ce-commit-push-pr: pre-branch <branch-name>"
-git checkout -b <branch-name> "$BASE_REF"
-git stash pop
-```
+Run `jj status`, `jj diff -r @`, and `jj log` afterward. JJ may materialize conflicts in the rebased revisions; surface them and stop for deliberate resolution rather than changing content automatically.
 
-If `git stash pop` reports conflicts, surface the conflict output and the stash ref to the user — do not auto-resolve.
+Do not create the feature bookmark yet. Step 3 in `SKILL.md` sets it on the final described tip after splitting and description work is complete.
 
 ## Fetch failure fallback
 
-If `git fetch` fails, branch from current local HEAD:
-
-```bash
-git checkout -b <branch-name>
-```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+Keep the existing parentage of `@`, inspect it with `jj log`, and continue without rebasing. Report that remote-base freshness was not verified. Do not perform the local-only comparison because the remembered remote bookmark may be stale.

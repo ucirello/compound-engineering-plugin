@@ -72,14 +72,16 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
-node "$SKILL_DIR/scripts/visual-probe-server.js" start --root /tmp/compound-engineering/ce-brainstorm-visual/<run-id>
+ROOT="$(jj workspace root 2>/dev/null || pwd)"; PROBE_ROOT="$ROOT/.tmp/rocketclaw/brainstorm-visual/<run-id>"; mkdir -p "$PROBE_ROOT"
+node "$SKILL_DIR/scripts/visual-probe-server.js" start --root "$PROBE_ROOT"
 ```
 
 Append `--foreground` to that `start` command for foreground mode. Status and stop take the same anchor — and because `SKILL_DIR` does not persist between Bash invocations, each must re-set it in its own call rather than reuse the `start` block's value:
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
-node "$SKILL_DIR/scripts/visual-probe-server.js" status --root /tmp/compound-engineering/ce-brainstorm-visual/<run-id>
+ROOT="$(jj workspace root 2>/dev/null || pwd)"; PROBE_ROOT="$ROOT/.tmp/rocketclaw/brainstorm-visual/<run-id>"
+node "$SKILL_DIR/scripts/visual-probe-server.js" status --root "$PROBE_ROOT"
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)
 ```
 
@@ -133,14 +135,14 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use OS temp by default because visual probes are disposable scratch:
+Use workspace-local scratch by default because visual probes are disposable:
 
 ```text
-/tmp/compound-engineering/ce-brainstorm-visual/<run-id>/
+$(jj workspace root)/.tmp/rocketclaw/brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/
     display-info.json
 ```
 
-Use `.context/compound-engineering/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.
+If `jj workspace root` is unavailable, use the same `.tmp/rocketclaw/brainstorm-visual/<run-id>/` tree under the current project directory. Use `.context/rocketclaw/brainstorm-visual/<run-id>/` only when the artifact is bound to this repository and the user explicitly wants to inspect, preserve, or curate the sketches after the session; shared use between skills alone does not justify `.context/`. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.

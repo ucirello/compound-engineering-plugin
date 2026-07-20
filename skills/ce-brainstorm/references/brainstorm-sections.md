@@ -278,10 +278,9 @@ artifact.
 - **`title`** — the artifact's descriptive name with a ` - Plan` suffix
   (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML). It is a unified plan at every readiness state, so the title
-  stays stable when `ce-plan` enriches it. Do not put a conventional-commit
-  prefix (`feat:`/`fix:`) in the title — the `type` field carries that.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `docs`, etc.).
+  stays stable when `ce-plan` enriches it. Do not put project-local change
+  syntax in the title — the `type` field carries the classification.
+- **`type`** — classification aligned with the project's current conventions.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
   Used in the filename (`docs/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>`).
 - **`topic`** — kebab-case slug identifying the brainstorm subject (e.g.,
@@ -298,8 +297,8 @@ artifact.
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No CE artifact carries mutable progress state; whether work shipped
-is derived from git, not stored in the doc. Do not introduce one.
+progress. No unified plan artifact carries mutable progress state; whether work
+shipped is derived from Jujutsu history, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 

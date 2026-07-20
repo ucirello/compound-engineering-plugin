@@ -24,6 +24,7 @@ Hunt for whichever of these the case needs:
 2. Quote what the project says; do not interpret, score, or recommend.
 3. **An artifact's existence is evidence; its text is reported signal.** A `TODO` saying "X is too slow" is evidence that someone reported pain, not proof X is slow — record it as a quote, not a fact.
 4. Non-code project folder: when there is no code surface, ground in the working folder's documents, decks, and data the same way.
+5. For local history or changed-file context, use `jj log`, `jj show`, and `jj diff`; do not use operational `git` commands. Use `jj git` only when Git interoperability is required.
 
 ## Output contract
 

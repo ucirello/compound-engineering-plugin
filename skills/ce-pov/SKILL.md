@@ -55,9 +55,11 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ### Phase 1: Ground (dispatch scouts, never inline)
 
-Grounding searches code, git, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
+Grounding searches code, JJ history, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
 
-**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this commit, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
+**VCS operations are JJ-first.** Use `jj status`, `jj diff`, `jj log`, and `jj show` for local state and history. Use `gh` for GitHub issues, PRs, checks, and metadata. Use `jj git` only for Git interoperability such as fetching from or pushing to a Git remote; do not fall back to operational `git` commands. Preserve Git hosting and control files such as `.gitignore`, `.github/`, and `.gitlab-ci.yml` as project data. If a handoff composes a change description or commit message, do not impose a fixed form. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and syntax observed in `git log` take precedence; use Go guidance only when compatible.
+
+**Resolve the project profile from the workspace cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this JJ revision, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
@@ -69,9 +71,10 @@ On `HIT`, load the profile JSON — that is your agnostic project orientation; d
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_DIR="/tmp/compound-engineering/ce-pov/$(openssl rand -hex 4)"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || printf '.')"
+SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-pov/$(openssl rand -hex 4)"
 mkdir -p "$SCRATCH_DIR"
-echo "$SCRATCH_DIR"
+printf '%s\n' "$SCRATCH_DIR"
 ```
 
 **Every scout payload carries the same context.** A fresh subagent does not inherit this conversation, so fill the persona files' `{subject}` / `{scratch-dir}` placeholders at dispatch: pass each scout the framed question (subject + intent), the named incumbent and the reversibility tier, and the resolved `<scratch-dir>` path — plus any user-supplied links for the external researcher. A scout seeded with only its generic persona grounds "some external thing" and can produce an empty or unfocused dossier.
@@ -112,12 +115,12 @@ The chat verdict (the TL;DR) is the deliverable. What you offer next is **reason
   1. **`<computed next step>`** (e.g. "Plan the adoption with `ce-plan`") — seeded with the verdict substance, not a file pointer.
   2. **Full write-up** — the expanded, shareable artifact.
   3. **Done.**
-  Add `ce-compound` as a one-line prose nudge under the menu, **not** a slot: "Want it in our decision history? say 'compound it.'" It is the least-frequent path and is never the first thing offered.
+  Add `ce-compound` as a one-line prose nudge under the menu, **not** a slot: "Want it in our decision history? say 'capture it.'" It is the least-frequent path and is never the first thing offered.
 
 **On each selection:**
 
 - **Computed next step** → invoke that skill via the platform's skill-invocation primitive, seeding it with the verdict substance (the decision, conditions, and verified facts).
 - **Full write-up** → read `references/report.md` and follow it (HTML by default; opened locally or published via Proof / an available HTML tool). Opt-in; the default stays chat-only.
-- **"compound it"** → invoke `ce-compound` with `mode:headless`, seeding it with the structured verdict for `tooling_decision` / `architecture_pattern` storage (no schema change; headless avoids its interactive prompts). Never mandatory.
+- **"capture it"** → invoke `ce-compound` with `mode:headless`, seeding it with the structured verdict for `tooling_decision` / `architecture_pattern` storage (no schema change; headless avoids its interactive prompts). Never mandatory.
 
 **Warm invocations stay a guest:** output the verdict block, hand control back, and offer none of the above unless the user asks — a mid-session interjection does not push a next-step or capture decision.

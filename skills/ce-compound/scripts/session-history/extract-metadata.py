@@ -6,7 +6,7 @@ Batch mode (preferred — one invocation for all files):
   python3 extract-metadata.py file1.jsonl file2.jsonl file3.jsonl
 
 Single-file mode (stdin):
-  head -20 <session.jsonl> | python3 extract-metadata.py
+  python3 extract-metadata.py < session.jsonl
 
 Auto-detects platform from the JSONL structure.
 Outputs one JSON object per file, one per line.
@@ -26,7 +26,7 @@ def try_claude(lines):
             if obj.get("type") == "user" and "gitBranch" in obj:
                 return {
                     "platform": "claude",
-                    "branch": obj["gitBranch"],
+                    "legacy_branch_label": obj["gitBranch"],
                     "ts": obj.get("timestamp", ""),
                     "session": obj.get("sessionId", ""),
                 }

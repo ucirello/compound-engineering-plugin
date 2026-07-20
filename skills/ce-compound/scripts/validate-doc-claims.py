@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against the git tree.
+"""Validate cited claims in a solution doc against the Jujutsu tree.
 
 Usage:
     python3 validate-doc-claims.py <doc-path>
@@ -15,14 +15,14 @@ citations against the repository:
 
     1. Cited repo-relative paths (backticked, containing at least one '/')
        exist in the working tree; tokens containing '../' resolve from the
-       doc's directory (those escaping the repo are skipped). Misses tracked
-       at HEAD or the upstream default branch still count as real paths and
-       are classified (deleted/uncommitted vs stale checkout). Tokens
+       doc's directory (those escaping the repository are skipped). Misses in
+       `@` or the upstream remote bookmark still count as real paths and are
+       classified (deleted in the working copy vs stale workspace). Tokens
        missing everywhere are flagged only when path-shaped; slash-delimited
-       identifiers (branch names, git refs, provider/model IDs) are skipped.
-    2. Cited commit SHAs (7-40 hex chars with at least one digit and one
-       a-f letter) resolve to commits, classified by reachability from
-       HEAD and the upstream default branch.
+       identifiers (bookmark names, revision expressions, provider/model IDs)
+       are skipped.
+    2. Cited Jujutsu change/commit IDs resolve to revisions, classified by
+       reachability from `@` and the upstream remote bookmark.
     3. Relative markdown link targets resolve from the doc's location.
     4. Dangling drafting scaffold: "Learning(s) N" numbering and
        unresolved {{...}} placeholder tokens.
@@ -33,7 +33,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
+whatever remote bookmarks exist locally. Run a best-effort `jj git fetch` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -45,7 +45,7 @@ import sys
 PLACEHOLDER_CHARS = set("<>{}*$")
 PLACEHOLDER_SUBSTRINGS = ("path/to", "...", "…")
 
-SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+ID_RE = re.compile(r"\b(?:[0-9a-f]{7,64}|[k-z]{8,64})\b")
 BACKTICK_RE = re.compile(r"`([^`\n]+)`")
 MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 SCAFFOLD_RES = (
@@ -59,10 +59,10 @@ def usage_fail(msg: str) -> "NoReturn":
     sys.exit(2)
 
 
-def git(args: list[str], cwd: str) -> tuple[int, str]:
+def jj(args: list[str], cwd: str) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["git", *args],
+            ["jj", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -94,8 +94,8 @@ def is_path_candidate(token: str) -> bool:
         return False
     if "://" in token or token.startswith(("http", "#", "/", "~")):
         return False
-    if token.startswith(("origin/", "upstream/", "refs/")):
-        return False  # git refs, not repo paths
+    if token.startswith(("bookmarks/", "revisions/")):
+        return False
     if PLACEHOLDER_CHARS & set(token):
         return False
     if any(sub in token for sub in PLACEHOLDER_SUBSTRINGS):
@@ -105,7 +105,7 @@ def is_path_candidate(token: str) -> bool:
 
 def is_path_shaped(token: str, base: str) -> bool:
     """Distinguish a path citation from a slash-delimited identifier
-    (branch name, provider/model ID) among tokens found nowhere in git."""
+    (bookmark name, provider/model ID) among tokens absent from revisions."""
     segments = token.split("/")
     if re.search(r"\.[A-Za-z0-9]{1,8}$", segments[-1]):
         return True
@@ -146,59 +146,46 @@ def main(argv: list[str]) -> int:
     infos: list[str] = []
     flags: list[str] = []
 
-    # --- Repo context -----------------------------------------------------
-    code, repo_root = git(["rev-parse", "--show-toplevel"], doc_dir)
-    in_git = code == 0 and bool(repo_root)
+    # --- Repository context -----------------------------------------------
+    code, repo_root = jj(["workspace", "root"], doc_dir)
+    in_jj = code == 0 and bool(repo_root)
     upstream: str | None = None
-    if in_git:
-        code, ref = git(["rev-parse", "--abbrev-ref", "origin/HEAD"], repo_root)
-        if code == 0 and ref:
-            upstream = ref
-        else:
-            for candidate in ("origin/main", "origin/master"):
-                code, _ = git(
-                    ["rev-parse", "--verify", "--quiet", candidate], repo_root
-                )
-                if code == 0:
-                    upstream = candidate
-                    break
-        if upstream:
-            code, behind = git(
-                ["rev-list", "--count", f"HEAD..{upstream}"], repo_root
+    if in_jj:
+        for candidate in ("main@origin", "master@origin", "trunk@origin"):
+            code, ref = jj(
+                ["log", "-r", candidate, "--no-graph", "-T", "commit_id"],
+                repo_root,
             )
-            if code == 0 and behind.isdigit() and int(behind) > 0:
-                infos.append(
-                    f"INFO: worktree is {behind} commits behind {upstream} — "
-                    "verify merge-state claims against remote truth (gh pr view), "
-                    "not this checkout"
-                )
-        else:
+            if code == 0 and ref:
+                upstream = candidate
+                break
+        if not upstream:
             infos.append(
-                "INFO: no upstream default branch found — "
-                "path/SHA classification limited to HEAD"
+                "INFO: no upstream remote bookmark found — "
+                "path/ID classification limited to @"
             )
     else:
         infos.append(
-            "INFO: not a git repository — path and SHA classification skipped "
+            "INFO: not a Jujutsu workspace — path and ID classification skipped "
             "(scaffold and link checks still apply)"
         )
 
     def upstream_has_path(path: str) -> bool:
-        if not (in_git and upstream):
+        if not (in_jj and upstream):
             return False
-        code, _ = git(["cat-file", "-e", f"{upstream}:{path}"], repo_root)
+        code, _ = jj(["file", "show", "-r", upstream, path], repo_root)
         return code == 0
 
-    def head_has_path(path: str) -> bool:
-        if not in_git:
+    def parent_has_path(path: str) -> bool:
+        if not in_jj:
             return False
-        code, _ = git(["cat-file", "-e", f"HEAD:{path}"], repo_root)
+        code, _ = jj(["file", "show", "-r", "@-", path], repo_root)
         return code == 0
 
     # --- 1. Cited repo paths ----------------------------------------------
     checked_paths = 0
     seen_paths: set[str] = set()
-    base = repo_root if in_git else os.getcwd()
+    base = repo_root if in_jj else os.getcwd()
     for raw in BACKTICK_RE.findall(body):
         token = normalize_path(raw)
         if not is_path_candidate(token):
@@ -207,36 +194,36 @@ def main(argv: list[str]) -> int:
         if token.startswith("../") or "/../" in token:
             # A `../` citation is doc-relative (matching how markdown links
             # resolve), so map it to a repo-root path before checking.
-            if not in_git:
+            if not in_jj:
                 continue
             resolved = os.path.realpath(os.path.join(doc_dir, token))
             check = os.path.relpath(resolved, os.path.realpath(base))
             if check.startswith(".."):
-                continue  # escapes the repo — not checkable as a repo path
+                continue  # escapes the repository
         if check in seen_paths:
             continue
         seen_paths.add(check)
         if os.path.exists(os.path.join(base, check)):
             checked_paths += 1
             continue
-        tracked_head = head_has_path(check)
-        tracked_upstream = upstream_has_path(check)
-        if not (tracked_head or tracked_upstream) and not is_path_shaped(
+        present_in_parent = parent_has_path(check)
+        present_upstream = upstream_has_path(check)
+        if not (present_in_parent or present_upstream) and not is_path_shaped(
             check, base
         ):
-            continue  # branch name / provider ID, not a path citation
+            continue  # bookmark name / provider ID, not a path citation
         checked_paths += 1
         loc = loc_suffix(raw)
-        if tracked_head:
+        if present_in_parent:
             flags.append(
-                f"FLAG path `{token}`{loc} — tracked at HEAD but missing from "
-                "the working tree: deleted or uncommitted removal? Annotate as "
+                f"FLAG path `{token}`{loc} — present in @- but missing from "
+                "the working tree: removed in the current change? Annotate as "
                 "historical (e.g. removed by this fix) or restore it."
             )
-        elif tracked_upstream:
+        elif present_upstream:
             flags.append(
                 f"FLAG path `{token}`{loc} — not in working tree but exists at "
-                f"{upstream}: stale checkout? Annotate or verify against upstream."
+                f"{upstream}: stale workspace? Annotate or verify against upstream."
             )
         else:
             where = (
@@ -247,53 +234,77 @@ def main(argv: list[str]) -> int:
                 "citation, or annotate it as historical (e.g. removed by this fix)."
             )
 
-    # --- 2. Cited commit SHAs ----------------------------------------------
-    checked_shas = 0
-    seen_shas: set[str] = set()
-    if in_git:
-        for m in SHA_RE.finditer(body):
-            sha = m.group(0)
-            if sha in seen_shas:
+    # --- 2. Cited Jujutsu change/commit IDs --------------------------------
+    checked_ids = 0
+    seen_ids: set[str] = set()
+    if in_jj:
+        for m in ID_RE.finditer(body):
+            revision_id = m.group(0)
+            if revision_id in seen_ids:
                 continue
-            if not (any(c.isdigit() for c in sha) and any(c in "abcdef" for c in sha)):
-                continue  # dates and decimal ids are not SHAs
-            seen_shas.add(sha)
-            checked_shas += 1
-            loc = loc_suffix(sha)
-            code, _ = git(["cat-file", "-e", f"{sha}^{{commit}}"], repo_root)
+            if all(c in "0123456789abcdef" for c in revision_id) and not (
+                any(c.isdigit() for c in revision_id)
+                and any(c in "abcdef" for c in revision_id)
+            ):
+                continue
+            seen_ids.add(revision_id)
+            checked_ids += 1
+            loc = loc_suffix(revision_id)
+            code, _ = jj(
+                ["log", "-r", revision_id, "--no-graph", "-T", "commit_id"],
+                repo_root,
+            )
             if code != 0:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — does not resolve to a commit in this "
+                    f"FLAG id {revision_id}{loc} — does not resolve in this "
                     "repository. Replace with the PR number, or drop it."
                 )
                 continue
-            in_head = (
-                git(["merge-base", "--is-ancestor", sha, "HEAD"], repo_root)[0] == 0
+            code, reachable_current = jj(
+                [
+                    "log",
+                    "-r",
+                    f"{revision_id} & ::@",
+                    "--no-graph",
+                    "-T",
+                    "commit_id",
+                ],
+                repo_root,
             )
-            in_up = (
-                upstream is not None
-                and git(["merge-base", "--is-ancestor", sha, upstream], repo_root)[0]
-                == 0
-            )
-            if in_head and (in_up or upstream is None):
-                continue
-            if in_head and not in_up:
-                flags.append(
-                    f"FLAG sha {sha}{loc} — reachable from HEAD but not {upstream}: "
-                    "local-only commit whose SHA may be rewritten on merge "
-                    "(rebase/squash). Prefer citing the PR number."
+            in_current = code == 0 and bool(reachable_current)
+            in_upstream = False
+            if upstream:
+                code, reachable_upstream = jj(
+                    [
+                        "log",
+                        "-r",
+                        f"{revision_id} & ::{upstream}",
+                        "--no-graph",
+                        "-T",
+                        "commit_id",
+                    ],
+                    repo_root,
                 )
-            elif in_up:
+                in_upstream = code == 0 and bool(reachable_upstream)
+            if in_current and (in_upstream or upstream is None):
+                continue
+            if in_current and not in_upstream:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — not reachable from HEAD but reachable "
-                    f"from {upstream}: this checkout predates the merge. Add a "
+                    f"FLAG id {revision_id}{loc} — reachable from @ but not "
+                    f"{upstream}: local-only change whose commit ID may be "
+                    "rewritten. Prefer citing the PR number."
+                )
+            elif in_upstream:
+                flags.append(
+                    f"FLAG id {revision_id}{loc} — not reachable from @ but "
+                    f"reachable from {upstream}: this workspace predates the merge. Add a "
                     "temporal qualifier or verify the claim via gh."
                 )
             else:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — exists but unreachable from HEAD"
+                    f"FLAG id {revision_id}{loc} — exists but unreachable from @"
                     + (f" or {upstream}" if upstream else "")
-                    + ": likely a rebased-away commit. Prefer citing the PR number."
+                    + ": likely rewritten away. Prefer citing the PR number."
                 )
 
     # --- 3. Relative markdown links -----------------------------------------
@@ -333,7 +344,7 @@ def main(argv: list[str]) -> int:
     for flag in flags:
         print(flag)
     print(
-        f"checked {checked_paths} paths, {checked_shas} SHAs, "
+        f"checked {checked_paths} paths, {checked_ids} Jujutsu IDs, "
         f"{checked_links} links; {len(flags)} flags"
     )
     if flags:

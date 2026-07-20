@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for git refs and worktree paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
     example: "improve-issue-clustering"
 
   description:
@@ -272,14 +272,14 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # git worktrees for isolation (default)
+          - worktree  # compatibility value selecting JJ workspaces (default)
           - codex     # Codex sandboxes for isolation
         default: worktree
       max_concurrent:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for worktree backend. 8+ only valid for Codex backend."
+        description: "Maximum experiments to run in parallel. Capped at 6 for the JJ workspace backend (`worktree`). 8+ only valid for Codex backend."
       codex_security:
         type: enum
         values:
@@ -311,7 +311,7 @@ optional_fields:
       shared_files:
         type: array
         default: []
-        description: "Files that must be copied into each experiment worktree (e.g., SQLite databases)"
+        description: "Files that must be copied into each experiment workspace (e.g., SQLite databases)"
         items:
           type: string
       exclusive_resources:

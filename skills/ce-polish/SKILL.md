@@ -2,24 +2,25 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, branch name, or blank for current branch]"
+argument-hint: "[PR number, bookmark name, or blank for current change]"
 ---
 
 # Polish
 
 Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
 
-## Phase 0: Get on the right branch
+## Phase 0: Get into the right workspace
 
-1. If a PR number or branch name was provided, check it out (probe for existing worktrees first).
-2. If blank, use the current branch.
-3. Verify the current branch is not main/master.
+1. If a PR number was provided, use `gh pr view` to resolve its head bookmark. If a bookmark was provided, use it directly.
+2. Inspect `jj workspace list` first. Reuse a workspace already associated with the target; otherwise create a Jujutsu workspace at the target bookmark and continue there.
+3. If blank, use the current Jujutsu workspace and change.
+4. Verify the target is not the `main` or `master` bookmark.
 
 ## Phase 1: Start the dev server
 
 The scripts below ship in this skill's `scripts/` directory. The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each command must carry it); replace the `<absolute path …>` placeholder with the directory you loaded this `ce-polish` SKILL.md from before running.
 
-### 1.1 Check for `.claude/launch.json`
+### 1.1 Check for `.rocketclaw/launch.json`
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
@@ -67,11 +68,11 @@ bash "$SKILL_DIR/scripts/resolve-port.sh" --type <type>
 
 ### 1.3 Start the server
 
-Start the dev server in the background, log output to a temp file. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
+Start the dev server in the background. Store its log under `$(jj workspace root)/.tmp/rocketclaw/ce-polish`; if the directory is not inside a Jujutsu workspace, use `.tmp/rocketclaw/ce-polish` under the current directory. Create the directory before writing the log. Do not use `.context/` for these ephemeral files; reserve `.context/` for user-curated, repository-bound state. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
 
 ### 1.4 Open in browser
 
-Load `references/ide-detection.md` for the env-var probe table. Open the browser using the IDE's mechanism (Claude Code → `open`, Cursor → Cursor browser, VS Code → Simple Browser).
+Load `references/ide-detection.md` for the env-var probe table. Open the browser using the IDE's mechanism (RocketClaw -> `open`, Cursor -> Cursor browser, VS Code -> Simple Browser).
 
 Tell the user:
 ```
@@ -85,7 +86,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → commit the fixes and stop
+- When the user says they're done -> inspect `jj diff`, compose the message, commit the fixes with `jj commit`, and stop. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and syntax observed in `git log` take precedence; use Go guidance only when compatible.
 
 No checklist. No envelope. Just conversation.
 

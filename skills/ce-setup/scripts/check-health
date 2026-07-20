@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compound Engineering environment health check.
+# RocketClaw environment health check.
 # Reports optional tool capabilities and repo-local config safety in one pass.
 
 set -o pipefail
@@ -33,14 +33,14 @@ done
 #  Helpers
 # =====================================================
 
-ok()      { echo "  🟢  $1"; }
-warn()    { echo "  🟡  $1"; }
-skip()    { echo "  ➖  $1"; }
+ok()      { echo "  OK: $1"; }
+warn()    { echo "  WARN: $1"; }
+skip()    { echo "  SKIP: $1"; }
 detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "yes" || echo "no")
+in_workspace=$(jj workspace root >/dev/null 2>&1 && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -73,15 +73,15 @@ local_cfg="skip"
 example_cfg="skip"
 project_issues=0
 
-if [ "$in_repo" = "yes" ]; then
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ "$in_workspace" = "yes" ]; then
+  workspace_root=$(jj workspace root 2>/dev/null)
   legacy_cfg="missing"
-  [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
+  [ -f "$workspace_root/.rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
-  if [ -e "$repo_root/.compound-engineering/config.local.yaml" ]; then
+  if [ -e "$workspace_root/.rocketclaw/config.local.yaml" ]; then
     local_cfg="present"
-    if git check-ignore -q "$repo_root/.compound-engineering/config.local.yaml" 2>/dev/null; then
+    if listed_cfg=$(jj -R "$workspace_root" file list '.rocketclaw/config.local.yaml' 2>/dev/null) && [ -z "$listed_cfg" ]; then
       repo_cfg_gitignore="ok"
     else
       repo_cfg_gitignore="missing"
@@ -90,7 +90,7 @@ if [ "$in_repo" = "yes" ]; then
 
   script_dir="$(cd "$(dirname "$0")" && pwd)"
   template="$script_dir/../references/config-template.yaml"
-  example="$repo_root/.compound-engineering/config.local.example.yaml"
+  example="$workspace_root/.rocketclaw/config.local.example.yaml"
   if [ ! -f "$example" ]; then
     example_cfg="missing"
   elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -126,18 +126,18 @@ for result in "${results[@]}"; do
   fi
 done
 
-if [ "$in_repo" = "yes" ]; then
+if [ "$in_workspace" = "yes" ]; then
   section "Project config"
 
   if [ "$legacy_cfg" = "present" ]; then
-    warn "Obsolete compound-engineering.local.md exists"
+    warn "Obsolete .rocketclaw.local.md exists"
     project_issues=$((project_issues + 1))
   else
-    ok "No obsolete compound-engineering.local.md"
+    ok "No obsolete .rocketclaw.local.md"
   fi
 
   if [ "$local_cfg" = "present" ]; then
-    ok ".compound-engineering/config.local.yaml exists"
+    ok ".rocketclaw/config.local.yaml exists"
     if [ "$repo_cfg_gitignore" = "ok" ]; then
       ok "Local config is gitignored"
     else
@@ -145,13 +145,13 @@ if [ "$in_repo" = "yes" ]; then
       project_issues=$((project_issues + 1))
     fi
   else
-    skip "No local config yet (.compound-engineering/config.local.yaml)"
+    skip "No local config yet (.rocketclaw/config.local.yaml)"
   fi
 
   if [ "$example_cfg" = "ok" ]; then
     ok "Example config is current"
   elif [ "$example_cfg" = "missing" ]; then
-    warn "Example config missing (.compound-engineering/config.local.example.yaml)"
+    warn "Example config missing (.rocketclaw/config.local.example.yaml)"
     project_issues=$((project_issues + 1))
   elif [ "$example_cfg" = "outdated" ]; then
     warn "Example config outdated (new settings available)"
@@ -159,14 +159,14 @@ if [ "$in_repo" = "yes" ]; then
   fi
 else
   section "Project config"
-  skip "Not inside a git repository"
+  skip "Not inside a Jujutsu workspace"
 fi
 
 echo ""
 if [ "$project_issues" -eq 0 ]; then
-  echo " ✅  Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
 else
-  echo " ⚠️   ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
 fi
 
 if [ "$capability_missing" -gt 0 ]; then

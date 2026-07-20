@@ -22,7 +22,7 @@ Body:
 ```markdown
 ## Goal Capsule
 
-Triage and drive to resolution the open feedback items captured below: acknowledge each at its source, land fixes, and verify they merged.
+Triage and drive to resolution the open feedback items captured below: acknowledge each at its source, land fixes, and verify they reached the default remote bookmark.
 
 ## Human Notes
 

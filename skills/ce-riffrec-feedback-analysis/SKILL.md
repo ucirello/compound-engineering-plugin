@@ -22,6 +22,9 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 - Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not commit `raw/` or `frames/` directories unless the user explicitly asks and privacy is acceptable.
 - Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be committed when they are needed for traceability and contain no sensitive data.
 - Use repo-relative screenshot paths in any committed doc so later agents can open the evidence without absolute local paths.
+- Use `jj status`, `jj diff`, `jj log`, and `jj show` for local repository operations. Use `gh` for GitHub operations and `jj git` only for Git interoperability. Preserve `.gitignore` and other Git hosting or control files as project data.
+- If composing a change description or commit message, no fixed form is imposed. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and syntax observed in `git log` take precedence; use Go guidance only when compatible.
+- Use RocketClaw for visible product references and `.rocketclaw/` only for RocketClaw configuration. Put disposable output under `$(jj workspace root)/.tmp/rocketclaw/riffrec-feedback/`; if the workspace root cannot be resolved, use `.tmp/rocketclaw/riffrec-feedback/` under the current directory. Reserve `.context/` for user-curated or repository-bound state that must persist across runs; durable deliverables belong in tracked project paths. Never use OS-global temporary storage.
 
 ## Analyzer entrypoint
 
@@ -32,6 +35,6 @@ SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
 python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input
 ```
 
-Accepted inputs: a Riffrec `.zip`, an `.mp4` / `.mov` / `.webm` video, an `.m4a` / `.mp3` / `.wav` audio file, or a meeting-notes `.md`. Use `--output-dir <dir>` to control where artifacts land. In repos with `docs/brainstorms/`, the default remains `docs/brainstorms/riffrec-feedback/` as a documented evidence/kickoff-artifact exception; it is not the durable `ce-brainstorm` output convention. The quick path overrides the output dir to a temp location so nothing pollutes the repo.
+Accepted inputs: a Riffrec `.zip`, an `.mp4` / `.mov` / `.webm` video, an `.m4a` / `.mp3` / `.wav` audio file, or a meeting-notes `.md`. Use `--output-dir <dir>` to control where artifacts land. In repos with `docs/brainstorms/`, the default remains `docs/brainstorms/riffrec-feedback/` as a documented evidence/kickoff-artifact exception; it is not the durable `ce-brainstorm` output convention. The quick path overrides the output dir to workspace-local scratch so nothing pollutes tracked project paths.
 
-The Compound Engineering output format used by the extensive path is documented in `references/compound-engineering-feedback-format.md`.
+The RocketClaw output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.

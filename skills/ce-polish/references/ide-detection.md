@@ -8,9 +8,9 @@ Probe environment variables in this order and stop at the first positive match. 
 
 | Order | Signal | IDE | Handoff method |
 |-------|--------|-----|----------------|
-| 1 | `CLAUDE_CODE` env var set (any value) | Claude Code desktop | Print `claude-code://browser?url=http://localhost:<port>` as a clickable hint; Claude Code's desktop app intercepts `claude-code://` URLs. |
+| 1 | `ROCKETCLAW` env var set (any value) | RocketClaw desktop | Print `rocketclaw://browser?url=http://localhost:<port>` as a clickable hint; RocketClaw's desktop app intercepts `rocketclaw://` URLs. |
 | 2 | `CURSOR_TRACE_ID` env var set | Cursor | Emit `cursor://anysphere.cursor-retrieval/open?url=...` if Cursor's URL scheme is stable in the user's version; otherwise print the URL with a note to open it in Cursor's simple-browser view. |
-| 3 | `TERM_PROGRAM=vscode` AND no Cursor/Claude Code signal | Plain VS Code | Print the URL with a hint: `Open in VS Code: Ctrl+Shift+P → "Simple Browser: Show" → paste URL`. |
+| 3 | `TERM_PROGRAM=vscode` AND no Cursor/RocketClaw signal | Plain VS Code | Print the URL with a hint: `Open in VS Code: Ctrl+Shift+P -> "Simple Browser: Show" -> paste URL`. |
 | 4 | None of the above | Terminal / unknown IDE | Print the URL. No handoff attempt. |
 
 ## Why env-var probe, not a fancier approach
@@ -22,7 +22,7 @@ Probe environment variables in this order and stop at the first positive match. 
 
 ## Codex and other platforms
 
-Codex (Claude Agent SDK, Antigravity CLI (`agy`), etc.) do not yet expose an embedded-browser handoff. For these platforms, polish falls through to the terminal branch (print the URL). When a convention emerges, add a new row to the detection table above.
+Codex, Antigravity CLI (`agy`), and similar platforms do not yet expose an embedded-browser handoff. For these platforms, polish falls through to the terminal branch (print the URL). When a convention emerges, add a new row to the detection table above.
 
 ## Detection failure is never fatal
 
@@ -33,8 +33,8 @@ If environment probing fails or returns ambiguous results, polish prints the URL
 The skill consumes these probes inline rather than via a shell script (no state, no parsing, one-shot reads). Typical usage:
 
 ```
-if [ -n "${CLAUDE_CODE:-}" ]; then
-  IDE="claude-code"
+if [ -n "${ROCKETCLAW:-}" ]; then
+  IDE="rocketclaw"
 elif [ -n "${CURSOR_TRACE_ID:-}" ]; then
   IDE="cursor"
 elif [ "${TERM_PROGRAM:-}" = "vscode" ]; then

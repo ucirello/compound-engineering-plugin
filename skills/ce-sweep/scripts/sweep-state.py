@@ -13,8 +13,8 @@ Design rules (mirrors the repo's repo-profile-cache helper):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are prepared under the JJ workspace's `.tmp/rocketclaw` tree (or the
+    current project's local `.tmp` fallback) and installed with os.replace.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -41,7 +41,9 @@ import argparse
 import json
 import os
 import sys
-import tempfile
+import subprocess
+import uuid
+from pathlib import Path
 from datetime import datetime, timezone
 
 try:
@@ -58,7 +60,7 @@ SCHEMA_VERSION = 1
 
 # A `closed` item MUST carry all three evidence fields; `validate` downgrades
 # any closed item missing any of them back to `fix_pending`.
-EVIDENCE_FIELDS = ("fix_ref", "verified_merge_sha", "verified_at")
+EVIDENCE_FIELDS = ("fix_ref", "verified_commit_id", "verified_at")
 
 DEFAULT_TTL_MINUTES = 60
 
@@ -86,7 +88,7 @@ _DOC_ORDER = ("schema_version", "lease", "sources", "items", "last_run")
 _LEASE_ORDER = ("writer", "timestamp", "ttl_minutes")
 _ITEM_ORDER = (
     "source", "status", "sensitive", "title", "url", "body", "quote",
-    "fix_ref", "verified_merge_sha", "verified_at",
+    "fix_ref", "verified_commit_id", "verified_at",
 )
 _LAST_RUN_ORDER = ("timestamp", "outcome", "writer", "counts")
 
@@ -255,13 +257,9 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # A machine-local state file can live under world-shared /tmp, and
-            # it is a correctness dependency (lease, cursors, closed status) as
-            # well as an injection sink (item bodies re-read into agent
-            # context). Reject a file not owned by us so a co-tenant cannot
-            # plant a forged lease/cursor or attacker-authored item text. Skip
-            # where geteuid is unavailable (non-POSIX), where the threat does
-            # not apply.
+            # Local state is a correctness dependency and an injection sink.
+            # Reject a file not owned by us so another local user cannot plant
+            # a forged lease/cursor or attacker-authored item text.
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return ("corrupt", None)
@@ -287,20 +285,39 @@ def new_state():
     return {"schema_version": SCHEMA_VERSION, "sources": {}, "items": {}}
 
 
+def _scratch_root():
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        root = Path(result.stdout.strip())
+        if root.is_absolute():
+            return root / ".tmp" / "rocketclaw" / "ce-sweep" / "state-writes"
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return Path.cwd() / ".tmp" / "rocketclaw" / "ce-sweep" / "state-writes"
+
+
 def write_state(path, state):
     """Atomic write of the state file. Returns True on success."""
     state["schema_version"] = SCHEMA_VERSION
     text = emit_document(state)
-    d = os.path.dirname(os.path.abspath(path))
-    os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    destination = os.path.abspath(path)
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    scratch_root = _scratch_root()
+    scratch_root.mkdir(parents=True, exist_ok=True)
+    scratch_path = scratch_root / f"state-{os.getpid()}-{uuid.uuid4().hex}.yml"
+    fd = os.open(scratch_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
-        os.replace(tmp, path)
+        os.replace(scratch_path, destination)
     except BaseException:
         try:
-            os.unlink(tmp)
+            os.unlink(scratch_path)
         except OSError:
             pass
         raise
@@ -420,7 +437,7 @@ def _load_owned_state(args):
     return data, None
 
 
-def _commit_owned(args, data):
+def _persist_owned(args, data):
     """Shared tail for lease-gated mutations: re-stamp the lease, persist."""
     restamp_lease(data, args.writer, resolve_now(args))
     write_state(args.state, data)
@@ -458,7 +475,7 @@ def cmd_upsert_item(args):
             merged.pop(f, None)
 
     items[key] = merged
-    return _commit_owned(args, data)
+    return _persist_owned(args, data)
 
 
 def cmd_cursor_get(args):
@@ -487,7 +504,7 @@ def cmd_cursor_advance(args):
     if current is not None and _cursor_lt(str(args.to), str(current)):
         return emit("REFUSED")
     entry["cursor"] = args.to
-    return _commit_owned(args, data)
+    return _persist_owned(args, data)
 
 
 def _cursor_lt(a, b):
@@ -543,8 +560,8 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
+    # the lease yet must still record its outcome. In local-change mode there
+    # is a single writer per JJ workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -752,7 +769,7 @@ _HANDLERS = {
 # (run-record for an aborted-locked run, validate, import-legacy). Two
 # concurrent invocations (an overlapping cron and manual sweep) could otherwise
 # interleave load -> mutate -> write and lose an update — e.g. an aborted run's
-# stale-snapshot write clobbering the holder's just-committed upsert. An OS
+# stale-snapshot write clobbering the holder's just-persisted upsert. An OS
 # advisory lock held across each mutating RMW makes them mutually exclusive
 # regardless of lease ownership.
 _MUTATING = {

@@ -13,7 +13,7 @@ Review requirements or plan documents through multi-persona analysis. Dispatches
 - **Pre-load the platform question tool before any question fires.** In Claude Code, `AskUserQuestion` is a deferred tool — its schema is not available at session start. At the start of Interactive-mode work (before the routing question, per-finding walk-through questions, bulk-preview Proceed/Cancel, and Phase 5 terminal question), call `ToolSearch` with query `select:AskUserQuestion` to load the schema. Load it once, eagerly, at the top of the Interactive flow — do not wait for the first question site. On Codex, Gemini, and Pi this preload is not required.
 - **The numbered-list fallback applies only when the runtime genuinely lacks a blocking question tool** — `ToolSearch` returns no match, the tool call explicitly fails, or the runtime mode does not expose it (e.g., Codex edit modes where `request_user_input` is unavailable). A pending schema load is not a fallback trigger; call `ToolSearch` first per the pre-load rule. In genuine-fallback cases, present options as a numbered list and wait for the user's reply — never silently skip the question. Rendering a question as narrative text because the tool feels inconvenient, because the response is being formatted as a report, or because the instruction was buried in a long skill is a bug. A question that calls for a user decision must either fire the tool or fall back loudly.
 
-When this workflow needs run artifacts, resolve `workspace_root=$(jj workspace root 2>/dev/null || pwd -P)` and store them under `"$workspace_root/.tmp/rocketclaw/ce-doc-review/<run-id>/"`. Outside a JJ workspace, the `pwd -P` fallback makes the current directory's `.tmp/rocketclaw/ce-doc-review/<run-id>/` authoritative. Do not use OS-global temporary storage or temporary-file generators.
+When this workflow needs run artifacts, resolve `workspace_root=$(jj workspace root 2>/dev/null || pwd -P)` and store them under `"$workspace_root/.tmp/rocketclaw/doc-review/<run-id>/"`. Outside a JJ workspace, the `pwd -P` fallback makes the current directory's `.tmp/rocketclaw/doc-review/<run-id>/` authoritative. Do not use OS-global temporary storage or temporary-file generators.
 
 ## Phase 0: Detect Mode
 
@@ -32,8 +32,6 @@ The caller receives findings with their original classifications intact and deci
 Callers invoke `ce-doc-review` headlessly by including `mode:headless` with the document path, e.g. `mode:headless docs/plans/my-plan.md`. Use the current harness's `ce-doc-review` routing mechanism rather than embedding provider-specific invocation syntax.
 
 If `mode:headless` is not present, the skill runs in its default interactive mode with the routing question, walk-through, and bulk-preview behaviors documented in `references/walkthrough.md` and `references/bulk-preview.md`.
-
-If this workflow needs temporary run artifacts, place them under the workspace root at `.tmp/rocketclaw/doc-review/<run-id>/`. Never use a global temporary directory. If the workspace is unavailable or `.tmp` cannot be created, keep the state in memory and continue without a run artifact.
 
 ## Phase 1: Get and Analyze Document
 

@@ -68,7 +68,7 @@ For small + non-trivial bugfixes, the 3-5 sentence target still needs a user-vis
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-For the PR title, runtime project instructions and syntax inferred from `jj log` win. Apply compatible Go commit-message quality guidance where those sources are silent. Use a neutral `<title>` shape rather than imposing a fixed prefix, scope, capitalization, punctuation, or release marker convention.
+For every PR-title composition, edit, validation, or recommendation, the project's active runtime instructions take precedence, followed by description syntax and wording observed with `jj log`; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, layouts, templates, or examples; use the neutral `<title-composed-from-runtime-conventions>` placeholder when discussing variable content.
 
 ---
 

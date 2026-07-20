@@ -6,6 +6,8 @@ argument-hint: "[PR ref] [mode:pipeline] [archive:on|off]"
 
 # Describe, Push, and Open a PR
 
+Preserve human and research attribution supplied by the project or user. Add no generated-by footer or execution metadata.
+
 **Asking the user:** When this skill says "ask the user", use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting the question in chat only when no blocking tool exists on the platform or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
 ## Mode
@@ -66,7 +68,7 @@ After resolving the feature bookmark, query `gh pr view <feature-bookmark> --jso
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-For JJ change descriptions and PR titles, runtime project instructions and syntax inferred from `jj log` win. Apply compatible Go commit-message quality guidance where those sources do not decide. Do not impose a fixed syntax.
+For every JJ change-description or PR-title composition, edit, validation, or recommendation, the project's active runtime instructions take precedence, followed by description syntax and wording observed with `jj log`; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, layouts, templates, or examples; use neutral placeholders when discussing variable content.
 
 ## Step 3: Describe changes, bookmark, and push
 
@@ -78,7 +80,7 @@ Before composing or editing any JJ description, follow this instruction:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Runtime project instructions and syntax inferred from `jj log` win; compatible Go quality guidance applies where they are silent. Describe each intended change with neutral placeholders rather than a prescribed syntax, then review the resulting stack:
+The project's active runtime instructions take precedence, followed by description syntax and wording observed with `jj log`; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, layouts, templates, or examples; use neutral placeholders when discussing variable content. Describe each intended change, then review the resulting stack:
 
 ```bash
 jj describe -r <change> -m '<description-composed-from-runtime-conventions>'
@@ -131,7 +133,7 @@ Then continue with the rest of the reference (Steps A through C, including the S
 
 1. Verify the intended `docs/explainers/<date>-<concept>.md` path against the project's ignore rules. If it is ignored, print a one-line warning and skip archival entirely, leaving no file behind and never forcing the path to be tracked.
 2. Run `jj new <bookmark>` to create a fresh change, then write the file (create the directory if needed) with the existing explainer frontmatter fields and the teaching content. If the file already exists from a prior run, overwrite it.
-3. Confirm with `jj status` and `jj diff` that only the intended explainer files entered this change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and syntax inferred from `jj log` win, and compatible Go quality guidance applies. Run `jj describe -m '<description-composed-from-runtime-conventions>'`, move the feature bookmark to this change, and run `jj git push --remote origin --bookmark <bookmark>`. If there is no diff, the doc is already present from a prior run; keep the link and continue.
+3. Confirm with `jj status` and `jj diff` that only the intended explainer files entered this change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active runtime instructions take precedence, followed by description syntax and wording observed with `jj log`; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, layouts, templates, or examples; use neutral placeholders when discussing variable content. Run `jj describe -m '<description-composed-from-runtime-conventions>'`, move the feature bookmark to this change, and run `jj git push --remote origin --bookmark <bookmark>`. If there is no diff, the doc is already present from a prior run; keep the link and continue.
 4. Splice a head-bookmark blob URL per doc into the `## New concepts` section before applying.
 
 If the doc write, description, bookmark move, or push fails, warn and continue to PR creation without the link — never strand the flow between the change and PR.

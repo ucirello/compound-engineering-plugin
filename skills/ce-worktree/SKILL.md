@@ -34,7 +34,7 @@ jj log -r @ --no-graph
 - If the directory is not in a JJ workspace, stop and ask whether to initialize or colocate a JJ repository. Initialization changes repository state and is outside this skill's implicit authority.
 - If `jj status` shows user work, leave it untouched. Never run commands in the current workspace that edit, abandon, rebase, squash, describe, or create a new `@` merely to prepare another workspace.
 
-JJ command options evolve. Treat the commands in this skill as operational examples; when installed syntax differs, use runtime `jj help workspace`, `jj help git fetch`, and the project's working JJ syntax. Runtime behavior and help take precedence over fixed command spelling.
+JJ command options evolve. Treat the commands in this skill as operational examples, not fixed syntax. The project's active policy and conventions take precedence, followed by the installed runtime's behavior and `jj help workspace` / `jj help git fetch`; adapt command spelling without changing the required behavior.
 
 ## Step 1: Reuse before creating
 
@@ -105,7 +105,7 @@ If workspace creation fails, do not retry with destructive flags, another base, 
 
 ## Describing fresh work
 
-Workspace creation does not require a description. If the caller explicitly asks to describe the new working-copy change during setup, inspect the project's runtime instructions and recent descriptions using the project's working `jj log` syntax before composing it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description syntax inferred from `jj log` take precedence; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed prefixes, types, scopes, wording, examples, or templates.
+Workspace creation does not require a description. If the caller explicitly asks to describe the new working-copy change during setup, inspect the project's active message policy and recent descriptions using the project's working `jj log` syntax before composing it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active message policy takes precedence, followed by conventions inferred from runtime `jj log` output; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed prefixes, types, scopes, wording, examples, or templates.
 
 Apply the resulting project-native text with `jj describe -m '<description-composed-from-runtime-conventions>'` from the new workspace only. Do not describe the original workspace's `@`.
 

@@ -71,16 +71,16 @@ Use the bundled display-only helper when the current platform can run a bundled 
 Start (detached):
 
 ```bash
-SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
-WORKSPACE_ROOT="$(jj workspace root)"
+SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
+WORKSPACE_ROOT="$(jj workspace root)" || WORKSPACE_ROOT="$PWD";
 node "$SKILL_DIR/scripts/visual-probe-server.js" start --root "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>"
 ```
 
 Append `--foreground` to that `start` command for foreground mode. Status and stop take the same anchors — and because shell variables do not persist between Bash invocations, each call must re-set both `SKILL_DIR` and `WORKSPACE_ROOT` rather than reuse the `start` block's values:
 
 ```bash
-SKILL_DIR="<absolute path of the ce-brainstorm skill directory>"
-WORKSPACE_ROOT="$(jj workspace root)"
+SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
+WORKSPACE_ROOT="$(jj workspace root)" || WORKSPACE_ROOT="$PWD";
 node "$SKILL_DIR/scripts/visual-probe-server.js" status --root "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>"
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)
 ```

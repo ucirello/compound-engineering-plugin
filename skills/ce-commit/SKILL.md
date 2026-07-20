@@ -36,7 +36,7 @@ If `jj status` reports that the working copy has no changes, report that there i
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Runtime project instructions and established syntax inferred from `jj log` take precedence. Apply compatible Go commit-message quality guidance. Do not impose a fixed syntax, prefix, type list, subject template, or body template when the project does not establish one.
+Repository-local syntax from active project instructions and runtime history inspected with `jj log` wins over incompatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
 
 ### Step 3: Consider logical commits
 
@@ -53,6 +53,8 @@ JJ snapshots tracked working-copy files automatically; there is no staging step.
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
+Repository-local syntax from active project instructions and runtime history inspected with `jj log` wins over incompatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
+
 For each logical group, commit explicit filesets with its description:
 
 ```bash
@@ -66,5 +68,7 @@ Do not create or move a bookmark merely to commit. If the user explicitly asks t
 ### Step 5: Confirm
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Repository-local syntax from active project instructions and runtime history inspected with `jj log` wins over incompatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
 
 Run `jj status`, `jj diff`, and `jj log -r '@ | @-'` after the final commit. Confirm that intended paths were committed and unrelated paths remain in `@`. Report each committed change ID, commit ID, and description.

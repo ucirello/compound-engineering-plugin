@@ -31,7 +31,7 @@ Never cache the `docs/solutions/` enumeration, subdirectory-scoped instruction f
 Invoke the co-located helper through the skill-directory anchor:
 
 ```bash
-SKILL_DIR="<absolute path of this skill's directory>"
+SKILL_DIR="<absolute path of this skill's directory>";
 python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 ```
 
@@ -40,7 +40,7 @@ The result is exactly one of:
 - `HIT` followed by profile JSON: load it and skip agnostic derivation.
 - `MISS` followed by the selected cache path: dispatch `references/agents/repo-profiler.md`, write its JSON to a file, then persist it in a separate call. Re-set `SKILL_DIR` because shell state does not persist:
   ```bash
-  SKILL_DIR="<absolute path of this skill's directory>"
+  SKILL_DIR="<absolute path of this skill's directory>";
   python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <profile-json-file>
   ```
 - `NO-CACHE`: derive fresh and skip `put`.

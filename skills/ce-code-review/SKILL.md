@@ -176,7 +176,7 @@ Compute the diff range, file list, and diff. Minimize permission prompts by comb
 
 **If `base:` argument is provided (fast path):**
 
-The caller already knows the diff base. Skip all base-branch detection, remote resolution, and merge-base computation. Use the provided value directly:
+The caller already knows the diff base. Skip all base-bookmark detection, remote resolution, and common-ancestor computation. Use the provided value directly:
 
 ```
 BASE_ARG="{base_arg}"
@@ -221,14 +221,14 @@ Set `BASE:` to `pr:<number-or-url>` (logical marker, not a JJ revision).
 
 1. A local bookmark on `@` equals `headRefName` (`jj log -r @ --no-graph -T 'bookmarks'`).
 2. The PR is **not** cross-repository (`isCrossRepository` is false).
-3. The PR head commit is an ancestor of the working-copy commit: `jj log -r '<headRefOid>::@' --no-graph -T 'commit_id'` resolves non-empty. This confirms the working copy actually carries the PR head (allowing unpushed local fixes layered on top) rather than an unrelated same-named bookmark.
+3. The PR head commit is an ancestor of the working-copy change: `jj log -r '<headRefOid>::@' --no-graph -T 'commit_id'` resolves non-empty. This confirms the working copy actually carries the PR head (allowing unpushed local fixes layered on top) rather than an unrelated same-named bookmark.
 
 - **`local-aligned`** — all three checks pass. Local Read/Grep/`jj file annotate` against workspace files are valid for PR changed paths.
 - **`pr-remote`** — any check fails. The working copy is **not** the PR head; workspace file contents for changed paths may be stale or unrelated.
 
 **Diff by scope mode** (do not mix remote and local diffs — contradictory hunks cause false positives):
 
-- **`local-aligned`:** Resolve `<resolved-base-ref>` as `baseRefName@origin` (run `jj git fetch --remote origin --branch <baseRefName>` if needed). Compute `BASE` with `jj log -r 'heads(::<resolved-base-ref> & ::@)' --no-graph -T 'commit_id ++ "\n"'`, then set `FILES:` from `jj diff --from "$BASE" --to @ --name-only` and `DIFF:` from `jj diff --from "$BASE" --to @ --git` (includes all changes through the working-copy commit). Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local tree is canonical. Note in Coverage: `scope: local-aligned (PR; local tree diff)`.
+- **`local-aligned`:** Resolve `<resolved-base-ref>` as `baseRefName@origin` (run `jj git fetch --remote origin --branch <baseRefName>` if needed). Compute `BASE` with `jj log -r 'heads(::<resolved-base-ref> & ::@)' --no-graph -T 'commit_id ++ "\n"'`, then set `FILES:` from `jj diff --from "$BASE" --to @ --name-only` and `DIFF:` from `jj diff --from "$BASE" --to @ --git` (includes all changes through the working-copy change). Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local tree is canonical. Note in Coverage: `scope: local-aligned (PR; local tree diff)`.
 - **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `gh pr diff <number-or-url> --color=never`. If `gh pr diff` fails, stop with an actionable error — do not move the working copy.
 
 When **`pr-remote`**, include `<pr-scope-mode>pr-remote</pr-scope-mode>`, `<pr-head-oid>...</pr-head-oid>`, and the PR URL in the Stage 4 review context bundle. Reviewers needing full remote file content use `gh api` at `headRefOid`; schema-drift and other comparisons use the supplied PR diff and must not assume `main`.
@@ -651,9 +651,9 @@ Severity, confidence, and cross-reviewer agreement tell you what to do first and
 - If a reviewer item is pure information (no defect, no code contract change, no test gap), classify it as advisory/non-actionable in Coverage or residual risks; do not patch it or describe it as a missed defect.
 If this self-review changes files, rerun the affected tests or lint for those follow-up edits before describing or reporting; the earlier validation only covers the original autofix diff.
 
-**Describe an initially empty working-copy change.** Before applying, note whether `jj diff -r @ --summary` is empty. The permanence gate is the push; the working-copy commit remains local and reversible through JJ operations.
+**Describe an initially empty working-copy change.** Before applying, note whether `jj diff -r @ --summary` is empty. The permanence gate is the push; the working-copy change remains local and reversible through JJ operations.
 
-- **Empty before the review:** after applying and verifying, describe `@` with `jj describe -m '<description-composed-from-runtime-conventions>'`. Runtime project instructions and description syntax observed via `jj log` win. Compatible Go guidance applies only to quality, clarity, and structure; it does not prescribe message syntax. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+- **Empty before the review:** after applying and verifying, describe `@` with `jj describe -m '<description-composed-from-runtime-conventions>'`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from active project instructions and runtime history inspected with the project's working `jj log` syntax wins over incompatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example; `<description-composed-from-runtime-conventions>` is a neutral placeholder.
 - **Non-empty before the review:** apply but do **not** replace the existing description — the fixes interleave with the user's in-flight change. The Applied section lists what changed.
 - **Never push, open a PR, or file tickets** — that's the outward-facing step the user owns.
 
@@ -786,7 +786,7 @@ Do not run post-review triage (no per-finding walk-through, bulk ticket filing, 
 | **Default** | Markdown tables + Actionable Findings summary. |
 | **`mode:agent`** | JSON object + `review.json` in run artifact dir. |
 
-Do not offer push/PR/create-branch next steps from this skill.
+Do not offer push/PR/create-bookmark next steps from this skill.
 
 #### Run artifacts
 

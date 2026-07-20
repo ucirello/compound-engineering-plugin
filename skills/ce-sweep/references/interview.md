@@ -1,6 +1,6 @@
 # Sweep First-Run Interview
 
-Loaded by `SKILL.md` when `/ce-sweep` runs with no `feedback_sources` configured. Captures the setup that will be merged into `<repo-root>/.rocketclaw/config.local.yaml` (the shared local config, ignored and workspace-local) and re-read on every subsequent run.
+Loaded by `SKILL.md` when `/ce-sweep` runs with no `feedback_sources` configured. Captures the setup that will be merged into `<workspace-root>/.rocketclaw/config.local.yaml` (the shared local config, ignored and workspace-local) and re-read on every subsequent run.
 
 This interview is **interactive only**. The caller refuses first-run setup in headless mode — a scheduled or piped run with no config aborts and tells the user to run `/ce-sweep` interactively once. Do not attempt to infer sources, actions, or approvals without asking.
 
@@ -87,7 +87,7 @@ For email sources there are no source-side actions, so approval is moot — reco
 Ask where the sweep's state file lives:
 
 - **Tracked in the workspace** (recommended when multiple agents or machines share bookmarks — one source of truth everyone reads and writes). Sets `sweep_state_path` to the tracked default `docs/feedback-sweep/state.yml`.
-- **Workspace-local scratch** (solo setups; keeps sweep bookkeeping out of changes). Sets `sweep_state_path` to `$(jj workspace root 2>/dev/null || pwd)/.tmp/rocketclaw/ce-sweep/state.yml`.
+- **Workspace-local scratch** (solo setups; keeps sweep bookkeeping out of changes). Sets `sweep_state_path` to `<workspace-root>/.tmp/rocketclaw/ce-sweep/state.yml`, using the current working directory as `<workspace-root>` only when `jj workspace root` is unavailable or fails.
 
 Let the user override the path if they want a different location. If they pick workspace-local, note that a fresh workspace or a teammate's machine will not see this state — it is per-workspace by design.
 
@@ -110,7 +110,7 @@ Let the user override the path if they want a different location. If they pick w
 **Ask:** "Is this a multi-agent setup where several JJ workspaces publish the sweep state through a shared bookmark? Answer yes only if more than one machine or agent updates and pushes the same bookmark. Default is no — a single workspace keeping the change local."
 
 - **No** (default) -> `sweep_shared_branch: false`. The single-writer lease serializes overlapping sweeps within one workspace.
-- **Yes** -> `sweep_shared_branch: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep describes the lease change, advances the shared bookmark, publishes it through `jj git push`, and confirms its writer won, making the lease a repository-wide mutex across machines. Follow the project's active runtime instructions and conventions first; next, use `jj log` to inspect and follow the repository's present change-description syntax and wording. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description syntax inferred via `jj log` always win. Compatible Go guidance applies only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, examples, or templates; use `<description-composed-from-runtime-conventions>` as the neutral placeholder.
+- **Yes** -> `sweep_shared_branch: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep describes the lease change, advances the shared bookmark, publishes it through `jj git push`, and confirms its writer won, making the lease a repository-wide mutex across machines. Follow the project's active instructions and conventions first; next, use `jj log` in the working JJ workspace to inspect and follow the repository's present change-description syntax and wording. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and conventions and the working JJ workspace's change-description style visible in `jj log` always take precedence. Compatible Go guidance applies only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, examples, or templates; use `<description-composed-from-runtime-conventions>` as the neutral placeholder.
 
 **Capture:** `sweep_shared_branch` (`true` | `false`).
 
@@ -126,7 +126,7 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 - **Yes** -> ask for the file path. Then build a `--source-map`: for each legacy channel/source id in the file, pair it with the configured source id from section 1 (the short name the live connector reads by), as a JSON object like `{"C0AQLMQBGBD":"slack-alpha"}`. This is load-bearing — without it, an imported `C0AQLMQBGBD` cursor lands under `C0AQLMQBGBD` while the connector reads under `slack-alpha`, orphaning the cursor and re-ingesting everything on the first sweep. Run the import from **this skill's directory**; set `SKILL_DIR` inline to the absolute path of the directory containing the `SKILL.md` you loaded:
 
   ```bash
-  SKILL_DIR="<absolute path of this skill's directory>"
+  SKILL_DIR="<absolute path of this skill's directory>";
   python3 "$SKILL_DIR/scripts/sweep-state.py" import-legacy --state <sweep_state_path> --file <legacy-path> --source-map '{"<legacy-id>":"<config-source-id>"}'
   ```
 
@@ -136,7 +136,7 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 
 ## 8. Write config
 
-Merge the captured settings into `<repo-root>/.rocketclaw/config.local.yaml`. Resolve the repo root with `jj workspace root 2>/dev/null || pwd`.
+Merge the captured settings into `<workspace-root>/.rocketclaw/config.local.yaml`. Reuse the workspace root resolved by `SKILL.md`; its only fallback is the current working directory when `jj workspace root` is unavailable or fails.
 
 - If the directory or file does not exist, create `.rocketclaw/` and write the file.
 - If the file exists, merge the sweep keys into the existing YAML, **preserving every unrelated key untouched** (e.g. `work_delegate_*`, `pulse_*`, `plan_*`). Only add or update the sweep keys.
@@ -168,7 +168,7 @@ Declining a schedule leaves on-demand use fully working.
 
 ## Config File Shape
 
-After the interview completes, merge these flat keys into `<repo-root>/.rocketclaw/config.local.yaml`, preserving any unrelated keys already present.
+After the interview completes, merge these flat keys into `<workspace-root>/.rocketclaw/config.local.yaml`, preserving any unrelated keys already present.
 
 ~~~yaml
 # --- Sweep (ce-sweep) ---

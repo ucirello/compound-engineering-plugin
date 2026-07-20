@@ -585,9 +585,9 @@ Before offering options:
 1. Run `jj workspace root`; if it succeeds, use that root for all following commands. If it fails, report that durable recording is unavailable and stop this phase.
 2. Use `jj status` and `jj diff --summary` to identify the working-copy change and whether it contains paths beyond those modified by this refresh.
 3. Use `jj log -r 'trunk()..@'` and `jj bookmark list -r '@ | @-'` to determine whether the work is directly based on the default line, belongs to an existing change stack, or has a bookmark that should move after recording. Jujutsu has no checked-out or current bookmark.
-4. Use `jj log` to inspect recent descriptions and infer the project's description syntax. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies.
+4. Use `jj log -n 10` to inspect recent descriptions and infer the project's description syntax. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here.
 
-When the working-copy change includes unrelated edits, isolate only the refresh paths with `jj split` and leave all other edits in the resulting working-copy change. When it contains only refresh edits, use `jj commit -m '<description-composed-from-runtime-conventions>'` to describe the change and create a new working-copy change. Never use a staging-area workflow; Jujutsu records changes directly.
+When the working-copy change includes unrelated edits, isolate only the refresh paths with `jj split` and leave all other edits in the resulting working-copy change. When it contains only refresh edits, use `jj commit -m` with the description composed from runtime conventions to describe the change and create a new working-copy change. Never use a staging-area workflow; Jujutsu records changes directly.
 
 ### Headless mode
 
@@ -595,7 +595,7 @@ Use sensible defaults without asking:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies. Do not impose fixed description syntax, examples, or templates.
+Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here.
 
 | Context | Default action |
 |---------|---------------|
@@ -611,7 +611,7 @@ Present options based on the discovered change graph and bookmarks, using change
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies. Do not impose fixed description syntax, examples, or templates.
+Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here.
 
 1. Record a distinct refresh change, create or move a specific bookmark to it, publish that bookmark with `jj git push`, and open a PR with `gh` when review is wanted (recommended).
 2. Record the refresh locally as a distinct change without creating or moving a bookmark.
@@ -623,7 +623,7 @@ If unrelated edits share the working-copy change, use `jj split` only after the 
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies. Describe the material refresh outcome succinctly without imposing a fixed prefix, layout, example, or template.
+Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here. Describe the material refresh outcome succinctly.
 
 After recording, inspect `jj status`, `jj diff`, and `jj log -r '@ | @-'`. Before remote publication, create or move the intended bookmark to the recorded revision, use `jj git fetch` when remote freshness matters, and publish only that bookmark with `jj git push --bookmark <bookmark>`. For a non-colocated workspace, invoke GitHub CLI with `GIT_DIR=$(jj git root) gh <subcommand>`; `gh` remains allowed for PR operations.
 

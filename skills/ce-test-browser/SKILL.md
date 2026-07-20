@@ -30,7 +30,7 @@ command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 
 If not installed, tell the user: "`agent-browser` is not installed. Run `/ce-setup` for the current install command, then install agent-browser and retry." Then stop — this skill cannot function without it.
 
-This also requires a JJ workspace with changes to test. GitHub PR lookup continues through `gh`, using JJ's Git interoperability where applicable.
+This also requires a JJ workspace with changes to test. Use JJ for local repository operations; do not invoke standalone Git. Keep `jj git` for explicit Git interoperability and `gh` for GitHub PR lookup and API facts.
 
 ### 2. Determine Test Scope
 
@@ -160,9 +160,14 @@ agent-browser snapshot -i
 
 **Take screenshots:**
 ```bash
-agent-browser screenshot page-name.png
-agent-browser screenshot --full page-name-full.png
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"
+RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/test-browser/<run-id>"
+mkdir -p "$RUN_DIR"
+agent-browser screenshot "$RUN_DIR/page-name.png"
+agent-browser screenshot --full "$RUN_DIR/page-name-full.png"
 ```
+
+Outside a JJ workspace, the fallback stores screenshots under the physical current directory's `.tmp/rocketclaw/test-browser/<run-id>/`.
 
 ### 8. Human Verification (When Required)
 
@@ -195,7 +200,7 @@ Did it work correctly?
 When a test fails (**pipeline mode:** do not ask how to proceed — capture the error screenshot and repro steps, log the failure, and continue):
 
 1. **Document the failure:**
-   - Screenshot the error state: `agent-browser screenshot error.png`
+   - Screenshot the error state under `<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/error.png`, using the physical current directory's `.tmp/rocketclaw/test-browser/<run-id>/` when outside a JJ workspace
    - Note the exact reproduction steps
 
 2. **Ask the user how to proceed:**
@@ -285,8 +290,8 @@ agent-browser type @e1 "text"      # Type without clearing
 agent-browser press Enter          # Press key
 
 # Screenshots
-agent-browser screenshot out.png       # Viewport screenshot
-agent-browser screenshot --full out.png # Full page screenshot
+agent-browser screenshot "<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/out.png"        # Viewport screenshot
+agent-browser screenshot --full "<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/out-full.png" # Full page screenshot
 
 # Headed mode (visible browser)
 agent-browser --headed open <url>      # Open with visible browser

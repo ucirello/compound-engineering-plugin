@@ -128,7 +128,7 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** describe or push the change.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and record the pre-existing failure in the JJ change description without prescribing fixed wording.
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and carry the pre-existing failure forward as description context.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
@@ -136,9 +136,7 @@ Record the validation outcome (command run, pass/fail counts, any pre-existing f
 
 1. Inspect the working-copy change with `jj status` and `jj diff --summary`. The change to push must contain only files reported by fixers; if it is mixed with unrelated work, use `jj split [files...]` to separate the fixer changes before describing them.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Runtime project instructions and conventions take precedence, and repository history must be inspected with the project's working `jj log` syntax. Apply the Go guidance only where compatible, and only to message quality, clarity, and structure. Do not impose fixed prefixes, types, scopes, wording, examples, or templates.
+At every site that composes, edits, validates, or recommends the JJ change description, apply this complete policy: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description conventions observed through the project's working `jj log` invocation always win; determine that invocation at runtime rather than prescribing fixed `jj log` syntax. Apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed message syntax, including any prefix, type, scope, subject, body, layout, template, or example.
 
 Compose or edit the JJ description in the editor, then inspect it with `jj log` before pushing:
 

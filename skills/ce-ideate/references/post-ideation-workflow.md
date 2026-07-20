@@ -135,7 +135,7 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a JJ workspace:** offer to commit only the ideation doc with `jj commit <path> -m '<description-composed-from-runtime-conventions>'` (do not create a bookmark, do not push; if the user declines, leave the working-copy change as-is). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and conventions and the repository's `jj log` syntax and history take precedence; apply the Go guidance only where compatible for message quality, clarity, and structure. Do not impose a fixed prefix, type, scope, message, example, or template.
+- **Inside a JJ workspace:** offer to commit only the ideation doc with JJ (do not create a bookmark, do not push; if the user declines, leave the working-copy change as-is). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Inspect the working repository's `jj log` at runtime; its message conventions and the project's active instructions take precedence. Apply the Go guidance only where compatible for message quality, clarity, and structure. Do not impose a fixed command form, prefix, type, scope, message, example, or template.
 - **Workspace-local scratch or non-repo file:** skip the commit offer.
 
 Then narrate the path and end the session — do not return to the menu.

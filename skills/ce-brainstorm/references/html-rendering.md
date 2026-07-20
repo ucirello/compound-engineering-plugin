@@ -54,7 +54,7 @@ These hold regardless of which skill produced the artifact.
   sections exist. Requirements-only artifacts omit links to absent
   implementation sections.
 - **Visible readiness metadata.** If the artifact has `artifact_contract`,
-  `artifact_readiness`, or `execution`, render
+  `artifact_readiness`, `product_contract_source`, or `execution`, render
   those values in the visible header metadata. Do not hide a duplicate copy in
   JSON, `data-*`, or `<meta>` tags.
 
@@ -94,14 +94,13 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj workspace root`, falling back to the current local directory).
+1. JJ workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
-3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only. Users working from another workspace who want HTML
-defaults can add DESIGN.md to that workspace.
+Workspace-root only — do not fall through to another workspace. Users who
+want HTML defaults can add DESIGN.md to the current workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -217,14 +216,11 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repository's GitHub URL once at compose time:
+Resolve the repo's GitHub URL once at compose time from the `origin` entry:
 
 ```bash
 jj git remote list
 ```
-
-Use the URL on the `origin` line. If no `origin` is listed, leave repository
-references as text.
 
 Apply linking to three reference shapes:
 

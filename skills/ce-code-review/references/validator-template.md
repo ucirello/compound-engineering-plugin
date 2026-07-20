@@ -34,9 +34,9 @@ Confidence anchor: {finding_confidence}
 <scope-context>
 The diff above is the full change being reviewed. The finding is about file {finding_file} around line {finding_line}. (If the `<diff>` block contains a file path rather than inline hunks — large-diff path-staging — Read that file first to get the full diff.)
 
-When remote scope is in context, do **not** Read/Grep the workspace copy of {finding_file}. Inspect via `jj file show -r <remote-head-rev> {finding_file}` when set; otherwise use diff hunks only.
+In remote scope, do **not** Read/Grep the workspace copy of {finding_file}. For `branch-remote`, inspect with `jj file show -r <branch-head-ref> {finding_file}`. For `pr-remote`, use `gh api` at `<pr-head-oid>` and the PR repository. Otherwise use diff hunks only.
 
-When scope is local-aligned, use Read, Grep, Glob, and `jj file annotate` to inspect the cited code and history.
+When scope is local-aligned (default), use read tools (Read, Grep, Glob, `jj file annotate`) to inspect the cited code and its callers, guards, middleware, or framework defaults that might handle the concern elsewhere.
 </scope-context>
 
 Your task is to answer three questions:
@@ -46,7 +46,7 @@ Your task is to answer three questions:
    - The persona misread types or signatures
    - The persona flagged a pattern that is intentional in this codebase (check comments, parallel handlers, project conventions)
 
-2. **Is the issue introduced by THIS diff?** Use `jj file annotate`, `jj log -p -r <range>`, or diff inspection. If the line predates the reviewed changes and the diff does not interact with it, the finding is pre-existing.
+2. **Is the issue introduced by THIS diff?** Use `jj file annotate` or diff inspection. If the cited line predates this change and the diff does not interact with it, the finding is pre-existing — not validated for externalization regardless of whether it is a real issue.
 
 3. **Is the issue not handled elsewhere?** Look for guards in callers, middleware in the request chain, framework defaults, type system constraints, or parallel handlers that already address the concern. If the issue is functionally prevented by surrounding infrastructure, the finding is invalid.
 
@@ -70,7 +70,6 @@ Rules:
 - Be honest. If the original reviewer was right, validate. If they were wrong, reject. Conservative bias is preferred — when in doubt, reject.
 - Do not invent new findings. Your scope is this one finding; surface anything else as a no-vote with reason.
 - Do not edit, commit, push, or modify any files. You are operationally read-only.
-- Allowed repository commands are `jj diff`, `jj log`, `jj status`, `jj file show`, and `jj file annotate`; `gh` is read-only. Do not run mutating JJ commands.
 - If you cannot read the cited file, return `{ "validated": false, "reason": "Could not access file path to verify." }` rather than guessing.
 - Return JSON only. No prose, no markdown, no explanation outside the JSON object.
 ```

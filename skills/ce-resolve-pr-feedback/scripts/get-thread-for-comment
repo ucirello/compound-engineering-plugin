@@ -8,6 +8,7 @@ set -e
 
 if [ $# -lt 2 ]; then
     echo "Usage: get-thread-for-comment PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]"
+    echo "Example: get-thread-for-comment 378 PRRC_kwDOP_gZVc6ySv89"
     exit 1
 fi
 
@@ -28,7 +29,7 @@ else
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from inside the target repository, or pass OWNER/REPO as the third argument." >&2
+    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from inside the target repository, or pass OWNER/REPO as the third argument (e.g., get-thread-for-comment $PR_NUMBER $COMMENT_NODE_ID EveryInc/cora)." >&2
     exit 1
 fi
 

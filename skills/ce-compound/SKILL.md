@@ -42,15 +42,17 @@ Headless mode is intended for automations and skill-to-skill invocation where no
 
 ## Pre-resolved context
 
-**JJ bookmarks (pre-resolved):** !`jj log --no-graph -r @ -T 'local_bookmarks.map(|b| b.name()).join(",") ++ "\n"' 2>/dev/null || true`
+**JJ bookmarks (pre-resolved):** !`jj bookmark list -r @ 2>/dev/null || true`
 
-If the line above resolved to one or more plain bookmark names (like `feat/my-change`), use them in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving them. If it still contains a backtick command string or is empty, derive the bookmarks at runtime with the same `jj log` query.
+If the line above resolved to one or more bookmarks, use them in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving them. If it still contains a backtick command string or is empty, derive current bookmarks at runtime. A JJ change need not have a bookmark, so an empty result is valid.
 
 **Workspace root (pre-resolved):** !`jj workspace root 2>/dev/null || pwd`
 
-If the line above resolved to an absolute path, use it as the session-history workspace filter in Phase 1. If it still contains a backtick command string or is empty, derive the root at runtime with `jj workspace root 2>/dev/null || pwd`.
+If the line above resolved to an absolute path, use it as the session-history repo filter in Phase 1. If it still contains a backtick command string or is empty, derive the root at runtime with `jj workspace root 2>/dev/null || pwd`.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. At every JJ description or commit-message composition, recommendation, or validation site, the active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
+For repository inspection, use `jj status`, `jj diff`, and `jj log`; reason in changes and revisions, use bookmarks rather than branches, and use `jj workspace` commands for workspace operations. Use `jj git fetch` and `jj git push` only for Git-remote interoperability; `gh` remains appropriate for GitHub metadata and pull requests.
+
+When composing or editing a JJ change description or an interoperable commit message, runtime project instructions and the syntax inferred from `jj log` take precedence; compatible Go quality guidance applies when those sources do not conflict. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Do not impose a fixed syntax, example, or template; use neutral placeholders where structure must be discussed.
 
 ## Support Files
 
@@ -61,12 +63,10 @@ These files are the durable contract for the workflow. Read them on-demand at th
 - `references/concepts-vocabulary.md` — CONCEPTS.md format and inclusion rules (read in Phase 2.4 when domain terms surface)
 - `references/agents/session-historian.md` — skill-local synthesis prompt for optional session-history compounding context (read only when the user opts into session history)
 - `references/grounding-validation.md` — grounding-validation protocol: flag adjudication rules and the semantic validator prompt (read in Phase 2.45)
-- `references/repo-profile-cache.md` — shared project-profile cache protocol (read before resolving the Phase 1 agnostic orientation)
 - `assets/resolution-template.md` — section structure for new docs (read when assembling)
 - `scripts/session-history/` — session discovery and extraction scripts copied into this skill so session-history support does not depend on the deleted `ce-sessions` public skill
-- `scripts/repo-profile-cache.py` — deterministic JJ-keyed project-profile cache helper (run in Phase 1 via the `SKILL_DIR` anchor)
-- `scripts/validate-frontmatter.py` — frontmatter parser-safety validator (run in Phase 2 step 8 through the `SKILL_DIR` anchor, with a manual-checklist fallback when unavailable)
-- `scripts/validate-doc-claims.py` — mechanical claims validator: cited paths, JJ revision/change/commit IDs, relative links, dangling drafting scaffold (run in Phase 2.45 via the `SKILL_DIR` anchor)
+- `scripts/validate-frontmatter.py` — frontmatter parser-safety validator (run in Phase 2 step 8 through the portable `SKILL_DIR` anchor, with a manual-checklist fallback if unavailable)
+- `scripts/validate-doc-claims.py` — mechanical claims validator: cited paths, commit IDs, relative links, dangling drafting scaffold (run in Phase 2.45 via the `SKILL_DIR` anchor)
 
 When spawning subagents, pass the relevant file contents into the task prompt so they have the contract without needing cross-skill paths.
 
@@ -74,7 +74,7 @@ When spawning subagents, pass the relevant file contents into the task prompt so
 
 **In headless mode**, skip both questions below and go directly to **Full Mode** with session history disabled. Phase 1's session-history step (step 4) is omitted. Proceed straight to research.
 
-**In interactive mode**, present the user with two options using the platform's blocking question capability. Fall back to presenting options in chat only when no blocking capability exists or the call errors. Never silently skip the question.
+**In interactive mode**, present the user with two options before proceeding, using the available blocking question tool. Preserve these functional provider mappings: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), and `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists or the call errors — not because a schema load is required. Never silently skip the question.
 
 ```
 1. Full (recommended) — the complete compound workflow. Researches,
@@ -89,10 +89,10 @@ When spawning subagents, pass the relevant file contents into the task prompt so
 
 In interactive mode, do NOT pre-select a mode, do NOT skip this prompt, and wait for the user's choice before proceeding. (Headless mode bypasses this prompt per the "**In headless mode**" rule above and runs Full directly — these "do not skip" directives do not apply to headless.)
 
-**If the user chooses Full** (interactive mode only), ask one follow-up question before proceeding. Detect the active provider and ask:
+**If the user chooses Full** (interactive mode only), ask one follow-up question before proceeding. Detect the active session provider and ask:
 
 ```
-Would you also like to search your [harness name] session history
+Would you also like to search your [session provider] history
 for relevant knowledge to help the Compound process? This adds
 time and token usage.
 ```
@@ -106,7 +106,7 @@ If the user says yes, run the internal session-history step in Phase 1 (see step
 <critical_requirement>
 **The primary deliverable is ONE file - the final documentation.**
 
-Phase 1 subagents write their full structured output to a per-run scratch artifact under `<workspace-root>/.tmp/rocketclaw/compound/runs/<run-id>/` and return only a compact confirmation containing the artifact path. If `jj workspace root` is unavailable, use `<current-directory>/.tmp/rocketclaw/compound/runs/<run-id>/`. The orchestrator Reads those artifacts back in Phase 2 assembly. This scratch space does not make the files additional deliverables. **Only the orchestrator writes product files** — the final solution doc and the maintenance side effects below. Subagents must not touch `docs/`, project instruction files, or any tracked path outside the namespaced `.tmp` tree. Beyond the Phase 2 solution doc, the orchestrator's other writes are maintenance side effects — not additional deliverables, and creating one when absent is expected, not a violation of this rule:
+Phase 1 subagents write their full structured output to a per-run scratch artifact under `<workspace-root>/.tmp/rocketclaw/ce-compound/<run-id>/`, falling back to `<current-directory>/.tmp/rocketclaw/ce-compound/<run-id>/` outside JJ, and return only a compact confirmation containing the artifact path. The orchestrator Reads those artifacts back in Phase 2 assembly. This scratch space does not make the files additional deliverables. **Only the orchestrator writes product files** — the final solution doc and the maintenance side effects below. Subagents must not touch `docs/`, project instruction files, or any tracked path other than the listed maintenance side effects. Beyond the Phase 2 solution doc, the orchestrator's other writes are maintenance side effects — not additional deliverables, and creating one when absent is expected, not a violation of this rule:
 - **`CONCEPTS.md`** — create or update in Phase 2.4 (Vocabulary Capture) when a qualifying domain term surfaces.
 - **A project instruction file** (AGENTS.md or CLAUDE.md) — a small edit when the Discoverability Check finds a gap.
 
@@ -119,7 +119,7 @@ Both ensure future agents can discover and ground in the knowledge store; neithe
 
 Before launching Phase 1 subagents, check the auto-memory block injected into your system prompt for notes relevant to the problem being documented.
 
-1. Look for a provider-supplied block labeled "user's auto-memory" already present in your system prompt context
+1. Look for a block labeled "user's auto-memory" already present in your system prompt context
 2. If the block is absent or empty, skip this step and proceed to Phase 1 unchanged
 3. Scan the entries for anything related to the problem being documented -- use semantic judgment, not keyword matching
 4. If relevant entries are found, prepare a labeled excerpt block:
@@ -132,7 +132,7 @@ and codebase findings take priority over these notes.
 [relevant entries here]
 ```
 
-5. Pass this block as additional context to the Context Analyzer and Solution Extractor task prompts in Phase 1. If any memory notes end up in the final documentation (e.g., as part of the investigation steps or root cause analysis), tag them with "(auto memory [provider-name])" using the active provider's namespace so their origin is clear to future readers.
+5. Pass this block as additional context to the Context Analyzer and Solution Extractor task prompts in Phase 1. If any memory notes end up in the final documentation (e.g., as part of the investigation steps or root cause analysis), tag them with "(auto memory)" so their origin is clear to future readers.
 
 If no relevant entries are found, proceed to Phase 1 without passing memory context.
 
@@ -143,22 +143,22 @@ Launch research subagents. Each writes its full output to a per-run scratch arti
 **Run ID and run dir (before dispatching any subagent):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
 RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ')
-RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/compound/runs/$RUN_ID"
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
+RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-compound/$RUN_ID"
 mkdir -p "$RUN_DIR"
 ```
 
-**Resolve the agnostic project orientation from the shared cache (before dispatching subagents).** The question-agnostic orientation the Context Analyzer and Related Docs Finder rely on — the project's `CONCEPTS.md` vocabulary and root conventions/digests — is identical for every run at this JJ change, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
+**Resolve the agnostic project orientation from the shared cache (before dispatching subagents).** The question-agnostic orientation the Context Analyzer and Related Docs Finder rely on — the project's `CONCEPTS.md` vocabulary and the root instruction-file conventions/digests — is identical for every run at this commit, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
 python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 ```
 
-- On `HIT`: load the profile JSON and use its `vocabulary` and `conventions` as the agnostic orientation; do not re-derive them.
-- On `MISS`: dispatch a generic subagent seeded with `references/agents/repo-profiler.md` to derive the profile, write its JSON to a file, then persist with `python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <file>` (re-set `SKILL_DIR` in that call — shell vars do not persist between Bash invocations).
-- On `NO-CACHE` (no usable JJ state or no writable workspace-local cache): derive the orientation inline this run and skip `put`.
+- On `HIT`: load the profile JSON and use its `vocabulary` (CONCEPTS canonical terms) and `conventions` (root instruction/convention digests) as the agnostic orientation; do not re-derive them.
+- On `MISS`: dispatch a generic subagent seeded with `references/agents/repo-profiler.md` to derive the profile, write its JSON to a file, then persist with `python3 "$SKILL_DIR/scripts/repo-profile-cache.py" put <file>` (re-set `SKILL_DIR` in that call — shell vars don't persist between Bash invocations).
+- On `NO-CACHE` (no usable JJ workspace or no writable workspace-local cache): derive the orientation inline this run and skip `put`.
 
 The cache is an optimization, never a correctness dependency — if the helper errors or returns nothing usable, fall back to deriving the orientation inline and continue. Pass the resolved vocabulary/conventions into the Context Analyzer (for vocabulary and instruction-file convention grounding) so it does not re-derive them.
 
@@ -171,7 +171,7 @@ Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 sub
 - **Related Docs Finder** → `{run_dir}/related.json` (links, refresh candidates, overlap assessment)
 - **Session History** synthesis subagent (when run) → `{run_dir}/session-history.md` (prose findings)
 
-**Return the full output inline whenever the artifact write did not succeed.** This covers both an unresolved `{run_dir}` and a failed write. In either case the subagent must return its complete structured output inline instead of a path. Return only the bare path when the write is confirmed on disk. The artifact pattern is a reliability improvement, not a hard requirement; the orchestrator handles a missing artifact in Phase 2 by using the inline return.
+**Return the full output inline whenever the artifact write did not succeed.** This covers both cases where the orchestrator's Phase 2 inline fallback would otherwise have nothing to read: (a) `{run_dir}` is empty or did not resolve, so there is no path to write to; and (b) `{run_dir}` resolved but the write itself failed — tool permission denied, disk error, or the post-write existence check came back empty. In either case the subagent must return its complete structured output inline instead of a path, because the path would point at a file that does not exist. Return only the bare path when — and only when — the write is confirmed on disk. The artifact pattern is a reliability improvement, not a hard requirement; the orchestrator handles a missing artifact in Phase 2 by using the inline return.
 
 **Dispatch order:**
 - Launch `Context Analyzer`, `Solution Extractor`, and `Related Docs Finder` in parallel (background)
@@ -199,7 +199,7 @@ Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 sub
    - **Writes the full doc-body prose** (all track-appropriate sections below) to `solution.md` and returns only the artifact path. This is the subagent most prone to the issue #956 summary-collapse, so its prose must land on disk rather than only in the inline return.
    - Incorporates auto memory excerpts (if provided by the orchestrator) as supplementary evidence -- conversation history and the verified fix take priority; if memory notes contradict the conversation, note the contradiction as cautionary context
    - **Grounds code-behavior claims in source, not conversation memory.** Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree and cite `file:line` alongside the claim. A claim that cannot be verified against the tree is softened or attributed ("per this session's conclusion…"), never stated as fact
-   - **Writes merge-state claims for time.** Prefer durable PR references over bare JJ change/commit IDs when publication may rewrite identity. A "fixed in X" claim requires remote verification through `gh` or fallback reachability from `trunk()`; otherwise phrase it as pending ("fix opened in #1608, unmerged as of this writing")
+   - **Writes merge-state claims for time.** Cite PR numbers rather than bare commit IDs — commit IDs can change when JJ changes are rewritten and may not exist in other workspaces. A "fixed in X" claim requires the fix to be reachable from the current tree; otherwise phrase it as pending ("fix opened in #1608, unmerged as of this writing")
 
    **Bug track output sections:**
 
@@ -233,7 +233,7 @@ Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 sub
 
    1. Extract keywords from the problem context: module names, technical terms, error messages, component types
    2. If the problem category is clear, narrow search to the matching `docs/solutions/<category>/` directory
-   3. Use the platform's native content-search tool to pre-filter candidate files BEFORE reading any content. Run multiple searches in parallel, case-insensitive, targeting frontmatter fields. These are template patterns -- substitute actual keywords:
+   3. Use the native content-search capability to pre-filter candidate files BEFORE reading any content. Run multiple searches in parallel, case-insensitive, targeting frontmatter fields. These are neutral placeholders -- substitute actual keywords:
       - `title:.*<keyword>`
       - `tags:.*(<keyword1>|<keyword2>)`
       - `module:.*<module name>`
@@ -251,15 +251,15 @@ Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 sub
 
 #### 4. **Session History** (internal flow after launching the parallel block — only if the user opted in)
    - **Skip entirely** if the user declined session history in the follow-up question, if running in lightweight mode, or if running in headless mode.
-   - Run session discovery, workspace/JJ-context/keyword filtering, scan-window selection, deep-dive selection, and per-session extraction directly inside this skill using `scripts/session-history/`.
+   - Run session discovery, current-bookmark/source-metadata filtering, scan-window selection, deep-dive selection, and per-session extraction directly inside this skill using `scripts/session-history/`.
    - Read the skill-local synthesis prompt at `references/agents/session-historian.md`, then dispatch a generic subagent using that prompt content. Do not dispatch a standalone agent by type/name.
 
    **Session-history payload — keep tight.** A long, keyword-rich payload licenses widening. Use this shape:
 
-   - **Pre-resolved context** (only if values resolved cleanly above; otherwise omit): JJ workspace root/name, current change ID, and bookmarks. Bookmarks are labels on the current change, not a "current branch."
+   - **Pre-resolved context** (only if values resolved cleanly above; otherwise omit): repo name, current JJ bookmarks.
    - **Time window**: explicit `7 days` unless the documented problem clearly spans a longer arc.
    - **Problem topic**: one sentence naming the concrete issue — error message, module name, what broke and how it was fixed. Not a paragraph; not a bullet list of related topics.
-   - **Filter rule (one line)**: "Only surface findings directly relevant to this specific problem. Ignore unrelated work from the same sessions or branches."
+   - **Filter rule (one line)**: "Only surface findings directly relevant to this specific problem. Ignore unrelated work from the same sessions or source-history labels."
    - **Output schema**:
 
      ```
@@ -274,34 +274,32 @@ Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 sub
    - Returns: structured digest of findings from prior sessions, or "no relevant prior sessions" if none found.
    - **Session history is the final Phase 1 input, not a workflow stop.** When it returns, proceed directly to Phase 2 with its output as the last input — do not emit a summary and do not pause for the user. A "no relevant prior sessions" return is still a valid input; the documentation gets written without session context.
 
-   **Script resolution.** Set `SKILL_DIR` to the absolute directory containing the `SKILL.md` you read and run bundled scripts through `$SKILL_DIR/scripts/session-history/`. If that path cannot be resolved, skip session history visibly with: "Session history was requested, but this platform did not expose the bundled session-history scripts to the runtime." Continue Phase 2 without session context.
+   **Script resolution.** Set `SKILL_DIR` to the absolute directory containing the `SKILL.md` you read and invoke bundled scripts from `$SKILL_DIR/scripts/session-history/`. If that directory cannot be resolved, skip session history visibly with: "Session history was requested, but the bundled session-history scripts were unavailable." Continue Phase 2 without session context.
 
    **Discovery pipeline.** Infer the scan window from the problem topic, starting with 7 days. Run discovery and metadata extraction:
 
    ```bash
-    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
-    if [ -f "$SKILL_DIR/scripts/session-history/discover-sessions.sh" ] && [ -f "$SKILL_DIR/scripts/session-history/extract-metadata.py" ]; then
-      WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
-      REPO_NAME=$(basename "$WORKSPACE_ROOT")
-      CHANGE_ID=$(jj log --no-graph -r @ -T 'change_id ++ "\n"' 2>/dev/null || true)
-      BOOKMARKS=$(jj log --no-graph -r @ -T 'local_bookmarks.map(|b| b.name()).join(",") ++ "\n"' 2>/dev/null || true)
+   SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+   if [ -f "$SKILL_DIR/scripts/session-history/discover-sessions.sh" ] && [ -f "$SKILL_DIR/scripts/session-history/extract-metadata.py" ]; then
+      REPO_ROOT=$(jj workspace root 2>/dev/null || pwd)
+      REPO_NAME=$(basename "$REPO_ROOT")
       SCAN_DAYS="7"
-      bash "$SKILL_DIR/scripts/session-history/discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS" --cwd "$WORKSPACE_ROOT" | tr '\n' '\0' | xargs -0 python3 "$SKILL_DIR/scripts/session-history/extract-metadata.py" --cwd-filter "$WORKSPACE_ROOT" --jj-workspace-root "$WORKSPACE_ROOT" --jj-workspace-name "$REPO_NAME" --jj-change-id "$CHANGE_ID" --jj-bookmarks "$BOOKMARKS"
+      bash "$SKILL_DIR/scripts/session-history/discover-sessions.sh" "$REPO_NAME" "$SCAN_DAYS" --cwd "$REPO_ROOT" | tr '\n' '\0' | xargs -0 python3 "$SKILL_DIR/scripts/session-history/extract-metadata.py" --cwd-filter "$REPO_ROOT"
    else
-     echo "Session history was requested, but this platform did not expose the bundled session-history scripts to the runtime."
+      echo "Session history was requested, but the bundled session-history scripts were unavailable."
    fi
    ```
 
-   Pi sessions are included when present under `~/.pi/agent/sessions/`; they carry `cwd` like Codex. If `_meta.files_processed` is `0`, return `no relevant prior sessions`. Rank primarily by exact JJ workspace-root match, workspace-name/project-namespace match, matching change ID when provider metadata exposes one, and bookmark overlap when available; then use keyword match count, file size over 30KB, and recency. A provider's raw `gitBranch` field is preserved as `provider_gitBranch` and may be used only as a weak provider-specific tie-breaker, never as the current branch or primary repository identity. If the first pass finds no relevant workspace/JJ-context matches, or if processing providers without JJ metadata, derive 2-4 keywords from the topic and re-run metadata extraction with `--keyword K1,K2,...`. Keep at most 5 sessions across Claude Code, Codex, Cursor, and Pi. Exclude the current session.
+   Provider session locations and formats are mapped by the bundled scripts. Some providers supply `cwd` but no bookmark metadata. If `_meta.files_processed` is `0`, return `no relevant prior sessions`. If the first pass finds no relevant bookmark match, or when processing sessions without bookmark metadata, derive 2-4 keywords from the topic and re-run metadata extraction with `--keyword K1,K2,...`. Keep at most 5 sessions across supported providers, ranked by bookmark match, keyword match count, file size over 30KB, and recency. Exclude the current session.
 
    **Extraction pipeline.** Create `SCRATCH="$RUN_DIR/sessions"` with `mkdir -p "$SCRATCH"`. For each selected session, write extracted content to scratch files:
 
    ```bash
-    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
-    if [ -f "$SKILL_DIR/scripts/session-history/extract-skeleton.py" ]; then
+   SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+   if [ -f "$SKILL_DIR/scripts/session-history/extract-skeleton.py" ]; then
       python3 "$SKILL_DIR/scripts/session-history/extract-skeleton.py" --output "$SCRATCH/<session-id>.skeleton.txt" < <session-file>
    else
-     echo "Session history was requested, but this platform did not expose the bundled session-history scripts to the runtime."
+      echo "Session history was requested, but the bundled session-history scripts were unavailable."
    fi
    ```
 
@@ -315,7 +313,7 @@ Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 sub
    - the output schema above
    - the filter rule above
 
-   The subagent reads only the scratch paths, **writes its prose findings to `{run_dir}/session-history.md`, and returns only that artifact path once the write is confirmed**. If `{run_dir}` did not resolve or the artifact write failed, it returns the prose inline instead. If synthesis fails, note the failure and continue without session context.
+   The subagent reads only the scratch paths, **writes its prose findings to `{run_dir}/session-history.md`, and returns only that artifact path once the write is confirmed** (same #956 reliability rationale — session-history findings are long-form prose prone to summary-collapse). If `{run_dir}` did not resolve or the artifact write failed, it returns the prose inline instead (per the inline-fallback rule above). If synthesis fails, note the failure and continue without session context.
 
 ### Phase 2: Assembly & Write
 
@@ -325,7 +323,7 @@ Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 sub
 
 The orchestrating agent (main conversation) performs these steps:
 
-1. **Collect Phase 1 results from the run artifacts.** For each Phase 1 subagent, `Read` its artifact file under `{run_dir}/` (`context.json`, `solution.md`, `related.json`, and `session-history.md` when session history ran). The artifact holds the subagent's full output. **Fall back to the subagent's inline return only when its artifact file is absent or empty.** The artifact is authoritative when present.
+1. **Collect Phase 1 results from the run artifacts.** For each Phase 1 subagent, `Read` its artifact file under `{run_dir}/` (`context.json`, `solution.md`, `related.json`, and `session-history.md` when session history ran). The artifact holds the subagent's full output. **Fall back to the subagent's inline return only when its artifact file is absent or empty** (e.g., `{run_dir}` did not resolve, or the subagent failed to write). The artifact is authoritative when present — this is what makes the workflow resilient to the issue #956 summary-collapse, where the inline return is only an executive summary.
 2. **Check the overlap assessment** from the Related Docs Finder before deciding what to write:
 
    | Overlap | Action |
@@ -347,11 +345,11 @@ The orchestrating agent (main conversation) performs these steps:
 5. Validate YAML frontmatter against `references/schema.yaml`, including the YAML-safety quoting rule for array items (see `references/yaml-schema.md` > YAML Safety Rules)
 6. Create directory if needed: `mkdir -p docs/solutions/[category]/`
 7. Write the file: either the updated existing doc or the new `docs/solutions/[category]/[filename].md`
-8. **Validate parser-safety of the written frontmatter** to catch silent-corruption issues the prose rules miss: malformed `---` delimiter lines, unquoted ` #` in scalar values (silent comment truncation), and unquoted `: ` in scalar values (silent mapping confusion). Resolve the bundled validator with `SKILL_DIR`; if unavailable, fall back to the exact manual check instead of silently skipping protection:
+8. **Validate parser-safety of the written frontmatter** to catch silent-corruption issues the prose rules miss: malformed `---` delimiter lines, unquoted ` #` in scalar values (silent comment truncation), and unquoted `: ` in scalar values (silent mapping confusion). The bundled validator ships **inside the skill bundle**. Resolve it through the portable `SKILL_DIR` anchor and use an existence guard so an unavailable script falls back to a manual check instead of silently skipping the protection:
 
    ```bash
-    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
-    if [ -f "$SKILL_DIR/scripts/validate-frontmatter.py" ]; then
+   SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+   if [ -f "$SKILL_DIR/scripts/validate-frontmatter.py" ]; then
       python3 "$SKILL_DIR/scripts/validate-frontmatter.py" <output-path>
    else
      echo "Bundled validate-frontmatter.py not resolvable on this platform; applying the parser-safety checklist manually."
@@ -403,9 +401,9 @@ The doc (and any `CONCEPTS.md` entries from Phase 2.4) is about to become perman
    python3 "$SKILL_DIR/scripts/validate-doc-claims.py" <doc-path>
    ```
 
-   Exit 0 means nothing flagged. Exit 1 means flags to **adjudicate, not auto-fix** — each flagged path, JJ revision/change/commit ID, link, or scaffold pattern is fixed, annotated as historical, or confirmed intentional per the reference's adjudication table. A doc may legitimately cite a path deleted by the very fix it documents; a flag is a question, not a failure. If the script cannot be resolved on this platform, apply the reference's manual checklist and say so in the output — never silently skip.
+   Exit 0 means nothing flagged. Exit 1 means flags to **adjudicate, not auto-fix** — each flagged path, commit ID, link, or scaffold pattern is fixed, annotated as historical, or confirmed intentional per the reference's adjudication table. A doc may legitimately cite a path deleted by the very fix it documents; a flag is a question, not a failure. If the script cannot be resolved on this platform, apply the reference's manual checklist and say so in the output — never silently skip.
 
-2. **Semantic grounding validator (Full and headless; lightweight skips it).** Dispatch one read-only generic subagent built from the prompt template in the reference, covering the written doc plus any `CONCEPTS.md` entries added or edited this run. It verifies code-behavior claims by quoting the defining source line, merge-state claims against remote truth (`gh` primary, JJ reachability fallback), and internal completeness of countable assertions. Apply its verdicts per the reference (fix contradicted claims from the quoted evidence; soften or drop unverifiable ones; mark offline merge-state checks as degraded), then re-run the mechanical check if the body changed.
+2. **Semantic grounding validator (Full and headless; lightweight skips it).** Dispatch one read-only generic subagent built from the prompt in the reference, covering the written doc plus any `CONCEPTS.md` entries added or edited this run. It verifies code-behavior claims by quoting the defining source line, merge-state claims against remote truth (`gh` primary, JJ reachability fallback), and internal completeness of countable assertions. Apply its verdicts per the reference (fix contradicted claims from the quoted evidence; soften or drop unverifiable ones; mark offline merge-state checks as degraded), then re-run the mechanical check if the body changed.
 
 ### Phase 2.5: Selective Refresh Check
 
@@ -488,7 +486,7 @@ After the learning is written and the refresh decision is made, check whether th
 
       `docs/solutions/` — documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
       ```
-   c. In full interactive mode, explain to the user why this matters — agents working in this repo (including fresh sessions, other tools, or collaborators without the plugin) won't know to check `docs/solutions/` unless the instruction file surfaces it. Show the proposed change and where it would go, then use the platform's blocking question capability to get consent. Fall back to presenting the proposal in chat only when no blocking capability exists or the call errors. Never silently skip the question. In lightweight mode, output a one-liner note and move on. In headless mode, apply the edit directly without prompting and surface it in the terminal report under "Instruction-file edit"
+   c. In full interactive mode, explain to the user why this matters — agents working in this repo (including fresh sessions, other tools, or collaborators without the plugin) won't know to check `docs/solutions/` unless the instruction file surfaces it. Show the proposed change and where it would go, then use the available blocking question tool to get consent before making the edit. Preserve the functional provider mappings: `AskUserQuestion` in Claude Code (load its schema first if needed), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), and `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting the proposal in chat only when no blocking tool exists or the call errors. Never silently skip the question. In lightweight mode, output a one-liner note and move on. In headless mode, apply the edit directly without prompting and surface it in the terminal report under "Instruction-file edit"
 
 5. **If `CONCEPTS.md` exists at repo root, run a parallel discoverability check for it.** Assess whether the instruction file would lead an agent to discover the project's shared domain vocabulary. Use the same workflow as the `docs/solutions/` check above: same target file, same edit-placement judgment, same consent-then-edit interaction shape per mode. A line in an existing section is almost always better than a new headed section. Example calibration when nothing else fits:
 
@@ -512,7 +510,7 @@ Based on problem type, optionally dispatch generic subagents seeded with local p
 - **security_issue** → `references/agents/security-sentinel.md`
 - **database_issue** → `references/agents/data-integrity-guardian.md`
 - Any code-heavy issue → preserve code simplification as a **read-only documentation review**. Inspect the solution draft's code examples and explanatory claims inline, or dispatch a generic subagent seeded with a local prompt only to return suggestions. Do **not** invoke `ce-simplify-code` from this phase and do not mutate product code unless the user explicitly asks for a separate code-simplification pass. Do not use the deleted `code-simplicity-reviewer`.
-  Example: review the solution draft's examples for speculative abstractions, redundant wrappers, dead branches, and just-in-case parameters. Apply edits only to the documentation/examples being written by `ce-compound`; leave any branch code changes untouched.
+  Example: review the solution draft's examples for speculative abstractions, redundant wrappers, dead code paths, and just-in-case parameters. Apply edits only to the documentation/examples being written by `ce-compound`; leave the current JJ change untouched.
 
 </parallel_tasks>
 
@@ -530,7 +528,7 @@ Headless mode forces Full and does not enter Lightweight — automations get the
 
 The orchestrator (main conversation) performs ALL of the following in one sequential pass:
 
-1. **Extract from conversation**: Identify the problem and solution from conversation history. Also scan any provider-supplied "user's auto-memory" block in the system prompt -- use relevant notes as supplementary context and retain their provider attribution. Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree — soften or attribute any claim you cannot verify. Prefer durable PR references over bare JJ change/commit IDs when publication may rewrite identity, and phrase unmerged fixes as pending
+1. **Extract from conversation**: Identify the problem and solution from conversation history. Also scan the "user's auto-memory" block injected into your system prompt, if present -- use any relevant notes as supplementary context alongside conversation history. Tag any memory-sourced content incorporated into the final doc with "(auto memory)". Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree — soften or attribute any claim you cannot verify. Cite PR numbers over bare commit IDs, and phrase unmerged fixes as pending
 2. **Classify**: Read `references/schema.yaml` and `references/yaml-schema.md`, then determine track (bug vs knowledge), category, and filename
 3. **Write minimal doc**: Create `docs/solutions/[category]/[filename].md` using the appropriate track template from `assets/resolution-template.md`, with:
    - YAML frontmatter with track-appropriate fields, applying the YAML-safety quoting rule for array items (see `references/yaml-schema.md` > YAML Safety Rules)
@@ -542,7 +540,7 @@ The orchestrator (main conversation) performs ALL of the following in one sequen
 
 **Lightweight output:**
 ```
-✓ Documentation complete (lightweight mode)
+Documentation complete (lightweight mode)
 
 File created:
 - docs/solutions/[category]/[filename].md
@@ -620,14 +618,14 @@ Knowledge track:
 
 ## Common Mistakes to Avoid
 
-| ❌ Wrong | ✅ Correct |
+| Wrong | Correct |
 |----------|-----------|
-| Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `<workspace-root>/.tmp/rocketclaw/compound/runs/<run-id>/` and return the path; orchestrator writes the one final doc |
+| Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `<workspace-root>/.tmp/rocketclaw/ce-compound/<run-id>/` (current-directory fallback outside JJ) and return the path; orchestrator writes the one final doc |
 | Subagent returns a long prose body only as its inline response | Subagent writes full output to its run artifact; orchestrator Reads it back (inline return is fallback only) |
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Multiple files created during workflow | One solution doc written or updated: `docs/solutions/[category]/[filename].md` (plus optional maintenance writes: a `CONCEPTS.md` create/update from Phase 2.4 and a small instruction-file edit for discoverability) |
 | Creating a new doc when an existing doc covers the same problem | Check overlap assessment; update the existing doc when overlap is high |
-| Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; prefer durable PR references over rewriteable JJ IDs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
+| Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over commit IDs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
 | Batching several learnings through one run and stitching cross-references between drafts | One learning per run; run the skill sequentially for each additional learning |
 
 ## Success Output
@@ -637,7 +635,7 @@ Knowledge track:
 Emit a structured terminal report and end the turn. No "What's next?" question, no blocking prompt. End with `Documentation complete` as the terminal signal so callers can detect completion.
 
 ```
-✓ Documentation complete (headless mode)
+Documentation complete (headless mode)
 
 File: docs/solutions/<category>/<filename>.md  (created | updated)
 Track: <bug | knowledge>
@@ -654,7 +652,7 @@ Documentation complete
 When no doc was written (e.g., headless invoked on a session where the problem is not yet solved), emit a structured failure instead and end with `Documentation skipped` so callers can distinguish success from no-op:
 
 ```
-✗ Documentation skipped (headless mode)
+Documentation skipped (headless mode)
 
 Reason: <one-sentence explanation — e.g., "no solved problem detected in
 conversation history" or "solution not yet verified">
@@ -665,23 +663,23 @@ Documentation skipped
 ### Interactive mode
 
 ```
-✓ Documentation complete
+Documentation complete
 
 Auto memory: 2 relevant entries used as supplementary evidence
 
 Subagent Results:
-  ✓ Context Analyzer: Identified performance_issue in brief_system, category: performance-issues/
-  ✓ Solution Extractor: 3 code fixes, prevention strategies
-  ✓ Related Docs Finder: 2 related issues
-  ✓ Session History: 3 prior sessions matched to this JJ workspace/context, 2 failed approaches surfaced
+  Context Analyzer: Identified performance_issue in brief_system, category: performance-issues/
+  Solution Extractor: 3 code fixes, prevention strategies
+  Related Docs Finder: 2 related issues
+  Session History: 3 prior sessions on the same change, 2 failed approaches surfaced
 
 Grounding Validation:
-  ✓ Mechanical check: 14 paths, 2 revision IDs, 3 links checked — 1 flag annotated as historical
-  ✓ Semantic validator: 9 claims verified, 1 merge-state claim softened to pending
+  Mechanical check: 14 paths, 2 commit IDs, 3 links checked — 1 flag annotated as historical
+  Semantic validator: 9 claims verified, 1 merge-state claim softened to pending
 
 Specialized Agent Reviews (Auto-Triggered):
-  ✓ performance-oracle: Validated query optimization approach
-  ✓ Code simplification review: Code examples are appropriately minimal
+  performance-oracle: Validated query optimization approach
+  Code simplification review: Code examples are appropriately minimal
 
 Files written:
 - docs/solutions/performance-issues/n-plus-one-brief-generation.md (created)
@@ -698,12 +696,12 @@ What's next?
 5. Other
 ```
 
-**After displaying the interactive success output above, present the "What's next?" options using the platform's blocking question capability.** Fall back to numbered options in chat only when no blocking capability exists or the call errors. Never silently skip the question. Do not continue the workflow or end the turn without the user's selection. (Interactive mode only — headless skips this per the headless block above.)
+**After displaying the interactive success output above, present the "What's next?" options using the available blocking question tool.** Preserve the functional provider mappings: `AskUserQuestion` in Claude Code (load its schema first if needed), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), and `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists or the call errors. Never silently skip the question. Do not continue the workflow or end the turn without the user's selection. (Interactive mode only — headless skips this per the headless block above.)
 
 **Alternate interactive output (when updating an existing doc due to high overlap):** in headless mode, this case is communicated via the `Overlap: high — existing doc updated` line of the headless terminal report above, not as a separate output block.
 
 ```
-✓ Documentation updated (existing doc refreshed with current context)
+Documentation updated (existing doc refreshed with current context)
 
 Overlap detected: docs/solutions/performance-issues/n-plus-one-queries.md
   Matched dimensions: problem statement, root cause, solution, referenced files

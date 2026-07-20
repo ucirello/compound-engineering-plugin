@@ -292,13 +292,14 @@ artifact.
 - **`artifact_readiness`** — always `requirements-only` for new
   `ce-brainstorm` outputs. Do not use `active`, `in_progress`, `completed`,
   or `done`.
-- **`product_contract_source`** — always `brainstorm` for new outputs.
+- **`product_contract_source`** — always `brainstorm`.
+
 ### No status field
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
 progress. No plan artifact carries mutable progress state; whether work shipped
-is derived from JJ, not stored in the doc. Do not introduce one.
+is derived from JJ history, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 
@@ -322,12 +323,6 @@ Same shape as plan rules.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to ce-plan, no italic provenance lines. Engineering process
   metadata belongs in commit messages and tool output, not the artifact.
-- Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-  At every JJ description or commit-message composition, recommendation, or
-  validation site, the active project instructions and description syntax
-  inferred at runtime from `jj log` always win. Apply compatible Go guidance
-  only for quality, clarity, and structure. Do not impose a fixed prefix, type,
-  scope, subject, body, layout, template, or example.
 - **No implementation details by default.** Libraries, schemas, endpoints,
   file layouts, code structure stay out unless the brainstorm itself is
   inherently about a technical or architectural change and those details are

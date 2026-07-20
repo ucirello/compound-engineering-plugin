@@ -7,18 +7,19 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working-copy change.** If `jj diff -r @` is non-empty, include the current working-copy commit.
-3. **Bookmark history vs base.** Review `jj diff --from 'fork_point(@ | <base>)' --to @`, where `<base>` is the resolved default remote bookmark.
+2. **Working-copy change.** If `jj diff -r @` is non-empty, review it.
+3. **Unpushed changes vs base bookmark.** If `@` is empty, review `jj diff --from <base> --to @ --git`, where `<base>` is the resolved common ancestor with the default bookmark.
 
-The scope step in SKILL.md passes the resolved diff. Use only read-only JJ commands for additional inspection.
+The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run JJ or `gh` commands yourself unless remote scope requires it (below).
 
-## Remote scope (`pr-remote` and `bookmark-remote`)
+## Remote scope (`pr-remote` and `branch-remote`)
 
-When review context is remote, the working copy is not the reviewed revision. Do not use Read/Grep on workspace paths for changed files.
+When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>branch-remote</pr-scope-mode>`, the working copy is **not** the reviewed head. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark or PR under review.
 
 Instead:
 
-- Prefer `jj file show -r <remote-head-rev> <path>` when `<pr-head-rev>` or `<bookmark-head-rev>` is provided.
+- For `branch-remote`, prefer `jj file show -r <branch-head-ref> <path>`.
+- For `pr-remote`, use `gh api` at `<pr-head-oid>` and the PR repository, when supplied.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 

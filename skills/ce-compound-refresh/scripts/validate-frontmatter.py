@@ -19,7 +19,7 @@ Checks (regex-based, no YAML parser dependency):
     1. File starts and ends frontmatter with `---` lines (matched as full
        lines, not substrings — `----` and `---extra` are rejected)
     2. No top-level scalar value contains ` #` unquoted (silent comment
-       truncation seen in prior document review)
+       truncation observed in prior review)
     3. No top-level scalar value contains `: ` unquoted (mapping confusion —
        what surfaced in a 2026-04-16 plan doc's `title:` field)
 
@@ -57,8 +57,9 @@ def main(argv: list[str]) -> int:
     issues: list[str] = []
 
     # Check 1: frontmatter delimiters. Match the delimiter as a complete
-    # line whose stripped content is exactly `---`; substring matching would
-    # falsely accept longer delimiter-like strings and let malformed docs reach
+    # line whose stripped content is exactly `---` — substring matching
+    # (e.g. `text.find("\n---", 4)`) would falsely accept `----` or
+    # `---extra` as a terminator and let malformed docs slip through to
     # downstream parsers that require a strict `---` line.
     lines = text.split("\n")
     if not lines or lines[0].rstrip() != "---":

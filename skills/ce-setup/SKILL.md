@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 Ask each question below using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to a numbered list in chat only when no blocking tool exists in the harness or the call errors. Never silently skip or auto-configure.
 
-`ce-setup` is a lightweight health check and workspace-local config helper. It does **not** bulk-install every optional dependency. Missing tools are reported as optional capabilities so the user can install only the workflows they use.
+`ce-setup` is a lightweight health check and repo-local config helper. It does **not** bulk-install every optional dependency. Missing tools are reported as optional capabilities so the user can install only the workflows they use.
 
 ## Phase 1: Diagnose
 
@@ -43,8 +43,8 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 
 If the script is unavailable, perform the inline equivalent:
 
-1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a JJ workspace, resolve the workspace root with `jj root`.
+1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jj`, `jq`, `ast-grep`, `ffmpeg`.
+2. If inside a Jujutsu workspace, resolve the workspace root with `jj workspace root`.
 3. Check for obsolete `rocketclaw.local.md` at the workspace root.
 4. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether `jj file list .rocketclaw/config.local.yaml` omits it as ignored.
 5. Compare `.rocketclaw/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
@@ -53,18 +53,18 @@ Display the diagnostic output to the user. Missing optional tools are not setup 
 
 ### Step 3: Decide Whether Fixes Are Needed
 
-Proceed to Phase 2 only if one or more workspace-local project issues exist:
+Proceed to Phase 2 only if one or more repo-local project issues exist:
 
 - obsolete `rocketclaw.local.md`
-- `.rocketclaw/config.local.yaml` exists but is not safely ignored by JJ
+- `.rocketclaw/config.local.yaml` exists but is not safely ignored
 - `.rocketclaw/config.local.example.yaml` is missing or outdated
 
 If no project issues exist, report:
 
 ```text
-✅ RocketClaw setup complete
+RocketClaw setup complete
 
-Project config: ✅
+Project config: healthy
 Optional capabilities: see diagnostic report above
 
 Run /ce-setup anytime to re-check.
@@ -74,7 +74,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 ## Phase 2: Fix Workspace-Local Issues
 
-Resolve the workspace root with `jj root`. All paths below are relative to the workspace root, not the current working directory.
+Resolve the workspace root with `jj workspace root`. All paths below are relative to the workspace root, not the current working directory.
 
 ### Step 4: Remove Obsolete Local Config
 
@@ -84,7 +84,7 @@ Ask whether to delete it now. Delete only if the user approves.
 
 ### Step 5: Refresh Example Config
 
-Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.local.example.yaml`, creating the directory if needed. This file is committed to the workspace and should always reflect the latest available settings.
+Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.local.example.yaml`, creating the directory if needed. This file is tracked in the workspace and should always reflect the latest available settings.
 
 If the bundled template cannot be located by the current platform, print the source template path that failed and tell the user the example config could not be refreshed automatically.
 
@@ -103,25 +103,25 @@ Everything starts commented out -- you only enable what you need.
 
 If the user approves, copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.local.yaml`.
 
-### Step 7: Ensure Local Config Is Ignored by JJ
+### Step 7: Ensure Local Config Is Gitignored
 
-If `.rocketclaw/config.local.yaml` exists and `jj file list .rocketclaw/config.local.yaml` returns it, offer to add this entry to `<workspace-root>/.rocketclaw/.gitignore`:
+If `.rocketclaw/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
 
 ```text
-*.local.yaml
+.rocketclaw/*.local.yaml
 ```
 
-If the user approves, append the entry to `.rocketclaw/.gitignore`, creating that file if needed, then run `jj file untrack .rocketclaw/config.local.yaml`. Do not edit the workspace-root `.gitignore` or overwrite unrelated content.
+Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
 ## Phase 3: Summary
 
 Display a brief summary:
 
 ```text
-✅ RocketClaw setup complete
+RocketClaw setup complete
 
-Fixed:     <workspace-local fixes applied, or none>
-Skipped:   <workspace-local fixes declined, or none>
+Fixed:     <repo-local fixes applied, or none>
+Skipped:   <repo-local fixes declined, or none>
 Optional:  <missing optional tools, or all available>
 
 Run /ce-setup anytime to re-check.

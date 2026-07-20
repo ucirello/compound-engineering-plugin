@@ -14,20 +14,20 @@ For planning invocations, do not emit review-style JSON. Convert migration analy
 
 ## Step 0: Schema drift or schema-artifact handling
 
-Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the comparison revision from caller context (`<review-base>` — a JJ revision or bookmark). **Never assume a bookmark name.**
+Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
-jj diff --from <review-base> --to @ --name-only -- db/migrate/
+jj diff --from <review-base> --name-only -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the provided diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-jj diff --from <review-base> --to @ -- db/schema.rb
+jj diff --from <review-base> -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-jj diff --from <review-base> --to @ -- db/structure.sql
+jj diff --from <review-base> -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in the provided diff**:
@@ -38,7 +38,15 @@ Cross-reference every change in each in-scope dump against migrations **in the p
 
 When drift is present, call it out as a blocking plan requirement on the affected dump path (`db/schema.rb` or `db/structure.sql`), list the concrete unrelated objects, and recommend this remediation:
 
-Restore the affected schema artifact from `<review-base>` through the project's normal JJ-safe file-restoration workflow, then regenerate it with the repository's documented migration command. Do not prescribe a mutating command without confirming the repository's local JJ conventions.
+```bash
+# schema.rb:
+jj restore --from <review-base> db/schema.rb
+bin/rails db:migrate
+
+# structure.sql (regenerate after restoring and migrating):
+jj restore --from <review-base> db/structure.sql
+bin/rails db:migrate
+```
 
 If neither dump file is in the diff, skip this step.
 

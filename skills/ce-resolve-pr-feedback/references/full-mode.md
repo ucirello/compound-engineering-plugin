@@ -6,10 +6,9 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, inspect `jj status`, `jj log -r @ --no-graph`, and `jj bookmark list` to identify the existing bookmark associated with the working-copy change. Runtime repository conventions and the installed JJ syntax always win. If there is exactly one associated bookmark, resolve its PR with `gh`; if there are zero or multiple plausible bookmarks, ask the user rather than guessing.
-
+If no PR number was provided, detect from the current bookmark through GitHub's Git remote interop:
 ```bash
-gh pr view <PR_BOOKMARK> --json number -q .number
+gh pr view --json number -q .number
 ```
 
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments):
@@ -50,12 +49,12 @@ Before processing, classify each piece of feedback as **new** or **already handl
 
 **PR comments and review bodies**: These have no resolve mechanism, so they reappear on every run. Apply two filters in order:
 
-1. **Actionability**: Skip items that contain no actionable feedback or questions to answer. Examples: review wrapper text ("Here are some automated review suggestions..."), approvals ("this looks great!"), status badges ("Validated"), CI summaries with no follow-up asks. If there's nothing to fix, answer, or decide, it's not actionable -- drop it from the count entirely.
+1. **Actionability**: Skip items that contain no actionable feedback or questions to answer. Examples: review wrapper text ("Here are some automated review suggestions..."), approvals ("this looks great!"), status-only markers ("Validated"), CI summaries with no follow-up asks. If there's nothing to fix, answer, or decide, it's not actionable -- drop it from the count entirely.
 2. **Already replied**: For actionable items, check the PR conversation for an existing reply that quotes and addresses the feedback. If a reply already exists, skip. If not, it's new.
 
 The distinction is about content, not who posted what. A deferral from a teammate, a previous skill run, or a manual reply all count. Similarly, actionability is about content -- bot feedback that requests a specific code change is actionable; a bot's boilerplate header wrapping those requests is not.
 
-**Silent drop.** Non-actionable items are dropped without narration. Do not announce, list, or count dropped items in conversation, the task list, or the step 9 summary. Automated-review and CI/status wrappers commonly appear here -- recognize them by their content and drop them silently. Source identity is not a filter, so format changes cannot silently hide actionable findings.
+**Silent drop.** Non-actionable items are dropped without narration. Do not announce, list, or count dropped items in conversation, the task list, or the step 9 summary. Review-bot wrappers from CodeRabbit, Codex, Gemini Code Assist, and Copilot (bodies like "Here are some automated review suggestions...") commonly appear here -- recognize them by their boilerplate content, drop silently. Only CI/status bot summaries (Codecov) are pre-filtered at the script level; everything else relies on this content-aware check so bot format changes cannot silently hide actionable findings.
 
 If there are no new items across all feedback types, skip steps 3-8 and go straight to step 9.
 
@@ -66,7 +65,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read callers, invariants, the relevant `jj log` history, and PR rationale only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`, `jj log`, and PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -74,7 +73,7 @@ Produce a verdict per item and sort into three lists:
 - **reply-list** — `replied` / `not-addressing` / `declined`. No code change. Compose the reply text now per the rubric (you have the evidence) and carry it to step 7.
 - **human-list** — `needs-human`. Compose `decision_context` now; carry to steps 7 and 9.
 
-Create a task list of all new items with the harness's planning/task capability, tagged with their verdict, so progress is visible.
+Create a task list of all new items (e.g., `TaskCreate` in Claude Code, `update_plan` in Codex) tagged with their verdict, so progress is visible.
 
 **At scale.** If the batch is large (many threads spanning many files) and judging them all inline would overflow your context, process the consolidation in groups (e.g., file-clustered groups of ~8-10 threads), emitting the three lists incrementally. Don't fan the judgment out to subagents to avoid this — batch it instead.
 
@@ -83,8 +82,6 @@ If the fix-list is empty (all verdicts are reply/needs-human), skip steps 4-6 an
 ## 4. Fix (PARALLEL — fix-list only)
 
 Dispatch fixers **only** for fix-list items. Reply-list and human-list items never reach a subagent.
-
-Before dispatching, capture the existing working-copy boundary with `jj status` and `jj diff`. JJ automatically snapshots the workspace before these commands. Record pre-existing changed paths so the later fileset contains only paths reported by fixers and never absorbs unrelated work.
 
 ### Dispatch
 
@@ -125,70 +122,44 @@ Aggregate `files_changed` across every fixer summary. If it's empty, skip steps 
 
 Fixers run only targeted tests on their own changes. This step runs the project's full validation **once** against the combined diff to catch cross-agent interactions that targeted runs can't see.
 
-Before recommending or validating any change description, apply the complete rule at this site: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
-
 1. **Run the project's validation command** (test suite, type check, or whatever the project's active conventions specify). Run once, not per-agent.
 
 2. **Green** -> proceed to step 6.
 
-3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
+3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** describe or push the change.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but require the change description to identify the failing check and state that the failure pre-existed and was not addressed by this PR. At this composition requirement: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and record the pre-existing failure in the JJ change description without prescribing fixed wording.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Describe, Commit, Move the Bookmark, and Push
+## 6. Describe and Push
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
+1. Inspect the working-copy change with `jj status` and `jj diff --summary`. The change to push must contain only files reported by fixers; if it is mixed with unrelated work, use `jj split [files...]` to separate the fixer changes before describing them.
 
-1. Let JJ snapshot the combined edits, then inspect the exact state and repository message conventions:
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-```bash
-jj status
-jj diff -- <FIXER_FILESET>
-jj log -r 'ancestors(@, 20)' --no-graph
-```
+Runtime project instructions and conventions take precedence, and repository history must be inspected with the project's working `jj log` syntax. Apply the Go guidance only where compatible, and only to message quality, clarity, and structure. Do not impose fixed prefixes, types, scopes, wording, examples, or templates.
 
-`<FIXER_FILESET>` is the union of paths reported by fixers, expressed using the fileset syntax supported by the repository's installed JJ version. Exclude every path that was pre-existing or not reported by a fixer. The description must semantically reference the PR number. If step 5 found a pre-existing failure, it must also identify that check and state that it pre-existed and was not addressed by the PR. At this composition requirement: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
-
-2. Inspect the current change before writing its description:
+Compose or edit the JJ description in the editor, then inspect it with `jj log` before pushing:
 
 ```bash
-jj diff -r @ -- <FIXER_FILESET>
-jj log -r @ --no-graph
+jj describe -m '<description-composed-from-runtime-conventions>' REVISION
+jj log -r REVISION
 ```
 
-3. If `@` contains only fixer work, set the dynamically composed description with `jj describe`, then finish the change with `jj commit`. At this composition site: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
-
+2. Move the PR's bookmark to the described revision if needed, then push it through JJ's Git remote interop:
 ```bash
-jj describe -m "<description-composed-from-runtime-conventions>"
-jj commit
+jj bookmark set BOOKMARK -r REVISION
+jj git push --bookmark BOOKMARK
 ```
-
-If unrelated work shares `@`, do not describe or commit that whole change. Commit only the fixer fileset and supply a dynamically composed description. At this composition site: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
-
-```bash
-jj commit <FIXER_FILESET> -m "<description-composed-from-runtime-conventions>"
-```
-
-After either form, the completed fix change is `@-`. Verify it with `jj status`, `jj diff -r @-`, and `jj log -r @- --no-graph`. If the installed JJ syntax differs, adapt to the syntax shown by the runtime repository and JJ while preserving the fileset boundary.
-
-4. Find the existing local bookmark associated with the PR using `jj bookmark list` and PR metadata. Move that bookmark to the completed fix change; do not invent or rename a bookmark when the association is ambiguous. Then push through JJ's Git interoperability:
-
-```bash
-jj bookmark set <PR_BOOKMARK> -r @-
-jj git push --bookmark <PR_BOOKMARK>
-```
-
-Use only the JJ commands specified by this workflow.
 
 ## 7. Reply and Resolve
 
-After the push succeeds, post replies and resolve where applicable. Post for every handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. The mechanism depends on the feedback type.
+After the JJ Git push succeeds, post replies and resolve where applicable. Post for every handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. The mechanism depends on the feedback type.
 
 ### Reply format
 
-All replies quote the relevant part of the original feedback for continuity — the specific sentence or passage, not the entire comment if it's long. Follow the semantic requirements in [references/evaluation-rubric.md](evaluation-rubric.md) for skip verdicts and [references/agents/pr-comment-resolver.md](agents/pr-comment-resolver.md) for `fixed` / `fixed-differently`; neither reference prescribes fixed reply wording.
+All replies quote the relevant part of the original feedback for continuity — the specific sentence or passage, not the entire comment if it's long. The per-verdict templates are in [references/evaluation-rubric.md](evaluation-rubric.md) (skip verdicts) and [references/agents/pr-comment-resolver.md](agents/pr-comment-resolver.md) (`fixed` / `fixed-differently`).
 
 For `needs-human` verdicts, post the natural-sounding reply but do NOT resolve the thread. Leave it open for human input.
 
@@ -218,7 +189,7 @@ if [ ! -f "$SCRIPT_DIR/reply-to-pr-thread" ]; then
   exit 1
 fi
 
-printf '%s' "$REPLY_TEXT" | bash "$SCRIPT_DIR/reply-to-pr-thread" THREAD_ID
+echo "REPLY_TEXT" | bash "$SCRIPT_DIR/reply-to-pr-thread" THREAD_ID
 ```
 Check that the returned comment URL contains the correct `OWNER/REPO` and PR number before proceeding.
 
@@ -265,7 +236,7 @@ The `review_threads` array should be empty (except `needs-human` items).
 
 - **First or second fix-verify cycle**: Repeat from step 2 for the remaining threads.
 
-- **After the second fix-verify cycle** (3rd pass would begin): Stop looping. Surface the recurring area or theme, the fixes already made, and the concern that continues to reappear. Derive the wording from the actual feedback rather than using a fixed sentence. Use the same `needs-human` escalation pattern -- leave threads open and present the pattern for the user to decide.
+- **After the second fix-verify cycle** (3rd pass would begin): Stop looping. Surface remaining issues to the user with context about the recurring pattern: "Multiple rounds of feedback on [area/theme] suggest a deeper issue. Here's what we've fixed so far and what keeps appearing." Use the same `needs-human` escalation pattern -- leave threads open and present the pattern for the user to decide.
 
 PR comments and review bodies have no resolve mechanism, so they will still appear in the output. Verify they were replied to by checking the PR conversation.
 
@@ -273,24 +244,45 @@ PR comments and review bodies have no resolve mechanism, so they will still appe
 
 Present a concise summary of all work done. Group by verdict, one line per item describing *what was done* not just *where*. This is the primary output the user sees — and the place where the gate's decisions become visible: the user can see exactly what was fixed, what was skipped, and why.
 
-Report the PR number and the resolved/new counts, then group items by verdict. For each item, state the outcome rather than applying a fixed sentence prefix. When code changed, include the validation command and result; when a failure was determined to pre-exist, identify it without copying a canned phrase. Omit validation when no code change was committed.
+Format:
 
-When the summary recommends or validates a change description, apply the complete rule at this site: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's full active instructions and runtime change-description conventions observed in `jj log` take precedence. Use compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
+```
+Resolved N of M new items on PR #NUMBER:
+
+Fixed (count): [brief description of each fix]
+Fixed differently (count): [what was changed and why the approach differed]
+Replied (count): [what questions were answered]
+Not addressing (count): [what was skipped and the evidence]
+Declined (count): [what was declined and the harm cited]
+
+Validation: [one line describing the validation result; omit when no code changes were described and pushed]
+```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries a `decision_context` (composed in step 3, or by a fixer's escalation): what the reviewer said, what was investigated, why it needs a decision, concrete options with tradeoffs, and a lean if any.
 
 Present the `decision_context` directly -- it's already structured for the user to decide quickly:
 
-Present each decision context with the quoted feedback, investigation findings, reason a decision is required, options and tradeoffs, and any recommendation. Do not impose a fixed heading or prose template.
+```
+Needs your input (count):
+
+1. [decision_context -- quoted feedback, investigation findings, why it
+   needs a decision, options with tradeoffs, and the recommendation if any]
+```
 
 The `needs-human` threads already have a natural-sounding acknowledgment reply posted and remain open on the PR.
 
 If there are **pending decisions from a previous run** (threads detected in step 2 as already responded to but still unresolved), surface them after the new work:
 
-For each previous pending decision, include its thread path and line, what remains undecided, a link to the previous reply, and the available options or outstanding question. Do not impose a fixed heading or prose template.
+```
+Still pending from a previous run (count):
+
+1. [Thread path:line] -- [brief description of what's pending]
+   Previous reply: [link to the existing reply]
+   [Re-present the decision options if available, or summarize what was asked]
+```
 
 If a blocking question tool is available, use it to ask about all pending decisions (both new `needs-human` and previous-run pending) together. If there are only pending decisions and no new work was done, the summary is just the pending items.
 
-Use the harness's blocking-question capability to present the decisions and wait for the user's response. After they decide, process the remaining items: fix the code, compose the reply, post it, and resolve the thread.
+Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Use it to present the decisions and wait for the user's response. After they decide, process the remaining items: fix the code, compose the reply, post it, and resolve the thread.
 
-Fall back to presenting the decisions in the summary output and waiting in conversation only when no blocking capability exists in the harness or the call errors. Never silently skip. If the user doesn't respond, the items remain open on the PR for later handling.
+Fall back to presenting the decisions in the summary output and waiting in conversation only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip. If the user doesn't respond, the items remain open on the PR for later handling.

@@ -1,54 +1,37 @@
-# Bookmark creation from the default bookmark
+# Feature bookmark creation from the default bookmark
 
-Read this reference whenever the full workflow starts from the default bookmark or must choose whether local default-bookmark changes belong in the PR. Its result is an explicit base revision, head bookmark name, and correctly based working-copy change.
-
-Local `<base>` may contain changes absent from `<base>@<remote>` because another workspace advanced it or because the user intentionally created local work there. JJ exposes the topology, but it cannot infer ownership or intent. Ask when local-only changes are present.
+The local default bookmark may be stale or may point to local-only changes the user intends to preserve separately. JJ changes and workspaces make those states visible, but intent still requires a question when local-only changes are present.
 
 ## Decision flow
 
-### 1. Fetch the remote base
-
-Resolve the intended fetch remote from `jj git remote list`, then run:
+### 1. Fetch the remote default bookmark
 
 ```bash
-jj git fetch --remote <base-remote>
+jj git fetch --remote origin --branch <base>
 ```
 
-Confirm `<base>@<base-remote>` exists with `jj bookmark list --all-remotes`. If fetch fails because of authentication, connectivity, or a missing remote, use the fallback below.
+If fetch fails (network, auth, no remote), use the fallback at the bottom.
 
-### 2. Check local-only default-bookmark changes
-
-Inspect the local default bookmark relative to its remote counterpart:
+### 2. Inspect local-only changes
 
 ```bash
-jj log -r '<base>@<base-remote>..<base>' --no-graph
+jj log -r '<base>@origin..<base>'
 ```
 
-- **Empty output:** set `<base-revision>` to `<base>@<base-remote>`.
-- **Non-empty output:** show the changes and ask whether they belong in the new PR.
-- **Carry forward:** set `<base-revision>` to `<base>` so those local changes remain ancestors of the feature work.
-- **Leave on the default bookmark:** set `<base-revision>` to `<base>@<base-remote>` and move only the current working-copy change onto it in Step 3.
+- **Empty output:** use `<base>@origin` as the fresh base and proceed to step 3.
+- **Non-empty output:** show the changes and ask (per the "Asking the user" convention in `SKILL.md`):
 
-Never choose silently. Carrying unrelated local changes into a PR is more harmful than asking again.
+  > "The local default bookmark has <count> local-only changes. Should the feature include them, or should they remain separate from the feature?"
 
-If the local bookmark is conflicted, stop and surface both targets from `jj bookmark list --all-remotes`. Do not move or push a conflicted bookmark.
+  - **Include them** — retain them in the feature ancestry. The feature bookmark will point to the final intended feature change.
+  - **Keep them separate** — identify the feature stack in `jj log` by change ID, then rebase that stack onto `<base>@origin` with `jj rebase -s <feature-root-change> -d <base>@origin`. Do not move or abandon the local-only changes.
 
-### 3. Base the working-copy change safely
+  Never default silently. Including unrelated changes in a PR is worse than asking again.
 
-Bookmarks do not become active and do not move with new JJ changes. Record a non-conflicting `<head-bookmark>` derived from the work's purpose, but create or move it only after Step 3 of `SKILL.md` identifies the completed stack head.
+### 3. Verify the feature stack
 
-Inspect `jj status`, `jj diff`, and the parents of `@`. If `@` is already based on `<base-revision>`, preserve it. Otherwise move only the working-copy change, leaving unwanted local default-bookmark ancestors behind:
-
-```bash
-jj rebase -s @ -o <base-revision>
-```
-
-Jujutsu records rebase conflicts as first-class state and completes the operation. If `jj status` reports conflicts, resolve mechanical conflicts with `jj resolve` or direct edits. A semantic conflict that requires intent is a blocker to surface, not a reason to discard the working-copy change.
-
-Do not create auxiliary snapshots or pointers outside JJ. The working-copy change already preserves uncommitted content while JJ changes its parent.
-
-After the final content change is finished, `SKILL.md` creates or advances the explicit head bookmark at the actual stack head and publishes only that bookmark through `jj git`.
+Run `jj status`, `jj diff`, and `jj log -r '<base>@origin..<head-change>'`. If a rebase produced conflicts, surface `jj status` and the affected change IDs; do not auto-resolve. Create the feature bookmark only after the intended stack and head are unambiguous, using `jj bookmark create <bookmark> -r <head-change>`.
 
 ## Fetch failure fallback
 
-When fresh remote state cannot be obtained, preserve the current JJ topology and use the current parent of `@` as `<base-revision>`. Do not move the default bookmark or claim it is current. Continue only if the intended head bookmark and PR range remain unambiguous, and report that base freshness was not verified. If the missing remote state makes the PR range ambiguous, stop and ask rather than guessing.
+If `jj git fetch` fails, retain the current change ancestry and create the feature bookmark at the intended head. Note in the user-facing summary that base freshness was not verified. Skip the local-only comparison because `<base>@origin` is not known to be fresh.

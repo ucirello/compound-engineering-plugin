@@ -1,7 +1,7 @@
 ---
 name: ce-simplify-code
 description: "Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving behavior. Use for tidy/refactor passes; use ce-debug for bugs."
-argument-hint: "[blank to simplify the current JJ revision stack, or describe what to simplify]"
+argument-hint: "[blank to simplify the current JJ change stack, or describe what to simplify]"
 ---
 
 Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
@@ -11,14 +11,15 @@ Simplify recently changed code for clarity, reuse, quality, and efficiency while
 Resolve the simplification scope in this order:
 
 1. **If the user explicitly named a scope** (a file, a directory, "the function I just wrote", "the changes from this morning"), use that scope. Treat user-named scope as authoritative — do not widen it.
-2. **Otherwise, in a JJ workspace**, run `jj status` to inspect the working-copy revision and conflicts, then inspect the current stack with `jj log -r 'trunk()..@'`. Default to the aggregate content diff from the stack's fork-point revision through the working-copy revision: `jj diff --from 'fork_point(trunk() | @)' --to @`. The configured `trunk()` revset normally resolves the repository's upstream trunk bookmark. If it does not identify the project's integration line, inspect `jj bookmark list --all-remotes`, select the project-appropriate local or remote bookmark, and substitute that bookmark for `trunk()` in both revsets. This covers "simplify everything in my current stack before opening a PR," whether or not a feature bookmark points to it. If no appropriate trunk bookmark can be resolved, fall back to the working-copy revision's own changes with `jj diff -r @`.
-3. **Outside a JJ workspace or when the resolved JJ diff is empty**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
+2. **Otherwise, in a JJ workspace**, default to the diff for the current change stack relative to its base. Resolve the stack and base with the project's active JJ revset conventions, inspecting history with `jj log` and the resulting changes with `jj diff`. This covers the common case of simplifying everything added to a stack before opening a PR. If no stack base can be resolved, fall back to the current working-copy change with `jj diff -r @`.
+3. **For GitHub PR scope or Git interoperability**, retain `gh` and JJ's Git interoperability where they provide authoritative PR metadata, diffs, refs, or remote state. Do not replace a JJ-native local workflow with standalone Git commands.
+4. **Outside a JJ workspace or when no diff is available**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
 
-If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the platform's blocking question capability when available. Fall back to numbered options in chat only when no blocking question capability exists in the harness or the call errors. Never silently skip the question.
+If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
 ## Step 2: Launch 3 review agents in parallel
 
-Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via the platform's subagent primitive where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full JJ revision diff or file set) so it has complete context:
+Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set) so it has complete context:
 
 - `references/personas/code-reuse-reviewer.md` — existing utilities, duplicated functionality, reimplemented stdlib/runtime primitives.
 - `references/personas/code-quality-reviewer.md` — redundant state, parameter sprawl, copy-paste, leaky abstractions, stringly-typed code, dead code, over-nesting, and the over-simplification balance guard.
@@ -28,7 +29,7 @@ Do not paraphrase these rubrics from memory — read each file and pass it verba
 
 **Bounded dispatch.** Queue the three reviewers and launch only as many as the harness accepts at once; treat a concurrency/active-agent-limit error as backpressure (leave the reviewer queued and retry after a slot frees), not as reviewer failure.
 
-**Model selection.** Use the platform's balanced mid-tier model for these reviewers when the current harness exposes a known model or custom-agent override. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
+**Model selection.** Use the platform's mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class; in Codex use the current mini/mid-tier model exposed by `spawn_agent` when known. On platforms where the model-override parameter is unavailable or the model name is unknown or unrecognized, omit the override -- a working pass on the parent model beats a broken dispatch.
 
 **Permission mode.** Omit the `mode` parameter on the dispatch call so the user's configured permission settings apply.
 
@@ -51,12 +52,14 @@ The premise of this skill is that simplification preserves exact functionality. 
 - Broaden scope when the change has obvious wide reach — e.g., a heavily-imported utility was rewritten, or the code-quality reviewer's consolidation/dedup fixes modified shared code. This is a judgment call about ripple risk, not a mechanical rule.
 - If the test runner has no scoping mechanism, run the full suite.
 
-Surface any failure clearly with the failing check name and the relevant output. Do not relax assertions, weaken type signatures, or skip tests to make checks pass — that defeats the "preserves functionality" guarantee. Either fix the underlying break introduced by simplification, or undo the specific simplification that caused the regression.
+Surface any failure clearly with the failing check name and the relevant output. Do not relax assertions, weaken type signatures, or skip tests to make checks pass — that defeats the "preserves functionality" guarantee. Either fix the underlying break introduced by simplification, or revert the specific change that caused the regression.
 
 If no test suite, lint, or typecheck is configured, state that explicitly in the summary; do not silently skip verification.
 
 ## Step 5: Summarize
 
 Briefly summarize what was good vs improved and fixed, including which checks were run and their results. If there were no findings to act on, confirm the code didn't require any changes.
+
+When composing or revising the change description, use this precedence: the project's runtime instructions, the project's established `jj log` and revset conventions, then repository history. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Treat `git log` here as history inspection through JJ/Git interoperability, not as a replacement for the JJ workflow. For Go changes, apply compatible Go quality guidance only where it agrees with the project's instructions and established history. Do not impose fixed syntax, examples, or templates; use neutral placeholders when discussing variable content.
 
 **Quantify the impact by dimension.** Report what was actually applied, not a line count: fixes applied per reviewer dimension (reuse, quality, efficiency), how many findings were skipped as false-positive or not worth addressing, and the behavior-preservation result (checks run and outcome). For example: "Applied 6 — reuse 2, quality 3, efficiency 1; skipped 2 false positives; typecheck + lint clean, 11 scoped tests pass." Do not headline a net-lines-removed figure or frame fewer lines as the win — many clarity, safety, and efficiency fixes preserve or add lines. The measure is what improved and that behavior held, not how much code shrank.

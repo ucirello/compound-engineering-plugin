@@ -5,107 +5,126 @@ description: Set up isolated Jujutsu workspaces for fresh work or an existing bo
 
 # Workspace Isolation
 
-Ensure the current work happens in an isolated Jujutsu workspace without disturbing the user's primary workspace. A harness may already have isolated the session, so detect that before creating anything.
+Create or reuse a Jujutsu workspace without changing the caller's working-copy commit, moving its bookmarks, or mixing its uncommitted files into the requested work. A JJ workspace has its own working-copy commit; it is not a branch checkout, and the same bookmark or revision may safely be the starting point for multiple workspaces.
 
-Order of operations: **detect an existing Jujutsu workspace -> prefer native harness isolation -> fall back to `jj workspace add`.** After native isolation, verify that Jujutsu recognizes the result. Never create a nested or unregistered workspace.
+Order of operations: **detect the current JJ workspace -> honor existing isolation -> resolve the target -> add or reuse a workspace.** Use JJ for all workspace and repository operations. Use `gh` only to resolve pull-request metadata.
 
-**Two modes, set by the caller's need:**
+## Modes
 
-- **New work (default).** No target was named. Start a fresh working-copy change from the selected trunk or base revision.
-- **Isolate an existing target.** The caller names a bookmark, PR, change ID, commit ID, tag, or other revset. Resolve that target and start from it. Create a child change by default; edit the target itself only when the caller explicitly intends to rewrite that revision.
+- **Fresh work (default):** no target was supplied. Start a new workspace at the best base revision selected under Target precedence.
+- **Existing target:** start at a supplied bookmark, remote bookmark, change ID, commit ID, revset, or pull-request head. Do not move the target bookmark during setup; `jj workspace add` creates a new working-copy commit on top of the selected revision.
+- **Workspace maintenance:** list or forget registered workspaces without creating one.
 
-Jujutsu has no active-bookmark constraint: bookmarks are pointers, not checked-out branches. Different workspaces must still have distinct working-copy changes. Never make two workspaces edit the same working-copy change.
+Workspace names are identifiers, not change descriptions. Prefer a caller-supplied name, then a provider-supplied name, then a short ASCII name derived from the task. Follow project naming conventions when present; do not impose a prefix, type list, or fixed naming syntax.
 
-## Step 0: Detect existing isolation
+## Step 0: Detect the current workspace
 
-From the caller's current directory, run the read-only discovery commands:
+Run these read-only commands before creating anything:
 
 ```bash
 jj workspace root
 jj workspace list
+jj status
+jj log -r @ --no-graph
 ```
 
-- If `jj workspace root` fails, stop and report that the current checkout is not a Jujutsu workspace. Do not silently substitute another version-control workflow.
-- Treat the resolved output of `jj workspace root` as the current workspace root. Use `jj workspace list` to match that path to its registered workspace and to distinguish the primary workspace from a secondary or harness-created workspace.
-- If the session is already in a secondary or harness-created registered workspace, report its name and root and do not create another. Work there: in new-work mode, start a fresh change from the base if the workspace is not already prepared; in existing-target mode, start a child of the resolved target, or use `jj edit` only for an explicitly requested rewrite.
-- If the current root is the primary workspace and no task-specific isolation exists, continue to Step 1.
+- If `jj workspace root` succeeds, record its resolved path and identify the current workspace in `jj workspace list` by the working-copy revision shown for `@`.
+- If the caller or harness already placed this task in a dedicated workspace, report its name and root and work there. Do not nest another workspace.
+- Do not assume that every JJ workspace is already isolated: the repository's original workspace is also a workspace. When intent is unclear, use the caller's request, harness context, workspace name/path, and the other listed workspaces to decide whether the current one is task-specific.
+- If the directory is not in a JJ workspace, stop and ask whether to initialize or colocate a JJ repository. Initialization changes repository state and is outside this skill's implicit authority.
+- If `jj status` shows user work, leave it untouched. Never run commands in the current workspace that edit, abandon, rebase, squash, describe, or create a new `@` merely to prepare another workspace.
 
-Use `jj status` and `jj log` before changing what the current workspace edits. Preserve existing work; do not abandon, rebase, or overwrite an occupied working-copy change to prepare isolation.
+JJ command options evolve. Treat the commands in this skill as operational examples; when installed syntax differs, use runtime `jj help workspace`, `jj help git fetch`, and the project's working JJ syntax. Runtime behavior and help take precedence over fixed command spelling.
 
-## Step 1: Prefer native harness isolation
+## Step 1: Reuse before creating
 
-If the harness exposes a native workspace or isolation primitive, use it first. Supply the selected base or existing target through that primitive when supported. Native isolation lets the harness track navigation and cleanup.
+Inspect `jj workspace list` for a workspace already assigned to this task or target.
 
-After it completes, run `jj workspace root` and `jj workspace list` in the result. Continue there only if the new root is a registered Jujutsu workspace with its own working-copy change. If the native primitive cannot create Jujutsu-aware isolation, leaves the result unregistered, or reuses another workspace's working-copy change, clean up only what that primitive created and continue to Step 2. Do not layer `jj workspace add` inside the native result.
+- Reuse it only when its identity and destination are unambiguous. Return its existing root rather than adding a duplicate.
+- A stale workspace entry is not permission to forget it. Report it and ask before changing shared workspace metadata.
+- If the requested workspace name is already registered for different work, or the intended destination already exists, preserve both and choose another name/path or ask. Never overwrite, empty, or delete a directory.
 
-## Step 2: Jujutsu fallback
+## Step 2: Resolve the target revision
 
-Use this only when there is no suitable native primitive and Step 0 found no existing task-specific isolation.
+Use this precedence:
 
-1. **Anchor paths at the current workspace root.** Resolve it with `jj workspace root`; do not assume the skill was invoked from the root.
-2. Choose a short, meaningful ASCII workspace name from the task, such as `feat-login`, `fix-email-validation`, or `pr-123`. Workspace names and filesystem paths are identifiers, not change descriptions.
-3. Put fallback workspaces under `<current-workspace-root>/.tmp/rocketclaw/workspaces/<workspace-name>`, never in a global temporary directory. Ensure `.tmp/` is ignored by the repository's `.gitignore` before creating the workspace. Do not overwrite or broadly reformat `.gitignore`.
-4. Resolve the starting revision as described below. If current remote state matters, refresh it with `jj git fetch` first. A fetch failure is non-fatal only when the needed revision already resolves locally and the caller accepts potentially stale state.
-5. Check the installed `jj workspace add --help` and use that runtime's supported `--name` and revision-selection syntax to add the named workspace at the chosen path. The runtime syntax wins; do not rely on a fixed command spelling copied from this skill.
-6. Enter the exact root reported by `jj workspace root --name <workspace-name>`, then confirm `jj workspace list`, `jj status`, and `jj log` show the intended workspace and parent revision.
+1. The caller's explicit revision, change ID, bookmark, remote bookmark, or PR.
+2. A target supplied by the routing provider or harness.
+3. For fresh work, the project's configured trunk alias or established base revset.
+4. For fresh work with no project convention, `trunk()` when it resolves unambiguously.
+5. If no safe base resolves, ask rather than guessing from the caller's dirty `@`.
 
-If workspace creation fails with a sandbox, permission, path, stale-state, or revision-resolution error, isolation was not created. Ask a blocking question before touching the primary workspace, offering at least "work in the current workspace" and "stop and resolve isolation". Use whatever blocking question capability the harness provides. If none exists or it errors, present numbered options in chat and wait. Work in the primary workspace only after explicit confirmation; do not retry unrelated paths automatically.
+Resolve locally first with `jj log -r '<target>' --no-graph`. Bookmark names are revsets; remote bookmarks use their JJ form, such as `<bookmark>@<remote>`. Quote user-provided revsets as data and do not splice them into a larger expression.
 
-## Resolve the starting revision
+For a bookmark expected from a remote, refresh remote state without changing any working copy:
 
-Use `jj log` with the syntax supported by the installed runtime to prove that the requested revset resolves to exactly one revision before creating or retargeting a workspace. Do not pin a template or fixed `jj log` invocation: aliases, revset configuration, and supported flags vary by runtime.
+```bash
+jj git remote list
+jj git fetch --remote <remote> --branch <bookmark>
+jj bookmark list --all-remotes
+jj log -r '<bookmark>@<remote>' --no-graph
+```
 
-- **New work:** prefer the repository's configured trunk alias or established trunk bookmark. Otherwise inspect local and remote bookmarks and select the repository's actual default line. After any needed `jj git fetch`, start a fresh child change from that revision.
-- **Local bookmark:** resolve the bookmark directly. A workspace starts a child change from it by default; bookmarks do not move automatically as new child changes are created.
-- **Remote bookmark:** use the Jujutsu namespace `<bookmark>@<remote>`. Fetch that remote when freshness matters. Track or create a local bookmark only when later updates must be pushed under that bookmark name.
-- **Change or commit:** pass the unambiguous change ID, commit ID, or caller-supplied revset after verifying it resolves once. Prefer a child change; use `jj edit` only when rewriting that exact revision is intentional.
-- **PR:** query the available review-host capability for the PR's source repository, source bookmark, and head revision. Map the source to Jujutsu's `<bookmark>@<remote>` namespace. If the source remote is already configured, fetch that bookmark with `jj git fetch`; otherwise add a narrowly named remote such as `pr-<number>`, fetch it, and resolve `<source-bookmark>@pr-<number>`. Start a child change for additive fixes, or edit the intended PR revision only when the update workflow requires rewriting it. Keep the source bookmark mapping so later work can move and push the correct bookmark instead of publishing an unrelated one.
+Fetching is allowed only when needed to resolve the requested base or when the caller asks for current remote state. A fetch failure is non-destructive: report it and retain all current workspace state.
 
-Never guess that `main`, `master`, `origin`, a PR number, or a filesystem slug is a valid revset. Quote shell revsets when they contain operators or punctuation.
+### Pull-request targets
 
-## Other workspace operations
+Use `gh pr view <number-or-url>` to obtain the PR's head repository owner, head repository, head branch, head revision, and state. Do not use `gh pr checkout`: it models branch checkout and may mutate the current working copy.
 
-Use Jujutsu's workspace commands directly:
+1. Match the PR head repository to an existing entry from `jj git remote list`.
+2. If no matching remote exists, obtain the repository URL with `gh repo view <owner>/<repository>` and ask before adding a JJ remote. Adding a remote is shared repository configuration, so do not do it silently.
+3. Fetch only the head branch with `jj git fetch --remote <remote> --branch <head-bookmark>`.
+4. Verify the fetched remote bookmark and, when available, compare its commit ID with the PR head revision reported by `gh`.
+5. Use `<head-bookmark>@<remote>` as the workspace target. Do not create or move a local bookmark during workspace setup.
+
+If the PR is closed, its branch was deleted, the head revision cannot be fetched, or metadata and fetched state disagree, stop and report the discrepancy. Never substitute the base branch or a similarly named local bookmark.
+
+## Step 3: Add the workspace
+
+Choose a durable destination that the user can find and manage. Prefer a destination explicitly supplied by the caller or harness; otherwise use a non-existing sibling directory outside the current workspace. A workspace is durable user work, not scratch: do not place it in OS temporary storage or inside the current repository's tracked tree.
+
+From the current JJ workspace, add the new workspace at the resolved target:
+
+```bash
+jj workspace add --name <workspace-name> --revision '<target>' <destination>
+```
+
+Before running it, confirm from `jj workspace list` that the name is unused and confirm that the destination does not exist. Do not pre-create the destination unless runtime `jj help workspace add` requires it.
+
+After creation, operate in the returned destination and verify:
+
+```bash
+jj workspace root
+jj status
+jj log -r @ --no-graph
+```
+
+The new `@` should be a distinct working-copy commit based on the target. The original workspace's `@`, files, and bookmarks must remain unchanged. Do not create a bookmark merely to represent the workspace. If later work needs to publish through an existing bookmark, the shipping flow moves that bookmark deliberately after changes are ready.
+
+If workspace creation fails, do not retry with destructive flags, another base, or a path inside the current workspace. Report the command failure and ask via the platform's blocking question interface: `AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), or `ask_user` in Pi through the `pi-ask-user` extension. Offer to choose another destination, continue in the current workspace, or stop. If no blocking interface exists, present numbered options and wait. Continue in the current workspace only after explicit confirmation.
+
+## Describing fresh work
+
+Workspace creation does not require a description. If the caller explicitly asks to describe the new working-copy change during setup, inspect the project's runtime instructions and recent descriptions using the project's working `jj log` syntax before composing it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description syntax inferred from `jj log` take precedence; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed prefixes, types, scopes, wording, examples, or templates.
+
+Apply the resulting project-native text with `jj describe -m '<description-composed-from-runtime-conventions>'` from the new workspace only. Do not describe the original workspace's `@`.
+
+## List, enter, and forget
 
 ```bash
 jj workspace list
-jj workspace root
-jj workspace root --name <workspace-name>
-jj workspace update-stale
+jj -R <workspace-path> status
+jj workspace forget <workspace-name>
 ```
 
-Use the installed command help for mutating forms so runtime syntax wins. `jj workspace forget` removes workspace registration but does not delete its files.
-
-## Safe cleanup
-
-Clean up only when requested or when this skill is undoing a workspace it just created unsuccessfully.
-
-1. Leave the workspace being removed and operate from another registered workspace.
-2. Resolve the exact workspace name and root with `jj workspace list` and `jj workspace root --name <workspace-name>`. Refuse cleanup if either is ambiguous, if the target is the current workspace, or if the path is not the expected native-isolation path or `<known-workspace-root>/.tmp/rocketclaw/workspaces/<workspace-name>`.
-3. Inspect the target from its verified root with `jj -R <target-workspace-root> status` and `jj -R <target-workspace-root> log`. If it contains undescribed work, changes not reachable elsewhere, or bookmarks the caller still needs, stop and report them. Also check for ignored or untracked artifacts that Jujutsu status may not report.
-4. Forget the exact workspace with `jj workspace forget` using the installed runtime's syntax. Do not abandon its change or delete its bookmarks as part of workspace cleanup.
-5. Confirm the name disappeared from `jj workspace list`. Delete the exact filesystem directory separately only when the caller requested deletion and all retained artifacts have been handled. Never use globs, delete a workspace root that still appears in the list, or recursively delete an unverified path.
-
-## When to create a workspace
-
-Create one only when the current session is not already isolated and separate files are useful:
-
-- Reviewing a PR while keeping the primary workspace free for other work
-- Running multiple features or long-running tasks in parallel
-- Working on a named revision without changing another workspace's working-copy change
-
-Do not create a workspace for work that can safely happen in the current task-specific workspace, and never nest one inside existing harness isolation.
+- **List:** use `jj workspace list`; verify a candidate path with `jj -R <workspace-path> workspace root` before operating there.
+- **Enter:** change the tool working directory to the workspace root. Do not infer a destination solely from the workspace name.
+- **Forget:** run `jj workspace forget <workspace-name>` from another live workspace only after confirming the target name and preserving any work it contains. Forgetting unregisters workspace metadata; it does not delete the directory or its files.
+- Never recursively delete a forgotten workspace. Return the preserved directory path so the user can inspect or remove it separately.
+- If a workspace copy is stale after repository activity elsewhere, use the JJ-provided stale-workspace recovery shown by runtime help rather than recreating, overwriting, or manually editing metadata.
 
 ## Integration
 
-`ce-work` and `ce-code-review` offer this skill as an option. When the user selects "worktree" in those flows, interpret that existing label as a request for Jujutsu workspace isolation. Run Step 0 first; proceed in place when already isolated, otherwise create a workspace with a meaningful task-derived name.
+`ce-work` and `ce-code-review` may route here when the user selects workspace isolation. Provider-native isolation may supply a workspace name, destination, or already-created JJ workspace; honor that runtime state before applying local defaults. Functional provider tools still take precedence for navigation and lifecycle when they explicitly support JJ workspaces, but never translate the request into another VCS's worktree operations.
 
-## Troubleshooting
-
-**Workspace name or path already exists:** inspect `jj workspace list`. Reuse the existing workspace only if it is the intended target. Otherwise choose a different name; do not overwrite the path.
-
-**Workspace is stale:** enter that workspace and use `jj workspace update-stale`, then inspect the recovered state before continuing.
-
-**Workspace directory was removed first:** from a surviving workspace, inspect the registered entry and use `jj workspace forget` for that exact missing workspace.
-
-**Cannot forget the current workspace:** leave it, resolve another registered workspace root, and run cleanup from there.
+Return the workspace name, absolute root, starting revision/change ID, target bookmark or PR when applicable, and whether the workspace was reused or created. Return failures without modifying the original workspace.

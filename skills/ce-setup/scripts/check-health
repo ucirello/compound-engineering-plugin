@@ -12,6 +12,7 @@ set -o pipefail
 deps=(
   "agent-browser|CI=true npm install -g agent-browser --no-audit --no-fund --loglevel=error && agent-browser install|https://github.com/vercel-labs/agent-browser|browser testing, dogfood QA, and visual polish inspection"
   "gh|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q gh|https://cli.github.com|GitHub PR, issue, and review workflows"
+  "jj|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q jj|https://jj-vcs.github.io/jj/|Jujutsu workspace and Git interoperability workflows"
   "jq|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q jq|https://jqlang.github.io/jq/|JSON inspection in shell-based workflows"
   "ast-grep|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q ast-grep|https://ast-grep.github.io|syntax-aware structural code search"
   "ffmpeg|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q ffmpeg|https://ffmpeg.org/download.html|media chunking and screenshot extraction for Riffrec analysis"
@@ -33,14 +34,14 @@ done
 #  Helpers
 # =====================================================
 
-ok()      { echo "  🟢  $1"; }
-warn()    { echo "  🟡  $1"; }
-skip()    { echo "  ➖  $1"; }
+ok()      { echo "  [OK]    $1"; }
+warn()    { echo "  [WARN]  $1"; }
+skip()    { echo "  [SKIP]  $1"; }
 detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_workspace=$(jj root >/dev/null 2>&1 && echo "yes" || echo "no")
+in_workspace=$(jj workspace root >/dev/null 2>&1 && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -64,28 +65,28 @@ for entry in "${deps[@]}"; do
 done
 
 # =====================================================
-#  Project checks (JJ workspace only)
+#  Project checks (Jujutsu workspace only)
 # =====================================================
 
 legacy_cfg="skip"
-workspace_cfg_ignore="skip"
+workspace_cfg_ignored="skip"
 local_cfg="skip"
 example_cfg="skip"
 project_issues=0
 
 if [ "$in_workspace" = "yes" ]; then
-  workspace_root=$(jj root 2>/dev/null)
+  workspace_root=$(jj workspace root 2>/dev/null)
   legacy_cfg="missing"
   [ -f "$workspace_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$workspace_root/.rocketclaw/config.local.yaml" ]; then
     local_cfg="present"
-    listed_cfg=$(jj -R "$workspace_root" file list ".rocketclaw/config.local.yaml" 2>/dev/null)
-    if [ $? -eq 0 ] && [ -z "$listed_cfg" ]; then
-      workspace_cfg_ignore="ok"
+    listed_config=$(cd "$workspace_root" && jj file list ".rocketclaw/config.local.yaml" 2>/dev/null)
+    if [ -z "$listed_config" ]; then
+      workspace_cfg_ignored="ok"
     else
-      workspace_cfg_ignore="missing"
+      workspace_cfg_ignored="missing"
     fi
   fi
 
@@ -139,10 +140,10 @@ if [ "$in_workspace" = "yes" ]; then
 
   if [ "$local_cfg" = "present" ]; then
     ok ".rocketclaw/config.local.yaml exists"
-    if [ "$workspace_cfg_ignore" = "ok" ]; then
-      ok "Local config is ignored by JJ"
+    if [ "$workspace_cfg_ignored" = "ok" ]; then
+      ok "Local config is gitignored"
     else
-      warn "Local config is not safely ignored by JJ"
+      warn "Local config is not safely gitignored"
       project_issues=$((project_issues + 1))
     fi
   else
@@ -160,14 +161,14 @@ if [ "$in_workspace" = "yes" ]; then
   fi
 else
   section "Project config"
-  skip "Not inside a JJ workspace"
+  skip "Not inside a Jujutsu workspace"
 fi
 
 echo ""
 if [ "$project_issues" -eq 0 ]; then
-  echo " ✅  Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " [OK] Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
 else
-  echo " ⚠️   ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " [WARN] ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
 fi
 
 if [ "$capability_missing" -gt 0 ]; then

@@ -9,7 +9,7 @@ This template is used by the orchestrator to dispatch each experiment to a subag
 ```
 You are an optimization experiment worker.
 
-Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. You do NOT run the measurement harness, finalize the working-copy change, or evaluate results -- the orchestrator handles all of that.
+Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. You do NOT run the measurement harness, describe the JJ change, or evaluate results -- the orchestrator handles all of that.
 
 <experiment-context>
 Experiment: #{iteration} for optimization target: {spec_name}
@@ -55,9 +55,9 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 2. Implement the hypothesis described above
 3. Make your changes focused and minimal -- change only what is needed for this hypothesis
 4. Do NOT run the measurement harness (the orchestrator handles this)
-5. Do NOT run `jj commit` or `jj describe` (the orchestrator handles the winning change if this experiment succeeds)
+5. Do NOT describe the JJ change (the orchestrator handles the winning change before integration)
 6. Do NOT modify files outside the mutable scope
-7. When done, run `jj diff --stat` so the orchestrator can see your changes
+7. When done, run `jj diff --stat -r @` so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.
@@ -83,7 +83,7 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 ## Notes
 
 - This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch: resolve `<workspace-root>` with `jj workspace root` (fall back to the current directory when JJ is unavailable), atomically write the filled template under `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/prompts/` after creating its parent directories, and redirect it to `codex exec -` via stdin.
+- For Codex dispatch: set `workspace_root=$(jj workspace root 2>/dev/null || pwd -P)`, write the filled template under `$workspace_root/.tmp/rocketclaw/ce-optimize/prompts/`, and pipe it via stdin to `codex exec --skip-git-repo-check - 2>&1`.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

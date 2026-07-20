@@ -14,6 +14,10 @@ Run the whole thing as **one** command. Shell variables do not survive between s
 
 ```bash
 PORT=3000   # replace 3000 with the preferred port from step 4
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
+TMP_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-browser"
+mkdir -p "$TMP_DIR"
+LOG_FILE="$TMP_DIR/dev-server-${PORT}.log"
 
 # scan upward to the first free port
 find_free_port() {
@@ -24,6 +28,7 @@ find_free_port() {
   echo "$p"
 }
 PORT=$(find_free_port "$PORT")
+LOG_FILE="$TMP_DIR/dev-server-${PORT}.log"
 echo "Using dev server port: $PORT"
 
 WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)

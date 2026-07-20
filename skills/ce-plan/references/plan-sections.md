@@ -125,7 +125,7 @@ write the plan.
 
 **Skip implementation-ready plan creation only when ALL of these hold:**
 
-- The work is **atomic** — fits in one JJ change, no meaningful unit boundaries
+- The work is **atomic** — fits in one Jujutsu change, no meaningful unit boundaries
   to break out independently.
 - There are **no design choices that constrain implementation** — no
   Key Technical Decisions worth recording. If the work needs the implementer
@@ -157,8 +157,11 @@ vs. genuine skip cases:
   bump introduces breaking changes that warrant unit-by-unit migration).
 
 When skipping the plan doc, the work proceeds directly to `ce-work` or to
-implementation, and any decisions made along the way land in the JJ change
+implementation, and any decisions made along the way land in the Jujutsu change
 description or `docs/solutions/` if they're worth carrying forward.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+For Jujutsu descriptions, runtime project instructions and the description syntax visible through `jj log` take precedence. Apply the Go guidance only where it is compatible, using it for quality, clarity, and structure rather than imposing fixed prefixes, types, scopes, messages, examples, or templates.
 
 ## Implementation-ready hard floor
 
@@ -330,20 +333,17 @@ plan.
 
 ### Required
 
-- **`title`** — the plan's descriptive name with a ` - Plan` suffix
-  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
+- **`title`** — the plan's descriptive name with the repository's plan-title marker, if any, matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
-  across readiness states (it is a plan at every stage). Do not put a
-  conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
-  carries that classification.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  plan's intent for downstream tooling without prescribing message syntax.
+  across readiness states (it is a plan at every stage). Do not impose a
+  prefix that the repository does not use.
+- **`type`** — the repository-defined category for this work. Infer it from
+  active project conventions and vocabulary rather than a fixed list.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from `jj status`, `jj diff`, and `jj log`, not stored in the doc. Do not
+whether a plan shipped is derived from Jujutsu, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -362,7 +362,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the bookmark/test/JJ-change/CI lifecycle); absent or `code` routes
+  skipping the workspace/test/change/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.
@@ -383,11 +383,10 @@ These apply regardless of rendering format.
 - **Plain prefix.** `R1.`, `U1.` as bullet prefixes. Do not bold; the prefix
   is visually distinctive on its own.
 - **Repo-relative paths.** Always. Never absolute paths in plan content;
-  they break portability across machines, JJ workspaces, teammates.
+  they break portability across machines, workspaces, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
-  metadata belongs in JJ change descriptions and tool output, not the artifact.
-
+  metadata belongs in Jujutsu change descriptions and tool output, not the artifact.
 - **Group Requirements by concern when they span distinct logical areas.**
   The trigger is distinct concerns, not item count — even four requirements
   benefit from grouping if they cover three different topics. Skip grouping

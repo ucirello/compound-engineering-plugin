@@ -1,6 +1,6 @@
 # Persona Catalog
 
-13 reviewer personas organized into always-on, cross-cutting conditional, and stack-specific conditional layers, plus local prompt assets.
+13 reviewer personas organized into always-on, cross-cutting conditional, and stack-specific conditional layers, plus local prompt assets. The orchestrator uses this catalog to select which reviewers to spawn for each review.
 
 ## Always-on (4 structured personas + 2 local prompt assets)
 
@@ -45,7 +45,7 @@ These reviewers cover runtime behavior the always-on personas do not specialize 
 | `julik-frontend-races` | `julik-frontend-races-reviewer` | Stimulus/Turbo controllers, DOM event wiring, timers, async UI flows, animations, or frontend state transitions with race potential |
 | `swift-ios` | `swift-ios-reviewer` | Swift files, SwiftUI views, UIKit controllers, `.entitlements`, `PrivacyInfo.xcprivacy`, `.xcdatamodeld`, `Package.swift`, `Package.resolved`, storyboards, XIBs, or semantic build-setting / target-membership / code-signing changes in `.pbxproj` |
 
-## Conditional Local Prompt Assets
+## Conditional Local Prompt Assets (migration-specific)
 
 Use `deployment-verification-agent` when the migration-artifact gate applies **and** the change is risky (destructive DDL, backfills, NOT NULL without default, column renames/drops). Schema drift and migration safety live in the `data-migration` persona — not a separate typed agent.
 
@@ -59,5 +59,5 @@ Use `deployment-verification-agent` when the migration-artifact gate applies **a
 2. **For each cross-cutting conditional persona**, the orchestrator reads the diff and decides whether the persona's domain is relevant. This is a judgment call, not a keyword match.
 3. **For each stack-specific conditional persona**, use file types and changed patterns as a starting point, then decide whether the diff actually introduces meaningful work for that reviewer. Do not spawn language-specific reviewers just because one config or generated file happens to match the extension.
 4. **For `data-migration`**, spawn only when the diff includes migration or schema artifacts (`db/migrate/*`, `db/schema.rb`, `db/structure.sql`, Alembic/Flyway/Liquibase paths, or explicit backfill/data-transform scripts). Do **not** spawn for model-only or query-only changes without those files.
-5. Use `deployment-verification-agent` when the migration-artifact gate applies and the change is risky.
+5. **For conditional prompt assets**, use `deployment-verification-agent` when the migration-artifact gate applies and the change is risky (see above).
 6. **Announce the team** before spawning with a one-line justification per conditional reviewer selected.

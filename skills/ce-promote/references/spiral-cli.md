@@ -23,10 +23,11 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 
 ### Check the opt-out
 
-Read the project config from the JJ workspace root, never an arbitrary CWD. Resolve the root with the runtime-supported `jj root` form; if this is not a JJ workspace, use the harness's known project/workspace root:
+Read the project config (resolve the workspace root, never CWD):
 
 ```bash
-cat "<workspace-root>/.rocketclaw/config.local.yaml" 2>/dev/null || cat "<workspace-root>/.tmp/rocketclaw/config.local.yaml" 2>/dev/null || echo '__NO_CONFIG__'
+workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
+cat "$workspace_root/.rocketclaw/config.local.yaml" 2>/dev/null || echo '__NO_CONFIG__'
 ```
 
 If the contents have an **uncommented** top-level `ce_promote_spiral_optout: true` line, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template ships a `# ce_promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
@@ -62,15 +63,14 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the JJ workspace root, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+Resolve the workspace root with `workspace_root=$(jj workspace root 2>/dev/null || pwd -P)`, then add `ce_promote_spiral_optout: true` as a top-level key to `$workspace_root/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
 
 - **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it (and its `.rocketclaw/` directory) only when `.rocketclaw/*.local.yaml` is already ignored by the repository or can be added to an existing repository-local exclude mechanism without changing tracked files. For a colocated JJ/Git repository, resolve the actual local exclude through repository metadata, including a `.git` gitdir pointer when present; do not assume `.git` is a directory and do not shell out to hardcoded Git plumbing merely to locate it. Do not edit a tracked `.gitignore` during this drafts-only action; `ce-setup` is the canonical place for a shared ignore rule.
-- **No safe repository-local exclusion:** store the opt-out at `<root>/.tmp/rocketclaw/config.local.yaml` instead, creating the workspace-local directories as needed, but only when `.tmp/` is already ignored. If neither destination can be kept untracked, skip persistence and continue. Never use OS temp for this state: the workspace `.tmp` path keeps the fallback local to the project.
+- **File absent:** create it (and its `.rocketclaw/` directory) with the key, AND make sure the machine-local config won't be tracked. If `jj git root` reports a backing Git repository, append `.rocketclaw/*.local.yaml` to its `info/exclude` file unless that exact rule is already present. This is backing-Git interoperability for a JJ workspace; do **not** assume the workspace root contains `.git`, because colocated workspaces and non-colocated stores differ. Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids changing a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally track machine-local opt-out state.
 
 If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of repository history). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." If the `.tmp` fallback was used, name that path instead. Keep it to a single line; don't belabor it.
+After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept untracked). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
 
 ## Generate
 

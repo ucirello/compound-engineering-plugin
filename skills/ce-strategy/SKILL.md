@@ -8,7 +8,7 @@ argument-hint: "[optional: section to revisit, e.g. 'metrics' or 'approach']"
 
 **Note: The current year is 2026.** Use this when dating the strategy document.
 
-`ce-strategy` produces and maintains `STRATEGY.md` - a short, durable anchor document that captures what the product is, who it serves, how it succeeds, and where the team is investing. It lives at the workspace root as a canonical, well-known file (peer of `README.md`). Downstream skills (`ce-ideate`, `ce-brainstorm`, `ce-plan`) read it as grounding when it exists.
+`ce-strategy` produces and maintains `STRATEGY.md` - a short, durable anchor document that captures what the product is, who it serves, how it succeeds, and where the team is investing. It lives at the JJ workspace root as a canonical, well-known file (peer of `README.md`). Downstream skills (`ce-ideate`, `ce-brainstorm`, `ce-plan`) read it as grounding when it exists.
 
 The document is short and structured on purpose. Good answers to a handful of sharp questions produce a better strategy than any amount of prose. This skill asks those questions, pushes back on weak answers, and writes the doc.
 
@@ -20,7 +20,7 @@ Ask one question at a time. Prefer free-form responses for the substantive secti
 
 ## Focus Hint
 
-The **focus hint** is any optional argument this skill was invoked with — present in the current prompt or conversation, whether the user gave it directly or a calling skill passed it (empty if none was given).
+<focus_hint> #$ARGUMENTS </focus_hint>
 
 Interpret any argument as an optional focus: a section name to revisit (`metrics`, `approach`, `tracks`) or a scope hint. With no argument, proceed open-ended and let the file state decide the path.
 
@@ -35,9 +35,7 @@ Interpret any argument as an optional focus: a section name to revisit (`metrics
 
 ### Phase 0: Route by File State
 
-Resolve the Jujutsu workspace root once with `jj workspace root`. If it does not return an absolute path, stop and explain that this skill requires a JJ workspace. Set `<strategy-path>` to the absolute path `<workspace-root>/STRATEGY.md`; use that exact path for every read, existence check, write, and path reported to the user in this run. Do not resolve `STRATEGY.md` relative to the process working directory.
-
-Read `<strategy-path>` using the native file-read tool.
+Resolve the workspace root with `jj workspace root`; if that fails because the current directory is not in a JJ workspace, use `pwd`. Read `STRATEGY.md` at that root using the native file-read tool, and use that same path for every later read or write.
 
 - **File does not exist** -> First run. Go to Phase 1.
 - **File exists and argument names a specific section** -> Targeted update. Go to Phase 2.
@@ -62,11 +60,11 @@ Run the interview in the section order of the final document:
 
 For each section, ask the opening question, apply the pushback rules, and capture the final answer in the user's own language. Do not skip the pushback step - it is the core of the skill. Two rounds of pushback per section maximum; capture what the user has given after that and note the section is worth revisiting on the next run.
 
-When all required sections (1-5) are captured, read `references/strategy-template.md`, fill it in, and present the full draft in chat before writing. Offer one round of edits. Then write to `<strategy-path>`.
+When all required sections (1-5) are captured, read `references/strategy-template.md`, fill it in, and present the full draft in chat before writing. Offer one round of edits. Then write to `STRATEGY.md`.
 
 ### Phase 2: Update Run
 
-Read the existing `<strategy-path>` thoroughly. Summarize current state in 3-5 lines so the user sees what is on file.
+Read the existing `STRATEGY.md` thoroughly. Summarize current state in 3-5 lines so the user sees what is on file.
 
 If the argument named a specific section, jump to that section in `references/interview.md`. Preserve all other sections exactly. Apply pushback as if this were a first run - do not rubber-stamp existing weak content just because it is already written.
 
@@ -79,7 +77,7 @@ If no specific target, ask the user which section to revisit using the blocking 
 
 For each revisited section, re-interview with full pushback. For sections the user confirms are still accurate, leave them untouched. Update the `last_updated` value in the YAML frontmatter to today's ISO date.
 
-Write the updated doc back to `<strategy-path>`.
+Write the updated doc back to `STRATEGY.md`.
 
 ### Phase 3: Downstream Handoff
 

@@ -185,7 +185,5 @@ mode: <repo-grounded | elsewhere-software | elsewhere-non-software>
 ## No process exhaust
 
 Keep engineering-process metadata out of the artifact — no "captured at
-Phase X" notes, no skill-pointer "next steps", no italic provenance
-lines, and no attribution-only composition footer. The reader wants the
-ideas, their basis, actual source citations, and functional metadata such
-as the artifact date.
+Phase X" notes, no skill-pointer "next steps", and no provenance lines.
+The reader wants the ideas and their basis.

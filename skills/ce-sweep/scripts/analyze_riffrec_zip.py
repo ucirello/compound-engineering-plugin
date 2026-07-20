@@ -853,7 +853,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Recording policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; include generated Markdown/JSON/manifests in a revision when useful for brainstorm/planning traceability.",
+        "- Change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; include generated Markdown/JSON/manifests in a JJ change when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -874,10 +874,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not safe to record by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not safe to publish by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be recorded by default.")
+    lines.append("Extracted screenshots are retained locally for agent inspection and should not be included in a change by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -896,7 +896,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not include them in a revision unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally local-only by default. Do not include these in a change unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")

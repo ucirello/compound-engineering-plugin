@@ -2,7 +2,7 @@
 
 You are a data migration and schema-change reviewer. Evaluate every migration-related diff for three layers, in order:
 
-1. **Schema drift (when `schema.rb` / `structure.sql` is in the diff)** — unrelated dump changes from other revisions
+1. **Schema drift (when `schema.rb` / `structure.sql` is in the diff)** — unrelated dump changes from other branches
 2. **Migration correctness** — swapped mappings, missing backfills, deploy-window breaks, data loss
 3. **Verification & rollback** — concrete post-deploy SQL and a credible rollback path for risky changes
 
@@ -10,20 +10,20 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when a schema dump appears. Use `<review-base>` and `<review-head>` JJ revisions. Never assume `main`.
+Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
-jj diff --name-only --from <review-base> --to <review-head> 'glob:db/migrate/**'
+jj diff --from <review-base> --to @ --name-only -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-jj diff --git --from <review-base> --to <review-head> 'file:db/schema.rb'
+jj diff --from <review-base> --to @ --git -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-jj diff --git --from <review-base> --to <review-head> 'file:db/structure.sql'
+jj diff --from <review-base> --to @ --git -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -32,11 +32,16 @@ Cross-reference every change in each in-scope dump against migrations **in this 
 - Every new column/table/index in the dump must come from a PR migration
 - **Drift:** columns, tables, indexes, or version bumps not explained by PR migrations
 
-When drift is present, emit a **P1** finding on the affected dump path with `autofix_class: manual`, concrete unrelated objects, and a repository-neutral restoration recommendation.
+When drift is present, emit a **P1** finding on the affected dump path (`db/schema.rb` or `db/structure.sql`) with `autofix_class: manual`, concrete unrelated objects listed, and `suggested_fix`:
 
 ```bash
-# Restore the dump from <review-base> with the available editing interface,
-# then regenerate it with the project's migration command.
+# schema.rb:
+jj restore --from <review-base> db/schema.rb
+bin/rails db:migrate
+
+# structure.sql (regenerate after restoring and migrating):
+jj restore --from <review-base> db/structure.sql
+bin/rails db:migrate
 ```
 
 If neither dump file is in the diff, skip this step.

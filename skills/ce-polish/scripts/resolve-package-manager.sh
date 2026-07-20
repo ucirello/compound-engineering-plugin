@@ -8,7 +8,7 @@
 #
 # Arguments:
 #   path (optional) — directory to inspect. When omitted, defaults to the
-#                     workspace root via `jj workspace root`.
+#                     JJ workspace root, falling back to the current directory.
 #
 # Output contract (two lines on stdout):
 #   Line 1: package-manager binary token (`npm` | `pnpm` | `yarn` | `bun`)
@@ -32,7 +32,7 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          no positional arg and not inside a JJ workspace
+#                          no positional arg and the workspace root is unavailable
 
 set -u
 
@@ -45,9 +45,10 @@ if [ -n "$TARGET_PATH" ]; then
     exit 1
   fi
 else
-  TARGET_PATH=$(jj workspace root 2>/dev/null)
+  workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
+  TARGET_PATH="$workspace_root"
   if [ -z "$TARGET_PATH" ]; then
-    echo "ERROR: not in a JJ workspace and no path argument provided" >&2
+    echo "ERROR: workspace root unavailable and no path argument provided" >&2
     exit 1
   fi
 fi

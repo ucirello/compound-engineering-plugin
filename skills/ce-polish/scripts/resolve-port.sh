@@ -71,9 +71,10 @@ done
 
 # Default to the JJ workspace root when no positional path is given.
 if [ -z "$PROJECT_ROOT" ]; then
-  PROJECT_ROOT=$(jj workspace root 2>/dev/null)
+  workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
+  PROJECT_ROOT="$workspace_root"
   if [ -z "$PROJECT_ROOT" ]; then
-    echo "ERROR: not in a JJ workspace and no path provided" >&2
+    echo "ERROR: workspace root unavailable and no path provided" >&2
     exit 1
   fi
 fi

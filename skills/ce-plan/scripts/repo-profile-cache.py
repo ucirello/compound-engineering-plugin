@@ -1,47 +1,21 @@
 #!/usr/bin/env python3
-"""Shared repo-grounding project-profile cache: deterministic get/put.
+"""Deterministic, workspace-local cache for the shared repository profile.
 
-This helper owns the *deterministic* cache I/O for the question-agnostic
-project profile that repo-grounding skills reuse. The non-deterministic
-derivation (reading manifests, summarizing conventions) is done by the
-`repo-profiler` persona only on a miss — never here.
+The caller derives a question-agnostic profile on a miss. This helper only
+resolves JJ identity, validates cache freshness and profile shape, and performs
+atomic cache I/O.
 
 Usage:
     python3 repo-profile-cache.py get
     python3 repo-profile-cache.py put <profile-json-file>
 
-`get` prints exactly one of:
-    HIT\\n<profile-json>     a valid entry exists for the current repo state;
-                            the profile JSON follows on subsequent lines
-    MISS\\n<write-path>      JJ workspace, no valid entry — caller derives the
-                            profile and calls `put <write-path-or-any-file>`
-    NO-CACHE                no usable JJ state or no writable cache — caller derives
-                            the profile fresh and skips `put`
-
-`put <file>` reads the profile JSON from <file>, wraps it with a validity
-stamp, and writes it atomically to the computed cache path. Prints the path
-on success, `NO-CACHE` when the repo/cache is unavailable.
-
 Cache path:
-    <workspace-root>/.tmp/rocketclaw/repo-profile/<root-commit-id>/<commit-id>.json
-  workspace-root = `jj workspace root`, falling back to the current directory
-                   when JJ is unavailable.
-  root-commit-id = lexicographically-first real root commit ID in `::@`.
-  commit-id = the current working-copy commit ID for `@`.
+    <workspace-root>/.tmp/rocketclaw/repo-profile/<change-id>/<commit-id>.json
 
-Validity (HIT) requires ALL of:
-  - the cache file exists and parses as JSON,
-  - stored root/current commit IDs match the current JJ state,
-  - stored `profile_schema_version` == PROFILE_SCHEMA_VERSION,
-  - no profile-input path differs in `jj diff -r @ <profile-input-fileset>`.
-
-Cardinal rule: this cache is an optimization, never a correctness dependency.
-Every failure mode (not a JJ workspace, unreadable/malformed cache, no writable
-workspace-local `.tmp`, JJ errors) degrades to NO-CACHE/MISS and exits 0 — it never raises and
-never serves a profile it cannot prove fresh.
-
-Pure stdlib. No third-party dependencies.
+Every unavailable or unverifiable cache state degrades to MISS or NO-CACHE and
+exit 0. The cache is an optimization, never a correctness dependency.
 """
+
 import json
 import os
 import secrets
@@ -49,132 +23,70 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-# Bump when the profile schema changes so a newer reader never reuses an
-# entry written under an older (narrower) schema.
-PROFILE_SCHEMA_VERSION = "2"
 
-# --- Profile-input set (the schema-derived superset, per the plan's R3) -------
-# Any change to one of these — including a newly tracked file — must invalidate
-# the cached profile. Conservative by design: over-invalidating costs a
-# re-derive; under-invalidating serves a stale profile (a cardinal-rule break).
+PROFILE_SCHEMA_VERSION = "4"
+CACHE_NAMESPACE = os.path.join(".tmp", "rocketclaw", "repo-profile")
 
-# Dependency manifests + lockfiles. Matched by basename at ANY depth so a
-# monorepo workspace's manifest also invalidates. The profiler derives
-# stack/deps for ANY language, so this list must span ecosystems, not just JS —
-# an omitted manifest means a dependency change can serve a stale
-# profile (a cardinal-rule break).
+# Conservative superset of files used to derive the profile. Over-invalidation
+# costs one derivation; under-invalidation could serve stale project context.
 _MANIFEST_LOCKFILE = {
-    # JavaScript / TypeScript / Deno
     "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
     "pnpm-workspace.yaml", "bun.lock", "bun.lockb", "npm-shrinkwrap.json",
-    "deno.json", "deno.jsonc", "deno.lock",
-    # Monorepo / workspace orchestrators
-    "nx.json", "lerna.json", "turbo.json", "rush.json",
-    # Go (incl. workspaces)
-    "go.mod", "go.sum", "go.work", "go.work.sum",
-    # Rust
-    "Cargo.toml", "Cargo.lock",
-    # Ruby
-    "Gemfile", "Gemfile.lock", "gems.rb", "gems.locked",
-    # Python
-    "pyproject.toml", "poetry.lock", "Pipfile", "Pipfile.lock",
-    "requirements.txt", "setup.py", "setup.cfg",
-    "uv.lock", "pdm.lock", "environment.yml", "environment.yaml",
-    # PHP
-    "composer.json", "composer.lock",
-    # JVM (Maven / Gradle incl. version catalogs)
+    "deno.json", "deno.jsonc", "deno.lock", "nx.json", "lerna.json",
+    "turbo.json", "rush.json", "go.mod", "go.sum", "go.work", "go.work.sum",
+    "Cargo.toml", "Cargo.lock", "Gemfile", "Gemfile.lock", "gems.rb",
+    "gems.locked", "pyproject.toml", "poetry.lock", "Pipfile", "Pipfile.lock",
+    "requirements.txt", "setup.py", "setup.cfg", "uv.lock", "pdm.lock",
+    "environment.yml", "environment.yaml", "composer.json", "composer.lock",
     "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle",
-    "settings.gradle.kts", "libs.versions.toml", "build.sbt",
-    # Elixir / Dart
-    "mix.exs", "mix.lock", "pubspec.yaml", "pubspec.lock",
-    # Swift / iOS (a live target for this project)
-    "Package.swift", "Package.resolved", "Podfile", "Podfile.lock",
-    "Cartfile", "Cartfile.resolved",
-    # .NET
-    "packages.config", "Directory.Packages.props", "Directory.Build.props",
-    "paket.dependencies", "paket.lock",
-    # C / C++
+    "settings.gradle.kts", "libs.versions.toml", "build.sbt", "mix.exs",
+    "mix.lock", "pubspec.yaml", "pubspec.lock", "Package.swift",
+    "Package.resolved", "Podfile", "Podfile.lock", "Cartfile",
+    "Cartfile.resolved", "packages.config", "Directory.Packages.props",
+    "Directory.Build.props", "paket.dependencies", "paket.lock",
     "CMakeLists.txt", "conanfile.txt", "conanfile.py", "vcpkg.json",
-    # Haskell
     "stack.yaml", "stack.yaml.lock", "cabal.project",
 }
-
-# Project-file extensions whose presence or version edit changes the stack
-# profile. Suffix-matched at any depth (e.g. Foo.csproj, App.sln).
 _PROJECT_FILE_SUFFIXES = (
     ".csproj", ".fsproj", ".vbproj", ".sln", ".cabal", ".tf", ".tfvars",
 )
-
 _LICENSE = {"LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "COPYING"}
-
-# Topology / deployment sources. Basename match at any depth — these determine
-# the derived deployment model (monolith / multi-service / serverless).
 _TOPOLOGY = {
-    "Dockerfile", "Containerfile",
-    "docker-compose.yml", "docker-compose.yaml",
-    "vercel.json", "netlify.toml", "fly.toml", "render.yaml",
-    "serverless.yml", "serverless.yaml", "app.yaml", "Procfile",
-    # IaC descriptors that define the deployment topology.
-    "Pulumi.yaml", "Pulumi.yml", "Chart.yaml",
-    # CI descriptors outside .github/workflows/ (that prefix is handled below).
-    ".gitlab-ci.yml", "Jenkinsfile", "azure-pipelines.yml",
+    "Dockerfile", "Containerfile", "docker-compose.yml", "docker-compose.yaml",
+    "vercel.json", "netlify.toml", "fly.toml", "render.yaml", "serverless.yml",
+    "serverless.yaml", "app.yaml", "Procfile", "Pulumi.yaml", "Pulumi.yml",
+    "Chart.yaml", ".gitlab-ci.yml", "Jenkinsfile", "azure-pipelines.yml",
 }
-
-# Path prefixes whose contents shape the profile (conventions / CI / deploy).
 _INPUT_PREFIXES = (
-    ".cursor/", ".github/workflows/", ".circleci/",
-    "terraform/", "k8s/", "kubernetes/",
+    ".cursor/", ".github/workflows/", ".circleci/", "terraform/", "k8s/",
+    "kubernetes/",
 )
-
-# Root-level instruction/doc files cached in the profile. Matched ONLY at the
-# repo root — subdirectory-scoped instruction files (e.g. nested CLAUDE.md /
-# AGENTS.md) are NOT cached; consumers re-glob those fresh, so a subdir change
-# must not invalidate the root profile.
 _ROOT_DOCS = {
-    "AGENTS.md", "CLAUDE.md", "GEMINI.md",
-    "CONCEPTS.md", "STRATEGY.md",
-    "ARCHITECTURE.md", "README.md", "CONTRIBUTING.md",
-    ".cursorrules",  # legacy root-level Cursor rules (the profiler reads it)
+    "AGENTS.md", "CLAUDE.md", "GEMINI.md", "CONCEPTS.md", "STRATEGY.md",
+    "ARCHITECTURE.md", "README.md", "CONTRIBUTING.md", ".cursorrules",
 }
-
-# Runtime / tool version selectors that pin a language or tool version OUTSIDE
-# the manifests (the profiler reads these for stack versions). Basename match.
 _VERSION_SELECTORS = {
     ".nvmrc", ".node-version", ".python-version", ".ruby-version",
-    ".java-version", ".go-version", ".terraform-version",
-    ".tool-versions", "mise.toml", ".mise.toml", ".sdkmanrc",
+    ".java-version", ".go-version", ".terraform-version", ".tool-versions",
+    "mise.toml", ".mise.toml", ".sdkmanrc",
 }
 
 
 def is_profile_input(path: str) -> bool:
-    """True when a changed path is one the cached profile derives from.
-
-    Deliberately a conservative superset: anything plausibly feeding the
-    stack/deps/topology/conventions profile invalidates. Over-matching costs a
-    re-derive; under-matching serves a stale profile (a cardinal-rule break).
-    """
     base = os.path.basename(path)
-    if (
-        base in _MANIFEST_LOCKFILE
-        or base in _LICENSE
-        or base in _TOPOLOGY
-        or base in _VERSION_SELECTORS
-    ):
+    if base in (_MANIFEST_LOCKFILE | _LICENSE | _TOPOLOGY | _VERSION_SELECTORS):
         return True
     if base.endswith(_PROJECT_FILE_SUFFIXES):
         return True
     if "/" not in path and base in _ROOT_DOCS:
         return True
-    if path.startswith(_INPUT_PREFIXES):
-        return True
-    return False
+    return path.startswith(_INPUT_PREFIXES)
 
 
 def jj(*args: str, cwd: "str | None" = None) -> "str | None":
-    """Run a read-only JJ command; return stripped stdout, or None on failure."""
     try:
         result = subprocess.run(
-            ["jj", "--no-pager", *args],
+            ["jj", "--no-pager", "--color", "never", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -187,125 +99,139 @@ def jj(*args: str, cwd: "str | None" = None) -> "str | None":
     return result.stdout.strip()
 
 
-def workspace_root() -> "str | None":
-    return jj("workspace", "root")
+def workspace_root() -> str:
+    """Resolve `jj workspace root`, with the physical cwd as the fallback."""
+    return jj("workspace", "root") or os.path.realpath(os.getcwd())
 
 
-def cache_root(workspace: "str | None") -> str:
-    # The fallback remains local even though missing JJ state disables caching.
-    base = workspace or os.path.abspath(os.curdir)
-    return os.path.join(base, ".tmp", "rocketclaw", "repo-profile")
-
-
-def profile_input_fileset() -> str:
-    """JJ fileset covering the same conservative superset as is_profile_input."""
-    patterns = []
-    for name in sorted(
-        _MANIFEST_LOCKFILE | _LICENSE | _TOPOLOGY | _VERSION_SELECTORS
-    ):
-        quoted = json.dumps(f"**/{name}")
-        patterns.append(f"root-glob:{quoted}")
-    for suffix in _PROJECT_FILE_SUFFIXES:
-        patterns.append(f'root-glob:"**/*{suffix}"')
-    for name in sorted(_ROOT_DOCS):
-        patterns.append(f"root-file:{json.dumps(name)}")
-    for prefix in _INPUT_PREFIXES:
-        patterns.append(f"root:{json.dumps(prefix.rstrip('/'))}")
-    return " | ".join(patterns)
-
-
-def profile_inputs_changed(workspace: str) -> "bool | None":
-    """Whether profile inputs differ from @'s parents; None on JJ failure.
-
-    JJ snapshots non-ignored working-copy files into @ before each command, so
-    additions are included. Restricting the diff with a root-relative fileset
-    avoids parsing display-formatted rename paths.
-    """
-    out = jj(
-        "diff", "--name-only", "-r", "@", profile_input_fileset(), cwd=workspace
-    )
+def changed_paths(workspace: str) -> "list[str] | None":
+    """Return both endpoints from JJ summary entries, including renames."""
+    out = jj("diff", "--summary", "-r", "@", cwd=workspace)
     if out is None:
         return None
-    return bool(out)
+
+    def unquote(path: str) -> str:
+        path = path.strip()
+        if len(path) >= 2 and path[0] == '"' and path[-1] == '"':
+            return path[1:-1]
+        return path
+
+    def expand(path: str) -> "list[str]":
+        if " => " not in path:
+            return [unquote(path)]
+        if "{" in path and "}" in path:
+            prefix, rest = path.split("{", 1)
+            middle, suffix = rest.split("}", 1)
+            source, destination = middle.split(" => ", 1)
+            return [unquote(prefix + source + suffix), unquote(prefix + destination + suffix)]
+        return [unquote(item) for item in path.split(" => ", 1)]
+
+    paths: list[str] = []
+    for line in out.splitlines():
+        if line.strip():
+            paths.extend(path for path in expand(line[2:]) if path)
+    return paths
 
 
-def cache_path(workspace: str, root: str, current: str) -> str:
-    return os.path.join(cache_root(workspace), root, f"{current}.json")
-
-
-def resolve_state() -> "tuple[str, str, str] | None":
-    """Workspace plus root/current commit IDs, or None without usable JJ."""
+def resolve_keys() -> "tuple[str, str, str] | None":
     workspace = workspace_root()
-    if not workspace:
-        return None
-    root_ids = jj(
-        "log",
-        "-r",
-        "roots(::@ ~ root())",
-        "--no-graph",
-        "-T",
-        'commit_id ++ "\\n"',
+    ids = jj(
+        "log", "-r", "@", "--no-graph", "-T",
+        'change_id ++ "\\n" ++ commit_id',
         cwd=workspace,
     )
-    current = jj(
-        "log", "-r", "@", "--no-graph", "-T", 'commit_id ++ "\\n"', cwd=workspace
-    )
-    if not root_ids or not current:
+    if not ids:
         return None
-    return workspace, sorted(root_ids.splitlines())[0], current
+    parts = ids.splitlines()
+    if len(parts) != 2 or not all(parts):
+        return None
+    return workspace, parts[0], parts[1]
 
 
-_PROFILE_KEYS = ("stack", "dependencies", "topology", "conventions", "vocabulary")
+def cache_path(workspace: str, change_id: str, commit_id: str) -> str:
+    return os.path.join(
+        workspace, CACHE_NAMESPACE, change_id, f"{commit_id}.json"
+    )
+
+
+def _object_with(value: object, fields: dict[str, object]) -> bool:
+    if not isinstance(value, dict):
+        return False
+    for name, expected in fields.items():
+        if name not in value:
+            return False
+        item = value.get(name)
+        if expected == "list" and not isinstance(item, list):
+            return False
+        if expected == "bool" and not isinstance(item, bool):
+            return False
+        if expected == "nullable-string" and item is not None and not isinstance(item, str):
+            return False
+    return True
 
 
 def is_valid_profile(profile: object) -> bool:
-    """A profile must be an object carrying every expected top-level key. This
-    rejects a profiler failure that still returned JSON — a wrapper/error object
-    or a partial result — which would otherwise be cached and served as a HIT,
-    leaving consumers to skip fresh derivation and read missing fields from a
-    broken object."""
-    return isinstance(profile, dict) and all(k in profile for k in _PROFILE_KEYS)
+    """Validate the complete shared schema before persisting or serving it."""
+    if not isinstance(profile, dict):
+        return False
+    return (
+        _object_with(profile.get("stack"), {
+            "languages": "list", "frameworks": "list", "tooling": "list",
+        })
+        and _object_with(profile.get("dependencies"), {
+            "manifests": "list", "lockfiles": "list", "top_level": "list",
+            "project_license": "nullable-string", "dependency_licenses": "list",
+        })
+        and _object_with(profile.get("topology"), {
+            "monorepo": "bool", "workspaces": "list",
+            "deployment": "nullable-string", "api_styles": "list",
+            "data_stores": "list", "module_layout": "nullable-string",
+        })
+        and _object_with(profile.get("conventions"), {
+            "instruction_files": "list", "coding_standards": "nullable-string",
+            "testing": "nullable-string", "review_process": "nullable-string",
+            "strategy": "nullable-string",
+        })
+        and _object_with(profile.get("vocabulary"), {
+            "concepts_present": "bool", "terms": "list",
+        })
+    )
 
 
 def do_get() -> int:
-    state = resolve_state()
-    if state is None:
+    keys = resolve_keys()
+    if keys is None:
         print("NO-CACHE")
         return 0
-    workspace, root, current = state
-    path = cache_path(workspace, root, current)
+    workspace, change_id, commit_id = keys
+    path = cache_path(workspace, change_id, commit_id)
 
     def miss() -> int:
         print("MISS")
         print(path)
         return 0
 
-    # A missing file raises FileNotFoundError (an OSError) and degrades to the
-    # same MISS, so no separate existence check is needed.
     try:
-        with open(path) as f:
-            # Reject a cache file not owned by us so another local account
-            # cannot feed attacker-controlled text into the profile.
+        with open(path) as cache_file:
             geteuid = getattr(os, "geteuid", None)
-            if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
+            if geteuid is not None and os.fstat(cache_file.fileno()).st_uid != geteuid():
                 return miss()
-            doc = json.load(f)
+            doc = json.load(cache_file)
     except (OSError, ValueError):
         return miss()
 
     profile = doc.get("profile") if isinstance(doc, dict) else None
     if (
         not isinstance(doc, dict)
-        or doc.get("root_commit_id") != root
-        or doc.get("commit_id") != current
+        or doc.get("change_id") != change_id
+        or doc.get("commit_id") != commit_id
         or doc.get("profile_schema_version") != PROFILE_SCHEMA_VERSION
         or not is_valid_profile(profile)
     ):
         return miss()
 
-    changed = profile_inputs_changed(workspace)
-    # Re-resolving catches a snapshot or ancestor rewrite during validation.
-    if changed is not False or resolve_state() != state:
+    changed = changed_paths(workspace)
+    if changed is None or any(is_profile_input(path) for path in changed):
         return miss()
 
     print("HIT")
@@ -314,77 +240,59 @@ def do_get() -> int:
 
 
 def do_put(profile_file: str) -> int:
-    state = resolve_state()
-    if state is None:
+    keys = resolve_keys()
+    if keys is None:
         print("NO-CACHE")
         return 0
-    workspace, root, current = state
+    workspace, change_id, commit_id = keys
 
     try:
-        with open(profile_file) as f:
-            profile = json.load(f)
+        with open(profile_file) as source:
+            profile = json.load(source)
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"repo-profile-cache: cannot read profile: {exc}\n")
-        print("NO-CACHE")  # nothing persisted; keep the stdout contract
-        return 0  # degrade — never block the caller
-
-    # Shape guard: the profile must be an object carrying the expected top-level
-    # keys. A misbehaving profiler that returns garbage JSON (`{}`, `"oops"`,
-    # `[]`, `42`) or a partial/error object must not be cached and then served
-    # to every skill as the agnostic profile. Reject it (the caller already has
-    # its own derived profile for this run; the next run re-derives).
-    if not is_valid_profile(profile):
-        sys.stderr.write(
-            "repo-profile-cache: profile is not a valid profile object; not caching\n"
-        )
         print("NO-CACHE")
         return 0
 
-    # Keep the original clean-input architecture: @ snapshots filesystem edits,
-    # and profile-input changes remain uncached even though @ has a commit ID.
-    changed = profile_inputs_changed(workspace)
-    if changed is not False or resolve_state() != state:
-        sys.stderr.write(
-            "repo-profile-cache: profile inputs changed; not caching\n"
-        )
+    if not is_valid_profile(profile):
+        sys.stderr.write("repo-profile-cache: invalid profile shape; not caching\n")
+        print("NO-CACHE")
+        return 0
+
+    changed = changed_paths(workspace)
+    if changed is None or any(is_profile_input(path) for path in changed):
+        sys.stderr.write("repo-profile-cache: profile inputs changed; not caching\n")
         print("NO-CACHE")
         return 0
 
     doc = {
         "profile_schema_version": PROFILE_SCHEMA_VERSION,
-        "root_commit_id": root,
-        "commit_id": current,
+        "change_id": change_id,
+        "commit_id": commit_id,
         "built_at": datetime.now(timezone.utc).isoformat(),
         "profile": profile,
     }
-
-    path = cache_path(workspace, root, current)
+    path = cache_path(workspace, change_id, commit_id)
+    pending: "str | None" = None
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        # Atomic write: temp file in the same dir + os.replace (atomic on
-        # POSIX) so a concurrent reader never sees a torn JSON.
-        tmp = os.path.join(
-            os.path.dirname(path), f".write-{secrets.token_hex(12)}.json"
+        directory = os.path.dirname(path)
+        os.makedirs(directory, exist_ok=True)
+        pending = os.path.join(
+            directory, f".write-{os.getpid()}-{secrets.token_hex(8)}.json"
         )
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
-            with os.fdopen(fd, "w") as f:
-                json.dump(doc, f)
-            # A JJ command may snapshot @ or observe rewritten ancestors. Never
-            # publish the derived profile under keys that changed mid-write.
-            if (
-                profile_inputs_changed(workspace) is not False
-                or resolve_state() != state
-            ):
-                raise RuntimeError("JJ state changed while writing cache")
-            os.replace(tmp, path)
-        except BaseException:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
-    except Exception as exc:  # never block the caller, whatever the failure
+            with os.fdopen(fd, "w") as destination:
+                json.dump(doc, destination)
+            os.replace(pending, path)
+            pending = None
+        finally:
+            if pending is not None:
+                try:
+                    os.unlink(pending)
+                except OSError:
+                    pass
+    except Exception as exc:
         sys.stderr.write(f"repo-profile-cache: cannot write cache: {exc}\n")
         print("NO-CACHE")
         return 0
@@ -394,21 +302,14 @@ def do_put(profile_file: str) -> int:
 
 
 def usage() -> int:
-    sys.stderr.write(
-        "usage: repo-profile-cache.py get | put <profile-json-file>\n"
-    )
+    sys.stderr.write("usage: repo-profile-cache.py get | put <profile-json-file>\n")
     return 2
 
 
 def main(argv: "list[str]") -> int:
-    if len(argv) < 2:
-        return usage()
-    cmd = argv[1]
-    if cmd == "get":
+    if len(argv) == 2 and argv[1] == "get":
         return do_get()
-    if cmd == "put":
-        if len(argv) != 3:
-            return usage()
+    if len(argv) == 3 and argv[1] == "put":
         return do_put(argv[2])
     return usage()
 

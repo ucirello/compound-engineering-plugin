@@ -11,7 +11,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 ```markdown
 ## Code Review Results
 
-**Scope:** JJ fork point with the review base bookmark -> working copy (14 files, 342 lines)
+**Scope:** common ancestor with the review base bookmark -> `@` (14 files, 342 lines)
 **Intent:** Add order export endpoint with CSV and JSON format support
 **Mode:** interactive
 
@@ -27,7 +27,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 | 7 | `orders_controller.rb:88` (+test) | Tightened export file perms `0644 -> 0600` (security-posture — verify in diff) | security |
 
 Validation: export tests 11 -> 13; suite 214 pass, lint clean.
-Closed fix checkpoint: `<dynamic-change-id>` / `<dynamic-commit-id>` with `<dynamic-description>`; fresh `@` created and empty.
+Described: `<description-composed-from-runtime-conventions>` (`@` was initially empty; runtime project convention applied).
 
 ### Triage Groups
 
@@ -143,7 +143,7 @@ This fails because of the **box-drawing `────` separators between items*
 - **Header includes** scope, intent, and reviewer team with per-conditional justifications
 - **Mode line** -- include `interactive` or `agent`
 - **Triage Groups section (when groups exist)** -- pipe table `| Group | Findings | Context | Preferred Resolution | Why |` rendered after Applied and before the severity tables. The `Findings` cell lists stable `#`s (e.g. `#2, #3`); every referenced `#` must appear in a severity table below. Groups are a triage lens over the findings -- they never replace the severity tables, merge findings, or renumber them. Omit when `grouping:off` is active or no groups survived Stage 5b/5c pruning.
-- **Applied section (default mode only)** -- list fixes, validation, and JJ description/checkpoint status. If `@` was empty before review, report the closed fix change/commit IDs and that `jj new` left a fresh empty `@`; otherwise report that the existing description was preserved.
+- **Applied section (default mode only)** -- when the review applied fixes (Stage 5c), list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome and the **description status** — described with `jj describe -m '<description-composed-from-runtime-conventions>'` when `@` was initially empty, or left with its existing description when it was non-empty. Runtime project instructions and description syntax observed via `jj log` win. Compatible Go guidance applies only to quality, clarity, and structure; it does not prescribe message syntax. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. A fix spanning multiple files is **one row with one `#`** -- never duplicate the number across rows. Flag green-but-unverifiable edits (auth/contract/concurrency) inline in the `Fix` cell. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit in `mode:agent` and when nothing was applied
 - **Actionable Findings section** -- include when the actionable queue is non-empty (findings for the caller to handle)
 - **Pre-existing section** -- separate table, no confidence column (these are informational)
 - **Learnings & Past Solutions section** -- results from the `learnings-researcher` local prompt asset, with links to docs/solutions/ files
@@ -156,7 +156,7 @@ This fails because of the **box-drawing `────` separators between items*
 
 ## Agent mode (JSON)
 
-When `mode:agent` is active, emit one parseable JSON object and write it to `<workspace-root>/.tmp/rocketclaw/code-review/<run-id>/review.json`.
+When `mode:agent` is active, **do not** emit the markdown table report above. Emit **one parseable JSON object** as the primary response and write the same payload to `review.json` under `<workspace-root>/.tmp/rocketclaw/ce-code-review/<run-id>/`.
 
 The contract is defined in SKILL.md under **`### JSON output format (`mode:agent` only)`**. Minimum fields: `status`, `verdict`, `scope`, `intent`, `reviewers`, `findings`, `actionable_findings`, `artifact_path`, `run_id`.
 

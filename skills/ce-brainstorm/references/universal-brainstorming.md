@@ -33,7 +33,7 @@ Drop the blocking tool only when (a) the answer is inherently narrative ("walk m
 - **Standard** (some unknowns, needs to explore options): 4-6 exchanges, generate and compare options, help decide.
 - **Full** (vague goal, lots of uncertainty, or high-stakes decision): Deep exploration, many exchanges, structured convergence.
 
-**Ask what they're already thinking.** Before offering ideas, find out what the user has considered, tried, or rejected. This prevents fixation on AI-generated ideas and surfaces hidden constraints.
+**Ask what they're already thinking.** Before offering ideas, find out what the user has considered, tried, or rejected. This prevents fixation on suggested ideas and surfaces hidden constraints.
 
 **When the user doesn't know the domain** — if they flag missing working knowledge of the territory ("I need to grade this video but don't know what color grading is"), or two consecutive answers show they *cannot evaluate* a question's substance rather than merely haven't decided, read `references/blindspot-pass.md` and offer the pass before questioning them further on that territory. It applies on this route unchanged (see its "Universal route" section).
 

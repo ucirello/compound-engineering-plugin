@@ -260,7 +260,7 @@ optional_fields:
 
   execution:
     type: object
-    default: { mode: "parallel", backend: "worktree", max_concurrent: 4 }
+    default: { mode: "parallel", backend: "workspace", max_concurrent: 4 }
     description: "How experiments are executed"
     optional_children:
       mode:
@@ -272,14 +272,15 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # compatibility backend name; implemented with JJ workspaces (default)
+          - workspace # JJ workspaces (default)
+          - worktree  # compatibility alias for persisted specs; uses JJ workspaces
           - codex     # Codex sandboxes for isolation
-        default: worktree
+        default: workspace
       max_concurrent:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for the worktree backend, which uses JJ workspaces. 8+ only valid for Codex backend."
+        description: "Maximum experiments to run in parallel. Capped at 6 for the workspace backend. 8+ only valid for Codex backend."
       codex_security:
         type: enum
         values:
@@ -385,7 +386,7 @@ validation_rules:
   - "scope.immutable must have at least one entry"
   - "Gate check operators must be one of: >=, <=, >, <, ==, !="
   - "execution.max_concurrent must be >= 1"
-  - "execution.max_concurrent must not exceed 6 when execution.backend is 'worktree'"
+  - "execution.max_concurrent must not exceed 6 when execution.backend is 'workspace' or its compatibility alias 'worktree'"
   - "If parallel.exclusive_resources is non-empty, execution.mode should be 'serial'"
   - "If metric.judge.singleton_sample > 0, metric.judge.singleton_rubric must be present"
   - "If metric.primary.type is 'judge' and metric.judge.max_total_cost_usd is null, the user should explicitly approve uncapped spend"

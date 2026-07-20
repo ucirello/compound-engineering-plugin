@@ -19,8 +19,8 @@ Proof is a collaborative document editor for humans and agents. It supports two 
 
 Every write to a Proof doc must be attributed. Two fields carry the writer's identity:
 
-- **Machine ID (`by` on every op, `X-Agent-Id` header):** use `ai:<provider-slug>` for an agent or `human:<human-slug>` when the operation is performed on behalf of an identified human. Keep slugs stable, lowercase, and hyphenated. These IDs appear in marks, events, and API responses.
-- **Display name (`name` on `POST /presence`):** use the provider's human-readable name for an agent or the person's name for a human. Proof shows it in presence chips and comment-author badges.
+- **Machine ID (`by` on every op, `X-Agent-Id` header):** use `ai:assistant` for an agent or `human:<human-slug>` when the operation is performed on behalf of an identified human. Keep human slugs stable, lowercase, and hyphenated. These IDs appear in marks, events, and API responses.
+- **Display name (`name` on `POST /presence`):** use `AI Assistant` for an agent or the person's name for a human. Proof shows it in presence chips and comment-author badges.
 
 Set the display name once per doc session by posting to presence with the `X-Agent-Id` header; Proof binds the name to that ID for the session. Preserve an identity pair supplied by the caller, and never replace a human identity with an agent identity. `ce-*` names are routing identifiers, not attribution values.
 
@@ -271,7 +271,7 @@ When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 ```bash
 SHARE_URL="https://www.proofeditor.ai/d/abc123?token=xxx"
-WRITER_ID="ai:<provider-slug>"
+WRITER_ID="ai:assistant"
 curl -s -H "Accept: application/json" "$SHARE_URL"
 curl -s -H "Accept: text/markdown" "$SHARE_URL"
 
@@ -331,8 +331,8 @@ curl -X POST "https://www.proofeditor.ai/api/agent/abc123/edit/v2?return=minimal
 ```bash
 SRC="docs/plans/2026-05-04-001-feat-foo-plan.md"   # source file from the caller
 TITLE="Plan: Foo"                                   # caller-provided title
-WRITER_ID="ai:<provider-slug>"                      # or human:<human-slug>; preserve caller identity
-DISPLAY_NAME="<provider display name>"
+WRITER_ID="ai:assistant"                            # or human:<human-slug>; preserve caller identity
+DISPLAY_NAME="AI Assistant"
 
 # 1. Create — from a local source file:
 RESPONSE=$(jq -n --arg title "$TITLE" --rawfile md "$SRC" '{title:$title, markdown:$md}' \
@@ -397,8 +397,8 @@ LOCAL=<absolute-path>
 WORKSPACE_ROOT=$(jj workspace root 2>/dev/null) || WORKSPACE_ROOT=$PWD
 TMP_ROOT="$WORKSPACE_ROOT/.tmp"
 mkdir -p "$TMP_ROOT"
-STATE_TMP="$TMP_ROOT/ce-proof-state.$$"
-WRITE_TMP="$TMP_ROOT/ce-proof-write.$$"
+STATE_TMP="$TMP_ROOT/proof-state.$$"
+WRITE_TMP="$TMP_ROOT/proof-write.$$"
 cleanup() { rm -f "$STATE_TMP" "$WRITE_TMP"; }
 trap cleanup EXIT HUP INT TERM
 

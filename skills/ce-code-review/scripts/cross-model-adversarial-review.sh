@@ -51,8 +51,18 @@ SCRATCH_ROOT="$REPO_ROOT/.tmp/rocketclaw/cross-model"
 mkdir -p "$SCRATCH_ROOT" || skip "cannot create workspace-local scratch; skipping"
 
 OUT="$RUN_DIR/adversarial-$PEER.json"
-PROMPT_FILE="$(mktemp "$SCRATCH_ROOT/prompt-XXXXXX")"
-PEERLOG="$(mktemp "$SCRATCH_ROOT/log-XXXXXX")"
+new_local_file() {
+  local prefix="$1" candidate i=0
+  while [ "$i" -lt 100 ]; do
+    candidate="$SCRATCH_ROOT/$prefix-$$-${RANDOM:-0}-$i"
+    if (set -C; : > "$candidate") 2>/dev/null; then printf '%s\n' "$candidate"; return 0; fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+PROMPT_FILE="$(new_local_file prompt)" || skip "cannot create workspace-local prompt file; skipping"
+PEERLOG="$(new_local_file log)" || { rm -f "$PROMPT_FILE"; skip "cannot create workspace-local log file; skipping"; }
 trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 
 # --- compose the peer prompt from the canonical persona (single source) ----
@@ -201,7 +211,7 @@ esac
 # instead of "adversarial-<peer>", Stage 5 would fold it as the in-process reviewer
 # and lose the cross-model agreement signal. Force the distinct name.
 if [ -s "$OUT" ]; then
-  _norm="$(mktemp "$SCRATCH_ROOT/norm-XXXXXX")"
+  _norm="$(new_local_file norm)" || skip "cannot create workspace-local normalization file; skipping"
   # Force the distinct reviewer name AND satisfy Stage 5's full top-level contract
   # (reviewer string + findings/residual_risks/testing_gaps arrays). Backfill the two
   # soft arrays if the peer omitted them; drop the return entirely if findings is not

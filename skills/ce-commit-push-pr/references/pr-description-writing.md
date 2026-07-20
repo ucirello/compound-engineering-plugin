@@ -114,7 +114,7 @@ Based on https://go.dev/wiki/CommitMessage and on past commit messages that you 
 
 Active project instructions and syntax inferred at runtime from `jj log` always take precedence. Apply compatible Go guidance only to improve quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, capitalization, punctuation, layout, template, or example.
 
-Include an outcome-led opening, only body sections that earn their keep, related references, non-obvious validation, New concepts when present, and supplied evidence. Arrange them according to active project instructions, runtime conventions, and the needs of the change. Add no generated-by footer or execution metadata. Preserve provider, human, and research attribution when it is substantively relevant and already supplied.
+Include an outcome-led opening, only body sections that earn their keep, related references, non-obvious validation, New concepts when present, and supplied evidence. Arrange them according to active project instructions, runtime conventions, and the needs of the change. Add no generated-by footer or execution metadata. Preserve human and research attribution when it is substantively relevant and already supplied.
 
 Preserve existing `## Demo` and `## Screenshots` blocks unless asked to refresh them. Never label test output as a demo or screenshot.
 
@@ -124,4 +124,4 @@ Use diagrams or tables only when they communicate relationships, flow, state, se
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Active project instructions and syntax inferred at runtime from `jj log` always take precedence. Apply compatible Go guidance only to improve quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, capitalization, punctuation, layout, template, or example. Validate that the title communicates the outcome, the body leads with outcome or visible before/after, diff narration is omitted, required references and meaningful human/research/provider attribution are preserved, generated-by metadata is absent, and validation claims reflect work actually performed.
+Active project instructions and syntax inferred at runtime from `jj log` always take precedence. Apply compatible Go guidance only to improve quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, capitalization, punctuation, layout, template, or example. Validate that the title communicates the outcome, the body leads with outcome or visible before/after, diff narration is omitted, required references and meaningful human/research attribution are preserved, generated-by metadata is absent, and validation claims reflect work actually performed.

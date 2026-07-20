@@ -6,7 +6,7 @@ argument-hint: "[PR ref] [mode:pipeline] [archive:on|off]"
 
 # JJ Commit, Push, and PR
 
-**Required actor:** `ai:assistant` (AI Assistant). Preserve provider, human, and research attribution supplied by the project or user. Add no generated-by footer or execution metadata.
+Preserve human and research attribution supplied by the project or user. Add no generated-by footer or execution metadata.
 
 **Asking the user:** When this skill says "ask the user", use the provider's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting the question in chat only when no blocking tool exists in the provider or the call errors (e.g., Codex edit modes). Never silently skip the question.
 
@@ -76,7 +76,7 @@ Inspect `jj bookmark list --all-remotes -r '@ | @-'` and `jj log -r '<base>@<rem
 - **No feature work** - `@` has no diff and the range contains no change intended for a PR. Report and stop.
 - **Existing feature bookmark** - a non-base local bookmark identifies the intended stack head or an open PR supplies `headRefName`. Keep that bookmark and continue.
 - **No feature bookmark** - continue without creating one yet. Derive a non-conflicting bookmark name from the change, but create it only after Step 3 has identified the final stack head.
-- **Working copy directly bookmarked as the default base** - do not rewrite or push the default bookmark. Read `references/branch-creation.md` and follow its separation flow before continuing.
+- **Working copy directly bookmarked as the default base** - do not rewrite or push the default bookmark. Read `references/bookmark-separation.md` and follow its separation flow before continuing.
 
 Note an open PR's URL and body. Step 5 routes between create and edit; Step 4 uses the existing body as preservation context.
 
@@ -88,7 +88,7 @@ Active project instructions and syntax inferred at runtime from `jj log` always 
 
 ## Step 3: Describe changes, create or move a bookmark, and push
 
-If the working copy is based directly on the default bookmark, or local and remote default bookmarks differ, read `references/branch-creation.md` before continuing.
+If the working copy is based directly on the default bookmark, or local and remote default bookmarks differ, read `references/bookmark-separation.md` before continuing.
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 

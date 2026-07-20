@@ -73,7 +73,7 @@ Immediately load the `ce-plan` skill in the current session. Pass the unified
 plan artifact path when one exists; otherwise pass a concise summary of the
 finalized brainstorm decisions. When the Phase 1.1 grounding scout produced a
 dossier and the file still exists, also pass its path
-(`<workspace-root>/.tmp/rocketclaw/ce-brainstorm/<run-id>/grounding.md`) — it gives
+(`<workspace-root>/.tmp/rocketclaw/brainstorm/<run-id>/grounding.md`) — it gives
 planning verified quotes with `file:line` pointers to start from instead of
 re-scanning the repo. Do not print the closing summary first.
 
@@ -98,6 +98,8 @@ push a bookmark, open a PR, and watch CI to
 green. Do not also start a `/goal` or load `ce-work` directly — `lfg`
 orchestrates them. Unlike a goal tool, `lfg` is host-agnostic: it works wherever
 skills run (plus `jj`/`gh` for the PR/CI tail, which it guards when absent).
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local commit-message syntax established by project instructions and history always wins when it differs from the Go guidance; inspect that history operationally with `jj log`. Apply compatible Go guidance only to message quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
 
 Where the host exposes no skill-invocation primitive, print the `lfg <plan-path>`
 invocation for the user to run and note that it will plan, build, review, and

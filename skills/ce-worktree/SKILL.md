@@ -44,7 +44,7 @@ Use this only when there is no suitable native primitive and Step 0 found no exi
 
 1. **Anchor paths at the current workspace root.** Resolve it with `jj workspace root`; do not assume the skill was invoked from the root.
 2. Choose a short, meaningful ASCII workspace name from the task, such as `feat-login`, `fix-email-validation`, or `pr-123`. Workspace names and filesystem paths are identifiers, not change descriptions.
-3. Put fallback workspaces under `<current-workspace-root>/.tmp/workspaces/<workspace-name>`, never in a global temporary directory. Ensure `.tmp/` is ignored by the repository's `.gitignore` before creating the workspace. Do not overwrite or broadly reformat `.gitignore`.
+3. Put fallback workspaces under `<current-workspace-root>/.tmp/rocketclaw/workspaces/<workspace-name>`, never in a global temporary directory. Ensure `.tmp/` is ignored by the repository's `.gitignore` before creating the workspace. Do not overwrite or broadly reformat `.gitignore`.
 4. Resolve the starting revision as described below. If current remote state matters, refresh it with `jj git fetch` first. A fetch failure is non-fatal only when the needed revision already resolves locally and the caller accepts potentially stale state.
 5. Check the installed `jj workspace add --help` and use that runtime's supported `--name` and revision-selection syntax to add the named workspace at the chosen path. The runtime syntax wins; do not rely on a fixed command spelling copied from this skill.
 6. Enter the exact root reported by `jj workspace root --name <workspace-name>`, then confirm `jj workspace list`, `jj status`, and `jj log` show the intended workspace and parent revision.
@@ -81,7 +81,7 @@ Use the installed command help for mutating forms so runtime syntax wins. `jj wo
 Clean up only when requested or when this skill is undoing a workspace it just created unsuccessfully.
 
 1. Leave the workspace being removed and operate from another registered workspace.
-2. Resolve the exact workspace name and root with `jj workspace list` and `jj workspace root --name <workspace-name>`. Refuse cleanup if either is ambiguous, if the target is the current workspace, or if the path is not the expected native-isolation path or `<known-workspace-root>/.tmp/workspaces/<workspace-name>`.
+2. Resolve the exact workspace name and root with `jj workspace list` and `jj workspace root --name <workspace-name>`. Refuse cleanup if either is ambiguous, if the target is the current workspace, or if the path is not the expected native-isolation path or `<known-workspace-root>/.tmp/rocketclaw/workspaces/<workspace-name>`.
 3. Inspect the target from its verified root with `jj -R <target-workspace-root> status` and `jj -R <target-workspace-root> log`. If it contains undescribed work, changes not reachable elsewhere, or bookmarks the caller still needs, stop and report them. Also check for ignored or untracked artifacts that Jujutsu status may not report.
 4. Forget the exact workspace with `jj workspace forget` using the installed runtime's syntax. Do not abandon its change or delete its bookmarks as part of workspace cleanup.
 5. Confirm the name disappeared from `jj workspace list`. Delete the exact filesystem directory separately only when the caller requested deletion and all retained artifacts have been handled. Never use globs, delete a workspace root that still appears in the list, or recursively delete an unverified path.

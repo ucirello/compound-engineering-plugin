@@ -85,7 +85,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or .tmp/feedback-sweep/state.yml workspace fallback (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # recorded (multi-agent) or .tmp/rocketclaw/sweep/state.yml workspace fallback (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_bookmark: false                      # true: push-gated lease for shared-docs-bookmark topology

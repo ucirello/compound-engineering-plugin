@@ -70,7 +70,7 @@ Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"
-SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-pov/$(openssl rand -hex 4)"
+SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/pov/$(openssl rand -hex 4)"
 mkdir -p "$SCRATCH_DIR"
 echo "$SCRATCH_DIR"
 ```

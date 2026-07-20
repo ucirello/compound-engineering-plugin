@@ -1,6 +1,6 @@
 # Cross-Model Adversarial Pass
 
-Runs the adversarial review through a **different model family than the host**, in a separate read-only process, so its findings are independent of the in-process reviewers. The peer gets the **same** `references/personas/adversarial-reviewer.md` brief the in-process reviewer uses, returns the same `findings-schema.json` shape, and folds into Stage 5 as reviewer `adversarial-<peer>` — so agreement between it and the in-process `adversarial` persona promotes the finding (Stage 5 cross-reviewer agreement; render as `adversarial, adversarial-<peer>`).
+Runs the adversarial review through a **different model family than the host**, in a separate read-only process, so its findings are independent of the in-process reviewers. The peer gets the **same** `references/personas/adversarial-reviewer.md` brief the in-process reviewer uses, returns the same `findings-schema.json` shape, and folds into Stage 5 internally as reviewer `adversarial-<peer>` so agreement with the in-process `adversarial` persona promotes the finding. Render the user-facing reviewer as `independent cross-model reviewer`, without model, CLI, or harness attribution.
 
 All the invocation detail (composing the prompt from the persona, read-only flags, per-peer timeouts, capturing schema-shaped JSON) lives in the bundled script **`scripts/cross-model-adversarial-review.sh`**. This reference only decides *whether* to run it, *which peer*, and how to fold the result in. The pass is **non-blocking**: the script logs a reason and exits cleanly on any problem, writing no output file — a missing file is simply "no cross-model pass," never a failure.
 
@@ -23,7 +23,7 @@ Cursor and Claude prefer **codex** as the peer (a guaranteed different model fam
 
 ## Step 2 — Announce (only on an interactive host — `claude` or `cursor` — AND default mode)
 
-- Interactive host, default mode: surface a **prominent standalone line naming the peer** that will run (the peer CLI, plus its model if cheaply known), framed as an independent second model reviewing in parallel — placed with the Stage 3 team announce, not buried after it. Wording is yours; the falsifiable requirements: prominent, names the peer, reads as coverage not plumbing.
+- Interactive host, default mode: surface a **prominent standalone line** that an independent cross-model review will run in parallel, placed with the Stage 3 team announce rather than buried after it. Do not name the model, CLI, or harness as the reviewer.
 - Interactive host, peer not available (script will skip — CLI missing/unauthed): one quiet line that the cross-model pass was skipped and why. Never an error.
 - `XHOST=codex`: announce **nothing** — run or skip silently.
 - `mode:agent`: emit no prose.

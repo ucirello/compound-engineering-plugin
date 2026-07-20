@@ -54,7 +54,7 @@ Same pipeline for default and `mode:agent`:
 - **No blocking prompts.** Infer intent and scope from tokens, JJ state, PR metadata, and conversation.
 - **Explicit mutations only.** Never run `gh pr checkout`, `jj edit`, `jj new`, or similar workspace-switch commands during scope discovery. A PR, bookmark, or revset selects scope, not permission to change `@`.
 - **Smart defaults.** JJ snapshots non-ignored files into `@`; ignored files remain out of scope. Discover plans conservatively. Demote weak advisory P2/P3 per Stage 5.
-- **Report outcomes, not machinery.** Show the reviewed PR, bookmark, or revision; coverage and conditional-lens reasons; the independent cross-model pass and peer; and findings. Keep model tiers, scope codenames, staged context, and dispatch bookkeeping internal.
+- **Report outcomes, not machinery.** Show the reviewed PR, bookmark, or revision; coverage and conditional-lens reasons; whether the independent cross-model pass ran; and findings. Keep peer identity, model tiers, scope codenames, staged context, and dispatch bookkeeping internal.
 
 ## Output format
 
@@ -214,7 +214,7 @@ If no skip rule fires, fetch PR metadata **without checkout**:
 gh pr view <number-or-url> --json title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,files,reviews,comments --jq '{title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}'
 ```
 
-Set `BASE:` to `pr:<number-or-url>` (logical marker, not a JJ revset). Capture `jj status --color never` for Coverage. JJ snapshots non-ignored files into `@`; ignored files are out of scope and there is no Git-style untracked/staged distinction.
+Set `BASE:` to `pr:<number-or-url>` (logical marker, not a JJ revset). Capture `jj status --color never` for Coverage. JJ snapshots non-ignored files into `@`; ignored files are out of scope and there is no separate untracked/staged distinction.
 
 **PR scope mode.** Classify as **`local-aligned`** only when all conditions hold; otherwise use **`pr-remote`**. GitHub's `headRefName` is a provider branch field. A same-named JJ bookmark is insufficient by itself because zero or more bookmarks may point at `@` and an unrelated bookmark can share the provider name.
 
@@ -387,14 +387,14 @@ For `deployment-verification-agent`, use the same migration-artifact gate when t
 
 Announce the team before spawning, as a user-facing summary: name the always-on reviewers plainly, and for each conditional reviewer give the one-line reason it was added (the real concern, not the keyword that matched). Do **not** put model-tier labels (`[session model]`/`[mid-tier]`) or scope-mode codenames in this announce — those are internal. Still *decide* each reviewer's tier here and keep it in your own working notes (Stage 4 applies it at dispatch as a correctness guarantee); just keep it out of this user-facing summary.
 
-If the cross-model adversarial pass will run (adversarial selected + `local-aligned`/standalone scope), resolve its peer now via the cross-model reference's host/preflight steps and surface it **as its own prominent line that names the peer** (the peer CLI, plus its model if cheaply known) — the headline is that a second, genuinely independent model is also reviewing. Keep it with the team, not buried after it, and honor that reference's host gating (interactive hosts only). If it won't run, omit it.
+If the cross-model adversarial pass will run (adversarial selected + `local-aligned`/standalone scope), resolve its peer now via the cross-model reference's host/preflight steps and surface **a prominent line that an independent cross-model pass is also running**, without naming its model, CLI, or harness. Keep it with the team, not buried after it, and honor that reference's host gating (interactive hosts only). If it won't run, omit it.
 
 Illustrative shape only — match your own voice, do not copy verbatim:
 
 ```
 Reviewing PR #1234 (against main)
 
-Also running an independent adversarial pass via a different model: Codex.
+Also running an independent cross-model adversarial pass.
 
 Reviewers:
 - correctness, testing, maintainability, project-standards, agent-native, learnings (always)

@@ -54,6 +54,6 @@ Substitute `foreman` if `overmind` is unavailable on the user's machine — the 
 
 ## Common gotchas
 
-- **Socket files:** `overmind` writes a socket to `.overmind.sock` by default. Polish's kill-by-port logic reclaims the port but does not clean up the socket. If overmind is already running and polish restarts it, the new process may fail with "connection refused" until the stale socket is removed. The `OVERMIND_SOCKET` env var can redirect the socket to a per-run path if needed.
+- **Socket files:** set `OVERMIND_SOCKET` to `<workspace-root>/.tmp/rocketclaw/polish/<run-id>/overmind.sock` before starting Overmind, using the current directory's `.tmp` when no JJ repository exists. Polish's kill-by-port logic reclaims the port but does not clean up the socket, so keep it in the same per-run directory as the server log.
 - **Procfile vs Procfile.dev:** production and development Procfiles often differ. Always prefer `Procfile.dev` for polish.
 - **Multiple web processes:** some Procfiles split web traffic across multiple processes (API + frontend). Polish can only open one URL — users with multi-web setups should author `.agents/launch.json` explicitly to select which process is "the dev server" for polish.

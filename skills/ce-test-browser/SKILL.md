@@ -160,14 +160,15 @@ agent-browser snapshot -i
 
 **Take screenshots:**
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"
-RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/test-browser/<run-id>"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"
+RUN_DIR="${WORKSPACE_ROOT:+$WORKSPACE_ROOT/.tmp/rocketclaw/test-browser/<run-id>}"
+RUN_DIR="${RUN_DIR:-$PWD/.tmp/rocketclaw/test-browser/<run-id>}"
 mkdir -p "$RUN_DIR"
 agent-browser screenshot "$RUN_DIR/page-name.png"
 agent-browser screenshot --full "$RUN_DIR/page-name-full.png"
 ```
 
-Outside a JJ workspace, the fallback stores screenshots under the physical current directory's `.tmp/rocketclaw/test-browser/<run-id>/`.
+Outside a JJ workspace, the fallback stores screenshots under `$PWD/.tmp/rocketclaw/test-browser/<run-id>/`.
 
 ### 8. Human Verification (When Required)
 
@@ -200,7 +201,7 @@ Did it work correctly?
 When a test fails (**pipeline mode:** do not ask how to proceed — capture the error screenshot and repro steps, log the failure, and continue):
 
 1. **Document the failure:**
-   - Screenshot the error state under `<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/error.png`, using the physical current directory's `.tmp/rocketclaw/test-browser/<run-id>/` when outside a JJ workspace
+   - Screenshot the error state under `<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/error.png`, using `$PWD/.tmp/rocketclaw/test-browser/<run-id>/` when outside a JJ workspace
    - Note the exact reproduction steps
 
 2. **Ask the user how to proceed:**

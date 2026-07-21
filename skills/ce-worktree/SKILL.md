@@ -105,9 +105,9 @@ If workspace creation fails, do not retry with destructive flags, another base, 
 
 ## Describing fresh work
 
-Workspace creation does not require a description. If the caller explicitly asks to describe the new working-copy change during setup, inspect the project's active message policy and recent descriptions using the project's working `jj log` syntax before composing it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active message policy takes precedence, followed by conventions inferred from runtime `jj log` output; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed prefixes, types, scopes, wording, examples, or templates.
+Workspace creation does not require a description. If the caller explicitly asks to describe the new working-copy change during setup, inspect the project's active local instructions and recent commit messages with the project's actual `git log` command before composing it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The local instructions and message syntax inferred from actual `git log` output take precedence; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed prefixes, types, scopes, subject/body shapes, syntax, wording, examples, or templates.
 
-Apply the resulting project-native text with `jj describe -m '<description-composed-from-runtime-conventions>'` from the new workspace only. Do not describe the original workspace's `@`.
+Apply the resulting project-native text with `jj describe` from the new workspace only. Do not describe the original workspace's `@`.
 
 ## List, enter, and forget
 

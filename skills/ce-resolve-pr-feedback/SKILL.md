@@ -1,8 +1,8 @@
 ---
 name: ce-resolve-pr-feedback
 description: Resolve PR review feedback. Use when addressing review comments, resolving review threads, or fixing code-review feedback.
-argument-hint: "[PR number, comment URL, or blank for current bookmark's PR]"
-allowed-tools: Bash(gh *), Bash(jj *), Read
+argument-hint: "[PR number, comment URL, or blank for the unambiguous bookmark at @]"
+allowed-tools: Bash(gh *), Bash(git *), Bash(jj *), Read
 ---
 
 # Resolve PR Review Feedback
@@ -26,7 +26,7 @@ If scratch storage is needed, resolve the workspace root with `jj workspace root
 
 | Argument | Mode |
 |----------|------|
-| No argument | **Full** -- all unresolved threads on the current bookmark's PR |
+| No argument | **Full** -- all unresolved threads on the PR for the unambiguous bookmark at `@`; require PR input when that bookmark cannot be resolved |
 | PR number (e.g., `123`) | **Full** -- all unresolved threads on that PR |
 | Comment/thread URL | **Targeted** -- only that specific thread |
 

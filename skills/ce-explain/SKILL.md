@@ -44,7 +44,7 @@ Read `references/intake.md` now and classify the request into one of the four in
 Match grounding to the input shape. Create the run directory first — every run gets one, before any artifact exists:
 
 ```bash
-workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
+workspace_root=$(jj workspace root 2>/dev/null || printf '%s\n' "$PWD")
 RUN_DIR="$workspace_root/.tmp/rocketclaw/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)"
 mkdir -p "$RUN_DIR"
 echo "$RUN_DIR"

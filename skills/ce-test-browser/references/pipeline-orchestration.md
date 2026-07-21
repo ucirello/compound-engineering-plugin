@@ -14,8 +14,9 @@ Run the whole thing as **one** command. Shell variables do not survive between s
 
 ```bash
 PORT=3000   # replace 3000 with the preferred port from step 4
-WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd -P)
-TMP_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-browser"
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+TMP_DIR="${WORKSPACE_ROOT:+$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-browser}"
+TMP_DIR="${TMP_DIR:-$PWD/.tmp/rocketclaw/ce-test-browser}"
 mkdir -p "$TMP_DIR"
 LOG_FILE="$TMP_DIR/dev-server-${PORT}.log"
 

@@ -8,9 +8,11 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the ce-riffrec-feedback-analysis SKILL.md>"
-   WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
-   OUTPUT_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/riffrec-quick-$(date +%Y%m%d-%H%M%S)-$$"
-   mkdir -p "$OUTPUT_DIR"
+    if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; then
+      OUTPUT_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/riffrec-quick/$(date +%Y%m%d-%H%M%S)-$$"
+    else
+      OUTPUT_DIR="$PWD/.tmp/rocketclaw/riffrec-quick/$(date +%Y%m%d-%H%M%S)-$$"
+    fi
    python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$OUTPUT_DIR"
    ```
 

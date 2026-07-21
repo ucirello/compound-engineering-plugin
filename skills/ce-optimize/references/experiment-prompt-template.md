@@ -83,7 +83,7 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 ## Notes
 
 - This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch: set `workspace_root=$(jj workspace root 2>/dev/null || pwd -P)`, write the filled template under `$workspace_root/.tmp/rocketclaw/ce-optimize/prompts/`, and pipe it via stdin to `codex exec --skip-git-repo-check - 2>&1`.
+- For Codex dispatch: write the filled template under `$(jj workspace root)/.tmp/rocketclaw/optimize/` and pipe it via stdin; if root discovery fails, use `$PWD/.tmp/rocketclaw/optimize/`.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

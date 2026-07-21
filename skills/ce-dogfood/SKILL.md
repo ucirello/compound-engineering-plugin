@@ -37,7 +37,7 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 | Recording each fix as a JJ change | `ce-commit` | Project-conformant change descriptions. |
 | A bug reveals a reusable lesson | `ce-compound` | Capture the learning so the team compounds knowledge. |
 
-Whenever a fix description is composed, edited, validated, or recommended, use `ce-commit` and apply this policy. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description syntax inferred via `jj log` win when they differ from general guidance; compatible Go quality guidance applies. Do not impose a fixed description syntax, example, or template; use neutral placeholders when discussing structure.
+Whenever a fix description is composed, edited, validated, or recommended, use `ce-commit` and apply this policy. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Inspect actual past messages with `git log` before composing. The project's active runtime-local instructions and the commit-message syntax visible in that log take precedence over general guidance; compatible Go quality guidance applies. Do not impose a fixed description syntax, example, or template; use neutral placeholders when discussing structure.
 
 ## Workflow
 
@@ -58,13 +58,13 @@ Parse `$ARGUMENTS`: a PR number, a bookmark name, or blank (use the current work
 1. **Inspect before changing the working copy.** Run `jj status`, `jj log -r '@ | @-'`, `jj bookmark list --all-remotes`, and `jj workspace list`. JJ has no active bookmark: determine the target from the argument and revision graph, not from an assumed current bookmark.
 2. **Identify the target and its trunk; keep PR identity.**
    - **PR number:** the target remains the PR throughout. Read its head, base, repository owner, and fork status with `gh pr view <number> --json headRefName,baseRefName,headRepositoryOwner,isCrossRepository`. Use `jj git fetch` against the appropriate existing remote; if the fork has no remote, add one with `jj git remote add` and fetch it. Resolve the head as its remote bookmark and the trunk as the PR's base bookmark. Do not reduce the PR to an ambiguous bare bookmark name.
-   - **Bookmark name:** run `jj git fetch`, then resolve the local bookmark when present or its unambiguous remote bookmark otherwise. Resolve the trunk from the forge's default branch via `gh repo view --json defaultBranchRef`, preferring its tracked local bookmark and otherwise using the remote bookmark.
+   - **Bookmark name:** run `jj git fetch`, then resolve the local bookmark when present or its unambiguous remote bookmark otherwise. Resolve the trunk from the forge's default bookmark via `gh repo view --json defaultBranchRef`, preferring its tracked local bookmark and otherwise using the remote bookmark.
    - **Blank:** use `@` as the target. Resolve the trunk the same way and use `jj log` plus bookmark decorations to identify any bookmark associated with the stack; do not invent one.
 3. **Refuse an empty target range for bookmark/blank targets.** Use `jj diff --from <trunk-revision> --to <target-revision> --summary`. If it has no changes, stop. A PR remains diffable against its declared base even when its head bookmark has a trunk-like name.
 4. **Decide isolation by what you're testing; let `ce-worktree` own JJ workspace mechanics.** Do not re-derive workspace creation or attachment here. The only decision this skill makes is whether to ask for isolation:
-   - **Blank/current-change target:** dogfood in the current workspace. Existing unrecorded edits are already part of `@`; surface them from `jj status` and confirm only if they make the intended target ambiguous.
-   - **PR or named-bookmark target:** offer isolation with the platform's blocking question facility. On **yes**, invoke `ce-worktree` for that exact PR or bookmark and follow its returned workspace path and target revision. On **no**, first require a clean, empty `@` or confirmation that it may be preserved, then use `jj new <target-revision>` to create a new working-copy change on the target without rewriting it. Use only JJ working-copy operations.
-5. **Preserve publication state.** Record the target's local bookmark, remote, and initial revision when one exists. JJ bookmarks do not advance automatically. Fixes may advance that local bookmark in Phase 5, but this workflow never pushes; if the user later requests publication, the interoperable operation is `jj git push --bookmark <bookmark>` after reviewing `jj status`, `jj diff`, and `jj log`.
+   - **Blank/current-change target:** dogfood in the current workspace. Existing working-copy changes are part of `@`; surface them from `jj status` and confirm only if they make the intended target ambiguous.
+   - **PR or named-bookmark target:** offer isolation with the platform's blocking question facility. On **yes**, invoke `ce-worktree` for that exact PR or bookmark and follow its returned workspace path and target revision. On **no**, confirm before moving the workspace away from a non-empty working-copy change, then use `jj new <target-revision>` to create a new working-copy change on the target without rewriting it. Use only JJ working-copy operations.
+5. **Preserve publication state.** Record the target's local bookmark, remote, and initial revision when one exists. JJ bookmarks do not advance automatically. Fixes may advance that local bookmark in Phase 5, but this workflow never pushes; if the user later requests publication, review `jj status`, `jj diff`, and `jj log`, then publish only the recorded target with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`.
 6. **Resume if a prior run exists.** Look for an existing report at `docs/dogfood-reports/*-<target-slug>-dogfood.md` (see the target-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, re-hydrate the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
 
 ### Resumability (stop and return at any point)
@@ -144,14 +144,14 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
    agent-browser snapshot -i
    agent-browser click @e1
    agent-browser fill @e2 "value"
-   ROOT=$(jj workspace root 2>/dev/null || pwd)
-   SCRATCH="$ROOT/.tmp/rocketclaw/ce-dogfood/<run-id>"
+   WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || printf '%s\n' "$PWD")
+   SCRATCH="$WORKSPACE_ROOT/.tmp/rocketclaw/dogfood/<run-id>"
    mkdir -p "$SCRATCH"
    agent-browser screenshot "$SCRATCH/<scenario>.png"
    agent-browser errors      # check console/page errors
    ```
 
-   Write transient screenshots under `$(jj workspace root)/.tmp/rocketclaw/ce-dogfood/<run-id>/`. Outside a JJ workspace, use `./.tmp/rocketclaw/ce-dogfood/<run-id>/` in the current directory. Only copy a screenshot into the report's location if you intend to embed it in the final report, and ensure `.tmp/` is ignored before creating artifacts so JJ does not track them.
+   Write transient screenshots under `$(jj workspace root)/.tmp/rocketclaw/dogfood/<run-id>/`. Outside a JJ workspace, use `$PWD/.tmp/rocketclaw/dogfood/<run-id>/`. Only copy a screenshot into the report's location if you intend to embed it in the final report, and ensure `.tmp/` is ignored before creating artifacts so JJ does not track them. If `.tmp/` was already tracked, use `jj file untrack .tmp` after adding it to the ignore rules.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product?
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity.
@@ -167,10 +167,10 @@ When a scenario fails — or a passing scenario carries a sharp paper cut worth 
 
 **For autonomous fixes:**
 
-1. Investigate the root cause. If it's non-obvious, use `ce-debug`.
+1. Investigate the root cause. Use `jj file annotate <path>` when line history or ownership is relevant. If the cause is non-obvious, use `ce-debug`.
 2. Apply the fix in the code.
 3. **Add an automated regression test** that fails before the fix and passes after, so the bug can't return. This is the default for behavioral and code bugs. When an automated test is genuinely impractical — a pure copy, spacing, or visual fix with no behavioral assertion to make — substitute a documented browser-replay or screenshot check and **state in the report why no automated test was meaningful**. Do not invent a hollow test just to satisfy the step.
-4. Record one logical fix as one JJ change using `ce-commit`, then inspect it with `jj status`, `jj diff`, and `jj log`. Whenever a fix description is composed, edited, validated, or recommended, use `ce-commit` and apply this policy. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description syntax inferred via `jj log` win when they differ from general guidance; compatible Go quality guidance applies. Do not impose a fixed description syntax, example, or template; use neutral placeholders when discussing structure. If the target has a local bookmark, advance it to the recorded fix revision with `jj bookmark move <bookmark> --to <fix-revision>`; do not push.
+4. Record one logical fix as one JJ change using `ce-commit`, then inspect it with `jj status`, `jj diff`, and `jj log`. Whenever a fix description is composed, edited, validated, or recommended, use `ce-commit` and apply this policy. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Inspect actual past messages with `git log` before composing. The project's active runtime-local instructions and the commit-message syntax visible in that log take precedence over general guidance; compatible Go quality guidance applies. Do not impose a fixed description syntax, example, or template; use neutral placeholders when discussing structure. If the target has a local bookmark, advance it to the recorded fix revision with `jj bookmark move <bookmark> --to <fix-revision>`; do not push.
 5. Re-run the failing scenario in the browser to confirm it now passes; then continue the matrix.
 6. If the bug carried a reusable lesson, capture it with `ce-compound`.
 

@@ -78,13 +78,11 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use JJ's bisection support to find the breaking change:
+When a bug is a regression ("it worked before"), use JJ's binary search to find the first bad revision. Supply a test command that exits 0 for good, 125 to skip, 127 to abort, and any other non-zero status for bad:
 
 ```bash
-jj bisect run --range <known-good-ref>::@ -- <test-command>
+jj bisect run --range '<known-good-revision>..@' -- <test-command>
 ```
-
-The test command should exit 0 for good, non-zero for bad.
 
 ---
 
@@ -120,7 +118,7 @@ A 5% reproduction rate confirms the bug exists but suggests timing or data sensi
 - Run the suite with randomized test order (most runners support a seed flag) — a different failing-test neighbor each run implies global state mutation
 - Bisect the preceding tests: run the failing test with just the first half of the earlier tests, then the second half, then narrow
 
-Common culprits once isolated: module-level state, mocks not torn down, temp files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
+Common culprits once isolated: module-level state, mocks not torn down, files under the workspace's `.tmp/` not cleaned up, database rows not rolled back, environment variables mutated and not restored.
 
 ---
 

@@ -28,9 +28,9 @@ gh pr view <ref> --json baseRefName,headRefName,url,body,state,isCrossRepository
 
 If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefName` as `<head>`.
 
-For current-bookmark mode, resolve `<base>` from a caller-supplied `base:<ref>` or `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If neither resolves, ask the user. Resolve `<head>` to the feature bookmark selected by the caller; JJ has no active bookmark, so never infer it from a checked-out branch.
+For selected-bookmark mode, resolve `<base>` from a caller-supplied `base:<ref>` or `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If neither resolves, ask the user. Resolve `<head>` to the feature bookmark selected by the caller; JJ has no active bookmark, so never infer it from a checked-out branch.
 
-**Remotes:** use `origin` for the base. In current-bookmark mode, `<head-revision>` is the local `<head>` bookmark. In same-repository PR mode, fetch the head from `origin` and set `<head-revision>` to `<head>@origin`. For fork PRs, match `headRepository` against `jj git remote list`, fetch the head from that remote, and set `<head-revision>` to `<head>@<head-remote>`. If no local remote matches, skip to the `gh` fallback; do not diff against the wrong remote.
+**Remotes:** use `origin` for the base. In selected-bookmark mode, `<head-revision>` is the local `<head>` bookmark. In same-repository PR mode, fetch the head from `origin` and set `<head-revision>` to `<head>@origin`. For fork PRs, match `headRepository` against `jj git remote list`, fetch the head from that remote, and set `<head-revision>` to `<head>@<head-remote>`. If no local remote matches, skip to the `gh` fallback; do not diff against the wrong remote.
 
 ```bash
 jj git fetch --remote <base-remote> --branch <base>
@@ -68,7 +68,7 @@ For small + non-trivial bugfixes, the 3-5 sentence target still needs a user-vis
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-For every PR-title composition, edit, validation, or recommendation, the project's active runtime instructions take precedence, followed by description syntax and wording observed with `jj log`; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, layouts, templates, or examples; use the neutral `<title-composed-from-runtime-conventions>` placeholder when discussing variable content.
+Inspect the actual history with `git log -n 10 --format=full`. For every PR-title composition, edit, validation, or recommendation, the project's active repository-local instructions and message syntax observed in actual `git log` output take precedence; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, layouts, templates, or examples; use the neutral `<title-composed-from-runtime-conventions>` placeholder when discussing variable content.
 
 ---
 

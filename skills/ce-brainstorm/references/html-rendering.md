@@ -216,16 +216,22 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time from the `origin` entry:
+Resolve the repo's canonical GitHub URL and default branch once at compose time:
 
 ```bash
+gh repo view --json url,defaultBranchRef
 jj git remote list
 ```
+
+Prefer the authenticated `gh` result. If that is unavailable, normalize the
+`jj git remote list` URLs and use a repository URL only when exactly one remote
+points to GitHub; use `HEAD` as the branch segment when the default branch is
+unknown. Do not assume a remote name or branch name.
 
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
+  `docs/solutions/bar.md`) → `<repo-url>/blob/<default-branch>/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -233,9 +239,9 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
-Bitbucket, internal host) and the equivalent main-tree URL pattern
-isn't obvious, leave entries as `<code>` text. If the external
+**Do not invent URLs.** If no unambiguous GitHub URL is available (GitLab,
+Bitbucket, internal host, or multiple unmatched remotes) and the equivalent
+tree URL pattern isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.
 

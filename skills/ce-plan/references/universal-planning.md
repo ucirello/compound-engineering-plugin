@@ -156,7 +156,7 @@ After structuring the plan, ask the user how they want to receive it using the p
 1. **Save to disk** — Write the plan as a markdown file. Ask where:
    - `docs/plans/` (only show if this directory exists)
    - Current working directory
-   - Workspace scratch: resolve `workspace_root=$(jj workspace root 2>/dev/null || pwd -P)` and use a path under `$workspace_root/.tmp/rocketclaw/ce-plan/`
+   - Workspace scratch: resolve `workspace_root=$(jj workspace root 2>/dev/null || printf '%s\n' "$PWD")` and use a path under `$workspace_root/.tmp/rocketclaw/ce-plan/`
    - A custom path
    - Use filename convention: `YYYY-MM-DD-<descriptive-name>-plan.md`
    - Start the document with a `# Title` heading, followed by `Created: YYYY-MM-DD` on the next line. No YAML frontmatter.

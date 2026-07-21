@@ -11,7 +11,7 @@ This reference loads **after** review has run. In the ce-work shipping flow, ste
 Reuse the review output already in hand:
 
 - Parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) **or** the markdown Actionable Findings summary captured by the caller
-- Run artifact dir: `$(jj workspace root 2>/dev/null || pwd)/.tmp/rocketclaw/ce-code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`)
+- Run artifact dir: `$(jj workspace root 2>/dev/null || pwd -P)/.tmp/rocketclaw/ce-code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`)
 
 If `status` is `failed`, stop shipping and surface `reason`. If `degraded`, note partial reviewer coverage before applying anything.
 
@@ -84,7 +84,7 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not split, describe, or commit the JJ change — return which `#` were applied or skipped and which files changed
 
-**After each wave:** the orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and commits through JJ unless workspace-isolated subagents are integrated per Phase 1. Repeat until all batches complete. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions take precedence, followed by syntax and style observed in `jj log`; apply only compatible Go commit-message quality guidance. Do not impose fixed syntax, examples, or templates, and use neutral placeholders where an interface requires fields.
+**After each wave:** the orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and commits through JJ unless workspace-isolated subagents are integrated per Phase 1. Repeat until all batches complete. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from active project instructions and runtime history inspected with `jj log -r '::@' --limit 20 --no-graph -T 'description.first_line() ++ "\n"'` wins over incompatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
 
 ### Optional inline shortcut (skip subagent spawn)
 

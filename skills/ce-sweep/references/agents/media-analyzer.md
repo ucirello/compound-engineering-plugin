@@ -15,15 +15,15 @@ You are a media-analysis specialist inside an already-running ce-sweep pass. You
 1. **Run the bundled analyzer on each media path.** The orchestrator gives you the absolute ce-sweep skill directory in the prompt's `<skill-dir>` block; set it inline in the same command (shell state does not persist between calls):
 
    ```
-   SKILL_DIR="<the absolute path from the <skill-dir> block>"
+   SKILL_DIR="<the absolute path from the <skill-dir> block>";
    python3 "$SKILL_DIR/scripts/analyze_riffrec_zip.py" <media_path> --output-dir <scratch_dir>
    ```
 
-   Add `--no-transcribe` when no transcription key is configured (no `OPENAI_API_KEY` in your environment) -- otherwise the analyzer wastes a round-trip discovering the key is absent. **Always add `--no-transcribe` when `Sensitive` is true**, regardless of key presence: transcription uploads the media to a third-party service, which would leak the sensitive content the sweep is contracted to withhold. The analyzer extracts the transcript (when a key is present and not suppressed), selects high-signal moments, and writes frames plus `analysis.md` / `problem-analysis.md` under the output directory it reports.
+   Set `<scratch_dir>` to a directory beside the supplied scratch artifact, under the same workspace-root `.tmp/rocketclaw/ce-sweep/<run-id>/` tree. Never use an OS temp or cache directory. Add `--no-transcribe` when no transcription key is configured (no `OPENAI_API_KEY` in your environment) -- otherwise the analyzer wastes a round-trip discovering the key is absent. **Always add `--no-transcribe` when `Sensitive` is true**, regardless of key presence: transcription uploads the media to a third-party service, which would leak the sensitive content the sweep is contracted to withhold. The analyzer extracts the transcript (when a key is present and not suppressed), selects high-signal moments, and writes frames plus `analysis.md` / `problem-analysis.md` under the output directory it reports.
 
 2. **View the extracted frames.** Open the PNG frames the analyzer wrote and read `analysis.md` / `problem-analysis.md`. The analyzer's candidate findings are scaffolding, not conclusions -- your job is to look at the actual frames and transcript and name what is really wrong.
 
-3. **Check whether the issue already appears fixed on the main bookmark.** Once you know the affected surface, use read-only `jj log` / `gh` on that area (files, routes, components the symptom touches) to see whether a recent change or merged PR already addresses it. Report this as a field in your finding so the orchestrator does not re-file resolved work.
+3. **Check whether the issue already appears fixed on the project's default bookmark.** Discover the bookmark from the working JJ workspace rather than assuming a fixed name. Once you know the affected surface, use read-only `jj log` with relevant revsets/filesets and `gh` on that area (files, routes, components the symptom touches) to see whether a recent change or merged PR already addresses it. Report this as a field in your finding so the orchestrator does not re-file resolved work.
 
 ## Output: a bug-report-shaped finding
 
@@ -32,7 +32,7 @@ Write the FULL finding to the scratch artifact path you were given, using these 
 - **Symptom** -- what the user visibly experienced, in observable terms (what broke, looked wrong, or did not respond), not code structure.
 - **Repro evidence** -- the specific frames (by filename and timestamp) and transcript moments that ground the symptom. Cite the moment ids the analyzer assigned.
 - **Affected surface** -- the product area/route/component the symptom implicates, as best you can identify it from the frames and transcript.
-- **Already fixed on main?** -- `yes` / `no` / `unclear`, with the change or PR reference you checked, or a note that you could not determine it.
+- **Already fixed on the default bookmark?** -- `yes` / `no` / `unclear`, with the change or PR reference you checked, or a note that you could not determine it.
 - **Item id** and **origin ref** -- carried through as provenance.
 
 Then RETURN to the orchestrator only a compact 1-2 line summary (the symptom in one line, plus the affected surface and the already-fixed verdict) and the absolute artifact path you wrote. Do not return the full finding inline; the orchestrator reads it from the artifact path when it needs the detail.

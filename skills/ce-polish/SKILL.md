@@ -93,7 +93,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done, compose or edit the current JJ change description and stop. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active runtime instructions and conventions and the repository's `jj log` syntax and history take precedence; apply the Go guidance only where compatible for message quality, clarity, and structure. Do not impose fixed prefixes, types, scopes, messages, examples, or templates.
+- When the user says they're done, compose or edit the current JJ change description and stop. Runtime project instructions take precedence, followed by syntax and style observed through the repository's working `jj log` command; apply compatible Go guidance only to message quality, clarity, and structure. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Do not impose fixed syntax, examples, or templates.
 
 No checklist. No envelope. Just conversation.
 

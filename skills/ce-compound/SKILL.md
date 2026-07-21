@@ -52,7 +52,7 @@ If the line above resolved to an absolute path, use it as the session-history re
 
 For repository inspection, use `jj status`, `jj diff`, and `jj log`; reason in changes and revisions, use bookmarks rather than branches, and use `jj workspace` commands for workspace operations. Use `jj git fetch` and `jj git push` only for Git-remote interoperability; `gh` remains appropriate for GitHub metadata and pull requests.
 
-When composing or editing a JJ change description or an interoperable commit message, runtime project instructions and the syntax inferred from `jj log` take precedence; compatible Go quality guidance applies when those sources do not conflict. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Do not impose a fixed syntax, example, or template; use neutral placeholders where structure must be discussed.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. At every JJ description or commit-message composition, recommendation, or validation site, the active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
 
 ## Support Files
 

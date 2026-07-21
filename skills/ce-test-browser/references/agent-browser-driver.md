@@ -44,4 +44,6 @@ agent-browser back
 agent-browser wait @e1
 ```
 
+Resolve `<workspace-root>` with `jj workspace root`; outside a JJ workspace, use the physical current directory so evidence remains under its local `.tmp/rocketclaw/test-browser/<run-id>/`.
+
 Use the installed core documentation for console-error inspection and any command not shown here. Do not switch to another browser driver after the first route is tested.

@@ -126,7 +126,7 @@ False-positive categories to actively suppress. Do NOT emit a finding when any o
 
 - **Pre-existing issues unrelated to this diff.** Mark `pre_existing: true` only for unchanged code the diff does not interact with. If the diff makes a previously-dormant issue newly relevant (e.g., changes a caller in a way that exposes a bug downstream), it is a secondary finding, not pre-existing. PR-comment and agent-mode externalization filter pre-existing entirely; interactive review surfaces them in a separate section.
 - **Pedantic style nitpicks that a linter or formatter would catch.** Missing semicolons, indentation, import ordering, unused-variable warnings the project's tooling already catches. Style belongs to the toolchain.
-- **Code that looks wrong but is intentional.** Check comments, commit messages, PR description, or surrounding code for evidence of intent before flagging. A persona-flagged "missing null check" guarded by an upstream `.present?` call is a false positive.
+- **Code that looks wrong but is intentional.** Check comments, JJ change descriptions, PR description, or surrounding code for evidence of intent before flagging. A persona-flagged "missing null check" guarded by an upstream `.present?` call is a false positive.
 - **Issues already handled elsewhere.** Check callers, guards, middleware, framework defaults, and parallel handlers before flagging. If a controller's input is already validated by a parent middleware, the controller-level check the persona wants to add is redundant.
 - **Suggestions that restate what the code already does in different words.** "Consider extracting this into a helper" when the code is already a small helper, "consider adding a guard" when a guard one line up already enforces it.
 - **Generic "consider adding" advice without a concrete failure mode.** If you cannot name what breaks, the finding is not actionable. Either find the failure mode or suppress.
@@ -155,7 +155,7 @@ Rules:
     - Pagination strategy unclear → propose offset pagination matching the existing pattern at `file:line`, with assumption named. If product needs cursor-based, the user can switch.
     - Rate limit value uncertain → propose the value that matches existing rate limits in the project, with assumption named. The user can tune.
     - Auth model unknown → propose authentication via the existing middleware pattern at `file:line`, with assumption named. If a different service owns the auth flow, the user can route through it.
-    The "I need `<specific input>` before I can commit" framing is a soft punt. The question to ask instead is "what code change would I propose if I had to choose now?" — and propose that, with the assumption named so the user can correct it.
+    The "I need `<specific input>` before I can propose a fix" framing is a soft punt. The question to ask instead is "what code change would I propose if I had to choose now?" — and propose that, with the assumption named so the user can correct it.
   - **Genuinely-omit cases are rare.** Omit `suggested_fix` only when there is no code-level change to propose — for example:
     - The finding is a question, not a fix request: "What is the intended SLA here?" with no clear default to assume.
     - The resolution is purely organizational with no code component: legal sign-off, business policy decision, or a process change that doesn't touch code.

@@ -67,7 +67,7 @@ Confirm the bug exists and understand its behavior. Run the test, trigger the er
 - **Writing the reproduction test:** Orient on the project's testing conventions before authoring the failing test. Resolve them from the shared repo-grounding cache first — set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
   ```bash
-  SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
+  SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
   python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
   ```
 
@@ -98,7 +98,7 @@ Concrete recipe:
 Do not stop at the first function that looks wrong — the root cause is where bad state originates, not where it is first observed.
 
 As you trace:
-- Check recent changes in files you are reading: `jj log -n 10 -- [file]`
+- Check recent changes in files you are reading with a working `jj log` invocation derived at runtime for the installed JJ version and project; do not assume fixed path or option syntax
 - If the bug looks like a regression ("it worked before"), use JJ bisection (see `references/investigation-techniques.md`)
 - Check the project's observability tools for additional evidence:
   - Error trackers (Sentry, AppSignal, Datadog, BetterStack, Bugsnag)
@@ -280,13 +280,13 @@ Run this tail after Phase 3 ran and before the bookmark-based change/PR handoff.
 **Re-verification**: [checks rerun after tail edits]
 ```
 
-**Change-description composition:** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description syntax inferred via `jj log` always win. Compatible Go guidance applies only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, examples, or templates; use `<description-composed-from-runtime-conventions>` as the neutral placeholder.
+**Change-description composition:** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description conventions observed through a working `jj log` invocation always win; determine that invocation at runtime rather than prescribing fixed `jj log` syntax. Compatible Go guidance applies only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, examples, or templates; use `<description-composed-from-runtime-conventions>` as the neutral placeholder.
 
 #### Skill-owned bookmark (created in Phase 3): default to describe-and-PR without prompting
 
 1. **Check for contextual overrides first.** Look at the user's original prompt, loaded memories, and the project's active instructions already in your context for preferences that conflict with auto describe-and-PR — for example, "always review before pushing", "open PRs as drafts", or "don't open PRs from skills". A signal must be an explicit instruction or a clearly applicable rule, not a vague tonal cue. If any apply, honor them — switch to the pre-existing-bookmark menu below, or skip the PR step entirely, whichever matches the user's stated preference.
-2. **Briefly preview what will happen** — what change will be described, on what bookmark, and that a PR will be opened — then proceed without waiting for confirmation. The preview exists so the user can interrupt; it is not a blocking question. Format and length are your call; keep it scannable.
-3. **Run `/ce-commit-push-pr`.** Pass the change-description composition rule above to the handoff. When the entry came from an issue tracker, derive that tracker's auto-close syntax and required location at runtime from project conventions and the tracker's documented behavior, then place it there so the diagnosis and fix flow back to the issue and it closes on merge. Surface the resulting PR URL.
+2. **Briefly preview what will happen** — what change will be described, on what bookmark, and that a PR will be opened — then proceed without waiting for confirmation. The preview exists so the user can interrupt; it is not a blocking question. Format and length are your call; keep it scannable. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description conventions observed through a working `jj log` invocation always win; determine that invocation at runtime rather than prescribing fixed `jj log` syntax. Do not impose fixed message syntax.
+3. **Run `/ce-commit-push-pr`.** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Pass the change-description composition rule above to the handoff, including that runtime project instructions and description conventions observed through a working `jj log` invocation always win and that no fixed message syntax may be imposed. When the entry came from an issue tracker, derive that tracker's auto-close syntax and required location at runtime from project conventions and the tracker's documented behavior, then place it there so the diagnosis and fix flow back to the issue and it closes on merge. Surface the resulting PR URL.
 
 #### Pre-existing bookmark (skill did not create it): ask the user
 
@@ -294,8 +294,8 @@ Use the platform's blocking question tool. Fall back to numbered options in chat
 
 Options:
 
-1. **Open a PR with the reviewed fix (`/ce-commit-push-pr`)** — default for most cases; pass the change-description composition rule above
-2. **Describe the fix (`/ce-commit`)** — local JJ change only; pass the change-description composition rule above
+1. **Open a PR with the reviewed fix (`/ce-commit-push-pr`)** — default for most cases. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Pass the change-description composition rule above, including runtime project and working `jj log` precedence with no fixed message syntax.
+2. **Describe the fix (`/ce-commit`)** — local JJ change only. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Pass the change-description composition rule above, including runtime project and working `jj log` precedence with no fixed message syntax.
 3. **Stop here** — user takes it from there
 
 #### After a PR is open (either path): consider offering learning capture

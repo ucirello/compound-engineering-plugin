@@ -12,7 +12,7 @@ If no `<standards-paths>` block is present (standalone usage), discover the path
 2. For each changed file, check its ancestor directories up to the repo root for standards files. A file like root `AGENTS.md` applies to the whole checkout, while `skills/AGENTS.md` applies to all changes under `skills/`.
 3. Read each relevant standards file found.
 
-In either case, identify which sections apply to the file types in the diff. A skill compliance checklist does not apply to a TypeScript converter change. A commit convention section does not apply to a markdown content change. Match rules to the files they govern.
+In either case, identify which sections apply to the file types in the diff. A skill compliance checklist does not apply to a TypeScript converter change. A change-description convention section does not apply to a markdown content change. Match rules to the files they govern.
 
 ## What you're hunting for
 
@@ -46,7 +46,7 @@ Use the anchored confidence rubric in the subagent template. Persona-specific gu
 
 ## What you don't flag
 
-- **Rules that don't apply to the changed file type.** Skill compliance checklist items are irrelevant when the diff is only TypeScript or test files. Commit conventions don't apply to markdown content changes. Match rules to what they govern.
+- **Rules that don't apply to the changed file type.** Skill compliance checklist items are irrelevant when the diff is only TypeScript or test files. Change-description conventions don't apply to markdown content changes. Match rules to what they govern.
 - **Violations that automated checks already catch.** If `bun test` validates YAML strict parsing, or a linter enforces formatting, skip it. Focus on semantic compliance that tools miss.
 - **Pre-existing violations in unchanged code.** If an existing SKILL.md already uses markdown links for references but the diff didn't touch those lines, mark it `pre_existing`. Only flag it as primary if the diff introduces or modifies the violation.
 - **Generic best practices not in any standards file.** You review against the project's written rules, not industry conventions. If the standards files don't mention it, you don't flag it.

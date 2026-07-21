@@ -64,7 +64,7 @@ After all mutations in this run have settled (initial write, deepening synthesis
 **Recommended marker (dynamic):** Goal mode is the recommended default when its host supports it — render option 2 as **Run it as a `/goal`** *(recommended)* and leave option 1 unmarked. On hosts without goal capability (option 2 omitted), mark option 1 **Start `/ce-work`** *(recommended)* instead. Exactly one option ever carries *(recommended)*.
 3. **Decide on the review's open items** - Confirm or skip the suggested edits, and settle the judgment calls the auto-pass left for you. (Safe, mechanical fixes were already applied; you can also defer items into Open Questions.)
 4. **Create Issue** - Create a tracked issue from this plan in your configured issue tracker (e.g., GitHub Issues, Linear, Jira)
-5. **Publish to Proof — shareable link** - Publish the plan to Every's Proof editor and get a shareable link to read, comment on, or share with others. One-way: the local plan file stays canonical. **Render only when `OUTPUT_FORMAT=md`.**
+5. **Publish to Proof — shareable link** - Publish the plan to Proof and get a shareable link to read, comment on, or share with others. One-way: the local plan file stays canonical. **Render only when `OUTPUT_FORMAT=md`.**
 5. **Open in browser** - Open the HTML plan file locally for review and sharing. **Render only when `OUTPUT_FORMAT=html`.**
 
 There is no "done" / "pause" option — the blocking question already waits, and the user ends the turn by dismissing it (Esc) or just not picking anything. The plan file is already saved.

@@ -19,9 +19,17 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 
 ## Common rules
 
-- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not commit `raw/` or `frames/` directories unless the user explicitly asks and privacy is acceptable.
-- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be committed when they are needed for traceability and contain no sensitive data.
-- Use repo-relative screenshot paths in any committed doc so later agents can open the evidence without absolute local paths.
+- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not include `raw/` or `frames/` directories in a repository change unless the user explicitly asks and privacy is acceptable.
+- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be tracked when they are needed for traceability and contain no sensitive data.
+- Use repo-relative screenshot paths in any tracked doc so later agents can open the evidence without absolute local paths.
+
+## Repository operations
+
+- Use `jj workspace root` to find the repository root, with the current directory as the fallback outside a JJ workspace.
+- Use `jj status`, `jj diff`, and `jj log` for working-copy and history inspection. Use `jj file annotate <path>` for line history.
+- Use `jj bookmark` and `jj workspace` subcommands for bookmark and workspace operations. Use `jj git fetch` and `jj git push` for remote synchronization.
+- JJ records working-copy changes directly; do not add a staging step.
+- Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Run actual `git log` only for these runtime message standards. Determine syntax from the project's active instructions and that history; those sources always win over compatible Go guidance. Do not impose a fixed prefix, type, scope, message, subject/body shape, template, or example.
 
 ## Analyzer entrypoint
 
@@ -32,6 +40,6 @@ SKILL_DIR="<absolute path of the directory containing this SKILL.md>"
 python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input
 ```
 
-Accepted inputs: a Riffrec `.zip`, an `.mp4` / `.mov` / `.webm` video, an `.m4a` / `.mp3` / `.wav` audio file, or a meeting-notes `.md`. Use `--output-dir <dir>` to control where artifacts land. In repos with `docs/brainstorms/`, the default remains `docs/brainstorms/riffrec-feedback/` as a documented evidence/kickoff-artifact exception; it is not the durable `ce-brainstorm` output convention. The quick path overrides the output dir to a temp location so nothing pollutes the repo.
+Accepted inputs: a Riffrec `.zip`, an `.mp4` / `.mov` / `.webm` video, an `.m4a` / `.mp3` / `.wav` audio file, or a meeting-notes `.md`. Use `--output-dir <dir>` to control where artifacts land. In repos with `docs/brainstorms/`, the default remains `docs/brainstorms/riffrec-feedback/` as a documented evidence/kickoff-artifact exception; it is not the durable `ce-brainstorm` output convention. The quick path overrides the output directory to `$(jj workspace root)/.tmp/rocketclaw`, falling back to local `.tmp/rocketclaw`, so generated evidence does not pollute tracked project paths.
 
-The Compound Engineering output format used by the extensive path is documented in `references/compound-engineering-feedback-format.md`.
+The output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.

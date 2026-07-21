@@ -6,10 +6,21 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current branch:
+If no PR number was provided, inspect `jj bookmark list` and identify the bookmark associated with the current change. If there is exactly one applicable bookmark, detect its PR with:
 ```bash
-gh pr view --json number -q .number
+gh pr view BOOKMARK_NAME --json number -q .number
 ```
+
+If no applicable bookmark exists or more than one is plausible, ask the user which PR to use rather than guessing. Use `jj workspace root`, `jj workspace list`, `jj status`, `jj diff`, and `jj log` for repository orientation as needed.
+
+Resolve the PR head repository and its configured JJ remote before fetching:
+
+```bash
+gh pr view PR_NUMBER --json number,headRefName,headRepository,headRepositoryOwner,url
+jj git remote list
+```
+
+Normalize the head repository's `owner/repo` identity and each configured GitHub HTTPS/SSH remote URL (including an optional `.git` suffix), then require exactly one matching `<head-remote>`. `origin` is valid only when its normalized URL matches the PR head repository; this is especially important for fork PRs. If zero or multiple remotes match, stop before editing because the fixes cannot be fetched and pushed back to a proven head repository. Refresh only that PR head bookmark with `jj git fetch --remote <head-remote> --branch <headRefName>`, and retain `<head-remote>` through Step 6.
 
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments):
 
@@ -49,7 +60,7 @@ Before processing, classify each piece of feedback as **new** or **already handl
 
 **PR comments and review bodies**: These have no resolve mechanism, so they reappear on every run. Apply two filters in order:
 
-1. **Actionability**: Skip items that contain no actionable feedback or questions to answer. Examples: review wrapper text ("Here are some automated review suggestions..."), approvals ("this looks great!"), status badges ("Validated"), CI summaries with no follow-up asks. If there's nothing to fix, answer, or decide, it's not actionable -- drop it from the count entirely.
+1. **Actionability**: Skip items that contain no actionable feedback or questions to answer. Examples: review wrapper text ("Here are some automated review suggestions..."), approvals ("this looks great!"), status-only confirmations, CI summaries with no follow-up asks. If there's nothing to fix, answer, or decide, it's not actionable -- drop it from the count entirely.
 2. **Already replied**: For actionable items, check the PR conversation for an existing reply that quotes and addresses the feedback. If a reply already exists, skip. If not, it's new.
 
 The distinction is about content, not who posted what. A deferral from a teammate, a previous skill run, or a manual reply all count. Similarly, actionability is about content -- bot feedback that requests a specific code change is actionable; a bot's boilerplate header wrapping those requests is not.
@@ -65,7 +76,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/`jj log`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -126,31 +137,40 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 2. **Green** -> proceed to step 6.
 
-3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
+3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** describe or push the change.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Record the specific failure as semantic input for step 6; do not impose a fixed footer or format.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Commit and Push
+## 6. Describe and Push
 
-1. Stage only files reported by fixers and commit with a message referencing the PR:
+1. Run `jj status` and `jj diff`. Confirm that the working-copy change contains only the intended fixer output and any warranted tests. JJ snapshots the working copy automatically; there is no staging step.
+
+2. Compose, edit, and validate the change description. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Run actual `git log` only for these runtime message standards. Determine syntax from the project's active instructions and that history; those sources always win over compatible Go guidance. Do not impose a fixed prefix, type, scope, message, subject/body shape, template, or example. Preserve the semantic requirements to explain the review fixes and, when applicable, the specific pre-existing validation failure.
+
+3. Describe the current change, then create a fresh empty working-copy change above it:
 
 ```bash
-git add [files from fixer summaries]
-git commit -m "Address PR review feedback (#PR_NUMBER)
-
-- [list changes from fixer summaries]"
+jj describe
+jj new
 ```
 
-2. Push to remote:
+4. Inspect `jj bookmark list` and move the existing PR bookmark to the described change, which is now `@-`. Do not create or rename a bookmark unless the user explicitly asks:
+
 ```bash
-git push
+jj bookmark move BOOKMARK_NAME --to @-
+```
+
+5. Push only the PR bookmark:
+
+```bash
+jj git push --bookmark BOOKMARK_NAME --remote <head-remote>
 ```
 
 ## 7. Reply and Resolve
 
-After the push succeeds, post replies and resolve where applicable. Post for every handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. The mechanism depends on the feedback type.
+After `jj git push` succeeds, post replies and resolve where applicable. Post for every handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. The mechanism depends on the feedback type.
 
 ### Reply format
 
@@ -250,7 +270,7 @@ Replied (count): [what questions were answered]
 Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm cited]
 
-Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were committed]
+Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were recorded]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries a `decision_context` (composed in step 3, or by a fixer's escalation): what the reviewer said, what was investigated, why it needs a decision, concrete options with tradeoffs, and a lean if any.

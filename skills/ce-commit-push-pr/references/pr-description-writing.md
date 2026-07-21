@@ -4,7 +4,7 @@
 
 The diff is already visible on GitHub. The description exists to explain what the diff cannot show: what was impossible before and is now possible, what was broken and is now fixed, what shape changed. Cut any sentence a reader could reconstruct from the diff itself.
 
-- Bad: "Adds `evidence-decider.ts`, modifies `ce-commit-push-pr/SKILL.md` to call it, and updates two test files."
+- Bad: "Adds `<implementation-file>`, modifies the workflow to call it, and updates two test files."
 - Good: "Evidence capture now decides automatically whether a change has observable behavior. CLI tools and libraries are now eligible alongside web UIs."
 
 If the lead sentence describes what was moved, renamed, or added rather than what's now possible or fixed, rewrite it. This applies to every section, not just the opening — restating the diff is the failure mode this skill exists to prevent.
@@ -17,37 +17,32 @@ For user-facing bugs, run an extra before/after pass before writing the mechanis
 
 Two modes:
 
-- **Current-branch mode** (default) — describe HEAD vs the repo's default base.
+- **Current-bookmark mode** (default) — describe the current feature bookmark vs the repository's default base.
 - **PR mode** — describe a specific PR. Triggered when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
 
 ```bash
-gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
+GIT_DIR="$(jj git root)" gh pr view <ref> --json baseRefName,headRefName,headRefOid,url,body,state,isCrossRepository,baseRepository,headRepository,headRepositoryOwner
 ```
 
-If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
+If `state` is not `OPEN`, report and stop — do not invent a description. Use `baseRefName` as `<base>` and `headRefName` as `<head-bookmark>`; retain `headRefOid` for the `gh` fallback.
 
-For current-branch mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) → `git rev-parse --abbrev-ref origin/HEAD` (strip `origin/`) → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `git rev-parse --verify origin/<candidate>`. If none resolve, ask the user. `<head>` is `HEAD`.
+For current-bookmark mode, resolve `<base>` in priority order: caller-supplied (`base:<ref>`) -> `GIT_DIR="$(jj git root)" gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` -> a matching remote bookmark from `jj bookmark list --remote <base-remote>`. If none resolve, ask the user. Resolve `<head-bookmark>` from `jj bookmark list -r 'heads(::@ & bookmarks())'`; if more than one candidate exists, ask the user.
 
-**Base remote:** `origin` for current-branch mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `git remote -v`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
+**Remotes:** retain base and head repository identity from PR metadata. In current-bookmark mode, get the repository identity with `GIT_DIR="$(jj git root)" gh repo view --json nameWithOwner,sshUrl,url`. Normalize GitHub HTTPS/SSH URLs and optional `.git` suffixes, then match each repository side independently against `jj git remote list`. Use `origin` only when it is the matching remote for that side. If a side has zero or multiple matching remotes, skip to the `gh` fallback; do not substitute `origin` because it may identify the wrong repository, especially for fork PRs.
 
 ```bash
-git fetch --no-tags <base-remote> <base>
-git fetch --no-tags <base-remote> <head>   # PR mode only: <head> is headRefOid and may not be local
-git log  --oneline "<base-remote>/<base>..<head>"
-git log  --format=fuller "<base-remote>/<base>..<head>"   # full commit messages for related-reference discovery
-git diff           "<base-remote>/<base>...<head>"
+jj git fetch --remote <base-remote> --branch <base>
+jj git fetch --remote <head-remote> --branch <head-bookmark>   # PR mode only
+jj log -r '<base>@<base-remote>..<head-bookmark>@<head-remote>'
+jj log -r '<base>@<base-remote>..<head-bookmark>@<head-remote>' -T builtin_log_detailed   # full change descriptions for related-reference discovery
+jj diff --from '<base>@<base-remote>' --to '<head-bookmark>@<head-remote>'
 ```
 
-If the commit list is empty, report "No commits to describe" and stop.
+If the change list is empty, report "No changes to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when local git can't reach the refs (fork PR with no matching remote, shallow clone, offline, merge-base on unrelated histories). For GHES configurations that reject SHA fetch but allow `refs/pull/`:
-
-```bash
-git fetch --no-tags <base-remote> "refs/pull/<number>/head"
-PR_HEAD_SHA=$(awk '/refs\/pull\/[0-9]+\/head/ {print $1; exit}' "$(git rev-parse --git-dir)/FETCH_HEAD")
-```
+**Fallback** — use `GIT_DIR="$(jj git root)" gh pr diff <ref>` and `GIT_DIR="$(jj git root)" gh pr view <ref> --json commits` when JJ cannot reach the revisions, including a fork PR with no matching remote, a shallow clone, offline operation, or unrelated histories. Use the same fallback when a GHES configuration exposes only pull-request refs that `jj git fetch` cannot select by bookmark.
 
 Note in the user-facing summary when the API fallback was used.
 
@@ -55,7 +50,7 @@ Note in the user-facing summary when the API fallback was used.
 
 ## Step A: Size the description
 
-Match weight to weight. When in doubt, shorter wins. Subtract fix-up commits (review fixes, lint, rebase resolutions) when sizing — they're invisible to the reader. Large PRs need more selectivity, not more content.
+Match weight to weight. When in doubt, shorter wins. Subtract fix-up changes (review fixes, lint, rebase resolutions) when sizing — they're invisible to the reader. Large PRs need more selectivity, not more content.
 
 | Change profile | Description approach |
 |---|---|
@@ -72,19 +67,13 @@ For small + non-trivial bugfixes, the 3-5 sentence target still needs a user-vis
 
 ## Step B: Compose the title
 
-`type: description` or `type(scope): description`.
-
-- Type by intent, not file extension. When `fix` and `feat` both seem to fit, default to `fix` — adding code to remedy missing behavior is `fix`. Reserve `feat` for capabilities the user could not previously accomplish. Use `refactor`/`docs`/`chore`/`perf`/`test` when more precise.
-- Scope (optional): narrowest useful label. Omit when no single label adds clarity.
-- Description: imperative, lowercase, under 72 chars, no trailing period.
-- Match repo conventions visible in recent commits.
-- **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation** — they trigger automated major-version bumps.
+Determine title syntax at runtime from the project's active instructions, existing PR titles, and the repository conventions visible in actual `git log`. Those sources win.
 
 ---
 
 ## Step B1: Resolve related work references
 
-Before writing the body, make an explicit related-reference pass. Gather candidate work-item references from the user prompt, caller handoff, branch name, full commit messages, existing PR body, PR template, plan/debug notes, and visible URLs or IDs already in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
+Before writing the body, make an explicit related-reference pass. Gather candidate work-item references from the user prompt, caller handoff, bookmark name, full JJ change descriptions, existing PR body, PR template, plan/debug notes, and visible URLs or IDs already in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
 
 Classify each candidate as:
 
@@ -106,9 +95,9 @@ Common syntax examples:
 
 | Tracker | Closing reference | Non-closing reference | Notes |
 |---|---|---|---|
-| GitHub Issues | `Fixes #123`; cross-repo: `Fixes owner/repo#123` | `Related: #123`; cross-repo: `Related: owner/repo#123` | Closing keywords are `close(s/d)`, `fix(es/ed)`, and `resolve(s/d)`. Use closing syntax only when the PR targets the default branch and truly resolves the issue; otherwise use a non-closing reference. Repeat the keyword for multiple closing issues. |
+| GitHub Issues | `Fixes #123`; cross-repo: `Fixes owner/repo#123` | `Related: #123`; cross-repo: `Related: owner/repo#123` | Closing keywords are `close(s/d)`, `fix(es/ed)`, and `resolve(s/d)`. Use closing syntax only when the PR targets GitHub's default bookmark and truly resolves the issue; otherwise use a non-closing reference. Repeat the keyword for multiple closing issues. |
 | Linear | `Fixes ENG-123` | `Related to ENG-123` | Linear supports closing and non-closing magic words. Put magic words in the PR description, not a PR comment. Multiple issues can follow one magic word when they share the same intent, e.g. `Fixes ENG-123, DES-5 and ENG-256`. |
-| Other trackers | Use the project's documented closing keyword only when known. | Prefer a full URL or tracker ID under `Related`. | Some trackers parse commit messages, PR descriptions, or both. Follow project docs or tracker integration docs when present; otherwise never guess a closing action. |
+| Other trackers | Use the project's documented closing keyword only when known. | Prefer a full URL or tracker ID under `Related`. | Some trackers parse change descriptions, PR descriptions, or both. Follow project docs or tracker integration docs when present; otherwise never guess a closing action. |
 
 Closing references can live in the opening paragraph when the body is tiny. Non-closing references always get their own sentence or `## Related` block before validation/evidence. For one item that truly closes, a single line like `Fixes ENG-123.` can be enough; for mixed items, separate closing and non-closing bullets.
 
@@ -120,10 +109,10 @@ Decide whether the change introduces a concept — a pattern, technique, library
 
 **Gather candidates from the diff first.** Read the Pre-A diff for concept-shaped novelty: a dependency put to first real use, a technique the diff visibly introduces (debouncing, optimistic locking, infinite scroll, a state machine), or a domain idea the code now encodes. Most PRs surface no candidate — stop here and compose no section; absence is the common case, and this path costs zero extra tool calls.
 
-**Check each candidate against the base ref, never the working tree.** The working tree contains this PR's own code, so grepping it finds the concept you just added and wrongly concludes it is already established. Check the base instead (Pre-A already resolved it):
+**Check each candidate against the base revision, never the working copy.** The working copy contains this PR's own code, so searching it finds the concept you just added and wrongly concludes it is already established. Check the base instead (Pre-A already resolved it):
 
 ```bash
-git grep -il -e "<term>" "<base-remote>/<base>" | head -5
+jj file search -r '<base>@<base-remote>' '<term>'
 ```
 
 Run one call per candidate — candidates cap at two, so the cost is trivial — and read establishment from the output: empty output means the concept is absent from the base.
@@ -154,39 +143,20 @@ Lead with the point, then the mechanism, then the caveat. Dense is good; long is
 
 **Rewrite preservation:** when rewriting an existing PR body, preserve an existing `## New concepts` section and any explainer-doc link verbatim (same rule as `## Demo`) unless the user's focus asks to refresh the concepts. Description-only and description-update runs never write repo files.
 
-**Archival hook:** when the skill's Step 5 confirms the apply and `pr_teaching_archive` is on (full workflow only), the teaching content is also written to `docs/explainers/` and linked from the section — the commit-and-push transition and doc frontmatter live in SKILL.md Step 5.
+**Archival hook:** when the skill's Step 5 confirms the apply and `pr_teaching_archive` is on (full workflow only), the teaching content is also written to `docs/explainers/` and linked from the section — the describe-and-push transition and doc frontmatter live in SKILL.md Step 5.
 
 ---
 
 ## Step C: Assemble the body
 
-In order: opening → body sections that earn their keep → related references when they need their own block → test plan if non-obvious → New concepts section when Step B2 produced one → evidence block if one exists → Compound Engineering badge after a `---` rule.
+In order: opening -> body sections that earn their keep -> related references when they need their own block -> test plan if non-obvious -> New concepts section when Step B2 produced one -> evidence block if one exists.
 
 The opening goes under `## Summary` if the body uses any `##` headings; bare paragraph otherwise. No orphaned opening paragraphs above the first heading.
 
-**Evidence handling:** preserve any existing `## Demo` or `## Screenshots` block verbatim unless the user's focus asks to refresh it. If the caller passed a freshly captured URL or path, splice as `## Demo`. Otherwise omit. Place before the badge. Never label test output as "Demo" or "Screenshots."
+**Evidence handling:** preserve any existing `## Demo` or `## Screenshots` block verbatim unless the user's focus asks to refresh it. If the caller passed a freshly captured URL or path, splice as `## Demo`. Otherwise omit. Never label test output as "Demo" or "Screenshots."
 
 **Visual aids:** reach for a diagram or table when it conveys the change faster than prose — relationships, flows, state transitions, sequences, trade-offs, before/after data, or any structure prose would have to enumerate. Mermaid and markdown tables cover most shapes; don't be limited to a particular type if a different one fits the change better. Place inline at the point of relevance. Skip for simple, prose-clear, or rename/dep-bump changes. Prose is authoritative when it conflicts with a visual.
 
 **GitHub gotchas:** never prefix list items with `#` (GitHub auto-links `#1` as an issue ref). Use `org/repo#123` or full URL for actual references.
 
----
-
-## Step D: Badge
-
-```markdown
----
-
-[![Compound Engineering](https://img.shields.io/badge/Built_with-Compound_Engineering-6366f1)](https://github.com/EveryInc/compound-engineering-plugin)
-![HARNESS](https://img.shields.io/badge/MODEL_SLUG-COLOR?logo=LOGO&logoColor=white)
-```
-
-| Harness | `LOGO` | `COLOR` |
-|---|---|---|
-| Claude Code | `claude` | `D97757` |
-| Codex | (omit `?logo=` param) | `000000` |
-| Antigravity CLI (`agy`) | `googlegemini` | `4285F4` |
-
-**Model slug:** spaces become underscores; append context window and thinking level in parens if known. **URL-encode literal parens as `%28` / `%29`** — unencoded parens inside markdown image URLs break release-please's commit parser, which silently drops the commit from the changelog. Examples: `Opus_4.6_%281M,_Extended_Thinking%29`, `Sonnet_4.6_%28200K%29`, `Gemini_3.1_Pro`.
-
-Skip the badge if regenerating a body that already contains it.
+The PR body has no producer identity.

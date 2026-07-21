@@ -78,7 +78,7 @@ The orchestrator only holds the most recent read in memory, not a persistent loc
 
 When the append cannot complete — document is read-only on disk, path is invalid, the platform's edit tool returns an error, concurrent-edit collision detected, or any other write failure — surface the failure inline to the user via the platform's blocking question tool with the following sub-question:
 
-**Stem:** `Couldn't append the finding to Open Questions. What should the agent do?`
+**Stem:** `Couldn't append the finding to Open Questions. What should happen next?`
 
 **Options (exactly three; fixed order):**
 

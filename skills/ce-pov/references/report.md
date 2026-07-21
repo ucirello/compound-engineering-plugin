@@ -16,13 +16,14 @@ The verdict, expanded — lead with the decision, then the evidence the TL;DR om
 ## Format and economy
 
 - **HTML by default** — a single self-contained file (a verdict is a thing people share). Use markdown when the user asks, or when the write-up will feed `ce-brainstorm`/`ce-plan`.
-- Write to a temp path, or under `docs/` when the user wants it kept; announce the absolute path. Do **not** introduce a new mandated `docs/` location — that store is deferred.
+- Write ephemeral output under `$(jj workspace root)/.tmp/pov/`; if there is no Jujutsu workspace, use `.tmp/pov/` under the current project folder. Use `docs/` when the user wants it kept, and announce the absolute path. Do **not** introduce a new mandated `docs/` location — that store is deferred.
 - Lead with the verdict, and **cite** evidence rather than pasting dossiers wholesale — the report is a tighter case for a human, not a research dump.
+- Omit creator-credit metadata, visual credit marks, standalone product branding, and actor or display-name fields.
 
 ## Sharing
 
 Publish via whatever the user has — best available, never required:
 
-- `ce-proof` (Proof) — markdown-only, so if the report is HTML, render a throwaway markdown copy of it as the Proof source.
+- `ce-proof` (Proof) — markdown-only, so if the report is HTML, render an ephemeral markdown copy under the same workspace-local `.tmp` tree as the Proof source.
 - Otherwise an available HTML publishing tool the user has connected.
 - If neither is reachable, the local file is the deliverable — announce its path.

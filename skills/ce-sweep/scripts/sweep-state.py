@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic state engine for the feedback sweep (ce-sweep).
+"""Deterministic state engine for the feedback sweep.
 
 This helper owns ALL reads and writes of the sweep state file. Peer agents
 (source connectors, the analyzer, the orchestrator) never edit the file by
@@ -13,8 +13,10 @@ Design rules (mirrors the repo's repo-profile-cache helper):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes start in workspace-local `.tmp/rocketclaw` and are atomic. When the
+    destination is on another filesystem, an fsynced destination-side sibling
+    bridges EXDEV before os.replace, so a concurrent reader never sees a torn
+    file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -38,10 +40,11 @@ JSON tokens (strings always double-quoted on one line); lists and empty dicts
 are emitted as inline JSON flow on a single line — itself valid YAML.
 """
 import argparse
+import errno
 import json
 import os
 import sys
-import tempfile
+import subprocess
 from datetime import datetime, timezone
 
 try:
@@ -255,7 +258,7 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # A machine-local state file can live under world-shared /tmp, and
+            # A machine-local state file can contain correctness-critical data;
             # it is a correctness dependency (lease, cursors, closed status) as
             # well as an injection sink (item bodies re-read into agent
             # context). Reject a file not owned by us so a co-tenant cannot
@@ -291,20 +294,91 @@ def write_state(path, state):
     """Atomic write of the state file. Returns True on success."""
     state["schema_version"] = SCHEMA_VERSION
     text = emit_document(state)
-    d = os.path.dirname(os.path.abspath(path))
+    target = os.path.abspath(path)
+    d = os.path.dirname(target)
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    scratch_dir = _scratch_dir()
+    os.makedirs(scratch_dir, mode=0o700, exist_ok=True)
+    tmp = os.path.join(
+        scratch_dir,
+        ".sweep-state-{}-{}.yml".format(os.getpid(), os.urandom(8).hex()),
+    )
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    target_tmp = None
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
-        os.replace(tmp, path)
-    except BaseException:
+            f.flush()
+            os.fsync(f.fileno())
         try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+            os.replace(tmp, target)
+        except OSError as exc:
+            if exc.errno != errno.EXDEV:
+                raise
+            # Keep the required workspace-local scratch as the first write.
+            # Cross-filesystem replace is impossible, so copy into an exclusive
+            # sibling and atomically replace from the destination filesystem.
+            target_tmp = os.path.join(
+                d,
+                ".{}-{}-{}.tmp".format(
+                    os.path.basename(target), os.getpid(), os.urandom(8).hex()
+                ),
+            )
+            target_fd = os.open(
+                target_tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+            )
+            with os.fdopen(target_fd, "w") as f:
+                f.write(text)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(target_tmp, target)
+            target_tmp = None
+        _fsync_dir(d)
+    except BaseException:
+        for candidate in (tmp, target_tmp):
+            if candidate:
+                try:
+                    os.unlink(candidate)
+                except OSError:
+                    pass
         raise
+    try:
+        os.unlink(tmp)
+    except FileNotFoundError:
+        pass
     return True
+
+
+def _fsync_dir(path):
+    """Best-effort persistence of a completed atomic directory entry update."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def _scratch_dir():
+    """Use workspace-local scratch, falling back to the current directory."""
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=10,
+        )
+        root = result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        root = ""
+    if not os.path.isabs(root):
+        root = os.getcwd()
+    return os.path.join(root, ".tmp", "rocketclaw")
 
 
 # --------------------------------------------------------------------------- #
@@ -543,8 +617,8 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
+    # the lease yet must still record its outcome. In local-change mode there
+    # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -565,7 +639,7 @@ def cmd_run_record(args):
 
 
 def cmd_import_legacy(args):
-    """Best-effort import of a Cora-style legacy state file. Liberal on input:
+    """Best-effort import of a legacy feedback state file. Liberal on input:
     map what matches the known shapes, skip what doesn't, never fail."""
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -610,7 +684,7 @@ def _read_legacy(path):
             raw = f.read()
     except OSError:
         return None
-    # Try JSON first (Cora persists JSON); fall back to our YAML subset.
+    # Try JSON first; fall back to our YAML subset.
     try:
         return json.loads(raw)
     except ValueError:
@@ -680,7 +754,7 @@ def _import_legacy_items(legacy, data):
 # --------------------------------------------------------------------------- #
 
 def build_parser():
-    p = argparse.ArgumentParser(description="ce-sweep deterministic state engine")
+    p = argparse.ArgumentParser(description="Feedback sweep deterministic state engine")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def with_state(sp):
@@ -752,7 +826,7 @@ _HANDLERS = {
 # (run-record for an aborted-locked run, validate, import-legacy). Two
 # concurrent invocations (an overlapping cron and manual sweep) could otherwise
 # interleave load -> mutate -> write and lose an update — e.g. an aborted run's
-# stale-snapshot write clobbering the holder's just-committed upsert. An OS
+    # stale-snapshot write clobbering the holder's just-written upsert. An OS
 # advisory lock held across each mutating RMW makes them mutually exclusive
 # regardless of lease ownership.
 _MUTATING = {

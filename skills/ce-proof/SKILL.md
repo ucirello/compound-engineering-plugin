@@ -15,14 +15,14 @@ Proof is a collaborative document editor for humans and agents. It supports two 
 1. **Web API** - Create and edit shared documents via HTTP (no install needed)
 2. **Local Bridge** - Drive the macOS Proof app via localhost:9847
 
-## Identity and Attribution
+## Operation Identity
 
-Every write to a Proof doc must be attributed. Two fields carry the agent's identity:
+Every write to a Proof doc must carry a stable operation identity:
 
-- **Machine ID (`by` on every op, `X-Agent-Id` header):** `ai:compound-engineering` — stable, lowercase-hyphenated, machine-parseable. Appears in marks, events, and the API response.
-- **Display name (`name` on `POST /presence`):** `Compound Engineering` — human-readable, shown in Proof's presence chips and comment-author badges.
+- **Machine ID (`by` on every op, `X-Agent-Id` header):** `editor:automation` — stable, lowercase, neutral, and machine-parseable. Appears in marks, events, and the API response.
+- **Display name (`name` on `POST /presence`):** `Document Editor` — neutral, human-readable, and shown in Proof's presence UI.
 
-Set the display name once per doc session by posting to presence with the `X-Agent-Id` header; Proof binds the name to that agent ID for the session. These values are the defaults for any caller of this skill; a caller may pass a different `identity` pair if a distinct sub-agent should own the doc. Do not use `ai:compound` or other ad-hoc variants — identity stays uniform unless a caller explicitly overrides it.
+Set the display name once per doc session by posting to presence with the `X-Agent-Id` header; Proof binds the name to that agent ID for the session. Use these neutral values for every caller of this skill; do not substitute a caller-specific identity.
 
 ## Publish Mode
 
@@ -98,7 +98,7 @@ Comment, suggestion, and rewrite operations go to `POST https://www.proofeditor.
 **Authentication for protected docs:**
 - Header: `x-share-token: <token>` or `Authorization: Bearer <token>`
 - Token comes from the URL parameter: `?token=xxx` or the `accessToken` from create response
-- Header: `X-Agent-Id: ai:compound-engineering` (required for presence; include on ops for consistent attribution)
+- Header: `X-Agent-Id: editor:automation` (required for presence; include on ops for consistent operation identity)
 
 **Wire-format reminder.** `/api/agent/{slug}/ops` uses a top-level `type` field; `/api/agent/{slug}/edit/v2` uses an `operations` array where each entry has `op`. Do not mix — sending `op` to `/ops` returns 422.
 
@@ -131,22 +131,22 @@ Duplicate-mark incidents usually come from retrying a `comment.add` or `suggesti
 
 **Comment on text:**
 ```json
-{"type": "comment.add", "quote": "text to comment on", "by": "ai:compound-engineering", "text": "Your comment here", "baseToken": "<token>"}
+{"type": "comment.add", "quote": "text to comment on", "by": "editor:automation", "text": "Your comment here", "baseToken": "<token>"}
 ```
 
 **Reply to a comment:**
 ```json
-{"type": "comment.reply", "markId": "<id>", "by": "ai:compound-engineering", "text": "Reply text", "baseToken": "<token>"}
+{"type": "comment.reply", "markId": "<id>", "by": "editor:automation", "text": "Reply text", "baseToken": "<token>"}
 ```
 
 **Reply and resolve in one mutation:**
 ```json
-{"type": "comment.reply", "markId": "<id>", "by": "ai:compound-engineering", "text": "Fixed.", "resolve": true, "baseToken": "<token>"}
+{"type": "comment.reply", "markId": "<id>", "by": "editor:automation", "text": "Fixed.", "resolve": true, "baseToken": "<token>"}
 ```
 
 **Batch existing-thread comment mutations:**
 ```json
-{"by": "ai:compound-engineering", "baseToken": "<token>", "operations": [
+{"by": "editor:automation", "baseToken": "<token>", "operations": [
   {"type": "comment.reply", "markId": "<id-1>", "text": "Fixed.", "resolve": true},
   {"type": "comment.reply", "markId": "<id-2>", "text": "Leaving this open because X."}
 ]}
@@ -156,33 +156,33 @@ Batch `/ops` supports `comment.reply`, `comment.resolve`, and `comment.unresolve
 
 **Resolve / unresolve a comment:**
 ```json
-{"type": "comment.resolve", "markId": "<id>", "by": "ai:compound-engineering", "baseToken": "<token>"}
-{"type": "comment.unresolve", "markId": "<id>", "by": "ai:compound-engineering", "baseToken": "<token>"}
+{"type": "comment.resolve", "markId": "<id>", "by": "editor:automation", "baseToken": "<token>"}
+{"type": "comment.unresolve", "markId": "<id>", "by": "editor:automation", "baseToken": "<token>"}
 ```
 
 **Suggest a replacement (pending — user must accept/reject):**
 ```json
-{"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "ai:compound-engineering", "content": "replacement text", "baseToken": "<token>"}
+{"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "editor:automation", "content": "replacement text", "baseToken": "<token>"}
 ```
 
 **Suggest and immediately apply (tracked but committed — user can reject to revert):**
 ```json
-{"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "ai:compound-engineering", "content": "replacement text", "status": "accepted", "baseToken": "<token>"}
+{"type": "suggestion.add", "kind": "replace", "quote": "original text", "by": "editor:automation", "content": "replacement text", "status": "accepted", "baseToken": "<token>"}
 ```
 
 `status: "accepted"` creates the suggestion mark and commits the change in one call. The mark persists as an audit trail with per-edit attribution and a reject-to-revert affordance. Works with `kind: "insert" | "delete" | "replace"`.
 
 **Accept or reject an existing suggestion:**
 ```json
-{"type": "suggestion.accept", "markId": "<id>", "by": "ai:compound-engineering", "baseToken": "<token>"}
-{"type": "suggestion.reject", "markId": "<id>", "by": "ai:compound-engineering", "baseToken": "<token>"}
+{"type": "suggestion.accept", "markId": "<id>", "by": "editor:automation", "baseToken": "<token>"}
+{"type": "suggestion.reject", "markId": "<id>", "by": "editor:automation", "baseToken": "<token>"}
 ```
 
 `suggestion.resolve` is not supported — use accept or reject instead.
 
 **Whole-doc rewrite (last resort):**
 ```json
-{"type": "rewrite.apply", "content": "full new markdown", "by": "ai:compound-engineering", "baseToken": "<token>"}
+{"type": "rewrite.apply", "content": "full new markdown", "by": "editor:automation", "baseToken": "<token>"}
 ```
 
 Prefer `find_replace_in_doc` or block-level `/edit/v2` operations first. `rewrite.apply` is broad, disruptive, and blocked while live clients are connected.
@@ -192,10 +192,10 @@ Prefer `find_replace_in_doc` or block-level `/edit/v2` operations first. `rewrit
 curl -X POST "https://www.proofeditor.ai/api/agent/{slug}/edit/v2" \
   -H "Content-Type: application/json" \
   -H "x-share-token: <token>" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: editor:automation" \
   -H "Idempotency-Key: <uuid>" \
   -d '{
-    "by": "ai:compound-engineering",
+    "by": "editor:automation",
     "baseToken": "mt1:<token>",
     "operations": [
       {"op": "replace_block", "ref": "b3", "block": {"markdown": "Updated paragraph."}},
@@ -233,7 +233,7 @@ For literal doc-wide sweeps, prefer `find_replace_in_doc` over many block replac
 Requires Proof.app running. Bridge at `http://localhost:9847`.
 
 **Required headers:**
-- `X-Agent-Id: ai:compound-engineering` (identity for presence; keep aligned with `by`)
+- `X-Agent-Id: editor:automation` (operation identity for presence; keep aligned with `by`)
 - `Content-Type: application/json`
 - `X-Window-Id: <uuid>` (when multiple docs open)
 
@@ -244,15 +244,15 @@ Requires Proof.app running. Bridge at `http://localhost:9847`.
 | GET | `/windows` | List open documents |
 | GET | `/state` | Read markdown, cursor, word count |
 | GET | `/marks` | List all suggestions and comments |
-| POST | `/marks/suggest-replace` | `{"quote":"old","by":"ai:compound-engineering","content":"new"}` |
-| POST | `/marks/suggest-insert` | `{"quote":"after this","by":"ai:compound-engineering","content":"insert"}` |
-| POST | `/marks/suggest-delete` | `{"quote":"delete this","by":"ai:compound-engineering"}` |
-| POST | `/marks/comment` | `{"quote":"text","by":"ai:compound-engineering","text":"comment"}` |
-| POST | `/marks/reply` | `{"markId":"<id>","by":"ai:compound-engineering","text":"reply"}` |
-| POST | `/marks/resolve` | `{"markId":"<id>","by":"ai:compound-engineering"}` |
+| POST | `/marks/suggest-replace` | `{"quote":"old","by":"editor:automation","content":"new"}` |
+| POST | `/marks/suggest-insert` | `{"quote":"after this","by":"editor:automation","content":"insert"}` |
+| POST | `/marks/suggest-delete` | `{"quote":"delete this","by":"editor:automation"}` |
+| POST | `/marks/comment` | `{"quote":"text","by":"editor:automation","text":"comment"}` |
+| POST | `/marks/reply` | `{"markId":"<id>","by":"editor:automation","text":"reply"}` |
+| POST | `/marks/resolve` | `{"markId":"<id>","by":"editor:automation"}` |
 | POST | `/marks/accept` | `{"markId":"<id>"}` |
 | POST | `/marks/reject` | `{"markId":"<id>"}` |
-| POST | `/rewrite` | Last-resort whole-doc replacement: `{"content":"full markdown","by":"ai:compound-engineering"}` |
+| POST | `/rewrite` | Last-resort whole-doc replacement: `{"content":"full markdown","by":"editor:automation"}` |
 | POST | `/presence` | `{"status":"reading","summary":"..."}` |
 | GET | `/events/pending` | Poll for user actions |
 
@@ -285,9 +285,9 @@ BASE=$(printf '%s' "$STATE" | jq -r '.mutationBase.token')
 OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/abc123/ops" \
   -H "Content-Type: application/json" \
   -H "x-share-token: xxx" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: editor:automation" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$BASE" '{type:"comment.add",quote:"text",by:"ai:compound-engineering",text:"comment",baseToken:$base}')")
+  -d "$(jq -n --arg base "$BASE" '{type:"comment.add",quote:"text",by:"editor:automation",text:"comment",baseToken:$base}')")
 NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 [ -n "$NEXT_BASE" ] && BASE="$NEXT_BASE"
 
@@ -295,9 +295,9 @@ NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/abc123/ops" \
   -H "Content-Type: application/json" \
   -H "x-share-token: xxx" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: editor:automation" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$BASE" '{type:"suggestion.add",kind:"replace",quote:"old",by:"ai:compound-engineering",content:"new",baseToken:$base}')")
+  -d "$(jq -n --arg base "$BASE" '{type:"suggestion.add",kind:"replace",quote:"old",by:"editor:automation",content:"new",baseToken:$base}')")
 NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 [ -n "$NEXT_BASE" ] && BASE="$NEXT_BASE"
 
@@ -305,9 +305,9 @@ NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/abc123/ops" \
   -H "Content-Type: application/json" \
   -H "x-share-token: xxx" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: editor:automation" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$BASE" '{type:"suggestion.add",kind:"replace",quote:"old",by:"ai:compound-engineering",content:"new",status:"accepted",baseToken:$base}')")
+  -d "$(jq -n --arg base "$BASE" '{type:"suggestion.add",kind:"replace",quote:"old",by:"editor:automation",content:"new",status:"accepted",baseToken:$base}')")
 NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 [ -n "$NEXT_BASE" ] && BASE="$NEXT_BASE"
 
@@ -318,9 +318,9 @@ EDIT_BASE=$(printf '%s' "$SNAPSHOT" | jq -r '.mutationBase.token')
 curl -X POST "https://www.proofeditor.ai/api/agent/abc123/edit/v2?return=minimal" \
   -H "Content-Type: application/json" \
   -H "x-share-token: xxx" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: editor:automation" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$EDIT_BASE" '{by:"ai:compound-engineering",baseToken:$base,operations:[{op:"find_replace_in_doc",find:"old",replace:"new",occurrence:"all"}]}')"
+  -d "$(jq -n --arg base "$EDIT_BASE" '{by:"editor:automation",baseToken:$base,operations:[{op:"find_replace_in_doc",find:"old",replace:"new",occurrence:"all"}]}')"
 ```
 
 ## Workflow: Create and Share a New Document
@@ -347,8 +347,8 @@ TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken')
 curl -s -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "x-share-token: $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Uploaded doc"}'
+  -H "X-Agent-Id: editor:automation" \
+  -d '{"name":"Document Editor","status":"reading","summary":"Uploaded doc"}'
 
 # 4. Share the URL
 echo "$URL"
@@ -359,9 +359,9 @@ BASE=$(curl -s "https://www.proofeditor.ai/api/agent/$SLUG/state" \
 OP_RESP=$(curl -s -X POST "https://www.proofeditor.ai/api/agent/$SLUG/ops" \
   -H "Content-Type: application/json" \
   -H "x-share-token: $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: editor:automation" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$BASE" '{type:"comment.add",quote:"Content here",by:"ai:compound-engineering",text:"Added a note",baseToken:$base}')")
+  -d "$(jq -n --arg base "$BASE" '{type:"comment.add",quote:"Content here",by:"editor:automation",text:"Added a note",baseToken:$base}')")
 NEXT_BASE=$(printf '%s' "$OP_RESP" | jq -r '.mutationBase.token // empty')
 [ -n "$NEXT_BASE" ] && BASE="$NEXT_BASE"
 
@@ -372,9 +372,9 @@ EDIT_BASE=$(printf '%s' "$SNAPSHOT" | jq -r '.mutationBase.token')
 curl -X POST "https://www.proofeditor.ai/api/agent/$SLUG/edit/v2?return=minimal" \
   -H "Content-Type: application/json" \
   -H "x-share-token: $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
+  -H "X-Agent-Id: editor:automation" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --arg base "$EDIT_BASE" '{by:"ai:compound-engineering",baseToken:$base,operations:[{op:"find_replace_in_doc",find:"Content",replace:"Updated content",occurrence:"all"}]}')"
+  -d "$(jq -n --arg base "$EDIT_BASE" '{by:"editor:automation",baseToken:$base,operations:[{op:"find_replace_in_doc",find:"Content",replace:"Updated content",occurrence:"all"}]}')"
 ```
 
 ## Workflow: Pull a Proof Doc to Local
@@ -390,19 +390,25 @@ SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-# One read to a temp file — avoids passing markdown through $(...), which would strip trailing newlines.
-STATE_TMP=$(mktemp)
+# Keep scratch data under the JJ workspace root, with a local fallback outside a workspace.
+if WORKSPACE_ROOT=$(jj workspace root 2>/dev/null); then
+  TMP_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw"
+else
+  TMP_DIR=".tmp/rocketclaw"
+fi
+mkdir -p "$TMP_DIR"
+STATE_TMP="$TMP_DIR/proof-state.$$"
 curl -s "https://www.proofeditor.ai/api/agent/$SLUG/state" \
   -H "x-share-token: $TOKEN" > "$STATE_TMP"
 REVISION=$(jq -r '.revision' "$STATE_TMP")
 
-# Atomic write: stream .markdown bytes directly to a temp sibling, then rename.
-TMP="${LOCAL}.proof-sync.$$"
+# Stream .markdown bytes directly to workspace-local scratch, then move into place.
+TMP="$TMP_DIR/proof-markdown.$$"
 jq -jr '.markdown' "$STATE_TMP" > "$TMP" && mv "$TMP" "$LOCAL"
 rm "$STATE_TMP"
 ```
 
-`jq -jr` (`-j` no trailing newline, `-r` raw string) streams the markdown bytes straight to the temp file without going through a shell variable, so trailing newlines survive intact. `mv` within the same filesystem is atomic — a crashed write leaves the original untouched rather than a half-written file.
+`jq -jr` (`-j` no trailing newline, `-r` raw string) streams the markdown bytes straight to workspace-local scratch without going through a shell variable, so trailing newlines survive intact. The final `mv` is atomic when the workspace scratch directory and destination share a filesystem.
 
 **Confirm before writing when the pull isn't directly asked for.** If a workflow ends up pulling as a side-effect of a different action, surface the impending write with a short confirm like "Sync Proof doc to `<localPath>`?" A silent overwrite is surprising — the user may have forgotten the local file exists in that session, or expected Proof to stay canonical until they explicitly asked to pull.
 
@@ -412,5 +418,5 @@ rm "$STATE_TMP"
 - During active collab use `edit/v2` (direct block changes) or `suggestion.add` (tracked changes); reserve `rewrite.apply` for no-client scenarios since it's blocked by `LIVE_CLIENTS_PRESENT` when anyone is connected
 - Prefer `find_replace_in_doc` and block-level `/edit/v2` edits before considering `rewrite.apply`
 - Don't span table cells in a single replace
-- Always include `by: "ai:compound-engineering"` on every op and `X-Agent-Id: ai:compound-engineering` in headers for consistent attribution
+- Always include `by: "editor:automation"` on every op and `X-Agent-Id: editor:automation` in headers for a consistent operation identity
 - Reuse `baseToken` from your most recent `/state` or `/snapshot` read; on `STALE_BASE`, re-read and retry once

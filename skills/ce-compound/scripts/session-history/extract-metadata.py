@@ -26,7 +26,7 @@ def try_claude(lines):
             if obj.get("type") == "user" and "gitBranch" in obj:
                 return {
                     "platform": "claude",
-                    "branch": obj["gitBranch"],
+                    "bookmark": obj["gitBranch"],
                     "ts": obj.get("timestamp", ""),
                     "session": obj.get("sessionId", ""),
                 }
@@ -259,7 +259,7 @@ def _extract_user_assistant_text(filepath):
                     # wrapper before counting. Without this, generic wrapper terms
                     # (e.g., "Conductor", environment labels) false-match against
                     # boilerplate the user did not author. Mirrors the same split
-                    # used in ce-session-extract/scripts/extract-skeleton.py.
+                    # used in this skill's scripts/session-history/extract-skeleton.py.
                     msg = p.get("message", "")
                     if isinstance(msg, str):
                         parts = msg.split("</system_instruction>")

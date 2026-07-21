@@ -30,4 +30,4 @@ Running a verdict on an unbounded field turns `ce-pov` into disguised requiremen
 
 ## Universal grounding (designed-in, deferred)
 
-`ce-pov` grounds against the project's available context, and "project" includes a non-code folder (docs, decks, markdown, data), not only a git repo. The only case out of scope is *no local material at all* — a pure user-described situation with nothing to ground against. Treat that as out of scope: say the verdict would be ungrounded and ask for the project context, rather than dispensing generic advice dressed as a POV.
+`ce-pov` grounds against the project's available context, and "project" includes a non-code folder (docs, decks, markdown, data), not only a Jujutsu repository. The only case out of scope is *no local material at all* — a pure user-described situation with nothing to ground against. Treat that as out of scope: say the verdict would be ungrounded and ask for the project context, rather than dispensing generic advice dressed as a POV.

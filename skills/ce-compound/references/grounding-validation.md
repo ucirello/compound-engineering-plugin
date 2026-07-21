@@ -1,15 +1,15 @@
 # Grounding Validation (Phase 2.45)
 
-Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted knowledge — future agents will act on its claims without re-verifying them. This phase checks the claims against reality before they compound: a deterministic mechanical pass (bundled script) plus a semantic pass (one read-only validator subagent). Neither pass is a hard gate — every flag is adjudicated, because solution docs legitimately cite deleted paths and pre-fix states.
+Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted knowledge — future agents will act on its claims without re-verifying them. This phase checks the claims against reality before they become durable: a deterministic mechanical pass (bundled script) plus a semantic pass (one read-only validator subagent). Neither pass is a hard gate — every flag is adjudicated, because solution docs legitimately cite deleted paths and pre-fix states.
 
 ## Which tree is the ground truth
 
 Two claim categories verify against different trees:
 
-- **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree** — they describe what this session's work produced and verified here.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the checkout may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local git reachability is only the fallback. The script's `INFO: worktree is N commits behind …` line tells you how much to distrust the local tree for this category.
+- **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working copy** — they describe what this session's work produced and verified here.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the workspace may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local JJ reachability is only the fallback. The script's `INFO: workspace is N changes behind …` line tells you how much to distrust the local working copy for this category.
 
-Before running the script, optionally run `git fetch --quiet` (best-effort — skip silently on failure or offline; the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Before running the script, optionally run `jj git fetch` (best-effort — skip silently on failure or offline; the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -18,16 +18,16 @@ The script reports flags; you decide each one. Three resolutions — **fix**, **
 | Flag | Likely meaning | Resolution |
 |------|----------------|------------|
 | path not found anywhere | Typo, or drafted from memory | Fix the citation or remove the claim |
-| path missing here, exists at upstream | Stale checkout | Verify the claim against upstream; annotate if the doc implies the file is present locally |
+| path missing here, exists at the remote bookmark | Stale workspace | Verify the claim against the remote bookmark; annotate if the doc implies the file is present locally |
 | path deliberately gone (doc says removed/renamed) | Historical citation | Confirm the surrounding prose marks it as historical ("removed by this fix", "pre-fix state"); add that marker if absent |
-| SHA does not resolve | Fabricated or from another repo | Replace with the PR number, or drop |
-| SHA reachable from HEAD only | Local-only commit; SHA will change on rebase/squash merge | Replace with the PR number |
-| SHA reachable from upstream only | Checkout predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
-| SHA exists but unreachable | Rebased-away commit | Replace with the PR number |
+| commit ID does not resolve | Fabricated or from another repository | Replace with the PR number, or drop |
+| commit ID reachable from `@` only | Local-only revision; its commit ID may change when the revision is rewritten | Replace with the PR number |
+| commit ID reachable from the remote bookmark only | Workspace predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
+| commit ID exists but is unreachable | Rewritten-away revision | Replace with the PR number |
 | scaffold ("Learning 3", `{{…}}`) | Drafting-context leak | Always fix — rewrite as a real path or link |
 | relative link unresolved | Wrong target | Fix the path |
 
-If the script cannot be resolved on this platform, apply its checks manually at the same scope — scan the body for cited paths that don't exist, hex SHAs, `Learning(s) N` / `{{…}}` scaffold, and broken relative links — and note in the run output that the check was manual. Do not silently skip.
+If the script cannot be resolved on this platform, apply its checks manually at the same scope — scan the body for cited paths that don't exist, hexadecimal commit IDs, `Learning(s) N` / `{{…}}` scaffold, and broken relative links — and note in the run output that the check was manual. Do not silently skip.
 
 After any body edit from this step or Step 2, re-run the script until it reports clean or every remaining flag is confirmed intentional.
 
@@ -38,7 +38,10 @@ Dispatch **one generic read-only subagent** covering the written solution doc pl
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
-Grep, Glob, git (non-mutating), and gh when available.
+Grep, Glob, JJ (non-mutating), and gh when available. Use `jj status` for
+working-copy state, `jj diff` for content changes, `jj log` for history and
+reachability, `jj file annotate` when line provenance matters, `jj bookmark
+list` for local and remote bookmarks, and `jj workspace root` for the root.
 
 Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.
@@ -54,8 +57,8 @@ Check every factual claim in three categories:
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
    "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: git
-   reachability from the upstream default branch. Verdict: verified,
+   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: JJ
+   reachability from the remote default bookmark. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.
 

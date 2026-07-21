@@ -12,13 +12,13 @@ After `safe_auto` fixes apply and synthesis produces the remaining finding set, 
 
 Use the platform's blocking question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension)). In Claude Code, the tool should already be loaded from the Interactive-mode pre-load step in `SKILL.md` — if it isn't, call `ToolSearch` with query `select:AskUserQuestion` now. Fall back to presenting the options as a numbered list only when the harness genuinely lacks a blocking tool — `ToolSearch` returns no match, the tool call explicitly fails, or the runtime mode does not expose it (e.g., Codex edit modes without `request_user_input`). A pending schema load is not a fallback trigger. Never silently skip the question. Rendering the routing question as narrative text without the numbered-list fallback is a bug.
 
-**Stem:** `What should the agent do with the remaining N findings?`
+**Stem:** `What should the review do with the remaining N findings?`
 
 **Options (fixed order; no option is labeled `(recommended)` — the routing choice is user-intent):**
 
 ```
 A. Review each finding one by one — accept the recommendation or choose another action
-B. Auto-resolve with best judgment — apply per-finding edits the agent can defend, surface the rest
+B. Auto-resolve with best judgment — apply defensible per-finding edits, surface the rest
 C. Append findings to the doc's Open Questions section and proceed
 D. Report only — take no further action
 ```
@@ -33,7 +33,7 @@ If all remaining findings are FYI-subsection-only (no `gated_auto` or `manual` f
 
 - **A** — load this walk-through (per-finding loop). Apply decisions accumulate in memory; Open-Questions defers execute inline via `references/open-questions-defer.md`; Skip decisions are recorded as no-action; `Auto-resolve with best judgment on the rest` routes through `references/bulk-preview.md`.
 - **B** — load `references/bulk-preview.md` scoped to every pending `gated_auto` / `manual` finding. On Proceed, execute the plan: Apply → end-of-batch document edit; Open-Questions defers → `references/open-questions-defer.md`; Skip → no-op. On Cancel, return to the routing question.
-- **C** — load `references/bulk-preview.md` with every pending finding in the Open-Questions bucket (regardless of the agent's natural recommendation). On Proceed, route every finding through `references/open-questions-defer.md`; no document edits apply. On Cancel, return to the routing question.
+- **C** — load `references/bulk-preview.md` with every pending finding in the Open-Questions bucket (regardless of the review's natural recommendation). On Proceed, route every finding through `references/open-questions-defer.md`; no document edits apply. On Cancel, return to the routing question.
 - **D** — do not enter any dispatch phase. Emit the completion report and flow to Phase 5 terminal question.
 
 ---
@@ -103,13 +103,13 @@ Substitutions:
 - **`suggested_fix`** — from the merged finding's `suggested_fix` field. Render as prose describing intent, not as raw markup. The user's job is to trust or reject the action — they don't need to review exact text. Rules:
   - **Default — one sentence describing the effect.** What does the fix achieve, and where does it live? Prefer intent language over quoted text.
     - Good: `Drop the Advisory tier from the enum; advisory-style findings surface in an FYI subsection at the presentation layer.`
-    - Good: `Add a deployment-ordering constraint requiring Units 3 and 4 in a single commit.`
+    - Good: `Add a deployment-ordering constraint requiring Units 3 and 4 in a single change.`
     - Bad: `Change "autofix_class: [auto, gated_auto, advisory, present]" to "autofix_class: [safe_auto, gated_auto, manual]" in findings-schema.json on line 48.` — too syntax-focused for a decision loop
   - **Code-span budget** — at most 2 inline backtick spans per sentence, each a single identifier, flag, or short phrase (e.g., `` `safe_auto` ``, `` `<work-context>` ``). Always leave a space before and after each backtick span.
   - **Raw code blocks** — only for short (≤5-line) genuinely additive content where no before-state exists. Above 5 lines, switch to a summary.
   - **No diff blocks.** Document mutations render as prose.
 - **`Why it works`** — grounded reasoning that, where possible, references a similar pattern already used in the document or codebase. One to three sentences.
-- **Conflict-context line (when applicable)** — when contributing personas implied different actions for this finding and synthesis step 3.6 broke the tie, surface that briefly. Example: `Coherence recommends Apply; scope-guardian recommends Skip. Agent's recommendation: Skip.` The orchestrator's recommendation — the post-tie-break value — is what the menu labels "recommended."
+- **Conflict-context line (when applicable)** — when contributing personas implied different actions for this finding and synthesis step 3.6 broke the tie, surface that briefly. Example: `Coherence recommends Apply; scope-guardian recommends Skip. Review recommendation: Skip.` The orchestrator's recommendation — the post-tie-break value — is what the menu labels "recommended."
 
 ### Question stem (short, decision-focused)
 
@@ -129,7 +129,7 @@ Never enumerate alternatives in the stem. One recommendation as a yes/no — the
 
 ### Confirmation between findings
 
-After the user answers and before printing the next finding's terminal block, emit a one-line confirmation of the action taken. Examples: `→ Applied. Edit staged at "Scope Boundaries" section.`, `→ Deferred. Entry appended to "## Deferred / Open Questions".`, `→ Skipped.`
+After the user answers and before printing the next finding's terminal block, emit a one-line confirmation of the action taken. Examples: `→ Applied. Edit queued for the "Scope Boundaries" section.`, `→ Deferred. Entry appended to "## Deferred / Open Questions".`, `→ Skipped.`
 
 ### Options (four; adapted as noted)
 
@@ -182,7 +182,7 @@ Synthesis step 3.5b demotes the default recommendation from Apply to Defer for a
 
 Fire a blocking sub-question using the platform's question tool. The stem explains why Apply is not executable in one line, then offers three self-contained options. Position indicator stays on the current finding while the sub-question is open.
 
-**Stem:** `Apply isn't executable for this finding — the review surfaced the issue without a concrete fix. How should the agent proceed?`
+**Stem:** `Apply isn't executable for this finding — the review surfaced the issue without a concrete fix. How should the review proceed?`
 
 **Options (fixed order):**
 
@@ -206,7 +206,7 @@ C. Acknowledge without applying — record the decision, no document edit
 
 ## Override rule
 
-"Override" means the user picks a different preset action (Defer or Skip in place of Apply, or Apply in place of the agent's recommendation). No inline freeform custom-fix authoring — the walk-through is a decision loop, not a pair-editing surface. A user who wants a variant of the proposed fix picks Skip and hand-edits outside the flow; if they also want the finding tracked, they can Defer first and edit afterward.
+"Override" means the user picks a different preset action (Defer or Skip in place of Apply, or Apply in place of the review's recommendation). No inline freeform custom-fix authoring — the walk-through is a decision loop, not a pair-editing surface. A user who wants a variant of the proposed fix picks Skip and hand-edits outside the flow; if they also want the finding tracked, they can Defer first and edit afterward.
 
 ---
 

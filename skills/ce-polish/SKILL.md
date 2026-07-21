@@ -2,18 +2,23 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, branch name, or blank for current branch]"
+argument-hint: "[PR number, bookmark name, or blank for current change]"
 ---
 
 # Polish
 
 Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
 
-## Phase 0: Get on the right branch
+## Phase 0: Get on the right change
 
-1. If a PR number or branch name was provided, check it out (probe for existing worktrees first).
-2. If blank, use the current branch.
-3. Verify the current branch is not main/master.
+Use Jujutsu for repository operations. There is no staging step: Jujutsu snapshots working-copy changes automatically.
+
+1. Resolve the repository with `jj workspace root`, then inspect `jj status`, `jj diff`, and `jj log -r @`. Use `jj file annotate <path>` when line history is needed.
+2. If a PR number was provided, use `gh pr view` to resolve its head bookmark, run `jj git fetch`, and locate the corresponding remote bookmark with `jj bookmark list --all-remotes`.
+3. If a bookmark was provided, locate it with `jj bookmark list --all-remotes`; fetch first with `jj git fetch` when the local view may be stale.
+4. Before changing the working copy, inspect `jj workspace list`. Reuse a workspace already editing the target. Otherwise, create or select a Jujutsu workspace/change for the target according to the project's active instructions and conventions.
+5. If no target was provided, keep the current workspace and change.
+6. Do not polish directly on the repository's protected default bookmark. Confirm the target through `jj bookmark list` and `jj log`; do not infer it from non-JJ state.
 
 ## Phase 1: Start the dev server
 
@@ -67,7 +72,7 @@ bash "$SKILL_DIR/scripts/resolve-port.sh" --type <type>
 
 ### 1.3 Start the server
 
-Start the dev server in the background, log output to a temp file. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
+Start the dev server in the background and write its log under `$(jj workspace root)/.tmp/polish/`. If `jj workspace root` cannot be resolved, use `.tmp/polish/` under the current project directory. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do. Remove the log when the server stops; do not add artifact badges, bylines, attribution, or generated-by notices.
 
 ### 1.4 Open in browser
 
@@ -85,7 +90,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → commit the fixes and stop
+- When the user says they're done → inspect `jj status` and `jj diff`, then describe the current change with `jj describe` and stop. Run actual `git log` to inspect past messages. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active runtime instructions and conventions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed prefix, type, scope, message, subject/body shape, template, or example. Move or set the relevant bookmark with `jj bookmark move` or `jj bookmark set` only when the workflow requires it, and run `jj git push` only when the user explicitly requests a push.
 
 No checklist. No envelope. Just conversation.
 

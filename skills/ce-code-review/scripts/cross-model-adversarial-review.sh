@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
 # cross-model-adversarial-review.sh
 #
-# Runs the adversarial review through a DIFFERENT model family (the "peer") in a
-# separate, read-only process, and writes its findings as JSON into the run dir.
-# The peer gets the same canonical adversarial brief the in-process reviewer uses
-# (references/personas/adversarial-reviewer.md) so it is genuinely "the adversarial
-# persona, on a different model."
+# Runs the adversarial review through an independent provider CLI in a separate,
+# read-only process and writes its findings as JSON into the run directory.
+# The external actor gets the same canonical adversarial brief as the in-process
+# reviewer (references/personas/adversarial-reviewer.md).
 #
 # Usage:  cross-model-adversarial-review.sh <peer: codex|claude> <base-ref> <run-dir>
 #   <peer>     codex  -> use Codex (when the host is Claude or Cursor)
 #              claude -> use Claude (when the host is Codex)
-#   <base-ref> the diff base (e.g. a merge-base SHA or branch); the peer reviews
-#              only `git diff <base-ref>` in the current repository
-#   <run-dir>  an existing dir; output is written to <run-dir>/adversarial-<peer>.json
+#   <base-ref> the diff base (e.g. a common-ancestor revision or bookmark); the
+#              peer reviews only `jj diff --from <base-ref>` in the current repo
+#   <run-dir>  an existing dir; output is written to <run-dir>/adversarial-external.json
 #
 # Self-locates its sibling reference files via BASH_SOURCE (NOT the CWD, which is
-# the user's project on every host), and derives the repo root from git. The agent
+# the user's project on every host), and derives the repo root from JJ. The agent
 # only has to pass the three values above.
 #
 # NON-BLOCKING BY DESIGN: every failure logs to stderr and exits 0 without an output
-# file. The cross-model pass is additive and must never fail the review; the caller
-# detects success purely by the presence of <run-dir>/adversarial-<peer>.json.
+# file. The external pass is additive and must never fail the review; the caller
+# detects success by the presence of <run-dir>/adversarial-external.json.
 
 set -uo pipefail
 
@@ -28,11 +27,11 @@ PEER="${1:-}"
 BASE="${2:-}"
 RUN_DIR="${3:-}"
 
-log()  { printf '[cross-model] %s\n' "$*" >&2; }
+log()  { printf '[external-review] %s\n' "$*" >&2; }
 skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no output
 
 # --- validate inputs -------------------------------------------------------
-case "$PEER" in codex|claude) ;; *) skip "invalid peer '${PEER:-<empty>}' (want codex|claude); skipping cross-model pass" ;; esac
+case "$PEER" in codex|claude) ;; *) skip "invalid provider '${PEER:-<empty>}'; skipping external pass" ;; esac
 [ -n "$BASE" ]                  || skip "no base ref given; skipping"
 [ -n "$RUN_DIR" ] && [ -d "$RUN_DIR" ] || skip "run-dir '${RUN_DIR:-<empty>}' is not a directory; skipping"
 command -v "$PEER" >/dev/null 2>&1 || skip "$PEER CLI not installed; skipping"
@@ -46,11 +45,13 @@ SCHEMA="$SKILL_ROOT/references/findings-schema.json"
 [ -f "$SCHEMA" ]  || skip "findings schema not found at $SCHEMA; skipping"
 
 # --- derive repo root (read-only) ------------------------------------------
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || skip "not inside a git repository; skipping"
+REPO_ROOT="$(jj workspace root 2>/dev/null)" || skip "not inside a JJ repository; skipping"
 
-OUT="$RUN_DIR/adversarial-$PEER.json"
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-log-XXXXXX")"
+OUT="$RUN_DIR/adversarial-external.json"
+PROMPT_FILE="$RUN_DIR/.external-prompt-$$"
+PEERLOG="$RUN_DIR/.external-log-$$"
+: > "$PROMPT_FILE" || skip "cannot create prompt file in run directory; skipping"
+: > "$PEERLOG" || skip "cannot create peer log in run directory; skipping"
 trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
 
 # --- compose the peer prompt from the canonical persona (single source) ----
@@ -65,21 +66,21 @@ trap 'rm -f "$PROMPT_FILE" "$PEERLOG"' EXIT
   printf 'Think like an attacker and a chaos engineer: find the ways this change fails in production.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   cat "$SCHEMA"
-  printf '\n\nSet the top-level "reviewer" field to "adversarial-%s".\n' "$PEER"
+  printf '\n\nSet the top-level "reviewer" field to "adversarial-external".\n'
 } > "$PROMPT_FILE"
 # Per-peer diff delivery (composed below): codex fetches its own diff inside its
 # read-only sandbox; claude is hard-denied shell (see below), so it gets the diff
-# embedded and needs no git.
+# embedded and needs no shell.
 if [ "$PEER" = codex ]; then
-  printf '\nRun: git diff %q — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
+  printf '\nRun: jj diff --from %q --git — review ONLY the changes in that diff, in this repository (read-only).\n' "$BASE" >> "$PROMPT_FILE"
 else
-  { printf '\nReview ONLY the change below (the output of `git diff %q`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
-    printf '\n=== BEGIN DIFF ===\n'; git -C "$REPO_ROOT" diff "$BASE"; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
+  { printf '\nReview ONLY the change below (the output of `jj diff --from %q --git`). You may Read repository files for context but cannot run shell commands.\n' "$BASE"
+    printf '\n=== BEGIN DIFF ===\n'; jj -R "$REPO_ROOT" diff --from "$BASE" --git; printf '\n=== END DIFF ===\n'; } >> "$PROMPT_FILE"
 fi
 
 # --- run the peer: idle-timeout for streaming codex, hard cap for claude ----
 # codex exec streams its reasoning to stdout, so a productive long run is allowed to
-# continue and is killed only when its output STALLS for IDLE_SECS (the cross-model
+# continue and is killed only when its output STALLS for IDLE_SECS (the external
 # "second opinion" idle-timeout pattern), with HARD_SECS as an absolute backstop.
 # claude's --output-format json is single-shot, so it gets a hard cap only.
 #
@@ -90,8 +91,8 @@ fi
 # $OUT after Stage 5 skipped it. claude keeps the (g)timeout wrapper: it is single-shot
 # and gtimeout's own timeout (with -k) escalates to KILL correctly; perl(alarm) is the
 # fallback when neither (g)timeout exists.
-IDLE_SECS="${CROSS_MODEL_IDLE_SECS:-180}"   # reap codex if its streamed output stalls this long
-HARD_SECS="${CROSS_MODEL_HARD_SECS:-600}"   # absolute ceiling (backstop) for either peer
+IDLE_SECS="${EXTERNAL_REVIEW_IDLE_SECS:-180}"   # reap the provider if streamed output stalls this long
+HARD_SECS="${EXTERNAL_REVIEW_HARD_SECS:-600}"   # absolute ceiling (backstop) for either provider
 TO_BIN="$(command -v gtimeout || command -v timeout || true)"
 
 # Reap a backgrounded job's whole process group: TERM, then KILL after a short grace if
@@ -196,15 +197,15 @@ esac
 
 # --- normalize the reviewer name -------------------------------------------
 # The persona's example JSON uses reviewer:"adversarial"; if the peer echoed that
-# instead of "adversarial-<peer>", Stage 5 would fold it as the in-process reviewer
-# and lose the cross-model agreement signal. Force the distinct name.
+# instead of "adversarial-external", Stage 5 would fold it as the in-process reviewer
+# and lose the independent agreement signal. Force the distinct name.
 if [ -s "$OUT" ]; then
-  _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-norm-XXXXXX")"
+  _norm="$RUN_DIR/.external-norm-$$"
   # Force the distinct reviewer name AND satisfy Stage 5's full top-level contract
   # (reviewer string + findings/residual_risks/testing_gaps arrays). Backfill the two
   # soft arrays if the peer omitted them; drop the return entirely if findings is not
   # an array (empty output -> the validation below removes the file -> clean skip).
-  if jq --arg r "adversarial-$PEER" \
+  if jq --arg r "adversarial-external" \
        'if (.findings|type)=="array" then {reviewer:$r, findings, residual_risks:(.residual_risks // []), testing_gaps:(.testing_gaps // [])} else empty end' \
        "$OUT" > "$_norm" 2>/dev/null; then mv "$_norm" "$OUT"; else rm -f "$_norm"; fi
 fi
@@ -212,7 +213,7 @@ fi
 # --- validate the output against the Stage 5 reviewer-return contract -------
 if [ -s "$OUT" ] && jq -e '(.reviewer|type=="string") and (.findings|type=="array") and (.residual_risks|type=="array") and (.testing_gaps|type=="array")' "$OUT" >/dev/null 2>&1; then
   n="$(jq '.findings | length' "$OUT" 2>/dev/null || echo '?')"
-  log "wrote $n finding(s) to $OUT (reviewer adversarial-$PEER)"
+  log "wrote $n finding(s) to $OUT (reviewer adversarial-external)"
 else
   log "$PEER produced no usable schema-shaped output; skipping fold-in"
   rm -f "$OUT"

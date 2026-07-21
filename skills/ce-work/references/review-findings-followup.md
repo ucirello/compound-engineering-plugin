@@ -1,33 +1,33 @@
 # Apply Code Review Findings (after `ce-code-review`)
 
-Load this reference when `ce-code-review` has finished and **ce-work** (or another caller) should apply fixes before the Residual Work Gate.
+Load this reference when `ce-code-review` has finished and its caller should apply fixes before the Residual Work Gate.
 
-`ce-code-review` is invoked here with `mode:agent`, so it is **review-only** in this context — it reports findings and writes artifacts and does not mutate the checkout, commit, push, or file tickets. **The caller owns apply/fix policy.** (In its own default/interactive mode the review applies safe fixes itself; that path does not apply here.)
+`ce-code-review` is invoked here with `mode:agent`, so it is **review-only** in this context — it reports findings and writes artifacts and does not mutate the workspace, commit, push, or file tickets. **The caller owns apply/fix policy.** (In its own default/interactive mode the review applies safe fixes itself; that path does not apply here.)
 
 ## Consume the completed review (do not re-run it)
 
-This reference loads **after** review has run. In the ce-work shipping flow, step 3a already invoked `ce-code-review`; this apply step **consumes that output** — do not start a second review, which would waste reviewer dispatches and risk overwriting the artifact the Residual Work Gate reconciles.
+This reference loads **after** review has run. In the shipping flow, step 3a already invoked `ce-code-review`; this apply step **consumes that output** — do not start a second review, which would waste reviewer dispatches and risk overwriting the artifact the Residual Work Gate reconciles.
 
 Reuse the review output already in hand:
 
 - Parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) **or** the markdown Actionable Findings summary captured by the caller
-- Run artifact dir: `/tmp/compound-engineering/ce-code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`)
+- Run artifact directory: `$(jj workspace root)/.tmp/rocketclaw/code-review/<run-id>/` (`review.json`, per-reviewer JSON for `why_it_matters`); if the workspace root is unavailable during recovery, use `$PWD/.tmp/rocketclaw/code-review/<run-id>/`. Never use an OS/global temporary location
 
 If `status` is `failed`, stop shipping and surface `reason`. If `degraded`, note partial reviewer coverage before applying anything.
 
 ### Fallback — invoke review only for cold callers
 
-Only when the caller reached this file **without** already running review (no review output in hand): invoke `ce-code-review` once, then proceed to apply. Do not invoke when the caller already ran review (e.g., ce-work shipping step 3a).
+Only when the caller reached this file **without** already running review (no review output in hand): invoke `ce-code-review` once, then proceed to apply. Do not invoke when the caller already ran review in shipping step 3a.
 
 Invoke the skill explicitly — do not treat a casual "review my changes" prompt as a substitute unless the harness routed it to `ce-code-review`.
 
 ```
-ce-code-review mode:agent plan:<plan-path> base:<merge-base-or-ref>
+ce-code-review mode:agent plan:<plan-path> base:<base-revision>
 ```
 
 - `mode:agent` — JSON output (`review.json` + primary JSON response) for programmatic parsing; same review pipeline as default.
 - `plan:` — when Phase 1 used a plan file (requirements completeness).
-- `base:` — when the diff base is already resolved on the current checkout; omit when reviewing a PR number/URL or standalone current branch.
+- `base:` — when the diff base is already resolved in the current workspace; omit when reviewing a PR number/URL or standalone current change line.
 - Do **not** pass deprecated `mode:autofix`.
 
 For human / interactive shipping, invoke `ce-code-review` without `mode:agent` if markdown tables are preferred. Capture the same JSON / Actionable Findings and artifact dir listed above before applying.
@@ -36,7 +36,7 @@ For human / interactive shipping, invoke `ce-code-review` without `mode:agent` i
 
 - `actionable_findings` from JSON, or the Actionable Findings section from markdown
 - Full finding detail when needed: `review.json` / artifact `findings`, or `{reviewer}.json` for `why_it_matters` and `evidence`
-- Stable finding `#` — reuse in commits, residual sinks, and subagent prompts
+- Stable finding `#` — preserve it as semantic context for commits, residual sinks, and subagent prompts.
 
 ## What to apply
 
@@ -74,17 +74,17 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 
 1. Sort applicable findings by severity (P0 first).
 2. **Group by `file`.** All eligible findings on the same file → **one subagent** (it loads the file once and works through its `#` list in severity order).
-3. **Parallel waves:** batches with **disjoint file sets** may run in parallel (same worktree / shared-directory rules as Phase 1 Step 4 in `ce-work` SKILL.md).
-4. **Same file, many findings:** keep one subagent per file. If the prompt would exceed a comfortable size (~8 findings), split into **serial** subagent passes on that file (first batch highest severity, then next batch after merge or after the prior agent returns).
-5. **Cross-file coupling:** do not merge unrelated files into one subagent just to reduce agent count — file grouping is the default. Only co-batch multiple files when findings explicitly reference the same small edit surface (rare); when in doubt, separate by file.
+3. **Parallel waves:** batches with **disjoint file sets** may run in parallel under the same workspace / shared-directory rules as Phase 1 Step 4 in `SKILL.md`.
+4. **Same file, many findings:** keep one subagent per file. If the prompt would exceed a comfortable size (~8 findings), split into **serial** subagent passes on that file (first batch highest severity, then next batch after integration or after the prior agent returns).
+5. **Cross-file coupling:** do not combine unrelated files into one subagent just to reduce agent count — file grouping is the default. Only co-batch multiple files when findings explicitly reference the same small edit surface (rare); when in doubt, separate by file.
 
 **Subagent prompt (per batch):** the assigned findings only (`#`, severity, file, line, title, `suggested_fix`, `requires_verification`; add `why_it_matters` from `{reviewer}.json` in the run artifact when useful), plus:
 - Work through assigned `#` in severity order; at each `file:line`, skip with a one-line reason if evidence no longer matches
 - Apply the mechanical bar from § What to apply / What not to apply — skip anything that needs design judgment
 - Do not re-run `ce-code-review`
-- Shared-directory fallback: do not stage or commit — return which `#` were applied or skipped and which files changed
+- Shared-directory fallback: do not describe or commit changes — return which `#` were applied or skipped and which files changed
 
-**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After each wave:** the orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding -> at least targeted tests; multi-file -> broader suite), and commits unless workspace-isolated subagents integrate per Phase 1. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed message, prefix, type, scope, subject/body shape, template, or example. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

@@ -1,6 +1,6 @@
 # Strategy Template
 
-Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `STRATEGY.md`.
+Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `$(jj workspace root)/STRATEGY.md`.
 
 ## Rules for filling in
 

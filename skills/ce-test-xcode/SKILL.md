@@ -5,7 +5,7 @@ argument-hint: "[scheme name or 'current' to use default]"
 disable-model-invocation: true
 ---
 
-# Xcode Test Skill
+# Xcode Testing
 
 Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures screenshots, logs, and verifies app behavior.
 
@@ -22,9 +22,7 @@ Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures
 
 Check that the XcodeBuildMCP MCP server is connected by calling its `list_simulators` tool.
 
-MCP tool names vary by platform:
-- Claude Code: `mcp__xcodebuildmcp__list_simulators`
-- Other platforms: use the equivalent MCP tool call for the `XcodeBuildMCP` server's `list_simulators` method
+Use the connected server's `list_simulators` MCP method; the exposed tool name may vary by platform.
 
 If the tool is not found or errors, inform the user they need to add the XcodeBuildMCP MCP server:
 
@@ -75,10 +73,12 @@ Call `build_ios_sim_app` with the project path and scheme name.
 
 ### 5. Test Key Screens
 
+Put screenshots, logs, and other temporary artifacts under `$(jj workspace root)/.tmp/xcode-testing`. If `jj workspace root` is unavailable, use `$PWD/.tmp/xcode-testing`. Create the directory before writing and pass its resolved absolute path to capture tools; shell variables do not persist between calls.
+
 For each key screen in the app:
 
 **Take screenshot:**
-Call `take_screenshot` with the simulator UUID and a descriptive filename (e.g., `screen-home.png`).
+Call `take_screenshot` with the simulator UUID and a descriptive path under the resolved artifact directory (e.g., `<workspace-root>/.tmp/xcode-testing/screen-home.png`).
 
 **Review screenshot for:**
 - UI elements rendered correctly
@@ -109,7 +109,7 @@ Pause for human input when testing touches flows that require device interaction
 | Location | "Allow location access and verify map updates" |
 | SwiftUI Text links | "Please tap on [element description] manually — automated taps cannot trigger inline text links" |
 
-Ask the user using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question:
+Ask the user using the platform's blocking question tool. Fall back to numbered options in chat only when no blocking tool exists or the call errors. Never silently skip the question:
 
 ```
 Human Verification Needed
@@ -128,7 +128,7 @@ Did it work correctly?
 When a test fails:
 
 1. **Document the failure:**
-   - Take screenshot of error state
+   - Take a screenshot of the error state under the resolved `.tmp/xcode-testing` directory
    - Capture console logs
    - Note reproduction steps
 
@@ -203,6 +203,6 @@ After testing:
 /ce-test-xcode current
 ```
 
-## Integration with ce-code-review
+## Review Integration
 
-When reviewing PRs that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.
+When reviewing PRs that touch iOS code, the `/ce-code-review` route can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.

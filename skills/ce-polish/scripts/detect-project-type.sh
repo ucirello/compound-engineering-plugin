@@ -41,9 +41,9 @@
 
 set -u
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+REPO_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a git repository" >&2
+  echo "ERROR: not in a Jujutsu workspace" >&2
   exit 1
 fi
 

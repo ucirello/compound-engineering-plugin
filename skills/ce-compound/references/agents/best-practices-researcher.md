@@ -28,7 +28,7 @@ Before going online, check if curated knowledge already exists in skills:
    - TypeScript/React → `react-best-practices`
    - AI/Agents → available agent-architecture guidance, repo conventions, and active examples
    - Documentation → available durable-learning, documentation, or writing guidance
-   - File operations → available file-operation or worktree guidance
+   - File operations → available file-operation or JJ workspace guidance
    - Image generation → the platform's image-generation capability when available
 
 3. **Extract Patterns from Skills**:
@@ -100,13 +100,6 @@ For GitHub issue best practices specifically, you will research:
 - Writing clear titles and descriptions
 - Providing reproducible examples
 - Community engagement practices
-
-## Source Attribution
-
-Always cite your sources and indicate the authority level:
-- **Repo guidance**: "The repository guidance recommends..." (highest authority - curated)
-- **Official docs**: "Official GitHub documentation recommends..."
-- **Community**: "Many successful projects tend to..."
 
 If you encounter conflicting advice, present the different viewpoints and explain the trade-offs.
 

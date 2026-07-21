@@ -1,6 +1,6 @@
 # Bulk Action Preview
 
-This reference defines the compact plan preview that Interactive mode shows before every bulk action — best-judgment (routing option B), Append-to-Open-Questions (routing option C), and the walk-through's `Auto-resolve with best judgment on the rest` (option D of the per-finding question). The preview gives the user a single-screen view of what the agent is about to do, with exactly two options to Proceed or Cancel.
+This reference defines the compact plan preview that Interactive mode shows before every bulk action — best-judgment (routing option B), Append-to-Open-Questions (routing option C), and the walk-through's `Auto-resolve with best judgment on the rest` (option D of the per-finding question). The preview gives the user a single-screen view of the pending actions, with exactly two options to Proceed or Cancel.
 
 Interactive mode only.
 
@@ -10,8 +10,8 @@ Interactive mode only.
 
 Three call sites:
 
-1. **Routing option B (top-level best-judgment)** — after the user picks `Auto-resolve with best judgment — apply per-finding edits the agent can defend, surface the rest` from the routing question, but before any action executes. Scope: every pending `gated_auto` or `manual` finding at confidence anchor `75` or `100`.
-2. **Routing option C (top-level Append-to-Open-Questions)** — after the user picks `Append findings to the doc's Open Questions section and proceed` but before any append runs. Scope: every pending `gated_auto` or `manual` finding at confidence anchor `75` or `100`. Every finding appears under `Appending to Open Questions (N):` regardless of the agent's natural recommendation, because option C is batch-defer.
+1. **Routing option B (top-level best-judgment)** — after the user picks `Auto-resolve with best judgment — apply defensible per-finding edits, surface the rest` from the routing question, but before any action executes. Scope: every pending `gated_auto` or `manual` finding at confidence anchor `75` or `100`.
+2. **Routing option C (top-level Append-to-Open-Questions)** — after the user picks `Append findings to the doc's Open Questions section and proceed` but before any append runs. Scope: every pending `gated_auto` or `manual` finding at confidence anchor `75` or `100`. Every finding appears under `Appending to Open Questions (N):` regardless of the review's natural recommendation, because option C is batch-defer.
 3. **Walk-through `Auto-resolve with best judgment on the rest`** — after the user picks `Auto-resolve with best judgment on the rest` from a per-finding question, but before the remaining findings are resolved. Scope: the current finding and everything not yet decided. Already-decided findings from the walk-through are not included in the preview.
 
 In all three cases the user confirms with `Proceed` or backs out with `Cancel`. No per-item decisions inside the preview — per-item decisioning is the walk-through's role.
@@ -20,7 +20,7 @@ In all three cases the user confirms with `Proceed` or backs out with `Cancel`. 
 
 ## Preview structure
 
-The preview is grouped by the action the agent intends to take. Bucket headers appear only when their bucket is non-empty.
+The preview is grouped by the action the review recommends. Bucket headers appear only when their bucket is non-empty.
 
 ```
 <Path label> — <scope summary>:
@@ -84,9 +84,9 @@ After the preview body is rendered, ask the user using the platform's blocking q
 
 Stem (adapted to the path):
 
-- For routing B: `The agent is about to apply the plan above. Proceed?`
-- For routing C: `The agent is about to append the findings above to the doc's Open Questions section. Proceed?`
-- For walk-through `Auto-resolve with best judgment on the rest`: `The agent is about to resolve the remaining findings above. Proceed?`
+- For routing B: `Apply the plan above?`
+- For routing C: `Append the findings above to the doc's Open Questions section?`
+- For walk-through `Auto-resolve with best judgment on the rest`: `Resolve the remaining findings above?`
 
 Options (exactly two, in all three cases):
 

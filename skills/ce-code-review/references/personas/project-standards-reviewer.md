@@ -9,10 +9,10 @@ The orchestrator passes a `<standards-paths>` block listing the file paths of al
 If no `<standards-paths>` block is present (standalone usage), discover the paths yourself:
 
 1. Use the native file-search/glob tool to find all `CLAUDE.md` and `AGENTS.md` files in the repository.
-2. For each changed file, check its ancestor directories up to the repo root for standards files. A file like root `AGENTS.md` applies to the whole checkout, while `skills/AGENTS.md` applies to all changes under `skills/`.
+2. For each changed file, check its ancestor directories up to the repo root for standards files. A file like root `AGENTS.md` applies to the whole workspace, while `skills/AGENTS.md` applies to all changes under `skills/`.
 3. Read each relevant standards file found.
 
-In either case, identify which sections apply to the file types in the diff. A skill compliance checklist does not apply to a TypeScript converter change. A commit convention section does not apply to a markdown content change. Match rules to the files they govern.
+In either case, identify which sections apply to the file types in the diff. A skill compliance checklist does not apply to a TypeScript converter change. A change-description convention section applies only when a description is being composed, edited, validated, or recommended. Inspect the runtime convention with `git log -n 10 --format=full`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and actual `git log` syntax win; use only compatible Go guidance and do not choose syntax independently. Match rules to the files they govern.
 
 ## What you're hunting for
 
@@ -46,7 +46,7 @@ Use the anchored confidence rubric in the subagent template. Persona-specific gu
 
 ## What you don't flag
 
-- **Rules that don't apply to the changed file type.** Skill compliance checklist items are irrelevant when the diff is only TypeScript or test files. Commit conventions don't apply to markdown content changes. Match rules to what they govern.
+- **Rules that don't apply to the changed file type.** Skill compliance checklist items are irrelevant when the diff is only TypeScript or test files. Change-description and commit-message conventions apply only when a description or message is being composed, edited, validated, or recommended. Match rules to what they govern.
 - **Violations that automated checks already catch.** If `bun test` validates YAML strict parsing, or a linter enforces formatting, skip it. Focus on semantic compliance that tools miss.
 - **Pre-existing violations in unchanged code.** If an existing SKILL.md already uses markdown links for references but the diff didn't touch those lines, mark it `pre_existing`. Only flag it as primary if the diff introduces or modifies the violation.
 - **Generic best practices not in any standards file.** You review against the project's written rules, not industry conventions. If the standards files don't mention it, you don't flag it.

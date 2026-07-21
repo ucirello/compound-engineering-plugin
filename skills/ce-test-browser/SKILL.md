@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current JJ change stack or PR.
+argument-hint: "[PR number, bookmark name, 'current', or --port PORT]"
 ---
 
-# Browser Test Skill
+# Browser Testing
 
-Run end-to-end browser tests on pages affected by a PR or branch changes using the `agent-browser` CLI.
+Run end-to-end browser tests on pages affected by a PR or JJ change-stack changes using the `agent-browser` CLI.
 
 ## Modes
 
@@ -16,9 +16,6 @@ Run end-to-end browser tests on pages affected by a PR or branch changes using t
 ## Use `agent-browser` Only
 
 Use the `agent-browser` CLI for every browser action in this skill — opening pages, clicking, filling forms, snapshots, screenshots — and use it exclusively. Do not use any other browser-automation tool, including a browser MCP integration, a built-in browser-control tool, Playwright, or Puppeteer. If the host offers several ways to drive a browser, always choose `agent-browser`.
-
-- Claude Code: do not use Chrome MCP tools (`mcp__claude-in-chrome__*`).
-- Codex: do not substitute unrelated browsing tools.
 
 ## Workflow
 
@@ -30,7 +27,9 @@ command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 
 If not installed, tell the user: "`agent-browser` is not installed. Run `/ce-setup` for the current install command, then install agent-browser and retry." Then stop — this skill cannot function without it.
 
-This also requires a git repository with changes to test.
+This also requires a JJ workspace with changes to test. Resolve its root with `jj workspace root`; JJ snapshots the working copy automatically, so do not stage files.
+
+Put screenshots, logs, and other temporary artifacts under `$(jj workspace root)/.tmp/browser-testing`. If `jj workspace root` is unavailable, use `$PWD/.tmp/browser-testing`. Create the directory before writing and use its resolved absolute path in later commands; shell variables do not persist between calls.
 
 ### 2. Determine Test Scope
 
@@ -41,12 +40,12 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+ROOT=$(jj workspace root) && jj -R "$ROOT" diff --from 'trunk()' --to @ --name-only
 ```
 
-**If branch name provided:**
+**If bookmark name provided:**
 ```bash
-git diff --name-only main...[branch]
+ROOT=$(jj workspace root) && jj -R "$ROOT" diff --from 'trunk()' --to '[bookmark]' --name-only
 ```
 
 ### 3. Map Changed Files to Routes
@@ -113,7 +112,7 @@ In pipeline mode, do not stop here — `references/pipeline-orchestration.md` au
 
 Manual mode only — in pipeline mode, skip this step (see Modes; it defaults to headless).
 
-Ask the user whether to run headed or headless using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question:
+Ask the user whether to run headed or headless using the platform's blocking question tool. Fall back to presenting options in chat only when no blocking tool exists or the call errors. Never silently skip the question:
 
 ```
 Do you want to watch the browser tests run?
@@ -160,8 +159,8 @@ agent-browser snapshot -i
 
 **Take screenshots:**
 ```bash
-agent-browser screenshot page-name.png
-agent-browser screenshot --full page-name-full.png
+ROOT=$(jj workspace root 2>/dev/null || printf '%s' "$PWD") && mkdir -p "$ROOT/.tmp/browser-testing" && agent-browser screenshot "$ROOT/.tmp/browser-testing/page-name.png"
+ROOT=$(jj workspace root 2>/dev/null || printf '%s' "$PWD") && mkdir -p "$ROOT/.tmp/browser-testing" && agent-browser screenshot --full "$ROOT/.tmp/browser-testing/page-name-full.png"
 ```
 
 ### 8. Human Verification (When Required)
@@ -195,7 +194,7 @@ Did it work correctly?
 When a test fails (**pipeline mode:** do not ask how to proceed — capture the error screenshot and repro steps, log the failure, and continue):
 
 1. **Document the failure:**
-   - Screenshot the error state: `agent-browser screenshot error.png`
+   - Screenshot the error state under the resolved `.tmp/browser-testing` directory.
    - Note the exact reproduction steps
 
 2. **Ask the user how to proceed:**
@@ -221,7 +220,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [bookmark name]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -249,13 +248,13 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test the current JJ change stack (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test specific branch
+# Test a specific bookmark
 /ce-test-browser feature/new-dashboard
 
 # Test on a specific port
@@ -285,8 +284,8 @@ agent-browser type @e1 "text"      # Type without clearing
 agent-browser press Enter          # Press key
 
 # Screenshots
-agent-browser screenshot out.png       # Viewport screenshot
-agent-browser screenshot --full out.png # Full page screenshot
+agent-browser screenshot <workspace-root>/.tmp/browser-testing/out.png        # Viewport screenshot
+agent-browser screenshot --full <workspace-root>/.tmp/browser-testing/out.png # Full page screenshot
 
 # Headed mode (visible browser)
 agent-browser --headed open <url>      # Open with visible browser

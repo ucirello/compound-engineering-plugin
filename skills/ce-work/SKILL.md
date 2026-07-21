@@ -20,13 +20,13 @@ This command takes a work document (plan or specification) or a bare prompt desc
 
 ### Phase 0: Input Triage
 
-**First, parse a leading mode token.** If `<input_document>` begins with `mode:return-to-caller` (or the legacy aliases `mode:caller-owned-tail` / `caller:lfg`), strip that token before anything else: the remainder of the string is the plan path, and this run executes in **Return-to-Caller Mode** (see § Return-to-Caller Mode) — implement and locally verify only, then return the structured envelope instead of running the standalone shipping tail. Classify the stripped plan path with the rules below. A mode token with no following path is an error: report it rather than treating `mode:return-to-caller` as a bare prompt.
+**First, parse a leading mode token.** If `<input_document>` begins with `mode:return-to-caller` (or the legacy alias `mode:caller-owned-tail`), strip that token before anything else: the remainder of the string is the plan path, and this run executes in **Return-to-Caller Mode** (see § Return-to-Caller Mode) — implement and locally verify only, then return the structured envelope instead of running the standalone shipping tail. Classify the stripped plan path with the rules below. A mode token with no following path is an error: report it rather than treating `mode:return-to-caller` as a bare prompt.
 
 Determine how to proceed based on what was provided in `<input_document>` (after any mode token is stripped).
 
 **Plan document** (input is a file path to an existing plan or specification): read the plan's metadata first — YAML frontmatter for a markdown plan, or the visible header text for an HTML plan (both formats carry the same fields).
 
-- If it carries `artifact_contract: ce-unified-plan/v1`, classify `artifact_readiness` before reading the body.
+- If it carries `artifact_contract: unified-plan/v1`, classify `artifact_readiness` before reading the body.
   - `artifact_readiness: requirements-only` -> stop and tell the user this Product Contract needs `ce-plan` enrichment before implementation. Offer the exact `ce-plan <plan-path>` handoff.
   - `artifact_readiness: implementation-ready` plus `execution: code` -> continue to Phase 1 using the unified-plan reader strategy below.
   - Any other readiness value or any non-code/unclassified execution mode -> do not auto-execute as code. Route `execution: knowledge-work` to the non-code carve-out; otherwise ask the user to return to `ce-plan` to produce an implementation-ready code plan.
@@ -70,64 +70,66 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    - If anything is unclear or ambiguous, ask clarifying questions now
    - If clarifying questions were needed above, get user approval on the resolved answers. If no clarifications were needed, proceed without a separate approval step — plan scope is the plan's authority, not something to renegotiate
    - **Do not skip this** - better to ask questions now than build the wrong thing
-   - **Do not edit the plan body during execution.** The plan is a decision artifact; progress lives in git commits and the task tracker, not the plan. `ce-work` does not mutate the plan — whether it shipped is derived from git, not recorded in the doc. Legacy plans may contain `- [ ]` / `- [x]` marks on unit headings or a `status:` field — ignore them as state; per-unit completion is determined during execution by reading the current file state.
+   - **Do not edit the plan body during execution.** The plan is a decision artifact; progress lives in JJ changes and the task tracker, not the plan. This workflow does not mutate the plan — whether it shipped is derived from JJ history, not recorded in the doc. Legacy plans may contain `- [ ]` / `- [x]` marks on unit headings or a `status:` field — ignore them as state; per-unit completion is determined during execution by reading the current file state.
 
 2. **Setup Environment**
 
-   First, check the current branch:
+   First, require a JJ repository, fetch only when a remote-backed start is needed, then resolve the workspace root and inspect the working-copy change, all descendant-most bookmarked ancestors, its parents, and trunk. Runtime repository-local instructions and aliases win: if they define the trunk revset or default bookmark, use that syntax. Otherwise treat `trunk()` as valid only when `trunk() & ~root()` resolves to exactly one revision; if it is empty or ambiguous, resolve exactly one tracked default bookmark or stop and ask. Never treat `root()` as trunk, and never infer a bookmark from the underlying `.git/HEAD` metadata:
 
    ```bash
-   current_branch=$(git branch --show-current)
-   default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
-
-   # Fallback if remote HEAD isn't set
-   if [ -z "$default_branch" ]; then
-     default_branch=$(git rev-parse --verify origin/main >/dev/null 2>&1 && echo "main" || echo "master")
-   fi
+   workspace_root=$(jj workspace root)
+   jj status
+   jj diff --summary
+   jj log -r 'heads(::@ & bookmarks())' --no-graph
+   jj log -r 'parents(@)' --no-graph
+   jj log -r 'trunk() & ~root()' --no-graph
    ```
 
-   **If already on a feature branch** (not the default branch):
+   If `jj workspace root` fails because this is not a JJ repository, stop and report that this workflow requires JJ; the `$PWD` fallback is only for choosing a local scratch location while reporting or recovering. Use `$workspace_root/.tmp/work` for temporary files. If the workspace root cannot be resolved during recovery, use `$PWD/.tmp/work`. Do not use an OS/global temporary mechanism.
 
-   First, check whether the branch name is **meaningful** — a name like `feat/crowd-sniff` or `fix/email-validation` tells future readers what the work is about. Auto-generated worktree names (e.g., `worktree-jolly-beaming-raven`) or other opaque names do not.
+   Classify the line from the graph, not from a branch-like concept. A **feature change line** has at least one revision in `<validated-trunk-revision>..@`; a **fresh working-copy change directly on trunk** has exactly one parent and that parent is the validated trunk revision. If `@` has multiple parents, conflicting heads, or an ambiguous trunk relationship, stop and ask rather than flattening the graph.
 
-   If the branch name is meaningless or auto-generated, suggest renaming it before continuing:
+   **If already on a feature change line:**
+
+   Inspect bookmarks attached to the line with `jj bookmark list -r 'heads(::@ & bookmarks())'`. A bookmark need not be attached to `@`; JJ has no active bookmark. If exactly one local feature bookmark identifies this line, retain it. If none exists, continue locally and create one before pushing. If several plausible bookmarks exist, ask which one owns the work. First, check whether the selected bookmark name is **meaningful** and tells future readers what the work is about. Auto-generated workspace names or other opaque names do not.
+
+   If the bookmark name is meaningless or auto-generated, suggest renaming it before continuing:
    ```bash
-   git branch -m <meaningful-name>
+   jj bookmark rename <old-name> <meaningful-name>
    ```
-   Derive the new name from the plan title or work description (e.g., `feat/crowd-sniff`). Present the rename as a recommended option alongside continuing as-is.
+   Derive the new name from the plan title or work description. Present the rename as a recommended option alongside continuing as-is.
 
-   Then ask: "Continue working on `[current_branch]`, or create a new branch?"
+   Then ask: "Continue working on this change line, or create a new one?"
    - If continuing (with or without rename), proceed to step 3
    - If creating new, follow Option A or B below
 
-   **If on the default branch**, choose how to proceed:
+   **If the working-copy change is directly based on the validated trunk**, choose how to proceed:
 
-   **Option A: Create a new branch**
+   **Option A: Create a new change line and bookmark**
    ```bash
-   git pull origin [default_branch]
-   git checkout -b feature-branch-name
+   jj new '<validated-trunk-revision>'
+   jj bookmark create <meaningful-name> -r @
    ```
-   Use a meaningful name based on the work (e.g., `feat/user-authentication`, `fix/email-validation`).
+   When current remote state is required, run `jj git fetch --remote <explicit-remote>` before validating trunk, then resolve `<validated-trunk-revision>` again; do not fetch after validation and start from a stale revision. Use a meaningful name based on the work. Creating the bookmark at `@` names the current empty working-copy change; after each `jj commit`, move it to the completed revision at `@-`.
 
-   **Option B: Use a worktree (recommended for parallel development)**
+   **Option B: Use a workspace (recommended for parallel development)**
    ```bash
    skill: ce-worktree
-   # Ensures isolation: detects an existing worktree, prefers the harness's
-   # native worktree tool, else creates one from the default branch
+   # Ensures isolation: detects an existing workspace, prefers the harness's
+   # native isolation tool, else creates one from trunk
    ```
 
-   **Option C: Continue on the default branch**
-   - Requires explicit user confirmation
-   - Only proceed after user explicitly says "yes, commit to [default_branch]"
-   - Never commit directly to the default branch without explicit permission
+   **Option C: Continue in the current unbookmarked change**
+   - Create a meaningful bookmark before `jj git push`; pass both `--bookmark <name>` and `--remote <name>` because JJ has no active bookmark
+   - Do not move the trunk bookmark
 
-   **Recommendation**: Use worktree if:
+   **Recommendation**: Use a workspace if:
    - You want to work on multiple features simultaneously
-   - You want to keep the default branch clean while experimenting
-   - You plan to switch between branches frequently
+   - You want to keep trunk clean while experimenting
+   - You plan to switch between change lines frequently
 
 3. **Create Task List** _(skip if Phase 0 already built one, or if Phase 0 routed as Trivial)_
-   - Use the platform's task tracking tool (`TaskCreate`/`TaskUpdate`/`TaskList` in Claude Code, `update_plan` in Codex, or the equivalent on other harnesses) to break the plan into actionable tasks
+   - Use the platform's task tracking tool to break the plan into actionable tasks
    - Derive tasks from the plan's implementation units, dependencies, files, test targets, and verification criteria
    - When the plan defines U-IDs for Implementation Units, preserve the unit's U-ID as a prefix in the task subject (e.g., "U3: Add parser coverage"). This keeps blocker references, deferred-work notes, and final summaries anchored to the same identifier the plan uses, so progress and traceability remain unambiguous across plan edits
    - Carry each unit's `Execution note` into the task when present
@@ -141,7 +143,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
 4. **Choose Execution Engine, then Strategy**
 
-   For an implementation-ready unified code plan, first pick the **engine** that runs implementation: inline/subagent (default and only callable engine on Claude Code), goal-mode, or dynamic-workflow. Goal-mode and dynamic-workflow are usable only when the host exposes a callable primitive for them — Codex exposes `create_goal` (a skill can start a goal directly), while Claude Code exposes no goal tools, so on Claude Code they are prompt-emission only (never invoked from inside this skill). Prefer dynamic-workflow over goal-mode for large fan-out plans (many independent U-IDs, codebase-wide sweeps, migrations, adversarial cross-checking). Read `references/execution-engines.md` for the host-capability probe, the plan-shape selection table, the copyable goal-mode/`ultracode:` prompts, and the resume-tail rules. An engine choice never changes tail ownership — after implementation, resume standalone quality gates in normal use, or return the return-to-caller envelope when invoked by `lfg`. Legacy and bare-prompt work skip this and use the inline/subagent engine directly.
+   For an implementation-ready unified code plan, first pick the **engine** that runs implementation: inline/subagent, goal-mode, or dynamic-workflow. Goal-mode and dynamic-workflow are usable only when the host exposes a callable primitive for them; otherwise they are prompt-emission only. Prefer dynamic-workflow over goal-mode for large fan-out plans (many independent U-IDs, codebase-wide sweeps, migrations, adversarial cross-checking). Read `references/execution-engines.md` for the host-capability probe, the plan-shape selection table, the copyable goal-mode/`ultracode:` prompts, and the resume-tail rules. An engine choice never changes tail ownership — after implementation, resume standalone quality gates in normal use, or return the return-to-caller envelope when invoked by an owning orchestrator. Legacy and bare-prompt work skip this and use the inline/subagent engine directly.
 
    For the inline/subagent engine, **prefer subagents for any structured multi-unit plan** — each worker gets a fresh context window for one unit. **Parallelize independent units whenever it is safe**; fall back to serial only when parallel isn't safe or the harness can't isolate concurrent writes. Let the plan's `Dependencies` and `Files` drive batching: run an independent dependency layer together, then the next.
 
@@ -156,14 +158,14 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    1. Map files to units from each candidate unit's `Files:` section (Create/Modify/Test paths).
    2. **File overlap is necessary but not sufficient.** Also serialize units that contend on things absent from `Files:`: shared types/APIs/interfaces, DB migrations, generated artifacts or clients, lockfiles, snapshots, shared config/schema — or an **environment singleton** (one dev server/port, a shared database, browser sessions, package installs, MCP rate limits). Reason about these; don't just diff paths.
    3. **No contention:** dispatch the batch in parallel.
-   4. **Contention with harness-native isolation:** parallel is *recoverable* (isolated workers don't lose each other's writes) but **not automatically safe** — overlapping edits still need a real merge. Serialize contending units by default; run them parallel-isolated only when the expected merge is trivial. Log the predicted overlap.
+   4. **Contention with harness-native isolation:** parallel is *recoverable* (isolated workers don't lose each other's writes) but **not automatically safe** — overlapping edits still need real integration. Serialize contending units by default; run them parallel-isolated only when the expected integration is trivial. Log the predicted overlap.
    5. **Contention without isolation (shared workspace):** serialize — in a shared directory only the last writer survives.
-   6. **Cap concurrency** at a bounded batch (~3-5 workers) even when more units are independent; over-parallelizing costs more in contention, merge, and integration than it saves.
+   6. **Cap concurrency** at a bounded batch (~3-5 workers) even when more units are independent; over-parallelizing costs more in contention and integration than it saves.
    7. **Abort criteria:** if a batch produces broad unplanned edits, out-of-scope test failures, or repeated conflicts, stop parallelizing and finish the rest serially.
 
-   **Isolation is the harness's job, never ce-work's** — never run `git worktree add` yourself. Probe what your subagent mechanism provides and pick the parallel path:
-   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: Claude Code `Agent` tool (`isolation: "worktree"` + `run_in_background: true`; worktree under a gitignored `.claude/worktrees/`), Codex `spawn_agent` (a coding **worker** edits its forked workspace), Cursor `best-of-n-runner`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's merge-cost judgment). This works even when you are *already* inside a worktree — harness worktrees are peers of one repo, not nested, branched from your current HEAD.
-   - **Shared workspace only** — subagents run in your working directory (Cursor `Task` default, or any harness without isolation). Parallelize **disjoint-file units only**, under the shared-workspace constraints below; contending units run serial.
+   **Isolation is the harness's job, never the caller's** — never run `jj workspace add` yourself. A JJ workspace is a named working copy sharing the same repository and operation log, not an alternate worktree or an independent clone. Probe what your subagent mechanism provides and pick the parallel path:
+   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages. Preserve provider flags such as `isolation: "worktree"` + `run_in_background: true`; preserve required ignored workspace paths such as `.claude/worktrees/`. Parallelize freely here, including overlapping-file units (subject to the Safety Check's integration-cost judgment). This works even when you are *already* inside an isolated workspace — harness workspaces are peers, not nested, and start from the current revision.
+   - **Shared workspace only** — subagents run in your working directory. Parallelize **disjoint-file units only**, under the shared-workspace constraints below; contending units run serial.
    - **No subagent mechanism:** run inline.
 
    **Dispatch** uses your harness's subagent/worker mechanism. Give each worker:
@@ -172,27 +174,27 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    - Instruction to check whether the unit's test scenarios cover all applicable categories (happy paths, edge cases, error paths, integration) and supplement gaps before writing tests.
    - **Instruction to choose the unit's evidence strategy and gather the evidence** (see Evidence Strategy in Phase 2) — for behavior-bearing changes, honor the Execution note and default to proof-first or characterization-first: create/update/strengthen the test and observe the red failure or characterization baseline **before** changing production code. The worker is the only party that witnesses this, so it must capture it as it goes.
    - **Instruction to report, in its final message, both (a) the file paths it changed and (b) the unit's verification evidence** — `behavior_changed`, existing tests inspected, tests added/changed or used unchanged, the red failure or characterization observed (when applicable), the verification run and result, and any deliberate no-test exception with its reason. The handoff is a text summary on most harnesses with no guaranteed diff, so reported paths are the orchestrator's starting hint (it still verifies the actual tree); the evidence fields are **not** reconstructable from the tree afterward, so a worker that omits them forces the orchestrator to re-derive or leave `verification_evidence` incomplete.
-   - **Do not commit.** Workers implement and may run their *own unit's* focused tests in isolation as a self-check, but the **orchestrator owns staging, committing, and the authoritative test runs**. (Capability note: a harness that *reaps* the isolated workspace on worker completion — none of our current targets do — would instead require the worker to commit to its branch; confirm before assuming it.)
+   - **Do not describe changes or run `jj commit`.** Workers implement and may run their *own unit's* focused tests in isolation as a self-check, but the **orchestrator owns change selection, descriptions, recording boundaries, and authoritative test runs**. (Capability note: a harness that *reaps* the isolated workspace on worker completion — none of our current targets do — would instead require the worker to return a durable revision; confirm before assuming it.)
 
-   **Shared-workspace constraints** — when subagents share your working directory (no isolation): they must not `git add`, commit, or run the full test suite concurrently (index corruption + test interference); the orchestrator does all of that after the batch. A worker may run a single focused unit test only if it touches no shared state.
+   **Shared-workspace constraints** — when subagents share your working directory (no isolation): they must not run `jj describe`, `jj commit`, or the full test suite concurrently (description races + test interference); the orchestrator does all of that after the batch. JJ has no staging area. A worker may run a single focused unit test only if it touches no shared state.
 
    **Permission mode:** Omit the `mode` parameter when dispatching subagents so the user's configured permission settings apply. Do not pass `mode: "auto"` — it overrides user-level settings like `bypassPermissions`.
 
-   **After each serial unit:** review the diff against the unit's scope and `Files:`, run the relevant tests, fix before dispatching the next (never on a broken tree), record the unit's verification evidence from the worker's return (for the Phase 2 `verification_evidence` roll-up), update the task list (never edit the plan body — progress lives in commits), and commit. Then dispatch the next unit.
+   **After each serial unit:** review the diff against the unit's scope and `Files:`, run the relevant tests, fix before dispatching the next (never on a broken tree), record the unit's verification evidence from the worker's return (for the Phase 2 `verification_evidence` roll-up), update the task list (never edit the plan body — progress lives in JJ revisions), and record the completed change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed message, prefix, type, scope, subject/body shape, template, or example. Then dispatch the next unit.
 
    **After a parallel batch — the orchestrator integrates; never trust the handoff summary alone:**
    1. Wait for every worker in the batch to finish.
-   2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (`git status`/diff in its workspace or the shared dir). Reported paths are a hint; declared `Files:` are often incomplete — workers create/modify files the plan didn't anticipate.
-   3. **Detect real collisions** — 2+ workers that actually modified the same file. In a shared workspace only the last writer survived: commit the non-colliding work first, then re-run the colliding units serially so each builds on the other's committed result. With harness-native isolation the collision surfaces as a merge conflict at integration instead (see the per-harness note).
-   4. **Review, test, and commit each unit in dependency order — the orchestrator owns commits.** Stage only that unit's files, commit with a message derived from its Goal, run the relevant tests, and fix before the next. Capture each worker's returned verification evidence into the run's `verification_evidence` roll-up — if a worker omitted it, re-derive what the tree allows and mark the rest as unverified rather than fabricating a red-before-implementation observation the worker never reported.
-   5. Update the task list (progress lives in the commits).
-   6. **Release the workers** — close/clean up each worker handle so it stops holding a concurrency slot or leaving orphans (e.g., Codex `close_agent`; for a Claude per-worker worktree: `git worktree unlock <path>` → `git worktree remove <path>` → `git branch -d <branch>`). These isolated worktrees are peers invisible to any outer orchestrator (e.g., Orca), so cleanup is entirely ce-work's.
+   2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (`jj status` and `jj diff` in its workspace or the shared directory), and retain each isolated worker's revision ID until its integration and cleanup finish. Reported paths are a hint; declared `Files:` are often incomplete — workers create/modify files the plan didn't anticipate.
+   3. **Detect real collisions** — 2+ workers that actually modified the same file. In a shared workspace only the last writer survived: record the non-colliding work first, then re-run the colliding units serially so each builds on the other's recorded result. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed message, prefix, type, scope, subject/body shape, template, or example. With harness-native isolation the collision surfaces as a JJ conflict during integration instead (see the per-harness note).
+   4. **Review, test, and record each unit in dependency order — the orchestrator owns change boundaries.** Select only that unit's files, preserving its Goal as semantic context for the description, then run the relevant tests and fix before the next. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed message, prefix, type, scope, subject/body shape, template, or example. Store it in `CHANGE_DESCRIPTION`, then record the selected files with `jj commit -m "$CHANGE_DESCRIPTION" <files>`. This records the selected paths in the current change and creates a new working-copy child; move the selected bookmark to `@-`, never to the new empty `@`. Capture each worker's returned verification evidence into the run's `verification_evidence` roll-up — if a worker omitted it, re-derive what the tree allows and mark the rest as unverified rather than fabricating a red-before-implementation observation the worker never reported.
+   5. Update the task list (progress lives in the JJ revisions).
+   6. **Release the workers and clean up isolation — the orchestrator owns this.** Only after a worker revision is integrated, close its handle, then invoke the provider/harness cleanup primitive when one is available. If no cleanup primitive is available and provider metadata identifies a known JJ-managed workspace name and managed directory, run `jj workspace forget <name>` and remove only that exact known managed directory; never infer, glob, or remove an unknown path. These isolated workspaces are peers invisible to any outer orchestrator, so do not assume automatic cleanup.
    7. Dispatch the next dependency layer.
 
-   **Per-harness integration (examples — the universal flow above is the contract):**
-   - **Claude `Agent` `isolation:"worktree"`:** each worker is on its own branch. Integrate by merging each branch into the orchestrator's branch in dependency order; on conflict, `git merge --abort` and re-run that unit serially against the merged tree (hand-resolving silently discards one unit's intent).
-   - **Codex `spawn_agent` worker:** integrate the worker's "uploaded changes," then `close_agent`.
-   - **Cursor `Task` (shared workspace):** edits are already in your tree — review and commit per step 4; **`best-of-n-runner`:** integrate its worktree.
+   **Provider integration (illustrations — the universal flow above is the contract):**
+   - **`Agent` with `isolation:"worktree"`:** each worker has isolated changes. Retain its revision ID and integrate through the harness in dependency order. If integration fails or produces a conflict, abandon only the failed integration revision if the attempt created one; do not restore or otherwise alter the shared JJ operation history. Keep the worker revision until recovery is complete, then re-run that unit serially against the already integrated tree so no unit's intent is silently discarded.
+   - **Forked `spawn_agent` worker:** integrate the worker's uploaded changes, then `close_agent`.
+   - **Shared `Task`:** edits are already in your tree — review and commit per step 4; with `best-of-n-runner`, integrate its isolated workspace.
 
 ### Phase 2: Execute
 
@@ -204,7 +206,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    while (tasks remain):
      - Mark task as in-progress
      - Read any referenced files from the plan or discovered during Phase 0
-     - **If the unit's work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped on a prior branch or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
+     - **If the unit's work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped on a prior change line or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
      - Look for similar patterns in codebase
      - Find existing test files for implementation files being changed (Test Discovery — see below)
      - Choose the evidence strategy for this task before changing behavior: use an existing failing test, update or strengthen an existing test, add a new failing test, add characterization coverage, or record a deliberate no-test exception with replacement verification
@@ -265,40 +267,36 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    **When this matters most:** Any change that touches models with callbacks, error handling with fallback/retry, or functionality exposed through multiple interfaces.
 
 
-2. **Incremental Commits**
+2. **Incremental Changes**
 
-   After completing each task, evaluate whether to create an incremental commit:
+   After completing each task, evaluate whether to record an incremental change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed message, prefix, type, scope, subject/body shape, template, or example.
 
-   | Commit when... | Don't commit when... |
+   | Record a change when... | Keep working in the current change when... |
    |----------------|---------------------|
    | Logical unit complete (model, service, component) | Small part of a larger unit |
    | Tests pass + meaningful progress | Tests failing |
    | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-   | About to attempt risky/uncertain changes | Would need a "WIP" commit message |
+   | About to attempt risky/uncertain changes | The logical change is incomplete |
 
-   **Heuristic:** "Can I write a commit message that describes a complete, valuable change? If yes, commit. If the message would be 'WIP' or 'partial X', wait."
+   **Heuristic:** record a boundary only when the description can state a complete, valuable change; otherwise keep working in the current change.
 
-   If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
+   If the plan has Implementation Units, use them as a starting guide for change boundaries — but adapt based on what you find during implementation. A unit might need multiple recorded changes if it is larger than expected, or small related units might remain together. Preserve each unit's Goal as semantic context when composing the runtime-derived description.
 
-   **Commit workflow:**
+   **Change-recording workflow:** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not prescribe a fixed message, prefix, type, scope, subject/body shape, template, or example.
    ```bash
-   # 1. Verify tests pass (use project's test command)
-   # Examples: bin/rails test, npm test, pytest, go test, etc.
+   # Verify with the repository's configured command, then compose CHANGE_DESCRIPTION.
+   # Commit only this logical unit; JJ has no staging area and creates a child at @.
+   jj commit -m "$CHANGE_DESCRIPTION" <files-related-to-this-logical-unit>
 
-   # 2. Stage only files related to this logical unit (not `git add .`)
-   git add <files related to this logical unit>
-
-   # 3. Commit with conventional message
-   git commit -m "feat(scope): description of this unit"
+   # Point the selected work bookmark at the completed revision, not the new empty @.
+   jj bookmark set <bookmark-name> -r @-
    ```
 
-   **Handling merge conflicts:** If conflicts arise during rebasing or merging, resolve them immediately. Incremental commits make conflict resolution easier since each commit is small and focused.
+   **Handling conflicts:** If conflicts arise during rebasing or integration, resolve them immediately. Incremental JJ changes make conflict resolution easier when each boundary is small and focused.
 
-   **Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 commit/PR includes the full attribution.
-
-   **Parallel subagent mode:** Commit ownership is split by isolation mode (see Phase 1 Step 4):
-   - **Worktree-isolated:** subagents may stage and commit inside their own worktree branch; the orchestrator merges those branches in dependency order after the batch.
-   - **Shared-directory fallback:** subagents do not commit; the orchestrator stages and commits each unit after the entire parallel batch completes.
+   **Parallel subagent mode:** Change-boundary ownership is split by isolation mode (see Phase 1 Step 4):
+   - **Workspace-isolated:** subagents may describe and record their revisions inside their isolated workspace; the orchestrator integrates those revisions in dependency order after the batch. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed message, prefix, type, scope, subject/body shape, template, or example.
+   - **Shared-directory fallback:** subagents do not record boundaries; the orchestrator selects and records each unit after the entire parallel batch completes. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed message, prefix, type, scope, subject/body shape, template, or example.
 
 3. **Follow Existing Patterns**
 
@@ -307,6 +305,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    - Reuse existing components where possible
    - Follow the project's coding standards already in your context
    - When in doubt, grep for similar implementations
+   - When line history is needed to understand an existing decision, use `jj file annotate <path>`
 
 4. **Test Continuously**
 
@@ -354,17 +353,17 @@ When all Phase 2 tasks are complete and execution transitions to quality check, 
 
 **Code review: one portable path.** Review with `ce-code-review`, which self-sizes (lite roster for small low-risk code-only diffs, full roster otherwise). No harness-native review detection and no escalation tiers — the size/sensitive-surface judgment lives inside `ce-code-review`. Skip dedicated review only for a purely mechanical diff (formatting, dep-bumps, lint-only, generated). Full rules (autonomous Residual Gate, infra fallback) in `shipping-workflow.md`.
 
-**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the checkout, commits, or applies fixes.
+**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the workspace, commits, or applies fixes.
 
-1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<ref>` when the merge base is known, and `depth:full` when a deep/thorough review was explicitly requested.
-2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator merges diffs, runs tests, and commits — it does not pre-investigate findings.
+1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<revision>` when the diff base is known, and `depth:full` when a deep/thorough review was explicitly requested.
+2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator integrates diffs, runs tests, and commits — it does not pre-investigate findings. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed message, prefix, type, scope, subject/body shape, template, or example.
 3. **Residual Work Gate** — Only after followup; unresolved actionable findings go through the gate in `shipping-workflow.md` (autonomous sessions auto-accept + record residuals; interactive sessions ask).
 
 ## Return-to-Caller Mode
 
 `mode:return-to-caller <plan-path>` (legacy alias: `mode:caller-owned-tail`) is
-reserved for orchestrators such as `lfg` that own simplification, code review,
-PR creation, and CI watching after implementation. In this mode `ce-work`
+reserved for orchestrators that own simplification, code review,
+PR creation, and CI watching after implementation. In this mode the workflow
 performs implementation and local verification only, then returns a structured
 summary instead of running the standalone shipping tail.
 

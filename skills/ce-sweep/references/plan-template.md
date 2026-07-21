@@ -1,6 +1,6 @@
 # Feedback Sweep plan template
 
-`ce-sweep` Phase 2g emits and re-reconciles a single rolling plan at `docs/plans/feedback-sweep-plan.md`. This file defines that plan's shape and the reconciliation rules. It is the contract the reconciler writes to, not the plan itself.
+Phase 2g emits and re-reconciles a single rolling plan at `docs/plans/feedback-sweep-plan.md`. This file defines that plan's shape and the reconciliation rules. It is the contract the reconciler writes to, not the plan itself.
 
 ## Emitted document
 
@@ -11,7 +11,7 @@ Frontmatter — verbatim keys; `date` is the run date:
 title: Feedback Sweep - Plan
 date: 2026-07-02
 topic: feedback-sweep
-artifact_contract: ce-unified-plan/v1
+artifact_contract: unified-plan/v1
 artifact_readiness: requirements-only
 product_contract_source: ce-sweep
 ---
@@ -22,7 +22,7 @@ Body:
 ```markdown
 ## Goal Capsule
 
-Triage and drive to resolution the open feedback items captured below: acknowledge each at its source, land fixes, and verify they merged.
+Triage and drive to resolution the open feedback items captured below: acknowledge each at its source, land fixes, and verify they reached the default bookmark.
 
 ## Human Notes
 

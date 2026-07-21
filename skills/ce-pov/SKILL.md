@@ -55,9 +55,13 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ### Phase 1: Ground (dispatch scouts, never inline)
 
-Grounding searches code, git, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
+Grounding searches code, Jujutsu history, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
 
-**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this commit, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
+**Use Jujutsu for repository operations.** Resolve the root with `jj workspace root`; inspect work with `jj status` and `jj diff`; inspect history with `jj log` and line provenance with `jj file annotate`; manage named lines with `jj bookmark`; manage working copies with `jj workspace`; and synchronize remotes with `jj git fetch` / `jj git push`. Jujutsu snapshots working-copy changes automatically, so do not add a staging step. Preserve GitHub workflows and use `gh`, `.github/`, and `.gitignore` normally where relevant.
+
+If this workflow composes, edits, validates, or recommends a Jujutsu change description or commit message, run actual `git log` to inspect past messages. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active runtime instructions and conventions and actual `git log` take precedence over compatible Go guidance. Do not impose a fixed prefix, type, scope, message, subject/body shape, template, or example.
+
+**Resolve the project profile from the shared cache first.** The question-agnostic profile (stack, dependency surface + licenses, conventions, structure) is identical for every run at this revision, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
@@ -69,7 +73,8 @@ On `HIT`, load the profile JSON — that is your agnostic project orientation; d
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_DIR="/tmp/compound-engineering/ce-pov/$(openssl rand -hex 4)"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
+SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/pov/$(openssl rand -hex 4)"
 mkdir -p "$SCRATCH_DIR"
 echo "$SCRATCH_DIR"
 ```

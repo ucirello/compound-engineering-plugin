@@ -1,6 +1,6 @@
-# Review followup (LFG step 4–5)
+# Review Followup (Steps 4-5)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then commits.
+`ce-code-review` is review-only. The caller applies eligible fixes, then records the JJ change.
 
 ## Step 4 — invoke review
 
@@ -16,7 +16,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the working tree only when **all** of the following hold:
+Apply a finding in the working copy only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -35,9 +35,9 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
+2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files, commit `fix(review): apply review findings`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), resolve a writable remote dynamically: prefer `origin` when present, otherwise use `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push — the local commit suffices. If no eligible fixes were applied, note explicitly and skip commit.
+4. If `jj status` shows review-driven changes, record only those paths before step 6. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository-local instructions and actual `git log` take precedence over compatible Go guidance. Do not use a fixed prefix, type, scope, subject/body shape, wording, syntax, template, or example. Store the runtime-composed message in `CHANGE_DESCRIPTION`, then run `jj commit -m "$CHANGE_DESCRIPTION" <review-driven-files>`. This creates a new working-copy child at `@`; the completed review-fix change is `@-`. Reuse the caller's proven `<shipping-remote>`; do not resolve, prefer, or select a remote here. When it is present, move the shipping bookmark to `@-` with `jj bookmark set <bookmark> -r @-`, then run `jj git push --bookmark <bookmark> --remote <shipping-remote>`. In the caller's local-only mode, do not move a bookmark or push; the local completed change suffices. If no eligible fixes were applied, note that explicitly and skip the commit.
 
 ## Step 6 — residual handoff
 

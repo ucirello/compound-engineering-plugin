@@ -394,8 +394,11 @@ TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
 # Stage under the current workspace.
-workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
-tmp_dir="$workspace_root/.tmp/rocketclaw/ce-proof"
+if workspace_root=$(jj workspace root 2>/dev/null); then
+  tmp_dir="$workspace_root/.tmp/rocketclaw/ce-proof"
+else
+  tmp_dir="$PWD/.tmp/rocketclaw/ce-proof"
+fi
 mkdir -p "$tmp_dir"
 run_id="$$-$(date +%s)-${RANDOM:-0}"
 STATE_TMP="$tmp_dir/state-$run_id.json"

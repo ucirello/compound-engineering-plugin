@@ -35,7 +35,7 @@ If the session model is already Fable, elevation is moot: skip dispatch and the 
 When elevation is active, dispatch the reasoning-heavy step to a Fable subagent:
 
 - Use the platform subagent primitive with a per-agent model override of **fable** (`model: "fable"` on the Claude Code `Agent`/`Task` tool).
-- Pass the main agent's full working context as **file paths the subagent reads itself**, never a re-narrated prose brief. If a needed piece lives only in context, create the parent directories and **write it to a fresh file under `<workspace-root>/.tmp/rocketclaw/reasoning-elevation/<run-id>/`** rather than skipping it or summarizing it:
+- Pass the main agent's full working context as **file paths the subagent reads itself**, never a re-narrated prose brief. If a needed piece lives only in context, create the parent directories and **write it to a fresh file under `$(jj workspace root)/.tmp/rocketclaw/reasoning-elevation/<run-id>/`, falling back to `$PWD/.tmp/rocketclaw/reasoning-elevation/<run-id>/` when no JJ workspace exists**, rather than skipping it or summarizing it:
   - **Research / grounding evidence.** ce-brainstorm already wrote a Phase 1.1 grounding dossier to a scratch path — pass it. ce-plan consolidates its Phase 1 research findings *in context only* (Phase 1.4 summarizes; it does not write a file), so **serialize those consolidated findings to a scratch file now and pass it** — the elevated author must interpret the same research evidence the inline path had, not just the resulting decisions.
   - **Dialogue / decisions.** Write the accumulated dialogue/decisions this skill holds in context to a fresh scratch file and pass that path too.
 

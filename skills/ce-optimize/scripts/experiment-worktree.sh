@@ -20,9 +20,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
-if ! jj root >/dev/null 2>&1; then
-  echo -e "${RED}Error: Not in a JJ repository${NC}" >&2
+if ! workspace_root=$(jj workspace root 2>/dev/null); then
+  echo -e "${RED}Error: Not in a JJ workspace${NC}" >&2
   exit 1
 fi
 

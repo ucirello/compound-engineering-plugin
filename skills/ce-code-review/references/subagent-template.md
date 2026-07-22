@@ -126,7 +126,7 @@ False-positive categories to actively suppress. Do NOT emit a finding when any o
 
 - **Pre-existing issues unrelated to this diff.** Mark `pre_existing: true` only for unchanged code the diff does not interact with. If the diff makes a previously-dormant issue newly relevant (e.g., changes a caller in a way that exposes a bug downstream), it is a secondary finding, not pre-existing. PR-comment and agent-mode externalization filter pre-existing entirely; interactive review surfaces them in a separate section.
 - **Pedantic style nitpicks that a linter or formatter would catch.** Missing semicolons, indentation, import ordering, unused-variable warnings the project's tooling already catches. Style belongs to the toolchain.
-- **Code that looks wrong but is intentional.** Check comments, JJ change descriptions, PR description, or surrounding code for evidence of intent before flagging. A persona-flagged "missing null check" guarded by an upstream `.present?` call is a false positive.
+- **Code that looks wrong but is intentional.** Check comments, change descriptions, PR description, or surrounding code for evidence of intent before flagging. A persona-flagged "missing null check" guarded by an upstream `.present?` call is a false positive.
 - **Issues already handled elsewhere.** Check callers, guards, middleware, framework defaults, and parallel handlers before flagging. If a controller's input is already validated by a parent middleware, the controller-level check the persona wants to add is redundant.
 - **Suggestions that restate what the code already does in different words.** "Consider extracting this into a helper" when the code is already a small helper, "consider adding a guard" when a guard one line up already enforces it.
 - **Generic "consider adding" advice without a concrete failure mode.** If you cannot name what breaks, the finding is not actionable. Either find the failure mode or suppress.
@@ -143,7 +143,7 @@ Rules:
 - Suppress any finding you cannot honestly anchor at `50` or higher (the actionable floor is `50`; anchors `0` and `25` are suppressed by synthesis anyway, so emitting them only adds noise). If your persona's domain description sets a stricter floor (e.g., anchor `75` minimum), honor it.
 - Every finding in the full artifact file MUST include at least one evidence item grounded in the actual code. The compact return omits evidence -- the evidence requirement applies to the disk artifact only.
 - Set `pre_existing` to true ONLY for issues in unchanged code that are unrelated to this diff. If the diff makes the issue newly relevant, it is NOT pre-existing.
-- You are operationally read-only. The one permitted exception is writing your full analysis to `{run_dir}` when a run ID is provided. You may also use non-mutating `jj` / `gh` inspection commands to gather evidence. Do not edit project files, move the working copy, describe changes, push, create PRs, or otherwise mutate repository state.
+- You are operationally read-only. The one permitted exception is writing your full analysis to `{run_dir}/` when a run ID is provided. You may also use non-mutating inspection commands, including read-oriented `jj` / `gh` commands, to gather evidence. Do not edit project files, change the edited revision or workspace, describe changes, run `jj git push`, create PRs, or otherwise mutate the workspace or repository state.
 - Set `autofix_class` and `owner` per `references/action-class-rubric.md`; if that file is not reachable from your working directory, the same `gated_auto` / `manual` / `advisory` and owner semantics are already in the schema above and this template's guidance. This skill does not apply fixes — classify for caller routing only.
 - Default `owner` to `downstream-resolver` for actionable findings unless the item is genuinely human-only or release-owned.
 - Set `requires_verification` to true whenever the likely fix needs targeted tests, a focused re-review, or operational validation before it should be trusted.
@@ -155,7 +155,7 @@ Rules:
     - Pagination strategy unclear → propose offset pagination matching the existing pattern at `file:line`, with assumption named. If product needs cursor-based, the user can switch.
     - Rate limit value uncertain → propose the value that matches existing rate limits in the project, with assumption named. The user can tune.
     - Auth model unknown → propose authentication via the existing middleware pattern at `file:line`, with assumption named. If a different service owns the auth flow, the user can route through it.
-    The "I need `<specific input>` before I can propose a fix" framing is a soft punt. The question to ask instead is "what code change would I propose if I had to choose now?" — and propose that, with the assumption named so the user can correct it.
+    The "I need `<specific input>` before I can act" framing is a soft punt. The question to ask instead is "what code change would I propose if I had to choose now?" — and propose that, with the assumption named so the user can correct it.
   - **Genuinely-omit cases are rare.** Omit `suggested_fix` only when there is no code-level change to propose — for example:
     - The finding is a question, not a fix request: "What is the intended SLA here?" with no clear default to assume.
     - The resolution is purely organizational with no code component: legal sign-off, business policy decision, or a process change that doesn't touch code.
@@ -181,7 +181,7 @@ Changed files: {file_list}
 Diff:
 {diff}
 
-(For a large staged review, `{file_list}` and `{diff}` may be **file paths** rather than inline content. When a value above is a path, Read that file to get the full list/diff before reviewing — never treat the path string itself as the content to review.)
+(For a large artifact-backed review, `{file_list}` and `{diff}` may be **file paths** rather than inline content. When a value above is a path, Read that file to get the full list/diff before reviewing — never treat the path string itself as the content to review.)
 </review-context>
 ```
 
@@ -193,9 +193,9 @@ Diff:
 | `{diff_scope_rules}` | `references/diff-scope.md` content | Primary/secondary/pre-existing tier rules |
 | `{schema}` | `references/findings-schema.json` content | The JSON schema reviewers must conform to |
 | `{intent_summary}` | Stage 2 output | 2-3 line description of what the change is trying to accomplish |
-| `{pr_metadata}` | Stage 1 output | PR title, body, and URL when reviewing a PR. Empty string when reviewing a bookmark or standalone working copy |
-| `{file_list}` | Stage 1 output | Changed-file list — inline, or a staged file path to Read for a large review |
-| `{diff}` | Stage 1 output | The diff to review — inline hunks, or a staged file path to Read for a large review |
+| `{pr_metadata}` | Stage 1 output | PR title, body, and URL when reviewing a PR. Empty string when reviewing a bookmark or standalone workspace |
+| `{file_list}` | Stage 1 output | Changed-file list — inline, or an artifact path to Read for a large review |
+| `{diff}` | Stage 1 output | The diff to review — inline hunks, or an artifact path to Read for a large review |
 | `{run_id}` | Stage 4 output | Unique review run identifier for the artifact directory |
-| `{run_dir}` | Stage 4 output | Workspace-local `.tmp/rocketclaw/ce-code-review/<run-id>` directory |
+| `{run_dir}` | Stage 4 output | Workspace-local artifact directory for this run |
 | `{reviewer_name}` | Stage 3 output | Persona or agent name used as the artifact filename stem |

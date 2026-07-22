@@ -76,7 +76,7 @@ Call `build_ios_sim_app` with the project path and scheme name.
 For each key screen in the app:
 
 **Take screenshot:**
-Create `$(jj workspace root)/.tmp/rocketclaw/test-xcode/<run-id>/`, then call `take_screenshot` with the simulator UUID and a descriptive path under it. Outside a JJ workspace, create and use the current directory's `.tmp/rocketclaw/test-xcode/<run-id>/` instead.
+Create `$(jj workspace root)/.tmp/rocketclaw/test-xcode/<run-id>/`, then call `take_screenshot` with the simulator UUID and a descriptive path under it. Outside a JJ workspace, create and use `$PWD/.tmp/rocketclaw/test-xcode/<run-id>/` instead.
 
 **Review screenshot for:**
 - UI elements rendered correctly

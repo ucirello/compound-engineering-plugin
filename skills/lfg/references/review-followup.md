@@ -1,6 +1,6 @@
-# Review followup (LFG step 4-5)
+# Review followup (steps 4-5)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then records a JJ change.
+`ce-code-review` is review-only. The caller applies eligible fixes, then records a JJ change.
 
 ## Step 4 — invoke review
 
@@ -13,6 +13,8 @@ Read the **Actionable Findings** summary and artifact path. Do not pass `mode:au
 Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) or the markdown Actionable Findings section. If `status` is `failed`, stop and surface `reason`.
 
 ## Step 5 — apply and persist review fixes
+
+The caller passes the retained exact PR bookmark as `BOOKMARK` and the retained exact remote as `REMOTE`, or explicitly marks shipping local-only when no remote exists. Do not resolve, infer, or substitute either value in this reference.
 
 ### What to apply
 
@@ -37,7 +39,7 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the JJ working-copy change in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `jj status` shows review-driven edits, record only those files as a JJ change and push the current bookmark before step 6 **when a remote is configured** (per LFG's shipping precondition). The description must identify application of review findings. Before composing, editing, validating, or recommending the description, apply this exact policy: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and description syntax inferred from a working `jj log` invocation take precedence; apply compatible Go guidance only to quality, clarity, and structure, and do not impose any fixed prefix, type, scope, subject, body, layout, wording, example, or template. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. Compose a project-native description, run `jj commit <review-driven-files> -m '<description-composed-from-runtime-conventions>'`, move the current bookmark to the recorded revision when needed, and use `jj git push --bookmark <current-bookmark>`. Let JJ select its tracked remote; if the bookmark is not tracked and multiple remotes make the destination ambiguous, prefer `origin` when listed by `jj git remote list`, otherwise choose the first writable listed remote and pass it with `--remote`. If there is no remote at all, do not push — the local JJ change suffices. If no eligible fixes were applied, note that explicitly and do not record a change.
+4. If `jj status` shows review-driven edits, record only those files as a JJ change, move the retained `BOOKMARK` to the recorded revision when needed, and push before step 6 **when `REMOTE` exists** (per the shipping precondition). The description must identify application of review findings. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and message syntax found in actual `git log` output take precedence; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed message syntax or examples. Push only with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`. If there is no remote at all, do not push — the local JJ change suffices. If no eligible fixes were applied, note that explicitly and do not record a change.
 
 ## Step 6 — residual handoff
 

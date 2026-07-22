@@ -110,7 +110,7 @@ Let the user override the path if they want a different location. If they pick w
 **Ask:** "Is this a multi-agent setup where several JJ workspaces publish the sweep state through a shared bookmark? Answer yes only if more than one machine or agent updates and pushes the same bookmark. Default is no — a single workspace keeping the change local."
 
 - **No** (default) -> `sweep_shared_branch: false`. The single-writer lease serializes overlapping sweeps within one workspace.
-- **Yes** -> `sweep_shared_branch: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep describes the lease change, advances the shared bookmark, publishes it through `jj git push`, and confirms its writer won, making the lease a repository-wide mutex across machines. Follow the project's active instructions and conventions first; next, use `jj log` in the working JJ workspace to inspect and follow the repository's present change-description syntax and wording. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and conventions and the working JJ workspace's change-description style visible in `jj log` always take precedence. Compatible Go guidance applies only to quality, clarity, and structure. Do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, examples, or templates; use `<description-composed-from-runtime-conventions>` as the neutral placeholder.
+- **Yes** -> `sweep_shared_branch: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep describes the lease change, advances the retained `$SHARED_BOOKMARK`, publishes only it to the retained `$REMOTE` with `jj git push --remote "$REMOTE" --bookmark "exact:$SHARED_BOOKMARK"`, and confirms its writer won, making the lease a repository-wide mutex across machines. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Inspect actual message syntax with `git log`; do not use Git for any other purpose. The project's active instructions and conventions and the syntax observed in `git log` always take precedence over compatible Go guidance. Retain the repository's semantic requirements, but do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, examples, or templates.
 
 **Capture:** `sweep_shared_branch` (`true` | `false`).
 
@@ -140,7 +140,7 @@ Merge the captured settings into `<workspace-root>/.rocketclaw/config.local.yaml
 
 - If the directory or file does not exist, create `.rocketclaw/` and write the file.
 - If the file exists, merge the sweep keys into the existing YAML, **preserving every unrelated key untouched** (e.g. `work_delegate_*`, `pulse_*`, `plan_*`). Only add or update the sweep keys.
-- If `.rocketclaw/config.local.yaml` is not already covered by the repo's ignore rules, offer to add the entry before writing.
+- If `.rocketclaw/config.local.yaml` and `.tmp/rocketclaw/` are not already ignored under the repository's active ignore conventions, offer to add them using the syntax the repository already uses.
 
 Write these keys (see "Config File Shape" below for the exact form):
 

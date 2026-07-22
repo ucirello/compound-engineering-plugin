@@ -94,9 +94,8 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve with `workspace_root=$(jj workspace root 2>/dev/null || pwd -P)`).
+1. Workspace root (resolve with `workspace_root=$(jj workspace root 2>/dev/null || printf '%s\n' "$PWD")`).
 2. `docs/DESIGN.md`.
-3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 

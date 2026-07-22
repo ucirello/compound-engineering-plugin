@@ -22,7 +22,7 @@ For `pr_comment` / `review_body` items there is no file/line -- identify the rel
 
 For `fixed`, state briefly what changed. For `fixed-differently`, state what changed and why that approach was preferable. Do not use a fixed prefix, sentence, or reply template.
 
-At every site that composes, edits, validates, or recommends the JJ change description, apply this complete policy: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description conventions observed through the project's working `jj log` invocation always win; determine that invocation at runtime rather than prescribing fixed `jj log` syntax. Apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed message syntax, including any prefix, type, scope, subject, body, layout, template, or example.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Run actual `git log` only to observe past message syntax. The project's active repository-local instructions and message syntax observed in actual `git log` output win over compatible Go guidance. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
 
 5. **Return the summary:**
 

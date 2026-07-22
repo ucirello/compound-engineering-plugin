@@ -92,7 +92,7 @@ For each candidate artifact, classify it into one of five outcomes:
    - newer docs, pattern docs, PRs, or issues provide strong successor evidence.
 8. **Delete when the code is gone, and only after checking for inbound links.** If the referenced code, controller, or workflow no longer exists in the codebase and no successor can be found, delete the file — don't default to Keep just because the general advice is still "sound." When in doubt between Keep and Delete, ask the user (in interactive mode) or mark as stale (in headless mode). Inbound links inform classification, not cleanup: cleanup is always mechanical, but **decorative** citations (principle stated inline) allow Delete, while **substantive** citations (citing doc relies on the cited doc) signal Replace. The auto-delete case is missing code, no matching successor, and citations absent or decorative.
 9. **Evaluate document-set design, not just accuracy.** In addition to checking whether each doc is accurate, evaluate whether it is still the right unit of knowledge. If two or more docs overlap heavily, determine whether they should remain separate, be cross-scoped more clearly, or be consolidated into one canonical document. Redundant docs are dangerous because they drift silently — two docs saying the same thing will eventually say different things.
-10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. Jujutsu history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, inspect revisions that changed `docs/solutions/` with `jj log -- docs/solutions/`, then use `jj show <revision> -- <path>` on likely revisions.
+10. **Delete, don't archive.** There is no `_archived/` directory. When a doc is no longer useful, delete it. Jujutsu history preserves every deleted file — that is the archive. A dedicated archive directory creates problems: archived docs accumulate, pollute search results, and nobody reads them. If someone needs a deleted doc, inspect revisions that changed `docs/solutions/` with `jj log -r 'all()' -- docs/solutions/`, then recover its contents from a likely revision with `jj file show -r <revision> <path>`.
 
 ## Scope Selection
 
@@ -585,9 +585,11 @@ Before offering options:
 1. Run `jj workspace root`; if it succeeds, use that root for all following commands. If it fails, report that durable recording is unavailable and stop this phase.
 2. Use `jj status` and `jj diff --summary` to identify the working-copy change and whether it contains paths beyond those modified by this refresh.
 3. Use `jj log -r 'trunk()..@'` and `jj bookmark list -r '@ | @-'` to determine whether the work is directly based on the default line, belongs to an existing change stack, or has a bookmark that should move after recording. Jujutsu has no checked-out or current bookmark.
-4. Use `jj log -n 10` to inspect recent descriptions and infer the project's description syntax. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here.
+4. Inspect recent descriptions with `GIT_DIR="$(jj git root)" git log -n 10 --format=full` and use `jj file annotate <path>` when file-specific revision history is needed. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and syntax inferred from actual `git log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here.
 
-When the working-copy change includes unrelated edits, isolate only the refresh paths with `jj split` and leave all other edits in the resulting working-copy change. When it contains only refresh edits, use `jj commit -m` with the description composed from runtime conventions to describe the change and create a new working-copy change. Never use a staging-area workflow; Jujutsu records changes directly.
+When the working-copy change includes unrelated edits, isolate only the refresh paths with `jj split` and leave all other edits in the resulting working-copy change. When it contains only refresh edits, record it as a distinct change using the description composed dynamically from runtime conventions. Jujutsu automatically snapshots the working copy; there is no staging or index workflow.
+
+Before any remote publication, retain one exact local bookmark as `$BOOKMARK` and one exact intended push remote as `$REMOTE`. Never rely on a current bookmark or JJ's default push selection. If either value is absent or ambiguous, do not publish: ask in interactive mode, or report the blocker in headless mode.
 
 ### Headless mode
 
@@ -595,12 +597,12 @@ Use sensible defaults without asking:
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here.
+Runtime project instructions and syntax inferred from actual `git log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here.
 
 | Context | Default action |
 |---------|---------------|
-| Work directly based on `trunk()` | Record a distinct change, create a specific bookmark for that revision, run `jj git push --bookmark <bookmark>`, and attempt to open a PR with `gh`. If publication fails, report the bookmark name. |
-| Work already on a feature stack | Record a distinct change, move the stack bookmark to the recorded revision when one unambiguously identifies the stack, and publish it with `jj git push --bookmark <bookmark>` if it was already intended for remote review. |
+| Work directly based on `trunk()` | Record a distinct change, create and retain a specific `$BOOKMARK` for that revision, resolve `$REMOTE`, publish with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`, and attempt to open a PR with `gh`. If publication fails, report the bookmark name. |
+| Work already on a feature stack | Record a distinct change, retain and move the stack's exact `$BOOKMARK` to the recorded revision when one unambiguously identifies the stack, and publish it with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"` only if that bookmark was already intended for remote review. |
 | Jujutsu operations fail | Include recommended `jj` operations with neutral placeholders in the report and continue. |
 
 Record only the refresh paths. Do not absorb unrelated working-copy content into the change.
@@ -611,9 +613,9 @@ Present options based on the discovered change graph and bookmarks, using change
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here.
+Runtime project instructions and syntax inferred from actual `git log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here.
 
-1. Record a distinct refresh change, create or move a specific bookmark to it, publish that bookmark with `jj git push`, and open a PR with `gh` when review is wanted (recommended).
+1. Record a distinct refresh change, create or move the retained `$BOOKMARK` to it, publish only that bookmark with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`, and open a PR with `gh` when review is wanted (recommended).
 2. Record the refresh locally as a distinct change without creating or moving a bookmark.
 3. Leave the edits in the working-copy change.
 
@@ -623,9 +625,9 @@ If unrelated edits share the working-copy change, use `jj split` only after the 
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here. Describe the material refresh outcome succinctly.
+Runtime project instructions and syntax inferred from actual `git log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here. Describe the material refresh outcome succinctly.
 
-After recording, inspect `jj status`, `jj diff`, and `jj log -r '@ | @-'`. Before remote publication, create or move the intended bookmark to the recorded revision, use `jj git fetch` when remote freshness matters, and publish only that bookmark with `jj git push --bookmark <bookmark>`. For a non-colocated workspace, invoke GitHub CLI with `GIT_DIR=$(jj git root) gh <subcommand>`; `gh` remains allowed for PR operations.
+After recording, inspect `jj status`, `jj diff`, and `jj log -r '@ | @-'`. Before remote publication, create or move the retained `$BOOKMARK` to the recorded revision, use `jj git fetch` when remote freshness matters, and publish only with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`. For a non-colocated workspace, invoke GitHub CLI with `GIT_DIR=$(jj git root) gh <subcommand>`; `gh` remains allowed for PR operations.
 
 ## Relationship to ce-compound
 
@@ -662,4 +664,4 @@ After the refresh report is generated, check whether the project's runtime instr
 
    **Skip this step entirely if `CONCEPTS.md` does not exist** — never nag for an artifact the project has not adopted. When skipped, this step produces no output and no edit.
 
-6. **Fold in or record a follow-up change when the check produces edits.** If Phase 5 already recorded the refresh, use `jj squash` to fold the instruction edit into that unpublished change when it is still the intended destination; otherwise record a small follow-up change and move the same bookmark to it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and syntax inferred via `jj log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here. If the bookmark was already published, publish the moved bookmark again with `jj git push --bookmark <bookmark>` so the open PR includes the edit. If the user chose to leave edits in the working-copy change, leave the instruction edit there too.
+6. **Fold in or record a follow-up change when the check produces edits.** If Phase 5 already recorded the refresh, use `jj squash` to fold the instruction edit into that unpublished change when it is still the intended destination; otherwise record a small follow-up change and move the same retained `$BOOKMARK` to it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and syntax inferred from actual `git log` win; compatible Go quality guidance applies, with no fixed syntax, example, or template imposed here. If the bookmark was already published, publish only that moved bookmark again with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"` so the open PR includes the edit. If the user chose to leave edits in the working-copy change, leave the instruction edit there too.

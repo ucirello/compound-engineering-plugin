@@ -51,7 +51,7 @@ For a friendly overview of what this skill is for, when to use hard metrics vs L
 
 **CRITICAL: The experiment log on disk is the single source of truth. The conversation context is NOT durable storage. Results that exist only in the conversation WILL be lost.**
 
-The files under `.context/ce-optimize/<spec-name>/` are local scratch state. They are ignored by version control, so they survive local resumes on the same machine but are not preserved by JJ changes, bookmarks, or remote pushes unless the user exports them separately.
+The files under `$(jj workspace root)/.tmp/rocketclaw/optimize/<spec-name>/` are local scratch state. If workspace-root discovery fails, use `$PWD/.tmp/rocketclaw/optimize/<spec-name>/`. These paths should be covered by the project's `.gitignore`, so they survive local resumes on the same machine but are not preserved by changes, bookmarks, or pushes unless the user exports them separately.
 
 Every piece of state that matters MUST live on disk, not in the agent's memory.
 
@@ -92,7 +92,7 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 3. Confirm the expected content is present
 4. If verification fails, retry the write. If it fails twice, alert the user.
 
-### File Locations (all under `.context/ce-optimize/<spec-name>/`)
+### File Locations (all under `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/`)
 
 | File | Purpose | Written When |
 |------|---------|-------------|
@@ -110,6 +110,12 @@ When Phase 0.4 detects an existing run:
 4. Continue from where the log left off
 
 ---
+
+## Change Description Policy
+
+At every composition, edit, validation, or recommendation of a JJ change description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Inspect message history with actual `git log`. Local instructions and the message syntax in that actual history always take precedence; apply only compatible Go message-quality guidance. Keep `jj log` only where revision/history workflow independently requires it. Never impose a fixed prefix, type, scope, message, or template; use neutral semantic placeholders when an instruction needs one. Do not add creator metadata or standalone product branding to produced artifacts.
 
 ## Phase 0: Setup
 
@@ -203,7 +209,7 @@ Check whether the input is:
    - Any constraints or dependencies?
    - If this is the first run: recommend `execution.mode: serial`, `execution.max_concurrent: 1`, `stopping.max_iterations: 4`, and `stopping.max_hours: 1`
    - If `type: judge`: recommend `sample_size: 10`, `batch_size: 5`, and `max_total_cost_usd: 5` until the rubric and harness are trusted
-6. Write the spec to `.context/ce-optimize/<spec-name>/spec.yaml`
+6. Write the spec to `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/spec.yaml`
 7. Present the spec to the user for approval before proceeding
 
 ### 0.3 Search Prior Learnings
@@ -218,7 +224,7 @@ Check if the local `optimize/<spec-name>` bookmark already exists:
 jj bookmark list "optimize/<spec-name>"
 ```
 
-**If the bookmark exists**, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
+**If the bookmark exists**, check for an existing experiment log at `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
 - **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning experiment workspace directories for `result.yaml` markers. Run `jj edit "optimize/<spec-name>"`, then continue from the last iteration number in the log.
@@ -238,7 +244,8 @@ jj bookmark create "optimize/<spec-name>" -r @
 
 Create scratch directory:
 ```bash
-mkdir -p .context/ce-optimize/<spec-name>/
+ROOT=$(jj workspace root 2>/dev/null || printf '%s\n' "$PWD")
+mkdir -p "$ROOT/.tmp/rocketclaw/optimize/<spec-name>/"
 ```
 
 ---
@@ -339,7 +346,7 @@ If count + `execution.max_concurrent` would exceed 12:
 
 **MANDATORY CHECKPOINT.** Before presenting results to the user, write the initial experiment log with baseline metrics to disk:
 
-1. Create the experiment log file at `.context/ce-optimize/<spec-name>/experiment-log.yaml`
+1. Create the experiment log file at `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml`
 2. Include all required top-level sections from `references/experiment-log-schema.yaml`: `spec`, `run_id`, `started_at`, `baseline`, `experiments`, and `best`
 3. Seed `experiments` as an empty array and seed `best` from the baseline snapshot (use `iteration: 0`, baseline metrics, and baseline judge scores if present) so later phases have a valid current-best state to compare against
 4. Optionally seed `hypothesis_backlog: []` here as well so the log shape is stable before Phase 2 populates it
@@ -477,12 +484,13 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
    test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || ! jj workspace root >/dev/null 2>&1
    ```
 2. Fill the experiment prompt template
-3. Write the filled prompt under the workspace-local temporary namespace
+3. Write the filled prompt under `$(jj workspace root)/.tmp/rocketclaw/optimize/`; if workspace-root discovery fails, use `$PWD/.tmp/rocketclaw/optimize/`
 4. Dispatch via Codex:
    ```bash
-   workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
-   mkdir -p "$workspace_root/.tmp/rocketclaw/ce-optimize/prompts"
-   cat "$workspace_root/.tmp/rocketclaw/ce-optimize/prompts/<prompt-file>" | codex exec --skip-git-repo-check - 2>&1
+   ROOT=$(jj workspace root 2>/dev/null || printf '%s\n' "$PWD")
+   mkdir -p "$ROOT/.tmp/rocketclaw/optimize"
+   PROMPT_FILE="$ROOT/.tmp/rocketclaw/optimize/experiment-prompt-<unique-id>.txt"
+   cat "$PROMPT_FILE" | codex exec --skip-git-repo-check - 2>&1
    ```
 5. Security posture: use the user's selection (ask once per session if not set in spec)
 
@@ -522,7 +530,7 @@ For each completed experiment, **immediately**:
 6. **If gates pass AND primary type is `hard`**:
    - Use the metric value directly from the measurement output
 
-7. **IMMEDIATELY append to experiment log on disk (CP-3)** — do not defer this to batch evaluation. Write the experiment entry (iteration, hypothesis, outcome, metrics, learnings) to `.context/ce-optimize/<spec-name>/experiment-log.yaml` right now. Use the transitional outcome `measured` once the experiment has valid metrics but has not yet been compared to the current best. Update the outcome to `kept`, `reverted`, or another terminal state in the evaluation step, but the raw metrics are on disk and safe from context compaction.
+7. **IMMEDIATELY append to experiment log on disk (CP-3)** — do not defer this to batch evaluation. Write the experiment entry (iteration, hypothesis, outcome, metrics, learnings) to `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml` right now. Use the transitional outcome `measured` once the experiment has valid metrics but has not yet been compared to the current best. Update the outcome to `kept`, `reverted`, or another terminal state in the evaluation step, but the raw metrics are on disk and safe from context compaction.
 
 8. **VERIFY the write (CP-3 verification)** — read the experiment log back from disk and confirm the entry just written is present. If verification fails, retry the write. Do NOT proceed to the next experiment until this entry is confirmed on disk.
 
@@ -540,8 +548,7 @@ After all experiments in the batch have been measured:
 
 3. **If best improves on current best: KEEP**
    - Inspect the experiment change with `jj diff --summary -r @` in its workspace and retain only mutable-scope edits; if no eligible diff remains, treat the experiment as non-improving and discard its workspace and bookmark
-   - Compose and set the winning change description before integration. Runtime project instructions and the message style visible through the project's `jj log` syntax take precedence; use the Go guidance only where compatible to improve quality, clarity, and structure. Do not impose fixed syntax, examples, or templates. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-   - Use `jj -R "$WORKSPACE_PATH" describe -m "<description-composed-from-runtime-conventions>"`, where the placeholder is replaced by the composed project-native description
+   - Compose and set the winning change description before integration. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and the message syntax in actual `git log` take precedence; apply only compatible Go message-quality guidance. Do not impose fixed syntax, examples, or templates, and add no creator metadata or standalone product branding.
    - Rebase the experiment change onto `optimize/<spec-name>`, move that bookmark to the rebased experiment change, clean up the experiment workspace and bookmark, then edit the retained change in the optimization workspace:
      ```bash
      jj rebase -s "optimize-exp/<spec-name>/exp-<NNN>" -d "optimize/<spec-name>"
@@ -557,7 +564,7 @@ After all experiments in the batch have been measured:
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
    - If disjoint: rebase the runner-up change onto the current `optimize/<spec-name>` bookmark and re-run full measurement in its workspace
-   - If combined measurement is strictly better: compose and set its description with `jj -R "$WORKSPACE_PATH" describe -m "<description-composed-from-runtime-conventions>"`, then move the optimization bookmark to that change (outcome: `runner_up_kept`). Runtime project instructions and the message style visible through the project's `jj log` syntax take precedence; use the Go guidance only where compatible to improve quality, clarity, and structure. Do not impose fixed syntax, examples, or templates. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+   - If combined measurement is strictly better: compose and set its description, then move the optimization bookmark to that change (outcome: `runner_up_kept`). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and the message syntax in actual `git log` take precedence; apply only compatible Go message-quality guidance. Do not impose fixed syntax, examples, or templates, and add no creator metadata or standalone product branding.
    - After retaining a runner-up, clean up its experiment workspace and bookmark, then run `jj edit "optimize/<spec-name>"` in the optimization workspace
    - Otherwise: leave the optimization bookmark at the current best, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment workspace and bookmark
    - Stop after first failed combination
@@ -576,7 +583,7 @@ After all experiments in the batch have been measured:
 
 3. **Update the `best` section** in the experiment log if a new best was found. Write to disk.
 
-4. **Write strategy digest** to `.context/ce-optimize/<spec-name>/strategy-digest.md`:
+4. **Write strategy digest** to `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/strategy-digest.md`:
    - Categories tried so far (with success/failure counts)
    - Key learnings from this batch and overall
    - Exploration frontier: what categories and approaches remain untried
@@ -665,7 +672,7 @@ Key improvements:
 ### 4.3 Preserve and Offer Next Steps
 
 The optimization bookmark (`optimize/<spec-name>`) is preserved with all described JJ changes from kept experiments.
-The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the bookmark because `.context/` is ignored.
+The experiment log and strategy digest remain in local `.tmp/rocketclaw/optimize/...` scratch space for resume and audit on this machine only; they do not travel with the bookmark because `.tmp/` is ignored.
 
 Present post-completion options via the platform question tool:
 
@@ -673,7 +680,7 @@ Present post-completion options via the platform question tool:
 
    **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not describe the JJ change or push from this step — leave the diff on the optimization change for the Create PR option.
 2. **Run `/ce-compound`** to document the winning strategy as an institutional learning.
-3. **Create PR** from the optimization bookmark to the default bookmark, using `jj git push --bookmark "optimize/<spec-name>"` for remote interoperability and `gh pr create` or `gh pr edit` for the GitHub PR.
+3. **Create PR** from the optimization bookmark to the default bookmark. Resolve and retain the intended `$REMOTE`, publish only the optimization bookmark with `jj git push --remote "$REMOTE" --bookmark "exact:optimize/<spec-name>"`, and use `gh pr create` or `gh pr edit` for the GitHub PR.
 4. **Continue** with more experiments: re-enter Phase 3 with the current state. State re-read first.
 5. **Done** -- leave the optimization bookmark for manual review.
 
@@ -683,7 +690,8 @@ Clean up scratch space:
 ```bash
 # Keep the experiment log for local resume/audit on this machine
 # Remove temporary batch artifacts
-rm -f .context/ce-optimize/<spec-name>/strategy-digest.md
+ROOT=$(jj workspace root 2>/dev/null || printf '%s\n' "$PWD")
+rm -f "$ROOT/.tmp/rocketclaw/optimize/<spec-name>/strategy-digest.md"
 ```
 
 Do NOT delete the experiment log if the user may resume locally or wants a local audit trail. If they need a durable shared artifact, summarize or export the results into a tracked path before cleanup.

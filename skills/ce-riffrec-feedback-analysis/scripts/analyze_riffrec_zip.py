@@ -103,11 +103,19 @@ def safe_extract(zip_path: Path, dest: Path) -> None:
 
 
 def default_output_dir(zip_path: Path) -> Path:
-    cwd = Path.cwd()
+    root = workspace_root()
     stem = slugify(zip_path.stem)
-    if (cwd / "docs" / "brainstorms").is_dir():
-        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return cwd / "riffrec-feedback" / stem
+    if (root / "docs" / "brainstorms").is_dir():
+        return root / "docs" / "brainstorms" / "riffrec-feedback" / stem
+    return root / "riffrec-feedback" / stem
+
+
+def workspace_root() -> Path:
+    if shutil.which("jj"):
+        result = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout.strip():
+            return Path(result.stdout.strip()).resolve()
+    return Path.cwd().resolve()
 
 
 def classify_source(source_path: Path) -> str:
@@ -1070,7 +1078,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = Path.cwd()
+    repo_root = workspace_root()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
@@ -1113,7 +1121,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $rocketclaw:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under docs/plans/.")
     return 0
 

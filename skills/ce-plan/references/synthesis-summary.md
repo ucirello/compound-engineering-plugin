@@ -211,7 +211,7 @@ Planning a mechanical PII redaction gate before promote (the unguarded leak path
 
 **Call outs:**
 - Person-name filter works by JSON key (allowlist of provenance keys: `printer`, `printer_name`, `owner_name`, `author`), not by name value.
-- Promote scans the working-dir snapshot before the copy step, not the staged copy.
+- Promote scans the working-copy snapshot before the copy step, not the destination copy.
 - Publish combines PII + vendor-prefix findings into one report, not fail-fast on first.
 
 Confirm and I'll proceed to research, drawing on this scope.

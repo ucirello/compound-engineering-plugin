@@ -4,7 +4,7 @@ Run the adversarial brief in a separate read-only provider process. The pass use
 
 ## Gates
 
-Run only when `adversarial-reviewer` was selected and the working copy is the reviewed change (`local-aligned`, standalone, or `base:`). Skip `pr-remote` and `branch-remote` scopes.
+Run only when `adversarial-reviewer` was selected and the working copy is the reviewed change (`local-aligned`, standalone, or `base:`). Skip `pr-remote` and `bookmark-remote` scopes.
 
 ## Provider Mapping
 
@@ -24,7 +24,7 @@ An empty mapping skips silently. The script validates the selected CLI again.
 Launch the script in parallel with persona reviewers and collect it before Stage 5. Resolve it from this skill's directory:
 
 ```bash
-SKILL_DIR="<absolute path of the directory containing the ce-code-review SKILL.md you read>"
+SKILL_DIR="<absolute path of the directory containing the ce-code-review SKILL.md you read>";
 bash "$SKILL_DIR/scripts/cross-model-adversarial-review.sh" "<provider>" "<base-revision>" "<run-dir>"
 ```
 

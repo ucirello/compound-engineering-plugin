@@ -12,8 +12,6 @@ Coordinate multiple subagents working in parallel to document a recently solved 
 
 Captures problem solutions while context is fresh, creating structured documentation in `docs/solutions/` with YAML frontmatter for searchability and future reference. Uses parallel subagents.
 
-**Why "compound"?** Each documented solution compounds your team's knowledge. The first time you solve a problem takes research. Document it, and the next occurrence takes minutes. Knowledge compounds.
-
 ## Usage
 
 ```bash
@@ -42,9 +40,9 @@ Headless mode is intended for automations and skill-to-skill invocation where no
 
 ## Pre-resolved context
 
-**JJ bookmarks (pre-resolved):** !`jj bookmark list -r @ 2>/dev/null || true`
+**JJ bookmarks pointing to the working-copy change (pre-resolved):** !`jj bookmark list -r @ --no-pager -T 'name ++ "\n"' 2>/dev/null || true`
 
-If the line above resolved to one or more bookmarks, use them in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving them. If it still contains a backtick command string or is empty, derive current bookmarks at runtime. A JJ change need not have a bookmark, so an empty result is valid.
+If the line above resolved to one or more plain bookmark names, use them in Phase 1 session-history filtering so the orchestrator does not waste a turn deriving them. JJ has no active/current bookmark; these are bookmarks whose target is `@`. If the line still contains a backtick command string or is empty, derive the bookmarks at runtime with `jj bookmark list -r @`.
 
 **Workspace root (pre-resolved):** !`jj workspace root 2>/dev/null || pwd`
 
@@ -52,7 +50,7 @@ If the line above resolved to an absolute path, use it as the session-history re
 
 For repository inspection, use `jj status`, `jj diff`, and `jj log`; reason in changes and revisions, use bookmarks rather than branches, and use `jj workspace` commands for workspace operations. Use `jj git fetch` and `jj git push` only for Git-remote interoperability; `gh` remains appropriate for GitHub metadata and pull requests.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. At every JJ description or commit-message composition, recommendation, or validation site, the active project instructions and description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. At every JJ description or commit-message composition, recommendation, or validation site, the active project instructions and description syntax inferred at runtime from actual `git log` output always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
 
 ## Support Files
 
@@ -61,7 +59,7 @@ These files are the durable contract for the workflow. Read them on-demand at th
 - `references/schema.yaml` — canonical frontmatter fields and enum values (read when validating YAML)
 - `references/yaml-schema.md` — category mapping from problem_type to directory (read when classifying)
 - `references/concepts-vocabulary.md` — CONCEPTS.md format and inclusion rules (read in Phase 2.4 when domain terms surface)
-- `references/agents/session-historian.md` — skill-local synthesis prompt for optional session-history compounding context (read only when the user opts into session history)
+- `references/agents/session-historian.md` — skill-local synthesis prompt for optional session-history context (read only when the user opts into session history)
 - `references/grounding-validation.md` — grounding-validation protocol: flag adjudication rules and the semantic validator prompt (read in Phase 2.45)
 - `assets/resolution-template.md` — section structure for new docs (read when assembling)
 - `scripts/session-history/` — session discovery and extraction scripts copied into this skill so session-history support does not depend on the deleted `ce-sessions` public skill
@@ -77,9 +75,9 @@ When spawning subagents, pass the relevant file contents into the task prompt so
 **In interactive mode**, present the user with two options before proceeding, using the available blocking question tool. Preserve these functional provider mappings: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), and `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists or the call errors — not because a schema load is required. Never silently skip the question.
 
 ```
-1. Full (recommended) — the complete compound workflow. Researches,
+1. Full (recommended) — the complete documentation workflow. Researches,
    cross-references, and reviews your solution to produce documentation
-   that compounds your team's knowledge.
+   that preserves your team's knowledge.
 
 2. Lightweight — same documentation, single pass. Faster and uses
    fewer tokens, but won't detect duplicates or cross-reference
@@ -93,11 +91,11 @@ In interactive mode, do NOT pre-select a mode, do NOT skip this prompt, and wait
 
 ```
 Would you also like to search your [session provider] history
-for relevant knowledge to help the Compound process? This adds
+for relevant knowledge to help the documentation process? This adds
 time and token usage.
 ```
 
-If the user says yes, run the internal session-history step in Phase 1 (see step 4). If no, skip it. Do not ask this in lightweight mode or headless mode. There is no standalone `ce-sessions` product surface; this support exists only inside the compounding workflow.
+If the user says yes, run the internal session-history step in Phase 1 (see step 4). If no, skip it. Do not ask this in lightweight mode or headless mode. There is no standalone `ce-sessions` product surface; this support exists only inside this documentation workflow.
 
 ---
 
@@ -106,7 +104,7 @@ If the user says yes, run the internal session-history step in Phase 1 (see step
 <critical_requirement>
 **The primary deliverable is ONE file - the final documentation.**
 
-Phase 1 subagents write their full structured output to a per-run scratch artifact under `<workspace-root>/.tmp/rocketclaw/ce-compound/<run-id>/`, falling back to `<current-directory>/.tmp/rocketclaw/ce-compound/<run-id>/` outside JJ, and return only a compact confirmation containing the artifact path. The orchestrator Reads those artifacts back in Phase 2 assembly. This scratch space does not make the files additional deliverables. **Only the orchestrator writes product files** — the final solution doc and the maintenance side effects below. Subagents must not touch `docs/`, project instruction files, or any tracked path other than the listed maintenance side effects. Beyond the Phase 2 solution doc, the orchestrator's other writes are maintenance side effects — not additional deliverables, and creating one when absent is expected, not a violation of this rule:
+Phase 1 subagents write their full structured output to a per-run scratch artifact under `$(jj workspace root)/.tmp/rocketclaw/ce-compound/<run-id>/`, falling back to `$PWD/.tmp/rocketclaw/ce-compound/<run-id>/` outside JJ, and return only a compact confirmation containing the artifact path. The orchestrator Reads those artifacts back in Phase 2 assembly. This scratch space does not make the files additional deliverables. **Only the orchestrator writes product files** — the final solution doc and the maintenance side effects below. Subagents must not touch `docs/`, project instruction files, or any tracked path other than the listed maintenance side effects. Beyond the Phase 2 solution doc, the orchestrator's other writes are maintenance side effects — not additional deliverables, and creating one when absent is expected, not a violation of this rule:
 - **`CONCEPTS.md`** — create or update in Phase 2.4 (Vocabulary Capture) when a qualifying domain term surfaces.
 - **A project instruction file** (AGENTS.md or CLAUDE.md) — a small edit when the Discoverability Check finds a gap.
 
@@ -149,7 +147,7 @@ RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-compound/$RUN_ID"
 mkdir -p "$RUN_DIR"
 ```
 
-**Resolve the agnostic project orientation from the shared cache (before dispatching subagents).** The question-agnostic orientation the Context Analyzer and Related Docs Finder rely on — the project's `CONCEPTS.md` vocabulary and the root instruction-file conventions/digests — is identical for every run at this commit, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
+**Resolve the agnostic project orientation from the shared cache (before dispatching subagents).** The question-agnostic orientation the Context Analyzer and Related Docs Finder rely on — the project's `CONCEPTS.md` vocabulary and the root instruction-file conventions/digests — is identical for every run at this revision, so reuse it instead of re-deriving. Set `SKILL_DIR` to this skill's directory and run the helper (full protocol in `references/repo-profile-cache.md`):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>"
@@ -162,7 +160,7 @@ python3 "$SKILL_DIR/scripts/repo-profile-cache.py" get
 
 The cache is an optimization, never a correctness dependency — if the helper errors or returns nothing usable, fall back to deriving the orientation inline and continue. Pass the resolved vocabulary/conventions into the Context Analyzer (for vocabulary and instruction-file convention grounding) so it does not re-derive them.
 
-**CRITICAL — the `docs/solutions/` enumeration is NEVER cached; the Related Docs Finder must glob it FRESH every run.** `ce-compound` *writes* new learnings into `docs/solutions/`, so a cached index would miss a doc added moments ago (even an uncommitted one). The cached profile supplies only the agnostic orientation above; the `docs/solutions/` search in step 3 always runs against the live tree.
+**CRITICAL — the `docs/solutions/` enumeration is NEVER cached; the Related Docs Finder must glob it FRESH every run.** `ce-compound` *writes* new learnings into `docs/solutions/`, so a cached index would miss a doc added moments ago (even one present only in the working copy). The cached profile supplies only the agnostic orientation above; the `docs/solutions/` search in step 3 always runs against the live tree.
 
 Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 subagent prompt. Each subagent **writes its full structured output** to its own file under `{run_dir}/`, **confirms the write succeeded** (the file exists and is non-empty), and then **returns only a one-line confirmation containing the artifact path** — not the prose body inline. Artifact filenames by subagent:
 
@@ -199,7 +197,7 @@ Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 sub
    - **Writes the full doc-body prose** (all track-appropriate sections below) to `solution.md` and returns only the artifact path. This is the subagent most prone to the issue #956 summary-collapse, so its prose must land on disk rather than only in the inline return.
    - Incorporates auto memory excerpts (if provided by the orchestrator) as supplementary evidence -- conversation history and the verified fix take priority; if memory notes contradict the conversation, note the contradiction as cautionary context
    - **Grounds code-behavior claims in source, not conversation memory.** Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree and cite `file:line` alongside the claim. A claim that cannot be verified against the tree is softened or attributed ("per this session's conclusion…"), never stated as fact
-   - **Writes merge-state claims for time.** Cite PR numbers rather than bare commit IDs — commit IDs can change when JJ changes are rewritten and may not exist in other workspaces. A "fixed in X" claim requires the fix to be reachable from the current tree; otherwise phrase it as pending ("fix opened in #1608, unmerged as of this writing")
+   - **Writes merge-state claims for time.** Cite PR numbers rather than bare commit IDs — commit IDs can change when revisions are rewritten and may not exist in other workspaces. A "fixed in X" claim requires the fix to be reachable from the current tree; otherwise phrase it as pending ("fix opened in #1608, unmerged as of this writing")
 
    **Bug track output sections:**
 
@@ -270,7 +268,7 @@ Pass `{run_dir}` (the resolved absolute `$RUN_DIR` value) into every Phase 1 sub
      - Related context
      ```
 
-   Do not append additional context blocks, exclusion lists, or topic-keyword bullets — verbose payloads give the session-history flow license to keep widening the search and rapidly compound wall time. If keyword search is needed, the internal flow owns that decision based on the topic.
+   Do not append additional context blocks, exclusion lists, or topic-keyword bullets — verbose payloads give the session-history flow license to keep widening the search and rapidly increase wall time. If keyword search is needed, the internal flow owns that decision based on the topic.
    - Returns: structured digest of findings from prior sessions, or "no relevant prior sessions" if none found.
    - **Session history is the final Phase 1 input, not a workflow stop.** When it returns, proceed directly to Phase 2 with its output as the last input — do not emit a summary and do not pause for the user. A "no relevant prior sessions" return is still a valid input; the documentation gets written without session context.
 
@@ -382,13 +380,13 @@ Then, applying those criteria, scan the new doc **and** the surrounding conversa
 
 **When bootstrapping the file, start with this preamble under the `# Concepts` heading**, then add the qualifying entries below it:
 
-> Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
+> Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as learnings are documented and refreshed; direct edits are fine. Glossary only, not a spec or catch-all.
 
 **Refresh the coherence neighborhood of any entry you touch.** When adding or editing an entry, also inspect its *coherence neighborhood* — its cluster siblings and the terms it cross-references or that reference it. Within that neighborhood, do two things: fix glossary violations (implementation specifics — file paths, class names, function signatures, current-config values), and refresh entries the learning's own evidence shows have drifted. Bounds: neighborhood only, never a full-file audit; refresh only on evidence already in hand; if judging a neighbor would require investigation this learning did not do, flag it for `ce-compound-refresh` rather than editing on a guess. The test: after the edit, would a reader find the touched entry's siblings or referenced terms inconsistent with it? Broader audit is `ce-compound-refresh`'s job.
 
 If no terms qualified after applying the reference's criteria, record that outcome explicitly in the success output (e.g., "Vocabulary capture: scanned, no qualifying terms"). Do not silently skip — the visible scan-and-no-result record is the audit signal that the reference was consulted.
 
-**Apply edits silently in every mode — no user prompt in interactive, lightweight, or headless.** Vocabulary capture is a side effect of compounding, not a decision the user makes per run. Lightweight mode reaches this through its own single-pass step (see Lightweight Mode), and runs an **update-only** version — it refines an existing `CONCEPTS.md` but defers creation/seeding to a Full run.
+**Apply edits silently in every mode — no user prompt in interactive, lightweight, or headless.** Vocabulary capture is a side effect of documenting a learning, not a decision the user makes per run. Lightweight mode reaches this through its own single-pass step (see Lightweight Mode), and runs an **update-only** version — it refines an existing `CONCEPTS.md` but defers creation/seeding to a Full run.
 
 ### Phase 2.45: Grounding Validation
 
@@ -620,7 +618,7 @@ Knowledge track:
 
 | Wrong | Correct |
 |----------|-----------|
-| Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `<workspace-root>/.tmp/rocketclaw/ce-compound/<run-id>/` (current-directory fallback outside JJ) and return the path; orchestrator writes the one final doc |
+| Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `$(jj workspace root)/.tmp/rocketclaw/ce-compound/<run-id>/` (`$PWD/.tmp/rocketclaw/ce-compound/<run-id>/` fallback outside JJ) and return the path; orchestrator writes the one final doc |
 | Subagent returns a long prose body only as its inline response | Subagent writes full output to its run artifact; orchestrator Reads it back (inline return is fallback only) |
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Multiple files created during workflow | One solution doc written or updated: `docs/solutions/[category]/[filename].md` (plus optional maintenance writes: a `CONCEPTS.md` create/update from Phase 2.4 and a small instruction-file edit for discoverability) |
@@ -711,14 +709,14 @@ File updated:
 - docs/solutions/performance-issues/n-plus-one-queries.md (added last_updated: 2026-03-24)
 ```
 
-## The Compounding Philosophy
+## Durable Knowledge
 
-This creates a compounding knowledge system:
+This creates a reusable knowledge system:
 
 1. First time you solve "N+1 query in brief generation" → Research (30 min)
 2. Document the solution → docs/solutions/performance-issues/n-plus-one-briefs.md (5 min)
 3. Next time similar issue occurs → Quick lookup (2 min)
-4. Knowledge compounds → Team gets smarter
+4. Knowledge remains available → Future work gets faster
 
 The feedback loop:
 

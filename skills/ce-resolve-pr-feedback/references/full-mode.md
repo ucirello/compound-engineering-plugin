@@ -6,10 +6,21 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current bookmark through GitHub's Git remote interop:
+If no PR number was provided, inspect `jj bookmark list -r @` and require exactly one applicable local bookmark at `@`. Resolve its PR explicitly:
 ```bash
-gh pr view --json number -q .number
+gh pr view BOOKMARK_NAME --json number -q .number
 ```
+
+If no applicable bookmark exists or more than one is plausible, require a PR number or URL rather than guessing. Use `jj workspace root`, `jj workspace list`, `jj status`, `jj diff`, and `jj log` for repository orientation as needed.
+
+Resolve the PR head repository and its configured JJ remote before fetching:
+
+```bash
+gh pr view PR_NUMBER --json number,headRefName,headRepository,headRepositoryOwner,url
+jj git remote list
+```
+
+Normalize the head repository's `owner/repo` identity and each configured GitHub HTTPS/SSH remote URL (including an optional `.git` suffix), then require exactly one matching `<head-remote>`. `origin` is valid only when its normalized URL matches the PR head repository; this is especially important for fork PRs. If zero or multiple remotes match, stop before editing because the fixes cannot be fetched and pushed back to a proven head repository. Refresh only that PR head bookmark with `jj git fetch --remote <head-remote> --branch <headRefName>`, and retain `<head-remote>` through Step 6.
 
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments):
 
@@ -128,7 +139,7 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** describe or push the change.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and carry the pre-existing failure forward as description context.
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and carry the specific failure forward as description context; do not impose a fixed footer or format.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
@@ -136,24 +147,20 @@ Record the validation outcome (command run, pass/fail counts, any pre-existing f
 
 1. Inspect the working-copy change with `jj status` and `jj diff --summary`. The change to push must contain only files reported by fixers; if it is mixed with unrelated work, use `jj split [files...]` to separate the fixer changes before describing them.
 
-At every site that composes, edits, validates, or recommends the JJ change description, apply this complete policy: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description conventions observed through the project's working `jj log` invocation always win; determine that invocation at runtime rather than prescribing fixed `jj log` syntax. Apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed message syntax, including any prefix, type, scope, subject, body, layout, template, or example.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Run `git --git-dir="$(jj git root)" log -n 10 --format=full` only to observe actual past message syntax, including in a non-colocated JJ workspace. The project's active repository-local instructions and message syntax observed in actual `git log` output win over compatible Go guidance. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example. The description must explain the review fixes and, when applicable, the specific pre-existing validation failure.
 
-Compose or edit the JJ description in the editor, then inspect it with `jj log` before pushing:
-
-```bash
-jj describe -m '<description-composed-from-runtime-conventions>' REVISION
-jj log -r REVISION
-```
+Compose or edit the JJ description, then inspect it with `jj log` before pushing.
 
 2. Move the PR's bookmark to the described revision if needed, then push it through JJ's Git remote interop:
+
 ```bash
-jj bookmark set BOOKMARK -r REVISION
-jj git push --bookmark BOOKMARK
+jj bookmark set "$BOOKMARK" -r "$REVISION"
+jj git push --remote "$HEAD_REMOTE" --bookmark "exact:$BOOKMARK"
 ```
 
 ## 7. Reply and Resolve
 
-After the JJ Git push succeeds, post replies and resolve where applicable. Post for every handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. The mechanism depends on the feedback type.
+After `jj git push` succeeds, post replies and resolve where applicable. Post for every handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. The mechanism depends on the feedback type.
 
 ### Reply format
 

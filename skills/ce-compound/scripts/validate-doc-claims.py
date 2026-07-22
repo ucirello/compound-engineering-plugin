@@ -14,7 +14,7 @@ validate-frontmatter.py (parser-safety) — this script checks the body's
 citations against the repository:
 
     1. Cited repo-relative paths (backticked, containing at least one '/')
-       exist in the working tree; tokens containing '../' resolve from the
+       exist in the working copy; tokens containing '../' resolve from the
        doc's directory (those escaping the repo are skipped). Misses tracked
        at the working-copy revision or trunk still count as real paths and
        are classified (removed locally vs stale workspace). Tokens
@@ -223,17 +223,17 @@ def main(argv: list[str]) -> int:
         if tracked_current:
             flags.append(
                 f"FLAG path `{token}`{loc} — present at @ but missing from "
-                "the working tree: deleted or uncommitted removal? Annotate as "
+                "the working copy: removed by the current change? Annotate as "
                 "historical (e.g. removed by this fix) or restore it."
             )
         elif tracked_trunk:
             flags.append(
-                f"FLAG path `{token}`{loc} — not in working tree but exists at "
+                f"FLAG path `{token}`{loc} — not in working copy but exists at "
                 "trunk: stale workspace? Annotate or verify against trunk."
             )
         else:
             where = (
-                "working tree or trunk" if trunk else "working tree"
+                "working copy or trunk" if trunk else "working copy"
             )
             flags.append(
                 f"FLAG path `{token}`{loc} — not found in {where}. Fix the "
@@ -289,7 +289,7 @@ def main(argv: list[str]) -> int:
                 flags.append(
                     f"FLAG commit ID {commit_ref}{loc} — exists but unreachable from @"
                     + (" or trunk" if trunk else "")
-                    + ": likely a rebased-away commit. Prefer citing the PR number."
+                    + ": likely a rewritten-away revision. Prefer citing the PR number."
                 )
 
     # --- 3. Relative markdown links -----------------------------------------

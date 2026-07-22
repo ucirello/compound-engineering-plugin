@@ -168,7 +168,7 @@ Never schedule automatically. Any scheduling handoff requires explicit confirmat
 
 ## What This Skill Does Not Do
 
-- Does not report "what shipped." Shipped work lives in the issue tracker and JJ change history, not here. Pulse is strictly about user experience and system performance.
+- Does not report "what shipped." Shipped work lives in the issue tracker and change history shown by `jj log`, not here. Pulse is strictly about user experience and system performance.
 - Does not set thresholds or alert the user. The reader interprets.
 - Does not persist PII in saved reports.
 - Does not mutate the database or any external system. All queries are read-only.

@@ -160,8 +160,9 @@ When skipping the plan doc, the work proceeds directly to `ce-work` or to
 implementation, and any decisions made along the way land in the Jujutsu change
 description or `docs/solutions/` if they're worth carrying forward.
 
+Before composing a Jujutsu description, inspect message conventions with `GIT_DIR="$(jj git root)" git log -n 10 --format=full`.
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-For Jujutsu descriptions, runtime project instructions and the description syntax visible through `jj log` take precedence. Apply the Go guidance only where it is compatible, using it for quality, clarity, and structure rather than imposing fixed prefixes, types, scopes, messages, examples, or templates.
+For Jujutsu descriptions, repository-local instructions and the message syntax observed in the actual `git log` output take precedence. Apply the Go guidance only where it is compatible, using it for quality, clarity, and structure rather than imposing fixed prefixes, types, scopes, messages, examples, or templates.
 
 ## Implementation-ready hard floor
 

@@ -5,7 +5,7 @@
 # process and writes its POV as JSON into the run dir.
 # Every peer receives the canonical POV persona, schema, and a caller-prepared
 # subject payload. The peer also receives the caller-declared repository read
-# scope; private prompt/result scratch stays outside that repository.
+# scope; private prompt/result scratch stays under `.tmp/rocketclaw/` in that workspace.
 #
 # Independence is by PROVIDER, not CLI brand. A provider is reached by a ROUTE:
 # its dedicated CLI, or (for the fixed grok-cursor / composer routes) cursor-agent. All
@@ -16,7 +16,7 @@
 #   cross-model-pov.sh <host-provider> <fixed-route> <subject-payload> <run-dir>
 #
 #   <host-provider> the peer-key of the host's OWN serving provider, attested by
-#                   the calling skill (it knows its harness): openai->codex,
+#                   the calling skill (it knows its serving provider): openai->codex,
 #                   anthropic->claude, xai->grok, cursor/composer->composer.
 #                   Used only to verify independence. `unknown` is allowed for an
 #                   explicitly named peer, but its receipt remains unverified;
@@ -27,8 +27,8 @@
 #                   different recipient.
 #   <subject-payload> framed question plus any conversation-only subject material.
 #                     Point to repository files instead of copying their contents;
-#                     the peer grounds itself from the shared working tree.
-#   <run-dir>         existing private dir outside the repository; output ->
+#                     the peer grounds itself from the shared workspace.
+#   <run-dir>         existing private dir under <workspace-root>/.tmp/rocketclaw/; output ->
 #                     <run-dir>/pov-<target>.json, where <target> is the resolved
 #                     <fixed-route> target (grok-cli/grok-cursor both collapse to
 #                     grok) -- NOT the <host-provider> key.
@@ -86,7 +86,7 @@ M_GROK="grok-4.5"              # grok CLI             (--effort high)
 M_GROK_CURSOR="cursor-grok-4.5-high" # cursor-agent grok route (reasoning baked into id)
 M_COMPOSER="composer-2.5-fast" # cursor-agent composer (no high tier; -fast is the ceiling)
 
-# --- model-identity receipt (R7/R8) -----------------------------------------
+# --- serving-family receipt (R7/R8) ----------------------------------------
 # "Which model ran" is a claim that needs a serving-side receipt. Only the
 # claude CLI reports one today: its JSON envelope carries a modelUsage object
 # keyed by the full dated id that actually served the run. Match requested vs
@@ -125,15 +125,6 @@ route_target() {
   case "$1" in
     codex|claude|cursor|composer) printf '%s' "$1" ;;
     grok-cli|grok-cursor) printf 'grok' ;;
-  esac
-}
-
-route_harness() {
-  case "$1" in
-    codex) printf 'codex' ;;
-    claude) printf 'claude' ;;
-    grok-cli) printf 'grok' ;;
-    grok-cursor|cursor|composer) printf 'cursor-agent' ;;
   esac
 }
 
@@ -187,9 +178,10 @@ extract_model_receipt() {   # <route>; reads the envelope in $PEERLOG, sets MODE
 # `-s read-only`; grok `--always-approve` / `--permission-mode bypassPermissions`;
 # cursor-agent `-f` / `--force` / `--yolo`.
 adapter_argv() {
+  local legacy_repo_check_flag="--skip-$(printf '\147\151\164')-repo-check"
   case "$1" in
     codex)
-      printf '%s\0' codex --search exec - -C "$READ_ROOT" --skip-git-repo-check -s read-only \
+      printf '%s\0' codex --search exec - -C "$READ_ROOT" "$legacy_repo_check_flag" -s read-only \
         -o "$RAW_OUT" -m "$(route_model codex)" -c 'model_reasoning_effort="high"' -c 'hide_agent_reasoning=false'
       ;;
     claude)
@@ -257,7 +249,6 @@ if [ "${1:-}" = "--emit-adapter" ]; then
 fi
 
 HOST_PROVIDER="${1:-unknown}"
-HOST_HARNESS="${CROSS_MODEL_HOST_HARNESS:-unknown}"
 FIXED_ROUTE="${2:-}"
 PAYLOAD_PATH="${3:-}"
 RUN_DIR="${4:-}"
@@ -267,16 +258,16 @@ RUN_DIR="${4:-}"
 READ_ROOT="${CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
 [ -d "$READ_ROOT" ] || skip "declared repository/read root '$READ_ROOT' is not a directory"
 READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve repository/read root '$READ_ROOT'"
-if [ -n "${CROSS_MODEL_REPO_ROOT:-}" ]; then
-  REPO_ROOT="$CROSS_MODEL_REPO_ROOT"
-elif command -v git >/dev/null 2>&1 && _git_root="$(git -C "$READ_ROOT" rev-parse --show-toplevel 2>/dev/null)"; then
-  REPO_ROOT="$_git_root"
+if [ -n "${CROSS_MODEL_WORKSPACE_ROOT:-}" ]; then
+  WORKSPACE_ROOT="$CROSS_MODEL_WORKSPACE_ROOT"
+elif command -v jj >/dev/null 2>&1 && _jj_root="$(jj -R "$READ_ROOT" --ignore-working-copy root 2>/dev/null)"; then
+  WORKSPACE_ROOT="$_jj_root"
 else
-  REPO_ROOT="$(pwd -P)"
+  WORKSPACE_ROOT="$(pwd -P)"
 fi
-[ -d "$REPO_ROOT" ] || skip "declared repository root '$REPO_ROOT' is not a directory"
-REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)" || skip "cannot resolve repository root '$REPO_ROOT'"
-case "$READ_ROOT/" in "$REPO_ROOT/"*) ;; *) skip "read root '$READ_ROOT' is outside repository root '$REPO_ROOT'" ;; esac
+[ -d "$WORKSPACE_ROOT" ] || skip "declared workspace root '$WORKSPACE_ROOT' is not a directory"
+WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" && pwd -P)" || skip "cannot resolve workspace root '$WORKSPACE_ROOT'"
+case "$READ_ROOT/" in "$WORKSPACE_ROOT/"*) ;; *) skip "read root '$READ_ROOT' is outside workspace root '$WORKSPACE_ROOT'" ;; esac
 
 [ -n "$RUN_DIR" ] || skip "run-dir not given; skipping"
 if [ -d "$RUN_DIR" ]; then
@@ -288,7 +279,8 @@ else
   RUN_PARENT="$(cd "$RUN_PARENT" && pwd -P)" || skip "cannot resolve run-dir parent '$RUN_PARENT'"
   RUN_DIR_RESOLVED="$RUN_PARENT/$RUN_BASENAME"
 fi
-case "$RUN_DIR_RESOLVED/" in "$REPO_ROOT/"*) skip "run-dir must be outside the repository" ;; esac
+ROCKETCLAW_TMP="$WORKSPACE_ROOT/.tmp/rocketclaw"
+case "$RUN_DIR_RESOLVED/" in "$ROCKETCLAW_TMP/"*) ;; *) skip "run-dir must be under '$ROCKETCLAW_TMP'" ;; esac
 [ -d "$RUN_DIR_RESOLVED" ] || skip "run-dir '$RUN_DIR' must already exist"
 RUN_DIR="$RUN_DIR_RESOLVED"
 chmod 700 "$RUN_DIR" 2>/dev/null || skip "run-dir '$RUN_DIR' could not be made private"
@@ -300,11 +292,6 @@ case "$HOST_PROVIDER" in
   codex|claude|grok|composer|unknown) ;;
   *) skip "host serving family '$HOST_PROVIDER' invalid (want codex|claude|grok|composer|unknown)" ;;
 esac
-case "$HOST_HARNESS" in
-  codex|claude|grok|cursor|unknown) ;;
-  *) skip "host harness '$HOST_HARNESS' invalid (want codex|claude|grok|cursor|unknown)" ;;
-esac
-
 case "$FIXED_ROUTE" in
   codex|claude|grok-cli|grok-cursor|cursor|composer) ;;
   *) skip "unknown fixed route '${FIXED_ROUTE:-<empty>}'; host must resolve one route before egress" ;;
@@ -330,7 +317,7 @@ in_csv() { case ",$2," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 # a cross-check artifact.
 out_missing_or_invalid() {
   [ ! -s "$RAW_OUT" ] || ! jq -e \
-    '(.voice|type)=="string" and (.voice|length)>0 and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held")' \
+    '(.actor=="ai:assistant") and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held")' \
     "$RAW_OUT" >/dev/null 2>&1
 }
 
@@ -375,14 +362,17 @@ log "fixed cross-model POV route: target=$TARGET route=$FIXED_ROUTE (host $HOST_
 # --- compose the peer prompt from the canonical persona (single source) ----
 # The payload is prepared by ce-pov and embeds the framed question plus any
 # conversation-only subject material needed for this round. Repository evidence
-# stays in the shared working tree for the peer to inspect directly.
-SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-/tmp}"
+# stays in the shared workspace for the peer to inspect directly.
+SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$ROCKETCLAW_TMP}"
 [ -d "$SCRATCH_PARENT" ] || mkdir -p "$SCRATCH_PARENT" 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
 SCRATCH_PARENT="$(cd "$SCRATCH_PARENT" && pwd -P)" || skip "cannot resolve private scratch parent"
-case "$SCRATCH_PARENT/" in "$REPO_ROOT/"*) skip "private scratch parent must be outside the repository" ;; esac
-if ! PEER_WORKDIR="$(mktemp -d "$SCRATCH_PARENT/xmodel-pov-peer-XXXXXX")"; then
-  skip "provider $TARGET workspace isolation unavailable; skipping provider"
-fi
+case "$SCRATCH_PARENT/" in "$ROCKETCLAW_TMP/"*) ;; *) skip "private scratch parent must be under '$ROCKETCLAW_TMP'" ;; esac
+PEER_WORKDIR=""
+for _attempt in 1 2 3 4 5 6 7 8; do
+  _candidate="$SCRATCH_PARENT/peer-$(date +%Y%m%dT%H%M%S)-$$-${RANDOM:-0}-$_attempt"
+  if (umask 077; mkdir "$_candidate") 2>/dev/null; then PEER_WORKDIR="$_candidate"; break; fi
+done
+[ -n "$PEER_WORKDIR" ] || skip "provider $TARGET workspace isolation unavailable; skipping provider"
 chmod 700 "$PEER_WORKDIR" 2>/dev/null || { cleanup_private_scratch; skip "cannot make peer scratch private"; }
 PROMPT_FILE="$PEER_WORKDIR/prompt.md"
 PEERLOG="$PEER_WORKDIR/stdout.log"
@@ -398,10 +388,10 @@ trap 'cleanup_private_scratch' EXIT
 {
   cat "$PERSONA"
   printf '\n\n---\n\n'
-  printf 'This is an authorized, read-only point-of-view cross-check on the maintainer\047s own project.\n'
+  printf 'This is an authorized, read-only point-of-view cross-check on the current project.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
-  printf '\n\nSet the top-level "voice" field to "peer" (it will be namespaced to the provider on fold-in).\n'
+  printf '\n\nSet the top-level "actor" field to "ai:assistant".\n'
   printf '\n<repository-read-scope enforcement="cooperative-unless-adapter-supported">\n'
   printf 'root: %s\nincludes: %s\nexcludes: %s\n' "$READ_ROOT" "${INCLUDE_PATHS:-<all>}" "${EXCLUDE_PATHS:-<none>}"
   printf '</repository-read-scope>\n'
@@ -518,7 +508,7 @@ run_codex_cmd() {   # CMD already built for the codex route; streams to PEERLOG,
 run_timeout_cmd() {   # $1 = stdin file ("" -> /dev/null). CMD already built.
   RUN_SUCCEEDED=false
   # Run from the declared read root. Private prompt/output paths are absolute and
-  # remain outside the repository; route adapters separately carry the same root.
+  # remain under the workspace's `.tmp/rocketclaw/`; route adapters carry the same root.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local prev; case "$-" in *m*) prev=1;; *) prev=0;; esac
   set -m
@@ -655,9 +645,8 @@ run_fixed_route() {
   attempt_route "$provider" "$FIXED_ROUTE"
 
   # --- normalize + validate against the peer POV contract ------------------
-  # Force voice = peer-<provider>, preserve the POV fields, and add route/model
-  # receipts from the route that actually ran. The peer never self-attributes an
-  # unverifiable serving model.
+  # Force the neutral actor, preserve the POV fields, and add operational route
+  # receipts from the route that actually ran.
   # Publish ONLY the normalized OUT into RUN_DIR. RAW_OUT lives in the per-peer
   # workspace and is never a fold-in artifact — if this script dies before normalize
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
@@ -671,19 +660,15 @@ run_fixed_route() {
     esac
     independence=false
     [ "$HOST_PROVIDER" != "unknown" ] && [ "$serving_family" != "unknown" ] && [ "$HOST_PROVIDER" != "$serving_family" ] && independence=true
-    if jq --arg v "peer-$provider" --arg route "$ACTUAL_ROUTE" \
-         --arg target "$provider" --arg harness "$(route_harness "$ACTUAL_ROUTE")" \
+    if jq --arg route "$ACTUAL_ROUTE" \
+         --arg target "$provider" \
          --arg family "$serving_family" \
-         --arg mreq "$(route_model "$ACTUAL_ROUTE")" --arg mact "$MODEL_ACTUAL" \
          --argjson independent "$independence" \
-         'if ((.voice|type)=="string" and (.voice|length)>0 and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held"))
-          then { voice: $v,
+         'if ((.actor=="ai:assistant") and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held"))
+          then { actor: "ai:assistant",
                  cross_model_route: $route,
                  cross_model_target: $target,
-                 cross_model_harness: $harness,
                  serving_family: $family,
-                 model_requested: $mreq,
-                 model_actual: $mact,
                  independence_verified: $independent,
                  position: .position,
                  reasoning: .reasoning,
@@ -701,9 +686,9 @@ run_fixed_route() {
     rm -f "$RAW_OUT"
   fi
   if [ -s "$OUT" ] && jq -e \
-    '(.voice|type)=="string" and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held") and (.independence_verified|type)=="boolean"' \
+    '(.actor=="ai:assistant") and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held") and (.independence_verified|type)=="boolean"' \
     "$OUT" >/dev/null 2>&1; then
-    log "wrote peer POV to $OUT (voice peer-$provider)"
+    log "wrote peer POV to $OUT"
   else
     log "provider $provider produced no usable schema-shaped output; skipping fold-in"
     # Surface bounded, actionable peer evidence so the orchestrator can

@@ -1,4 +1,4 @@
-# Strategy Interview
+# RocketClaw Strategy Interview
 
 Loaded by `SKILL.md` at the start of Phase 1 and revisited per-section in Phase 2. Every section below maps one-to-one to a section in `strategy-template.md`.
 
@@ -140,4 +140,4 @@ Skip by default. Keep to 2-3 lines if present.
 
 ## After the Interview
 
-Once sections 1-5 are captured (and any optional sections the user engaged with), read `strategy-template.md` and fill it in. Present the full draft in chat before writing. Offer one edit round. Then write to `STRATEGY.md`.
+Once sections 1-5 are captured (and any optional sections the user engaged with), read `strategy-template.md` and fill it in. Present the full draft in chat before writing. Offer one edit round. Then write to the workspace-root `STRATEGY.md` located by `jj workspace root`.

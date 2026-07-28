@@ -13,17 +13,16 @@ options," and "the three options presented" mean the single unambiguous
 referent in the active conversation. Ask one focused clarification only when
 multiple plausible referents would materially change the POV.
 
-Keep four identities separate for the host and every peer:
+Keep the operational route facts separate for the host and every peer:
 
 - **target** — the user-facing choice (`codex`, `claude`, `grok`, `cursor`, or
   `composer`);
-- **harness/intermediary route** — the CLI or intermediary that runs it;
-- **requested model** — an explicit model or the route's declared default; and
-- **served model** — receipt-verified when available, otherwise `unverified`.
+- **intermediary route** — the CLI or intermediary that runs it; and
+- **serving family** — receipt-verified when available, otherwise `unverified`.
 
 Attest the host from host-provided markers and serving evidence, never from
 another installed CLI or home directory. Set `independence_verified: true` only
-when the peer's served model family is attestably different from the host's.
+when the peer's serving family is attestably different from the host's.
 Otherwise retain the useful cross-check but label independence unverified; do
 not present it as different-model corroboration. If the host family is unknown,
 automatic discovery excludes any candidate whose independence cannot be
@@ -33,7 +32,7 @@ verified rather than guessing.
 
 - `cursor` uses `cursor-agent` with no forced model, allowing Cursor's configured
   default/Auto choice. Unless a receipt identifies it, report
-  `Cursor default/Auto; serving model unverified` and
+  `Cursor default/Auto; serving family unverified` and
   `independence_verified: false`.
 - `composer` requests the current compatible Composer model through
   `cursor-agent`.
@@ -53,7 +52,7 @@ when the request never says `oracle`. A request for ce-pov's take alone does not
   replace an explicitly named model with another model.
 - **Bare `oracle`:** select up to two reachable, attestably different-model
   targets using conversation preference, local configuration, active project
-  conventions, then the declared default order; announce the selection and run
+  conventions, the project's `.rocketclaw/` configuration, then the declared default order; announce the selection and run
   it. Invoking `oracle` authorizes this ordinary read-only consultation against
   the current project.
 - **Explicit unnamed cross-check:** bypass the correction-cost gate and use the
@@ -74,10 +73,10 @@ or configured as a preference.
 **Prior-opinion subjects.** When the subject is an already-formed position —
 ce-pov's own prior POV or the user's stated view — that position is the subject
 artifact and ships in the payload; peers answer the underlying question with
-their own verdict, and those `independent` voices enter convergence (unlike
-`skeptic` mode, where the critique does not). Any fresh host meta-judgment formed
+their own verdict, and those `independent` peers enter convergence (unlike
+  `skeptic` mode, where the critique does not). Any fresh host meta-judgment formed
 after the summons is withheld per Section 4's round-1 sequencing. A user-supplied
-position is handled identically to a host-authored one — shipped as the subject,
+position is handled identically to a host-supplied one — shipped as the subject,
 never capitulated to.
 
 ## 2. Normalize scope and freeze repository identity
@@ -90,7 +89,7 @@ Normalize the allowed read scope once as:
 Pass that identical representation to every peer prompt and route adapter. The
 default is the repository root. A narrower user- or host-supplied scope is
 binding and is never broadened. Peers launched on the same host inspect existing
-subject files and supporting evidence directly from this shared working tree;
+subject files and supporting evidence directly from this shared workspace;
 point them to those files instead of copying their contents into the payload.
 Pass material inline only when it exists solely in the conversation or is
 otherwise unavailable in the workspace.
@@ -102,12 +101,13 @@ never promise that secrets inside the readable scope are inaccessible. Peers may
 search and read within the declared scope but may not mutate the project or
 intentionally inspect outside it.
 
-Before initial dispatch, capture one **repository-scope identity**: the committed
-revision plus a digest of dirty and untracked content inside the normalized
-scope. Include it in every peer payload. Revalidate it before every reconcile
+Before initial dispatch, capture one **repository-scope identity**: the
+working-copy change ID and commit ID from `jj --ignore-working-copy log -r @`,
+plus a digest of current file content inside the normalized scope. Include it in
+every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
-voices into the current project: disclose the change and either restart all
-voices on the new identity or return an incomplete panel result.
+peers into the current project: disclose the change and either restart all
+peers on the new identity or return an incomplete panel result.
 
 The caller passes this panel the resolved absolute `$SCRATCH_DIR` created in
 SKILL.md Phase 1. Keep payloads, raw output, logs, and result artifacts there;
@@ -127,10 +127,10 @@ For each peer:
    content or repository access.
 2. Try the declared preferred mapping first.
 3. If that default is observed unavailable, obsolete, or incompatible, choose
-   only the closest compatible equivalent in the same requested target, model
+    only the closest compatible equivalent in the same requested target, serving
    family, and reasoning tier. Record the observed local fact and substitute.
    An explicit user model request cannot become another model.
-4. Resolve one concrete target, model choice, harness route, provider, and every
+4. Resolve one concrete target, route, provider, and every
    intermediary. Confirm every actual recipient is in the egress allowlist.
 5. Announce the selected target and route in ordinary language before dispatch.
 
@@ -152,7 +152,7 @@ within these rules is reported, never silently replaced or dropped.
 The pre-dispatch update should say who will inspect the subject and that the
 review is read-only. Do not recite scope mechanics, promise that repository
 secrets are inaccessible, or describe probe results, CLI versions, model tiers,
-commit hashes, repository identity, route health, job lifecycle, or scratch
+change or commit IDs, repository identity, route health, job lifecycle, or scratch
 paths. Mention a cooperative scope restriction only when it materially changes
 the user's choice. Refer to the codebase as "this project" or "the repository"
 unless the user supplied a recognizable name.
@@ -167,7 +167,7 @@ tree. Do not duplicate readable files or add a host-curated architecture summary
 merely to brief the peer.
 
 For an initial `independent` round, exclude ce-pov's position and every other
-voice's conclusion. The proposal, document, or approach set being judged is the
+peer's conclusion. The proposal, document, or approach set being judged is the
 subject and remains fully available; independence means withholding prior
 judgments about it, not withholding the artifact. The host's own argument —
 candidate-risk enumerations, decisive premises stated as fact, advocacy framing,
@@ -180,11 +180,11 @@ example, "the file at PATH contains X" is round-1 evidence, while "X is the risk
 option" waits for reconcile). Label inlined conversation-only material as such,
 and carry the user's stated goal — including its intensity — when it bears on the
 decision. State in the payload that rejecting every supplied option, or the
-framing itself, is a valid position. When ce-pov authored the subject in-session,
+framing itself, is a valid position. When the subject was created in-session,
 present the options symmetrically in the payload's own words even though the full
 subject document remains attached. When the subject is itself an already-formed
 position (Section 1), the strip list above applies only to fresh host framing
-generated in response to the summons: the position's own premises, labels, and
+formed in response to the summons: the position's own premises, labels, and
 advocacy ship intact as the subject artifact, and only host meta-judgment formed
 about it after the summons waits for reconcile — peers still return their own
 independent verdict. For `skeptic` mode, include
@@ -201,8 +201,8 @@ control. Follow the worker's current usage rather than reconstructing provider
 arguments. Pass the fixed target/route, any host-resolved same-family model
 override, the canonical scope and identity, payload path, and round output
 directory. Pass the actual repository root separately from any narrower read
-root, and pre-create the round output directory as private scratch outside the
-repository. For named peers, start one job per exact target; for a selected panel,
+   root, and pre-create the round output directory as private scratch beneath
+   `<workspace-root>/.tmp/rocketclaw/`. For named peers, start one job per exact target; for a selected panel,
 start one job per selected peer. Start all jobs before waiting.
 
 Each worker writes `<run-dir>/pov-<target>.json`, where `<target>` is the resolved
@@ -225,14 +225,14 @@ call. Classify every started job from its terminal state; `done` alone does not
 prove a usable artifact exists.
 
 Read artifacts and logs only through the runner's ownership-checked `result`
-interface. Accept only schema-shaped artifacts with non-empty `position` and
-`reasoning`, a valid `movement`, and the route/model receipt tuple. Initial
+interface. Accept only schema-shaped artifacts with `actor: ai:assistant`,
+non-empty `position` and `reasoning`, a valid `movement`, and the route receipt tuple. Initial
 responses require `movement: initial`; reconcile responses require `moved` or
 `held` plus what changed or why the new evidence was insufficient.
 
 Attribute from the receipt, never expectation. Record target, actual
-harness/intermediary route, requested model, served model, and
-`independence_verified` separately. A served model of `unverified` remains
+intermediary route, serving family, and `independence_verified` separately. An
+unverified serving family remains
 unverified. If a job yields no usable artifact, use bounded `peer skip evidence`
 from its log to state an observed quota, authentication, or route failure; never
 invent a cause. An authentication-shaped peer failure (`not logged in`, `please
@@ -245,7 +245,7 @@ a login command on that basis.
 
 ## 5. Detect dissent, verify claims, and reconcile
 
-Only `mode: independent` voices enter convergence. Material dissent means a
+Only `mode: independent` peers enter convergence. Material dissent means a
 different adoption grade, a different selected approach, or document bottom
 lines that imply different reader actions (`proceed`, `revise-first`, or
 `reject`) or disagree on whether a risk is fatal. Wording, emphasis, confidence,
@@ -265,8 +265,8 @@ For each reconcile exchange:
    `contradicted`, or `unverifiable`, with source locations when available.
 4. Build one common evidence delta. Send the identical complete delta to every
    surviving peer—never route-specific truncation—along with the full original
-   subject and every surviving voice's current position and reasoning, capped at
-   five succinct source-attributed evidence bullets per voice.
+   subject and every surviving peer's current position and reasoning, capped at
+   five succinct source-attributed evidence bullets per peer.
 5. Re-resolve every fixed route under Section 3, then dispatch a fresh stateless
    round. The same recipients need no question; an unexpected new recipient or
    intermediary does. A failed peer is dropped for later rounds; do not reuse its
@@ -300,11 +300,11 @@ a new finite cap, never an open-ended loop.
 Lead with ce-pov's POV in the active subject shape, followed by a compact panel
 note:
 
-- **Confident:** state whether voices aligned. Concurrence raises confidence but
+- **Confident:** state whether peers aligned. Concurrence raises confidence but
   does not eliminate correlated-model blind spots. If ce-pov decided over
   dissent, name the disagreement and why its result prevailed.
 - **Stalemate:** state ce-pov's current position, each surviving peer's position
-  and movement, every dropped voice's last state, and whether the disagreement
+  and movement, every dropped peer's last state, and whether the disagreement
   is an evidence gap or judgment difference. Recommend when there is a real
   basis; otherwise say "Either is viable" with the material tradeoffs. At a cap,
   add **Further rounds:** recommend a specific bounded extension with its new
@@ -317,12 +317,12 @@ note:
   which peers were attempted, or that none ran and the observed reason — rather
   than shipping a bare solo verdict.
 
-Retain target, route, requested model, served model, and independence receipts in
+Retain target, route, serving family, and independence receipts in
 the panel record, but keep the default chat note decision-relevant: name the
 peer, its position and movement, any observed failure, and an independence caveat
-when it affects credibility. Do not dump route or model diagnostics unless they
+when it affects credibility. Do not dump route diagnostics unless they
 materially change the conclusion or the user asks. Never attribute a position to
-a model that did not run.
+a peer that did not run.
 
 The panel itself never mutates. After delivery, apply SKILL.md Phase 4's
 four-part conjunction: the original prompt explicitly authorized the named
@@ -333,11 +333,11 @@ for handoff; otherwise offer one logical next step and wait.
 ## 7. Skeptic mode and degradation
 
 When asked to challenge ce-pov rather than form an independent POV, set
-`mode: skeptic`. Fold a valid attributed critique into ce-pov once, but do not
-put that voice into convergence. Disclose whether it changed the POV. A failed
+`mode: skeptic`. Fold a valid cited critique into ce-pov once, but do not
+put that peer into convergence. Disclose whether it changed the POV. A failed
 skeptic degrades like any unavailable peer.
 
-A peer never blocks a POV. Mid-round failure drops only that voice; an
+A peer never blocks a POV. Mid-round failure drops only that peer; an
 oversized canonical payload drops routes that cannot accept the identical
 payload; no surviving peer yields the solo POV plus the availability note.
 
@@ -345,8 +345,8 @@ Distinguish a route-level failure from a dispatch-infrastructure failure. A
 route that runs and returns no usable artifact is dropped as above. But if the
 dispatch scripts themselves fail unexpectedly — a crash, a non-zero exit before
 any job starts, an unresolved script path — do not drop the leg on the first
-error. Attempt the same resolved route by hand, holding the selected target and
-model, the normalized read scope, and the round's independence rules fixed.
+error. Attempt the same resolved route by hand, holding the selected target,
+the normalized read scope, and the round's independence rules fixed.
 Keep attempting only while each failure is a new, plausibly recoverable one and
 the panel's aggregate deadline has not passed; stop and fall to the solo POV
 once a failure repeats or the deadline is spent. A hand recovery may not

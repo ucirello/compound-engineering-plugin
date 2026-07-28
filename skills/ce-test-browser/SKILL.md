@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current Jujutsu change, bookmark, or PR.
+argument-hint: "[PR number, bookmark name, 'current', or --port PORT]"
 ---
 
-# Browser Test Skill
+# RocketClaw Browser Testing
 
-Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a PR, Jujutsu change, or bookmark using the best approved browser driver available in the active harness.
 
 ## Modes
 
@@ -27,24 +27,26 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 ### 1. Select the Browser Driver
 
-Apply the Browser Driver Policy above and record the selected driver. This also requires a git repository with changes to test.
+Apply the Browser Driver Policy above and record the selected driver. This also requires a Jujutsu workspace with changes to test. Confirm the workspace root with `jj workspace root`, then inspect `jj status` and `jj log` to identify the current change, its ancestors, and relevant bookmarks.
 
 ### 2. Determine Test Scope
 
 **If PR number provided:**
 ```bash
-gh pr view [number] --json files -q '.files[].path'
+gh pr view <pr-number> --json files -q '.files[].path'
 ```
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj diff --name-only -r '<trunk>..@'
 ```
 
-**If branch name provided:**
+**If bookmark name provided:**
 ```bash
-git diff --name-only main...[branch]
+jj diff --name-only -r '<trunk>..<bookmark>'
 ```
+
+Resolve `<trunk>` from the repository's active instructions and conventions or from `jj bookmark list --all-remotes`; do not assume a fixed bookmark name. If the requested bookmark is available only as a remote bookmark, run `jj git fetch --remote <remote>`, inspect it with `jj bookmark list --all-remotes`, and use `<bookmark>@<remote>` in the revset. Do not create, move, or track bookmarks just to determine test scope.
 
 ### 3. Map Changed Files to Routes
 
@@ -66,7 +68,7 @@ Map each changed file to the route(s) that render it, then build the list of URL
 
 Determine the preferred port using this priority:
 
-1. **Explicit argument** — if the user passed `--port 5000`, use that directly.
+1. **Explicit argument** — if the user passed `--port <port>`, use that value directly.
 2. **In-context project instructions** — if your active project instructions already in context explicitly state the dev-server port, use it. Don't grep instruction files for a port: prose mentions (docs, examples, troubleshooting) are unreliable and false-positive-prone — config files and `.env` are the trustworthy sources.
 3. **package.json** — check dev/start scripts for `--port` flags.
 4. **Environment files** — check `.env`, `.env.local`, `.env.development` for `PORT=`.
@@ -195,7 +197,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / current change / [bookmark name]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -223,17 +225,17 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test current Jujutsu change stack (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
-/ce-test-browser 847
+/ce-test-browser <pr-number>
 
-# Test specific branch
-/ce-test-browser feature/new-dashboard
+# Test a specific bookmark
+/ce-test-browser <bookmark>
 
 # Test on a specific port
-/ce-test-browser --port 5000
+/ce-test-browser --port <port>
 ```
 
 ## Driver Reference

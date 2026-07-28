@@ -1,46 +1,79 @@
-"""Unit preparation, runner evidence, and complete-tree transport lifecycle."""
+"""Unit preparation, runner evidence, and pinned Jujutsu change lifecycle."""
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import re
 import stat
+import time
 
-from unit_workspace_state import *
+from unit_workspace_state import (
+    MAX_JSON_BYTES,
+    MAX_PACKET_BYTES,
+    O_DIRECTORY,
+    O_NOFOLLOW,
+    REVISION_ID,
+    TERMINAL_PROCESS,
+    Operational,
+    TrustFailure,
+    changed_paths,
+    create_private,
+    digest_bytes,
+    ensure_private_dir,
+    event,
+    fixed_route_contract,
+    jj,
+    locked_manifest,
+    now_iso,
+    read_external_packet,
+    read_private,
+    read_private_json,
+    revision,
+    revision_contains,
+    run_dir,
+    safe_id,
+    snapshot,
+    test_fault,
+    validate_private_dir,
+    validate_repo,
+    workspace_name,
+)
 
 
 def _valid_retry_commit_id(value: object) -> bool:
-    return isinstance(value, str) and re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", value) is not None
+    return isinstance(value, str) and REVISION_ID.fullmatch(value) is not None
 
 
 def _validate_retry_base(doc: dict, unit: dict, requested_base: str) -> None:
     wave = unit.get("wave", {})
     original_base = wave.get("base")
-    allowed_heads = wave.get("allowed_heads", [])
+    allowed_revisions = wave.get("allowed_revisions", [])
     if not _valid_retry_commit_id(original_base):
         raise TrustFailure("recorded retry base is malformed")
-    if not isinstance(allowed_heads, list) or any(not _valid_retry_commit_id(head) for head in allowed_heads):
-        raise TrustFailure("recorded retry HEAD allowances are malformed")
+    if not isinstance(allowed_revisions, list) or any(
+        not _valid_retry_commit_id(item) for item in allowed_revisions
+    ):
+        raise TrustFailure("recorded retry revision allowances are malformed")
 
-    accepted_heads = {
-        commit
+    accepted = {
+        change["commit_id"]
         for candidate in doc.get("units", {}).values()
-        if (commit := unit_accepted_commit(candidate)) is not None
+        if isinstance((change := (candidate.get("integration") or {}).get("canonical_change")), dict)
+        and _valid_retry_commit_id(change.get("commit_id"))
     }
-    latest_allowed = allowed_heads[-1] if allowed_heads else original_base
-    if requested_base != original_base and requested_base not in accepted_heads:
+    latest_allowed = allowed_revisions[-1] if allowed_revisions else original_base
+    if requested_base != original_base and requested_base not in accepted:
         raise Operational(
             "BLOCKED",
-            "retry base is not a controller-accepted canonical head",
-            {"requested_base": requested_base, "latest_allowed_head": latest_allowed},
+            "retry base is not a controller-accepted canonical revision",
+            {"requested_base": requested_base, "latest_allowed_revision": latest_allowed},
         )
     repo = doc["repository"]["toplevel"]
-    required = accepted_heads | {original_base, *allowed_heads}
     missing = sorted(
-        commit for commit in required
-        if git_text(repo, "merge-base", commit, requested_base, check=False) != commit
+        candidate
+        for candidate in accepted | {original_base, *allowed_revisions}
+        if not revision_contains(repo, candidate, requested_base)
     )
     if missing:
         raise Operational(
@@ -48,7 +81,7 @@ def _validate_retry_base(doc: dict, unit: dict, requested_base: str) -> None:
             "retry base omits controller-accepted canonical history",
             {
                 "requested_base": requested_base,
-                "latest_allowed_head": latest_allowed,
+                "latest_allowed_revision": latest_allowed,
                 "missing_ancestry": missing,
             },
         )
@@ -74,11 +107,29 @@ def _record_retry_base(doc: dict, unit: dict, requested_base: str) -> None:
         candidate_wave = candidate.get("wave", {})
         if candidate_wave.get("base") != wave.get("base"):
             raise Operational("BLOCKED", "wave members do not share one recorded base")
-        allowed_heads = candidate_wave.setdefault("allowed_heads", [])
-        if not isinstance(allowed_heads, list) or any(not _valid_retry_commit_id(head) for head in allowed_heads):
-            raise TrustFailure("recorded retry HEAD allowances are malformed")
-        if requested_base not in allowed_heads:
-            allowed_heads.append(requested_base)
+        allowed = candidate_wave.setdefault("allowed_revisions", [])
+        if not isinstance(allowed, list) or any(not _valid_retry_commit_id(item) for item in allowed):
+            raise TrustFailure("recorded retry revision allowances are malformed")
+        if requested_base not in allowed:
+            allowed.append(requested_base)
+
+
+def _authorization(doc: dict, args, unit_id: str, attempt_id: str, packet_digest: str) -> dict:
+    route = fixed_route_contract(doc["binding"], doc["egress"])
+    return {
+        "schema_version": 2,
+        "run_id": args.run_id,
+        "unit_id": unit_id,
+        "attempt_id": attempt_id,
+        "route": doc["egress"]["route"],
+        "target": route["target"],
+        "harness": route["harness"],
+        "intermediaries": route["intermediaries"],
+        "model_requested": doc["binding"].get("model") or "auto",
+        "restrictions": doc["egress"].get("restrictions", []),
+        "activity_posture": args.activity_posture,
+        "packet_digest": packet_digest,
+    }
 
 
 def cmd_prepare(args) -> tuple[str, dict]:
@@ -89,39 +140,34 @@ def cmd_prepare(args) -> tuple[str, dict]:
     with locked_manifest(args.run_id) as doc:
         info = validate_repo(doc)
         repo = info["toplevel"]
-        base = git_text(repo, "rev-parse", f"{args.base}^{{commit}}")
-        if info["head"] != base:
-            raise Operational("BLOCKED", "canonical HEAD does not equal requested unit base")
-        if status_paths(repo):
-            raise Operational("BLOCKED", "canonical checkout is dirty; external workspace unavailable")
+        base = revision(repo, args.base)["commit_id"]
+        if info["commit_id"] != base or not info["working_copy_empty"] or info["conflicted"]:
+            raise Operational("BLOCKED", "canonical working-copy change is not the requested empty base")
         existing = doc["units"].get(uid)
         unit_root = os.path.join(run_dir(args.run_id), "units", uid)
         workspace = os.path.join(unit_root, "workspace")
         packet_path = os.path.join(unit_root, "packet.md")
         authorization_path = os.path.join(unit_root, "authorization.json")
-        authorization = attempt_authorization(doc, args.activity_posture, uid, attempt_id, packet_digest)
+        authorization = _authorization(doc, args, uid, attempt_id, packet_digest)
         authorization_bytes = (json.dumps(authorization, sort_keys=True, separators=(",", ":")) + "\n").encode()
         authorization_digest = digest_bytes(authorization_bytes)
-        contract_wave_base = existing.get("wave", {}).get("base") if existing else base
-        expected_contract = {
-            "dependencies": list(args.dependency),
-            "wave": {"id": args.wave_id, "base": contract_wave_base, "position": args.wave_position},
-            "packet_digest": packet_digest,
-            "attempt_id": attempt_id,
-            "authorization": authorization,
-            "authorization_path": authorization_path,
-            "authorization_digest": authorization_digest,
-        }
         retrying = False
+        attempt = None
         if existing:
-            matching_attempts = [attempt for attempt in existing.get("attempts", []) if attempt.get("attempt_id") == attempt_id]
-            if not matching_attempts:
+            matches = [row for row in existing.get("attempts", []) if row.get("attempt_id") == attempt_id]
+            if matches:
+                attempt = find_attempt(existing, attempt_id)
+            else:
                 cleanup = existing.get("cleanup")
+                fully_cleaned = isinstance(cleanup, dict) and (
+                    cleanup.get("artifacts_pruned") is True
+                    or cleanup.get("artifact_cleanup", {}).get("complete") is True
+                )
                 if (
                     existing.get("state") != "cleaned"
                     or not isinstance(cleanup, dict)
                     or cleanup.get("abandoned") is not True
-                    or cleanup.get("artifact_cleanup", {}).get("complete") is not True
+                    or not fully_cleaned
                 ):
                     raise Operational("REFUSED", "a fresh attempt requires an exactly abandoned and fully cleaned prior attempt")
                 if doc.get("integration_lock"):
@@ -129,36 +175,24 @@ def cmd_prepare(args) -> tuple[str, dict]:
                 if existing.get("dependencies") != list(args.dependency):
                     raise Operational("BLOCKED", "retry dependencies differ from the recorded unit")
                 prior_wave = existing.get("wave", {})
-                if {
-                    "id": prior_wave.get("id"),
-                    "position": prior_wave.get("position"),
-                } != {"id": args.wave_id, "position": args.wave_position}:
+                if (prior_wave.get("id"), prior_wave.get("position")) != (args.wave_id, args.wave_position):
                     raise Operational("BLOCKED", "retry wave identity/position differs from the recorded unit")
                 _validate_retry_base(doc, existing, base)
                 retrying = True
-            else:
-                attempt = find_attempt(existing, attempt_id)
-        if existing and not retrying and (
-            existing.get("workspace", {}).get("path") != workspace
-            or existing.get("workspace", {}).get("base") != base
-        ):
-            raise Operational("BLOCKED", "duplicate unit id has a different workspace contract")
         if existing and not retrying:
+            recorded = existing.get("workspace", {})
+            if recorded.get("path") != workspace or recorded.get("base") != base:
+                raise Operational("BLOCKED", "duplicate unit id has a different workspace contract")
             if existing.get("state") == "cleaned" or existing.get("cleanup"):
-                raise Operational(
-                    "REFUSED",
-                    "cleaned unit cannot reuse a recorded attempt id; supply a fresh --attempt-id after exact abandonment cleanup and lock release",
-                )
-            observed_contract = {
-                "dependencies": existing.get("dependencies"),
-                "wave": {key: existing.get("wave", {}).get(key) for key in ("id", "base", "position")},
-                "packet_digest": existing.get("packet_digest"),
-                "attempt_id": attempt.get("attempt_id"),
-                "authorization": attempt.get("authorization"),
-                "authorization_path": attempt.get("authorization_path"),
-                "authorization_digest": attempt.get("authorization_digest"),
+                raise Operational("REFUSED", "cleaned unit requires a fresh attempt id")
+            expected = {
+                "attempt_id": attempt_id,
+                "authorization": authorization,
+                "authorization_path": authorization_path,
+                "authorization_digest": authorization_digest,
             }
-            if observed_contract != expected_contract or existing.get("packet", {}).get("path") != packet_path:
+            observed = {key: attempt.get(key) for key in expected}
+            if observed != expected or existing.get("packet", {}).get("path") != packet_path:
                 raise Operational("BLOCKED", "resumed prepare contract differs from the recorded unit")
             if read_private(packet_path, MAX_PACKET_BYTES) != packet_bytes:
                 raise Operational("BLOCKED", "controller-owned unit packet no longer matches supplied bytes")
@@ -166,33 +200,35 @@ def cmd_prepare(args) -> tuple[str, dict]:
                 raise Operational("BLOCKED", "controller-owned authorization no longer matches the recorded attempt")
             result_fd, _ = open_recorded_result_dir(existing)
             os.close(result_fd)
-        if existing and not retrying and existing["workspace"].get("registered"):
-            if existing.get("state") == "queued":
-                validate_pristine_unit_base(doc, existing)
-            else:
-                validate_workspace(doc, existing)
+            validate_workspace(doc, existing)
             return "PREPARED", {
-                "unit_id": uid, "attempt_id": attempt_id,
-                "workspace": workspace, "result_dir": os.path.join(unit_root, "result"),
-                "packet_path": packet_path, "packet_digest": packet_digest,
-                "authorization_path": authorization_path, "authorization_digest": authorization_digest,
+                "unit_id": uid,
+                "attempt_id": attempt_id,
+                "workspace": workspace,
+                "result_dir": os.path.join(unit_root, "result"),
+                "packet_path": packet_path,
+                "packet_digest": packet_digest,
+                "authorization_path": authorization_path,
+                "authorization_digest": authorization_digest,
                 "adapter": attempt["adapter"],
-                "base": base, "resumed": True,
+                "base": base,
+                "resumed": True,
             }
+
     ensure_private_dir(unit_root)
     result_dir = os.path.join(unit_root, "result")
     ensure_private_dir(result_dir)
     result_dir_identity = private_result_dir_identity(result_dir)
-    if os.path.lexists(packet_path):
-        if read_private(packet_path, MAX_PACKET_BYTES) != packet_bytes:
-            raise Operational("BLOCKED", "controller-owned packet path contains different bytes")
-    else:
-        create_private(packet_path, packet_bytes)
-    if os.path.lexists(authorization_path):
-        if read_private(authorization_path, MAX_JSON_BYTES) != authorization_bytes:
-            raise Operational("BLOCKED", "controller-owned authorization path contains different bytes")
-    else:
-        create_private(authorization_path, authorization_bytes)
+    for path, content, cap, label in (
+        (packet_path, packet_bytes, MAX_PACKET_BYTES, "packet"),
+        (authorization_path, authorization_bytes, MAX_JSON_BYTES, "authorization"),
+    ):
+        if os.path.lexists(path):
+            if read_private(path, cap) != content:
+                raise Operational("BLOCKED", f"controller-owned {label} path contains different bytes")
+        else:
+            create_private(path, content)
+    name = workspace_name(args.run_id, uid)
     attempt_record = {
         "attempt_id": attempt_id,
         "job_id": None,
@@ -207,93 +243,64 @@ def cmd_prepare(args) -> tuple[str, dict]:
         "adapter": os.path.realpath(os.path.join(os.path.dirname(__file__), "cross-model-work.sh")),
         "terminal_receipt": None,
     }
-    if not existing:
-        unit = {
-            "unit_id": uid,
-            "state": "queued",
-            "dependencies": list(args.dependency),
-            "wave": {"id": args.wave_id, "base": base, "position": args.wave_position, "allowed_heads": [base]},
-            "packet_digest": packet_digest,
-            "packet": {"path": packet_path, "digest": packet_digest, "bytes": len(packet_bytes), "retained": True},
-            "workspace": {"path": workspace, "base": base, "registered": False},
-            "result_dir_identity": result_dir_identity,
-            "attempts": [attempt_record],
-            "transport": {"base": None, "tree": None, "commit": None, "ref": None, "digest": None, "changed_paths": []},
-            "integration": {"intent_revision": None, "pre_fold": None, "expected_apply": None, "applied": None, "verification": None, "canonical_commit": None, "restore": None},
-            "cleanup": None,
-            "recovery_path": unit_root,
-        }
-        with locked_manifest(args.run_id, write=True) as doc:
-            if uid in doc["units"]:
+    if not os.path.exists(workspace):
+        jj(repo, "workspace", "add", "--name", name, "-r", base, workspace)
+        test_fault("after-workspace-add")
+    parent = revision(workspace, "@-")
+    current = revision(workspace)
+    if parent["commit_id"] != base or changed_paths(workspace) or snapshot(workspace)["conflicted"]:
+        raise Operational("BLOCKED", "new Jujutsu workspace did not start from the requested base")
+    unit = {
+        "unit_id": uid,
+        "state": "queued",
+        "dependencies": list(args.dependency),
+        "wave": {"id": args.wave_id, "base": base, "position": args.wave_position, "allowed_revisions": [base]},
+        "packet_digest": packet_digest,
+        "packet": {"path": packet_path, "digest": packet_digest, "bytes": len(packet_bytes), "retained": True},
+        "workspace": {"path": workspace, "name": name, "base": base, "change_id": current["change_id"], "registered": True},
+        "result_dir_identity": result_dir_identity,
+        "attempts": [attempt_record],
+        "transport": None,
+        "integration": None,
+        "cleanup": None,
+        "recovery_path": unit_root,
+    }
+    with locked_manifest(args.run_id, write=True) as doc:
+        current_existing = doc["units"].get(uid)
+        if retrying:
+            cleanup = current_existing.get("cleanup") if current_existing else None
+            fully_cleaned = isinstance(cleanup, dict) and (
+                cleanup.get("artifacts_pruned") is True
+                or cleanup.get("artifact_cleanup", {}).get("complete") is True
+            )
+            if not current_existing or current_existing.get("state") != "cleaned" or not fully_cleaned:
+                raise Operational("BLOCKED", "unit retry eligibility changed while it was being prepared")
+            previous = find_attempt(current_existing)
+            previous["cleanup_receipt"] = dict(cleanup)
+            attempts = current_existing["attempts"]
+            attempts.append(attempt_record)
+            unit["attempts"] = attempts
+            _record_retry_base(doc, current_existing, base)
+            unit["wave"] = current_existing["wave"]
+            doc["units"][uid] = unit
+            event(doc, "unit-retry-prepared", uid, {"attempt_id": attempt_id, "base": base})
+        else:
+            if current_existing:
                 raise Operational("BLOCKED", "unit was concurrently claimed")
             doc["units"][uid] = unit
-            event(doc, "worktree-add-intent", uid, {"path": workspace, "base": base})
-    elif retrying:
-        with locked_manifest(args.run_id, write=True) as doc:
-            unit = doc["units"].get(uid)
-            cleanup = unit.get("cleanup") if unit else None
-            if (
-                not unit
-                or unit.get("state") != "cleaned"
-                or not isinstance(cleanup, dict)
-                or cleanup.get("abandoned") is not True
-                or cleanup.get("artifact_cleanup", {}).get("complete") is not True
-                or doc.get("integration_lock")
-            ):
-                raise Operational("BLOCKED", "unit retry eligibility changed while it was being prepared")
-            if any(attempt.get("attempt_id") == attempt_id for attempt in unit.get("attempts", [])):
-                raise Operational("BLOCKED", "retry attempt id was concurrently claimed")
-            info = validate_repo(doc)
-            if info["head"] != base:
-                raise Operational("BLOCKED", "canonical HEAD changed while retry was being prepared")
-            if unit.get("dependencies") != list(args.dependency):
-                raise Operational("BLOCKED", "retry dependencies differ from the recorded unit")
-            prior_wave = unit.get("wave", {})
-            if {
-                "id": prior_wave.get("id"),
-                "position": prior_wave.get("position"),
-            } != {"id": args.wave_id, "position": args.wave_position}:
-                raise Operational("BLOCKED", "retry wave identity/position differs from the recorded unit")
-            _validate_retry_base(doc, unit, base)
-            previous = find_attempt(unit)
-            previous["cleanup_receipt"] = dict(cleanup)
-            restore = unit.get("integration", {}).get("restore")
-            if restore is not None:
-                previous["restore_receipt"] = json.loads(json.dumps(restore))
-            unit["state"] = "queued"
-            unit["packet_digest"] = packet_digest
-            unit["packet"] = {"path": packet_path, "digest": packet_digest, "bytes": len(packet_bytes), "retained": True}
-            unit["workspace"] = {"path": workspace, "base": base, "registered": False}
-            unit["result_dir_identity"] = result_dir_identity
-            _record_retry_base(doc, unit, base)
-            unit["attempts"].append(attempt_record)
-            unit["transport"] = {"base": None, "tree": None, "commit": None, "ref": None, "digest": None, "changed_paths": []}
-            unit["integration"] = {"intent_revision": None, "pre_fold": None, "expected_apply": None, "applied": None, "verification": None, "canonical_commit": None, "restore": None}
-            unit["cleanup"] = None
-            unit["recovery_path"] = unit_root
-            event(doc, "unit-retry-prepared", uid, {"attempt_id": attempt_id, "base": base})
-            event(doc, "worktree-add-intent", uid, {"path": workspace, "base": base})
-    with locked_manifest(args.run_id) as doc:
-        common = doc["repository"]["common_dir"]
-        repo = doc["repository"]["toplevel"]
-    with admin_lock(common):
-        if not os.path.exists(workspace):
-            git(repo, "worktree", "add", "--detach", workspace, base)
-            test_fault("after-worktree-add")
-        with locked_manifest(args.run_id) as doc:
-            unit = doc["units"][uid]
-            validate_pristine_unit_base(doc, unit)
-    with locked_manifest(args.run_id, write=True) as doc:
-        unit = doc["units"][uid]
-        unit["workspace"]["registered"] = True
-        event(doc, "worktree-prepared", uid, {"path": workspace, "base": base})
+        event(doc, "workspace-prepared", uid, {"path": workspace, "name": name, "base": base})
     return "PREPARED", {
-        "unit_id": uid, "attempt_id": attempt_id,
-        "workspace": workspace, "result_dir": os.path.join(unit_root, "result"),
-        "packet_path": packet_path, "packet_digest": packet_digest,
-        "authorization_path": authorization_path, "authorization_digest": authorization_digest,
+        "unit_id": uid,
+        "attempt_id": attempt_id,
+        "workspace": workspace,
+        "result_dir": result_dir,
+        "packet_path": packet_path,
+        "packet_digest": packet_digest,
+        "authorization_path": authorization_path,
+        "authorization_digest": authorization_digest,
         "adapter": attempt_record["adapter"],
-        "base": base, "resumed": False,
+        "base": base,
+        "resumed": False,
     }
 
 
@@ -320,8 +327,10 @@ def process_evidence(job_dir: str) -> dict:
     activity = {"latest_at": None, "log_bytes": 0}
     log = os.path.join(job_dir, "out.log")
     if os.path.lexists(log):
-        st = stat_private_file(log)
-        activity = {"latest_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(st.st_mtime)), "log_bytes": st.st_size}
+        entry = os.stat(log, follow_symlinks=False)
+        if not stat.S_ISREG(entry.st_mode):
+            raise TrustFailure("runner log is not a regular file")
+        activity = {"latest_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(entry.st_mtime)), "log_bytes": entry.st_size}
     return {"process_state": word, "failure_reason": failure_reason, "activity": activity}
 
 
@@ -335,26 +344,26 @@ MAX_REPORTED_CHANGED_FILES = 1000
 
 
 def _validate_private_dir_fd(fd: int, path: str) -> os.stat_result:
-    st = os.fstat(fd)
+    entry = os.fstat(fd)
     effective_uid = os.geteuid() if hasattr(os, "geteuid") else None
-    if not stat.S_ISDIR(st.st_mode):
+    if not stat.S_ISDIR(entry.st_mode):
         raise TrustFailure(f"not a real directory: {path}")
-    if effective_uid is not None and st.st_uid != effective_uid:
+    if effective_uid is not None and entry.st_uid != effective_uid:
         raise TrustFailure(f"directory is not owned by current user: {path}")
-    mode = stat.S_IMODE(st.st_mode)
+    mode = stat.S_IMODE(entry.st_mode)
     if mode != 0o700:
         raise TrustFailure(f"directory mode is {mode:04o}, expected 0700: {path}")
-    return st
+    return entry
 
 
 def private_result_dir_identity(path: str) -> dict:
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | O_NOFOLLOW)
+        fd = os.open(path, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
     except OSError as exc:
         raise TrustFailure(f"cannot safely open result directory {path}: {exc}") from exc
     try:
-        st = _validate_private_dir_fd(fd, path)
-        return {"dev": st.st_dev, "ino": st.st_ino}
+        entry = _validate_private_dir_fd(fd, path)
+        return {"dev": entry.st_dev, "ino": entry.st_ino}
     finally:
         os.close(fd)
 
@@ -362,19 +371,17 @@ def private_result_dir_identity(path: str) -> dict:
 def open_recorded_result_dir(unit: dict) -> tuple[int, str]:
     result_dir = os.path.join(os.path.dirname(unit["workspace"]["path"]), "result")
     identity = unit.get("result_dir_identity")
-    if (
-        not isinstance(identity, dict)
-        or set(identity) != {"dev", "ino"}
-        or any(not isinstance(identity.get(key), int) or isinstance(identity.get(key), bool) for key in ("dev", "ino"))
+    if not isinstance(identity, dict) or set(identity) != {"dev", "ino"} or any(
+        not isinstance(identity.get(key), int) or isinstance(identity.get(key), bool) for key in ("dev", "ino")
     ):
         raise TrustFailure("unit has no valid controller-recorded result directory identity")
     try:
-        fd = os.open(result_dir, os.O_RDONLY | os.O_DIRECTORY | O_NOFOLLOW)
+        fd = os.open(result_dir, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
     except OSError as exc:
         raise TrustFailure(f"cannot safely open result directory {result_dir}: {exc}") from exc
     try:
-        st = _validate_private_dir_fd(fd, result_dir)
-        if (st.st_dev, st.st_ino) != (identity["dev"], identity["ino"]):
+        entry = _validate_private_dir_fd(fd, result_dir)
+        if (entry.st_dev, entry.st_ino) != (identity["dev"], identity["ino"]):
             raise TrustFailure("controller result directory identity changed")
         return fd, result_dir
     except Exception:
@@ -390,37 +397,26 @@ def read_private_at(dir_fd: int, name: str, cap: int, display_path: str) -> byte
     except OSError as exc:
         raise TrustFailure(f"cannot safely open state file {display_path}: {exc}") from exc
     try:
-        st = os.fstat(fd)
+        entry = os.fstat(fd)
         effective_uid = os.geteuid() if hasattr(os, "geteuid") else None
-        if not stat.S_ISREG(st.st_mode):
-            raise TrustFailure(f"state is not a regular file: {display_path}")
-        if effective_uid is not None and st.st_uid != effective_uid:
-            raise TrustFailure(f"state is not owned by current user: {display_path}")
-        mode = stat.S_IMODE(st.st_mode)
-        if mode != 0o600:
-            raise TrustFailure(f"state mode is {mode:04o}, expected 0600: {display_path}")
-        if st.st_size > cap:
-            raise TrustFailure(f"state exceeds {cap}-byte limit: {display_path}")
-        out = bytearray()
-        while len(out) <= cap:
-            part = os.read(fd, min(65536, cap + 1 - len(out)))
+        if not stat.S_ISREG(entry.st_mode) or effective_uid is not None and entry.st_uid != effective_uid:
+            raise TrustFailure(f"state owner/type validation failed: {display_path}")
+        if stat.S_IMODE(entry.st_mode) != 0o600 or entry.st_size > cap:
+            raise TrustFailure(f"state mode/size validation failed: {display_path}")
+        output = bytearray()
+        while len(output) <= cap:
+            part = os.read(fd, min(65536, cap + 1 - len(output)))
             if not part:
                 break
-            out.extend(part)
-        if len(out) > cap:
+            output.extend(part)
+        if len(output) > cap:
             raise TrustFailure(f"state grew beyond {cap}-byte limit: {display_path}")
-        return bytes(out)
+        return bytes(output)
     finally:
         os.close(fd)
 
 
-def stat_private_at(
-    dir_fd: int,
-    name: str,
-    display_path: str,
-    *,
-    missing_ok: bool = False,
-) -> os.stat_result | None:
+def stat_private_at(dir_fd: int, name: str, display_path: str, *, missing_ok: bool = False) -> os.stat_result | None:
     if os.path.basename(name) != name or name in {"", ".", ".."}:
         raise TrustFailure(f"unsafe state file name: {name!r}")
     try:
@@ -432,16 +428,13 @@ def stat_private_at(
     except OSError as exc:
         raise TrustFailure(f"cannot safely open state file {display_path}: {exc}") from exc
     try:
-        st = os.fstat(fd)
+        entry = os.fstat(fd)
         effective_uid = os.geteuid() if hasattr(os, "geteuid") else None
-        if not stat.S_ISREG(st.st_mode):
-            raise TrustFailure(f"state is not a regular file: {display_path}")
-        if effective_uid is not None and st.st_uid != effective_uid:
-            raise TrustFailure(f"state is not owned by current user: {display_path}")
-        mode = stat.S_IMODE(st.st_mode)
-        if mode != 0o600:
-            raise TrustFailure(f"state mode is {mode:04o}, expected 0600: {display_path}")
-        return st
+        if not stat.S_ISREG(entry.st_mode) or effective_uid is not None and entry.st_uid != effective_uid:
+            raise TrustFailure(f"state owner/type validation failed: {display_path}")
+        if stat.S_IMODE(entry.st_mode) != 0o600:
+            raise TrustFailure(f"state mode is not 0600: {display_path}")
+        return entry
     finally:
         os.close(fd)
 
@@ -449,12 +442,7 @@ def stat_private_at(
 def read_recorded_result_file(unit: dict, name: str, cap: int) -> bytes:
     result_fd, result_dir = open_recorded_result_dir(unit)
     try:
-        return read_private_at(
-            result_fd,
-            name,
-            cap,
-            os.path.join(result_dir, name),
-        )
+        return read_private_at(result_fd, name, cap, os.path.join(result_dir, name))
     finally:
         os.close(result_fd)
 
@@ -471,13 +459,7 @@ def read_recorded_result_json(unit: dict) -> tuple[dict, bytes]:
     return value, raw
 
 
-def terminal_receipt(
-    unit: dict,
-    attempt: dict,
-    *,
-    unavailable: bool = False,
-    launched_failure: bool = False,
-) -> dict:
+def terminal_receipt(unit: dict, attempt: dict, *, unavailable: bool = False, launched_failure: bool = False) -> dict:
     result_dir = os.path.join(os.path.dirname(unit["workspace"]["path"]), "result")
     receipt, result_bytes = read_recorded_result_json(unit)
     authorization = attempt.get("authorization")
@@ -490,7 +472,7 @@ def terminal_receipt(
         "harness": authorization["harness"],
         "intermediaries": authorization["intermediaries"],
         "model_requested": authorization["model_requested"],
-        "restriction_posture": authorization["restriction_posture"],
+        "restriction_posture": authorization.get("restriction_posture"),
         "packet_digest": unit["packet_digest"],
     }
     if unavailable or launched_failure:
@@ -500,60 +482,24 @@ def terminal_receipt(
         raise Operational("BLOCKED", "adapter terminal receipt does not match controller authorization", {"mismatches": mismatches})
     terminal_status = receipt.get("terminal_status")
     if unavailable:
-        neutral = {
-            "schema_version": 1,
-            "terminal_status": "unavailable",
-            "summary": "External route unavailable",
-            "changed_files": [],
-            "evidence": [],
-            "scope_expansion": None,
-            "model_actual": "unverified",
-            "model_receipt_status": "unverified",
-        }
+        neutral = {"schema_version": 1, "terminal_status": "unavailable", "summary": "External route unavailable", "changed_files": [], "evidence": [], "scope_expansion": None, "model_actual": "unverified", "model_receipt_status": "unverified"}
         invalid = {key: {"expected": value, "actual": receipt.get(key)} for key, value in neutral.items() if receipt.get(key) != value}
         failure_reason = receipt.get("failure_reason")
         if invalid or not isinstance(failure_reason, str) or not failure_reason or len(failure_reason.encode()) > 4096:
-            raise Operational(
-                "BLOCKED",
-                "failed runner did not publish a bounded neutral unavailable receipt",
-                {"mismatches": invalid},
-            )
+            raise Operational("BLOCKED", "failed runner did not publish a bounded neutral unavailable receipt", {"mismatches": invalid})
     elif launched_failure:
-        neutral = {
-            "schema_version": 1,
-            "terminal_status": "failed",
-            "changed_files": [],
-            "evidence": [],
-            "scope_expansion": None,
-        }
+        neutral = {"schema_version": 1, "terminal_status": "failed", "changed_files": [], "evidence": [], "scope_expansion": None}
         invalid = {key: {"expected": value, "actual": receipt.get(key)} for key, value in neutral.items() if receipt.get(key) != value}
         failure_reason = receipt.get("failure_reason")
         summary = receipt.get("summary")
-        if (
-            invalid
-            or not isinstance(failure_reason, str)
-            or not failure_reason
-            or len(failure_reason.encode()) > 4096
-            or not isinstance(summary, str)
-            or not summary
-            or len(summary.encode()) > 4096
-        ):
-            raise Operational(
-                "BLOCKED",
-                "failed runner did not publish a bounded neutral launched-route receipt",
-                {"mismatches": invalid},
-            )
-    else:
-        if terminal_status not in {"completed", "blocked", "scope_expansion"}:
-            raise Operational("BLOCKED", "successful runner did not publish a host-resolvable adapter result")
-        if terminal_status == "scope_expansion" and not isinstance(receipt.get("scope_expansion"), dict):
-            raise Operational("BLOCKED", "scope-expansion adapter result has no expansion receipt")
+        if invalid or not isinstance(failure_reason, str) or not failure_reason or len(failure_reason.encode()) > 4096 or not isinstance(summary, str) or not summary or len(summary.encode()) > 4096:
+            raise Operational("BLOCKED", "failed runner did not publish a bounded neutral launched-route receipt", {"mismatches": invalid})
+    elif terminal_status not in {"completed", "blocked", "scope_expansion"}:
+        raise Operational("BLOCKED", "successful runner did not publish a host-resolvable adapter result")
+    if terminal_status == "scope_expansion" and not isinstance(receipt.get("scope_expansion"), dict):
+        raise Operational("BLOCKED", "scope-expansion adapter result has no expansion receipt")
     changed_files = receipt.get("changed_files")
-    if (
-        not isinstance(changed_files, list)
-        or len(changed_files) > MAX_REPORTED_CHANGED_FILES
-        or any(not isinstance(path, str) or not path for path in changed_files)
-    ):
+    if not isinstance(changed_files, list) or len(changed_files) > MAX_REPORTED_CHANGED_FILES or any(not isinstance(path, str) or not path for path in changed_files):
         raise Operational("BLOCKED", "adapter terminal receipt has invalid changed-files evidence")
     raw_log = receipt.get("raw_log")
     expected_log = os.path.join(result_dir, "adapter.log")
@@ -573,11 +519,7 @@ def terminal_receipt(
     }
 
 
-def _validate_authorized_failed_job(
-    run_id: str,
-    unit: dict,
-    attempt: dict,
-) -> None:
+def _validate_authorized_failed_job(run_id: str, unit: dict, attempt: dict) -> None:
     job_id = attempt.get("job_id")
     if not isinstance(job_id, str):
         raise Operational("BLOCKED", "failed receipt has no bound runner job")
@@ -590,34 +532,19 @@ def _validate_authorized_failed_job(
     validate_runner_contract(run_id, unit, meta)
     expected_result_dir = os.path.join(os.path.dirname(unit["workspace"]["path"]), "result")
     expected_dispatch = {
-        "attempt_id": attempt.get("attempt_id"),
-        "job_id": job_id,
-        "authorization_path": attempt.get("authorization_path"),
-        "authorization_digest": attempt.get("authorization_digest"),
-        "workspace": unit["workspace"]["path"],
-        "packet_path": unit["packet"]["path"],
-        "packet_digest": unit["packet_digest"],
-        "result_dir": expected_result_dir,
+        "attempt_id": attempt.get("attempt_id"), "job_id": job_id,
+        "authorization_path": attempt.get("authorization_path"), "authorization_digest": attempt.get("authorization_digest"),
+        "workspace": unit["workspace"]["path"], "packet_path": unit["packet"]["path"],
+        "packet_digest": unit["packet_digest"], "result_dir": expected_result_dir,
         "result_dir_identity": unit.get("result_dir_identity"),
     }
     if attempt.get("dispatch_authorization_receipt") != expected_dispatch:
         raise Operational("BLOCKED", "failed receipt is not bound to the exact authorized dispatch")
 
 
-def _authorized_failed_terminal_receipt(
-    run_id: str,
-    unit: dict,
-    attempt: dict,
-    *,
-    unavailable: bool,
-) -> dict:
+def _authorized_failed_terminal_receipt(run_id: str, unit: dict, attempt: dict, *, unavailable: bool) -> dict:
     _validate_authorized_failed_job(run_id, unit, attempt)
-    return terminal_receipt(
-        unit,
-        attempt,
-        unavailable=unavailable,
-        launched_failure=not unavailable,
-    )
+    return terminal_receipt(unit, attempt, unavailable=unavailable, launched_failure=not unavailable)
 
 
 def unavailable_terminal_receipt(run_id: str, unit: dict, attempt: dict) -> dict:
@@ -636,14 +563,7 @@ def record_terminal_validation_failure(run_id: str, unit_id: str, error: Operati
         result_digest = digest_bytes(read_recorded_result_file(unit, "implementation-result.json", MAX_RESULT_BYTES))
     with locked_manifest(run_id, write=True) as doc:
         attempt = find_attempt(doc["units"][unit_id])
-        failure = {
-            "at": now_iso(),
-            "word": error.word,
-            "reason": str(error),
-            "detail": error.detail,
-            "job_id": attempt.get("job_id"),
-            "result_sha256": result_digest,
-        }
+        failure = {"at": now_iso(), "word": error.word, "reason": str(error), "detail": error.detail, "job_id": attempt.get("job_id"), "result_sha256": result_digest}
         attempt["terminal_validation_failure"] = failure
         fallback = attempt.setdefault("fallback", {})
         fallback.setdefault("claimed", None)
@@ -656,8 +576,7 @@ def validate_terminal_validation_failure(run_id: str, unit: dict, attempt: dict)
     failure = attempt.get("terminal_validation_failure")
     if not isinstance(failure, dict) or failure.get("job_id") != attempt.get("job_id"):
         raise Operational("REFUSED", "attempt has no exact terminal-validation failure")
-    observed = process_evidence(runner_job_dir(run_id, attempt["job_id"]))["process_state"]
-    if observed != "done":
+    if process_evidence(runner_job_dir(run_id, attempt["job_id"]))["process_state"] != "done":
         raise Operational("BLOCKED", "terminal-validation job evidence changed")
     if digest_bytes(read_recorded_result_file(unit, "implementation-result.json", MAX_RESULT_BYTES)) != failure.get("result_sha256"):
         raise Operational("BLOCKED", "terminal-validation result evidence changed")
@@ -666,9 +585,7 @@ def validate_terminal_validation_failure(run_id: str, unit: dict, attempt: dict)
 
 def retire_terminal_validation_failure(unit: dict) -> None:
     attempt = find_attempt(unit)
-    failure = attempt.get("terminal_validation_failure")
-    claimed = attempt.get("fallback", {}).get("claimed")
-    if failure is not None and not claimed:
+    if attempt.get("terminal_validation_failure") is not None and not attempt.get("fallback", {}).get("claimed"):
         attempt.pop("terminal_validation_failure")
         attempt["fallback"] = {"eligible": False, "reason": None, "claimed": None}
 
@@ -679,42 +596,25 @@ def validate_runner_contract(run_id: str, unit: dict, meta: dict) -> None:
     expected_result_file = os.path.join(expected_result_dir, "implementation-result.json")
     if meta.get("skill") != "ce-work":
         raise Operational("BLOCKED", "runner skill must be 'ce-work'")
-    if meta.get("run_id") != run_id:
-        raise Operational("BLOCKED", f"runner run id must equal the controller run id exactly: expected {run_id!r}")
-    if meta.get("label") != unit_id:
-        raise Operational(
-            "BLOCKED",
-            f"runner label must equal unit id exactly: expected {unit_id!r}, got {meta.get('label')!r}",
-        )
-    if meta.get("input_digest") != unit["packet_digest"]:
-        raise Operational("BLOCKED", "runner input digest must equal the controller packet digest")
+    if meta.get("run_id") != run_id or meta.get("label") != unit_id or meta.get("input_digest") != unit["packet_digest"]:
+        raise Operational("BLOCKED", "runner identity or input digest does not match the controller contract")
     if not isinstance(meta.get("result_path"), str) or os.path.abspath(meta["result_path"]) != expected_result_file:
-        raise Operational(
-            "BLOCKED",
-            f"runner result path must be the controller result file: {expected_result_file}",
-        )
+        raise Operational("BLOCKED", f"runner result path must be the controller result file: {expected_result_file}")
     attempt = find_attempt(unit)
-    authorization = attempt.get("authorization")
     authorization_path = attempt.get("authorization_path")
     authorization_digest = attempt.get("authorization_digest")
-    if not isinstance(authorization, dict) or not isinstance(authorization_path, str) or not isinstance(authorization_digest, str):
+    if not isinstance(authorization_path, str) or not isinstance(authorization_digest, str):
         raise Operational("BLOCKED", "attempt has no controller-issued authorization artifact")
     authorization_bytes = read_private(authorization_path, MAX_JSON_BYTES)
     try:
-        observed_authorization = json.loads(authorization_bytes)
+        observed = json.loads(authorization_bytes)
     except (ValueError, UnicodeDecodeError) as exc:
         raise TrustFailure("controller authorization artifact is malformed") from exc
-    if observed_authorization != authorization or digest_bytes(authorization_bytes) != authorization_digest:
+    if observed != attempt.get("authorization") or digest_bytes(authorization_bytes) != authorization_digest:
         raise Operational("BLOCKED", "controller authorization artifact no longer matches the recorded attempt")
-    expected_argv = [
-        attempt.get("adapter"), authorization_path, unit["workspace"]["path"],
-        unit["packet"]["path"], unit["packet_digest"], expected_result_dir,
-    ]
+    expected_argv = [attempt.get("adapter"), authorization_path, unit["workspace"]["path"], unit["packet"]["path"], unit["packet_digest"], expected_result_dir]
     if meta.get("worker_argv") != expected_argv:
-        raise Operational(
-            "BLOCKED", "runner worker argv does not match the controller-issued fixed-route contract",
-            {"expected_argv": expected_argv, "actual_argv": meta.get("worker_argv")},
-        )
+        raise Operational("BLOCKED", "runner worker argv does not match the controller-issued fixed-route contract", {"expected_argv": expected_argv, "actual_argv": meta.get("worker_argv")})
 
 
 def cmd_authorize_dispatch(args) -> tuple[str, dict]:
@@ -722,10 +622,8 @@ def cmd_authorize_dispatch(args) -> tuple[str, dict]:
     unit_id = safe_id(args.unit_id, "unit id")
     attempt_id = safe_id(args.attempt_id, "attempt id")
     job_id = safe_id(args.job_id, "job id")
-    if not re.fullmatch(r"[0-9a-f]{64}", args.authorization_digest):
-        raise Operational("REFUSED", "observed authorization digest must be lowercase SHA-256")
-    if not re.fullmatch(r"[0-9a-f]{64}", args.packet_digest):
-        raise Operational("REFUSED", "observed packet digest must be lowercase SHA-256")
+    if not re.fullmatch(r"[0-9a-f]{64}", args.authorization_digest) or not re.fullmatch(r"[0-9a-f]{64}", args.packet_digest):
+        raise Operational("REFUSED", "observed authorization and packet digests must be lowercase SHA-256")
     with locked_manifest(run_id, write=True) as doc:
         validate_repo(doc)
         unit = doc["units"].get(unit_id)
@@ -737,111 +635,61 @@ def cmd_authorize_dispatch(args) -> tuple[str, dict]:
         bound_job = attempt.get("job_id")
         if bound_job not in (None, job_id):
             raise Operational("AMBIGUOUS", "attempt is already bound to another job")
-        job_dir = os.path.join(run_dir(run_id), "jobs", job_id)
+        job_dir = runner_job_dir(run_id, job_id)
         validate_private_dir(job_dir)
         meta = read_private_json(os.path.join(job_dir, "meta.json"))
         if meta.get("job_id") != job_id:
             raise Operational("BLOCKED", "runner job metadata identity mismatch")
         validate_runner_contract(run_id, unit, meta)
-
-        expected_authorization_path = attempt.get("authorization_path")
-        expected_authorization_digest = attempt.get("authorization_digest")
-        if os.path.abspath(args.authorization) != expected_authorization_path:
-            raise Operational("BLOCKED", "authorization path does not match the recorded attempt")
-        if args.authorization_digest != expected_authorization_digest:
-            raise Operational("BLOCKED", "observed authorization digest does not match the recorded attempt")
+        expected_authorization_path = attempt["authorization_path"]
+        expected_authorization_digest = attempt["authorization_digest"]
+        if os.path.abspath(args.authorization) != expected_authorization_path or args.authorization_digest != expected_authorization_digest:
+            raise Operational("BLOCKED", "authorization path or digest does not match the recorded attempt")
         authorization_bytes = read_private(expected_authorization_path, MAX_JSON_BYTES)
         if digest_bytes(authorization_bytes) != expected_authorization_digest:
             raise Operational("BLOCKED", "controller authorization bytes no longer match the recorded digest")
-        try:
-            authorization = json.loads(authorization_bytes)
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise TrustFailure("controller authorization artifact is malformed") from exc
-        if authorization != attempt.get("authorization"):
-            raise Operational("BLOCKED", "controller authorization object no longer matches the recorded attempt")
-        if (
-            authorization.get("run_id") != run_id
-            or authorization.get("unit_id") != unit_id
-            or authorization.get("attempt_id") != attempt_id
-        ):
-            raise Operational("BLOCKED", "authorization run/unit/attempt identity mismatch")
-
         expected_workspace = unit["workspace"]["path"]
-        if os.path.abspath(args.workspace) != expected_workspace:
-            raise Operational("BLOCKED", "workspace path does not match the recorded unit")
-        expected_dispatch_authorization_receipt = {
-            "attempt_id": attempt_id,
-            "job_id": job_id,
-            "authorization_path": expected_authorization_path,
-            "authorization_digest": expected_authorization_digest,
-            "workspace": expected_workspace,
-            "packet_path": unit["packet"]["path"],
-            "packet_digest": unit["packet_digest"],
-            "result_dir": os.path.join(os.path.dirname(expected_workspace), "result"),
-            "result_dir_identity": unit.get("result_dir_identity"),
-        }
-        recorded_dispatch_authorization_receipt = attempt.get("dispatch_authorization_receipt")
-        if recorded_dispatch_authorization_receipt is not None and (
-            bound_job != job_id
-            or recorded_dispatch_authorization_receipt != expected_dispatch_authorization_receipt
-        ):
-            raise Operational("BLOCKED", "recorded dispatch authorization does not match the exact request")
-        resumed = recorded_dispatch_authorization_receipt == expected_dispatch_authorization_receipt
-        if resumed:
-            validate_workspace(doc, unit)
-        else:
-            validate_pristine_unit_base(doc, unit)
-
         expected_packet = unit["packet"]["path"]
-        if os.path.abspath(args.packet) != expected_packet:
-            raise Operational("BLOCKED", "packet path does not match the controller-owned unit packet")
-        if args.packet_digest != unit["packet_digest"] or authorization.get("packet_digest") != unit["packet_digest"]:
-            raise Operational("BLOCKED", "packet digest does not match the recorded authorization")
-        packet_bytes = read_private(expected_packet, MAX_PACKET_BYTES)
-        if digest_bytes(packet_bytes) != unit["packet_digest"]:
-            raise Operational("BLOCKED", "controller-owned packet bytes no longer match the recorded digest")
-
         expected_result_dir = os.path.join(os.path.dirname(expected_workspace), "result")
-        if os.path.abspath(args.result_dir) != expected_result_dir:
-            raise Operational("BLOCKED", "result directory does not match the recorded unit")
+        if os.path.abspath(args.workspace) != expected_workspace or os.path.abspath(args.packet) != expected_packet or os.path.abspath(args.result_dir) != expected_result_dir:
+            raise Operational("BLOCKED", "dispatch paths do not match the recorded unit")
+        if args.packet_digest != unit["packet_digest"] or digest_bytes(read_private(expected_packet, MAX_PACKET_BYTES)) != unit["packet_digest"]:
+            raise Operational("BLOCKED", "packet digest does not match the recorded authorization")
         result_fd, _ = open_recorded_result_dir(unit)
         os.close(result_fd)
+        expected_dispatch = {
+            "attempt_id": attempt_id, "job_id": job_id,
+            "authorization_path": expected_authorization_path, "authorization_digest": expected_authorization_digest,
+            "workspace": expected_workspace, "packet_path": expected_packet, "packet_digest": unit["packet_digest"],
+            "result_dir": expected_result_dir, "result_dir_identity": unit.get("result_dir_identity"),
+        }
+        recorded_dispatch = attempt.get("dispatch_authorization_receipt")
+        if recorded_dispatch is not None and (bound_job != job_id or recorded_dispatch != expected_dispatch):
+            raise Operational("BLOCKED", "recorded dispatch authorization does not match the exact request")
+        resumed = recorded_dispatch == expected_dispatch
+        validate_workspace(doc, unit)
         if not resumed:
+            parent = revision(expected_workspace, "@-")
+            if parent["commit_id"] != unit["workspace"]["base"] or changed_paths(expected_workspace):
+                raise Operational("BLOCKED", "worker workspace changed before dispatch authorization")
             attempt["job_id"] = job_id
-            attempt["dispatch_authorization_receipt"] = expected_dispatch_authorization_receipt
+            attempt["dispatch_authorization_receipt"] = expected_dispatch
             unit["state"] = "authoring"
-            event(doc, "job-bound", unit_id, {
-                "attempt_id": attempt_id,
-                "job_id": job_id,
-                "source": "authorize-dispatch",
-            })
-    return "AUTHORIZED", {
-        "run_id": run_id,
-        "unit_id": unit_id,
-        "attempt_id": attempt_id,
-        "job_id": job_id,
-        "resumed": resumed,
-        "authorization_digest": expected_authorization_digest,
-        "packet_digest": unit["packet_digest"],
-    }
+            event(doc, "job-bound", unit_id, {"attempt_id": attempt_id, "job_id": job_id, "source": "authorize-dispatch"})
+    return "AUTHORIZED", {"run_id": run_id, "unit_id": unit_id, "attempt_id": attempt_id, "job_id": job_id, "resumed": resumed, "authorization_digest": expected_authorization_digest, "packet_digest": unit["packet_digest"]}
 
 
 def matching_runner_jobs(run_id: str, unit: dict) -> list[str]:
     jobs = os.path.join(run_dir(run_id), "jobs")
     validate_private_dir(jobs)
-    matches: list[str] = []
+    matches = []
     for entry in os.scandir(jobs):
         if not entry.is_dir(follow_symlinks=False):
             continue
         safe_id(entry.name, "job id")
         validate_private_dir(entry.path)
         meta = read_private_json(os.path.join(entry.path, "meta.json"))
-        if (
-            meta.get("skill") == "ce-work"
-            and meta.get("run_id") == run_id
-            and meta.get("label") == unit["unit_id"]
-            and meta.get("input_digest") == unit["packet_digest"]
-        ):
+        if meta.get("skill") == "ce-work" and meta.get("run_id") == run_id and meta.get("label") == unit["unit_id"] and meta.get("input_digest") == unit["packet_digest"]:
             validate_runner_contract(run_id, unit, meta)
             matches.append(entry.name)
     return sorted(matches)
@@ -849,10 +697,9 @@ def matching_runner_jobs(run_id: str, unit: dict) -> list[str]:
 
 def find_attempt(unit: dict, attempt_id: str | None = None) -> dict:
     attempts = unit.get("attempts", [])
-    if attempt_id:
-        matches = [a for a in attempts if a.get("attempt_id") == attempt_id]
-    else:
-        matches = attempts[-1:]
+    matches = [row for row in attempts if attempt_id is None or row.get("attempt_id") == attempt_id]
+    if attempt_id is None:
+        matches = matches[-1:]
     if len(matches) != 1:
         raise Operational("AMBIGUOUS", "attempt could not be identified exactly")
     return matches[0]
@@ -873,28 +720,16 @@ def cmd_record_job(args) -> tuple[str, dict]:
         if attempt.get("job_id"):
             if attempt["job_id"] != args.job_id:
                 raise Operational("AMBIGUOUS", "attempt is already bound to another job")
-            return "AUTHORING", {
-                "unit_id": args.unit_id,
-                "job_id": args.job_id,
-                "resumed": True,
-                "unit_state": unit["state"],
-            }
-        job_dir = runner_job_dir(args.run_id, args.job_id)
-        meta = read_private_json(os.path.join(job_dir, "meta.json"))
+            return "AUTHORING", {"unit_id": args.unit_id, "job_id": args.job_id, "resumed": True, "unit_state": unit["state"]}
+        meta = read_private_json(os.path.join(runner_job_dir(args.run_id, args.job_id), "meta.json"))
         validate_runner_contract(args.run_id, unit, meta)
     with locked_manifest(args.run_id, write=True) as doc:
         unit = doc["units"][args.unit_id]
         attempt = find_attempt(unit, args.attempt_id)
-        bound_job = attempt.get("job_id")
-        if bound_job == args.job_id:
-            return "AUTHORING", {
-                "unit_id": args.unit_id,
-                "job_id": args.job_id,
-                "resumed": True,
-                "unit_state": unit["state"],
-            }
-        if bound_job is not None:
+        if attempt.get("job_id") not in (None, args.job_id):
             raise Operational("AMBIGUOUS", "attempt was concurrently bound")
+        if attempt.get("job_id") == args.job_id:
+            return "AUTHORING", {"unit_id": args.unit_id, "job_id": args.job_id, "resumed": True, "unit_state": unit["state"]}
         if unit.get("state") != "queued":
             raise Operational("REFUSED", "an unbound job can be recorded only while the unit is queued")
         attempt["job_id"] = args.job_id
@@ -917,12 +752,7 @@ def sync_job(run_id: str, unit_id: str) -> dict:
         if evidence["process_state"] == "failed":
             result_fd, result_dir = open_recorded_result_dir(unit)
             try:
-                result_stat = stat_private_at(
-                    result_fd,
-                    "implementation-result.json",
-                    os.path.join(result_dir, "implementation-result.json"),
-                    missing_ok=True,
-                )
+                result_stat = stat_private_at(result_fd, "implementation-result.json", os.path.join(result_dir, "implementation-result.json"), missing_ok=True)
             finally:
                 os.close(result_fd)
             if result_stat is not None and result_stat.st_size > MAX_RESULT_BYTES:
@@ -939,70 +769,45 @@ def sync_job(run_id: str, unit_id: str) -> dict:
                         continue
     with locked_manifest(run_id, write=True) as doc:
         attempt = find_attempt(doc["units"][unit_id])
-        prior_state = attempt.get("process_state")
-        prior_activity = dict(attempt["activity"])
-        prior_fallback = dict(attempt.get("fallback", {}))
-        prior_receipt = attempt.get("terminal_receipt")
+        prior = (attempt.get("process_state"), dict(attempt["activity"]), dict(attempt.get("fallback", {})), attempt.get("terminal_receipt"))
         attempt["process_state"] = evidence["process_state"]
         attempt["activity"].update(evidence["activity"])
         if failure_receipt is not None:
             attempt["terminal_receipt"] = failure_receipt
-        authoritative_failure = evidence["process_state"] in TERMINAL_PROCESS - {"done"} or (
-            evidence["process_state"] == "never-started" and bool(attempt.get("job_id"))
-        )
+        authoritative_failure = evidence["process_state"] in TERMINAL_PROCESS - {"done"} or evidence["process_state"] == "never-started" and bool(attempt.get("job_id"))
         effective_failure_reason = None
         if authoritative_failure:
-            effective_failure_reason = (
-                failure_receipt["failure_reason"]
-                if failure_receipt is not None
-                else evidence["failure_reason"]
-                if oversized_result_failure and evidence["failure_reason"]
-                else evidence["process_state"]
-            )
+            effective_failure_reason = failure_receipt["failure_reason"] if failure_receipt is not None else evidence["failure_reason"] if oversized_result_failure and evidence["failure_reason"] else evidence["process_state"]
             fallback = attempt.setdefault("fallback", {})
             fallback.setdefault("claimed", None)
             fallback["eligible"] = fallback.get("claimed") is None
             fallback["reason"] = effective_failure_reason
-        changed = (
-            prior_state != evidence["process_state"]
-            or prior_activity != attempt["activity"]
-            or prior_fallback != attempt.get("fallback", {})
-            or prior_receipt != attempt.get("terminal_receipt")
-        )
-        if changed:
+        current = (attempt.get("process_state"), dict(attempt["activity"]), dict(attempt.get("fallback", {})), attempt.get("terminal_receipt"))
+        if prior != current:
             event(doc, "job-synced", unit_id, {"process_state": evidence["process_state"]})
-            if prior_state != evidence["process_state"] and evidence["process_state"] in TERMINAL_PROCESS:
+            if prior[0] != evidence["process_state"] and evidence["process_state"] in TERMINAL_PROCESS:
                 event(doc, "job-terminal", unit_id, {"process_state": evidence["process_state"]})
-            if failure_receipt is not None and prior_receipt != failure_receipt:
-                receipt_event = "route-unavailable" if failure_receipt["terminal_status"] == "unavailable" else "route-failed"
-                event(doc, receipt_event, unit_id, {"failure_reason": failure_receipt["failure_reason"]})
         activity = dict(attempt["activity"])
-    return {
-        "process_state": evidence["process_state"],
-        "failure_reason": effective_failure_reason,
-        "activity": activity,
-    }
+    return {"process_state": evidence["process_state"], "failure_reason": effective_failure_reason, "activity": activity}
 
 
 def cmd_sync_job(args) -> tuple[str, dict]:
-    evidence = sync_job(args.run_id, args.unit_id)
-    return "SYNCED", {"unit_id": args.unit_id, **evidence}
+    return "SYNCED", {"unit_id": args.unit_id, **sync_job(args.run_id, args.unit_id)}
 
 
 def transport_ref(run_id: str, unit_id: str) -> str:
-    return f"refs/ce-work/{digest_bytes(run_id.encode())[:20]}/{digest_bytes(unit_id.encode())[:20]}"
+    """Return the stable neutral identity retained for legacy receipt consumers."""
+    return f"rocketclaw/{digest_bytes(run_id.encode())[:20]}/{digest_bytes(unit_id.encode())[:20]}"
 
 
 def no_sequencer(workspace: str) -> None:
-    git_dir = git_text(workspace, "rev-parse", "--path-format=absolute", "--absolute-git-dir")
-    for name in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"):
-        if os.path.exists(os.path.join(git_dir, name)):
-            raise Operational("BLOCKED", f"worker workspace has unresolved Git operation: {name}")
+    if snapshot(workspace)["conflicted"]:
+        raise Operational("BLOCKED", "worker workspace contains unresolved Jujutsu conflicts")
 
 
 def parse_diff_paths(raw: bytes) -> list[str]:
     parts = raw.split(b"\0")
-    paths: list[str] = []
+    paths = []
     expect_paths = 0
     for part in parts:
         if not part:
@@ -1020,12 +825,26 @@ def parse_diff_paths(raw: bytes) -> list[str]:
 
 def diff_changes_gitlink(raw: bytes) -> bool:
     for record in raw.split(b"\0"):
-        if not record.startswith(b":"):
-            continue
-        fields = record[1:].split(b" ", 4)
-        if len(fields) >= 2 and b"160000" in fields[:2]:
-            return True
+        if record.startswith(b":"):
+            fields = record[1:].split(b" ", 4)
+            if len(fields) >= 2 and b"160000" in fields[:2]:
+                return True
     return False
+
+
+def validate_workspace(doc: dict, unit: dict) -> dict:
+    workspace = unit.get("workspace", {})
+    path = workspace.get("path")
+    if not isinstance(path, str) or not os.path.isdir(path):
+        raise Operational("BLOCKED", "recorded Jujutsu workspace is unavailable")
+    current = snapshot(path)
+    if current["change_id"] != workspace.get("change_id"):
+        raise Operational("BLOCKED", "worker Jujutsu change identity changed")
+    if current["conflicted"]:
+        raise Operational("BLOCKED", "worker Jujutsu change contains conflicts")
+    if not revision_contains(path, workspace["base"], current["commit_id"]):
+        raise Operational("BLOCKED", "worker change does not descend from its recorded base")
+    return current
 
 
 def terminalize(run_id: str, unit_id: str) -> dict:
@@ -1034,15 +853,10 @@ def terminalize(run_id: str, unit_id: str) -> dict:
         detail = {}
         if evidence["process_state"] == "failed":
             with locked_manifest(run_id) as doc:
-                attempt = find_attempt(doc["units"][unit_id])
-                receipt = attempt.get("terminal_receipt")
+                receipt = find_attempt(doc["units"][unit_id]).get("terminal_receipt")
                 if isinstance(receipt, dict) and receipt.get("terminal_status") == "unavailable":
                     detail = {"terminal_receipt": receipt, "failure_reason": receipt["failure_reason"]}
-        raise Operational(
-            "BLOCKED",
-            f"worker is not authoritatively done ({evidence['process_state']})",
-            detail,
-        )
+        raise Operational("BLOCKED", f"worker is not authoritatively done ({evidence['process_state']})", detail)
     try:
         with locked_manifest(run_id) as doc:
             unit = doc["units"].get(unit_id)
@@ -1061,97 +875,47 @@ def terminalize(run_id: str, unit_id: str) -> dict:
             unit["state"] = "authored"
             event(doc, "worker-output-authored", unit_id, {"route": receipt["actual_route"], "model": receipt["model_actual"]})
     if receipt["terminal_status"] == "blocked":
-        raise Operational(
-            "BLOCKED",
-            "worker returned a host-resolvable blocker",
-            {
-                "unit_id": unit_id,
-                "terminal_status": "blocked",
-                "summary": receipt["summary"],
-                "terminal_receipt": receipt,
-                "recovery_path": os.path.join(run_dir(run_id), "units", unit_id),
-            },
-        )
+        raise Operational("BLOCKED", "worker returned a host-resolvable blocker", {"unit_id": unit_id, "terminal_status": "blocked", "summary": receipt["summary"], "terminal_receipt": receipt, "recovery_path": os.path.join(run_dir(run_id), "units", unit_id)})
     with locked_manifest(run_id, write=True) as doc:
         unit = doc["units"].get(unit_id)
         if not unit:
             raise Operational("REFUSED", "unknown unit")
-        if unit["state"] == "integration-pending" and unit["transport"].get("commit"):
+        if unit["state"] == "integration-pending" and isinstance(unit.get("transport"), dict) and unit["transport"].get("commit_id"):
             retire_terminal_validation_failure(unit)
             return unit["transport"]
         if unit["state"] != "authored":
             raise Operational("BLOCKED", f"unit cannot terminalize from {unit['state']}")
         if find_attempt(unit).get("fallback", {}).get("claimed"):
-            raise Operational(
-                "REFUSED",
-                "native fallback already owns implementation; worker output cannot be terminalized",
-            )
-        validate_workspace(doc, unit)
-        workspace = unit["workspace"]["path"]
+            raise Operational("REFUSED", "native fallback already owns implementation; worker output cannot be terminalized")
+        current = validate_workspace(doc, unit)
         base = unit["workspace"]["base"]
-        repo = doc["repository"]["toplevel"]
+        workspace = unit["workspace"]["path"]
     try:
         no_sequencer(workspace)
-        ignored_raw = git(workspace, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
-        ignored_paths = [
-            part.decode("utf-8", "surrogateescape")
-            for part in ignored_raw.split(b"\0")
-            if part
-        ]
-        if ignored_paths:
-            preview = json.dumps(ignored_paths[:20], ensure_ascii=True)
-            suffix = f" and {len(ignored_paths) - 20} more" if len(ignored_paths) > 20 else ""
-            raise Operational(
-                "BLOCKED",
-                f"worker workspace contains ignored untracked output that cannot enter the transport: {preview}{suffix}",
-                {"ignored_paths": ignored_paths[:100], "ignored_path_count": len(ignored_paths)},
-            )
-        git(workspace, "add", "-A", "--", ".")
-        tree = git_text(workspace, "write-tree")
-        mode_diff = git(repo, "diff-tree", "-r", "--raw", "-z", "--no-renames", base, tree)
-        if diff_changes_gitlink(mode_diff):
-            raise Operational("BLOCKED", "submodule state cannot be transported implicitly")
+        paths = changed_paths(workspace, base, "@")
+        if not paths:
+            raise Operational("BLOCKED", "worker produced no transportable Jujutsu change")
     except Operational as exc:
         record_terminal_validation_failure(run_id, unit_id, exc)
         raise
-    ref = transport_ref(run_id, unit_id)
-    existing = git_text(repo, "rev-parse", "-q", "--verify", ref, check=False)
-    if existing:
-        parents = git_text(repo, "rev-list", "--parents", "-n", "1", existing).split()
-        existing_tree = git_text(repo, "rev-parse", f"{existing}^{{tree}}")
-        if parents != [existing, base] or existing_tree != tree:
-            raise Operational("BLOCKED", "preexisting transport ref does not match final tree/base")
-        commit = existing
-    else:
-        env = {
-            "GIT_AUTHOR_NAME": "ce-work transport",
-            "GIT_AUTHOR_EMAIL": "ce-work@localhost",
-            "GIT_COMMITTER_NAME": "ce-work transport",
-            "GIT_COMMITTER_EMAIL": "ce-work@localhost",
-        }
-        commit = git(repo, "commit-tree", tree, "-p", base, input_data=f"ce-work transport {run_id}/{unit_id}\n".encode(), env=env).decode().strip()
-        zero = "0" * len(commit)
-        git(repo, "update-ref", ref, commit, zero)
-        test_fault("after-transport-ref")
-    raw_diff = git(repo, "diff-tree", "-r", "-M", "--name-status", "-z", base, commit)
-    paths = parse_diff_paths(raw_diff)
-    tdigest = digest_bytes(base.encode() + b"\0" + tree.encode() + b"\0" + commit.encode() + b"\0" + raw_diff)
     transport = {
-        "base": base, "tree": tree, "commit": commit, "ref": ref,
-        "digest": tdigest, "changed_paths": paths,
-        "inventory_b64": base64.b64encode(raw_diff).decode(),
+        "base": base,
+        "change_id": current["change_id"],
+        "commit_id": current["commit_id"],
+        "changed_paths": paths,
+        "digest": digest_bytes(json.dumps([base, current["change_id"], current["commit_id"], paths], separators=(",", ":")).encode()),
     }
-    # Make successful cleanup non-destructive: after F is pinned, normalize the
-    # retained inspection worktree to the exact transported tree.
-    git(workspace, "reset", "--hard", commit)
     with locked_manifest(run_id, write=True) as doc:
         unit = doc["units"][unit_id]
         if unit["state"] not in ("authored", "integration-pending"):
             raise Operational("BLOCKED", "unit state changed during terminalization")
+        observed = validate_workspace(doc, unit)
+        if observed["commit_id"] != transport["commit_id"]:
+            raise Operational("BLOCKED", "worker Jujutsu revision changed during terminalization")
         retire_terminal_validation_failure(unit)
         unit["state"] = "integration-pending"
         unit["transport"] = transport
-        event(doc, "transport-pinned", unit_id, {"commit": commit, "ref": ref, "digest": tdigest})
+        event(doc, "change-pinned", unit_id, {"change_id": transport["change_id"], "commit_id": transport["commit_id"], "digest": transport["digest"]})
     return transport
 
 

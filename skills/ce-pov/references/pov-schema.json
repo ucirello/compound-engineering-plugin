@@ -1,14 +1,14 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Cross-model point of view",
+  "title": "Point of view",
   "type": "object",
   "additionalProperties": false,
-  "required": ["voice", "position", "reasoning", "evidence", "external_check", "mode", "movement"],
+  "required": ["actor", "position", "reasoning", "evidence", "external_check", "mode", "movement"],
   "properties": {
-    "voice": {
+    "actor": {
       "type": "string",
-      "minLength": 1,
-      "description": "Short identity for the peer voice; the worker namespaces it to the provider."
+      "enum": ["ai:assistant"],
+      "description": "Neutral actor identity."
     },
     "position": {
       "type": "string",
@@ -25,7 +25,7 @@
       "items": {
         "type": "string",
         "minLength": 1,
-        "description": "A succinct claim with a URL, file:line, or named document section attribution."
+        "description": "A succinct claim with a URL, file:line, or named document section citation."
       }
     },
     "external_check": {
@@ -39,14 +39,11 @@
     "movement": {
       "type": "string",
       "enum": ["initial", "moved", "held"],
-      "description": "Initial position, or whether the voice moved or held during reconciliation."
+      "description": "Initial position, or whether the peer moved or held during reconciliation."
     },
     "cross_model_route": { "type": "string" },
     "cross_model_target": { "type": "string" },
-    "cross_model_harness": { "type": "string" },
     "serving_family": { "type": "string" },
-    "model_requested": { "type": "string" },
-    "model_actual": { "type": "string" },
     "independence_verified": { "type": "boolean" }
   }
 }

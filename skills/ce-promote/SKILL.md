@@ -7,13 +7,13 @@ argument-hint: "[optional: what shipped and/or channels, e.g. 'a tweet thread an
 
 # /ce-promote
 
-Turn a feature that just shipped into copy-pasteable, user-facing announcement copy — right inside the engineering workflow.
+Turn a feature that just shipped into copy-pasteable, user-facing RocketClaw announcement copy — right inside the engineering workflow.
 
 ## Purpose
 
 After you ship, the messaging shouldn't wait for a separate marketing pass. `ce-promote` figures out what shipped, picks the right channels, and drafts the copy. It is **spiral-agnostic by default**: with nothing installed it draws on a lite layer of editorial and social-media expertise to produce strong channel-specific copy. When the Spiral CLI (see `references/spiral-cli.md`) is present and authed, it uses Spiral so the drafts are voice-matched to your brand — a subtle enhancement, never a requirement.
 
-**This skill drafts only. It never posts, publishes, commits, or opens PRs.** Posting is a human action. The output is always drafts for you to review, edit, and ship yourself.
+**This skill drafts only. It never posts, publishes, runs revision-changing commands (`jj new`, `jj describe`, `jj split`, `jj squash`, or `jj rebase`), moves bookmarks, runs `jj git fetch` or `jj git push`, or opens PRs.** Posting is a human action. The output is always drafts for you to review, edit, and ship yourself.
 
 ## Usage
 
@@ -30,10 +30,11 @@ If the user gave a free-form description of the feature, use it as the source of
 
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
-- **Merged/active PR** — `gh pr view --json title,body,url 2>/dev/null` (and `gh pr view` for the current branch). The title and body usually state the user-facing value.
-- **The diff** — `git diff main...HEAD --stat` and skim notable changes to ground the claim in what actually changed.
+- **Workspace state** — use `jj workspace root --ignore-working-copy` to anchor project-relative paths and `jj status --ignore-working-copy` to identify the working-copy change without snapshotting filesystem changes.
+- **Merged/active PR** — use `jj bookmark list -r @ --ignore-working-copy` to identify a bookmark for the working-copy revision, then `gh pr view <bookmark> --json title,body,url`. The title and body usually state the user-facing value.
+- **The diff** — `jj diff --from <base-bookmark> --to @ --stat --ignore-working-copy`, then skim notable changes with `jj diff --from <base-bookmark> --to @ --ignore-working-copy` to ground the claim in what actually changed. Resolve `<base-bookmark>` from the project's active instructions and current bookmarks rather than assuming a fixed name.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
-- **Recent commits** — `git log --oneline -15` for the arc of the change.
+- **Recent changes** — `jj log -r '<base-bookmark>..@' -n 15 --ignore-working-copy` for the arc of the work, using the same resolved base bookmark.
 
 Then write a 1–3 sentence summary of the **user-facing value** — what a user can now do that they couldn't before, and why they'd care. Describe the outcome, not the implementation. ("You can now export any report to CSV in one click" — not "Added a CsvSerializer and an export endpoint.")
 
@@ -73,8 +74,8 @@ When Spiral isn't ready, offer to set it up **once** — unless the user previou
 
 Read `references/spiral-cli.md` for the exact setup prompt (built with the platform's blocking-question tool), the connect/install steps, and how the opt-out is recorded so later runs skip this. In short:
 
-- **Unauthed** → the agent runs `spiral login --json` (CLI >= 1.8.0; non-blocking, the API key never passes through the agent). On `status: already_authenticated` → use Path A. On `status: pending` → surface the `auth_url`, the user approves in their browser, then poll `spiral auth status --json` until `authenticated: true` → Path A. Never have the user paste a key into chat. (Older CLI without agent login → suggest `npm i -g @every-env/spiral-cli@latest`, or have the user run `spiral login` themselves.) Escape hatch: "or the agent can just draft directly, without Spiral's personalization and humanization."
-- **Absent** → guide the user to install + connect in one step via the pairing-code command from Settings → Connect an Agent.
+- **Unauthed** → the AI Assistant runs `spiral login --json` (CLI >= 1.8.0; non-blocking, the API key never passes through the AI Assistant). On `status: already_authenticated` → use Path A. On `status: pending` → surface the `auth_url`, the user approves in their browser, then poll `spiral auth status --json` until `authenticated: true` → Path A. Never have the user paste a key into chat. (Older CLI without assisted login → suggest `npm i -g @every-env/spiral-cli@latest`, or have the user run `spiral login` themselves.) Escape hatch: "or the AI Assistant can just draft directly, without Spiral's personalization and humanization."
+- **Absent** → guide the user to install + connect in one step via the pairing-code command from the connection settings.
 - **Decline** → record the opt-out (best-effort) and go to Path B.
 
 Skip Path 0 entirely — straight to Path B — when the opt-out is already recorded, or when running headless / non-interactive (no human to answer). If a human is present but no blocking-question tool is available, do **not** skip — fall back to a numbered list of the two options in chat and wait for a reply (per the Ask section of `references/spiral-cli.md`).
@@ -110,7 +111,7 @@ No Spiral needed — draft strong copy directly using a compact layer of editori
 - **Changelog / release blurb** — one declarative line naming the new capability. Plain, not promotional.
 - **LinkedIn** — a short paragraph: human angle (why it matters), then the what. Warmer than X.
 - **Email** — benefit-stating subject + 2–4 sentence body + one CTA.
-- **Blog intro** — one strong opening paragraph framing the problem and the new capability; leave the deep-dive to the author.
+- **Blog intro** — one strong opening paragraph framing the problem and the new capability; leave the deep-dive to the long-form piece.
 - **Demo script** — 3–6 spoken beats: hook, problem, action, payoff.
 
 **Drafts per channel:** one strong draft by default; produce more only when asked ("3 tweet options"), capped ~3.
@@ -126,7 +127,7 @@ Show every draft as a clean, copy-pasteable block, labeled by channel. For each:
 
 - If Spiral produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app.
 - Offer to revise (tone, length, angle, more variations, another channel).
-- **Do not post, publish, schedule, commit, or open a PR.** End by reminding the user the drafts are theirs to ship.
+- **Do not post, publish, schedule, change repository state, or open a PR.** End by reminding the user the drafts are theirs to ship.
 
 ## Examples
 

@@ -4,7 +4,7 @@ description: Review requirements, plans, or specs with role-specific lenses. Use
 argument-hint: "[mode:headless] [path/to/document.md]"
 ---
 
-# Document Review
+# RocketClaw Document Review
 
 Review requirements or plan documents through multi-persona analysis. Dispatches generic subagents seeded with skill-local reviewer prompt assets, auto-applies `safe_auto` fixes, and routes remaining findings through a four-option interaction (per-finding walk-through, auto-resolve with best judgment, Append-to-Open-Questions, Report-only) for user decision.
 
@@ -31,6 +31,8 @@ The caller receives findings with their original classifications intact and deci
 
 If `mode:headless` is not present, run in default interactive mode with the routing question, walk-through, and bulk-preview behaviors documented in `references/walkthrough.md` and `references/bulk-preview.md`.
 
+If this workflow needs temporary run artifacts, place them under `$(jj workspace root)/.tmp/rocketclaw/ce-doc-review/<run-id>/`. If workspace-root discovery fails, use the current directory's `.tmp/rocketclaw/ce-doc-review/<run-id>/`. Reject symlinked or non-owned scratch directories, create them with mode `0700`, and never use an OS or global temporary directory.
+
 ## Phase 1: Get and Analyze Document
 
 **If a document path is provided:** Read it, then proceed. If the Read fails or the file is not on disk, apply the missing-document gate below instead of continuing.
@@ -39,10 +41,12 @@ If `mode:headless` is not present, run in default interactive mode with the rout
 
 **If no document is specified (headless mode):** Output "Review failed: headless mode requires a document path. Expected arguments: mode:headless <path>" and stop without dispatching reviewers.
 
-**Missing-document gate — verify before any dispatch.** Persona reviewers read documents from the filesystem, and several run without Bash, so they cannot read git refs — a path that exists only on a branch that is not checked out wastes the entire persona team discovering they cannot proceed (issue #925). Before Phase 2, confirm every resolved document path is readable on disk (the Read above succeeded). Location does not matter: an absolute path outside the checkout (e.g. `/tmp/plan.md`) or a doc in another checkout reviews fine. If any path is not readable, do not dispatch any personas:
+**Missing-document gate — verify before any dispatch.** Persona reviewers read documents from the filesystem, and several run without shell access, so they cannot materialize content that exists only in another JJ revision or workspace. Before Phase 2, confirm every resolved document path is readable on disk (the Read above succeeded). Location does not matter: an absolute path outside the current workspace or a doc in another workspace reviews fine. If any path is not readable, do not dispatch any personas:
 
-- **Interactive mode:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Check out the branch containing them, use a worktree, or provide corrected readable paths before retrying the review."
-- **Headless mode:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; check out the branch containing them or provide corrected paths." and return without dispatching reviewers.
+- **Interactive mode:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Open the JJ workspace containing them or provide corrected readable paths before retrying the review."
+- **Headless mode:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; open the JJ workspace containing them or provide corrected paths." and return without dispatching reviewers.
+
+When repository context can change the review, use non-mutating JJ views. Resolve the workspace with `jj workspace root`; inspect working-copy changes with `jj status` and `jj diff`; inspect relevant history with `jj log` and explicit revsets; inspect local and remote bookmark state with `jj bookmark list --all-remotes`; and inspect configured remote interop with `jj git remote list`. Treat the project's active instructions, current working-copy state, bookmark topology, and runtime history as authoritative. Do not mutate changes, bookmarks, workspaces, or remotes during review.
 
 ### Classify Document Type
 
@@ -50,8 +54,8 @@ Classify the document by reading its **content shape**, not its file path. Path 
 
 First check for the unified artifact contract:
 
-- `artifact_contract: ce-unified-plan/v1` plus `artifact_readiness: requirements-only` -> classify as `unified-requirements`. Review the Product Contract only; the absence of Planning Contract, Implementation Units, Verification Contract, or Definition of Done is expected and must not be flagged.
-- `artifact_contract: ce-unified-plan/v1` plus `artifact_readiness: implementation-ready` -> classify as `unified-plan`. Review Product Contract and Planning Contract with different lenses, then review Implementation Units/Verification/DoD for execution completeness.
+- `artifact_contract: unified-plan/v1` plus `artifact_readiness: requirements-only` -> classify as `unified-requirements`. Review the Product Contract only; the absence of Planning Contract, Implementation Units, Verification Contract, or Definition of Done is expected and must not be flagged.
+- `artifact_contract: unified-plan/v1` plus `artifact_readiness: implementation-ready` -> classify as `unified-plan`. Review Product Contract and Planning Contract with different lenses, then review Implementation Units/Verification/DoD for execution completeness.
 - HTML unified artifacts (`.html`) are read/reviewed in report-only mode. Do not apply markdown mutation paths to HTML. If a caller requested mutation/autofix behavior, skip with the existing markdown-only message or return report-only findings.
 - Invalid progress-like readiness values (`active`, `in_progress`, `completed`, `done`) are a document-contract finding, not an execution state to honor.
 
@@ -65,7 +69,7 @@ Use these signals to decide:
 - No implementation units, no per-unit file lists, no test scenarios attached to units
 
 **`plan` signals (how-to-build documents):**
-- Frontmatter fields like `type: feat|fix|refactor`, `origin: docs/brainstorms/...`, or `product_contract_source: ce-brainstorm|ce-plan-bootstrap|legacy-requirements`
+- Frontmatter fields like `type: feat|fix|refactor`, `origin: docs/brainstorms/...`, or `product_contract_source: brainstorm|plan-bootstrap|legacy-requirements`
 - Section headings such as `Implementation Units`, `Output Structure`, `Key Technical Decisions`, `Risks & Dependencies`, `System-Wide Impact`
 - Numbered identifiers in the form `U1`, `U2` — implementation unit IDs
 - Per-unit fields named `Goal`, `Files`, `Approach`, `Test scenarios`, `Verification`
@@ -118,11 +122,11 @@ Analyze the document content to determine which conditional personas to activate
 - The document is a **requirements document** with 2+ challengeable claims (problem framing, solution selection, prioritization, predicted outcomes) -- premise scrutiny is core to the brainstorm phase
 - The document touches a **high-stakes domain** -- auth, payments, billing, data migrations, privacy/compliance, external integrations, cryptography -- regardless of doc type or size
 - The document **proposes a new abstraction, framework, or significant architectural pattern** -- regardless of doc type
-- The document is a **plan with no validated upstream Product Contract signal** (no legacy `origin:` requirements doc and no `product_contract_source: ce-brainstorm` or `legacy-requirements`) -- premise wasn't validated upstream
+- The document is a **plan with no validated upstream Product Contract signal** (no legacy `origin:` requirements doc and no `product_contract_source: brainstorm` or `legacy-requirements`) -- premise wasn't validated upstream
 - The document is a **plan that explicitly extends scope** beyond its origin requirements doc (new actors, new flows, deferred-then-restored features)
 - The document contains an **explicit alternatives section** or unresolved tradeoffs -- adversarial helps stress-test the chosen direction
 
-Do NOT activate adversarial on a routine plan document that derives from a validated upstream Product Contract, stays within scope, and does not introduce high-stakes domains or new abstractions. Validated upstream provenance includes legacy `origin: docs/brainstorms/...`, `product_contract_source: ce-brainstorm`, and `product_contract_source: legacy-requirements`. A direct `product_contract_source: ce-plan-bootstrap` plan is greenfield and does not suppress premise-level techniques by itself. The plan's structural decisions (more units, more rationale) are not by themselves adversarial signal -- those are the plan doing its job.
+Do NOT activate adversarial on a routine plan document that derives from a validated upstream Product Contract, stays within scope, and does not introduce high-stakes domains or new abstractions. Validated upstream provenance includes legacy `origin: docs/brainstorms/...`, `product_contract_source: brainstorm`, and `product_contract_source: legacy-requirements`. A direct `product_contract_source: plan-bootstrap` plan is greenfield and does not suppress premise-level techniques by itself. The plan's structural decisions (more units, more rationale) are not by themselves adversarial signal -- those are the plan doing its job.
 
 ## Phase 2: Announce and Dispatch Personas
 

@@ -1,6 +1,6 @@
 # Divergent Ideation (Phase 2)
 
-Read this file at the start of Phase 2 — after Phase 1 grounding and any Phase 1.5 evidence scouts complete, and before building any ideation dispatch prompt. It defines the ideation fleet, the dispatch payload, the frames, the per-idea output contract, and the post-merge synthesis steps. Model tier names (extraction / generation / ceiling) are defined in SKILL.md Model Tiers.
+Read this RocketClaw reference at the start of Phase 2 — after Phase 1 grounding and any Phase 1.5 evidence scouts complete, and before building any ideation dispatch prompt. It defines the ideation fleet, the dispatch payload, the frames, the per-idea output contract, and the post-merge synthesis steps. Model tier names (extraction / generation / ceiling) are defined in SKILL.md Model Tiers.
 
 ## Fleet
 
@@ -84,6 +84,6 @@ Basis is required, not optional. If a sub-agent cannot articulate a basis of at 
 4. If a focus was provided, weight the merged list toward it without excluding stronger adjacent ideas.
 5. Spread ideas across multiple dimensions when justified: workflow/DX, reliability, extensibility, missing capabilities, docs/knowledge compounding, quality/maintenance, leverage on future work.
 
-**Checkpoint A (V17).** Immediately after the cross-cutting synthesis step completes and the raw candidate list is consolidated, write `<scratch-dir>/raw-candidates.md` (using the absolute path captured in Phase 1) containing the full candidate list with sub-agent attribution. This protects the most expensive output (the parallel ideation dispatches + dedupe) before Phase 3 critique potentially compacts context. Best-effort: if the write fails (disk full, permissions), log a warning and proceed; the checkpoint is not load-bearing. Not cleaned up at the end of the run (the run directory is preserved so the V15 cache remains reusable across run-ids in the same session — see Phase 5).
+**Checkpoint A (V17).** Immediately after the cross-cutting synthesis step completes and the raw candidate list is consolidated, write `<scratch-dir>/raw-candidates.md` (using the absolute workspace-local path captured in Phase 1) containing the full candidate list grouped by ideation frame. This protects the most expensive output (the parallel ideation dispatches + dedupe) before Phase 3 critique potentially compacts context. Best-effort: if the write fails (disk full, permissions), log a warning and proceed; the checkpoint is not load-bearing. Not cleaned up at the end of the run (the run directory is preserved so the V15 cache remains reusable across run-ids in the same session — see Phase 5).
 
 When the merge, synthesis, and axis-coverage steps are complete, return to SKILL.md Phase 2's closing instruction and load `references/post-ideation-workflow.md` before any critique begins.

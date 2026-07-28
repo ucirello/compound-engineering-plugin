@@ -18,7 +18,7 @@ Before diving in, answer three questions:
 
 1. **Does this codebase have agent integration?** Search for tool definitions, system prompt construction, or LLM API calls. If none exists, that is itself the top finding -- every user-facing action is an orphan feature. Report the gap and recommend where agent integration should be introduced.
 2. **What stack?** Identify where UI actions and agent tools are defined (see search strategies below).
-3. **Incremental or full audit?** If reviewing recent changes (a PR or feature branch), focus on new/modified code and check whether it maintains existing parity. For a full audit, scan systematically.
+3. **Incremental or full audit?** If reviewing recent changes in a PR or bookmark stack, focus on new/modified code and check whether it maintains existing parity. For a full audit, scan systematically.
 
 **Stack-specific search strategies:**
 
@@ -26,8 +26,8 @@ Before diving in, answer three questions:
 |---|---|---|
 | Vercel AI SDK (Next.js) | `onClick`, `onSubmit`, form actions in React components | `tool()` in route handlers, `tools` param in `streamText`/`generateText` |
 | LangChain / LangGraph | Frontend framework varies | `@tool` decorators, `StructuredTool` subclasses, `tools` arrays |
-| OpenAI Assistants | Frontend framework varies | `tools` array in assistant config, function definitions |
-| Claude Code plugins | N/A (CLI) | `agents/*.md`, `skills/*/SKILL.md`, tool lists in frontmatter |
+| Hosted assistant APIs | Frontend framework varies | `tools` array in assistant config, function definitions |
+| Agent plugins | N/A (CLI) | `agents/*.md`, `skills/*/SKILL.md`, tool lists in frontmatter |
 | Rails + MCP | `button_to`, `form_with`, Turbo/Stimulus actions | `tool()` in MCP server definitions, `.mcp.json` |
 | Generic | Grep for `onClick`, `onSubmit`, `onTap`, `Button`, `onPressed`, form actions | Grep for `tool(`, `function_call`, `tools:`, tool registration patterns |
 

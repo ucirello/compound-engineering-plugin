@@ -6,10 +6,20 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, detect from the current branch:
+If no PR number was provided, identify the nearest unambiguous local bookmark in the current working-copy ancestry with `jj log` and `jj bookmark list`, then resolve its PR with `gh pr view <bookmark> --json number -q .number`. Jujutsu has no current bookmark. If no single bookmark-backed PR can be established, stop and ask for a PR number or URL rather than guessing.
+
+Resolve the PR head before any mutation:
 ```bash
-gh pr view --json number -q .number
+gh pr view PR_NUMBER -R OWNER/REPO --json number,headRefName,headRefOid,isCrossRepository
+jj workspace root
+jj git remote list
+jj git fetch --remote <remote>
+jj status
+jj bookmark list --all-remotes <head-bookmark>
+jj log -r '@ | <head-bookmark>@<remote>'
 ```
+
+Identify the writable remote for the exact PR head bookmark. Require a clean working-copy change based on that fetched remote bookmark and no unrelated local changes; track the remote bookmark with `jj bookmark track <head-bookmark>@<remote>` when tracking is absent. If the workspace is not already a clean child of the fetched PR head, start the owned fix change with `jj new '<head-bookmark>@<remote>'`. If the bookmark is conflicted, the remote target differs from `headRefOid`, the workspace contains unrelated changes, or push authority to the exact head bookmark cannot be established, stop with a `needs-human` result instead of mutating or publishing the wrong change.
 
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments). Set `SKILL_DIR` to the absolute directory you loaded the ce-resolve-pr-feedback SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, and shell state does not persist between Bash calls, so set it inline in each block below that runs a bundled script. If the bundled script is missing on disk the call fails plainly; fall back to the `gh` commands shown after this block.
 
@@ -26,7 +36,7 @@ SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback
 GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/get-pr-comments" PR_NUMBER OWNER/REPO   # omit GH_HOST=<derived-host> on github.com
 ```
 
-**Pass the base `OWNER/REPO`** (parsed from the PR URL, when one was given) as the second arg. `get-pr-comments` otherwise falls back to `gh repo view` in the *current checkout* — so for a fork→upstream PR handed in as a URL, omitting it would fetch review feedback from the fork (or fail) instead of the upstream base repo. Every `get-pr-comments` call below (fetch and verify) takes the same `OWNER/REPO`.
+**Pass the base `OWNER/REPO`** (parsed from the PR URL, when one was given) as the second arg. `get-pr-comments` otherwise falls back to `gh repo view` in the current workspace — so for a fork→upstream PR handed in as a URL, omitting it would fetch review feedback from the fork (or fail) instead of the upstream base repo. Every `get-pr-comments` call below (fetch and verify) takes the same `OWNER/REPO`.
 
 Returns a JSON object with four keys:
 
@@ -69,7 +79,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `git blame`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -77,7 +87,7 @@ Produce a verdict per item and sort into three lists:
 - **reply-list** — `replied` / `not-addressing` / `declined`. No code change. Compose the reply text now per the rubric (you have the evidence) and carry it to step 7.
 - **human-list** — `needs-human`. Compose `decision_context` now; carry to steps 7 and 9.
 
-Create a task list of all new items (e.g., `TaskCreate` in Claude Code, `update_plan` in Codex) tagged with their verdict, so progress is visible.
+Create a task list with the harness's available task-tracking capability, tagging every new item with its verdict so progress is visible.
 
 **At scale.** If the batch is large (many threads spanning many files) and judging them all inline would overflow your context, process the consolidation in groups (e.g., file-clustered groups of ~8-10 threads), emitting the three lists incrementally. Don't fan the judgment out to subagents to avoid this — batch it instead.
 
@@ -130,27 +140,33 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 2. **Green** -> proceed to step 6.
 
-3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
+3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** describe or publish the change.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6, but add a footer to the commit message: `Note: pre-existing failure in <test> not addressed by this PR.`
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and carry the concrete validation fact into the dynamic change-description requirements; do not impose fixed footer wording or layout.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Commit and Push
+## 6. Describe and Push
 
-1. Stage only files reported by fixers and commit with a message referencing the PR:
+1. Compare `jj status`, `jj diff`, and the changed paths in the fixer summaries. The current change must contain only the owned fixes and any directly required tests. If unrelated content is present, isolate the owned paths with `jj split` or stop for a human decision when the boundary is ambiguous.
+
+2. Compose, edit, validate, or recommend the Jujutsu change description under the project's active instructions and syntax observed at runtime via `jj log`; those always win, and only compatible Go guidance applies. Dynamically summarize the resolved feedback from the fixer results, identify the PR in the form this repository uses, and include any material pre-existing validation failure when relevant. Do not impose a fixed message, footer, prefix, type, scope, template, or example.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Describe the owned change with dynamic content:
 
 ```bash
-git add [files from fixer summaries]
-git commit -m "Address PR review feedback (#PR_NUMBER)
-
-- [list changes from fixer summaries]"
+jj describe -r @ -m <change-description>
 ```
 
-2. Push to remote:
+3. Capture the validated revision, advance only the exact PR head bookmark, and publish only that bookmark to its verified writable remote. Never bypass Jujutsu's remote-state safety checks:
 ```bash
-git push
+jj bookmark set <head-bookmark> -r <validated-revision>
+jj git push --bookmark <head-bookmark> --remote <remote>
 ```
+
+Confirm with `gh pr view PR_NUMBER -R OWNER/REPO --json headRefName,headRefOid` that the PR head bookmark and revision match the published result before posting replies. After successful publication, use `jj new <head-bookmark>` when a fresh empty working-copy change is appropriate.
 
 ## 7. Reply and Resolve
 
@@ -255,7 +271,7 @@ Replied (count): [what questions were answered]
 Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm cited]
 
-Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were committed]
+Validation: [one line with the command and observed outcome; include any pre-existing failure; omit when no code changes were published]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries a `decision_context` (composed in step 3, or by a fixer's escalation): what the reviewer said, what was investigated, why it needs a decision, concrete options with tradeoffs, and a lean if any.
@@ -283,6 +299,6 @@ Still pending from a previous run (count):
 
 If a blocking question tool is available, use it to ask about all pending decisions (both new `needs-human` and previous-run pending) together. If there are only pending decisions and no new work was done, the summary is just the pending items.
 
-Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Use it to present the decisions and wait for the user's response. After they decide, process the remaining items: fix the code, compose the reply, post it, and resolve the thread.
+Use the harness's blocking-question capability to present the decisions and wait for the user's response. After they decide, process the remaining items: fix the code, compose the reply, post it, and resolve the thread.
 
-Fall back to presenting the decisions in the summary output and waiting in conversation only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip. If the user doesn't respond, the items remain open on the PR for later handling.
+Fall back to presenting the decisions in the summary output and waiting in conversation only when no blocking capability exists in the harness or the call errors. Never silently skip. If the user doesn't respond, the items remain open on the PR for later handling.

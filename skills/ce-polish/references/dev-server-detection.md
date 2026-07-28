@@ -2,7 +2,7 @@
 
 Port resolution runs via `scripts/resolve-port.sh`. This document explains the probe order, framework defaults, and the script's intentional parsing choices.
 
-This cascade runs **only when** `.claude/launch.json` is absent or has no `port` field for the resolved configuration. When `launch.json` specifies a port, use it verbatim and skip this cascade entirely.
+This cascade runs **only when** `.rocketclaw/launch.json` is absent or has no `port` field for the resolved configuration. When `launch.json` specifies a port, use it verbatim and skip this cascade entirely.
 
 ## Priority order
 
@@ -37,4 +37,4 @@ This cascade runs **only when** `.claude/launch.json` is absent or has no `port`
 
 **(b) Comment stripping on `.env` values.** Truncates at `#` after trimming whitespace (so `PORT=3001 # dev only` resolves to `3001`), because inline comments are common.
 
-**(c) No instruction-file port grep.** The script does not grep `AGENTS.md`/`CLAUDE.md` for port references. Instruction files carry natural language that may mention ports in contexts unrelated to the dev server (documentation, examples, troubleshooting), producing false positives that are hard to debug; the filename is also harness-specific. Framework config files and `.env` are the reliable sources of truth. The agent may still honor a dev-server port it reads from its in-context project instructions, but the script does not shell-grep named instruction files.
+**(c) No instruction-file port grep.** The script does not shell-search named instruction files for port references. Project instructions carry natural language that may mention ports in unrelated contexts, producing false positives that are hard to debug. Framework config files and `.env` are the reliable machine-readable sources; the AI Assistant still honors a dev-server port from the active project instructions already in context.

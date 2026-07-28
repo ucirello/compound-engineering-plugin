@@ -1,4 +1,4 @@
-"""Fail-stop canonical integration for one terminalized external unit."""
+"""Fail-stop Jujutsu squash, verification, describe, and run verification transactions."""
 
 from __future__ import annotations
 
@@ -12,12 +12,31 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from unit_workspace_state import *
+from unit_workspace_state import (
+    O_NOFOLLOW,
+    Operational,
+    TrustFailure,
+    changed_paths,
+    digest_bytes,
+    event,
+    ignored_snapshot,
+    jj,
+    jj_text,
+    locked_manifest,
+    now_iso,
+    revision_contains,
+    run_dir,
+    same_repository_state,
+    test_fault,
+    unit_accepted_revision,
+    validate_private_dir,
+    validate_repo,
+)
 from unit_workspace_integration import (
     cmd_integration_acquire,
     cmd_integration_release,
     cmd_mark_applied,
-    cmd_mark_committed,
+    cmd_mark_described,
     cmd_mark_verified,
     cmd_preflight,
     cmd_restore,
@@ -36,6 +55,14 @@ from unit_workspace_lifecycle import (
 
 MAX_IGNORED_SNAPSHOT_ENTRIES = 512
 MAX_IGNORED_SNAPSHOT_BYTES = 64 * 1024 * 1024
+DESCRIPTION_RULE = "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards."
+DESCRIPTION_CONTEXT = (
+    "The project's active runtime instructions and conventions are required input. "
+    "Inspect descriptions with `jj log`; syntax observed there takes precedence over generic guidance "
+    "and over the wording of the sentence above. Apply the linked Go guidance only where it is "
+    "compatible with those project instructions and the repository's `jj log` history. Do not use "
+    "fixed types, scopes, templates, examples, or identity footers."
+)
 
 
 def _args(**values):
@@ -51,13 +78,32 @@ def _verification_command(args, operation: str = "integrate") -> list[str]:
     return command
 
 
-def _remove_owned_new_paths(repo: str, paths: set[str], pre_head: str) -> None:
+def _change_description(args) -> str:
+    description = (args.description or "").strip()
+    if not description or "\0" in description or len(description.encode()) > 1024:
+        raise Operational(
+            "REFUSED",
+            f"change description must be non-empty, NUL-free, and at most 1024 bytes. "
+            f"{DESCRIPTION_RULE} {DESCRIPTION_CONTEXT}",
+        )
+    return description
+
+
+def _verification_environment() -> dict[str, str]:
+    environment = dict(os.environ)
+    environment.pop("JJ_WORKSPACE", None)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    return environment
+
+
+def _remove_owned_new_paths(repo: str, paths: set[str], pre_revision: str) -> None:
+    tracked = set(filter(None, jj_text(repo, "file", "list", "-r", pre_revision).splitlines()))
     for rel in sorted(paths, key=lambda value: (value.count("/"), value), reverse=True):
-        if git(repo, "ls-tree", "-z", "--full-tree", pre_head, "--", rel):
+        if rel in tracked or any(path.startswith(f"{rel}/") for path in tracked):
             continue
         target = os.path.abspath(os.path.join(repo, rel))
         if os.path.commonpath([repo, target]) != repo:
-            raise Operational("BLOCKED", "verification artifact path escaped canonical repository")
+            raise Operational("BLOCKED", "verification artifact path escaped canonical workspace")
         if os.path.islink(target) or os.path.isfile(target):
             os.unlink(target)
         elif os.path.isdir(target):
@@ -65,36 +111,36 @@ def _remove_owned_new_paths(repo: str, paths: set[str], pre_head: str) -> None:
 
 
 def _directory_paths(repo: str) -> set[str]:
-    """Snapshot repository directories without traversing Git metadata."""
+    """Snapshot workspace directories without traversing VCS or private runtime metadata."""
     return set(_directory_snapshot(repo))
 
 
 def _directory_snapshot(repo: str) -> dict[str, int]:
-    """Snapshot repository directory paths and modes without traversing Git metadata."""
+    """Snapshot workspace directory paths and modes without traversing private metadata."""
     repo = os.path.abspath(repo)
     directories: dict[str, int] = {}
     test_fault("directory-snapshot-before-walk")
 
     def fail(error: OSError) -> None:
-        raise Operational("BLOCKED", f"could not inspect repository directories: {error}")
+        raise Operational("BLOCKED", f"could not inspect workspace directories: {error}")
 
     for parent, names, _files in os.walk(repo, topdown=True, onerror=fail, followlinks=False):
-        names[:] = [name for name in names if name != ".git"]
+        names[:] = [name for name in names if name not in {".jj", ".git", ".tmp"}]
         for name in names:
             path = os.path.join(parent, name)
             try:
                 entry = os.lstat(path)
             except OSError as exc:
-                raise Operational("BLOCKED", f"could not inspect repository directory {path}: {exc}") from exc
+                raise Operational("BLOCKED", f"could not inspect workspace directory {path}: {exc}") from exc
             if stat.S_ISDIR(entry.st_mode) and not stat.S_ISLNK(entry.st_mode):
                 directories[os.path.relpath(path, repo)] = stat.S_IMODE(entry.st_mode)
     return directories
 
 
-def _restore_directory_snapshot(repo: str, snapshot: dict[str, int]) -> set[str]:
+def _restore_directory_snapshot(repo: str, snapshot_state: dict[str, int]) -> set[str]:
     """Restore only preexisting directory entries; never remove an obstruction."""
     restored: set[str] = set()
-    for rel, mode in sorted(snapshot.items(), key=lambda item: (item[0].count("/"), item[0])):
+    for rel, mode in sorted(snapshot_state.items(), key=lambda item: (item[0].count("/"), item[0])):
         target = _artifact_path(repo, rel)
         try:
             entry = os.lstat(target)
@@ -128,16 +174,15 @@ def _new_parent_directories(paths: set[str], before: set[str]) -> set[str]:
 
 
 def _ignored_paths(repo: str) -> set[str]:
-    """Return ignored, untracked files without changing ordinary clean-state rules."""
-    raw = git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--")
-    return set(filter(None, raw.decode("utf-8", "surrogateescape").split("\0")))
+    """Return ignored files without changing ordinary clean-state rules."""
+    return set(ignored_snapshot(repo))
 
 
 def _artifact_path(repo: str, rel: str) -> str:
     repo = os.path.abspath(repo)
     target = os.path.abspath(os.path.join(repo, rel))
     if target == repo or os.path.commonpath([repo, target]) != repo:
-        raise Operational("BLOCKED", "ignored artifact path escaped canonical repository")
+        raise Operational("BLOCKED", "ignored artifact path escaped canonical workspace")
     return target
 
 
@@ -279,11 +324,11 @@ def _remove_artifact_entry(path: str) -> None:
         os.unlink(path)
 
 
-def _restore_ignored_artifacts(repo: str, snapshot: dict) -> set[str]:
+def _restore_ignored_artifacts(repo: str, snapshot_state: dict) -> set[str]:
     """Restore snapshotted ignored files and parent directory modes exactly."""
     repo = os.path.abspath(repo)
     restored: set[str] = set()
-    for rel, mode in sorted(snapshot["directories"].items(), key=lambda item: item[0].count("/")):
+    for rel, mode in sorted(snapshot_state["directories"].items(), key=lambda item: item[0].count("/")):
         directory = _artifact_path(repo, rel)
         try:
             entry = os.lstat(directory)
@@ -296,14 +341,14 @@ def _restore_ignored_artifacts(repo: str, snapshot: dict) -> set[str]:
             os.mkdir(directory, mode)
         os.chmod(directory, mode, follow_symlinks=False)
 
-    for rel, record in sorted(snapshot["files"].items()):
+    for rel, record in sorted(snapshot_state["files"].items()):
         target = _artifact_path(repo, rel)
         if _artifact_matches(target, record):
             continue
         restored.add(rel)
         _remove_artifact_entry(target)
         parent = os.path.dirname(target)
-        temporary = os.path.join(parent, f".ce-work-restore-{secrets.token_hex(8)}")
+        temporary = os.path.join(parent, f".rocketclaw-restore-{secrets.token_hex(8)}")
         source_fd = os.open(record["backup"], os.O_RDONLY | O_NOFOLLOW)
         target_fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW, record["mode"])
         try:
@@ -322,7 +367,7 @@ def _restore_ignored_artifacts(repo: str, snapshot: dict) -> set[str]:
         os.replace(temporary, target)
         if not _artifact_matches(target, record):
             raise Operational("BLOCKED", f"ignored artifact restoration could not be proven: {rel}")
-    shutil.rmtree(snapshot["root"])
+    shutil.rmtree(snapshot_state["root"])
     return restored
 
 
@@ -338,41 +383,30 @@ def _restore_owned_verification(
         validate_repo(doc)
         unit = doc["units"].get(unit_id)
         if not unit or not unit.get("integration", {}).get("pre_fold"):
-            raise Operational("BLOCKED", "owned verification restoration lacks pre-fold evidence")
+            raise Operational("BLOCKED", "owned verification restoration lacks pre-squash evidence")
         repo = doc["repository"]["toplevel"]
         pre = dict(unit["integration"]["pre_fold"])
-        expected = unit["integration"]["expected_apply"]
-        if not (
-            before["head"] == pre["head"]
-            and before["index_tree"] == expected["index_tree"]
-            and before["worktree_index_empty"]
-            and before_paths == set(expected["changed_paths"])
-        ):
-            raise Operational("BLOCKED", "owned verification did not start from the expected transport application")
-        if git_text(repo, "rev-parse", "HEAD") != pre["head"]:
-            raise Operational("BLOCKED", "verification changed canonical HEAD; refusing automatic restoration")
+        if not matches_expected_apply(repo, unit, before):
+            raise Operational("BLOCKED", "owned verification did not start from the expected transport squash")
+        current = semantic_snapshot(repo)
+        if current["change_id"] != before["change_id"]:
+            raise Operational("BLOCKED", "verification changed the canonical Jujutsu change; refusing automatic restoration")
         verification_paths = after_paths - before_paths
     with locked_manifest(run_id, write=True) as doc:
         doc["units"][unit_id]["state"] = "restoring"
         event(doc, "restore-intent", unit_id, {"source": "controller-owned-verification"})
-    git(repo, "reset", "--hard", pre["head"])
+    cmd_restore(_args(run_id=run_id, unit_id=unit_id, lock_token=token))
     with locked_manifest(run_id) as doc:
         remove_introduced_paths(repo, doc["units"][unit_id])
-    _remove_owned_new_paths(repo, verification_paths, pre["head"])
+    _remove_owned_new_paths(repo, verification_paths, pre["commit_id"])
     actual = semantic_snapshot(repo)
-    exact = actual == pre
-    with locked_manifest(run_id, write=True) as doc:
-        unit = doc["units"][unit_id]
-        unit["integration"]["restore"] = {"at": now_iso(), "exact": exact, "snapshot": actual}
-        if exact:
-            unit["state"] = "preserved"
-            event(doc, "canonical-restored", unit_id, {"source": "controller-owned-verification"})
-        else:
-            blocker = {"at": now_iso(), "unit_id": unit_id, "reason": "exact pre-fold restoration could not be proven"}
+    exact = same_repository_state(actual, pre)
+    if not exact:
+        with locked_manifest(run_id, write=True) as doc:
+            blocker = {"at": now_iso(), "unit_id": unit_id, "reason": "exact pre-squash restoration could not be proven"}
             doc["blockers"].append(blocker)
             event(doc, "restore-blocked", unit_id, {"source": "controller-owned-verification"})
-    if not exact:
-        raise Operational("BLOCKED", "exact pre-fold restoration could not be proven")
+        raise Operational("BLOCKED", "exact pre-squash restoration could not be proven", {"retain_integration_lock": True})
 
 
 def _verification_log(run_id: str, unit_id: str) -> tuple[str, object]:
@@ -391,36 +425,37 @@ def _run_verification_log(run_id: str) -> tuple[str, object]:
     return path, os.fdopen(fd, "wb")
 
 
-def _validate_accepted_run_head(repo: str, units: dict, current_head: str) -> None:
-    """Require HEAD to be the accepted commit that contains every completed unit."""
-    commits: set[str] = set()
+def _validate_accepted_run_revision(repo: str, units: dict, current_revision: str) -> None:
+    """Require the canonical revision to contain every completed unit revision."""
+    revisions: set[str] = set()
     for unit in units.values():
-        commit = unit_accepted_commit(unit)
-        if commit is None:
+        accepted = unit_accepted_revision(unit)
+        if accepted is None:
             raise Operational("BLOCKED", "unit completion evidence changed before plan-wide verification")
         base = unit.get("workspace", {}).get("base")
-        if not isinstance(base, str) or git_text(repo, "merge-base", base, commit, check=False) != base:
+        if not isinstance(base, str) or not revision_contains(repo, base, accepted):
             raise Operational(
                 "BLOCKED",
-                "controller-accepted unit commit does not descend from its recorded base",
-                {"unit_id": unit.get("unit_id"), "base": base, "accepted_commit": commit},
+                "controller-accepted unit revision does not descend from its recorded base",
+                {"unit_id": unit.get("unit_id"), "base": base, "accepted_revision": accepted},
             )
-        if commit in commits:
-            raise Operational("BLOCKED", "unit completion evidence contains duplicate accepted commits")
-        commits.add(commit)
+        if accepted in revisions:
+            raise Operational("BLOCKED", "unit completion evidence contains duplicate accepted revisions")
+        revisions.add(accepted)
 
-    if current_head not in commits:
+    if any(not revision_contains(repo, accepted, current_revision) for accepted in revisions):
         raise Operational(
             "BLOCKED",
-            "canonical HEAD no longer matches the final controller-accepted unit commit",
-            {"accepted_heads": sorted(commits), "actual_head": current_head},
+            "canonical revision does not contain every controller-accepted unit",
+            {"accepted_revisions": sorted(revisions), "actual_revision": current_revision},
         )
-    if any(git_text(repo, "merge-base", commit, current_head, check=False) != commit for commit in commits):
-        raise Operational(
-            "BLOCKED",
-            "canonical HEAD does not contain every controller-accepted unit",
-            {"accepted_heads": sorted(commits), "actual_head": current_head},
-        )
+
+
+def _accepted_unit_revision_snapshot(units: dict) -> dict[str, str] | None:
+    accepted = {unit_id: unit_accepted_revision(unit) for unit_id, unit in units.items()}
+    if any(revision_id is None for revision_id in accepted.values()):
+        return None
+    return accepted
 
 
 def _record_run_verification_attempt(
@@ -434,7 +469,6 @@ def _record_run_verification_attempt(
 ) -> None:
     with locked_manifest(args.run_id, write=True) as doc:
         validate_lock(doc, lock_unit, lock_token)
-        doc.setdefault("verification_attempts", [])
         attempts = plan_wide_verification_attempts(doc)
         if any(attempt.get("attempt_id") == attempt_id for attempt in attempts):
             raise TrustFailure("plan-wide verification attempt identity is duplicated")
@@ -492,18 +526,18 @@ def _verify_run_locked(
     lock_token: str,
 ) -> tuple[str, dict]:
     before = semantic_snapshot(repo)
-    before_paths = status_paths(repo)
+    before_paths = set(changed_paths(repo))
     before_ignored = _ignored_paths(repo)
-    if not before["status_empty"] or before_paths:
-        raise Operational("BLOCKED", "verify-run requires a clean canonical checkout")
-    _validate_accepted_run_head(repo, units, before["head"])
-    accepted_units = accepted_unit_commit_snapshot(units)
+    if not before["working_copy_empty"] or before_paths or before["conflicted"]:
+        raise Operational("BLOCKED", "verify-run requires a clean canonical Jujutsu working-copy change")
+    _validate_accepted_run_revision(repo, units, before["commit_id"])
+    accepted_units = _accepted_unit_revision_snapshot(units)
     if accepted_units is None:
         raise Operational("BLOCKED", "unit completion evidence changed before plan-wide verification")
     _preflight_ignored_artifacts(repo, before_ignored)
     before_directory_snapshot = _directory_snapshot(repo)
     before_directories = set(before_directory_snapshot)
-    ignored_snapshot = _snapshot_ignored_artifacts(
+    ignored_artifacts = _snapshot_ignored_artifacts(
         repo,
         before_ignored,
         os.path.join(run_dir(args.run_id), "jobs"),
@@ -527,7 +561,7 @@ def _verify_run_locked(
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
-                env=sanitized_git_environment({"PYTHONDONTWRITEBYTECODE": "1"}),
+                env=_verification_environment(),
                 check=False,
             )
             verification_exit = proc.returncode
@@ -537,23 +571,23 @@ def _verify_run_locked(
     test_fault("verify-run-before-receipt")
 
     after = semantic_snapshot(repo)
-    after_paths = status_paths(repo)
+    after_paths = set(changed_paths(repo))
     new_ignored = _ignored_paths(repo) - before_ignored
     after_directory_snapshot = _directory_snapshot(repo)
     new_directories = set(after_directory_snapshot) - before_directories
     directory_state_changed = after_directory_snapshot != before_directory_snapshot
     ignored_directories = _new_parent_directories(new_ignored, before_directories)
-    _remove_owned_new_paths(repo, new_ignored | new_directories | ignored_directories, before["head"])
-    restored_ignored = _restore_ignored_artifacts(repo, ignored_snapshot)
+    _remove_owned_new_paths(repo, new_ignored | new_directories | ignored_directories, before["commit_id"])
+    restored_ignored = _restore_ignored_artifacts(repo, ignored_artifacts)
     cleaned_paths = sorted(new_ignored | new_directories | restored_ignored)
-    if after != before:
-        if after["branch_ref"] != before["branch_ref"] or after["head"] != before["head"]:
+    if not same_repository_state(after, before):
+        if after["change_id"] != before["change_id"] or after["bookmark_state_sha256"] != before["bookmark_state_sha256"]:
             with locked_manifest(args.run_id, write=True) as doc:
                 lock = doc.get("integration_lock") or {}
                 blocker = {
                     "at": now_iso(),
                     "unit_id": None,
-                    "reason": "plan-wide verification changed canonical branch or HEAD",
+                    "reason": "plan-wide verification changed canonical change or bookmarks",
                     "retain_integration_lock": True,
                     "integration_lock_nonce": lock.get("nonce"),
                 }
@@ -561,7 +595,7 @@ def _verify_run_locked(
                 event(doc, "run-verification-restore-blocked", None, {"verification_exit": verification_exit})
             raise Operational(
                 "BLOCKED",
-                "plan-wide verification changed canonical branch or HEAD; automatic restoration refused",
+                "plan-wide verification changed canonical change or bookmarks; automatic restoration refused",
                 {
                     "verification_exit": verification_exit,
                     "verification_log": verification_log,
@@ -571,9 +605,9 @@ def _verify_run_locked(
             )
         deletion_paths = (after_paths - before_paths) | new_ignored | new_directories
         cleaned_paths = sorted(deletion_paths | restored_ignored)
-        git(repo, "reset", "--hard", before["head"])
+        jj(repo, "op", "restore", before["operation_id"])
         created_directories = _new_parent_directories(deletion_paths, before_directories)
-        _remove_owned_new_paths(repo, deletion_paths | created_directories, before["head"])
+        _remove_owned_new_paths(repo, deletion_paths | created_directories, before["commit_id"])
     directory_restore_error = None
     try:
         restored_directories = _restore_directory_snapshot(repo, before_directory_snapshot)
@@ -583,7 +617,7 @@ def _verify_run_locked(
     cleaned_paths = sorted(set(cleaned_paths) | restored_directories)
     restored = semantic_snapshot(repo)
     restored_directory_snapshot = _directory_snapshot(repo)
-    if restored != before or restored_directory_snapshot != before_directory_snapshot or directory_restore_error:
+    if not same_repository_state(restored, before) or restored_directory_snapshot != before_directory_snapshot or directory_restore_error:
         with locked_manifest(args.run_id, write=True) as doc:
             lock = doc.get("integration_lock") or {}
             blocker = {
@@ -615,9 +649,9 @@ def _verify_run_locked(
         "summary": args.verification_summary,
         "verification_exit": verification_exit,
         "log_sha256": log_digest,
-        "canonical_head": before["head"],
+        "canonical_revision_id": before["commit_id"],
         "accepted_units": accepted_units,
-        "canonical_state_changed": after != before or directory_state_changed,
+        "canonical_state_changed": not same_repository_state(after, before) or directory_state_changed,
         "cleaned_paths": cleaned_paths,
         "verification_log": verification_log if verification_exit != 0 else None,
         "verification_log_retained": verification_exit != 0,
@@ -639,7 +673,7 @@ def _verify_run_locked(
     return "RUN_VERIFIED", {
         "verification_exit": 0,
         "evidence_digest": receipt["evidence_digest"],
-        "canonical_head": before["head"],
+        "canonical_revision_id": before["commit_id"],
         "cleaned_paths": cleaned_paths,
         "verification_log_retained": False,
     }
@@ -651,10 +685,10 @@ def cmd_verify_run(args) -> tuple[str, dict]:
     with locked_manifest(args.run_id) as doc:
         info = validate_repo(doc)
         units = doc.get("units", {})
-        if not units or any(not unit_ready_for_run_verification(unit) for unit in units.values()):
+        if not units or any(unit_accepted_revision(unit) is None for unit in units.values()):
             raise Operational(
                 "REFUSED",
-                "verify-run requires every unit to be terminal with an accepted canonical commit",
+                "verify-run requires every unit to be terminal with an accepted canonical revision",
             )
         if doc.get("integration_lock") is not None:
             raise Operational("BLOCKED", "verify-run requires no active integration lock")
@@ -672,7 +706,7 @@ def cmd_verify_run(args) -> tuple[str, dict]:
         with locked_manifest(args.run_id) as doc:
             validate_repo(doc)
             units = doc.get("units", {})
-            if not units or any(not unit_ready_for_run_verification(unit) for unit in units.values()):
+            if not units or any(unit_accepted_revision(unit) is None for unit in units.values()):
                 raise Operational("BLOCKED", "external unit completion evidence changed before plan-wide verification")
             accepted_units = dict(units)
         result = _verify_run_locked(
@@ -729,13 +763,12 @@ def _integration_recovery_failure(args, original: Operational, failure: Operatio
 
 def cmd_integrate(args) -> tuple[str, dict]:
     command = _verification_command(args)
-    if not args.commit_message.strip() or len(args.commit_message.encode()) > 1024:
-        raise Operational("REFUSED", "commit message must be non-empty and at most 1024 bytes")
+    description = _change_description(args)
 
     token = None
-    before = None
     verification_log = None
-    committed = False
+    described = False
+    canonical_change = None
     try:
         acquired = cmd_integration_acquire(_args(run_id=args.run_id, unit_id=args.unit_id, resume=False))[1]
         token = acquired["lock_token"]
@@ -743,26 +776,28 @@ def cmd_integrate(args) -> tuple[str, dict]:
             run_id=args.run_id,
             unit_id=args.unit_id,
             lock_token=token,
-            allowed_head=args.allowed_head,
+            allowed_revision=args.allowed_revision,
         ))
-        with locked_manifest(args.run_id) as doc:
+        with locked_manifest(args.run_id, write=True) as doc:
             repo = doc["repository"]["toplevel"]
-            transport = doc["units"][args.unit_id]["transport"]["commit"]
+            transport = doc["units"][args.unit_id]["transport"]["commit_id"]
+            doc["units"][args.unit_id]["integration"]["pending_description"] = description
         _preflight_ignored_artifacts(repo, _ignored_paths(repo))
-        pre_fold_directory_snapshot = _directory_snapshot(repo)
-        git(repo, "cherry-pick", "--no-commit", transport)
+        pre_squash_directory_snapshot = _directory_snapshot(repo)
+        jj(repo, "squash", "--from", transport, "--into", "@")
         cmd_mark_applied(_args(run_id=args.run_id, unit_id=args.unit_id, lock_token=token))
         with locked_manifest(args.run_id) as doc:
             unit = doc["units"][args.unit_id]
-            if not matches_expected_apply(repo, unit):
-                raise Operational("BLOCKED", "canonical apply changed before verification")
+            applied = unit["integration"].get("applied") or {}
         before = semantic_snapshot(repo)
-        before_paths = status_paths(repo)
+        before_paths = set(changed_paths(repo))
+        if not matches_expected_apply(repo, unit, before) or before["commit_id"] != applied.get("commit_id"):
+            raise Operational("BLOCKED", "canonical squash changed before verification")
         before_ignored = _ignored_paths(repo)
         _preflight_ignored_artifacts(repo, before_ignored)
         before_directory_snapshot = _directory_snapshot(repo)
         before_directories = set(before_directory_snapshot)
-        ignored_snapshot = _snapshot_ignored_artifacts(
+        ignored_artifacts = _snapshot_ignored_artifacts(
             repo,
             before_ignored,
             os.path.join(run_dir(args.run_id), "units", args.unit_id, "result"),
@@ -777,7 +812,7 @@ def cmd_integrate(args) -> tuple[str, dict]:
                     stdin=subprocess.DEVNULL,
                     stdout=stream,
                     stderr=subprocess.STDOUT,
-                    env=sanitized_git_environment({"PYTHONDONTWRITEBYTECODE": "1"}),
+                    env=_verification_environment(),
                     check=False,
                 )
                 verification_exit = proc.returncode
@@ -785,23 +820,23 @@ def cmd_integrate(args) -> tuple[str, dict]:
                 stream.write(f"verification launch failed: {exc}\n".encode("utf-8", "replace"))
                 verification_exit = 127
         after = semantic_snapshot(repo)
-        after_paths = status_paths(repo)
+        after_paths = set(changed_paths(repo))
         new_ignored = _ignored_paths(repo) - before_ignored
         after_directory_snapshot = _directory_snapshot(repo)
         new_directories = set(after_directory_snapshot) - before_directories
         directory_state_changed = after_directory_snapshot != before_directory_snapshot
         ignored_directories = _new_parent_directories(new_ignored, before_directories)
-        _remove_owned_new_paths(repo, new_ignored | new_directories | ignored_directories, before["head"])
-        restored_ignored = _restore_ignored_artifacts(repo, ignored_snapshot)
-        verification_failed = verification_exit != 0 or after != before
+        _remove_owned_new_paths(repo, new_ignored | new_directories | ignored_directories, before["commit_id"])
+        restored_ignored = _restore_ignored_artifacts(repo, ignored_artifacts)
+        verification_failed = verification_exit != 0 or not same_repository_state(after, before)
         target_directory_snapshot = before_directory_snapshot
         rollback_directories: set[str] = set()
         if verification_failed:
-            rollback_directories = set(before_directory_snapshot) - set(pre_fold_directory_snapshot)
+            rollback_directories = set(before_directory_snapshot) - set(pre_squash_directory_snapshot)
             _restore_owned_verification(args.run_id, args.unit_id, token, before, before_paths, after_paths)
-            target_directory_snapshot = pre_fold_directory_snapshot
+            target_directory_snapshot = pre_squash_directory_snapshot
             rollback_directories |= set(_directory_snapshot(repo)) - set(target_directory_snapshot)
-            _remove_owned_new_paths(repo, rollback_directories, before["head"])
+            _remove_owned_new_paths(repo, rollback_directories, before["commit_id"])
         directory_restore_error = None
         try:
             test_fault("unit-verification-before-directory-restore")
@@ -858,7 +893,7 @@ def cmd_integrate(args) -> tuple[str, dict]:
                     "unit_id": args.unit_id,
                     "verification_exit": verification_exit,
                     "verification_log": verification_log,
-                    "canonical_state_changed": after != before,
+                    "canonical_state_changed": not same_repository_state(after, before),
                     "cleaned_paths": cleaned_paths,
                 },
             )
@@ -878,12 +913,14 @@ def cmd_integrate(args) -> tuple[str, dict]:
             evidence_digest=evidence,
             summary=args.verification_summary,
         ))
-        test_fault("before-canonical-commit")
-        commit_index_tree(repo, args.commit_message)
-        committed_body = cmd_mark_committed(_args(run_id=args.run_id, unit_id=args.unit_id, lock_token=token))[1]
-        committed = True
-        canonical = committed_body["canonical_commit"]["commit"]
-        test_fault("after-canonical-commit-confirmed")
+        test_fault("before-canonical-describe")
+        jj(repo, "describe", "-m", description)
+        jj(repo, "new")
+        described_body = cmd_mark_described(_args(run_id=args.run_id, unit_id=args.unit_id, lock_token=token))[1]
+        described = True
+        canonical_change = described_body["canonical_change"]
+        canonical_revision = canonical_change["commit_id"]
+        test_fault("after-canonical-describe-confirmed")
         with locked_manifest(args.run_id) as doc:
             wave_id = doc["units"][args.unit_id].get("wave", {}).get("id")
         if wave_id:
@@ -891,7 +928,7 @@ def cmd_integrate(args) -> tuple[str, dict]:
                 run_id=args.run_id,
                 unit_id=args.unit_id,
                 lock_token=token,
-                canonical_commit=canonical,
+                canonical_revision=canonical_revision,
             ))
         cmd_cleanup(_args(
             run_id=args.run_id,
@@ -902,20 +939,21 @@ def cmd_integrate(args) -> tuple[str, dict]:
         ))
         cmd_integration_release(_args(run_id=args.run_id, unit_id=args.unit_id, lock_token=token))
         token = None
-        return "UNIT_COMMITTED", {
+        os.unlink(verification_log)
+        return "UNIT_DESCRIBED", {
             "unit_id": args.unit_id,
-            "canonical_commit": canonical,
+            "canonical_change": canonical_change,
             "verification_digest": evidence,
             "verification_log_retained": False,
             "cleaned_paths": cleaned_paths,
             "cleaned": True,
         }
     except (Operational, TrustFailure) as original:
-        if token is not None and committed:
+        if token is not None and described:
             detail = {
-                "reason": "canonical commit accepted but post-commit finalization is incomplete",
+                "reason": "canonical change accepted but post-description finalization is incomplete",
                 "unit_id": args.unit_id,
-                "canonical_commit": canonical,
+                "canonical_change": canonical_change,
                 "original_failure": str(original),
                 "original_word": original.word,
                 "retain_integration_lock": True,
@@ -923,13 +961,13 @@ def cmd_integrate(args) -> tuple[str, dict]:
             }
             with locked_manifest(args.run_id, write=True) as doc:
                 doc["blockers"].append({"at": now_iso(), **detail})
-                event(doc, "post-commit-finalization-blocked", args.unit_id, {
-                    "canonical_commit": canonical,
+                event(doc, "post-description-finalization-blocked", args.unit_id, {
+                    "canonical_change": canonical_change,
                     "original_word": original.word,
                 })
             raise Operational(
                 "BLOCKED",
-                "canonical commit accepted but post-commit finalization is incomplete",
+                "canonical change accepted but post-description finalization is incomplete",
                 detail,
             ) from original
         if token is not None and original.detail.get("retain_integration_lock"):

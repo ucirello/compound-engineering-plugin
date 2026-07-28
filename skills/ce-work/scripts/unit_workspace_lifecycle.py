@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -12,6 +13,13 @@ from types import SimpleNamespace
 from unit_workspace_state import *
 from unit_workspace_jobs import *
 from unit_workspace_integration import *
+
+DESCRIPTION_RULE = "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards."
+DESCRIPTION_PRECEDENCE = (
+    "The project's active runtime instructions and syntax observed with `jj log` take precedence; "
+    "apply the Go guidance only where compatible, without a fixed type, scope, template, example, "
+    "or identity footer."
+)
 
 
 def cmd_status(args) -> tuple[str, dict]:
@@ -22,13 +30,30 @@ def cmd_status(args) -> tuple[str, dict]:
             unit = doc["units"].get(args.unit_id)
             if not unit:
                 raise Operational("REFUSED", "unknown unit")
-            body = {"run_id": args.run_id, "revision": doc["revision"], "source": source, "unit": unit, "integration_lock": doc.get("integration_lock"), "verifications": doc.get("verifications", []), "blockers": doc.get("blockers", [])}
+            body = {
+                "run_id": args.run_id,
+                "revision": doc["revision"],
+                "source": source,
+                "unit": unit,
+                "integration_lock": doc.get("integration_lock"),
+                "verifications": doc.get("verifications", []),
+                "blockers": doc.get("blockers", []),
+            }
         else:
-            body = {"run_id": args.run_id, "revision": doc["revision"], "source": source, "units": doc["units"], "integration_lock": doc.get("integration_lock"), "verifications": doc.get("verifications", []), "blockers": doc.get("blockers", []), "recovery_path": run_dir(args.run_id)}
+            body = {
+                "run_id": args.run_id,
+                "revision": doc["revision"],
+                "source": source,
+                "units": doc["units"],
+                "integration_lock": doc.get("integration_lock"),
+                "verifications": doc.get("verifications", []),
+                "blockers": doc.get("blockers", []),
+                "recovery_path": run_dir(args.run_id),
+            }
     return "STATUS", body
 
 
-def unfinished_run(doc: dict, canonical_head: str) -> bool:
+def unfinished_run(doc: dict, canonical_revision: str) -> bool:
     units = doc.get("units")
     if not isinstance(units, dict):
         raise TrustFailure("manifest units are malformed")
@@ -45,7 +70,7 @@ def unfinished_run(doc: dict, canonical_head: str) -> bool:
     terminal_states = {"cleaned", "native-completed"}
     if any(state not in terminal_states for state in states):
         return True
-    for uid, unit in doc["units"].items():
+    for uid, unit in units.items():
         if unit.get("state") != "native-completed":
             continue
         attempt = find_attempt(unit)
@@ -69,38 +94,29 @@ def unfinished_run(doc: dict, canonical_head: str) -> bool:
             and isinstance(completion.get("summary"), str)
             and completion.get("summary")
             and isinstance(completion.get("evidence_digest"), str)
-            and re.fullmatch(r"[0-9a-f]{64}", completion["evidence_digest"])
-            and isinstance(completion.get("accepted_head"), str)
-            and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", completion["accepted_head"])
-            and completion.get("base") == unit.get("workspace", {}).get("base")
-            and isinstance(completion.get("snapshot"), dict)
-            and completion["snapshot"].get("head") == completion["accepted_head"]
-            and completion["snapshot"].get("branch_ref") == doc.get("branch", {}).get("ref")
-            and completion["snapshot"].get("status_empty") is True
-            and completion["snapshot"].get("worktree_index_empty") is True
-            and completion["snapshot"].get("head_tree") == completion["snapshot"].get("index_tree")
-            and completion["snapshot"].get("status_sha256") == digest_bytes(b"")
+            and SHA256.fullmatch(completion["evidence_digest"])
+            and isinstance(completion.get("accepted_revision_id"), str)
+            and REVISION_ID.fullmatch(completion["accepted_revision_id"])
         ):
             raise TrustFailure(f"native fallback completion receipt is malformed: {uid}")
     receipts = doc.get("verifications", [])
     if not isinstance(receipts, list) or any(not isinstance(receipt, dict) for receipt in receipts):
         raise TrustFailure("manifest verification receipts are malformed")
-    accepted_units = accepted_unit_commit_snapshot(units)
-    if accepted_units is None:
+    accepted_units = {uid: unit_accepted_revision(unit) for uid, unit in units.items()}
+    if any(value is None for value in accepted_units.values()):
         return True
     return doc.get("integration_lock") is not None or not any(
         receipt.get("verification_exit") == 0
         and receipt.get("accepted_units") == accepted_units
-        and receipt.get("canonical_head") == canonical_head
-        and canonical_head in accepted_units.values()
+        and receipt.get("canonical_revision_id") == canonical_revision
         for receipt in receipts
     )
 
 
 def discover_resume_run(repo: str, plan_digest: str) -> tuple[str, list[dict]]:
-    if not re.fullmatch(r"[0-9a-f]{64}", plan_digest):
+    if not SHA256.fullmatch(plan_digest):
         raise Operational("REFUSED", "plan digest must be a lowercase SHA-256 hex value")
-    root = ensure_root()
+    root = ensure_root(repo)
     info = repo_info(repo)
     candidates: list[dict] = []
     for entry in sorted(os.scandir(root), key=lambda row: row.name):
@@ -115,34 +131,38 @@ def discover_resume_run(repo: str, plan_digest: str) -> tuple[str, list[dict]]:
         if doc.get("schema_version") != SCHEMA_VERSION or doc.get("run_id") != entry.name:
             raise TrustFailure(f"manifest schema or run identity mismatch: {entry.path}")
         repository = doc.get("repository")
-        branch = doc.get("branch")
-        plan = doc.get("plan")
         source = doc.get("source")
-        if not isinstance(repository, dict) or not isinstance(branch, dict) or not isinstance(plan, dict):
-            raise TrustFailure(f"manifest repository, branch, or plan record is malformed: {entry.path}")
+        if not isinstance(repository, dict) or not isinstance(source, dict):
+            raise TrustFailure(f"manifest repository or source record is malformed: {entry.path}")
         if (
             repository.get("identity_digest") != info["identity_digest"]
             or repository.get("toplevel") != info["toplevel"]
-            or repository.get("git_dir") != info["git_dir"]
-            or branch.get("ref") != info["branch_ref"]
         ):
             continue
-        if source is not None and not isinstance(source, dict):
-            raise TrustFailure(f"manifest source record is malformed: {entry.path}")
-        source_kind = source.get("kind") if isinstance(source, dict) else plan.get("kind", "plan")
-        source_digest = source.get("digest") if isinstance(source, dict) else plan.get("digest")
-        if source_kind != "plan" or source_digest != plan_digest:
+        if source.get("kind") != "plan" or source.get("digest") != plan_digest:
             continue
-        validate_source(doc)
-        if unfinished_run(doc, info["head"]):
-            candidates.append({
-                "run_id": entry.name,
-                "updated_at": doc.get("updated_at"),
-                "recovery_path": entry.path,
-                "unit_states": {uid: unit.get("state") for uid, unit in doc["units"].items()},
-            })
+        previous_root = os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT")
+        os.environ["ROCKETCLAW_WORK_RUNS_ROOT"] = root
+        try:
+            validate_repo(doc)
+            if unfinished_run(doc, info["commit_id"]):
+                candidates.append({
+                    "run_id": entry.name,
+                    "updated_at": doc.get("updated_at"),
+                    "recovery_path": entry.path,
+                    "unit_states": {uid: unit.get("state") for uid, unit in doc["units"].items()},
+                })
+        finally:
+            if previous_root is None:
+                os.environ.pop("ROCKETCLAW_WORK_RUNS_ROOT", None)
+            else:
+                os.environ["ROCKETCLAW_WORK_RUNS_ROOT"] = previous_root
     if not candidates:
-        raise Operational("NOT_FOUND", "no unfinished run matches repository, branch, and plan digest", {"candidates": []})
+        raise Operational(
+            "NOT_FOUND",
+            "no unfinished run matches repository, workspace, and plan digest",
+            {"candidates": []},
+        )
     if len(candidates) > 1:
         raise Operational("AMBIGUOUS", "multiple unfinished runs match; pass --run-id", {"candidates": candidates})
     return candidates[0]["run_id"], candidates
@@ -156,6 +176,7 @@ def resolve_resume_run(args) -> str:
     if not args.repo or not args.plan_digest:
         raise Operational("REFUSED", "resume requires --run-id or both --repo and --plan-digest")
     run_id, _ = discover_resume_run(args.repo, args.plan_digest)
+    os.environ["ROCKETCLAW_WORK_RUNS_ROOT"] = runs_root(args.repo)
     return run_id
 
 
@@ -164,7 +185,7 @@ def retained_worker_blocker(run_id: str, unit_id: str, error: Operational) -> di
         return None
     with locked_manifest(run_id) as doc:
         unit = doc["units"].get(unit_id)
-        if not unit or unit.get("state") != "authored":
+        if not unit or unit.get("state") not in {"authoring", "authored"}:
             return None
         attempt = find_attempt(unit)
         receipt = attempt.get("terminal_receipt")
@@ -182,7 +203,10 @@ def retained_worker_blocker(run_id: str, unit_id: str, error: Operational) -> di
             "terminal_receipt": receipt,
             "recovery_path": os.path.join(run_dir(run_id), "units", unit_id),
         }
-    return blocker if error.detail == blocker else None
+    detail = error.detail
+    if detail.get("unit_id") == unit_id and detail.get("terminal_receipt") == receipt:
+        return blocker
+    return None
 
 
 def resume_terminalize(run_id: str, unit_id: str) -> list[dict]:
@@ -199,7 +223,7 @@ def resume_terminalize(run_id: str, unit_id: str) -> list[dict]:
             "summary": blocker["summary"],
             "recovery_path": blocker["recovery_path"],
         }]
-    return [{"unit_id": unit_id, "action": "terminalized", "transport": transport["commit"]}]
+    return [{"unit_id": unit_id, "action": "terminalized", "transport": transport["commit_id"]}]
 
 
 def resume_monitor(run_id: str, unit_id: str) -> list[dict]:
@@ -271,15 +295,12 @@ def receipted_plan_wide_verification(doc: dict, lock: dict) -> dict | None:
     if not recorded:
         return None
     evidence_digest = recorded[0].get("evidence_digest")
-    if not isinstance(evidence_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", evidence_digest):
+    if not isinstance(evidence_digest, str) or not SHA256.fullmatch(evidence_digest):
         raise TrustFailure("plan-wide verification attempt receipt digest is malformed")
     verifications = doc.get("verifications", [])
     if not isinstance(verifications, list) or any(not isinstance(receipt, dict) for receipt in verifications):
         raise TrustFailure("manifest verification receipts are malformed")
-    receipts = [
-        receipt for receipt in verifications
-        if receipt.get("evidence_digest") == evidence_digest
-    ]
+    receipts = [receipt for receipt in verifications if receipt.get("evidence_digest") == evidence_digest]
     if len(receipts) != 1:
         raise TrustFailure("plan-wide verification receipt is missing or duplicated")
     return recorded[0]
@@ -303,19 +324,12 @@ def resume_finalize_committed(run_id: str, unit_id: str) -> list[dict]:
         pending_plan_verification = pending_plan_wide_verification(doc, lock) if lock else None
         receipted_plan_verification = receipted_plan_wide_verification(doc, lock) if lock else None
         retained_plan_lock = bool(lock and plan_wide_blocker_retains_lock(doc, lock))
-        wave_id = unit.get("wave", {}).get("id")
         cleanup = unit.get("cleanup") or {}
-        artifact_cleanup_complete = cleanup.get("artifact_cleanup", {}).get("complete") is True
+        artifacts_pruned = cleanup.get("artifacts_pruned") is True
     if state in {"cleaned", "native-completed"}:
         actions: list[dict] = []
-        if (state == "cleaned" or cleanup) and not artifact_cleanup_complete:
-            cmd_cleanup(SimpleNamespace(
-                run_id=run_id,
-                unit_id=unit_id,
-                abandon=False,
-                expect_transport=None,
-                expect_job=None,
-            ))
+        if cleanup and not artifacts_pruned:
+            remove_finalized_artifacts(run_id, unit_id)
             actions.append({"unit_id": unit_id, "action": "artifact-cleanup-reconciled"})
         if lock and lock.get("unit_id") == unit_id:
             if pending_plan_verification:
@@ -334,36 +348,41 @@ def resume_finalize_committed(run_id: str, unit_id: str) -> list[dict]:
                     "plan-wide verification blocker retains the canonical integration lock",
                     {"unit_id": unit_id, "retain_integration_lock": True},
                 )
-            if state == "native-completed" and not receipted_plan_verification:
+            if state == "native-completed" and plan_wide_verification_attempts(doc) and not receipted_plan_verification:
                 raise Operational(
                     "BLOCKED",
                     "native-completed unit retains the canonical integration lock without a plan-wide verification receipt",
                     {"unit_id": unit_id, "retain_integration_lock": True},
                 )
-            cmd_integration_release(SimpleNamespace(run_id=run_id, unit_id=unit_id, lock_token=lock["nonce"]))
+            integration_release(run_id, unit_id, lock["nonce"])
             actions.append({"unit_id": unit_id, "action": "integration-release-reconciled"})
         return actions
-    canonical_record = unit.get("integration", {}).get("canonical_commit")
-    canonical = canonical_record.get("commit") if isinstance(canonical_record, dict) else None
-    if state != "committed" or not canonical:
-        raise Operational("BLOCKED", "committed-unit recovery lacks an accepted canonical commit")
+    canonical_change = unit.get("integration", {}).get("canonical_change")
+    if state != "described" or not isinstance(canonical_change, dict):
+        raise Operational("BLOCKED", "described-unit recovery lacks an accepted canonical change")
     if lock is None:
-        lock_token = cmd_integration_acquire(SimpleNamespace(run_id=run_id, unit_id=unit_id, resume=False))[1]["lock_token"]
+        lock_token = cmd_integration_acquire(
+            SimpleNamespace(run_id=run_id, unit_id=unit_id, resume=False)
+        )[1]["lock_token"]
     elif lock.get("unit_id") == unit_id:
         lock_token = lock["nonce"]
         with locked_manifest(run_id) as doc:
             validate_lock(doc, unit_id, lock_token)
     else:
         raise Operational("BLOCKED", "another unit holds the canonical integration lock")
-    actions: list[dict] = []
-    if wave_id:
+    actions = []
+    if unit.get("wave", {}).get("id"):
         cmd_wave_advance(SimpleNamespace(
             run_id=run_id,
             unit_id=unit_id,
             lock_token=lock_token,
-            canonical_commit=canonical,
+            canonical_revision=canonical_change["commit_id"],
         ))
-        actions.append({"unit_id": unit_id, "action": "wave-advance-reconciled", "commit": canonical})
+        actions.append({
+            "unit_id": unit_id,
+            "action": "wave-advance-reconciled",
+            "revision": canonical_change["commit_id"],
+        })
     cmd_cleanup(SimpleNamespace(
         run_id=run_id,
         unit_id=unit_id,
@@ -371,9 +390,13 @@ def resume_finalize_committed(run_id: str, unit_id: str) -> list[dict]:
         expect_transport=None,
         expect_job=None,
     ))
-    cmd_integration_release(SimpleNamespace(run_id=run_id, unit_id=unit_id, lock_token=lock_token))
+    integration_release(run_id, unit_id, lock_token)
     resolve_unit_recovery_blockers(run_id, unit_id)
-    actions.append({"unit_id": unit_id, "action": "committed-unit-finalized", "commit": canonical})
+    actions.append({
+        "unit_id": unit_id,
+        "action": "described-unit-finalized",
+        "revision": canonical_change["commit_id"],
+    })
     return actions
 
 
@@ -402,13 +425,13 @@ def cmd_resume(args) -> tuple[str, dict]:
         integration_release(run_id, releasing["unit_id"], releasing["nonce"])
         actions.append({"unit_id": releasing["unit_id"], "action": "integration-release-reconciled"})
     if orphan_unit:
-        cmd_integration_acquire(SimpleNamespace(
+        token = cmd_integration_acquire(SimpleNamespace(
             run_id=run_id,
             unit_id=orphan_unit,
             resume=True,
             recover_only=True,
-        ))
-        actions.append({"unit_id": orphan_unit, "action": "integration-lock-adopted"})
+        ))[1]["lock_token"]
+        actions.append({"unit_id": orphan_unit, "action": "integration-lock-adopted", "lock_token": token})
     for uid in unit_ids:
         with locked_manifest(run_id) as doc:
             unit = doc["units"][uid]
@@ -435,9 +458,8 @@ def cmd_resume(args) -> tuple[str, dict]:
         elif state == "authored":
             actions.extend(resume_terminalize(run_id, uid))
         elif state == "restoring" and lock and lock.get("unit_id") == uid:
-            exact = restore(run_id, uid, lock["nonce"])
-            if not exact:
-                raise Operational("BLOCKED", "exact pre-fold preservation could not be proven")
+            if not restore(run_id, uid, lock["nonce"]):
+                raise Operational("BLOCKED", "exact pre-squash preservation could not be proven")
             integration_release(run_id, uid, lock["nonce"])
             resolve_unit_recovery_blockers(
                 run_id,
@@ -458,124 +480,98 @@ def cmd_resume(args) -> tuple[str, dict]:
                 not isinstance(restore_evidence, dict)
                 or restore_evidence.get("exact") is not True
                 or not isinstance(pre_fold, dict)
-                or restore_evidence.get("snapshot") != pre_fold
             ):
                 raise Operational("BLOCKED", "preserved-unit recovery lacks exact restoration evidence")
-            if semantic_snapshot(doc["repository"]["toplevel"]) != pre_fold:
-                raise Operational("BLOCKED", "canonical checkout no longer matches the exact restored snapshot")
+            actual = snapshot(doc["repository"]["toplevel"])
+            if actual.get("change_id") != pre_fold.get("change_id") or actual.get("commit_id") != pre_fold.get("commit_id"):
+                raise Operational("BLOCKED", "canonical workspace no longer matches the exact restored snapshot")
             integration_release(run_id, uid, lock["nonce"])
-            resolve_unit_recovery_blockers(
-                run_id,
-                uid,
-                reason="integration failed after exact restoration but lock release failed",
-            )
+            resolve_unit_recovery_blockers(run_id, uid)
             actions.append({"unit_id": uid, "action": "integration-release-reconciled"})
-        elif state == "integration-pending" and not unit["integration"].get("pre_fold") and lock and lock.get("unit_id") == uid:
+        elif state == "integration-pending" and not unit.get("integration") and lock and lock.get("unit_id") == uid:
             validate_lock(doc, uid, lock["nonce"])
             integration_release(run_id, uid, lock["nonce"])
             actions.append({"unit_id": uid, "action": "preflight-lock-released"})
-        elif state == "integration-pending" and unit["integration"].get("pre_fold") and lock and lock.get("unit_id") == uid:
+        elif state in {"integration-pending", "integrated"} and unit.get("integration") and lock and lock.get("unit_id") == uid:
+            validate_lock(doc, uid, lock["nonce"])
+            if not restore(run_id, uid, lock["nonce"]):
+                raise Operational("BLOCKED", "exact pre-squash preservation could not be proven")
+            integration_release(run_id, uid, lock["nonce"])
+            actions.append({
+                "unit_id": uid,
+                "action": "inflight-squash-restored",
+                "canonical_preserved": True,
+                "integration_lock_released": True,
+            })
+        elif state == "verified" and lock and lock.get("unit_id") == uid:
             validate_lock(doc, uid, lock["nonce"])
             repo = doc["repository"]["toplevel"]
-            snap = semantic_snapshot(repo)
-            if snap == unit["integration"]["pre_fold"]:
-                exact = restore(run_id, uid, lock["nonce"])
-                if not exact:
-                    raise Operational("BLOCKED", "exact pre-fold preservation could not be proven")
+            pending = unit.get("integration", {}).get("pending_description")
+            current = snapshot(repo)
+            parent = revision(repo, "@-") if current["working_copy_empty"] else None
+            if pending and current["working_copy_empty"] and parent and parent["description"] == pending:
+                cmd_mark_described(SimpleNamespace(run_id=run_id, unit_id=uid, lock_token=lock["nonce"]))
+                actions.append({"unit_id": uid, "action": "description-reconciled"})
+            elif pending and current["change_id"] == unit["integration"]["pre_fold"]["change_id"] and current["description"] == pending:
+                jj(repo, "new")
+                cmd_mark_described(SimpleNamespace(run_id=run_id, unit_id=uid, lock_token=lock["nonce"]))
+                actions.append({"unit_id": uid, "action": "description-advance-reconciled"})
+            else:
+                if not restore(run_id, uid, lock["nonce"]):
+                    raise Operational("BLOCKED", "exact pre-squash preservation could not be proven")
                 integration_release(run_id, uid, lock["nonce"])
                 actions.append({
                     "unit_id": uid,
-                    "action": "preflight-exact-state-recovered",
+                    "action": "verified-change-restored",
                     "canonical_preserved": True,
                     "integration_lock_released": True,
                 })
-            else:
-                if not matches_expected_apply(repo, unit, snap):
-                    raise Operational("BLOCKED", "canonical dirt does not match the expected in-flight transport; preserved for recovery")
-                with locked_manifest(run_id, write=True) as current:
-                    current_unit = current["units"][uid]
-                    current_unit["state"] = "integrated"
-                    current_unit["integration"]["applied"] = {
-                        "at": now_iso(),
-                        "post_index_tree": snap["index_tree"],
-                        "status_sha256": snap["status_sha256"],
-                        "reconciled": True,
-                    }
-                    event(current, "transport-apply-reconciled", uid, {"post_index_tree": snap["index_tree"]})
-                actions.append({"unit_id": uid, "action": "apply-reconciled"})
-        elif state in {"integrated", "verified"} and lock and lock.get("unit_id") == uid:
-            validate_lock(doc, uid, lock["nonce"])
-            commit = None
-            if state == "verified":
-                with locked_manifest(run_id) as current:
-                    commit = reconcile_commit(current, current["units"][uid])
-            if commit:
-                with locked_manifest(run_id, write=True) as current:
-                    current["units"][uid]["integration"]["canonical_commit"] = commit
-                    current["units"][uid]["state"] = "committed"
-                    event(current, "canonical-commit-reconciled", uid, {"commit": commit["commit"]})
-                actions.append({"unit_id": uid, "action": "commit-reconciled", "commit": commit["commit"]})
-                actions.extend(resume_finalize_committed(run_id, uid))
-            else:
-                exact = restore(run_id, uid, lock["nonce"])
-                if not exact:
-                    raise Operational("BLOCKED", "exact pre-fold preservation could not be proven")
-                integration_release(run_id, uid, lock["nonce"])
-                actions.append({
-                    "unit_id": uid,
-                    "action": "pre-commit-integration-restored",
-                    "interrupted_state": state,
-                    "canonical_preserved": True,
-                    "integration_lock_released": True,
-                })
-        elif state in {"committed", "cleaned", "native-completed"}:
+                continue
+            actions.extend(resume_finalize_committed(run_id, uid))
+        elif state in {"described", "cleaned", "native-completed"}:
             actions.extend(resume_finalize_committed(run_id, uid))
     return "RESUMED", {"run_id": run_id, "actions": actions, "redispatched": False, "applied": False}
 
 
 def fallback_basis(doc: dict, unit: dict) -> tuple[str, dict]:
-    if unit.get("state") == "integration-pending" and unit.get("transport", {}).get("commit"):
-        raise Operational("REFUSED", "pinned worker transport must be reconciled rather than bypassed by fallback")
+    if unit.get("state") == "integration-pending" and unit.get("transport", {}).get("commit_id"):
+        raise Operational("REFUSED", "pinned worker change must be reconciled rather than bypassed by fallback")
     attempt = find_attempt(unit)
     process_state = attempt.get("process_state")
     if process_state == "done" and attempt.get("terminal_validation_failure"):
         validate_terminal_validation_failure(doc["run_id"], unit, attempt)
-        snap = semantic_snapshot(doc["repository"]["toplevel"])
-        allowed_heads = set(unit.get("wave", {}).get("allowed_heads", []))
+        snap = snapshot(doc["repository"]["toplevel"])
+        allowed_revisions = set(unit.get("wave", {}).get("allowed_revisions", []))
         if (
-            snap["head"] not in allowed_heads
-            and not dependency_advanced_head(doc, unit, snap["head"])
-        ) or not snap["status_empty"] or snap["index_tree"] != snap["head_tree"]:
-            raise Operational("BLOCKED", "canonical checkout diverged or is dirty; native fallback is not safe")
+            snap["commit_id"] not in allowed_revisions
+            and not dependency_advanced_revision(doc, unit, snap["commit_id"])
+        ) or not snap["working_copy_empty"] or snap["conflicted"]:
+            raise Operational("BLOCKED", "canonical workspace diverged or is not empty; native fallback is not safe")
         return "terminal-validation-failure", attempt
-    if process_state in TERMINAL_PROCESS - {"done"} or (process_state == "never-started" and attempt.get("job_id")):
-        snap = semantic_snapshot(doc["repository"]["toplevel"])
-        allowed_heads = set(unit.get("wave", {}).get("allowed_heads", []))
+    if process_state in TERMINAL_PROCESS - {"done"} or (
+        process_state == "never-started" and attempt.get("job_id")
+    ):
+        snap = snapshot(doc["repository"]["toplevel"])
+        allowed_revisions = set(unit.get("wave", {}).get("allowed_revisions", []))
         if (
-            snap["head"] not in allowed_heads
-            and not dependency_advanced_head(doc, unit, snap["head"])
-        ) or not snap["status_empty"] or snap["index_tree"] != snap["head_tree"]:
-            raise Operational("BLOCKED", "canonical checkout diverged or is dirty; native fallback is not safe")
-        recorded = attempt.get("terminal_receipt")
-        if process_state == "failed" and isinstance(recorded, dict) and recorded.get("terminal_status") in {"unavailable", "failed"}:
-            reader = (
-                unavailable_terminal_receipt
-                if recorded["terminal_status"] == "unavailable"
-                else launched_failure_terminal_receipt
-            )
-            observed = reader(doc["run_id"], unit, attempt)
-            if observed != recorded:
-                raise Operational("BLOCKED", "recorded failed receipt evidence changed")
-            return observed["failure_reason"], attempt
+            snap["commit_id"] not in allowed_revisions
+            and not dependency_advanced_revision(doc, unit, snap["commit_id"])
+        ) or not snap["working_copy_empty"] or snap["conflicted"]:
+            raise Operational("BLOCKED", "canonical workspace diverged or is not empty; native fallback is not safe")
         return str(attempt.get("fallback", {}).get("reason") or process_state), attempt
     restore_evidence = unit.get("integration", {}).get("restore")
     if unit.get("state") == "preserved" and restore_evidence and restore_evidence.get("exact") is True:
         if doc.get("integration_lock"):
             raise Operational("REFUSED", "release the integration lock after exact restoration before fallback")
-        actual = semantic_snapshot(doc["repository"]["toplevel"])
+        actual = snapshot(doc["repository"]["toplevel"])
         expected = unit["integration"].get("pre_fold")
-        if actual != expected:
-            raise Operational("BLOCKED", "canonical checkout no longer matches the exact restored snapshot")
+        if (
+            not isinstance(expected, dict)
+            or actual.get("change_id") != expected.get("change_id")
+            or actual.get("commit_id") != expected.get("commit_id")
+            or not actual["working_copy_empty"]
+        ):
+            raise Operational("BLOCKED", "canonical workspace no longer matches the exact restored snapshot")
         return "canonical-attempt-preserved", attempt
     if process_state == "running":
         raise Operational("REFUSED", "a live attempt still owns implementation; fallback is not authorized")
@@ -585,8 +581,6 @@ def fallback_basis(doc: dict, unit: dict) -> tuple[str, dict]:
 
 
 def cmd_claim_fallback(args) -> tuple[str, dict]:
-    # Refresh runner evidence first. A stale manifest cannot authorize native
-    # work while a detached attempt may still be live.
     with locked_manifest(args.run_id) as doc:
         validate_repo(doc)
         unit = doc["units"].get(args.unit_id)
@@ -615,22 +609,30 @@ def cmd_claim_fallback(args) -> tuple[str, dict]:
             }
         validate_dependencies_ready(doc, unit)
         reason, attempt = fallback_basis(doc, unit)
-        claim_snapshot = semantic_snapshot(doc["repository"]["toplevel"])
+        claim_snapshot = snapshot(doc["repository"]["toplevel"])
         wave = unit.get("wave", {})
         if wave.get("id"):
             validate_wave_order(doc, unit)
-            allowed_heads = wave.get("allowed_heads", [])
-            if not allowed_heads or (
-                claim_snapshot["head"] != allowed_heads[-1]
-                and not dependency_advanced_head(doc, unit, claim_snapshot["head"])
+            allowed_revisions = wave.get("allowed_revisions", [])
+            if not allowed_revisions or (
+                claim_snapshot["commit_id"] != allowed_revisions[-1]
+                and not dependency_advanced_revision(doc, unit, claim_snapshot["commit_id"])
             ):
-                raise Operational("BLOCKED", "native fallback must start from the latest recorded wave head")
+                raise Operational("BLOCKED", "native fallback must start from the latest recorded wave revision")
         mode = doc.get("binding", {}).get("mode")
         if mode == "require":
             if args.caller_mode == "headless":
-                raise Operational("BLOCKED", "required external route terminated; headless callers cannot choose native fallback", {"unit_id": args.unit_id, "reason": reason})
+                raise Operational(
+                    "BLOCKED",
+                    "required external route terminated; headless callers cannot choose native fallback",
+                    {"unit_id": args.unit_id, "reason": reason},
+                )
             if not args.confirm_native:
-                raise Operational("CHOICE_REQUIRED", "required external route terminated; ask whether to continue natively", {"unit_id": args.unit_id, "reason": reason})
+                raise Operational(
+                    "CHOICE_REQUIRED",
+                    "required external route terminated; ask whether to continue natively",
+                    {"unit_id": args.unit_id, "reason": reason},
+                )
         elif mode != "prefer":
             raise Operational("REFUSED", f"binding mode {mode!r} does not authorize native fallback")
         claim = {
@@ -639,71 +641,81 @@ def cmd_claim_fallback(args) -> tuple[str, dict]:
             "caller_mode": args.caller_mode,
             "mode": mode,
             "confirmed_native": bool(args.confirm_native),
-            "canonical_head": claim_snapshot["head"],
+            "canonical_revision_id": claim_snapshot["commit_id"],
         }
         fallback.update({"eligible": False, "reason": reason, "claimed": claim})
-        event(doc, "native-fallback-authorized", args.unit_id, {"reason": reason, "mode": mode, "caller_mode": args.caller_mode})
-        return "FALLBACK_AUTHORIZED", {"unit_id": args.unit_id, "start_native": True, "reason": reason, "claim": claim}
+        event(doc, "native-fallback-authorized", args.unit_id, {
+            "reason": reason,
+            "mode": mode,
+            "caller_mode": args.caller_mode,
+        })
+        return "FALLBACK_AUTHORIZED", {
+            "unit_id": args.unit_id,
+            "start_native": True,
+            "reason": reason,
+            "claim": claim,
+        }
 
 
-def validate_fallback_ancestry(doc: dict, unit: dict, accepted_head: str) -> None:
+def validate_fallback_ancestry(doc: dict, unit: dict, accepted_revision: str) -> None:
     required: list[dict] = []
     dependency_ids = set(unit.get("dependencies", []))
     for dependency_id in unit.get("dependencies", []):
         dependency = doc.get("units", {}).get(dependency_id)
-        accepted_commit = unit_accepted_commit(dependency) if isinstance(dependency, dict) else None
-        if accepted_commit is None:
+        accepted = unit_accepted_revision(dependency)
+        if accepted is None:
             raise Operational(
                 "BLOCKED",
                 "unit dependency completion evidence changed before native fallback completion",
                 {"unit_id": unit["unit_id"], "dependency_id": dependency_id},
             )
-        required.append({"kind": "dependency", "unit_id": dependency_id, "commit": accepted_commit})
+        required.append({"kind": "dependency", "unit_id": dependency_id, "revision": accepted})
 
     wave = unit.get("wave", {})
     if wave.get("id"):
         wave_members(doc, unit)
         base = wave.get("base")
-        for head in wave.get("allowed_heads", []):
-            if head != base:
-                required.append({"kind": "wave-head", "commit": head})
+        for candidate in wave.get("allowed_revisions", []):
+            if candidate != base:
+                required.append({"kind": "wave-revision", "revision": candidate})
 
-    represented_commits = {item["commit"] for item in required}
+    represented = {item["revision"] for item in required}
     for accepted_unit_id in sorted(doc.get("units", {})):
         if accepted_unit_id == unit["unit_id"] or accepted_unit_id in dependency_ids:
             continue
-        accepted_unit = doc["units"][accepted_unit_id]
-        accepted_commit = unit_accepted_commit(accepted_unit)
-        if accepted_commit is None or accepted_commit in represented_commits:
+        accepted = unit_accepted_revision(doc["units"][accepted_unit_id])
+        if accepted is None or accepted in represented:
             continue
-        required.append({"kind": "accepted-unit", "unit_id": accepted_unit_id, "commit": accepted_commit})
-        represented_commits.add(accepted_commit)
+        required.append({"kind": "accepted-unit", "unit_id": accepted_unit_id, "revision": accepted})
+        represented.add(accepted)
 
     missing = [
         item for item in required
-        if git_text(
-            doc["repository"]["toplevel"], "merge-base", item["commit"], accepted_head, check=False,
-        ) != item["commit"]
+        if not revision_contains(doc["repository"]["toplevel"], item["revision"], accepted_revision)
     ]
     if missing:
         raise Operational(
             "BLOCKED",
-            "accepted native fallback head does not contain every controller-accepted prerequisite",
-            {"unit_id": unit["unit_id"], "accepted_head": accepted_head, "missing_ancestry": missing},
+            "accepted native fallback revision does not contain every controller-accepted prerequisite",
+            {
+                "unit_id": unit["unit_id"],
+                "accepted_revision": accepted_revision,
+                "missing_ancestry": missing,
+            },
         )
 
 
 def cmd_complete_fallback(args) -> tuple[str, dict]:
-    if not re.fullmatch(r"[0-9a-f]{64}", args.evidence_digest):
+    if not SHA256.fullmatch(args.evidence_digest):
         raise Operational("REFUSED", "native fallback evidence digest must be lowercase SHA-256 hex")
     summary = args.summary.strip()
     if not summary or "\0" in summary or len(summary.encode()) > 1024:
         raise Operational("REFUSED", "native fallback summary must be non-empty and at most 1024 bytes")
-    if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", args.accepted_head):
-        raise Operational("REFUSED", "native fallback accepted head must be a Git object id")
+    if not REVISION_ID.fullmatch(args.accepted_revision):
+        raise Operational("REFUSED", "native fallback accepted revision must be a Jujutsu revision id")
 
     with locked_manifest(args.run_id, write=True) as doc:
-        validate_repo(doc)
+        info = validate_repo(doc)
         unit = doc["units"].get(args.unit_id)
         if not unit:
             raise Operational("REFUSED", "unknown unit")
@@ -720,74 +732,87 @@ def cmd_complete_fallback(args) -> tuple[str, dict]:
         if claim_mode == "require" and not (
             claim.get("caller_mode") == "interactive" and claim.get("confirmed_native") is True
         ):
-            raise Operational("REFUSED", "require-mode native fallback completion requires explicit interactive confirmation")
+            raise Operational(
+                "REFUSED",
+                "require-mode native fallback completion requires explicit interactive confirmation",
+            )
         if doc.get("integration_lock") is not None:
             raise Operational("REFUSED", "release the integration lock before completing native fallback")
-
-        repo = doc["repository"]["toplevel"]
-        snapshot = semantic_snapshot(repo)
-        if snapshot.get("branch_ref") != doc["branch"]["ref"]:
-            raise Operational("BLOCKED", "canonical branch changed before native fallback completion")
-        if snapshot.get("status_empty") is not True:
-            raise Operational("BLOCKED", "commit or restore canonical changes before completing native fallback")
-        accepted_commit = git_text(repo, "rev-parse", "--verify", f"{args.accepted_head}^{{commit}}", check=False)
-        if accepted_commit != args.accepted_head or snapshot.get("head") != args.accepted_head:
-            raise Operational("BLOCKED", "accepted native fallback head does not match canonical HEAD")
+        if not info["working_copy_empty"] or info["conflicted"]:
+            raise Operational(
+                "BLOCKED",
+                "advance to an empty conflict-free working-copy change before completing native fallback",
+            )
+        accepted = revision(info["toplevel"], "@-")
+        if accepted["commit_id"] != args.accepted_revision:
+            raise Operational(
+                "BLOCKED",
+                "accepted native fallback revision does not match the parent of the empty working-copy change",
+            )
+        description = accepted["description"].strip()
+        if not description or "\0" in description:
+            raise Operational(
+                "REFUSED",
+                f"change description must be non-empty and NUL-free. {DESCRIPTION_RULE} {DESCRIPTION_PRECEDENCE}",
+            )
         base = unit.get("workspace", {}).get("base")
-        if not isinstance(base, str) or git_text(repo, "merge-base", base, args.accepted_head, check=False) != base:
-            raise Operational("BLOCKED", "accepted native fallback head does not descend from the recorded unit base")
-        validate_fallback_ancestry(doc, unit, args.accepted_head)
+        if not isinstance(base, str) or not revision_contains(info["toplevel"], base, args.accepted_revision):
+            raise Operational("BLOCKED", "accepted native fallback revision does not descend from the recorded unit base")
+        validate_fallback_ancestry(doc, unit, args.accepted_revision)
 
         wave = unit.get("wave", {})
-        changed_paths: list[str] = []
+        changed = changed_paths(info["toplevel"], claim["canonical_revision_id"], args.accepted_revision)
         advanced: list[str] = []
         if wave.get("id"):
             validate_wave_order(doc, unit)
-            claim_head = claim.get("canonical_head")
-            allowed_heads = wave.get("allowed_heads", [])
+            claim_revision = claim.get("canonical_revision_id")
+            allowed_revisions = wave.get("allowed_revisions", [])
             if (
-                not isinstance(claim_head, str)
-                or not allowed_heads
-                or claim_head != allowed_heads[-1]
-                or git_text(repo, "merge-base", claim_head, args.accepted_head, check=False) != claim_head
+                not isinstance(claim_revision, str)
+                or not allowed_revisions
+                or claim_revision != allowed_revisions[-1]
+                or not revision_contains(info["toplevel"], claim_revision, args.accepted_revision)
             ):
-                raise Operational("BLOCKED", "native fallback completion does not extend the latest recorded wave head")
-            raw = git(repo, "diff-tree", "-r", "-M", "--name-status", "-z", claim_head, args.accepted_head)
-            changed_paths = parse_diff_paths(raw)
+                raise Operational(
+                    "BLOCKED",
+                    "native fallback completion does not extend the latest recorded wave revision",
+                )
             validate_wave_collisions(
                 doc,
                 unit,
-                overrides={unit["unit_id"]: set(changed_paths)},
+                overrides={unit["unit_id"]: set(changed)},
                 require_complete=False,
             )
             members = wave_members(doc, unit)
-            validate_wave_advancement(members, unit, claim_head, args.accepted_head)
+            validate_wave_advancement(members, unit, claim_revision, args.accepted_revision)
 
-        receipt = {
+        completion = {
             "at": now_iso(),
             "base": base,
-            "accepted_head": args.accepted_head,
+            "accepted_revision_id": args.accepted_revision,
+            "accepted_change_id": accepted["change_id"],
             "evidence_digest": args.evidence_digest,
             "summary": summary,
-            "snapshot": snapshot,
             "claim": dict(claim),
-            "changed_paths": changed_paths,
+            "changed_paths": changed,
         }
-        fallback["completed"] = receipt
+        fallback["completed"] = completion
         unit["state"] = "native-completed"
+        doc["canonical"]["change_id"] = info["change_id"]
+        doc["canonical"]["bookmark_state_sha256"] = info["bookmark_state_sha256"]
         if wave.get("id"):
-            advanced = advance_wave_allowed_heads(members, wave["position"], args.accepted_head)
+            advanced = advance_wave_allowed_revisions(members, wave["position"], args.accepted_revision)
             event(doc, "wave-advanced", args.unit_id, {
-                "canonical_commit": args.accepted_head,
+                "canonical_revision": args.accepted_revision,
                 "eligible_siblings": advanced,
             })
         event(doc, "native-fallback-completed", args.unit_id, {
-            "accepted_head": args.accepted_head,
+            "accepted_revision_id": args.accepted_revision,
             "evidence_digest": args.evidence_digest,
         })
         return "FALLBACK_COMPLETED", {
             "unit_id": args.unit_id,
-            "completion": receipt,
+            "completion": completion,
             "eligible_siblings": advanced,
         }
 
@@ -803,11 +828,19 @@ def cmd_reap(args) -> tuple[str, dict]:
             return "REAPED", {"unit_id": args.unit_id, "process_state": "never-started"}
         job_dir = runner_job_dir(args.run_id, attempt["job_id"])
     runner = os.path.join(os.path.dirname(__file__), "peer-job-runner.py")
-    proc = subprocess.run([sys.executable, runner, "reap", job_dir], capture_output=True, check=False)
-    if proc.returncode not in (0,):
+    proc = subprocess.run(
+        [sys.executable, runner, "reap", "--skill", "ce-work", job_dir],
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
         raise Operational("BLOCKED", f"runner reap failed: {proc.stderr.decode('utf-8', 'replace').strip()}")
     evidence = sync_job(args.run_id, args.unit_id)
-    return "REAPED", {"unit_id": args.unit_id, **evidence, "recovery_path": os.path.join(run_dir(args.run_id), "units", args.unit_id)}
+    return "REAPED", {
+        "unit_id": args.unit_id,
+        **evidence,
+        "recovery_path": os.path.join(run_dir(args.run_id), "units", args.unit_id),
+    }
 
 
 def remove_finalized_artifacts(run_id: str, unit_id: str) -> None:
@@ -821,8 +854,14 @@ def remove_finalized_artifacts(run_id: str, unit_id: str) -> None:
             or not isinstance(cleanup, dict)
         ):
             raise Operational("REFUSED", "artifact pruning requires a finalized unit with recorded cleanup")
-        attempt_job_ids = [attempt.get("job_id") for attempt in unit.get("attempts", []) if attempt.get("job_id")]
-        authorization_paths = [attempt.get("authorization_path") for attempt in unit.get("attempts", []) if attempt.get("authorization_path")]
+        attempt_job_ids = [
+            attempt.get("job_id") for attempt in unit.get("attempts", []) if attempt.get("job_id")
+        ]
+        authorization_paths = [
+            attempt.get("authorization_path")
+            for attempt in unit.get("attempts", [])
+            if attempt.get("authorization_path")
+        ]
         packet_path = unit.get("packet", {}).get("path")
         result_dir = os.path.join(os.path.dirname(unit["workspace"]["path"]), "result")
         root = run_dir(run_id)
@@ -836,7 +875,7 @@ def remove_finalized_artifacts(run_id: str, unit_id: str) -> None:
         if os.path.commonpath([root, absolute]) != root or absolute == root:
             raise Operational("BLOCKED", "finalized artifact path escaped the owned run")
         if kind == "file":
-            read_private(absolute, MAX_PACKET_BYTES)
+            read_private(absolute, MAX_RESULT_BYTES)
             os.unlink(absolute)
         else:
             validate_private_dir(absolute)
@@ -847,14 +886,15 @@ def remove_finalized_artifacts(run_id: str, unit_id: str) -> None:
         for attempt in unit.get("attempts", []):
             attempt["bulky_artifacts_retained"] = False
             attempt["authorization_retained"] = False
-        unit["cleanup"]["artifact_cleanup"] = {"at": now_iso(), "complete": True}
+        unit["cleanup"]["artifacts_pruned"] = True
+        unit["cleanup"]["artifact_cleanup_at"] = now_iso()
         event(doc, "finalized-artifacts-pruned", unit_id, {"job_count": len(attempt_job_ids)})
 
 
 def retained_blocked_abandonment_receipt(run_id: str, unit: dict, attempt: dict) -> dict:
     recorded = attempt.get("terminal_receipt")
     if (
-        unit.get("state") != "authored"
+        unit.get("state") not in {"authoring", "authored"}
         or attempt.get("process_state") != "done"
         or attempt.get("terminal_validation_failure") is not None
         or not isinstance(recorded, dict)
@@ -864,7 +904,7 @@ def retained_blocked_abandonment_receipt(run_id: str, unit: dict, attempt: dict)
     observed_process = process_evidence(runner_job_dir(run_id, attempt["job_id"]))["process_state"]
     if observed_process != "done":
         raise Operational("BLOCKED", "retained worker-blocker job evidence changed")
-    observed_receipt = terminal_receipt(unit, attempt)
+    observed_receipt = terminal_receipt(unit)
     if observed_receipt != recorded:
         raise Operational("BLOCKED", "retained worker-blocker receipt evidence changed")
     return {
@@ -872,8 +912,10 @@ def retained_blocked_abandonment_receipt(run_id: str, unit: dict, attempt: dict)
         "value": attempt["job_id"],
         "process_state": observed_process,
         "terminal_status": recorded["terminal_status"],
-        "result_sha256": recorded["result_sha256"],
-        "raw_log_sha256": recorded["raw_log_sha256"],
+        "result_sha256": digest_bytes(read_private(
+            os.path.join(os.path.dirname(unit["workspace"]["path"]), "result", "implementation-result.json"),
+            MAX_RESULT_BYTES,
+        )),
     }
 
 
@@ -910,7 +952,7 @@ def cmd_cleanup(args) -> tuple[str, dict]:
             raise Operational("REFUSED", "unknown unit")
         cleanup_recorded = isinstance(unit.get("cleanup"), dict)
         if unit["state"] == "cleaned" or (unit["state"] == "native-completed" and cleanup_recorded):
-            if not unit.get("cleanup", {}).get("artifact_cleanup", {}).get("complete"):
+            if unit.get("cleanup", {}).get("artifacts_pruned") is not True:
                 pass
             else:
                 return "CLEANED", {"unit_id": args.unit_id, "resumed": True}
@@ -922,65 +964,75 @@ def cmd_cleanup(args) -> tuple[str, dict]:
         attempt = find_attempt(unit)
         if attempt.get("process_state") == "running":
             raise Operational("REFUSED", "cannot cleanup a live worker")
-        commit = unit["transport"].get("commit")
+        transport = unit.get("transport")
+        transport_revision = transport.get("commit_id") if isinstance(transport, dict) else None
         abandonment_receipt = None
         if args.abandon:
-            if commit:
-                if args.expect_transport != commit:
-                    raise Operational("REFUSED", "abandon cleanup requires exact transport SHA")
-                abandonment_receipt = {"kind": "transport", "value": commit}
+            if transport_revision:
+                if args.expect_transport != transport_revision:
+                    raise Operational("REFUSED", "abandon cleanup requires exact pinned transport revision")
+                abandonment_receipt = {"kind": "transport", "value": transport_revision}
             else:
                 terminal_failures = TERMINAL_PROCESS - {"done"}
                 validation_failure = attempt.get("process_state") == "done" and attempt.get("terminal_validation_failure")
                 if not attempt.get("job_id"):
-                    raise Operational("REFUSED", "transport-free cleanup requires an authoritative failed or reaped job")
+                    raise Operational(
+                        "REFUSED",
+                        "transport-free cleanup requires an authoritative failed or reaped job",
+                    )
                 if args.expect_job != attempt["job_id"]:
-                    raise Operational("REFUSED", "transport-free cleanup requires the exact terminal job id")
+                    raise Operational(
+                        "REFUSED",
+                        "transport-free cleanup requires the exact terminal job id",
+                    )
                 if validation_failure:
-                    validate_terminal_validation_failure(args.run_id, unit, attempt)
-                    abandonment_receipt = {"kind": "terminal-validation-failure", "value": attempt["job_id"], "process_state": "done"}
+                    abandonment_receipt = {
+                        "kind": "terminal-validation-failure",
+                        "value": attempt["job_id"],
+                        "process_state": "done",
+                    }
                 elif attempt.get("process_state") == "done":
                     abandonment_receipt = retained_blocked_abandonment_receipt(args.run_id, unit, attempt)
                 else:
                     if attempt.get("process_state") not in terminal_failures:
-                        raise Operational("REFUSED", "transport-free cleanup requires an authoritative failed or reaped job")
+                        raise Operational(
+                            "REFUSED",
+                            "transport-free cleanup requires an authoritative failed or reaped job",
+                        )
                     observed = process_evidence(runner_job_dir(args.run_id, attempt["job_id"]))["process_state"]
                     if observed != attempt["process_state"] or observed not in terminal_failures:
                         raise Operational("BLOCKED", "terminal job evidence changed; refusing cleanup")
-                    abandonment_receipt = {"kind": "terminal-job", "value": attempt["job_id"], "process_state": observed}
-        elif unit["state"] != "committed":
-            raise Operational("REFUSED", "uncommitted output is retained unless explicitly abandoned")
-        workspace = unit["workspace"]["path"]
-        ref = unit["transport"].get("ref")
+                    abandonment_receipt = {
+                        "kind": "terminal-job",
+                        "value": attempt["job_id"],
+                        "process_state": observed,
+                    }
+        elif unit["state"] not in {"described", "native-completed"}:
+            raise Operational("REFUSED", "unaccepted output is retained unless explicitly abandoned")
+        workspace_record = unit["workspace"]
         repo = doc["repository"]["toplevel"]
-        common = doc["repository"]["common_dir"]
-    workspace = owned_workspace_path(args.run_id, args.unit_id, workspace)
+    workspace = owned_workspace_path(args.run_id, args.unit_id, workspace_record["path"])
     with locked_manifest(args.run_id, write=True) as doc:
-        event(doc, "cleanup-intent", args.unit_id, {"workspace": workspace, "ref": ref, "abandonment_receipt": abandonment_receipt})
-    with admin_lock(common):
-        present = [r for r in worktree_rows(repo) if os.path.realpath(str(r.get("worktree", ""))) == os.path.realpath(workspace)]
-        if present:
-            git(repo, "worktree", "remove", "--force", workspace)
-            test_fault("cleanup-after-worktree-remove")
-        if any(os.path.realpath(str(r.get("worktree", ""))) == os.path.realpath(workspace) for r in worktree_rows(repo)):
-            raise Operational("BLOCKED", "worktree remained registered after cleanup")
-        remove_unregistered_owned_workspace(args.run_id, args.unit_id, workspace)
-    if ref and commit:
-        current = git_text(repo, "rev-parse", "-q", "--verify", ref, check=False)
-        if current and current != commit:
-            raise Operational("BLOCKED", "transport ref changed; refusing cleanup")
-        if current:
-            git(repo, "update-ref", "-d", ref, commit)
+        event(doc, "cleanup-intent", args.unit_id, {
+            "workspace": workspace,
+            "name": workspace_record["name"],
+            "abandonment_receipt": abandonment_receipt,
+        })
+    jj(repo, "workspace", "forget", workspace_record["name"])
+    registered = jj_text(repo, "workspace", "list", "-T", 'name ++ "\\n"').splitlines()
+    if workspace_record["name"] in registered:
+        raise Operational("BLOCKED", "isolated workspace remained registered after forget")
+    remove_unregistered_owned_workspace(args.run_id, args.unit_id, workspace)
     with locked_manifest(args.run_id, write=True) as doc:
         unit = doc["units"][args.unit_id]
         finalized_state = "native-completed" if unit["state"] == "native-completed" else "cleaned"
         unit["cleanup"] = {
             "at": now_iso(),
             "workspace_removed": True,
-            "ref_removed": True,
+            "workspace_forgotten": True,
             "abandoned": bool(args.abandon),
             "abandonment_receipt": abandonment_receipt,
-            "artifact_cleanup": {"at": None, "complete": False},
+            "artifacts_pruned": False,
         }
         unit["state"] = finalized_state
         event(doc, "unit-cleaned", args.unit_id)

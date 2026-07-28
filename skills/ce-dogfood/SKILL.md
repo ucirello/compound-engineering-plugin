@@ -1,19 +1,19 @@
 ---
 name: ce-dogfood
-description: "Hands-off, diff-scoped browser QA of the active branch: maps user flows, drives a real browser, autonomously fixes small breakages with regression tests and commits, judges experience against product personas, and writes a durable dogfood report. Manual invocation only."
+description: "Hands-off, diff-scoped browser QA of the current Jujutsu change, bookmark, or PR: maps user flows, drives a real browser, autonomously fixes small breakages with regression tests and coherent changes, judges experience against product personas, and writes a durable dogfood report. Manual invocation only."
 disable-model-invocation: true
-argument-hint: "[PR number, branch name, or blank for current branch] [--port PORT]"
+argument-hint: "[PR number, bookmark name, or blank for current change] [--port PORT]"
 ---
 
-# Dogfood
+# RocketClaw Dogfood
 
-Act as a QA engineer who dogfoods the **active branch** end-to-end: understand every change, test every change in a real browser as a user would, and fix what's broken — autonomously — until the branch is genuinely ready.
+Dogfood the **selected Jujutsu change stack** end-to-end: understand every change, test every change in a real browser as a user would, and fix what's broken — autonomously — until the target is genuinely ready.
 
-This is **diff-scoped**, not whole-app exploration. You test what *this branch* introduced or modified versus the trunk.
+This is **diff-scoped**, not whole-app exploration. Test what the selected change, bookmark, or PR introduced or modified versus its trunk base.
 
 ## Use `agent-browser` Only For Browser Automation
 
-This workflow drives the browser exclusively through the `agent-browser` CLI. Do not use Chrome MCP tools (`mcp__claude-in-chrome__*`), any browser MCP integration, or other built-in browser-control tools. If the platform offers multiple ways to control a browser, always choose `agent-browser`. Use the direct binary, never `npx agent-browser` (the direct binary uses the fast Rust client).
+This workflow drives the browser exclusively through the `agent-browser` CLI. Do not use a browser MCP integration or another built-in browser-control tool. If the platform offers multiple ways to control a browser, always choose `agent-browser`. Use the direct binary, never `npx agent-browser` (the direct binary uses the fast Rust client).
 
 ## Prerequisites
 
@@ -28,79 +28,62 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 
   If not installed, stop and tell the user to install `agent-browser`: print the rendered `ce-setup` invocation for the current install command, followed by the rendered `ce-dogfood <original arguments>` invocation to retry. This workflow cannot function without it.
 
-## Reusing Compound-Engineering Skills
+## Reusing RocketClaw Skills
 
-`ce-dogfood` is an orchestrator. Prefer delegating to existing CE skills over re-deriving their behavior:
+`ce-dogfood` is an orchestrator. Prefer delegating to existing RocketClaw skills over re-deriving their behavior:
 
 | When | Skill | Why |
 |------|-------|-----|
-| Phase 0 isolation | `ce-worktree` | Run the dogfood in an isolated worktree so the main checkout stays clean. |
+| Phase 0 isolation | `ce-worktree` | Run the dogfood in an isolated Jujutsu workspace so the current workspace stays undisturbed. |
 | A failure's root cause is non-obvious | `ce-debug` | Systematic root-cause analysis instead of guess-and-check. |
-| Committing each fix | `ce-commit` | Consistent, well-scoped commit messages. |
-| A bug reveals a reusable lesson | `ce-compound` | Capture the learning so the team compounds knowledge. |
+| Describing each fix | `ce-commit` | Compose a repository-conforming description for one coherent Jujutsu change. |
+| A bug reveals a reusable lesson | `ce-compound` | Capture the learning so the team retains reusable knowledge. |
 
 ## Workflow
 
 ```
-0. Scope        Pick the branch, get onto it (offer worktree), never touch the trunk
-1. Analyze      Diff branch vs trunk, understand every change
+0. Scope        Select the change/bookmark/PR, offer an isolated workspace, never edit trunk
+1. Analyze      Diff the target vs trunk, understand every change
 2. Map+Matrix   Map user flows as Mermaid flowcharts, then derive the test matrix as a task list
 3. Serve        Detect port, start dev server, open agent-browser
 4. Execute      Work the matrix one item at a time with agent-browser
-5. Fix loop     On failure: fix -> add regression test -> commit -> continue
+5. Fix loop     On failure: fix -> add regression test -> describe change -> continue
 6. Report       Write durable doc to docs/dogfood-reports/ (flows, matrix, fixes, learnings, verdict)
 ```
 
-### Phase 0: Scope and Get on the Right Branch
+### Phase 0: Scope and Select the Right Jujutsu Change
 
-Parse the arguments you were invoked with: a PR number, a branch name, or blank (use current branch). Strip `--port PORT` if present.
+Parse the arguments you were invoked with: a PR number, a bookmark name, or blank (use the current change stack ending at `@`). Strip `--port PORT` if present.
 
-1. **Identify the target — keep PR identity; do not switch the working tree yet.**
-   - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, checkout). Read its head only for display (`gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare branch name: a fork PR's head can even be named `main`/`master`. Do not check out yet.
-   - **Branch name:** the target is that branch.
-   - **Blank:** the target is the current branch.
-2. **Refuse to run on the trunk — branch/blank targets only.** If a *branch-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse a `ce-dogfood <number>` invocation just because the PR's head branch happens to be named `main`.
-3. **Decide isolation by what you're testing; let `ce-worktree` own the worktree mechanics.** Do not re-derive worktree detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, attaching to a ref, and the "already checked out" constraint, and reports its decision back. The only call this skill makes is *whether to ask for isolation at all*:
-   - **Blank / current-branch target:** do **not** isolate — dogfood in place. You are already on the branch under test, the fix-commits belong on it, and git cannot check the same branch out in a second worktree anyway. (If you happen to already be in a worktree, that is fine — you are simply dogfooding here.)
-   - **A PR or a different named branch:** this is an existing ref to test without disturbing your current checkout. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` to isolate **that target ref** — it attaches a worktree to the ref (or, if already isolated, checks it out in place; or reports "already checked out at `<path>` — work there" when the ref is live elsewhere). Act on `ce-worktree`'s verdict; the primary checkout is never switched. On **no**, check the target out in place (`gh pr checkout <number>` for a PR, `git checkout <branch>` for a branch), confirming first if uncommitted changes would be disturbed.
-4. **Resume if a prior run exists.** Look for an existing report at `docs/dogfood-reports/*-<branch-slug>-dogfood.md` (see the branch-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, re-hydrate the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
+1. **Inspect the workspace before selecting anything.** Run `jj workspace root`, `jj status`, `jj workspace list`, `jj bookmark list --all-remotes`, and `jj log -r '@ | ancestors(@, 5)'`. Jujutsu has no active or checked-out bookmark; determine the target from the invocation and revision graph rather than inferring it from workspace state.
+2. **Identify the target and its base without moving `@`.**
+   - **PR number:** the target remains the PR throughout the run. Read `headRefName`, `baseRefName`, and `isCrossRepository` with `gh pr view <number> --json headRefName,baseRefName,isCrossRepository`. Identify the writable remote with `jj git remote list`, refresh it with `jj git fetch --remote <remote>`, and inspect both `<head-bookmark>@<remote>` and `<base-bookmark>@<remote>` with `jj bookmark list --all-remotes` and `jj log`. Do not reduce a fork PR to an ambiguous local bookmark.
+   - **Bookmark name:** inspect it with `jj bookmark list <bookmark> --all-remotes`. If remote state may be stale, identify the remote with `jj git remote list`, run `jj git fetch --remote <remote>`, and use `<bookmark>@<remote>` when only the remote bookmark exists.
+   - **Blank:** the target is the current change stack ending at `@`. Identify its base bookmark from the project's active instructions and conventions and `jj bookmark list --all-remotes`; do not infer a base from the target bookmark's name.
+3. **Refuse to edit the trunk target for bookmark/blank invocations.** Resolve the trunk bookmark from the project's active instructions and conventions or the available tracked bookmarks; do not assume a fixed name. If a bookmark target or `@` equals the trunk bookmark target and has no changes above it, stop because there is no diff to dogfood. A PR remains diffable against its declared base even when its head bookmark has the same text as a common trunk name.
+4. **Decide isolation by what you're testing; let `ce-worktree` own isolation mechanics.** Do not re-derive workspace creation here:
+   - **Blank / current-change target:** do **not** isolate. Dogfood the current stack in place; an existing isolated workspace is already sufficient.
+   - **A PR or a different bookmark:** offer isolation with the platform's blocking question capability. On **yes**, invoke `ce-worktree` for that target under a Jujutsu-only contract and act on its workspace-path verdict. On **no**, preserve unrelated current work, then use `jj new <target-revision>` to create the dogfood working-copy change above the target. Never use a checkout operation to select a Jujutsu revision.
+5. **Resume if a prior run exists.** Look for an existing report at `docs/dogfood-reports/*-<target-slug>-dogfood.md` (see the target-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, re-hydrate the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
 
 ### Resumability (stop and return at any point)
 
 This workflow is designed to be interrupted and resumed. Two pieces of state make that safe:
 
-- **The task list** (the harness's task tool — `TaskCreate`/`TaskUpdate` on Claude Code, `update_plan` on Codex, or the equivalent elsewhere) is the live to-do — one task per matrix scenario. Mark each `in_progress` when you start it and `completed` only when it genuinely passes.
-- **The report doc** at `docs/dogfood-reports/<YYYY-MM-DD>-<branch-slug>-dogfood.md` is the durable checkpoint that survives across sessions. `<branch-slug>` is the branch name lowercased with every run of non-alphanumeric characters (slashes included) collapsed to a single `-` (e.g. `feature/Foo_Bar` -> `feature-foo-bar`). **Create it as soon as the matrix exists (end of Phase 2) by instantiating `references/dogfood-report-template.md`** (read that template now if you haven't) so the checkpoint carries the template-owned section shape from the start — then fill in every scenario at `Pending`, and **update it incrementally** — after each scenario is judged and after each fix is committed — not only at the end. An interrupted run must leave a template-shaped checkpoint, not a bare matrix.
+- **The task list** (the harness's task capability) is the live to-do — one task per matrix scenario. Mark each `in_progress` when you start it and `completed` only when it genuinely passes.
+- **The report doc** at `docs/dogfood-reports/<YYYY-MM-DD>-<target-slug>-dogfood.md` is the durable checkpoint that survives across sessions. `<target-slug>` is the PR label, bookmark name, or short change ID lowercased with every run of non-alphanumeric characters collapsed to a single `-` (e.g. `feature/Foo_Bar` -> `feature-foo-bar`). **Create it as soon as the matrix exists (end of Phase 2) by instantiating `references/dogfood-report-template.md`** (read that template now if you haven't) so the checkpoint carries the template-owned section shape from the start — then fill in every scenario at `Pending`, and **update it incrementally** after each scenario is judged and after each fix change is described, not only at the end. An interrupted run must leave a template-shaped checkpoint, not a bare matrix.
 
 Because tasks are session-scoped but the report doc is on disk, the report is the source of truth for resuming. Always keep the two in sync so a later run (or a teammate) can pick up exactly where this one stopped.
 
 ### Phase 1: Analyze Changes
 
-Derive the trunk ref once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default branch is `master` (or anything else) would fail with `fatal: ambiguous argument 'main...HEAD'`.
+Resolve the target and trunk revisions once, then read the complete Jujutsu diff. For a PR, use its declared base bookmark and remote. For a bookmark or current-stack invocation, resolve trunk from the project's active instructions and conventions or tracked bookmarks. Do not assume a fixed bookmark name.
 
 ```bash
-# Resolve the trunk to a ref that actually exists. Start from the detected
-# default name (origin/HEAD, then gh), then fall back to common names. For each
-# candidate prefer a local branch; else use the remote-tracking ref QUALIFIED as
-# origin/<branch> — an unqualified name resolves via refs/remotes/<name>, NOT
-# refs/remotes/origin/<name>, so a remote-only trunk would otherwise miss. This
-# qualification applies to the detected default too (PR/CI checkouts often have
-# only origin/main, no local main).
-DEFAULT=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
-DEFAULT=${DEFAULT:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)}
-TRUNK=""
-for cand in "$DEFAULT" main master; do
-  [ -n "$cand" ] || continue
-  if git show-ref --verify --quiet "refs/heads/$cand"; then
-    TRUNK=$cand; break
-  elif git show-ref --verify --quiet "refs/remotes/origin/$cand"; then
-    TRUNK="origin/$cand"; break
-  fi
-done
-TRUNK=${TRUNK:-main}
-
-git diff --name-only "$TRUNK...HEAD"   # what changed
-git diff "$TRUNK...HEAD"               # how it changed
+jj bookmark list --all-remotes
+jj log -r '<trunk-revision> | <target-revision>'
+jj diff --name-only --from <trunk-revision> --to <target-revision>
+jj diff --from <trunk-revision> --to <target-revision>
 ```
 
 Build a mental model of every change: new features, modified behavior, new routes/views/components, touched data flows. Note anything that produces user-visible behavior — that is what the matrix must cover.
@@ -160,11 +143,22 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
    agent-browser snapshot -i
    agent-browser click @e1
    agent-browser fill @e2 "value"
-   agent-browser screenshot "$(mktemp -d)/<scenario>.png"   # scratch dir, not the repo root
+   agent-browser screenshot "<workspace-root>/.tmp/rocketclaw/dogfood/screenshots/<scenario>.png"
    agent-browser errors      # check console/page errors
    ```
 
-   Write transient screenshots to OS temp (e.g. `mktemp -d`), never the repo root. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+   Before the first screenshot, resolve `<workspace-root>` with `jj workspace root`; if that fails, use the current project directory. Reject an existing `.tmp` or `.tmp/rocketclaw/dogfood` symlink, apply `umask 077`, create `.tmp/rocketclaw/dogfood/screenshots`, and keep transient screenshots there. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+
+   ```bash
+   WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+   if [ -z "$WORKSPACE_ROOT" ]; then WORKSPACE_ROOT="$PWD"; fi
+   SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"
+   RUN_DIR="$SCRATCH_ROOT/rocketclaw/dogfood"
+   if [ -L "$SCRATCH_ROOT" ] || [ -L "$RUN_DIR" ]; then printf '%s\n' "ERROR: refusing symlinked scratch directory" >&2; exit 1; fi
+   umask 077
+   mkdir -p "$RUN_DIR/screenshots"
+   chmod 700 "$SCRATCH_ROOT" "$WORKSPACE_ROOT/.tmp/rocketclaw" "$RUN_DIR" "$RUN_DIR/screenshots"
+   ```
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product?
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity.
@@ -183,18 +177,20 @@ When a scenario fails — or a passing scenario carries a sharp paper cut worth 
 1. Investigate the root cause. If it's non-obvious, use `ce-debug`.
 2. Apply the fix in the code.
 3. **Add an automated regression test** that fails before the fix and passes after, so the bug can't return. This is the default for behavioral and code bugs. When an automated test is genuinely impractical — a pure copy, spacing, or visual fix with no behavioral assertion to make — substitute a documented browser-replay or screenshot check and **state in the report why no automated test was meaningful**. Do not invent a hollow test just to satisfy the step.
-4. Commit the fix with a clear message (use `ce-commit`). One logical fix per commit.
+4. Keep one logical fix per Jujutsu change. Before composing or editing its description, follow this rule exactly: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and syntax observed at runtime via `jj log` always win; apply only compatible Go guidance and do not impose a fixed prefix, type, scope, template, example, or canned wording. Invoke `ce-commit` to compose the message under that contract, then describe the finished change with `jj describe -r @ -m <message>` and start the next fix with `jj new`.
 5. Re-run the failing scenario in the browser to confirm it now passes; then continue the matrix.
 6. If the bug carried a reusable lesson, capture it with `ce-compound`.
+
+If a bookmark identifies the tested target, advance it to each finished fix with `jj bookmark set <bookmark> -r <finished-revision>`. Publish only when the user's invocation authorizes publication, and then use `jj git push --bookmark <bookmark> --remote <remote>`. If an actor identifier is required, use the neutral actor `ai:assistant`.
 
 **For changes too big to make autonomously:** do not implement. Record it in the report's **Decisions for a human** section with: what's broken, why it's not a safe autonomous fix, the options you see (with trade-offs), and your recommendation. Mark the scenario `Blocked (human decision)` in the matrix, then continue with the rest. Never make a large, irreversible, or product-altering change just to clear a matrix item.
 
 Keep iterating until every task is `completed` or in a terminal `Blocked` state — `Blocked (human decision)` (escalated here) or `Blocked (needs human verify)` (set in Phase 4 for external-interaction legs). Both are terminal for the loop: they wait on a person, so do not re-queue them. Re-test anything a fix might have affected (watch for regressions in adjacent journeys).
 
-**Before declaring the branch ready, run the project's automated test suite once** (the new regression tests plus everything that already exists). Discover the test command from the project's active instructions and conventions already in your context — do not assume a specific runner. Record the result in the report; a green matrix with a red suite is not "ready."
+**Before declaring the target ready, run the project's automated test suite once** (the new regression tests plus everything that already exists). Discover the test command from the project's active instructions and conventions already in your context — do not assume a specific runner. Record the result in the report; a green matrix with a red suite is not "ready."
 
 ### Phase 6: Write the Report Artifact
 
-The report doc was created at the end of Phase 2 and updated incrementally throughout (see Resumability). When the matrix is green (or every remaining item is explicitly blocked), **finalize** it at `docs/dogfood-reports/<YYYY-MM-DD>-<branch-slug>-dogfood.md` in the repo under test, then surface a short summary in chat with the file path.
+The report doc was created at the end of Phase 2 and updated incrementally throughout (see Resumability). When the matrix is green (or every remaining item is explicitly blocked), **finalize** it at `docs/dogfood-reports/<YYYY-MM-DD>-<target-slug>-dogfood.md` in the workspace under test, then surface a short summary in chat with the file path.
 
-**Finalize against `references/dogfood-report-template.md`** — the same template the Phase 2 checkpoint was instantiated from, which owns the required sections and what each must carry. Confirm every template-owned section is present and complete; do not reconstruct the section list from memory, as that drifts from the template. Carry forward the cross-phase obligations this skill produced: the Mermaid flowcharts from Phase 2a, a matrix row per scenario with its commit SHA, each fix's root cause and the regression test added (or why none was meaningful), paper cuts attributed by persona, learnings worth feeding to `ce-compound`, and a final readiness verdict that records the Phase 5 automated-suite result.
+**Finalize against `references/dogfood-report-template.md`** — the same template the Phase 2 checkpoint was instantiated from, which owns the required sections and what each must carry. Confirm every template-owned section is present and complete; do not reconstruct the section list from memory, as that drifts from the template. Carry forward the cross-phase obligations this skill produced: the Mermaid flowcharts from Phase 2a, a matrix row per scenario with its Jujutsu change ID, each fix's root cause and the regression test added (or why none was meaningful), paper cuts attributed by persona, learnings worth feeding to `ce-compound`, and a final readiness verdict that records the Phase 5 automated-suite result.

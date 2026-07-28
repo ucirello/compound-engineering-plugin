@@ -1,6 +1,6 @@
-# Strategy Template
+# RocketClaw Strategy Template
 
-Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `STRATEGY.md`.
+Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to the workspace-root `STRATEGY.md` located by `jj workspace root`.
 
 ## Rules for filling in
 
@@ -87,3 +87,4 @@ Before confirming the write, scan the draft for:
 - [ ] Optional sections with no content have been deleted, not left empty.
 - [ ] Metric count is between 3 and 5. Track count is between 2 and 4.
 - [ ] Target problem and Our approach are connected - one clearly responds to the other.
+- [ ] `jj diff -- STRATEGY.md` shows the intended strategy update without accidental changes to other files.

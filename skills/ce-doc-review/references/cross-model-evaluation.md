@@ -1,13 +1,9 @@
-# Cross-Model Judgment Pass — Skill-Creator Eval Spec
+# Cross-Model Judgment Pass Evaluation Spec
 
 This is the eval-case specification for the cross-model judgment pass. It is the
-**load-bearing behavioral gate**: `bun test` does
-not exercise SKILL.md/reference prose, and plugin skill definitions cache at
-session start, so behavioral wiring must be validated through the `skill-creator`
-skill's eval workflow — which injects the current on-disk skill/reference content
-into a fresh subagent at dispatch time (per AGENTS.md "Validating Agent and Skill
-Changes"). Run it with `/skill-creator` and its eval workflow; do not rely on
-in-session typed-agent dispatch (it tests the pre-edit cached copy).
+load-bearing behavioral gate for review prose. Evaluate the current on-disk skill
+and references in a fresh agent context; do not rely on an in-session cached skill
+definition.
 
 The deterministic pieces of the pass are already covered without a model call —
 `scripts/cross-model-doc-review.sh` input-validation, skip, and JSON-normalization
@@ -23,7 +19,7 @@ as specified.
 Cases 11-14 cover the detached launch->wait lifecycle and model-identity
 receipts. Case 15 covers U8's fixed-route and bounded-adaptability contract.
 Run them with the fake-CLI harness pattern — stub peer CLIs placed first on
-PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
+PATH — and across the supported host agents.
 
 1. **Activation gate — fires (R1, R2).** A document that activates at least one
    trio lens (e.g. a greenfield plan with a high-stakes domain activating
@@ -34,7 +30,7 @@ PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
    for non-activated lenses.
 
 2. **Activation gate — does not fire (R2, R3).** A routine plan with validated
-   upstream provenance (`product_contract_source: ce-brainstorm`), no high-stakes
+   upstream provenance (`product_contract_source: brainstorm`), no high-stakes
    domain, and no new abstraction → no trio lens activates → **no** cross-model
    call is launched. Assert: zero peer calls; the review completes normally.
 

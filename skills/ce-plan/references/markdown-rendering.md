@@ -19,10 +19,10 @@ These hold regardless of which skill produced the artifact.
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
 - **Repo-relative paths for file references.** Always. Never absolute paths
-  — they break portability across machines, worktrees, teammates.
+  — they break portability across machines, workspaces, teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
-  semantic marker such as `<!-- ce-section: work-relationships -->`; it carries
+  semantic marker such as `<!-- rocketclaw-section: work-relationships -->`; it carries
   section meaning for downstream agents and does not create layout. If a layout
   idea only works as HTML, defer it to the HTML rendering. Markdown stays
   markdown.
@@ -203,12 +203,13 @@ Engineering process metadata stays out of the artifact:
 
 - No "captured at Phase X" notes
 - No `## Next Steps` pointing to the next skill
-- No italic provenance lines ("*Brainstorm completed 2026-05-13*")
+- No italic workflow provenance lines ("*Brainstorm completed 2026-05-13*")
+- No creator, generated-by, model, harness, or assistant bylines
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in commit messages, tool output, and agent
-transcripts — not in the artifact a reader returns to weeks later.
+This information belongs in tool output and agent transcripts, not in the
+artifact a reader returns to weeks later.
 
 ## Frontmatter shape
 
@@ -223,7 +224,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from git, not stored in the doc.
+  the work shipped is derived from Jujutsu, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit

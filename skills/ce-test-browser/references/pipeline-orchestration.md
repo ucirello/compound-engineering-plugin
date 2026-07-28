@@ -11,7 +11,7 @@ Unattended execution does not mean hidden execution. Do not ask a visibility que
 
 ## 2. Claim a free port and start the server
 
-Multiple agents may run on the same machine, so never assume the preferred port is free: scan upward to the first free port, then start the server there in the background.
+Multiple AI Assistants may run on the same machine, so never assume the preferred port is free: scan upward to the first free port, then start the server there in the background.
 
 Run the whole thing as **one** command. Shell variables do not survive between separate Bash calls, so the free-port scan and the startup must share a single block, and that block must seed `PORT` itself — the `$PORT` computed in step 4 is gone by the time this runs. Set `PORT` on the first line to the preferred port step 4 printed ("Preferred dev server port: N"); it defaults to `3000` only if step 4 found nothing.
 
@@ -29,14 +29,28 @@ find_free_port() {
 PORT=$(find_free_port "$PORT")
 echo "Using dev server port: $PORT"
 
+# Keep runtime artifacts inside the current Jujutsu workspace. Fall back to a
+# local .tmp only if the workspace root cannot be resolved.
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"
+if [ -z "$WORKSPACE_ROOT" ]; then
+  WORKSPACE_ROOT="."
+fi
+TMP_ROOT="${WORKSPACE_ROOT}/.tmp"
+if [ -L "$TMP_ROOT" ]; then
+  echo "Refusing to use symlinked temporary directory: $TMP_ROOT"
+  exit 1
+fi
+mkdir -p -- "$TMP_ROOT" || exit 1
+LOG_FILE="${TMP_ROOT}/dev-server-${PORT}.log"
+
 # start in the background (the scan guarantees this port is free), then wait up to 30s
 echo "Starting dev server on port ${PORT}..."
 if [ -f "bin/dev" ]; then
-  PORT=${PORT} bin/dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} bin/dev > "$LOG_FILE" 2>&1 &
 elif [ -f "bin/rails" ]; then
-  bin/rails server -p ${PORT} > /tmp/dev-server-${PORT}.log 2>&1 &
+  bin/rails server -p ${PORT} > "$LOG_FILE" 2>&1 &
 elif [ -f "package.json" ]; then
-  PORT=${PORT} npm run dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} npm run dev > "$LOG_FILE" 2>&1 &
 fi
 for i in $(seq 1 30); do
   lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1 && break
@@ -44,7 +58,7 @@ for i in $(seq 1 30); do
 done
 if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server did not start in 30s. Last output:"
-  tail -20 /tmp/dev-server-${PORT}.log 2>/dev/null
+  tail -20 "$LOG_FILE" 2>/dev/null
   exit 1
 fi
 ```

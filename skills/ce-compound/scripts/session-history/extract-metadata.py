@@ -6,7 +6,7 @@ Batch mode (preferred — one invocation for all files):
   python3 extract-metadata.py file1.jsonl file2.jsonl file3.jsonl
 
 Single-file mode (stdin):
-  head -20 <session.jsonl> | python3 extract-metadata.py
+  python3 extract-metadata.py < <session.jsonl>
 
 Auto-detects platform from the JSONL structure.
 Outputs one JSON object per file, one per line.
@@ -23,10 +23,10 @@ def try_claude(lines):
     for line in lines:
         try:
             obj = json.loads(line.strip())
-            if obj.get("type") == "user" and "gitBranch" in obj:
+            if obj.get("type") == "user" and obj.get("sessionId"):
                 return {
                     "platform": "claude",
-                    "branch": obj["gitBranch"],
+                    "bookmark": obj.get("bookmark", ""),
                     "ts": obj.get("timestamp", ""),
                     "session": obj.get("sessionId", ""),
                 }
@@ -46,11 +46,9 @@ def try_codex(lines):
                 meta["cwd"] = p.get("cwd", "")
                 meta["session"] = p.get("id", "")
                 meta["ts"] = p.get("timestamp", obj.get("timestamp", ""))
-                meta["source"] = p.get("source", "")
-                meta["cli_version"] = p.get("cli_version", "")
+                meta["bookmark"] = p.get("bookmark", "")
             elif obj.get("type") == "turn_context":
                 p = obj.get("payload", {})
-                meta["model"] = p.get("model", "")
                 meta["cwd"] = meta.get("cwd") or p.get("cwd", "")
         except (json.JSONDecodeError, KeyError):
             pass
@@ -65,6 +63,7 @@ def try_pi(lines):
             if obj.get("type") == "session" and "cwd" in obj:
                 return {
                     "platform": "pi",
+                    "bookmark": obj.get("bookmark", ""),
                     "cwd": obj.get("cwd", ""),
                     "session": obj.get("id", ""),
                     "ts": obj.get("timestamp", ""),
@@ -117,7 +116,7 @@ def _pi_active_path_objects(objects):
     """Return only entries on Pi's active leaf-to-root path.
 
     Pi session files are append-only trees. The final non-session entry is the
-    active leaf; abandoned branches remain in the file but are not in context.
+    active leaf; abandoned paths remain in the file but are not in context.
     """
     by_id = {
         obj.get("id"): obj
@@ -203,7 +202,7 @@ def _append_pi_tool_call_targets(chunks, content):
 def _extract_user_assistant_text(filepath):
     """Return concatenated user + assistant text content from a session JSONL.
 
-    Skips JSONL metadata field names and values (sessionId, gitBranch, uuid,
+    Skips JSONL metadata field names and values (sessionId, uuid,
     timestamps, type tags), tool_use blocks (tool names + tool inputs),
     tool_result blocks (tool outputs), and thinking/reasoning blocks. Only
     content the user or assistant actually said is included.

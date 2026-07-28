@@ -191,7 +191,7 @@ extract_model_receipt() {   # <route>; reads the envelope in $PEERLOG, sets MODE
 adapter_argv() {
   case "$1" in
     codex)
-      printf '%s\0' codex exec - -C "$PEER_WORKDIR" --skip-git-repo-check -s read-only \
+      printf '%s\0' codex exec - -C "$PEER_WORKDIR" -s read-only \
         -o "$RAW_OUT" -m "$(route_model codex)" -c 'model_reasoning_effort="xhigh"' -c 'hide_agent_reasoning=false'
       ;;
     claude)
@@ -420,22 +420,23 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+WORKER_SCRATCH="$RUN_DIR/.worker-$REVIEWER_NAME-$$-${RANDOM:-0}"
+(umask 077; mkdir "$WORKER_SCRATCH") || skip "could not reserve workspace scratch directory; skipping"
+cleanup_worker() {
+  [ -n "${WORKER_SCRATCH:-}" ] && [ "$WORKER_SCRATCH" != "${RUN_DIR:-}" ] && rm -rf "$WORKER_SCRATCH"
+}
+trap 'cleanup_worker' EXIT
+chmod 700 "$WORKER_SCRATCH" 2>/dev/null || skip "could not secure workspace scratch directory; skipping"
+PROMPT_FILE="$WORKER_SCRATCH/prompt.txt"
+PEERLOG="$WORKER_SCRATCH/peer.log"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-err-XXXXXX")"
+PEERERR="$WORKER_SCRATCH/peer.err"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
-cleanup_temp() {
-  rm -f "$PROMPT_FILE" "$PEERLOG" "$PEERERR"
-  [ -n "$RAW_OUT" ] && rm -f "$RAW_OUT"
-  [ -n "$PEER_WORKDIR" ] && [ "$PEER_WORKDIR" != "${RUN_DIR:-}" ] && rm -rf "$PEER_WORKDIR"
-}
-trap 'cleanup_temp' EXIT
 # Basename only in the peer prompt: content is already embedded (KTD3). An absolute
 # path would give cursor-agent residual-Read a repo coordinate to walk from.
 DOC_BASENAME="$(basename "$DOC_PATH")"
@@ -445,7 +446,7 @@ DOC_BASENAME="$(basename "$DOC_PATH")"
   # Shared output-contract (confidence rubric + FP catalog) the persona brief defers
   # to, so the peer calibrates like its in-process twin.
   [ -n "$OUTPUT_CONTRACT_RULES" ] && printf '%s\n\n' "$OUTPUT_CONTRACT_RULES"
-  printf 'This is an authorized document review of the maintainer\047s own repository.\n'
+  printf 'This is an authorized document review of the current user\047s repository. Use the neutral actor ai:assistant if an actor identifier is required.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
   printf '\n\nSet the top-level "reviewer" field to "%s" (it will be namespaced to the peer provider on fold-in).\n' "$REVIEWER_NAME"
@@ -674,9 +675,10 @@ run_provider() {   # <provider>
   # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
   # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
-  # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  # never written into RUN_DIR by the peer itself.
+  PEER_WORKDIR="$WORKER_SCRATCH/peer-$provider"
+  (umask 077; mkdir "$PEER_WORKDIR") || { log "could not reserve peer workspace; skipping"; rm -f "$OUT"; return 0; }
+  chmod 700 "$PEER_WORKDIR" 2>/dev/null || { log "could not secure peer workspace; skipping"; rm -f "$OUT"; return 0; }
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -687,6 +689,10 @@ run_provider() {   # <provider>
   fi
   primary="$fixed"
   validate_model_override "$primary" || { log "model override '${CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$primary'; skipping"; rm -f "$OUT"; return 0; }
+  if [ "$primary" = "codex" ]; then
+    command -v jj >/dev/null 2>&1 || { log "jj is required to prepare the isolated Codex workspace; skipping"; rm -f "$OUT"; return 0; }
+    jj git init --colocate "$PEER_WORKDIR" >/dev/null 2>&1 || { log "could not initialize the isolated JJ workspace; skipping"; rm -f "$OUT"; return 0; }
+  fi
   # Track the route that actually produced the fold-in, so the artifact records
   # whether a grok return went out directly (grok-cli -> xAI) or through Cursor
   # (grok-cursor -> Cursor also received the full document). The <lens>-<provider>
@@ -709,7 +715,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
+    _norm="$WORKER_SCRATCH/normalized-$provider.json"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

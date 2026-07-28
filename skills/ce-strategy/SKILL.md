@@ -4,17 +4,17 @@ description: "Create or update STRATEGY.md. Use when starting a product, changin
 argument-hint: "[optional: section to revisit, e.g. 'metrics' or 'approach']"
 ---
 
-# Product Strategy
+# RocketClaw Product Strategy
 
 **Note: The current year is 2026.** Use this when dating the strategy document.
 
-`ce-strategy` produces and maintains `STRATEGY.md` - a short, durable anchor document that captures what the product is, who it serves, how it succeeds, and where the team is investing. It lives at the repo root as a canonical, well-known file (peer of `README.md`). Downstream skills (`ce-ideate`, `ce-brainstorm`, `ce-plan`) read it as grounding when it exists.
+RocketClaw's `ce-strategy` skill produces and maintains `STRATEGY.md` - a short, durable anchor document that captures what the product is, who it serves, how it succeeds, and where the team is investing. It lives at the workspace root as a canonical, well-known file (peer of `README.md`). Downstream skills (`ce-ideate`, `ce-brainstorm`, `ce-plan`) read it as grounding when it exists.
 
 The document is short and structured on purpose. Good answers to a handful of sharp questions produce a better strategy than any amount of prose. This skill asks those questions, pushes back on weak answers, and writes the doc.
 
 ## Interaction Method
 
-Default to the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+Default to the active platform's blocking question capability. Fall back to numbered options in chat only when no blocking question capability exists or the call errors. Never silently skip the question.
 
 Ask one question at a time. Prefer free-form responses for the substantive sections (problem, approach, persona); reserve single-select for routing decisions (which section to revisit). Each option label must be self-contained.
 
@@ -35,7 +35,7 @@ Interpret any argument as an optional focus: a section name to revisit (`metrics
 
 ### Phase 0: Route by File State
 
-Read `STRATEGY.md` using the native file-read tool.
+Run `jj workspace root` to locate the workspace root, then read `STRATEGY.md` there using the native file-read tool. If the command does not identify a Jujutsu workspace, report the blocker instead of inferring another version-control workflow or writing in an arbitrary directory.
 
 - **File does not exist** -> First run. Go to Phase 1.
 - **File exists and argument names a specific section** -> Targeted update. Go to Phase 2.
@@ -60,7 +60,7 @@ Run the interview in the section order of the final document:
 
 For each section, ask the opening question, apply the pushback rules, and capture the final answer in the user's own language. Do not skip the pushback step - it is the core of the skill. Two rounds of pushback per section maximum; capture what the user has given after that and note the section is worth revisiting on the next run.
 
-When all required sections (1-5) are captured, read `references/strategy-template.md`, fill it in, and present the full draft in chat before writing. Offer one round of edits. Then write to `STRATEGY.md`.
+When all required sections (1-5) are captured, read `references/strategy-template.md`, fill it in, and present the full draft in chat before writing. Offer one round of edits. Then write to the workspace-root `STRATEGY.md`.
 
 ### Phase 2: Update Run
 
@@ -77,11 +77,13 @@ If no specific target, ask the user which section to revisit using the blocking 
 
 For each revisited section, re-interview with full pushback. For sections the user confirms are still accurate, leave them untouched. Update the `last_updated` value in the YAML frontmatter to today's ISO date.
 
-Write the updated doc back to `STRATEGY.md`.
+Write the updated doc back to the workspace-root `STRATEGY.md`.
+
+Run `jj status` and `jj diff -- STRATEGY.md` from the workspace root. Confirm that the intended strategy change is present and report any unrelated existing changes without modifying them.
 
 ### Phase 3: Downstream Handoff
 
-After writing, note in one line where the file lives and that `ce-ideate`, `ce-brainstorm`, and `ce-plan` will pick it up as grounding on their next run.
+After writing and reviewing the Jujutsu diff, note in one line where the file lives and that `ce-ideate`, `ce-brainstorm`, and `ce-plan` will pick it up as grounding on their next run.
 
 If no downstream skill has run yet on this repo, suggest `ce-ideate` or `ce-brainstorm` skills as a next step.
 
@@ -91,6 +93,7 @@ If no downstream skill has run yet on this repo, suggest `ce-ideate` or `ce-brai
 - Does not prioritize the backlog. Prioritization is a separate workflow.
 - Does not write product requirements or implementation plans - those are `ce-brainstorm` and `ce-plan`.
 - Does not compute metric values. It records which metrics matter and where they live, not what they read today.
+- Does not create or rewrite changes, move bookmarks, or communicate with remotes. Operations such as `jj new`, `jj describe`, `jj split`, `jj squash`, `jj rebase`, `jj bookmark`, `jj git fetch`, and `jj git push` belong to an explicitly requested delivery workflow.
 
 ## Learn More
 

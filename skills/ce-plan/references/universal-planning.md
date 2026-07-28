@@ -11,7 +11,7 @@ The detection stub in SKILL.md routes here for anything that isn't clearly softw
 - **Pipeline mode?** If invoked from `lfg` or any `disable-model-invocation` context: tell the user this is a non-software task, `lfg` requires the software-only `ce-work` path, and they should invoke `ce-plan` directly for non-software planning. For this user-runnable output, default to `/ce-plan`; use `$ce-plan` only on Codex or a host explicitly documented as dollar-prefixed. Render only the invocation as inline code and output one form only, then stop.
 - **Unified artifact guard.** Universal-planning outputs are not software implementation plans. Do not label them `artifact_contract: ce-unified-plan/v1` and do not produce a `/goal` launch block unless the deliverable itself is a complete software implementation plan with Product Contract, Planning Contract, Implementation Units, Verification Contract, and Definition of Done.
 
-Once past these checks, commit to the task — do not bail because it looks like a "lookup" or "research question." The user invoked the planning tool on purpose. Then choose the disposition below.
+Once past these checks, proceed with the task — do not bail because it looks like a "lookup" or "research question." The user invoked the planning tool on purpose. Then choose the disposition below.
 
 ---
 
@@ -24,7 +24,7 @@ Two kinds of task land here, with different deliverables:
 
 If a request blends both ("research X, then plan Y"), do the answer-seeking research first, then produce the plan artifact.
 
-Commit to one disposition before reading further, and follow only that flow: a plan-seeking task still produces its plan document (Steps 1-3) and does not stop at a chat answer; an answer-seeking task does not write a plan file.
+Choose one disposition before reading further, and follow only that flow: a plan-seeking task still produces its plan document (Steps 1-3) and does not stop at a chat answer; an answer-seeking task does not write a plan file.
 
 ---
 
@@ -156,7 +156,7 @@ After structuring the plan, ask the user how they want to receive it using the p
 1. **Save to disk** — Write the plan as a markdown file. Ask where:
    - `docs/plans/` (only show if this directory exists)
    - Current working directory
-   - `/tmp`
+   - The current Jujutsu workspace's `.tmp/rocketclaw/ce-plan/` directory, or local `.tmp/rocketclaw/ce-plan/` when no Jujutsu repository is available
    - A custom path
    - Use filename convention: `YYYY-MM-DD-<descriptive-name>-plan.md`
    - Start the document with a `# Title` heading, followed by `Created: YYYY-MM-DD` on the next line. No YAML frontmatter.

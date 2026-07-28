@@ -56,17 +56,18 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (/tmp/compound-engineering-<effective-uid>)
-  CE_WORK_RUNS_ROOT         parent CE Work dir containing all <run-id>/ dirs
-  CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
-  CE_PEER_HARD_SECS         hard cap on worker wall clock (630)
-  CE_PEER_LOG_MAX_BYTES     out.log byte cap (10485760)
-  CE_PEER_RESULT_MAX_BYTES  result byte cap, supervise + read (5242880)
-  CE_PEER_POLL_SECS         supervisor poll interval (2)
-  CE_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
+  ROCKETCLAW_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw)
+  ROCKETCLAW_WORK_RUNS_ROOT         parent RocketClaw Work dir containing all <run-id>/ dirs
+  ROCKETCLAW_PEER_IDLE_SECS         idle window, no out.log growth (240)
+  ROCKETCLAW_PEER_HARD_SECS         hard cap on worker wall clock (630)
+  ROCKETCLAW_PEER_LOG_MAX_BYTES     out.log byte cap (10485760)
+  ROCKETCLAW_PEER_RESULT_MAX_BYTES  result byte cap (5242880)
+  ROCKETCLAW_PEER_POLL_SECS         supervisor poll interval (2)
+  ROCKETCLAW_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
 
 Security posture: the job root is a predictable, owner-private directory under
-world-shared /tmp. Every read of job state opens the file first (no-follow) and
+the current JJ workspace's `.tmp/rocketclaw` tree, with the current directory as
+the fallback workspace. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -89,7 +90,6 @@ import signal
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -105,11 +105,6 @@ def _is_safe_token(value: str) -> bool:
 TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-DEFAULT_ROOT = (
-    os.path.join("/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
-    if _EFFECTIVE_UID is not None
-    else None
-)
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 SWEEP_AGE_SECS = 24 * 3600
 CLAIM_ATTEMPTS = 16
@@ -129,9 +124,10 @@ exit codes:
   4  ownership check failed (job state or result not owned by the current
      user) — content is never emitted
 
-environment overrides: CE_PEER_JOBS_ROOT, CE_WORK_RUNS_ROOT, CE_PEER_IDLE_SECS,
-CE_PEER_HARD_SECS, CE_PEER_LOG_MAX_BYTES, CE_PEER_RESULT_MAX_BYTES,
-CE_PEER_POLL_SECS, CE_PEER_GRACE_SECS (defaults in the module docstring).
+environment overrides: ROCKETCLAW_PEER_JOBS_ROOT, ROCKETCLAW_WORK_RUNS_ROOT,
+ROCKETCLAW_PEER_IDLE_SECS, ROCKETCLAW_PEER_HARD_SECS,
+ROCKETCLAW_PEER_LOG_MAX_BYTES, ROCKETCLAW_PEER_RESULT_MAX_BYTES,
+ROCKETCLAW_PEER_POLL_SECS, ROCKETCLAW_PEER_GRACE_SECS (defaults above).
 """
 
 
@@ -146,17 +142,30 @@ class Unreadable(Exception):
 # --- configuration -----------------------------------------------------------
 
 def jobs_root_base() -> str:
-    configured = os.environ.get("CE_PEER_JOBS_ROOT")
+    configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
-    if DEFAULT_ROOT is None:
-        raise RunnerError("effective user ID is unavailable; cannot derive the jobs root")
-    return os.path.abspath(DEFAULT_ROOT)
+    configured_workspace = os.environ.get("ROCKETCLAW_WORKSPACE_ROOT")
+    if configured_workspace:
+        workspace = configured_workspace
+    else:
+        try:
+            workspace = subprocess.run(
+                ["jj", "workspace", "root"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            workspace = os.getcwd()
+    if not workspace:
+        workspace = os.getcwd()
+    return os.path.abspath(os.path.join(workspace, ".tmp", "rocketclaw"))
 
 
 def skill_runs_root(skill: str) -> str:
-    if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])
+    if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
+        return os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])
     return os.path.join(jobs_root_base(), skill)
 
 
@@ -175,12 +184,12 @@ def _env_num(name: str, default: float, conv, *, allow_zero: bool = False):
 
 def cfg(skill=None) -> dict:
     return {
-        "idle": _env_num("CE_PEER_IDLE_SECS", 240.0, float, allow_zero=skill == "ce-work"),
-        "hard": _env_num("CE_PEER_HARD_SECS", 630.0, float),
-        "log_max": int(_env_num("CE_PEER_LOG_MAX_BYTES", 10 * 1024 * 1024, int)),
-        "result_max": int(_env_num("CE_PEER_RESULT_MAX_BYTES", 5 * 1024 * 1024, int)),
-        "poll": _env_num("CE_PEER_POLL_SECS", 2.0, float),
-        "grace": _env_num("CE_PEER_GRACE_SECS", 5.0, float),
+        "idle": _env_num("ROCKETCLAW_PEER_IDLE_SECS", 240.0, float, allow_zero=skill == "ce-work"),
+        "hard": _env_num("ROCKETCLAW_PEER_HARD_SECS", 630.0, float),
+        "log_max": int(_env_num("ROCKETCLAW_PEER_LOG_MAX_BYTES", 10 * 1024 * 1024, int)),
+        "result_max": int(_env_num("ROCKETCLAW_PEER_RESULT_MAX_BYTES", 5 * 1024 * 1024, int)),
+        "poll": _env_num("ROCKETCLAW_PEER_POLL_SECS", 2.0, float),
+        "grace": _env_num("ROCKETCLAW_PEER_GRACE_SECS", 5.0, float),
     }
 
 
@@ -267,14 +276,31 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
+    staging_path = None
+    fd = None
+    for _ in range(CLAIM_ATTEMPTS):
+        candidate = os.path.join(
+            os.path.dirname(path), f".atomic-{os.getpid()}-{os.urandom(4).hex()}"
+        )
+        try:
+            fd = os.open(
+                candidate,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW,
+                0o600,
+            )
+            staging_path = candidate
+            break
+        except FileExistsError:
+            continue
+    if fd is None or staging_path is None:
+        raise RunnerError("could not reserve an atomic publish path")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        os.replace(tmp, path)
+        os.replace(staging_path, path)
     except BaseException:
         try:
-            os.unlink(tmp)
+            os.unlink(staging_path)
         except OSError:
             pass
         raise
@@ -556,7 +582,10 @@ def supervise(job_dir: str, argv, result_path, conf: dict, ack_fd: int) -> None:
         log_fd = os.open(os.path.join(job_dir, "out.log"), os.O_WRONLY | os.O_APPEND | O_NOFOLLOW)
         devnull = os.open(os.devnull, os.O_RDONLY)
         try:
-            worker_env = {**os.environ, "CE_PEER_JOB_ID": os.path.basename(job_dir)}
+            worker_env = {
+                **os.environ,
+                "ROCKETCLAW_PEER_JOB_ID": os.path.basename(job_dir),
+            }
             proc = subprocess.Popen(
                 argv,
                 stdin=devnull,
@@ -704,16 +733,14 @@ def sweep_stale_runs(skill_dir: str, keep: str) -> None:
 
 def _require_posix_detach() -> None:
     """Detached peer jobs need os.fork/os.setsid (POSIX). Checked first, before
-    jobs_root_base()/geteuid, so native Windows fails with this clear message
-    instead of jobs_root_base()'s unrelated "effective user ID is unavailable"
-    error (both are missing there) or an AttributeError mid-detach (#1184)."""
+    workspace-root discovery, so native Windows fails with this clear message
+    instead of an unrelated error or an AttributeError mid-detach."""
     if not hasattr(os, "fork") or not hasattr(os, "setsid"):
         # Native Windows (and some embedded Pythons) lack POSIX process APIs.
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid (POSIX); no job was "
-            "started. On native Windows, run Claude Code / this skill under WSL, "
-            "or wait for a Windows-native detach path (see "
-            "EveryInc/compound-engineering-plugin#1184)."
+            "started. On native Windows, run the active agent / this skill under "
+            "WSL or use a Windows-native detached-job runner."
         )
 
 
@@ -731,7 +758,13 @@ def cmd_start(args, worker_argv) -> int:
     skill_dir = skill_runs_root(args.skill)
     run_dir = os.path.join(skill_dir, args.run_id)
     jobs_root = os.path.join(run_dir, "jobs")
-    ensure_owned_dirs(skill_dir if skill_dir != os.path.join(base, args.skill) else base, jobs_root)
+    base_anchor = os.path.dirname(base)
+    if not os.path.exists(base_anchor):
+        base_anchor = os.path.dirname(base_anchor)
+    ensure_owned_dirs(base_anchor, jobs_root)
+    _check_owned_dir(base)
+    os.chmod(base, 0o700)
+    _check_owned_dir(base, require_private=True)
     if not args.no_sweep:
         sweep_stale_runs(skill_dir, keep=run_dir)
 
@@ -854,7 +887,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable /tmp path unchecked.
+        # consumer must never read a predictable workspace scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

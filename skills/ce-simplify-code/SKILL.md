@@ -1,18 +1,20 @@
 ---
 name: ce-simplify-code
 description: "Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving behavior. Use for tidy/refactor passes; use ce-debug for bugs."
-argument-hint: "[blank to simplify current branch changes, or describe what to simplify]"
+argument-hint: "[blank to simplify the current change stack, or describe what to simplify]"
 ---
 
-Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
+Actor: `ai:assistant`
+
+This RocketClaw workflow simplifies recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
 
 ## Step 1: Identify scope
 
 Resolve the simplification scope in this order:
 
 1. **If the user explicitly named a scope** (a file, a directory, "the function I just wrote", "the changes from this morning"), use that scope. Treat user-named scope as authoritative — do not widen it.
-2. **Otherwise, in a git repository**, default to the diff between the current branch and its base branch (e.g., `git diff origin/main...` or against the configured upstream). This covers the common case of "simplify everything I've added on this feature branch before opening a PR." If the branch has no upstream or base ref, fall back to staged + unstaged changes (`git diff HEAD`).
-3. **Outside a git repository or when no diff is available**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
+2. **Otherwise, in a Jujutsu workspace**, use `jj workspace root` to anchor repository-relative paths, then inspect `jj status`, `jj bookmark list --all-remotes`, and `jj log` to identify the current change stack and its base bookmark. Prefer the base named by the project's active instructions or an existing tracked bookmark; do not infer a base from a bookmark name alone. Review `jj diff --from <base-bookmark> --to @`. This covers the common case of simplifying everything added on a bookmark-backed change stack before opening a PR. If no base bookmark can be established but the working-copy change is non-empty, fall back to `jj diff -r @` and state that the scope is the current change only.
+3. **Outside a Jujutsu workspace or when no diff is available**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
 
 If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
@@ -63,6 +65,6 @@ If no test suite, lint, or typecheck is configured, state that explicitly in the
 
 ## Step 5: Summarize
 
-Briefly summarize what was good vs improved and fixed, including which checks were run and their results. If there were no findings to act on, confirm the code didn't require any changes.
+Briefly summarize what was already sound versus what improved, including which checks were run and their results. If there were no findings to act on, confirm the code didn't require any changes.
 
-**Quantify the impact by dimension.** Report what was actually applied, not a line count: fixes applied per reviewer dimension (reuse, quality, efficiency), how many findings were skipped as false-positive or not worth addressing, and the behavior-preservation result (checks run and outcome). For example: "Applied 6 — reuse 2, quality 3, efficiency 1; skipped 2 false positives; typecheck + lint clean, 11 scoped tests pass." Do not headline a net-lines-removed figure or frame fewer lines as the win — many clarity, safety, and efficiency fixes preserve or add lines. The measure is what improved and that behavior held, not how much code shrank.
+**Quantify the impact by dimension.** Report what was actually applied, not a line count: `<applied-count>` fixes split across reuse, quality, and efficiency; `<skipped-count>` findings skipped as false positives or not worth addressing; and the behavior-preservation checks and outcomes. Do not headline a net-lines-removed figure or frame fewer lines as the win — many clarity, safety, and efficiency fixes preserve or add lines. The measure is what improved and that behavior held, not how much code shrank.

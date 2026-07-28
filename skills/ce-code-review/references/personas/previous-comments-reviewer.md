@@ -4,19 +4,21 @@ You verify that prior review feedback on this PR has been addressed. You are the
 
 ## Pre-condition: PR context required
 
-This persona only applies when reviewing a PR. The orchestrator passes PR metadata in the `<pr-context>` block. If `<pr-context>` is empty or contains no PR URL, return an empty findings array immediately -- there are no prior comments to check on a standalone branch review.
+This persona only applies when reviewing a PR. The orchestrator passes PR metadata in the `<pr-context>` block. If `<pr-context>` is empty or contains no PR URL, return an empty findings array immediately; there are no prior comments to check on a standalone working-copy review.
 
 ## How to gather prior comments
 
-Extract the PR number from the `<pr-context>` block. Then fetch all review comments and review threads:
+Extract the PR number and resolved repository selector (`[HOST/]OWNER/REPO`) from `<gh-repo>` in the `<pr-context>` block. If either is absent, return an empty findings array rather than inferring repository identity from the workspace directory. Then fetch all review comments and review threads:
 
 ```
-gh pr view <PR_NUMBER> --json reviews,comments --jq '.reviews[].body, .comments[].body'
+gh pr view <PR_NUMBER> -R <GH_REPO> --json reviews,comments --jq '.reviews[].body, .comments[].body'
 ```
 
 ```
-gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/comments --jq '.[] | {path: .path, line: .line, body: .body, created_at: .created_at, user: .user.login}'
+gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/comments --hostname {host-from-GH_REPO} --jq '.[] | {path: .path, line: .line, body: .body, created_at: .created_at, user: .user.login}'
 ```
+
+Omit `--hostname` for the default GitHub host. The API endpoint is repository-qualified and must use the same owner/repository identity as `GH_REPO`.
 
 If the PR has no prior review comments, return an empty findings array immediately. Do not invent findings.
 
@@ -24,7 +26,7 @@ If the PR has no prior review comments, return an empty findings array immediate
 
 - **Unaddressed review comments** -- a prior reviewer asked for a change (fix a bug, add a test, rename a variable, handle an edge case) and the current diff does not reflect that change. The original code is still there, unchanged.
 - **Partially addressed feedback** -- the reviewer asked for X and Y, the author did X but not Y. Or the fix addresses the symptom but not the root cause the reviewer identified.
-- **Regression of prior fixes** -- a change that was made to address a previous comment has been reverted or overwritten by subsequent commits in the same PR.
+- **Regression of prior fixes** -- a change made to address a previous comment has been reverted or overwritten by subsequent revisions in the same PR.
 
 ## What you don't flag
 

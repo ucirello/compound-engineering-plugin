@@ -1,9 +1,9 @@
-# Compound Engineering -- local config
-# Copy to .compound-engineering/config.local.yaml in your project root.
+# RocketClaw -- local config
+# Copy to .rocketclaw/config.local.yaml in your workspace root.
 # All settings are optional. Invalid values fall through to defaults.
 
 # --- Product pulse ---
-# Settings written by /ce-product-pulse first-run interview. Re-run the skill with
+# Settings populated during the /ce-product-pulse first-run interview. Re-run the skill with
 # argument `setup` or `reconfigure` to edit interactively.
 
 # pulse_product_name: "Spiral"                          # used in report titles (no default)
@@ -37,7 +37,7 @@
 # ideate_output: md              # md | html (default: html -- ideation docs are human-facing, so HTML is the default; set md to opt out)
 
 # --- Model elevation ---
-# Send only the reasoning-heavy step of /ce-plan (interpret research, then author
+# Send only the reasoning-heavy step of /ce-plan (interpret research, then compose
 # the plan) and /ce-brainstorm (generate approaches) to a model you name. The rest
 # of each skill -- dialogue, research, orchestration -- stays on your session
 # model. The value is a model alias (e.g. `fable`, `opus`). You can also name a
@@ -45,21 +45,21 @@
 #
 # Cross-harness: setting a key means every harness you run these skills in will
 # attempt that model. The host serves it natively where it can; otherwise the
-# Claude CLI is invoked when installed and authenticated; otherwise the step runs
-# on your session model and the run says so. Invalid/commented/missing -> no
+# AI Assistant uses an available cross-harness route; otherwise the step runs
+# on the session model and the run says so. Invalid/commented/missing -> no
 # elevation.
 
 # plan_model: fable              # model alias for the plan-authoring step (no default)
 # brainstorm_model: fable        # model alias for approach generation (no default)
 
 # --- PR concept teaching (ce-commit-push-pr) ---
-# When a PR introduces a concept new to the codebase, the generated PR
-# description gains a "New concepts" section teaching it. The section toggle is
+# When a PR introduces a concept new to the codebase, its description gains a
+# "New concepts" section teaching it. The section toggle is
 # the single gate: off disables judgment, the section, the /ce-explain offer,
 # and archival. Archival additionally writes the explainer to docs/explainers/
 # and links it from the PR (full-workflow runs only; override per run with
-# archive:on|off). Note: this file is gitignored and per-checkout -- fresh
-# worktrees don't inherit it.
+# archive:on|off). Note: this file is ignored from version control and local to
+# one Jujutsu workspace; other workspaces do not inherit it.
 
 # pr_teaching_section: false     # true | false (default: true)
 # pr_teaching_archive: true      # true | false (default: false; full-workflow runs only)
@@ -89,7 +89,7 @@
 # cross_model_peer: codex          # codex | claude | grok | cursor | composer
 
 # --- ce-work implementation engine ---
-# Standing, per-checkout preferences for who authors implementation units. Live
+# Standing, per-workspace preferences for how AI Assistant routes implementation units. Live
 # task/session/project instructions and LFG's provenance-bearing binding may
 # override or narrow these defaults. `off` disables only this standing preference.
 # `prefer` tries candidates in order, then falls back natively with disclosure.
@@ -125,7 +125,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # tracked (multi-agent) or $(jj workspace root)/.tmp/rocketclaw/feedback-sweep/state.yml (solo; fall back to .tmp/rocketclaw/feedback-sweep/state.yml locally when the root is unavailable)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology

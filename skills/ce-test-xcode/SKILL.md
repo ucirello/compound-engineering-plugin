@@ -22,9 +22,7 @@ Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures
 
 Check that the XcodeBuildMCP MCP server is connected by calling its `list_simulators` tool.
 
-MCP tool names vary by platform:
-- Claude Code: `mcp__xcodebuildmcp__list_simulators`
-- Other platforms: use the equivalent MCP tool call for the `XcodeBuildMCP` server's `list_simulators` method
+MCP tool names vary by harness. Use the available MCP tool that calls the `XcodeBuildMCP` server's `list_simulators` method.
 
 If the tool is not found or errors, inform the user they need to add the XcodeBuildMCP MCP server:
 
@@ -109,7 +107,7 @@ Pause for human input when testing touches flows that require device interaction
 | Location | "Allow location access and verify map updates" |
 | SwiftUI Text links | "Please tap on [element description] manually — automated taps cannot trigger inline text links" |
 
-Ask the user using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question:
+Ask the user with the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because schema loading is required. Never silently skip the question:
 
 ```
 Human Verification Needed

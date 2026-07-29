@@ -1,88 +1,56 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communication message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate, value-communicating message.
+description: Use when the user asks to save current work by describing a Jujutsu change or to improve the description of the working-copy change.
 ---
 
-# Git Commit
+# Jujutsu Change Description
 
-Create a single, well-crafted git commit from the current working tree changes.
+Describe the current working-copy change accurately and leave its contents and topology unchanged.
+
+## Interaction Method
+
+When this skill asks the user a question, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to asking in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because schema loading is required. Never silently skip the question.
 
 ## Context
 
-Gather the working-tree context by running each command below as its **own** shell tool call — a single argv-style invocation (just the program and its arguments). Do **not** join them with `;`, `&&`, `||`, pipes, `$(...)`, or redirects like `2>/dev/null`: that syntax parses only under POSIX shells and aborts under Windows PowerShell. Read each command's exit status directly — a non-zero exit is a normal state to interpret, not a failure to suppress.
+Run each command as its own shell tool call. Do not join commands with shell operators, pipes, substitutions, or redirects. Interpret a non-zero exit directly.
 
-| Command | Purpose | Non-zero exit / empty output means |
+| Command | Purpose | Non-zero exit / empty result |
 | --- | --- | --- |
-| `git status` | Working-tree state | Not a git repository — report and stop |
-| `git diff HEAD` | Uncommitted changes | Unborn repo with no commits yet — treat every tracked change as new |
-| `git branch --show-current` | Current branch | Empty output = detached HEAD |
-| `git log --oneline -10` | Recent commit style | Unborn repo — no history to match yet |
-| `git rev-parse --abbrev-ref origin/HEAD` | Remote default branch | No `origin/HEAD` set — resolve the default branch per Step 1 |
+| `jj workspace root` | Confirm the workspace and obtain its root | Not a Jujutsu workspace; report and stop |
+| `jj status` | Inspect `@`, its parent, conflicts, and changed paths | Context unavailable; report and stop |
+| `jj diff -r @` | Read the complete content change being described | Context unavailable; report and stop |
+| `jj log -r '::@' -n 10` | Observe recent description syntax and wording | No useful history; rely on active repo-local instructions and compatible clarity guidance |
+| `jj log -r @ --no-graph` | Read the current change ID and description | Current change unavailable; report and stop |
 
-These values are a snapshot taken before any action. Re-read anything consequential (the current branch, the staged set) immediately before committing, since the working tree can change between gathering context and acting on it.
-
----
+These commands may snapshot the working copy. They do not create a separate staging selection. Treat their output as one context snapshot, then rerun `jj status` and `jj diff -r @` immediately before changing the description.
 
 ## Workflow
 
-### Step 1: Gather context
+### 1. Inspect the change
 
-Run the commands from the **Context** section above (git status, working tree diff, current branch, recent commits, remote default branch), each as its own shell tool call.
+Gather the context above. Include every path and hunk in `@` when determining its intent. Do not infer a partial selection or silently exclude unrelated-looking files.
 
-The remote default branch value returns something like `origin/main`. Strip the `origin/` prefix to get the branch name. If that command exited non-zero (no `origin/HEAD` set) or returned a bare `HEAD`, try:
+If `@` has no content change, report that there is nothing to describe and stop. If conflicts prevent an accurate description, report the conflicts and stop. If the content has no truthful unifying intent, ask the user to separate the concerns using the Interaction Method; do not split, squash, create, abandon, rebase, or otherwise alter changes in this workflow.
 
-```bash
-gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
-```
+Do not create or move bookmarks. Work in the normal Jujutsu state without assumptions about a current bookmark.
 
-If both fail, fall back to `main`.
+### 2. Compose, apply, and validate the description
 
-If `git status` shows a clean working tree (no staged, modified, or untracked files), report that there is nothing to commit and stop.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-If the current branch is empty, the repository is in detached HEAD state. Explain that a branch is required before committing if the user wants this work attached to a branch. Ask whether to create a feature branch now. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+Repo-local active instructions and the syntax observed in history always win. Apply only compatible Go clarity guidance, preserving the motivation, constraints, trade-offs, issue context, and other semantic details future readers need. Do not impose a prefix, category, scope, punctuation rule, subject/body structure, or other format that the repository does not already use. Do not add branding, generated-by text, authorship, co-authorship, or sign-off attribution.
 
-- If the user chooses to create a branch, derive the name from the change content, create it with `git checkout -b <branch-name>`, then run `git branch --show-current` again and use that result as the current branch name for the rest of the workflow.
-- If the user declines, continue with the detached HEAD commit.
-
-### Step 2: Determine commit message convention
-
-Follow this priority order:
-
-1. **Repo conventions already in context** -- If project instructions (AGENTS.md, CLAUDE.md, or similar) are already loaded and specify commit message conventions, follow those. Do not re-read these files; they are loaded at session start.
-2. **Recent commit history** -- If no explicit convention is documented, examine the 10 most recent commits from Step 1. If a clear pattern emerges (e.g., conventional commits, ticket prefixes, emoji prefixes), match that pattern.
-3. **Default: conventional commits** -- If neither source provides a pattern, use conventional commit format: `type(scope): description` where type is one of `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `style`, `build`.
-
-When using conventional commits, choose the type that most precisely describes the change (the type list above). Where `fix:` and `feat:` both seem to fit, default to `fix:`: a change that remedies broken or missing behavior is `fix:` even when implemented by adding code. Reserve `feat:` for capabilities the user could not previously accomplish. Other types remain primary when they fit better. The user may override for a specific change.
-
-### Step 3: Consider logical commits
-
-Before staging everything together, scan the changed files for naturally distinct concerns. If modified files clearly group into separate logical changes (e.g., a refactor in one directory and a new feature in another, or test files for a different change than source files), create separate commits for each group.
-
-Keep this lightweight:
-- Group at the **file level only** -- do not use `git add -p` or try to split hunks within a file.
-- If the separation is obvious (different features, unrelated fixes), split. If it's ambiguous, one commit is fine.
-- Two or three logical commits is the sweet spot. Do not over-slice into many tiny commits.
-
-### Step 4: Stage and commit
-
-If the current branch from the context above is `main`, `master`, or the resolved default branch from Step 1, automatically create a feature branch before committing. Derive the branch name from the change content, create it with `git checkout -b <branch-name>`, run `git branch --show-current` to confirm, and use the new branch as the current branch for the rest of the workflow. Do not ask whether to branch — committing on the default branch is not an option here.
-
-Write the commit message:
-- **Subject line**: Concise, imperative mood, focused on *why* not *what*. Follow the convention determined in Step 2.
-- **Body** (when needed): Add a body separated by a blank line for non-trivial changes. Explain motivation, trade-offs, or anything a future reader would need. Omit the body for obvious single-purpose changes.
-
-For each commit group, stage and commit in a single call. Prefer staging specific files by name over `git add -A` or `git add .` to avoid accidentally including sensitive files (.env, credentials) or unrelated changes. Use a heredoc to preserve formatting:
+Describe only the content currently in `@`. Preserve issue references and semantic details required by the active instructions or history. Use this neutral command form:
 
 ```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-type(scope): subject line here
-
-Optional body explaining why this change was made,
-not just what changed.
-EOF
-)"
+jj describe -m "<message composed from the standards above>"
 ```
 
-### Step 5: Confirm
+Pass the complete multiline value as the single `-m` argument. Do not use a global temporary directory. If the harness cannot safely pass that argument directly, use only `<workspace-root>/.tmp/rocketclaw/ce-commit/`, where `<workspace-root>` is the output of `jj workspace root`; when that command is unavailable, fall back to the current directory's `.tmp/rocketclaw/ce-commit/`. Confirm `.tmp` is ignored before writing there; otherwise stop rather than create tracked scratch content.
 
-Run `git status` after the commit to verify success. Report the commit hash(es) and subject line(s).
+After `jj describe` succeeds, run `jj status`, `jj diff -r @`, and `jj log -r @ --no-graph` as separate calls. Confirm that the content and topology are unchanged and that the displayed description exactly matches the composed value. If concurrent edits changed `@`, stop and report that the description must be reconsidered against the new content.
+
+### 3. Report
+
+Report the change ID and final first line. State that only the description changed. If any required confirmation failed, report the blocker instead of claiming success.

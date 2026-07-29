@@ -1,6 +1,6 @@
 ---
 name: ce-explain
-description: "Create a durable, visual teaching artifact — plus an optional check-in (predict-then-reveal for diffs, corrected exercises) that makes it stick — for something worth learning: a concept, a diff, an idea, or a window of your own recent work. Use when the user wants to be taught, wants a deep explainer, wants to understand a substantial change, or wants a work recap built for retention. Not for ordinary Q&A, brief 'why?' follow-ups, operational diagnosis, status updates, or a concise trade-off answer that belongs inline in chat. For learning, not repo docs or verdicts."
+description: "Create a durable, visual teaching artifact — plus an optional check-in (predict-then-reveal for diffs, corrected exercises) that makes it stick — for something worth learning: a concept, a Jujutsu change, an idea, or a window of your own recent work. Use when the user wants to be taught, wants a deep explainer, wants to understand a substantial change, or wants a work recap built for retention. Not for ordinary Q&A, brief 'why?' follow-ups, operational diagnosis, status updates, or a concise trade-off answer that belongs inline in chat. For learning, not repo docs or verdicts."
 argument-hint: "[a concept, a diff ref, an idea, or 'what happened this week?'] — or invoke bare to be asked"
 ---
 
@@ -44,20 +44,26 @@ Read `references/intake.md` now and classify the request into one of the four in
 Match grounding to the input shape. Create the run directory first — every run gets one, before any artifact exists:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" && [ -n "$WORKSPACE_ROOT" ]; then :; else WORKSPACE_ROOT="$(pwd -P)"; fi;
+SCRATCH_PARENT="$WORKSPACE_ROOT/.tmp";
+SCRATCH_ROOT="$SCRATCH_PARENT/rocketclaw";
+if [ -L "$SCRATCH_PARENT" ] || { [ -e "$SCRATCH_PARENT" ] && [ ! -d "$SCRATCH_PARENT" ]; }; then echo "unsafe workspace scratch parent: $SCRATCH_PARENT" >&2; exit 1; fi;
+install -d -m 700 "$SCRATCH_PARENT" || exit 1;
+if [ -L "$SCRATCH_PARENT" ] || [ ! -O "$SCRATCH_PARENT" ]; then echo "workspace scratch parent is not owned by the current user: $SCRATCH_PARENT" >&2; exit 1; fi;
+chmod 700 "$SCRATCH_PARENT" || exit 1;
+if [ -L "$SCRATCH_ROOT" ] || { [ -e "$SCRATCH_ROOT" ] && [ ! -d "$SCRATCH_ROOT" ]; }; then echo "unsafe scratch root: $SCRATCH_ROOT" >&2; exit 1; fi;
 install -d -m 700 "$SCRATCH_ROOT" || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 RUN_DIR="$SCRATCH_ROOT/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
 (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
-echo "$RUN_DIR";
+printf '%s\n' "$RUN_DIR";
 ```
 
-**Repo-touching inputs** (a concept with footprint in this repo, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or commits. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted root or workspace probe.
+**Repo-touching inputs** (a concept with footprint in this repo, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or Jujutsu history. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted root or workspace probe.
 
-- **Diff mode:** resolve the change (the `diff:` ref, or the most recent substantial change when the request points at one implicitly) and gather its evidence — the diff itself, the files it touches, any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied.
-- **Recap mode:** dispatch a generic subagent directly, seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the repo root, and `$RUN_DIR`. Do not pre-scan, count, or characterize the window in the main conversation; the scout owns that evidence pass, and an early `git --all` summary can seed it with a false branch or activity model. It returns an evidence summary with commit shas and `file:line` pointers. **Empty window** (no git activity, no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
+- **Diff mode:** resolve the Jujutsu revision or revset (the `diff:` value, or the most recent substantial change when the request points at one implicitly) and gather its evidence with `jj diff`, `jj show`, and `jj log` — the diff itself, the files it touches, and any plan or solution doc that motivated it. For a PR, preserve the hosting provider as the source of PR metadata through any available interface, map its base and head to Jujutsu commit IDs or remote bookmarks, and inspect configured remotes with `jj git remote list`; use `jj git fetch --remote <remote>` only when required evidence is absent locally and network access is in scope. Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied.
+- **Recap mode:** dispatch a generic subagent directly, seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the Jujutsu workspace root, and `$RUN_DIR`. Do not pre-scan, count, or characterize the window in the main conversation; the scout owns that evidence pass, and an early broad history summary can seed it with a false bookmark or activity picture. It returns an evidence summary with Jujutsu change/commit IDs and `file:line` pointers. **Empty window** (no Jujutsu activity, no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
 - **External concepts** (no footprint in this repo): skip repo grounding entirely — do not force repo context into the output. Research with whatever web tools are reachable. When none are, you may explain from model knowledge, but the artifact must label that content **Unverified — from model knowledge, not checked against current sources** in its metadata header.
 - **Idea mode:** the idea is a fixed given. Explain its implications, mechanics, and trade-offs for the user's understanding. Never scope it (`ce-brainstorm`'s job), never generate and rank alternatives (`ce-ideate`'s job).
 
@@ -84,7 +90,7 @@ Detect destinations by capability — probe the agent's own toolset and session 
 - **Local file** — copy the artifact out of `$RUN_DIR` to the path the user names, then where the platform exposes a browser-opening primitive (`open` on macOS, `xdg-open` on Linux, `start` on Windows) offer to open it; otherwise print the absolute path.
 - **Publish to Proof** (markdown output only) — publish per `references/destinations.md` and surface the returned share URL; on failure retry once, then report and move on.
 - **Send to Thinkroom** (offered only when a Thinkroom skill or CLI capability is detected) — send per `references/destinations.md`.
-- **Leave it** — report the `$RUN_DIR` path and state it is a temporary location that does not survive reboot; nothing else is written.
+- **Leave it** — report the `$RUN_DIR` path and state that it is workspace-local scratch; nothing else is written.
 
 **Non-interactive degradation:** when no interaction is possible at this ask (no blocking tool and no reply), do not hang and do not discard — the artifact is already at `$RUN_DIR`; report that path and end, skipping the improvement-observation handoffs below (they are offers, and an offer cannot fire without a user).
 

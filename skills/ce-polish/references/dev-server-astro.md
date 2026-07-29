@@ -1,6 +1,6 @@
 # Astro dev-server recipe (auto-detect fallback)
 
-Loaded when `detect-project-type.sh` returns `astro` and there is no `.claude/launch.json` to consult.
+Loaded when `detect-project-type.sh` returns `astro` and there is no `.rocketclaw/launch.json` to consult.
 
 ## Signature
 
@@ -53,6 +53,6 @@ Substitute the resolved package manager (`npm` / `pnpm` / `yarn` / `bun`) and po
 
 ## Common gotchas
 
-- **SSR vs SSG:** `astro dev` runs identically for both output modes; the difference only matters at build time. Polish does not need to distinguish between them.
+- **SSR vs SSG:** `astro dev` runs identically for both output modes; the difference only matters at build time. RocketClaw polish does not need to distinguish between them.
 - **Astro config takes precedence over Vite config:** Astro uses Vite under the hood but ships its own config file. The `astro` type takes precedence over `vite` when both `astro.config.*` and `vite.config.*` exist. This is rare -- Astro projects do not usually have a separate Vite config file.
-- **Dev toolbar (Astro 4+):** Astro 4+ includes a dev toolbar that adds overlay UI in the browser. It does not affect port binding or URL routing -- polish can ignore it.
+- **Dev toolbar (Astro 4+):** Astro 4+ includes a dev toolbar that adds overlay UI in the browser. It does not affect port binding or URL routing -- RocketClaw polish can ignore it.

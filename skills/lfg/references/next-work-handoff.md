@@ -1,16 +1,16 @@
 # Next-work handoff
 
-Use this only at LFG closeout, after the current pipeline has reached its
+Use this only at RocketClaw closeout, after the current pipeline has reached its
 terminal state. Its purpose is to offer continuity into a separately planned
 area without silently extending the completed plan or current session.
 
 ## Establish whether an offer is warranted
 
-Start from the canonical plan path retained from LFG step 1. Locate a Product
+Start from the canonical plan path retained from RocketClaw step 1. Locate a Product
 Contract section carrying the semantic role `work-relationships`:
 
-- Markdown: `<!-- ce-section: work-relationships -->`
-- HTML: `data-ce-section="work-relationships"`
+- Markdown: `<!-- rocketclaw-section: work-relationships -->`
+- HTML: `data-rocketclaw-section="work-relationships"`
 
 The visible heading is not part of this protocol. For an older unmarked plan,
 use a semantic fallback only when one Product Contract section clearly names
@@ -53,23 +53,23 @@ offering it.
 
 ## Offer, then stop
 
-Place the offer before LFG's `<promise>DONE</promise>`. Keep it non-blocking and
+Place the offer before RocketClaw's `<promise>DONE</promise>`. Keep it non-blocking and
 do not invoke `ce-handoff` yet.
 
 For one winner, use this shape in natural prose:
 
 > The clearest next area is **<area>** because <reason>. If you want to continue
-> it in a fresh agent session, I can create a `ce-handoff` for that brainstorm.
+> it in a fresh session, I can create a `ce-handoff` for that brainstorm.
 
 For a real tie, name the tied areas and offer a fresh-session handoff focused on
 choosing the next coherent area. The pipeline still ends with the DONE promise;
-the offer is optional continuity, not another LFG step.
+the offer is optional continuity, not another RocketClaw step.
 
 ## If the user later accepts
 
 Only after explicit acceptance, resolve `ce-handoff` against the host's
 available-skills list and invoke `create` with a compact, labeled next-work
-brief. LFG owns the recommendation; do not ask `ce-handoff` to rediscover or
+brief. RocketClaw owns the recommendation; do not ask `ce-handoff` to rediscover or
 rank candidates. Include:
 
 - **Next-session objective:** brainstorm one coherent next area and produce a

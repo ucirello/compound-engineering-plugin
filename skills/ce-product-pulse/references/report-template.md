@@ -1,6 +1,6 @@
-# Pulse Report Template
+# RocketClaw Pulse Report Template
 
-Loaded by `SKILL.md` at Phase 2.3 after queries have returned. Fill the template using the query results. Target total length: 30-40 lines.
+Loaded by RocketClaw's `ce-product-pulse` skill at Phase 2.3 after queries have returned. Fill the template using the query results. Target total length: 30-40 lines.
 
 ## Rules for filling in
 

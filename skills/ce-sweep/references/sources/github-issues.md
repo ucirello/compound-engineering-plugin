@@ -27,6 +27,8 @@ Map every qualifying issue updated since the cursor into the item schema above, 
 
 Run this once at run start, before any fetch. Verify BOTH capabilities:
 
+In a non-colocated Jujutsu workspace, run `jj git root` and set `GIT_DIR` to its returned path for each `gh` call.
+
 1. Read — the `gh` CLI (or equivalent GitHub tooling) is present and authenticated: `gh auth status` succeeds and `gh issue list` against the configured repo returns without an auth/transport error.
 2. Write — label-edit permission is available: `gh auth status` reports a token with `repo` scope, or a dry probe of `gh issue edit` permission signals write access to the repo.
 

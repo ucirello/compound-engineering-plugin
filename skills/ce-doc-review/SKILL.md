@@ -31,6 +31,8 @@ The caller receives findings with their original classifications intact and deci
 
 If `mode:headless` is not present, run in default interactive mode with the routing question, walk-through, and bulk-preview behaviors documented in `references/walkthrough.md` and `references/bulk-preview.md`.
 
+If this workflow needs temporary run artifacts, place them under `$(jj workspace root)/.tmp/rocketclaw/ce-doc-review/<run-id>/`. If workspace-root discovery fails, use the current directory's `.tmp/rocketclaw/ce-doc-review/<run-id>/`. Reject symlinked or non-owned scratch directories, create them with mode `0700`, and never use an OS or global temporary directory.
+
 ## Phase 1: Get and Analyze Document
 
 **If a document path is provided:** Read it, then proceed. If the Read fails or the file is not on disk, apply the missing-document gate below instead of continuing.
@@ -39,10 +41,12 @@ If `mode:headless` is not present, run in default interactive mode with the rout
 
 **If no document is specified (headless mode):** Output "Review failed: headless mode requires a document path. Expected arguments: mode:headless <path>" and stop without dispatching reviewers.
 
-**Missing-document gate — verify before any dispatch.** Persona reviewers read documents from the filesystem, and several run without Bash, so they cannot read git refs — a path that exists only on a branch that is not checked out wastes the entire persona team discovering they cannot proceed (issue #925). Before Phase 2, confirm every resolved document path is readable on disk (the Read above succeeded). Location does not matter: an absolute path outside the checkout (e.g. `/tmp/plan.md`) or a doc in another checkout reviews fine. If any path is not readable, do not dispatch any personas:
+**Missing-document gate — verify before any dispatch.** Persona reviewers read documents from the filesystem, and several run without shell access, so they cannot materialize content that exists only in another JJ revision or workspace. Before Phase 2, confirm every resolved document path is readable on disk (the Read above succeeded). Location does not matter: an absolute path outside the current workspace or a doc in another workspace reviews fine. If any path is not readable, do not dispatch any personas:
 
-- **Interactive mode:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Check out the branch containing them, use a worktree, or provide corrected readable paths before retrying the review."
-- **Headless mode:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; check out the branch containing them or provide corrected paths." and return without dispatching reviewers.
+- **Interactive mode:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Open the JJ workspace containing them or provide corrected readable paths before retrying the review."
+- **Headless mode:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; open the JJ workspace containing them or provide corrected paths." and return without dispatching reviewers.
+
+When repository context can change the review, use non-mutating JJ views. Resolve the workspace with `jj workspace root`; inspect working-copy changes with `jj status` and `jj diff`; inspect relevant history with `jj log` and explicit revsets; inspect local and remote bookmark state with `jj bookmark list --all-remotes`; and inspect configured remote interop with `jj git remote list`. Treat the project's active instructions, current working-copy state, bookmark topology, and runtime history as authoritative. Do not mutate changes, bookmarks, workspaces, or remotes during review.
 
 ### Classify Document Type
 

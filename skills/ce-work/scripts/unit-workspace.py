@@ -14,7 +14,7 @@ from unit_workspace_integration import (
     cmd_integration_acquire,
     cmd_integration_release,
     cmd_mark_applied,
-    cmd_mark_committed,
+    cmd_mark_described,
     cmd_mark_verified,
     cmd_preflight,
     cmd_restore,
@@ -41,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("checkpoint-plan")
     p.add_argument("--run-id", required=True)
+    p.add_argument("--description", required=True)
 
     p = sub.add_parser("prepare")
     p.add_argument("--run-id", required=True)
@@ -85,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
     p.add_argument("--lock-token", required=True)
-    p.add_argument("--allowed-head", action="append", default=[])
+    p.add_argument("--allowed-revision", action="append", default=[])
 
     p = sub.add_parser("mark-applied")
     p.add_argument("--run-id", required=True)
@@ -99,7 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--evidence-digest", required=True)
     p.add_argument("--summary", default="authoritative verification passed")
 
-    p = sub.add_parser("mark-committed")
+    p = sub.add_parser("mark-described")
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
     p.add_argument("--lock-token", required=True)
@@ -107,9 +108,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("integrate")
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
-    p.add_argument("--commit-message", required=True)
+    p.add_argument("--description", required=True)
     p.add_argument("--verification-summary", default="authoritative verification passed")
-    p.add_argument("--allowed-head", action="append", default=[])
+    p.add_argument("--allowed-revision", action="append", default=[])
     p.add_argument("verification_command", nargs=argparse.REMAINDER)
 
     p = sub.add_parser("verify-run")
@@ -121,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
     p.add_argument("--lock-token", required=True)
-    p.add_argument("--canonical-commit", required=True)
+    p.add_argument("--canonical-revision", required=True)
 
     p = sub.add_parser("restore")
     p.add_argument("--run-id", required=True)
@@ -146,7 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("complete-fallback")
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
-    p.add_argument("--accepted-head", required=True)
+    p.add_argument("--accepted-revision", required=True)
     p.add_argument("--evidence-digest", required=True)
     p.add_argument("--summary", required=True)
 
@@ -176,7 +177,7 @@ COMMANDS = {
     "preflight": cmd_preflight,
     "mark-applied": cmd_mark_applied,
     "mark-verified": cmd_mark_verified,
-    "mark-committed": cmd_mark_committed,
+    "mark-described": cmd_mark_described,
     "integrate": cmd_integrate,
     "verify-run": cmd_verify_run,
     "wave-advance": cmd_wave_advance,

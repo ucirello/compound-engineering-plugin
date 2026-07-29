@@ -90,7 +90,7 @@ Normalize the allowed read scope once as:
 Pass that identical representation to every peer prompt and route adapter. The
 default is the repository root. A narrower user- or host-supplied scope is
 binding and is never broadened. Peers launched on the same host inspect existing
-subject files and supporting evidence directly from this shared working tree;
+subject files and supporting evidence directly from this shared workspace;
 point them to those files instead of copying their contents into the payload.
 Pass material inline only when it exists solely in the conversation or is
 otherwise unavailable in the workspace.
@@ -102,18 +102,20 @@ never promise that secrets inside the readable scope are inaccessible. Peers may
 search and read within the declared scope but may not mutate the project or
 intentionally inspect outside it.
 
-Before initial dispatch, capture one **repository-scope identity**: the committed
-revision plus a digest of dirty and untracked content inside the normalized
-scope. Include it in every peer payload. Revalidate it before every reconcile
+Before initial dispatch, capture one **repository-scope identity**: the current
+Jujutsu working-copy commit plus a digest of untracked content inside the
+normalized scope. Outside a Jujutsu workspace, use a digest of the scoped
+content. Include it in every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
 voices into the current project: disclose the change and either restart all
 voices on the new identity or return an incomplete panel result.
 
-The caller passes this panel the resolved absolute `$SCRATCH_DIR` created in
-SKILL.md Phase 1. Keep payloads, raw output, logs, and result artifacts there;
-do not reconstruct the scratch root in this reference. Create each payload under
-`umask 077`, then `chmod 600 "$PAYLOAD_PATH"` before dispatch; do not rely on
-the ambient umask or a mode flag alone.
+The caller passes this panel the resolved absolute `$SCRATCH_DIR` created beneath
+the workspace-local `.tmp/rocketclaw/` root in SKILL.md Phase 1. Keep payloads,
+raw output, logs, and result artifacts there; do not reconstruct the scratch root
+in this reference. Create each payload under `umask 077`, then
+`chmod 600 "$PAYLOAD_PATH"` before dispatch; do not rely on the ambient umask or
+a mode flag alone.
 
 ## 3. Resolve and announce one fixed route
 
@@ -152,7 +154,7 @@ within these rules is reported, never silently replaced or dropped.
 The pre-dispatch update should say who will inspect the subject and that the
 review is read-only. Do not recite scope mechanics, promise that repository
 secrets are inaccessible, or describe probe results, CLI versions, model tiers,
-commit hashes, repository identity, route health, job lifecycle, or scratch
+change or commit IDs, repository identity, route health, job lifecycle, or scratch
 paths. Mention a cooperative scope restriction only when it materially changes
 the user's choice. Refer to the codebase as "this project" or "the repository"
 unless the user supplied a recognizable name.
@@ -162,8 +164,8 @@ unless the user supplied a recognizable name.
 Prepare one complete canonical payload containing the framed question, subject
 shape, normalized read scope, repository-scope identity, mode, paths to subject
 material already in the workspace, and required conversational material that is
-not available there. Let peers inspect and ground against the shared working
-tree. Do not duplicate readable files or add a host-curated architecture summary
+not available there. Let peers inspect and ground against the shared workspace.
+Do not duplicate readable files or add a host-curated architecture summary
 merely to brief the peer.
 
 For an initial `independent` round, exclude ce-pov's position and every other
@@ -200,10 +202,11 @@ fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Follow the worker's current usage rather than reconstructing provider
 arguments. Pass the fixed target/route, any host-resolved same-family model
 override, the canonical scope and identity, payload path, and round output
-directory. Pass the actual repository root separately from any narrower read
-root, and pre-create the round output directory as private scratch outside the
-repository. For named peers, start one job per exact target; for a selected panel,
-start one job per selected peer. Start all jobs before waiting.
+directory. Pass the actual workspace root separately from any narrower read root,
+and pre-create the round output directory as private scratch beneath the
+workspace-local `.tmp/rocketclaw/` root. For named peers, start one job per exact
+target; for a selected panel, start one job per selected peer. Start all jobs
+before waiting.
 
 Each worker writes `<run-dir>/pov-<target>.json`, where `<target>` is the resolved
 route target with `grok-cli`/`grok-cursor` collapsing to `grok`. Pass exactly that

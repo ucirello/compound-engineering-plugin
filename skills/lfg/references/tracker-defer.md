@@ -1,6 +1,6 @@
 # Tracker Detection and Defer Execution
 
-This reference covers how Defer actions file tickets in the project's tracker. It is loaded by `SKILL.md` when Interactive mode's routing question needs to decide whether to offer option C (File tickets), when the walk-through's Defer option executes, and when the bulk-preview of option C is shown. It is also loaded by autonomous callers (e.g., `lfg`) that need to file residual actionable findings without user prompts — see Execution Modes below.
+This reference covers how Defer actions file tickets in the project's tracker. It is loaded by `SKILL.md` when Interactive mode's routing question needs to decide whether to offer option C (File tickets), when the walk-through's Defer option executes, and when the bulk-preview of option C is shown. It is also loaded by autonomous callers such as RocketClaw that need to file residual actionable findings without user prompts; see Execution Modes below.
 
 ---
 
@@ -18,7 +18,7 @@ Used by `ce-code-review` Interactive mode's routing question, walk-through Defer
 
 ### Non-interactive mode
 
-Used by autonomous callers like `lfg` that must not prompt. All blocking questions are skipped; the fallback chain is executed silently in order. Behavior:
+Used by autonomous callers such as RocketClaw that must not prompt. All blocking questions are skipped; the fallback chain is executed silently in order. Behavior:
 
 - No confirmation on the first generic-label Defer; proceed directly.
 - On execution failure, automatically fall to the next tier without prompting. Record the failure.
@@ -31,7 +31,9 @@ The caller decides how to surface the result to the user. The non-interactive mo
 
 ## Detection
 
-The agent determines the project's tracker from whatever documentation is obvious. Primary source: the project's active instructions and conventions already in its context — no need to open or name specific instruction files. Read a file directly only when the relevant instructions aren't already in context: a subdirectory-scoped instruction file governing the area you're working in, or when you're a fresh subagent that wasn't given the project's instructions. Supplementary signals (when primary documentation is ambiguous): `CONTRIBUTING.md`, `README.md`, PR templates under `.github/`, visible tracker URLs in the repo.
+The workflow determines the project's tracker from whatever documentation is obvious. Primary source: the project's active instructions and conventions already in context — no need to open or name specific instruction files. Read a file directly only when the relevant instructions are not already in context: a subdirectory-scoped instruction file governing the area being changed, or when a fresh delegated worker was not given the project's instructions. Supplementary signals (when primary documentation is ambiguous): `CONTRIBUTING.md`, `README.md`, PR templates under `.github/`, visible tracker URLs in the repo.
+
+For every `gh` repository or issue operation in a non-colocated Jujutsu workspace, either pass `-R <github-repo>` when the target is known or set `GIT_DIR="$(jj git root)"` inline on that `gh` call. Never rely on the current directory to select the repository. Autonomous RocketClaw callers pass the `<github-repo>` derived from their write-authorized publication remote.
 
 A tracker can be surfaced via MCP tool (e.g., a Linear MCP server), CLI (e.g., `gh`), or direct API. All are acceptable. The detection output is a tuple with two availability flags — one for the named tracker specifically (drives label confidence in Interactive mode) and one for the full fallback chain (drives whether Defer is offered at all):
 
@@ -42,10 +44,10 @@ A tracker can be surfaced via MCP tool (e.g., a Linear MCP server), CLI (e.g., `
 Where:
 - `tracker_name` — human-readable name ("Linear", "GitHub Issues", "Jira"), or `null` when detection cannot identify a specific tracker
 - `confidence` — `high` when the tracker is named explicitly in documentation (or via a linked URL to a specific project/workspace) and is unambiguously the project's canonical tracker; `low` when the signal is thin, conflicting, or implied only
-- `named_sink_available` — `true` only when the agent can actually invoke the detected tracker (MCP tool is loaded, CLI is authenticated, or API credentials are in environment); `false` when the tracker is documented but no tool reaches it, or when no tracker is found at all. Drives label confidence: inline tracker naming requires this to be `true`.
+- `named_sink_available` — `true` only when the workflow can invoke the detected tracker (MCP tool is loaded, CLI is authenticated, or API credentials are available); `false` when the tracker is documented but no interface reaches it, or when no tracker is found at all. Drives label confidence: inline tracker naming requires this to be `true`.
 - `any_sink_available` — `true` when any tier in the fallback chain (named tracker or GitHub Issues via `gh`) can be invoked this session. Drives whether Defer is offered in Interactive mode, and drives the `no_sink` bucket in Non-interactive mode.
 
-Detection is reasoning-based. Do not maintain an enumerated checklist of files to read. Read the obvious sources and form a confident conclusion; when the obvious sources don't resolve, the label falls back to generic wording and the agent confirms with the user before executing (Interactive mode only).
+Detection is reasoning-based. Do not maintain an enumerated checklist of files to read. Read the obvious sources and form a confident conclusion; when the obvious sources do not resolve, the label falls back to generic wording and the workflow confirms with the user before executing (Interactive mode only).
 
 ---
 
@@ -55,11 +57,11 @@ Availability probes run **at most once per session** and **only when Defer execu
 
 Typical probe sequence:
 
-1. Consult the project's instructions already in context for tracker references — don't open or name specific instruction files; read one directly only when the relevant instructions aren't in context (subdirectory scope, or a fresh subagent). If nothing found, set `tracker_name = null`, `confidence = low`.
-2. **Probe the named tracker when one was found.** For GitHub Issues, run `gh auth status` and `gh repo view --json hasIssuesEnabled`. For Linear or other connector/MCP-backed trackers, first discover available tools via the platform's tool-discovery primitive (e.g., `ToolSearch` in Claude Code) rather than assuming absence from an unloaded tool, then verify the discovered tool is responsive. For API-backed trackers, verify credentials wherever the platform exposes them (environment, connector auth, or a documented secrets location) — not only shell env vars. Set `named_sink_available` from the probe result.
+1. Consult the project's instructions already in context for tracker references — don't open or name specific instruction files; read one directly only when the relevant instructions aren't in context (subdirectory scope, or a fresh delegated worker). If nothing found, set `tracker_name = null`, `confidence = low`.
+2. **Probe the named tracker when one was found.** For GitHub Issues, run `gh auth status` and repository-targeted `gh repo view --json hasIssuesEnabled -R <github-repo>` (or the inline `GIT_DIR` form above). For Linear or other connector/MCP-backed trackers, first discover available tools through the host's tool-discovery mechanism rather than assuming absence from an unloaded tool, then verify the discovered tool is responsive. For API-backed trackers, verify credentials wherever the platform exposes them (environment, connector auth, or a documented secrets location) — not only shell env vars. Set `named_sink_available` from the probe result.
 3. **Probe the GitHub Issues fallback to compute `any_sink_available`.** Even when the named tracker was found and probed, `gh` matters for the `no_sink` bucket decision so that a run with no documented tracker but working `gh` still offers Defer.
    - If `named_sink_available = true`: `any_sink_available = true` (no further probes needed).
-   - Otherwise, probe GitHub Issues via `gh auth status` + `gh repo view --json hasIssuesEnabled` (skip if already probed in step 2). If it works, `any_sink_available = true`.
+   - Otherwise, probe GitHub Issues via `gh auth status` plus the same repository-targeted `gh repo view` call (skip if already probed in step 2). If it works, `any_sink_available = true`.
    - Otherwise, `any_sink_available = false`.
 
 When Interactive mode's routing question is skipped entirely (R2 zero-findings case), no probes run. When the cached tuple is reused across a session, any `named_sink_available = true` from the session's first probe stays cached — do not re-probe per Defer.
@@ -69,8 +71,8 @@ When Interactive mode's routing question is skipped entirely (R2 zero-findings c
 ## Label logic (Interactive mode)
 
 - When `confidence = high` AND `named_sink_available = true`: the routing question's option C and the walk-through's per-finding Defer option both include the tracker name verbatim. Example: `File a Linear ticket per finding`, `Defer — file a Linear ticket`.
-- When `any_sink_available = true` but either `confidence = low` or `named_sink_available = false` (a fallback tier is working instead): the labels read generically — `File an issue per finding`, `Defer — file a ticket`. Before executing the first Defer of the session, the agent confirms the effective tracker choice with the user using the platform's blocking question tool.
-- When `any_sink_available = false`: option C is omitted from the routing question, option B (Defer) is omitted from the walk-through per-finding options, and the agent tells the user why in the routing question's stem.
+- When `any_sink_available = true` but either `confidence = low` or `named_sink_available = false` (a fallback tier is working instead): the labels read generically — `File an issue per finding`, `Defer — file a ticket`. Before executing the first Defer of the session, the workflow confirms the effective tracker choice with the user using the platform's blocking question tool.
+- When `any_sink_available = false`: option C is omitted from the routing question, option B (Defer) is omitted from the walk-through per-finding options, and the workflow tells the user why in the routing question's stem.
 
 Non-interactive mode skips label decisions entirely — it acts silently on the detected sink.
 
@@ -80,9 +82,9 @@ Non-interactive mode skips label decisions entirely — it acts silently on the 
 
 When the named tracker is unavailable or no tracker is named, fall back in this order. Prefer the project's detected tracker; use `gh` only when no named tracker was found or the named one is unreachable.
 
-1. **Named tracker** (MCP tool, CLI, or API the agent can invoke directly, identified via Detection above)
-2. **GitHub Issues via `gh`** — when `gh auth status` succeeds and the current repo has issues enabled (`gh repo view --json hasIssuesEnabled` returns `true`)
-3. **No sink** — findings remain in the review report's residual-work section (Interactive mode) or are returned in the `no_sink` bucket for the caller to route (Non-interactive mode). The agent does not re-display them through a transient surface.
+1. **Named tracker** (MCP tool, CLI, or API the workflow can invoke directly, identified via Detection above)
+2. **GitHub Issues via `gh`** — when `gh auth status` succeeds and the explicitly targeted repo has issues enabled (the repository-targeted `gh repo view --json hasIssuesEnabled` returns `true`)
+3. **No sink** — findings remain in the review report's residual-work section (Interactive mode) or are returned in the `no_sink` bucket for the caller to route (Non-interactive mode). The workflow does not re-display them through a transient surface.
 
 Previously this chain included a third in-session fallback tier. That tier was removed because in-session tasks do not survive past the session and therefore do not meet the "durable filing" intent of a Defer action. When no durable tracker exists, the correct behavior is to leave findings in the report (Interactive) or return them to the caller (Non-interactive).
 
@@ -94,12 +96,13 @@ Every Defer action creates a ticket with the following content, adapted to the t
 
 - **Title:** the merged finding's `title` (schema-capped at 10 words).
 - **Body:**
-  - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `<artifact-path>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
+  - Plain-English problem statement — reads `why_it_matters` from the contributing review-source artifact at `<artifact-path>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching that `mode:agent` uses. Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
   - Suggested fix (when present in the finding's `suggested_fix`).
-  - Evidence (direct quotes from the reviewer's artifact).
-  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the branch and head commit SHA, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
-  - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Reviewer(s): <list>`, `Finding ID: <fingerprint>`.
-- **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`) and, when the tracker convention supports it, a category label sourced from the reviewer name.
+  - Evidence (direct quotes from the review-source artifact).
+  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the delivery bookmark and Jujutsu change ID, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
+  - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Review source(s): <list>`, `Finding ID: <fingerprint>`.
+- **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`) and, when the tracker convention supports it, a category label sourced from the review source.
+- **Assignee:** for Linear, when the MCP tool exposes the current user context, assign the issue to that user (the reporter). Otherwise leave assignment unchanged rather than guessing an identity.
 - **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in ce-code-review run artifact: <artifact-path>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
 
 The finding_id is a stable fingerprint composed as `normalize(file) + line_bucket(line, +/-3) + normalize(title)` — the same fingerprint used by the merge pipeline.
@@ -113,7 +116,7 @@ When ticket creation fails at execution (API error, auth expiry mid-session, rat
 **Interactive mode:** surface the failure inline and ask the user using the platform's blocking question tool.
 
 Stem:
-> Defer failed: <tracker name> returned <error summary>. How should the agent handle this finding?
+> Defer failed: <tracker name> returned <error summary>. How should this finding be handled?
 
 Options:
 - `Retry on <tracker>` — re-attempt the same tracker once more (useful for transient errors)
@@ -124,18 +127,18 @@ Options:
 
 When a high-confidence named tracker fails at execution, the cached `named_sink_available` is set to `false` for the rest of the session. Subsequent Defer actions fall straight through to the next tier without retrying a confirmed-broken sink. `any_sink_available` is only downgraded to `false` when every tier has been confirmed broken — a failed Linear call that succeeds via `gh` keeps `any_sink_available = true`.
 
-Only when `ToolSearch` explicitly returns no match or the tool call errors — or on a platform with no blocking question tool — fall back to numbered options and waiting for the user's reply (Interactive mode only).
+Only when `ToolSearch` explicitly returns no match, the blocking question tool call errors, or the harness genuinely has no blocking question tool, fall back to numbered options and wait for the user's reply (Interactive mode only). A pending schema load is not a fallback trigger.
 
 ---
 
 ## Per-tracker behavior
 
-Concrete behavior per tracker at execution time. The agent may invoke any of these through the appropriate interface (MCP, CLI, or API) — the choice depends on what is available in the current environment.
+Concrete behavior per tracker at execution time. The workflow may invoke any of these through the appropriate interface (MCP, CLI, or API); the choice depends on what is available in the current environment.
 
 | Tracker | Interface | Invocation sketch | Body format | Labels |
 |---------|-----------|-------------------|-------------|--------|
-| Linear | MCP (preferred) or API | Create issue in the project/workspace identified by documentation; assign to the reporter if the MCP tool exposes user context | Markdown | Severity priority field if the MCP exposes it; otherwise include severity in body |
-| GitHub Issues | `gh issue create` | Repo defaults to the current repo. Use `--label` for severity tag when labels exist; omit `--label` if the repo has no label fixture. Fall back to a label-less issue on first failure. | Markdown | `--label P0` / `--label P1` / etc. when labels exist |
+| Linear | MCP (preferred) or API | Create issue in the project/workspace identified by documentation | Markdown | Severity priority field if the MCP exposes it; otherwise include severity in body |
+| GitHub Issues | `gh issue create` | Pass `-R <github-repo>` (or use the inline `GIT_DIR` form for a non-colocated Jujutsu workspace). Use `--label` for severity when labels exist; omit it if the repo has no label fixture. Fall back to a label-less issue on first failure. | Markdown | `--label P0` / `--label P1` / etc. when labels exist |
 | Jira | MCP or API | Create issue in the project identified by documentation; Jira's markdown dialect differs from GitHub's — use plain text in the body when MCP does not handle conversion | Plain text when MCP does not handle markdown | Severity priority field |
 | No sink available | — | Interactive: Defer option omitted, findings remain in the report's residual-work section. Non-interactive: findings returned in the `no_sink` bucket for caller routing. | — | — |
 
@@ -145,6 +148,6 @@ When uncertain, prefer "drop with explicit user-facing notice" over "pass throug
 
 ## Cross-platform notes
 
-The question-tool name varies by platform. In Interactive mode, use the platform's blocking question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension)). In Claude Code the tool should already be loaded from the Interactive-mode pre-load step — if it isn't, call `ToolSearch` with query `select:AskUserQuestion` now. Fall back to numbered options in chat only when the harness genuinely lacks a blocking tool — `ToolSearch` returns no match, the tool call explicitly fails, or the runtime mode does not expose it (e.g., Codex edit modes without `request_user_input`). A pending schema load is not a fallback trigger. Never silently skip the question.
+The question-tool name varies by platform. In Interactive mode, use `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first when its schema is not loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), or `ask_user` in Pi (requires the `pi-ask-user` extension). Use the host's tool-discovery mechanism when the capability is not already exposed. Fall back to numbered options in chat and wait for the user's reply only when the harness genuinely lacks a blocking tool, discovery returns no match, or the tool call explicitly fails (for example, Codex edit modes where `request_user_input` is unavailable). A pending schema load is not a fallback trigger. Never silently skip the question.
 
 Non-interactive mode is platform-agnostic: it never prompts, so the platform's question tool is not relevant.

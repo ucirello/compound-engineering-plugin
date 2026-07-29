@@ -63,25 +63,29 @@ Independent verification remains required for findings that lack cross-model cor
 - **Push back** — do not apply — when the reviewer is wrong; keep the finding and state the disagreement with reasoning.
 - **Skip with judgment** taste calls and conflicting suggestions, but surface what was skipped and why. Never silently drop.
 
-Severity, confidence, and cross-reviewer agreement tell you what to do first and what to flag loudly — they do not gate the decision. There is no deny-list: downside is controlled after the fact (revert + visible diff + the commit checkpoint), not by a precondition.
+Severity, confidence, and cross-reviewer agreement tell you what to do first and what to flag loudly — they do not gate the decision. There is no deny-list: downside is controlled after the fact (restore + visible diff + the Jujutsu checkpoint), not by a precondition.
 
 One exception: `settled_conflict`-stamped preference findings (Stage 5 step 2) stay report-only even when local apply is authorized — the bias-to-act rule does not apply to them. The user already chose against that alternative; reversing it is not this review's improvement to make.
 
-**Scope invariant.** Apply only when the working tree *is* what was reviewed — `local-aligned` or standalone. In `pr-remote` / `branch-remote` the working tree is not the reviewed head; do not apply — report instead.
+**Scope invariant.** Apply only when the working copy *is* what was reviewed: `local-aligned` or standalone. In `pr-remote` / `bookmark-remote` the working copy is not the reviewed head; do not apply, report instead.
 
 **Verify, then keep.** After applying, run the affected tests and lint (targeted by default; broaden when fixes span files). If they fail, revert that fix and report it as a finding instead — an unverified fix is not finished. Never leave the tree red.
 
-**Review the autofix diff before finishing.** Before committing or reporting applied fixes, diff only the changes introduced during Stage 5c against the pre-apply checkpoint. Run one self-review pass over that diff:
+**Review the autofix diff before finishing.** Before describing or reporting applied fixes, run `jj diff --from <pre-apply-commit-id> --to @` to inspect only the changes introduced during Stage 5c. Run one self-review pass over that diff:
 - If the same helper, policy, or guard was added to multiple parallel surfaces, extract it or explain in the Applied section why duplication is intentional.
 - If an exported/shared function now accepts a broader input shape, update the nearby docs, types, or tests that define the contract so future callers understand it.
 - If a reviewer item is pure information (no defect, no code contract change, no test gap), classify it as advisory/non-actionable in Coverage or residual risks; do not patch it or describe it as a missed defect.
-If this self-review changes files, rerun the affected tests or lint for those follow-up edits before committing or reporting; the earlier validation only covers the original autofix diff.
+If this self-review changes files, rerun the affected tests or lint for those follow-up edits before describing or reporting; the earlier validation only covers the original autofix diff.
 
-**Commit when the pre-review tree was clean.** Before applying, note whether the working tree already had uncommitted changes (`git status --porcelain`). The permanence gate is the **push**, not the commit — a local commit is private and reversible (`git reset --soft HEAD~1`).
+**Describe and isolate when the pre-review working-copy revision was empty.** Before applying, capture `jj status`, `jj diff -r @ --summary`, and `jj log --no-graph -r @ -T 'change_id ++ " " ++ commit_id ++ "\n"'`. The permanence gate is `jj git push`, not a local description or revision boundary; Jujutsu changes remain locally rewriteable.
 
-- **Clean before the review:** after applying and verifying, commit the fixes as one isolated, review-labeled fix commit — `fix(review): <summary>`, or the repo's nearest convention if `review` isn't an allowed scope. Labeled and reversible, returning the tree to a known state.
-- **Dirty before the review:** apply but do **not** commit — the fixes interleave with the user's in-flight work and ride along with the commit they were already going to make. The Applied section lists what changed.
-- **Never push, open a PR, or file tickets** — that's the outward-facing step the user owns.
+- **Empty working-copy revision before the review:** after applying and verifying, compose one repository-conforming change description, run `jj describe -m "<review-fix-description>"`, then `jj new` to leave a fresh working-copy revision. If exactly one local bookmark is the nearest bookmark in `::@`, advance it to the described fix with `jj bookmark advance --to @- <bookmark>`; otherwise leave bookmarks unchanged and report that state.
+- **Non-empty working-copy revision before the review:** apply but do **not** run `jj describe`, `jj split`, or `jj squash`; the fixes remain with the user's in-flight change. The Applied section lists what changed.
+- **Never run `jj git push`, open a PR, or file tickets** — that's the outward-facing step the user owns.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Repository-local instructions and observed message syntax take precedence; do not impose a fixed prefix, scope, subject, or body template.
 
 **Surface green-but-unverifiable edits.** When an applied fix touches auth/authz, a public or cross-service contract/schema, or concurrency/ordering, a passing test does not prove safety — flag it prominently in the Applied section so the diff reviewer's attention goes there.
 
@@ -110,7 +114,7 @@ Assemble the final report. **Default:** human-readable markdown. **`mode:agent`:
 - **The Verdict and Actionable list are present, last, and self-sufficient.** This is satisfied by the closing, not the section skeleton: the Verdict is the final report section, immediately followed by the post-report prioritized Actionable recap (default mode — see *Emit actionable findings summary* below). The in-report `Actionable Findings` section keeps its skeleton position (5) as the detailed table; the recap is the self-sufficient last word the reader sees without scrolling. (If for some layout you cannot emit the recap, move the Actionable list itself to just after the Verdict.)
 
 1. **Header.** Scope, intent, mode, reviewer team with per-conditional justifications.
-2. **Applied (explicit local apply only).** When Stage 5c applied fixes, list them first — before the findings — in an Applied section (see review output template); each entry carries `#`, file, the fix, and reviewer (a multi-file fix is one row with one `#`), then a one-line validation outcome (e.g. "pin tests 4 -> 6; suite 94 pass, lint clean") and commit status (committed on a clean tree as `fix(review): …` or the repo's nearest convention, or left uncommitted for the user on a dirty one). Flag green-but-unverifiable edits (auth/contract/concurrency) prominently. Omit this section when local apply was not authorized or nothing was applied. Applied findings appear here, not in the severity tables.
+2. **Applied (explicit local apply only).** When Stage 5c applied fixes, list them first — before the findings — in an Applied section (see review output template); each entry carries `#`, file, the fix, and reviewer (a multi-file fix is one row with one `#`), then a one-line validation outcome and Jujutsu state: described and isolated with the actual repository-conforming description when the working-copy revision was initially empty, or left in the existing change when it was not. Flag green-but-unverifiable edits (auth/contract/concurrency) prominently. Omit this section when local apply was not authorized or nothing was applied. Applied findings appear here, not in the severity tables.
 2b. **Triage Groups.** When finalized `triage_groups` exist (post-validation, post-apply — Stage 5b step 5 / Stage 5c), render a `### Triage Groups` section before the findings as a compact table (`| Group | Findings | Context | Preferred Resolution | Why |`) — a table fits this content well. The `Findings` cell lists the stable `#`s it covers; the resolution names the order/dependency. **Mark whether each group is an apply-queue or a decision-gate** (so an automated fixer applies the mechanical groups and stops at the design calls). Every referenced `#` must appear in the findings below; groups supplement the findings, never replace them. Omit the section when `grouping:off` is active or no groups survived. In `mode:agent` this section is carried by the `triage_groups` JSON field instead.
 3. **Findings.** Grouped by severity (`### P0 -- Critical`, `### P1 -- High`, `### P2 -- Moderate`, `### P3 -- Low`), rendered per the per-finding direction above and consistent within the section. Surface the decision-vs-mechanical split where it helps the actor (flag the design calls). Omit empty severity levels. Finding numbers come from the stable assignment in Stage 5 -- never re-derive them per severity section or triage group.
 4. **Requirements Completeness.** Include only when a plan was found in Stage 2b. For each requirement (R1, R2, etc.) and implementation unit in the plan, report whether corresponding work appears in the diff. Use a simple checklist: met / not addressed / partially addressed. Routing depends on `plan_source`:
@@ -144,9 +148,10 @@ Minimum shape:
   "status": "complete",
   "verdict": "Ready to merge | Ready with fixes | Not ready",
   "scope": {
-    "base": "<merge-base sha, pr:NNN marker, or base: ref>",
-    "branch": "<current branch name>",
-    "head_sha": "<git rev-parse HEAD>",
+    "base": "<common-ancestor commit id, pr:NNN marker, or base revision>",
+    "bookmarks": ["<bookmarks pointing to the reviewed stack, if any>"],
+    "change_id": "<working-copy change id>",
+    "commit_id": "<working-copy commit id>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },
@@ -187,5 +192,5 @@ Before delivering the review, verify:
 2. **No false positives from skimming.** For each finding, verify the surrounding code was actually read. Check that the "bug" isn't handled elsewhere in the same function, that the "unused import" isn't used in a type annotation, that the "missing null check" isn't guarded by the caller.
 3. **Severity is calibrated.** A style nit is never P0. A SQL injection is never P3. Re-check every severity assignment.
 4. **Line numbers are accurate.** Verify each cited line number against the file content. A finding pointing to the wrong line is worse than no finding.
-5. **Protected artifacts are respected.** Discard any findings that recommend deleting or gitignoring files in `docs/brainstorms/`, `docs/plans/`, or `docs/solutions/`.
+5. **Protected artifacts are respected.** Discard any findings that recommend deleting or adding ignore rules for files in `docs/brainstorms/`, `docs/plans/`, or `docs/solutions/`.
 6. **Findings don't duplicate linter output.** Don't flag things the project's linter/formatter would catch (missing semicolons, wrong indentation). Focus on semantic issues.

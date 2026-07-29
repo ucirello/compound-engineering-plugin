@@ -13,8 +13,8 @@ Design rules (shared with the repo's other state helpers):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are atomic: a workspace-local staging file + os.replace, so a
+    concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -40,8 +40,9 @@ are emitted as inline JSON flow on a single line — itself valid YAML.
 import argparse
 import json
 import os
+import secrets
+import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 
 try:
@@ -255,9 +256,9 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # A machine-local state file can live under world-shared /tmp, and
-            # it is a correctness dependency (lease, cursors, closed status) as
-            # well as an injection sink (item bodies re-read into agent
+            # A machine-local state file is a correctness dependency (lease,
+            # cursors, closed status) as
+            # well as an injection sink (item bodies re-read into execution
             # context). Reject a file not owned by us so a co-tenant cannot
             # plant a forged lease/cursor or attacker-authored item text. Skip
             # where geteuid is unavailable (non-POSIX), where the threat does
@@ -293,18 +294,45 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+
+    workspace_root = _workspace_root()
+    staging_dir = os.path.join(
+        workspace_root, ".tmp", "rocketclaw", "ce-sweep", "state-engine"
+    )
+    os.makedirs(staging_dir, mode=0o700, exist_ok=True)
+    staging_path = os.path.join(
+        staging_dir, f"state-{os.getpid()}-{secrets.token_hex(8)}.yml"
+    )
+    fd = os.open(staging_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
-        os.replace(tmp, path)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(staging_path, path)
     except BaseException:
         try:
-            os.unlink(tmp)
+            os.unlink(staging_path)
         except OSError:
             pass
         raise
     return True
+
+
+def _workspace_root():
+    """Return the Jujutsu workspace root, or the current directory fallback."""
+    current = os.path.abspath(os.getcwd())
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return current
+    root = result.stdout.strip()
+    return os.path.abspath(root) if result.returncode == 0 and root else current
 
 
 # --------------------------------------------------------------------------- #
@@ -544,7 +572,7 @@ def cmd_lease_release(args):
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
     # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
+    # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -565,7 +593,7 @@ def cmd_run_record(args):
 
 
 def cmd_import_legacy(args):
-    """Best-effort import of a Cora-style legacy state file. Liberal on input:
+    """Best-effort import of a legacy state file. Liberal on input:
     map what matches the known shapes, skip what doesn't, never fail."""
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -610,7 +638,7 @@ def _read_legacy(path):
             raw = f.read()
     except OSError:
         return None
-    # Try JSON first (Cora persists JSON); fall back to our YAML subset.
+    # Try JSON first; fall back to our YAML subset.
     try:
         return json.loads(raw)
     except ValueError:

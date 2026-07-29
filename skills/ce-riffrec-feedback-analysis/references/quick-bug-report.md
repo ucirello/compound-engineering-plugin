@@ -4,11 +4,11 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Run the analyzer to a temp directory so nothing pollutes the repo (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command — shell state does not persist between Bash calls):
+1. Run the analyzer in workspace-local scratch so nothing pollutes the product tree (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command because shell state does not persist between Bash calls). Resolve the Jujutsu workspace with `jj workspace root`; if that fails, use `.tmp/rocketclaw/` under the current project directory. Never use a global temporary location.
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the ce-riffrec-feedback-analysis SKILL.md>";
-   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$(mktemp -d -t riffrec-quick-XXXXXX)"
+   if WORKSPACE_ROOT="$(jj workspace root)"; then :; else WORKSPACE_ROOT="$PWD"; fi; RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-riffrec-feedback-analysis/quick-<run-id>"; (umask 077; mkdir -p "$RUN_DIR") || exit 1; python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$RUN_DIR"
    ```
 
    Capture the printed output directory; later steps read from it.
@@ -37,7 +37,7 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only in the temp dir and are discarded by the OS.
+- Do not include `raw/` or `frames/` in a described Jujutsu change. They remain in workspace-local scratch and may be removed after the report is accepted.
 - No source-mapping pass across the codebase.
 
 ## Escalation

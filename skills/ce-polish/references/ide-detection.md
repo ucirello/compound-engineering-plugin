@@ -1,6 +1,6 @@
 # IDE detection for browser handoff
 
-Polish attempts to hand the running dev-server URL off to an IDE's embedded browser so the user can test without a context switch. Detection is best-effort — failure falls through to printing the URL in the interactive summary.
+RocketClaw polish attempts to hand the running dev-server URL off to an IDE's embedded browser so the user can test without a context switch. Detection is best-effort; failure falls through to printing the URL in the interactive summary.
 
 ## Detection order
 
@@ -16,17 +16,17 @@ Probe environment variables in this order and stop at the first positive match. 
 ## Why env-var probe, not a fancier approach
 
 - Env vars are cross-platform (macOS, Linux, Windows/WSL)
-- They fail open — if a probe returns nothing, polish still works
+- They fail open — if a probe returns nothing, RocketClaw polish still works
 - They don't require any IDE API or socket connection
 - They encode "is this shell running inside a known IDE" without guessing
 
 ## Codex and other platforms
 
-Codex (Claude Agent SDK, Antigravity CLI (`agy`), etc.) do not yet expose an embedded-browser handoff. For these platforms, polish falls through to the terminal branch (print the URL). When a convention emerges, add a new row to the detection table above.
+Hosts without an embedded-browser handoff fall through to the terminal path and print the URL. Add a detection row only when a stable operational signal and handoff mechanism exist.
 
 ## Detection failure is never fatal
 
-If environment probing fails or returns ambiguous results, polish prints the URL verbatim and continues. The dev server is already running by this point — the user can always copy-paste the URL into any browser. The IDE handoff is a convenience, not a gate.
+If environment probing fails or returns ambiguous results, RocketClaw polish prints the URL verbatim and continues. The dev server is already running by this point; the user can open the URL in any browser. The IDE handoff is a convenience, not a gate.
 
 ## Probe pattern (reference)
 

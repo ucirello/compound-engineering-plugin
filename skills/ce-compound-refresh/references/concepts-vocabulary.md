@@ -24,7 +24,7 @@ When the team uses several words for the same concept, pick the best one and ret
 
 ## The file stands on its own
 
-Each entry teaches its concept to a reader with no access to anything else — no codebase, no PR history, no architecture meetings, no Slack. This rules out:
+Each entry teaches its concept to a reader with no access to anything else — no codebase, no review-request history, and no private architecture discussions. This rules out:
 
 - Implementation specifics (file paths, class names, function signatures, table names, library calls)
 - Status fields, dates, owners on the entries

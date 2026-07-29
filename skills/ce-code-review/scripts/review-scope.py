@@ -43,20 +43,31 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", "--no-pager", "--color=never", *args],
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
-def valid_commit(ref: str | None) -> bool:
+def valid_revision(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
-def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+def unique_common_ancestor(base: str, head: str) -> str | None:
+    result = jj(
+        "log",
+        "--no-graph",
+        "-r",
+        f"heads(::{base} & ::{head})",
+        "-T",
+        'commit_id ++ "\\n"',
+    )
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -84,41 +95,46 @@ def main() -> int:
     parser.add_argument("--head")
     args = parser.parse_args()
 
-    if not valid_commit(args.base):
+    if not valid_revision(args.base):
         print(json.dumps(fail_closed("invalid base endpoint"), sort_keys=True))
         return 0
-    if args.head is not None and not valid_commit(args.head):
+    if args.head is not None and not valid_revision(args.head):
         print(json.dumps(fail_closed("invalid head endpoint"), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
+    diff_args = ["--from", args.base, "--to", "@"]
     if args.head:
-        merge_base = unique_merge_base(args.base, args.head)
-        if merge_base is None:
-            print(json.dumps(fail_closed("merge base unavailable or ambiguous"), sort_keys=True))
+        common_ancestor = unique_common_ancestor(args.base, args.head)
+        if common_ancestor is None:
+            print(json.dumps(fail_closed("common ancestor unavailable or ambiguous"), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_args = ["--from", common_ancestor, "--to", args.head]
 
-    names = git("diff", "--name-only", *diff_args)
-    numstat = git("diff", "--numstat", *diff_args)
-    if names.returncode != 0 or numstat.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed"), sort_keys=True))
+    names = jj("diff", *diff_args, "--name-only")
+    stats = jj("diff", *diff_args, "--stat")
+    if names.returncode != 0 or stats.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed"), sort_keys=True))
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
-    executable_lines = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3 or Path(parts[2]).suffix.lower() not in CODE_EXTENSIONS:
+    line_counts: dict[str, int] = {}
+    for line in stats.stdout.splitlines():
+        if " | " not in line:
             continue
-        try:
-            executable_lines += int(parts[0]) + int(parts[1])
-        except ValueError:
-            # Binary/unknown counts fail the lite gate through uncounted_files below.
-            pass
+        path, summary = line.rsplit(" | ", 1)
+        match = re.match(r"\s*(\d+)\b", summary)
+        if match:
+            line_counts[path.strip()] = int(match.group(1))
+    executable_lines = sum(
+        line_counts.get(file, 0)
+        for file in files
+        if Path(file).suffix.lower() in CODE_EXTENSIONS
+    )
 
     uncounted = sum(
-        1 for file in files if Path(file).suffix.lower() not in CODE_EXTENSIONS
+        1
+        for file in files
+        if Path(file).suffix.lower() not in CODE_EXTENSIONS or file not in line_counts
     )
     signals = [
         name

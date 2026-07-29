@@ -12,7 +12,7 @@ Check each agent's returned JSON against the findings schema:
 - Drop findings with invalid enum values (including the pre-rename `auto` / `present` values from older personas — treat those as malformed until all persona output has been regenerated)
 - Note the agent name for any malformed output in the Coverage section
 
-**Do not narrate remap / validation diagnostics to the user.** Schema-drift notes ("persona X returned unknown enum Y, remapped to Z"), persona-prompt-drift commentary, and other validator-internal diagnostics are maintainer-facing information. They do not belong in the Phase 4 output the user reads. If a persona's output is malformed, the only user-visible consequence is a Coverage-row annotation (e.g., the persona shows fewer findings or a `malformed` marker). Everything else stays internal.
+**Do not narrate remap / validation diagnostics to the user.** Schema-drift notes ("persona X returned unknown enum Y, remapped to Z"), persona-prompt-drift commentary, and other validator-internal diagnostics are operator-facing information. They do not belong in the Phase 4 output the user reads. If a persona's output is malformed, the only user-visible consequence is a Coverage-row annotation (e.g., the persona shows fewer findings or a `malformed` marker). Everything else stays internal.
 
 ### 3.2 Confidence Gate (Anchor-Based)
 
@@ -255,6 +255,8 @@ Run this pass on the merged set across all personas. Record the count dropped as
 ### Apply safe_auto fixes
 
 Apply only `safe_auto` findings **at confidence anchor `100`** to the document in a single pass. This matches the 3.7 routing table: anchor `100` + `safe_auto` silent-applies; anchor `75` + `safe_auto` was demoted to `gated_auto` in 3.7 and enters the walk-through instead; anchor `50` + any `autofix_class` routes to FYI and must never auto-apply.
+
+If an applied fix composes, edits, validates, or recommends a JJ change description or commit message, preserve its semantic requirements but derive syntax from the project's active instructions and observed `jj log` history; do not impose a fixed message form. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational command; inspect history with `jj log`. Use `ai:assistant` if an actor identifier is required.
 
 - Edit the document inline using the platform's edit tool
 - Track what was changed for the "Applied fixes" section in the rendered output (`safe_auto` is the internal enum; the rendered section header reads "Applied fixes")

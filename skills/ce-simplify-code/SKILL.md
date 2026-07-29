@@ -1,20 +1,22 @@
 ---
 name: ce-simplify-code
 description: "Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving behavior. Use for tidy/refactor passes; use ce-debug for bugs."
-argument-hint: "[blank to simplify current branch changes, or describe what to simplify]"
+argument-hint: "[blank to simplify the current change stack, or describe what to simplify]"
 ---
 
-Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
+Actor: `ai:assistant`
+
+This workflow simplifies recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
 
 ## Step 1: Identify scope
 
 Resolve the simplification scope in this order:
 
 1. **If the user explicitly named a scope** (a file, a directory, "the function I just wrote", "the changes from this morning"), use that scope. Treat user-named scope as authoritative — do not widen it.
-2. **Otherwise, in a git repository**, default to the diff between the current branch and its base branch (e.g., `git diff origin/main...` or against the configured upstream). This covers the common case of "simplify everything I've added on this feature branch before opening a PR." If the branch has no upstream or base ref, fall back to staged + unstaged changes (`git diff HEAD`).
-3. **Outside a git repository or when no diff is available**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
+2. **Otherwise, in a Jujutsu workspace**, use `jj workspace root` to anchor repository-relative paths, then inspect `jj status`, `jj bookmark list --all-remotes`, and `jj log` to identify the current change stack and its base bookmark. Prefer the base named by the project's active instructions or an existing tracked bookmark; do not infer a base from a bookmark name alone. Review `jj diff --from <base-bookmark> --to @`. This covers the common case of simplifying everything added on a bookmark-backed change stack before opening a PR. If no base bookmark can be established but the working-copy change is non-empty, fall back to `jj diff -r @` and state that the scope is the current change only.
+3. **Outside a Jujutsu workspace or when no diff is available**, do not fall back to another local version-control system. Review the most recently modified files mentioned by the user or edited earlier in this conversation.
 
-If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because schema loading is required. Never silently skip the question.
 
 **Preflight — skip a no-yield scope before spending reviewers.** The three reviewers hunt for reuse, quality, and efficiency issues in *code*. If the resolved scope contains no substantive human-authored code — it is documentation- or Markdown-only, or only generated, vendored, dependency/lockfile, or purely mechanical (formatting, lint autofix, mass rename) churn — stop here with a one-line note that there is nothing to simplify, and do **not** dispatch the reviewers. On a mixed diff that includes both real code and these no-yield changes, narrow the scope to the code files and continue. This preflight gates on the *kind* of change only, never on size or count: an explicit user-named scope is authoritative and still runs even when small. (Callers that already gate on size — `ce-work`, `lfg` — and any standing "run this automatically" instruction own the size/cost policy; this preflight is only the no-code safety net.)
 
@@ -22,7 +24,7 @@ After this preflight passes, use the platform's task-tracking capability when av
 
 ## Step 2: Launch 3 review agents in parallel
 
-Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set) so it has complete context:
+Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via the platform's subagent capability where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set) so it has complete context:
 
 - `references/personas/code-reuse-reviewer.md` — existing utilities, duplicated functionality, reimplemented stdlib/runtime primitives.
 - `references/personas/code-quality-reviewer.md` — redundant state, parameter sprawl, copy-paste, leaky abstractions, stringly-typed code, dead code, over-nesting, and the over-simplification balance guard.
@@ -32,7 +34,7 @@ Do not paraphrase these rubrics from memory — read each file and pass it verba
 
 **Bounded dispatch.** Queue the three reviewers and launch only as many as the harness accepts at once; treat a concurrency/active-agent-limit error as backpressure (leave the reviewer queued and retry after a slot frees), not as reviewer failure.
 
-**Model selection.** Use the platform's balanced mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
+**Model selection.** Use the platform's balanced mid-tier model for these reviewers only when the active dispatch capability exposes a known model or custom-agent override; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
 
 **Permission mode.** Omit the `mode` parameter on the dispatch call so the user's configured permission settings apply.
 
@@ -63,6 +65,6 @@ If no test suite, lint, or typecheck is configured, state that explicitly in the
 
 ## Step 5: Summarize
 
-Briefly summarize what was good vs improved and fixed, including which checks were run and their results. If there were no findings to act on, confirm the code didn't require any changes.
+Briefly summarize what was already sound versus what improved, including which checks were run and their results. If there were no findings to act on, confirm the code didn't require any changes.
 
-**Quantify the impact by dimension.** Report what was actually applied, not a line count: fixes applied per reviewer dimension (reuse, quality, efficiency), how many findings were skipped as false-positive or not worth addressing, and the behavior-preservation result (checks run and outcome). For example: "Applied 6 — reuse 2, quality 3, efficiency 1; skipped 2 false positives; typecheck + lint clean, 11 scoped tests pass." Do not headline a net-lines-removed figure or frame fewer lines as the win — many clarity, safety, and efficiency fixes preserve or add lines. The measure is what improved and that behavior held, not how much code shrank.
+**Quantify the impact by dimension.** Report what was actually applied, not a line count: `<applied-count>` fixes split across reuse, quality, and efficiency; `<skipped-count>` findings skipped as false positives or not worth addressing; and the behavior-preservation checks and outcomes. Do not headline a net-lines-removed figure or frame fewer lines as the win — many clarity, safety, and efficiency fixes preserve or add lines. The measure is what improved and that behavior held, not how much code shrank.

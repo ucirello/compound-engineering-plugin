@@ -1,6 +1,6 @@
 # Ideation Sections
 
-This is the section contract for the ce-ideate artifact — it describes
+This is RocketClaw's section contract for the ce-ideate artifact — it describes
 *what* a persisted ideation document contains, independent of output
 format. It is paired with a format-rendering reference
 (`references/markdown-rendering.md` or `references/html-rendering.md`)
@@ -186,6 +186,5 @@ mode: <repo-grounded | elsewhere-software | elsewhere-non-software>
 
 Keep engineering-process metadata out of the artifact — no "captured at
 Phase X" notes, no skill-pointer "next steps", no italic provenance
-lines. The reader wants the ideas and their basis. (HTML carries a
-single visible composition-signal footer per the html-rendering
-invariant; that is the one provenance element that belongs in the doc.)
+lines, and no creator or harness identity. The reader wants the ideas and
+their basis.

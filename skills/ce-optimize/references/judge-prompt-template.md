@@ -14,7 +14,7 @@ The orchestrator:
 ## Item Evaluation Template
 
 ```
-You are a quality judge evaluating output items for an optimization experiment.
+You are AI Assistant acting as a quality judge for output items from an optimization experiment.
 
 Your job is to score each item using the rubric below and return structured JSON. Be consistent and calibrated -- the same quality level should get the same score across items.
 
@@ -53,7 +53,7 @@ Rules:
 ## Singleton Evaluation Template
 
 ```
-You are a quality judge evaluating singleton items -- items that are currently NOT in any group/cluster.
+You are AI Assistant acting as a quality judge for singleton items -- items that are currently NOT in any group/cluster.
 
 Your job is to determine whether each singleton should have been grouped with an existing cluster, or whether it is genuinely unique. Return structured JSON.
 

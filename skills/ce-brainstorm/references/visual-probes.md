@@ -72,7 +72,8 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
+if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; then :; else WORKSPACE_ROOT="$(pwd -P)"; fi;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 install -d -m 700 "$SCRATCH_ROOT" || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -85,7 +86,8 @@ Append `--foreground` to that `start` command for foreground mode. Status and st
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
+if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; then :; else WORKSPACE_ROOT="$(pwd -P)"; fi;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 install -d -m 700 "$SCRATCH_ROOT" || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -145,14 +147,14 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use OS temp by default because visual probes are disposable scratch:
+Use `$(jj workspace root)/.tmp` by default because visual probes are disposable scratch. If `jj workspace root` fails, use the current directory's local `.tmp` instead:
 
 ```text
-<scratch-root>/ce-brainstorm-visual/<run-id>/
+<workspace-root-or-current-directory>/.tmp/ce-brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/
     display-info.json
 ```
 
-Use `.context/compound-engineering/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.
+Use `.context/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.

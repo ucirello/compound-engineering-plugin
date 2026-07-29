@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip, standalone video, standalone audio, and
 meeting notes text/markdown. The script extracts transcript, high-signal
-video frames when available, and CE-friendly markdown artifacts.
+video frames when available, and RocketClaw-friendly markdown artifacts.
 """
 
 from __future__ import annotations
@@ -63,8 +63,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
         "--model",
-        default=os.environ.get("RIFFREC_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe"),
-        help="OpenAI transcription model to use when OPENAI_API_KEY is set",
+        default=os.environ.get("RIFFREC_TRANSCRIBE_MODEL"),
+        help="Transcription model to use when the transcription API is configured",
     )
     parser.add_argument("--no-transcribe", action="store_true", help="Skip media transcription")
     parser.add_argument("--max-moments", type=int, default=12, help="Maximum screenshots to extract")
@@ -301,12 +301,13 @@ def transcript_has_complaint(transcript: str) -> bool:
 def transcribe_media(media_path: Path | None, model: str) -> dict[str, Any]:
     if not media_path or not media_path.exists():
         return {"status": "missing", "text": ""}
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    api_key = os.environ.get("TRANSCRIPTION_API_KEY")
+    api_url = os.environ.get("TRANSCRIPTION_API_URL")
+    if not api_key or not api_url or not model:
         return {
             "status": "skipped",
             "text": "",
-            "reason": "OPENAI_API_KEY is not set. Re-run with the key available to transcribe the media file.",
+            "reason": "TRANSCRIPTION_API_KEY, TRANSCRIPTION_API_URL, and RIFFREC_TRANSCRIBE_MODEL must be set to transcribe the media file.",
         }
     if not shutil.which("curl"):
         return {"status": "skipped", "text": "", "reason": "curl is not installed"}
@@ -314,7 +315,7 @@ def transcribe_media(media_path: Path | None, model: str) -> dict[str, Any]:
     command = [
         "curl",
         "-sS",
-        "https://api.openai.com/v1/audio/transcriptions",
+        api_url,
         "-H",
         f"Authorization: Bearer {api_key}",
         "-F",
@@ -680,7 +681,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a RocketClaw requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -729,7 +730,7 @@ def write_requirements_kickoff(
         "",
         "- A1. User: Operates the product in the recorded session and verbalizes friction.",
         "- A2. Product surface: The UI and backend behavior visible in the recording.",
-        "- A3. Brainstorm agent: Uses the evidence bundle to confirm, correct, and group requirements before planning.",
+        "- A3. AI Assistant (`ai:assistant`): Uses the evidence bundle to confirm, correct, and group requirements before planning.",
         "",
         "---",
         "",
@@ -1113,7 +1114,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under docs/plans/.")
     return 0
 

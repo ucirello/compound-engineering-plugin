@@ -13,7 +13,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
    # Run linting (per the project's configured lint command / active instructions)
-   # Use linting-agent before pushing to origin
+   # Use the project's linting capability before publication
    ```
 
 2. **Simplify** (conditional — separate from code review)
@@ -34,7 +34,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
    **3a. Review (read-only).** Invoke `ce-code-review` with `mode:agent` (add `plan:<path>` when known; `base:<ref>` when the diff base is resolved). Pass **`depth:full`** when the plan, the task, or the user explicitly asked for a full / deep / thorough review — that is the one escalation signal `ce-code-review` cannot infer from the diff alone. Do not pass `mode:autofix`. Parse the JSON.
 
-   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, dispatch fix subagents. Orchestrator merges, tests, commits. Then proceed to the Residual Work Gate.
+   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, dispatch fix subagents. The orchestrator integrates, tests, and records accepted Jujutsu changes. Then proceed to the Residual Work Gate.
 
    **If `ce-code-review` cannot run at all** — subagent dispatch unavailable, unauthenticated, or hard-capped, returning `status: failed`/`degraded` with no coverage even after its own sequential Fallback: in an **interactive** session, run the harness-native review if one exists (e.g. `/review`) and fix inline; in a **non-interactive** session (autonomous pipeline, or no native review available), skip the dedicated step, note `Code review: skipped (ce-code-review unavailable)`, and add an explicit manual diff scan to Final Validation. Never silently ship a non-mechanical change with no review of any kind.
 
@@ -42,7 +42,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
    After code review and review-findings followup, inspect the **Actionable Findings** summary (or read the absolute `<artifact-path>` returned by `ce-code-review` if the summary was truncated). If one or more actionable `downstream-resolver` findings were not applied in followup, do not proceed to Final Validation until they are resolved or durably recorded.
 
-   **Non-interactive / autonomous sessions (no human can answer — e.g. an `lfg`-style pipeline or a headless run):** do **not** call the blocking tool — that would hang the pipeline. After step 3b auto-applied every mechanically-eligible finding, take the `Accept and proceed` path automatically: record the remaining actionable residuals to a durable sink and continue to Final Validation. When a PR will be created or updated, that sink is the PR description's Known Residuals section. On the no-PR path, file them via `references/tracker-defer.md` in non-interactive mode — one tracker ticket per finding, with enough background to action it standalone; any findings the tracker chain could not durably file — its `failed` or `no_sink` buckets — fall to `docs/residual-review-findings/<branch-or-head-sha>.md` as the last resort so none are dropped. Residuals are recorded, never dropped — this keeps autonomous shipping unblocked without losing findings.
+   **Non-interactive / autonomous sessions (no human can answer — for example, an `lfg`-style pipeline or a headless run):** do **not** call the blocking tool — that would hang the pipeline. After step 3b auto-applied every mechanically-eligible finding, take the `Accept and proceed` path automatically: record the remaining actionable residuals to a durable sink and continue to Final Validation. When a PR will be created or updated, that sink is the PR description's Known Residuals section. On the no-PR path, file them via `references/tracker-defer.md` in non-interactive mode — one tracker ticket per finding, with enough background to action it standalone; any findings the tracker chain could not durably file — its `failed` or `no_sink` buckets — fall to `docs/residual-review-findings/<delivery-bookmark-or-change-id>.md` as the last resort so none are dropped. Residuals are recorded, never dropped — this keeps autonomous shipping unblocked without losing findings.
 
    A settlement-invalidating conflict — evidence a `session-settled:`-labeled decision cannot work — is never auto-accepted as a residual; it is a blocker (`status: blocked` return in return-to-caller mode; stop-and-surface in standalone runs).
 
@@ -51,12 +51,12 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    Stem: `Code review left N actionable finding(s) not yet fixed. How should the agent proceed?`
 
    Options (four or fewer, self-contained labels):
-   - `Apply/fix now` — load `references/review-findings-followup.md`, dispatch batched fix subagents for remaining eligible findings, run tests, commit if needed; optionally re-run `ce-code-review` only after the diff changed materially.
+   - `Apply/fix now` — load `references/review-findings-followup.md`, dispatch batched fix subagents for remaining eligible findings, run tests, and record a Jujutsu change if needed; optionally re-run `ce-code-review` only after the diff changed materially.
    - `File tickets via project tracker` — load `references/tracker-defer.md` in Interactive mode; the agent files tickets in the project's detected tracker (or `gh` fallback, or leaves them in the report if no sink exists) and proceeds to Final Validation.
-   - `Accept and proceed` — record the residual findings in a durable sink before shipping. If a PR will be created or updated in Phase 4, include them in the PR description's "Known Residuals" section (the agent owns this when calling `ce-commit-push-pr`). If the user later chooses the no-PR `ce-commit` path, prefer filing a tracker ticket per finding (via `references/tracker-defer.md`) with enough background to action it standalone; only when no tracker sink is reachable, create `docs/residual-review-findings/<branch-or-head-sha>.md` as the last resort — include the accepted findings and source review-run context, stage it with the implementation commit, and mention the file path in the final summary. The user has acknowledged the risk, but the findings must not live only in the transient session.
+   - `Accept and proceed` — record the residual findings in a durable sink before shipping. If a PR will be created or updated in Phase 4, include them in the PR description's "Known Residuals" section when calling `ce-commit-push-pr`. If the user later chooses the no-PR `ce-commit` path, prefer filing a tracker ticket per finding (via `references/tracker-defer.md`) with enough background to action it standalone; only when no tracker sink is reachable, create `docs/residual-review-findings/<delivery-bookmark-or-change-id>.md` as the last resort — include the accepted findings and source review-run context, include it in the implementation Jujutsu change, and mention the file path in the final summary. The user has acknowledged the risk, but the findings must not live only in the transient session.
    - `Stop — do not ship` — abort the shipping workflow. The user will handle findings manually before re-invoking.
 
-   Skip this gate entirely when the review reported `Actionable findings: none.` (and followup applied everything mechanical), or when dedicated review was skipped (mechanical diff or `ce-code-review` unavailable). Do not proceed past this gate on an `Accept and proceed` decision (including the autonomous auto-accept above) until the agent has recorded which durable sink held the residuals — `PR Known Residuals`, a tracker ticket, or (last resort) `docs/residual-review-findings/<branch-or-head-sha>.md`.
+   Skip this gate entirely when the review reported `Actionable findings: none.` (and followup applied everything mechanical), or when dedicated review was skipped (mechanical diff or `ce-code-review` unavailable). Do not proceed past this gate on an `Accept and proceed` decision (including the autonomous auto-accept above) until the workflow has recorded which durable sink held the residuals — `PR Known Residuals`, a tracker ticket, or (last resort) `docs/residual-review-findings/<delivery-bookmark-or-change-id>.md`.
 
 5. **Final Validation**
    - All tasks marked completed
@@ -82,13 +82,15 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 1. **Prepare Validation Context**
 
-   Do not try to launch a dedicated CE evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
+   Do not try to launch a dedicated evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
 
    Note whether the completed work has observable behavior (UI rendering, CLI output, API/library behavior with a runnable example, generated artifacts, or workflow output), and summarize any manual validation performed. If the user supplied evidence (URL, markdown embed, local artifact path), pass it to `ce-commit-push-pr` as PR-description context.
 
-2. **Commit and Create Pull Request**
+2. **Persist the Jujutsu Change and Create a Pull Request**
 
-   Load the `ce-commit-push-pr` skill with `branding:on` to handle committing, pushing, and PR creation. This explicit signal records that the Compound Engineering workflow produced the work; the skill handles convention detection, branch safety, logical commit splitting, adaptive PR descriptions, and PR attribution.
+   Load the `ce-commit-push-pr` skill to handle Jujutsu persistence, bookmark publication, and PR creation. It handles convention detection, bookmark safety, logical change splitting, and adaptive PR descriptions. Add no optional identity or promotional metadata; if a required identity field cannot be omitted, use `ai:assistant`.
+
+   At every Jujutsu change-description composition, edit, validation, or recommendation site, apply this exact rule: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and syntax observed with `jj log` take precedence; apply compatible Go guidance without imposing a fixed prefix, type, scope, subject, body, layout, template, example, or identity footer.
 
    When providing context for the PR description, include:
    - The plan's summary and key decisions
@@ -119,12 +121,12 @@ Before creating PR, verify:
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
 - [ ] Validation/evidence context passed to `ce-commit-push-pr` when the change has observable behavior
-- [ ] Commit messages follow conventional format
+- [ ] Jujutsu descriptions follow project instructions and observed `jj log` syntax under the exact Go sentence above
 - [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
 - [ ] Simplify: `ce-simplify-code` when diff >=30 lines (or skipped with reason)
 - [ ] Code review: `ce-code-review` ran (self-sized), or skipped (mechanical diff / unavailable — noted in summary); residuals handled via the Residual Work Gate
 - [ ] PR description includes summary, testing notes, and evidence when captured
-- [ ] `ce-commit-push-pr` received `branding:on` from the Compound Engineering workflow
+- [ ] PR and change metadata contain no optional identity or promotional metadata
 
 ## Code Review
 

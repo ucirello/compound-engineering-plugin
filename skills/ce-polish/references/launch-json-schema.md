@@ -1,6 +1,6 @@
-# `.claude/launch.json` schema
+# `.rocketclaw/launch.json` schema
 
-Polish reads `.claude/launch.json` at the repo root to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format — chosen because Claude Code, Cursor, and VS Code all understand it and because users often already have one for editor integration.
+RocketClaw polish reads `.rocketclaw/launch.json` at the Jujutsu workspace root to resolve the dev-server start command. The schema is a compact launch configuration owned by RocketClaw; its fields remain compatible with common editor launch concepts.
 
 ## Top-level shape
 
@@ -13,27 +13,27 @@ Polish reads `.claude/launch.json` at the repo root to resolve the dev-server st
       "runtimeExecutable": "<binary>",
       "runtimeArgs": ["<arg>", "<arg>"],
       "port": <number>,
-      "cwd": "<optional, repo-relative>",
+      "cwd": "<optional, workspace-relative>",
       "env": { "<key>": "<value>" }
     }
   ]
 }
 ```
 
-## Fields polish consumes
+## Fields RocketClaw polish consumes
 
 | Field | Required | Purpose |
 |-------|----------|---------|
-| `name` | yes (when multiple configurations) | Used to disambiguate when the array has more than one entry. Polish asks the user to pick by `name`. |
-| `runtimeExecutable` | yes | The binary polish spawns (e.g., `bin/dev`, `npm`, `overmind`, `bun`). |
+| `name` | yes (when multiple configurations) | Used to disambiguate when the array has more than one entry. RocketClaw polish asks the user to pick by `name`. |
+| `runtimeExecutable` | yes | The binary RocketClaw polish spawns (e.g., `bin/dev`, `npm`, `overmind`, `bun`). |
 | `runtimeArgs` | no | Array of arguments passed to `runtimeExecutable`. Default: empty array. |
-| `port` | yes | The port the dev server will listen on. Polish probes `http://localhost:<port>` for reachability and uses it for the IDE browser handoff. |
-| `cwd` | no | Repo-relative working directory for the dev server. Default: repo root. Useful for monorepos (`apps/web`, `packages/frontend`). |
-| `env` | no | Additional environment variables for the dev-server process. Default: inherit polish's environment. |
+| `port` | yes | The port the dev server will listen on. RocketClaw polish probes `http://localhost:<port>` for reachability and uses it for browser handoff. |
+| `cwd` | no | Workspace-relative working directory for the dev server. Default: workspace root. Useful for monorepos (`apps/web`, `packages/frontend`). |
+| `env` | no | Additional environment variables for the dev-server process. Default: inherit the current environment. |
 
 ## Stub template (written on first run when user accepts)
 
-When polish auto-detects a project type and the user confirms "Save this as `.claude/launch.json`?", polish writes a minimal stub derived from the detected type. These templates intentionally hard-code common defaults — users can edit them later.
+When RocketClaw polish auto-detects a project type and the user confirms "Save this as `.rocketclaw/launch.json`?", write a minimal stub derived from the detected type. These templates intentionally use common defaults that users can edit later.
 
 ### Rails stub
 
@@ -165,13 +165,8 @@ When polish auto-detects a project type and the user confirms "Save this as `.cl
 
 ## Why a subset of VS Code's schema
 
-Polish does not use `type`, `request`, `console`, `stopOnEntry`, or any of the other VS Code fields. Including them is harmless — polish ignores them — but the stub writer never adds them. The fields polish cares about are the ones that describe *how to start a long-running dev server on a known port*, which is a smaller surface than what VS Code uses for debug-stepping.
+RocketClaw polish does not use `type`, `request`, `console`, `stopOnEntry`, or other debugger fields. Including them is harmless, but the stub writer never adds them. The supported fields describe how to start a long-running dev server on a known port.
 
-## Cross-IDE notes
+## Ownership notes
 
-`.claude/launch.json` is not yet a fully unified standard across Claude Code, Cursor, VS Code, and Codex. Polish leads with `.claude/launch.json` because:
-- Claude Code, Cursor, and VS Code can all read it as a launch config
-- It sits at a clean repo-root trust boundary (user-authored, not auto-detected)
-- Users who prefer `.vscode/launch.json` can symlink or mirror the two files manually
-
-If a cross-IDE standard emerges (e.g., `.workspace/launch.json`), the stub writer and reader can swap paths without touching the rest of the skill.
+`.rocketclaw/launch.json` sits at a clear workspace-root trust boundary and is user-authored or user-approved. Keep editor-specific handoff behavior in `ide-detection.md`; do not duplicate or symlink this configuration into harness-owned namespaces automatically.

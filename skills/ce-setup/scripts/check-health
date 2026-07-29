@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Compound Engineering environment health check.
-# Reports optional tool capabilities and repo-local config safety in one pass.
+# RocketClaw environment health check.
+# Reports optional tool capabilities and workspace-local config safety in one pass.
 
 set -o pipefail
 
@@ -10,6 +10,7 @@ set -o pipefail
 # Format: name|install_cmd|url|capability
 
 deps=(
+  "jj|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q jj|https://jj-vcs.github.io/jj/latest/install-and-setup/|Jujutsu workspace and change workflows"
   "agent-browser|CI=true npm install -g agent-browser --no-audit --no-fund --loglevel=error && agent-browser install|https://github.com/vercel-labs/agent-browser|browser testing, dogfood QA, and visual polish inspection"
   "gh|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q gh|https://cli.github.com|GitHub PR, issue, and review workflows"
   "jq|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q jq|https://jqlang.github.io/jq/|JSON inspection in shell-based workflows"
@@ -39,7 +40,7 @@ skip()    { echo "  ➖  $1"; }
 detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
-# Read one top-level scalar from the repo's flat local-config convention. This is
+# Read one top-level scalar from the workspace's flat local-config convention. This is
 # intentionally not a general YAML parser: comments and absent/empty keys are
 # ignored, surrounding quotes are removed, and values are never evaluated.
 read_flat_config_value() {
@@ -156,7 +157,7 @@ read_work_engine_preferences() {
 }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "yes" || echo "no")
+in_workspace=$(jj workspace root >/dev/null 2>&1 && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -180,11 +181,11 @@ for entry in "${deps[@]}"; do
 done
 
 # =====================================================
-#  Project checks (repo only)
+#  Project checks (Jujutsu workspace only)
 # =====================================================
 
 legacy_cfg="skip"
-repo_cfg_gitignore="skip"
+workspace_cfg_ignore="skip"
 local_cfg="skip"
 example_cfg="skip"
 retired_keys=()
@@ -195,19 +196,20 @@ work_engine_preferences_note_level="detail"
 work_engine_migration_note=""
 project_issues=0
 
-if [ "$in_repo" = "yes" ]; then
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ "$in_workspace" = "yes" ]; then
+  workspace_root=$(jj workspace root 2>/dev/null)
   legacy_cfg="missing"
-  [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
+  [ -f "$workspace_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
-  if [ -e "$repo_root/.compound-engineering/config.local.yaml" ]; then
+  if [ -e "$workspace_root/.rocketclaw/config.local.yaml" ]; then
     local_cfg="present"
-    local_config_path="$repo_root/.compound-engineering/config.local.yaml"
-    if git check-ignore -q "$repo_root/.compound-engineering/config.local.yaml" 2>/dev/null; then
-      repo_cfg_gitignore="ok"
+    local_config_path="$workspace_root/.rocketclaw/config.local.yaml"
+    tracked_config=$(jj -R "$workspace_root" file list .rocketclaw/config.local.yaml 2>/dev/null)
+    if [ -z "$tracked_config" ]; then
+      workspace_cfg_ignore="ok"
     else
-      repo_cfg_gitignore="missing"
+      workspace_cfg_ignore="missing"
     fi
 
     work_engine_mode=$(read_flat_config_value "$local_config_path" "work_engine_mode")
@@ -308,7 +310,7 @@ if [ "$in_repo" = "yes" ]; then
 
   script_dir="$(cd "$(dirname "$0")" && pwd)"
   template="$script_dir/../references/config-template.yaml"
-  example="$repo_root/.compound-engineering/config.local.example.yaml"
+  example="$workspace_root/.rocketclaw/config.local.example.yaml"
   if [ ! -f "$example" ]; then
     example_cfg="missing"
   elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -319,7 +321,7 @@ if [ "$in_repo" = "yes" ]; then
 
   # Retired keys set as ACTIVE (non-commented) in the user's local config. A
   # commented `# plan_use_fable:` line does not match `^[[:space:]]*<key>:`.
-  local_cfg_file="$repo_root/.compound-engineering/config.local.yaml"
+  local_cfg_file="$workspace_root/.rocketclaw/config.local.yaml"
   if [ -f "$local_cfg_file" ]; then
     for key in plan_use_fable brainstorm_use_fable fable_nudge; do
       if grep -Eq "^[[:space:]]*${key}[[:space:]]*:" "$local_cfg_file" 2>/dev/null; then
@@ -355,30 +357,30 @@ for result in "${results[@]}"; do
   fi
 done
 
-if [ "$in_repo" = "yes" ]; then
+if [ "$in_workspace" = "yes" ]; then
   section "Project config"
 
   if [ "$legacy_cfg" = "present" ]; then
-    warn "Obsolete compound-engineering.local.md exists"
+    warn "Obsolete rocketclaw.local.md exists"
     project_issues=$((project_issues + 1))
   else
-    ok "No obsolete compound-engineering.local.md"
+    ok "No obsolete rocketclaw.local.md"
   fi
 
   if [ "$local_cfg" = "present" ]; then
-    ok ".compound-engineering/config.local.yaml exists"
-    if [ "$repo_cfg_gitignore" = "ok" ]; then
-      ok "Local config is gitignored"
+    ok ".rocketclaw/config.local.yaml exists"
+    if [ "$workspace_cfg_ignore" = "ok" ]; then
+      ok "Local config is ignored by Jujutsu"
     else
-      warn "Local config is not safely gitignored"
+      warn "Local config is tracked by Jujutsu"
       project_issues=$((project_issues + 1))
     fi
   else
-    skip "No local config yet (.compound-engineering/config.local.yaml)"
+    skip "No local config yet (.rocketclaw/config.local.yaml)"
   fi
 
   if [ "$work_engine_cfg" = "native" ]; then
-    ok "CE Work implementation engine: native (${work_engine_detail})"
+    ok "ce-work implementation engine: native (${work_engine_detail})"
     if [ -n "$work_engine_preferences_note" ]; then
       if [ "$work_engine_preferences_note_level" = "warn" ]; then
         warn "$work_engine_preferences_note"
@@ -387,20 +389,20 @@ if [ "$in_repo" = "yes" ]; then
       fi
     fi
   elif [ "$work_engine_cfg" = "prefer" ] || [ "$work_engine_cfg" = "require" ]; then
-    ok "CE Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
+    ok "ce-work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "unavailable" ]; then
-    warn "CE Work implementation engine unavailable: ${work_engine_detail}"
+    warn "ce-work implementation engine unavailable: ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "invalid" ]; then
-    warn "CE Work implementation engine: ${work_engine_detail}"
+    warn "ce-work implementation engine: ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "skip" ]; then
-    skip "CE Work implementation engine: native (no local config)"
+    skip "ce-work implementation engine: native (no local config)"
   fi
   [ -n "$work_engine_migration_note" ] && warn "$work_engine_migration_note"
 
   if [ "$example_cfg" = "ok" ]; then
     ok "Example config is current"
   elif [ "$example_cfg" = "missing" ]; then
-    warn "Example config missing (.compound-engineering/config.local.example.yaml)"
+    warn "Example config missing (.rocketclaw/config.local.example.yaml)"
     project_issues=$((project_issues + 1))
   elif [ "$example_cfg" = "outdated" ]; then
     warn "Example config outdated (new settings available)"
@@ -417,7 +419,7 @@ if [ "$in_repo" = "yes" ]; then
   done
 else
   section "Project config"
-  skip "Not inside a git repository"
+  skip "Not inside a Jujutsu workspace"
 fi
 
 echo ""

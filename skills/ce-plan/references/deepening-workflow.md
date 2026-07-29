@@ -97,7 +97,7 @@ Strengthening [section names] — [brief reason for each, e.g., "decision ration
 
 For each selected section, choose the smallest useful agent set. Do **not** run every agent. Use at most **1-3 agents per section** and usually no more than **8 agents total**.
 
-The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed `Agent` names, or platform-level CE agent registration.
+The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed `Agent` names, or platform-level branded agent registration.
 
 **Deterministic Section-to-Agent Mapping:**
 
@@ -110,7 +110,7 @@ The names below are skill-local prompt asset file stems under `references/agents
 - `framework-docs-researcher` for official framework or library behavior
 - `best-practices-researcher` for current external patterns and industry guidance
 - `web-researcher` for landscape/prior-art gaps — competitor patterns, market signals, or an unsettled external option set (which library/provider/approach) that recommendations depend on
-- Add `git-history-analyzer` only when historical rationale or prior art is materially missing
+- Add `jj-history-analyzer` only when historical rationale or prior art is materially missing
 
 **Key Technical Decisions**
 - `architecture-strategist` for design integrity, boundaries, and architectural tradeoffs
@@ -174,11 +174,19 @@ Signals that justify artifact-backed mode:
 
 If artifact-backed mode is not clearly warranted, stay in direct mode.
 
-Artifact-backed mode uses a per-run OS-temp scratch directory. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b), matching the repo Scratch Space convention for one-shot artifacts. Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
+Artifact-backed mode uses a private per-run directory under the current Jujutsu workspace's `.tmp/rocketclaw/ce-plan/` tree, or the current directory's `.tmp/rocketclaw/ce-plan/` tree when no Jujutsu repository is available. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b). Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
 
 ```bash
-SCRATCH_DIR="$(mktemp -d -t ce-plan-deepen-XXXXXX)"
-echo "$SCRATCH_DIR"
+if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; then :; else WORKSPACE_ROOT="$PWD"; fi
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-plan"
+mkdir -p "$SCRATCH_ROOT"
+for attempt in 1 2 3 4 5 6 7 8; do
+  SCRATCH_DIR="$SCRATCH_ROOT/deepen-$(date +%Y%m%dT%H%M%S)-$$-$attempt"
+  if mkdir "$SCRATCH_DIR" 2>/dev/null; then break; fi
+  SCRATCH_DIR=""
+done
+[ -n "$SCRATCH_DIR" ] || { printf '%s\n' 'Unable to create local scratch directory' >&2; exit 1; }
+printf '%s\n' "$SCRATCH_DIR"
 ```
 
 Refer to the echoed absolute path as `<scratch-dir>` throughout the rest of this workflow.
@@ -223,7 +231,7 @@ Findings against `session-settled:`-labeled KTDs are presented like any other �
 
 After all agents have been reviewed, carry only the accepted findings forward to 5.3.7.
 
-If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. No explicit scratch cleanup needed — `$SCRATCH_DIR` is OS temp and will be cleaned up by the OS; leaving it in place preserves the rejected agent artifacts for debugging.
+If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. Remove `$SCRATCH_DIR` after the review unless preserving rejected artifacts for debugging is explicitly useful; if preserved, report its workspace-local path.
 
 If findings were accepted and the plan was modified, proceed through 5.3.7 and 5.3.8 as normal — document-review acts as a quality gate on the changes.
 
@@ -238,7 +246,7 @@ Strengthen only the selected sections. Keep the plan coherent and preserve its o
 Deepening may tighten, not only grow. A section can be strengthened by cutting as well as adding — collapse multi-idea sentences, drop hedges, and delete superseded text outright rather than leaving it as strikethrough or stacking a separate "resolutions" layer on top of it. A shorter, contradiction-free section is a stronger one. This is distinct from "rewrite the entire plan from scratch" below, which stays forbidden.
 
 Allowed changes:
-- Tighten prose in a strengthened section: cut hedges, split sentences carrying more than one idea, and remove superseded text in place (version control holds the history)
+- Tighten prose in a strengthened section: cut hedges, split sentences carrying more than one idea, and remove superseded text in place (Jujutsu holds the history)
 - Clarify or strengthen decision rationale
 - Tighten requirements trace or origin fidelity
 - Reorder or split implementation units when sequencing is weak — but **never renumber existing U-IDs**. Reordering preserves U-IDs in their new order (e.g., U1, U3, U5 reordered is correct; renumbering to U1, U2, U3 is not). Splitting keeps the original U-ID on the original concept and assigns the next unused number to the new unit. Renumbering breaks ce-work blocker and verification references that were written against the original IDs
@@ -251,7 +259,7 @@ Allowed changes:
 
 Do **not**:
 - Add implementation code — no imports, exact method signatures, or framework-specific syntax. Pseudo-code sketches and DSL grammars are allowed
-- Add git commands, commit choreography, or exact test command recipes
+- Add Jujutsu commands, change choreography, change descriptions, or exact test command recipes
 - Add generic `Research Insights` subsections everywhere
 - Rewrite the entire plan from scratch
 - Invent new product requirements, scope changes, or success criteria without surfacing them explicitly

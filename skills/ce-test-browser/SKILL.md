@@ -1,12 +1,16 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current Jujutsu change, bookmark, or PR.
+argument-hint: "[PR number, bookmark name, 'current', or --port PORT]"
 ---
 
-# Browser Test Skill
+# RocketClaw Browser Testing
 
-Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a PR, Jujutsu change, or bookmark using the best approved browser driver available in the active harness.
+
+## Interaction Method
+
+When this skill asks the user a question, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because schema loading is required. Never silently skip the question.
 
 ## Modes
 
@@ -19,7 +23,7 @@ Select the driver before the first browser action:
 
 1. **Prefer a host-native integrated browser.** Use a browser-control surface embedded in or directly owned by the active harness when it can navigate local URLs, inspect rendered and interactive state, click/fill/press, capture screenshots, and inspect console errors. A separately configured browser extension or integration is not host-native. Load and follow the selected capability's own instructions before browser work.
 2. **Otherwise fall back to `agent-browser`.** Read `references/agent-browser-driver.md` before running any command.
-3. **Do not introduce a third browser stack.** Never install or substitute standalone Playwright, Puppeteer, a separately configured browser extension or MCP, or other ad hoc browser automation. A Playwright API exposed inside the selected host-native browser remains host-native; it is not standalone Playwright.
+3. **Do not introduce a third browser stack.** Never install or substitute standalone Playwright, Puppeteer, a separately configured browser extension or integration, or other ad hoc browser automation. A Playwright API exposed inside the selected host-native browser remains host-native; it is not standalone Playwright.
 
 Use one driver for the entire run. A selected host-native driver may fall back to `agent-browser` only if initialization fails before the first route is tested. After testing begins, do not mix driver sessions, element references, screenshots, or authentication state.
 
@@ -27,24 +31,26 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 ### 1. Select the Browser Driver
 
-Apply the Browser Driver Policy above and record the selected driver. This also requires a git repository with changes to test.
+Apply the Browser Driver Policy above and record the selected driver. This also requires a Jujutsu workspace with changes to test. Confirm the workspace root with `jj workspace root`, then inspect `jj status` and `jj log` to identify the current change, its ancestors, and relevant bookmarks.
 
 ### 2. Determine Test Scope
 
 **If PR number provided:**
 ```bash
-gh pr view [number] --json files -q '.files[].path'
+gh pr view <pr-number> --json files -q '.files[].path'
 ```
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj diff --name-only -r '<trunk>..@'
 ```
 
-**If branch name provided:**
+**If bookmark name provided:**
 ```bash
-git diff --name-only main...[branch]
+jj diff --name-only -r '<trunk>..<bookmark>'
 ```
+
+Resolve `<trunk>` from the repository's active instructions and conventions or from `jj bookmark list --all-remotes`; do not assume a fixed bookmark name. If the requested bookmark is available only as a remote bookmark, run `jj git fetch --remote <remote>`, inspect it with `jj bookmark list --all-remotes`, and use `<bookmark>@<remote>` in the revset. Do not create, move, or track bookmarks just to determine test scope.
 
 ### 3. Map Changed Files to Routes
 
@@ -66,7 +72,7 @@ Map each changed file to the route(s) that render it, then build the list of URL
 
 Determine the preferred port using this priority:
 
-1. **Explicit argument** — if the user passed `--port 5000`, use that directly.
+1. **Explicit argument** — if the user passed `--port <port>`, use that value directly.
 2. **In-context project instructions** — if your active project instructions already in context explicitly state the dev-server port, use it. Don't grep instruction files for a port: prose mentions (docs, examples, troubleshooting) are unreliable and false-positive-prone — config files and `.env` are the trustworthy sources.
 3. **package.json** — check dev/start scripts for `--port` flags.
 4. **Environment files** — check `.env`, `.env.local`, `.env.development` for `PORT=`.
@@ -112,7 +118,7 @@ Visibility is independent from unattended execution:
 
 - **Host-native integrated browser:** keep its normal integrated surface visible and non-blocking so the user can watch progress when useful. Do not repeatedly steal focus as routes change. This applies in both manual and pipeline modes.
 - **`agent-browser` fallback, pipeline mode:** run headless without asking.
-- **`agent-browser` fallback, manual mode:** ask the user whether to run headed or headless using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors. Never silently skip the question:
+- **`agent-browser` fallback, manual mode:** ask the user via the Interaction Method whether to run headed or headless:
 
   ```
   Do you want to watch the browser tests run?
@@ -150,7 +156,7 @@ Pause for human input when testing touches flows that require external interacti
 | SMS | "Verify you received the SMS code" |
 | External APIs | "Confirm the [service] integration is working" |
 
-Ask the user (using the platform's question tool, or present numbered options and wait):
+Ask the user via the Interaction Method:
 
 ```
 Human Verification Needed
@@ -172,7 +178,7 @@ When a test fails (**pipeline mode:** do not ask how to proceed — capture the 
    - Capture a screenshot of the error state with the selected driver
    - Note the exact reproduction steps
 
-2. **Ask the user how to proceed:**
+2. **Ask the user via the Interaction Method how to proceed:**
 
    ```
    Test Failed: [route]
@@ -195,7 +201,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / current change / [bookmark name]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -223,17 +229,17 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test current Jujutsu change stack (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
-/ce-test-browser 847
+/ce-test-browser <pr-number>
 
-# Test specific branch
-/ce-test-browser feature/new-dashboard
+# Test a specific bookmark
+/ce-test-browser <bookmark>
 
 # Test on a specific port
-/ce-test-browser --port 5000
+/ce-test-browser --port <port>
 ```
 
 ## Driver Reference

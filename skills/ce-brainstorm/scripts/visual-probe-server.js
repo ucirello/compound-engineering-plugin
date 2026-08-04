@@ -196,7 +196,7 @@ function wrapFragment(options, content) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CE Brainstorm Visual Probe</title>
+  <title>Brainstorm Visual Probe</title>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; background: #f7f7f8; color: #1f2328; }
     header { padding: 10px 18px; border-bottom: 1px solid #d8dee4; background: #fff; color: #57606a; font-size: 13px; }
@@ -204,7 +204,7 @@ function wrapFragment(options, content) {
   </style>
 </head>
 <body>
-  <header>CE Brainstorm Visual Probe - directional sketch, reply in chat</header>
+  <header>Brainstorm Visual Probe - directional sketch, reply in chat</header>
   <main>${content}</main>
   ${refreshScript(options)}
 </body>

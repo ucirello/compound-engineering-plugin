@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current JJ change stack, a revision, or a PR.
+argument-hint: "[PR number, revision, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a PR or JJ revision using the best approved browser driver available in the active harness.
 
 ## Modes
 
@@ -27,7 +27,7 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 ### 1. Select the Browser Driver
 
-Apply the Browser Driver Policy above and record the selected driver. This also requires a git repository with changes to test.
+Apply the Browser Driver Policy above and record the selected driver. This also requires a JJ workspace with changes to test.
 
 ### 2. Determine Test Scope
 
@@ -38,12 +38,12 @@ gh pr view [number] --json files -q '.files[].path'
 
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj diff --from 'fork_point(main@origin | @)' --to @ --name-only
 ```
 
-**If branch name provided:**
+**If revision provided:**
 ```bash
-git diff --name-only main...[branch]
+jj diff --from 'fork_point(main@origin | REVISION)' --to REVISION --name-only
 ```
 
 ### 3. Map Changed Files to Routes
@@ -195,7 +195,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [revision]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -223,13 +223,13 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test current JJ change stack (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test specific branch
+# Test specific revision
 /ce-test-browser feature/new-dashboard
 
 # Test on a specific port

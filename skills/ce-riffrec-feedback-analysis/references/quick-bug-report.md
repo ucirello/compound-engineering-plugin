@@ -4,11 +4,14 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Run the analyzer to a temp directory so nothing pollutes the repo (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command — shell state does not persist between Bash calls):
+1. Run the analyzer in the workspace root's `.tmp/rocketclaw-feedback-analysis/` directory so nothing pollutes durable project paths. If no workspace root is available, use the physical current directory from `pwd -P` as `WORKSPACE_ROOT`. `SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set both values in the same command because shell state does not persist between Bash calls:
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the ce-riffrec-feedback-analysis SKILL.md>";
-   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$(mktemp -d "${TMPDIR:-/tmp}/riffrec-quick-XXXXXX")"
+   WORKSPACE_ROOT="<absolute workspace root, or physical current directory if no workspace root is available>";
+   mkdir -p "$WORKSPACE_ROOT/.tmp/rocketclaw-feedback-analysis";
+   QUICK_OUTPUT="$(mktemp -d "$WORKSPACE_ROOT/.tmp/rocketclaw-feedback-analysis/quick-XXXXXX")";
+   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$QUICK_OUTPUT"
    ```
 
    Capture the printed output directory; later steps read from it.
@@ -37,7 +40,7 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only in the temp dir and are discarded by the OS.
+- No commit of `raw/` or `frames/` — they live only in the workspace-local temp directory and may be removed after the report is complete.
 - No source-mapping pass across the codebase.
 
 ## Escalation

@@ -28,7 +28,7 @@ Pass `XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; pass `XHOST_FAMILY` as the f
 Resolve the preference in this order:
 
 1. A preference the user **states in conversation** (e.g. "use grok for the cross-model pass").
-2. `cross_model_peer:` in `.compound-engineering/config.local.yaml` (the only file the script/skill reads for this).
+2. `cross_model_peer:` in `.rocketclaw/config.local.yaml` (the only file the script/skill reads for this).
 3. A preference already in your **project instructions** (the active instructions in your context) — consumed from context, **never** read from a named file.
 4. **Default:** first available attested-different target in `codex → claude → grok → composer`; Cursor-default participates only when explicitly preferred.
 
@@ -58,7 +58,7 @@ The **persona file** basename and the **reviewer name** are distinct: the script
   - Call the pass **independent** only when host and target serving families are attestably different. For Cursor default/Auto or an unknown host family, call it a cross-harness review and state that independence is unverified; do not promise agreement promotion before the receipt exists.
   - Announce the one fixed route and every recipient before dispatch. A route failure produces no artifact and may be retried only after the host resolves, sanctions, and discloses the new route. Reconcile `cross_model_target`, `cross_model_harness`, `cross_model_route`, `model_requested`, and `model_actual` from the artifact; never infer a serving model from the requested ID.
 - **Interactive host, no peer resolved** (host un-attestable, or no different provider installed/authed): one quiet line that the cross-model pass was skipped and why. Never an error.
-- **Non-interactive mode:** emit no user-facing prose. The script still emits a one-line stderr audit log per send that document content was sent cross-model to the named provider, so the third-party data egress is auditable even though the pass is silent to the user. Non-interactive still requires a reachable peer under the normal gates; an explicit `cross_model_peer:` in `.compound-engineering/config.local.yaml` or a non-empty `CROSS_MODEL_PEERS` allowlist is the preferred enablement surface when teams want fail-closed-by-default CI egress (unset allowlist still means the default availability order).
+- **Non-interactive mode:** emit no user-facing prose. The script still emits a one-line stderr audit log per send that document content was sent cross-model to the named provider, so the third-party data egress is auditable even though the pass is silent to the user. Non-interactive still requires a reachable peer under the normal gates; an explicit `cross_model_peer:` in `.rocketclaw/config.local.yaml` or a non-empty `CROSS_MODEL_PEERS` allowlist is the preferred enablement surface when teams want fail-closed-by-default CI egress (unset allowlist still means the default availability order).
 
 ## Step 4 — Run the bundled script (one call per activated trio lens, in parallel with the persona reviewers)
 
@@ -85,17 +85,18 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-doc-review SKILL.md you read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 RUN_DIR="$SCRATCH_ROOT/ce-doc-review/<run-id>"; (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "peer-deadline-secs=$(( ${CROSS_MODEL_HARD_SECS:-1200} + 10 ))";
-CE_PEER_HARD_SECS= CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_FIXED_ROUTE="<fixed-route>" "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-doc-review --run-id "<run-id>" --label "<reviewer-name>" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_FIXED_ROUTE="<fixed-route>" bash "$SKILL_DIR/scripts/cross-model-doc-review.sh" "<host-serving-family>" "<target>" "<reviewer-name>" "<document-path>" "<document-type>" "<origin>" "$RUN_DIR"
+ROCKETCLAW_PEER_HARD_SECS= CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_FIXED_ROUTE="<fixed-route>" "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-doc-review --run-id "<run-id>" --label "<reviewer-name>" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_FIXED_ROUTE="<fixed-route>" bash "$SKILL_DIR/scripts/cross-model-doc-review.sh" "<host-serving-family>" "<target>" "<reviewer-name>" "<document-path>" "<document-type>" "<origin>" "$RUN_DIR"
 ```
 
-The nested windows are one budget with one knob, `CROSS_MODEL_HARD_SECS`. The runner derives its supervisor hard window from that ambient knob automatically (`max(1230, knob + 30)`). Clear `CE_PEER_HARD_SECS` on the start prefix (`CE_PEER_HARD_SECS=`) so a stale ambient value from an earlier session or harness export cannot undercut that derivation — an explicit numeric `CE_PEER_HARD_SECS` still wins when a skill deliberately sets one (ce-work / elevation), which this path must not do. Print the orchestrator deadline as `knob + 10` in the same shell as `start` (as above) and use that printed `peer-deadline-secs=<n>` below (all legs share the one value; re-use the first leg's number rather than re-deriving per leg); never hardcode it, because a literal survives a knob change and then reaps a healthy peer.
+The nested windows are one budget with one knob, `CROSS_MODEL_HARD_SECS`. The runner derives its supervisor hard window from that ambient knob automatically (`max(1230, knob + 30)`). Clear `ROCKETCLAW_PEER_HARD_SECS` on the start prefix (`ROCKETCLAW_PEER_HARD_SECS=`) so a stale ambient value from an earlier session or harness export cannot undercut that derivation — an explicit numeric `ROCKETCLAW_PEER_HARD_SECS` still wins when a skill deliberately sets one (work / elevation), which this path must not do. Print the orchestrator deadline as `knob + 10` in the same shell as `start` (as above) and use that printed `peer-deadline-secs=<n>` below (all legs share the one value; re-use the first leg's number rather than re-deriving per leg); never hardcode it, because a literal survives a knob change and then reaps a healthy peer.
 
 **Do not forward `CROSS_MODEL_HARD_SECS` to the worker.** The runner already passes the ambient environment through, so a knob the user actually set reaches the worker on its own. Re-exporting the orchestrator's *resolved* value would turn a fallback into an explicit override and destroy the one distinction the worker still needs: idle-guarded routes (codex + streaming claude/cursor-family) use the raised `HARD_SECS` default, while `grok-cli` keeps the lower `UNGUARDED_HARD_SECS` bound because its `--json-schema` path cannot stream. Forcing one value would silently restore the doubled hang on that hard-only route.
 

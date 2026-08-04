@@ -12,9 +12,9 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides, each prompt carrying: the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and record the pass as its own JJ change.
 
-Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
+Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
 
 ## Ownership: one problem per agent, disjoint files
 
@@ -32,18 +32,18 @@ Fan out by **unit** instead: one agent owns one skill directory and applies the 
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate JJ workspaces or disjoint paths in one workspace
 
-Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
+Disjoint paths in one workspace are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and one workspace keeps the diff and JJ change boundary readable.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Pay for a separate JJ workspace when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit — lockfiles, caches, generated output, a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations; one git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on scratch and working-copy state.
+- Agents describe, split, squash, rebase, create changes, or move bookmarks; parallel mutation of one JJ workspace makes the change boundary ambiguous.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
-Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+Otherwise the isolation cost is real: N JJ workspaces to create, N results to reconcile, and conflicts reintroduced on exactly the files the manifest was designed to keep apart.
 
 ## The shared-asset trap
 
@@ -93,13 +93,17 @@ Check each of these on every touched file:
 
 When a pass applies many exact replacements, do it under assertions rather than by hand: for each target, assert the string matches **exactly once** in its file, and abort before writing anything if any target matches zero times or more than once.
 
-Exactly-once is the load-bearing part. Zero matches means an earlier pass already rewrote the anchor; more than one means the anchor is ambiguous and the edit would land in the wrong place. In the engagement this caught an anchor a previous pass had already changed, and because the check ran before any write, nothing was partially applied — the pass was re-derived against current content instead of repaired afterward.
+Exactly-once is the load-bearing part. Zero matches means an earlier pass already rewrote the anchor; more than one means the anchor is ambiguous and the edit would land in the wrong place. Run every assertion before any write so a mismatch leaves nothing partially applied; re-derive the pass against current content instead of repairing afterward.
 
 Fail closed, all-or-nothing per file at minimum. A script that writes files 1 through 7 and dies on 8 leaves a state no one can review.
 
 ## Report the skips
 
-**Report what you deliberately did not cut, and why.** An agent that applied 100% of its proposals has almost certainly over-cut. A meaningful skip rate is the expected outcome, not underperformance: in the engagement's audit, 81 of 616 proposed cuts were defended and kept.
+**Report what you deliberately did not cut, and why.** An agent that applied 100% of its proposals has almost certainly over-cut. A meaningful skip rate is the expected outcome, not underperformance.
+
+## Record the pass
+
+After measurement, inspect `jj status`, `jj diff`, and recent descriptions with `jj log`, preserve unrelated working-copy content, and invoke `ce-commit` through the active harness's callable skill mechanism so this pass becomes one JJ change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. The project's active instructions and change-description syntax inferred at runtime from `jj log` always win. Preserve the problem class and measured result while adapting syntax to runtime conventions. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a description field. Do not add creator, model, provider, tool, or runtime attribution to the JJ description.
 
 ## The over-cut failure mode
 

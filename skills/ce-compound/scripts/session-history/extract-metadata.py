@@ -24,9 +24,11 @@ def try_claude(lines):
         try:
             obj = json.loads(line.strip())
             if obj.get("type") == "user" and "gitBranch" in obj:
+                provider_branch = obj["gitBranch"]
                 return {
                     "platform": "claude",
-                    "branch": obj["gitBranch"],
+                    "provider_gitBranch": provider_branch,
+                    "provider_fields": {"gitBranch": provider_branch},
                     "ts": obj.get("timestamp", ""),
                     "session": obj.get("sessionId", ""),
                 }
@@ -405,7 +407,7 @@ if files:
         processed += 1
         if result:
             # Apply CWD filter first: cheap metadata-only check. Skip Codex
-            # sessions from other repos before paying the full-file keyword
+            # sessions from other workspaces before paying the full-file keyword
             # scan cost — Codex discovery returns sessions across all repos,
             # so without this ordering --keyword would scan files that are
             # immediately discarded.

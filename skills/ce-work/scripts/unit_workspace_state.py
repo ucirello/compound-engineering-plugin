@@ -31,19 +31,26 @@ from pathlib import Path
 
 
 SCHEMA_VERSION = 1
-PLAN_CHECKPOINT_MESSAGE = "docs(ce-work): checkpoint selected implementation plan"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-OWNER_SCRATCH_ROOT = (
-    os.path.join("/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
-    if _EFFECTIVE_UID is not None
-    else None
-)
-DEFAULT_RUNS_ROOT = (
-    os.path.join(OWNER_SCRATCH_ROOT, "ce-work")
-    if OWNER_SCRATCH_ROOT is not None
-    else None
-)
+
+
+def _workspace_root() -> str:
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return os.getcwd()
+    root = result.stdout.strip()
+    return root if result.returncode == 0 and root else os.getcwd()
+
+
+OWNER_SCRATCH_ROOT = os.path.join(_workspace_root(), ".tmp")
+DEFAULT_RUNS_ROOT = os.path.join(OWNER_SCRATCH_ROOT, "rocketclaw", "ce-work")
 MAX_JSON_BYTES = 2 * 1024 * 1024
 MAX_PACKET_BYTES = 200_000
 SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -851,7 +858,7 @@ def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -
         not _valid_git_object_id(prior)
         or lineage != [commit, prior]
         or changed != {plan_rel}
-        or message != PLAN_CHECKPOINT_MESSAGE
+        or message != doc["plan"].get("checkpoint_description")
         or digest_bytes(plan_bytes) != doc["plan"]["digest"]
     ):
         raise Operational(
@@ -872,6 +879,9 @@ def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -
 
 def cmd_checkpoint_plan(args) -> tuple[str, dict]:
     with locked_manifest(args.run_id, write=True) as doc:
+        if not args.change_description.strip() or "\0" in args.change_description:
+            raise Operational("REFUSED", "change description must be non-empty and contain no NUL")
+        doc["plan"]["checkpoint_description"] = args.change_description
         info = validate_repo(doc)
         repo = info["toplevel"]
         plan = doc.get("plan")
@@ -904,7 +914,7 @@ def cmd_checkpoint_plan(args) -> tuple[str, dict]:
         git(repo, "reset", "--mixed", prior)
         raise Operational("BLOCKED", "staged paths are not exactly the selected plan")
     try:
-        commit_index_tree(repo, PLAN_CHECKPOINT_MESSAGE)
+        commit_index_tree(repo, args.change_description)
     except Operational:
         git(repo, "reset", "--mixed", prior, check=False)
         raise

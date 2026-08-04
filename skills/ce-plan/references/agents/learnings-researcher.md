@@ -76,7 +76,7 @@ Narrow the search to the discovered subdirectories that match the caller's Domai
 # Pick fields and synonym sets that match the caller's input shape; mix across shapes when the input is ambiguous.
 content-search: pattern="title:.*(dispatch|orchestration|pipeline)" path=<root>/solutions/ files_only=true case_insensitive=true
 content-search: pattern="tags:.*(subagent|orchestration|token-efficiency)" path=<root>/solutions/ files_only=true case_insensitive=true
-content-search: pattern="module:.*(compound-engineering|skill-design)" path=<root>/solutions/ files_only=true case_insensitive=true
+content-search: pattern="module:.*(rocketclaw|skill-design)" path=<root>/solutions/ files_only=true case_insensitive=true
 content-search: pattern="problem_type:.*(architecture_pattern|design_pattern|tooling_decision)" path=<root>/solutions/ files_only=true case_insensitive=true
 ```
 
@@ -197,7 +197,7 @@ Structure findings as follows:
 ### Relevant Learnings
 
 #### 1. [Title from document]
-- **File**: [absolute or repo-relative path]
+- **File**: [absolute or workspace-relative path]
 - **Module**: [module/domain from frontmatter, or the repo area the learning applies to]
 - **Problem Type**: [raw `problem_type` value from frontmatter, e.g. `architecture_pattern`, `design_pattern`, `tooling_decision`, `runtime_error`. Mark as "inferred" when the entry has no `problem_type`.]
 - **Relevance**: [why this matters for the caller's work]

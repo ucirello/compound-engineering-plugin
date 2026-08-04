@@ -58,8 +58,8 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (/tmp/compound-engineering-<effective-uid>)
-  CE_WORK_RUNS_ROOT         parent CE Work dir containing all <run-id>/ dirs
+  CE_PEER_JOBS_ROOT         base dir (<workspace-root>/.tmp/rocketclaw)
+  CE_WORK_RUNS_ROOT         parent work-run dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -76,7 +76,8 @@ Environment overrides (defaults in parentheses):
                             CE_PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
-world-shared /tmp. Every read of job state opens the file first (no-follow) and
+the current JJ workspace's `.tmp`, falling back to the current directory's
+`.tmp` when no JJ workspace is available. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -108,9 +109,8 @@ POSIX path is behaviorally unchanged:
             creates objects as (user or default-owner SID), checked on the opened
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
-            grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under %LOCALAPPDATA%\\compound-engineering-jobs (then the
-            user temp dir), owner-private, since there is no shared /tmp.
+             grant only the user + SYSTEM + Administrators — the root-equivalents).
+  jobs root uses the same workspace-local `.tmp/rocketclaw` default as POSIX.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -141,17 +141,21 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-if IS_WINDOWS:
-    # No geteuid on Windows; the current-user SID is the ownership identity
-    # (see the Windows security section below), and the per-user jobs root lives
-    # under LOCALAPPDATA (falling back to the user temp dir) with a hardened ACL
-    # so R6 has a working default rather than a required override.
-    _WIN_ROOT_BASE = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
-    DEFAULT_ROOT = os.path.join(_WIN_ROOT_BASE, "compound-engineering-jobs")
-elif _EFFECTIVE_UID is not None:
-    DEFAULT_ROOT = os.path.join("/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
-else:
-    DEFAULT_ROOT = None
+def _workspace_root() -> str:
+    try:
+        resolved = subprocess.run(
+            ["jj", "workspace", "root"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        resolved = ""
+    return os.path.abspath(resolved or os.getcwd())
+
+
+DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -206,8 +210,12 @@ def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
-    if DEFAULT_ROOT is None:
-        raise RunnerError("effective user ID is unavailable; cannot derive the jobs root")
+    scratch_parent = os.path.dirname(DEFAULT_ROOT)
+    try:
+        os.mkdir(scratch_parent, 0o700)
+    except FileExistsError:
+        pass
+    _check_owned_dir(scratch_parent)
     return os.path.abspath(DEFAULT_ROOT)
 
 
@@ -1741,8 +1749,7 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (see "
-            "EveryInc/compound-engineering-plugin#1243)."
+            "a Windows Python 3 build (see issue #1243)."
         )
 
 
@@ -1937,7 +1944,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable /tmp path unchecked.
+        # consumer must never read a predictable workspace-local path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

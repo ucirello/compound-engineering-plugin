@@ -45,11 +45,10 @@ These hold regardless of which skill produced the artifact.
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
 - **Source / composition signal.** A visible footer at the bottom of
-  the doc names the composition timestamp and the source identifier
-  (the user prompt context, the upstream brainstorm doc when one
-  exists, or just the composing skill name when there's no external
-  source). Example shape:
-  `<footer class="composition-signal">Composed 2026-05-17T14:23Z by ce-plan from <code>docs/brainstorms/...-requirements.md</code></footer>`.
+  the doc names the composition timestamp and, when one exists, the input source
+  (the user prompt context or the upstream brainstorm doc). Do not add an
+  author, agent, skill attribution, or byline. Example shape:
+  `<footer class="composition-signal">Composed 2026-05-17T14:23Z · Source: <code>docs/brainstorms/...-requirements.md</code></footer>`.
   Under exclusive output mode this signal is the artifact's own
   provenance — there's no markdown sibling to reference. Omitting it
   leaves readers unable to tell how stale the rendering is.
@@ -103,15 +102,15 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Worktree root (resolve via `git rev-parse --show-toplevel`).
+1. JJ workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
-3. `.compound-engineering/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Worktree-root only — do not fall through to a main checkout. Users
-working from a worktree who want HTML defaults can add DESIGN.md to the
-worktree.
+Workspace-root only — do not fall through to another workspace. Users
+working from a JJ workspace who want HTML defaults can add DESIGN.md to the
+workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -230,8 +229,11 @@ every entry into a browser or IDE.
 Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-git remote get-url origin
+jj git remote list
 ```
+
+Select the `origin` URL from the output. Keep this `jj git` interoperability
+command because the value belongs to the backing remote.
 
 Apply linking to three reference shapes:
 
@@ -610,7 +612,8 @@ Before returning the artifact, scan it for common slips:
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
 - **Source / composition signal** is present as a visible footer at
-  the bottom of the doc (composition timestamp + source identifier).
+  the bottom of the doc (composition timestamp plus input source when one exists,
+  without an author or skill byline).
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

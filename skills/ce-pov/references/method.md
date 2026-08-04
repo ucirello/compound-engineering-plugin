@@ -33,6 +33,8 @@ Apply the same project-floor proof standard to a document or approach set, using
 
 ## External-adoption verdict contract
 
+If any recommendation composes, edits, validates, or recommends a JJ change description or commit message, inspect the project's active instructions and runtime `jj log` history first; those runtime standards take precedence. Preserve every semantic content requirement stated by the recommendation while adapting syntax to runtime conventions. Apply compatible Go guidance only for quality, clarity, and structure; do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. In any suggested JJ command, represent the result as `<description-composed-from-runtime-conventions>` rather than embedding a fixed message.
+
 Every verdict carries a fixed vocabulary and a fixed shape so it is comparable and the next run's precedent search can find it.
 
 **Grade** — exactly one of:

@@ -74,7 +74,7 @@ After all mutations in this run have settled (initial write, deepening synthesis
 **Recommended marker:** `ce-work` (option 1) always carries *(recommended)* — render option 1 as **Start `ce-work`** *(recommended)* and leave option 2 unmarked. `ce-work` is the correctly-layered execution entry point: it owns engine selection and reaches goal or dynamic-workflow engines itself when a plan's shape warrants, so recommending it never forecloses goal mode. Goal mode (option 2) is the opt-in preference for users who'd rather drive the work through their harness's native goal loop. Exactly one option ever carries *(recommended)*.
 3. **Decide on the review's open items** - Confirm or skip the suggested edits, and settle the judgment calls the auto-pass left for you. (Safe, mechanical fixes were already applied; you can also defer items into Open Questions.)
 4. **Create Issue** - Create a tracked issue from this plan in your configured issue tracker (e.g., GitHub Issues, Linear, Jira)
-5. **Publish to Proof — shareable link** - Publish the plan to Every's Proof editor and get a shareable link to read, comment on, or share with others. One-way: the local plan file stays canonical. **Render only when `OUTPUT_FORMAT=md`.**
+5. **Publish to Proof — shareable link** - Publish the plan to Proof and get a shareable link to read, comment on, or share with others. One-way: the local plan file stays canonical. **Render only when `OUTPUT_FORMAT=md`.**
 5. **Open in browser** - Open the HTML plan file locally for review and sharing. **Render only when `OUTPUT_FORMAT=html`.**
 
 There is no "done" / "pause" option — the blocking question already waits, and the user ends the turn by dismissing it (Esc) or just not picking anything. The plan file is already saved.
@@ -94,10 +94,14 @@ Based on selection (the bare per-option routing is also stated inline in the SKI
   - **If only a user-typed `/goal` exists (Claude Code):** print that objective as a single copyable `/goal …` block and tell the user to paste it at the start of a message (a skill cannot issue `/goal` itself there). **Best-effort clipboard copy:** also put the exact prompt on the OS clipboard so the user only has to paste. **Never interpolate the prompt into the command** — the plan path and the prompt's own backticks/`$` would be evaluated or mangled by the shell. Hand it off as data: write it to a temp file via a **quoted-sentinel** here-doc (the quotes stop all expansion), then pipe that file to the first available tool:
 
     ```bash
-    PROMPT_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-goal-prompt.XXXXXX")
-    cat >> "$PROMPT_FILE" <<'__CE_GOAL_PROMPT_END__'
+    WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"
+    [ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$(pwd -P)"
+    PROMPT_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-plan/goal-prompt"
+    mkdir -p "$PROMPT_DIR"
+    PROMPT_FILE=$(mktemp "$PROMPT_DIR/prompt.XXXXXX")
+    cat >> "$PROMPT_FILE" <<'__ROCKETCLAW_GOAL_PROMPT_END__'
     <the exact /goal prompt goes here, verbatim>
-    __CE_GOAL_PROMPT_END__
+    __ROCKETCLAW_GOAL_PROMPT_END__
     if   command -v pbcopy   >/dev/null 2>&1; then pbcopy   < "$PROMPT_FILE"                    # macOS
     elif command -v wl-copy  >/dev/null 2>&1; then wl-copy  < "$PROMPT_FILE"                    # Linux/Wayland
     elif command -v xclip    >/dev/null 2>&1; then xclip -selection clipboard < "$PROMPT_FILE"  # Linux/X11
@@ -117,10 +121,9 @@ Based on selection (the bare per-option routing is also stated inline in the SKI
 - **Create Issue** -> Follow the Issue Creation section below
 - **Publish to Proof — shareable link** -> Invoke the `ce-proof` skill under the cross-skill invocation rule to publish the plan. If it cannot be invoked, say that publishing did not start and return to the menu. Pass:
   - source file: `<root>/plans/<plan_filename>.md`
-  - doc title: `Plan: <plan title from frontmatter>`
-  - identity: `ai:compound-engineering` / `Compound Engineering`
+  - doc title: `<plan title from frontmatter>`
 
-  ce-proof creates a shared Proof doc from the plan file (Create and Share workflow), binds the display name, and returns the share URL. Surface the URL to the user — they can open it to read, comment, or share with others — then return to the post-generation options. This is a one-way publish: the local plan file stays canonical and nothing syncs back, so no re-review is needed and the menu re-renders with the same residual findings as before.
+  ce-proof creates a shared Proof doc from the plan file (Create and Share workflow) and returns the share URL. Surface the URL to the user — they can open it to read, comment on it, or share it — then return to the post-generation options. This is a one-way publish: the local plan file stays canonical and nothing syncs back, so no re-review is needed and the menu re-renders with the same residual findings as before.
 
   Note: the Proof option only renders when `OUTPUT_FORMAT=md`. Proof ingests markdown; HTML plans use the local browser option instead.
 
@@ -136,7 +139,7 @@ When the user selects "Create Issue":
 1. **Identify the project's issue tracker from the active instructions and conventions already in your context** — the issue / project-management tool the project uses (e.g., GitHub Issues, Linear, Jira). Don't open or name specific instruction files to do this; the project's instructions are already available to you. Look for an explicit `project_tracker:` declaration (`github`, `linear`, …) or any documented tracker convention. Only if your context doesn't already carry the project's instructions (e.g., you're a fresh subagent) or they're silent, consult supplementary signals: `README.md`, `CONTRIBUTING.md`, PR templates under `.github/`, or visible tracker URLs.
 
 2. **Create the issue through whatever interface that tracker actually exposes in this environment** — a platform connector/MCP tool, documented API/GraphQL credentials, or a documented CLI. First actively discover what's available: use the platform's tool-discovery primitive (e.g., `ToolSearch` in Claude Code) to look for a tracker connector or MCP tool before assuming none exists — lazy-loaded connectors and credentials stored outside the shell won't surface in a passive check. Do not assume a tracker means a particular CLI, and do not treat a missing binary, env var, or unloaded MCP server as proof the tracker is unavailable — those are false negatives when access comes through a connector or a raw API with credentials stored outside the shell. When using a direct API, never print secret values; read the plan body from disk and send it as the issue's markdown/description per the API contract. Worked examples for the common cases:
-   - **GitHub** — `gh issue create --title "<type>: <title>" --body-file <plan_path>`
+   - **GitHub** — `gh issue create --title "<issue-title following repository conventions>" --body-file <plan_path>`
    - **Linear** (no guaranteed first-party CLI) — prefer, in order: a Linear connector or MCP tool that can create issues → documented direct API/GraphQL credentials and endpoint → a documented local Linear CLI, only when the project or user explicitly states it is installed and authenticated.
 
 3. If no tracker is configured, ask the user which tracker they use with the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to asking in chat only when no blocking tool exists or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip. Offer three explicit options — `GitHub`, `Linear`, `Skip` — and let the user name a different tracker (Jira, etc.) through the tool's built-in free-form / "Other" input: `AskUserQuestion` always provides it, and `request_user_input` / `ask_user` supply their own. Don't add an explicit fourth `Other` option — that's redundant where the tool already offers free-form and can exceed the option cap on tools that accept only 2–3 explicit choices (e.g., Codex `request_user_input`). When the tool exposes no free-form path, capture the other-tracker name via the chat fallback. Then:

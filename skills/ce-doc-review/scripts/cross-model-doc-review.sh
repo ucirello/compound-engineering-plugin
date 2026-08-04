@@ -435,13 +435,16 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+LOCAL_SCRATCH="$RUN_DIR/.scratch"
+mkdir -p "$LOCAL_SCRATCH" 2>/dev/null || skip "workspace-local scratch '$LOCAL_SCRATCH' could not be created; skipping"
+chmod 700 "$LOCAL_SCRATCH" 2>/dev/null || true
+PROMPT_FILE="$(mktemp "$LOCAL_SCRATCH/xmodel-doc-prompt-XXXXXX")"
+PEERLOG="$(mktemp "$LOCAL_SCRATCH/xmodel-doc-log-XXXXXX")"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-err-XXXXXX")"
+PEERERR="$(mktemp "$LOCAL_SCRATCH/xmodel-doc-err-XXXXXX")"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
@@ -772,11 +775,10 @@ run_provider() {   # <provider>
   # Per-peer empty workspace, kept SEPARATE from the shared fold-in dir (RUN_DIR).
   # The peer's cwd/workspace and its RAW_OUT live here, so a read-capable peer
   # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
-  # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
+  # published <lens>-<provider>.json -- it receives no path handle to RUN_DIR.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
-  # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  # never written into RUN_DIR by the peer itself.
+  PEER_WORKDIR="$(mktemp -d "$LOCAL_SCRATCH/xmodel-doc-peer-XXXXXX")" || { log "could not create workspace-local peer workspace; skipping"; return 0; }
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -809,7 +811,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
+    _norm="$(mktemp "$LOCAL_SCRATCH/xmodel-doc-norm-XXXXXX")"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

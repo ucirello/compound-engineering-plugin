@@ -106,7 +106,7 @@ Do not optimize only for coverage. Use LLM-as-judge to sample clusters and confi
 ```text
 Use /ce-optimize to create a summarization prompt for issues and PRs that minimizes token spend while still producing summaries that are good enough for downstream clustering.
 
-I want the loop to compare prompt variants, measure token cost, and judge whether the summaries preserve the distinctions needed to cluster related issues together without merging unrelated ones.
+I want the loop to compare prompt variants, measure token cost, and judge whether the summaries preserve the distinctions needed to cluster related issues together without combining unrelated ones.
 ```
 
 ## Choosing Between Hard Metrics And Judge Mode

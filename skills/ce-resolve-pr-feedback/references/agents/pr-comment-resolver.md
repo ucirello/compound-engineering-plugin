@@ -19,20 +19,20 @@ For `pr_comment` / `review_body` items there is no file/line -- identify the rel
 1. **Read the code** at the referenced location (or the orchestrator's resolved location/anchor for outdated threads).
 2. **Implement the fix.** Keep it focused -- address the feedback, don't refactor the neighborhood. If the suggested approach would work but a clearly better one exists, use the better one and say so in the reply (verdict `fixed-differently`). Write a test when the fix warrants one and none exists. Maintain consistency with the existing codebase style and patterns. For a **class item** (multiple enumerated locations): apply the fix at each enumerated site, and confirm the underlying issue is actually resolved at each — verify the *invariant*, not just that a textual match was edited (equivalent sites can express it differently). Edit only the enumerated sites; never widen to others.
 3. **Run targeted tests only** for what you changed: a specific test file, a test pattern, or the test you just wrote. Examples: `bun test path/foo.test.ts`, `pytest tests/module/test_foo.py`, `rspec spec/models/user_spec.rb`. **Never run the full project test suite** (bare `bun test`, `pytest`, `rspec` with no path) -- the parent runs it once against the combined diff from all fixers. Skip targeted tests for pure doc/comment/string-literal edits with no behavioral impact. If you can't locate targeted tests, note it in `reason` and let the combined run catch any issues.
-4. **Compose the reply text** for the parent to post. Quote the specific sentence being addressed, not the whole comment if it's long.
+4. **Compose the reply text** for the parent to post. Quote the specific sentence being addressed, not the whole comment if it's long. Repository-local terminology, prose, and code syntax take precedence. Do not add agent, model, tool, automation, or generated-by attribution, and do not copy fixed identifiers or implementation claims from this prompt.
 
 For `fixed`:
 ```markdown
 > [quote the relevant part of the reviewer's comment]
 
-Addressed: [brief description of the fix]
+[Direct description of the fix in the repository's local prose and syntax]
 ```
 
 For `fixed-differently`:
 ```markdown
 > [quote the relevant part of the reviewer's comment]
 
-Addressed differently: [what was done instead and why]
+[Direct description of what was done instead and why, in the repository's local prose and syntax]
 ```
 
 5. **Return the summary:**

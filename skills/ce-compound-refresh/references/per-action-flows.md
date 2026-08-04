@@ -1,6 +1,6 @@
 # Per-Action Flows
 
-Read this reference when executing Phase 4. Find the section matching the action classified in Phase 2 and confirmed in Phase 3 (Keep, Update, Consolidate, Replace, or Delete) and follow that flow.
+Read this reference when executing a classified action. Find the section matching the confirmed action (Keep, Update, Consolidate, Replace, or Delete) and follow that flow.
 
 ## Keep Flow
 
@@ -33,23 +33,23 @@ Those cases require **Replace**, not Update.
 
 Relocate only when the misfiling is unambiguous: the doc's directory and its frontmatter category disagree, or the content plainly belongs in a different **existing** category. A mismatch proves something is wrong but not which side — read the content and decide whether the directory is wrong (relocate) or the frontmatter is wrong (fix the frontmatter in place; that is an ordinary Update, not a move). Never create a new category directory for a relocation, and never relocate on a judgment call — placement has no ground truth, and a move a later run could argue back is churn.
 
-In non-interactive mode, apply the relocation only when all four conditions hold, mirroring the auto-delete pattern: (1) frontmatter and directory disagree per the category mapping, (2) content evidence clearly resolves the direction as directory-wrong, (3) the target category directory already exists, (4) every inbound citation is in-repo and mechanically rewritable. If any condition fails — including content that plausibly fits either category — record the relocation (doc, proposed target, which condition failed) under Recommended instead of moving.
+In non-interactive mode, apply the relocation only when all four conditions hold, mirroring the auto-delete pattern: (1) frontmatter and directory disagree per the category mapping, (2) content evidence clearly resolves the direction as directory-wrong, (3) the target category directory already exists, (4) every inbound citation is workspace-local and mechanically rewritable. If any condition fails — including content that plausibly fits either category — record the relocation (doc, proposed target, which condition failed) under Recommended instead of moving.
 
 1. Confirm the target category directory exists.
-2. Move the file with `git mv` so history follows the rename.
+2. Move the file with the platform's file operation; JJ snapshots the rename without a VCS-specific move command.
 3. Reconcile frontmatter category metadata with the new location.
-4. Rewrite inbound links across the repo's markdown, including catalog rows in README files.
+4. Rewrite inbound links across the workspace's markdown, including catalog rows in README files.
 5. Re-check the moved doc's **outgoing** relative links — the move changed their resolution base, so a `../category/doc.md` that resolved before now dangles. Run the bundled claims validator (`scripts/validate-doc-claims.py`, invoked as in the Replace flow) on the moved doc, or inspect its relative links manually, and rewrite any that no longer resolve before completing the relocation.
 
 ## Consolidate Flow
 
-The orchestrator handles consolidation directly (no subagent needed — the docs are already read and the merge is a focused edit). Process Consolidate candidates by topic cluster. For each cluster identified in Phase 1.75:
+The orchestrator handles consolidation directly (no subagent needed — the docs are already read and the merge is a focused edit). Process Consolidate candidates by topic cluster:
 
 1. **Confirm the canonical doc** — the broader, more current, more accurate doc in the cluster.
 2. **Extract unique content** from the subsumed doc(s) — anything the canonical doc does not already cover. This might be specific edge cases, additional prevention rules, or alternative debugging approaches.
 3. **Merge unique content** into the canonical doc in a natural location. Do not just append — integrate it where it logically belongs. If the unique content is small (a bullet point, a sentence), inline it. If it is a substantial sub-topic, add it as a clearly labeled section.
 4. **Update cross-references** — if any other docs reference the subsumed doc, update those references to point to the canonical doc. Catalog rows in README files are inventory, not citations: the invariant is that after consolidation the canonical doc has exactly one row and the subsumed doc has none. When both docs had rows, remove the subsumed row (folding any unique description into the canonical row); when only the subsumed doc had a row, repoint that row to the canonical doc (path and description) instead of deleting the catalog's only entry for the surviving content. READMEs are excluded as review candidates, but their rows are maintained mechanically whenever an action removes, renames, or moves a doc they list.
-5. **Delete the subsumed doc.** Do not archive it, do not add redirect metadata — just delete the file. Git history preserves it.
+5. **Delete the subsumed doc.** Do not archive it or add redirect metadata. JJ history preserves it.
 
 If a doc cluster has 3+ overlapping docs, process pairwise: consolidate the two most overlapping docs first, then evaluate whether the merged result should be consolidated with the next doc.
 
@@ -68,7 +68,7 @@ Process splits **one at a time, sequentially**, reusing the Replace machinery:
 1. Spawn a single subagent to write the successor docs. Pass it the original's full content, the sub-topic boundaries identified during investigation, the target paths and categories, and the same three contract files the Replace flow passes (`references/schema.yaml`, `references/yaml-schema.md`, `assets/resolution-template.md`). Shared context that every fragment needs (root cause, environment, background) is duplicated into each successor, not cross-referenced — each fragment must stand alone.
 2. Validate every successor exactly as in Replace flow steps 3-4: parser-safe frontmatter via `scripts/validate-frontmatter.py`, then the mechanical claims check via `scripts/validate-doc-claims.py`, with the same fallback behavior when a script is not resolvable.
 3. Rewrite inbound links so each citation points at the fragment that carries the cited content; a citation that spans fragments points at the most relevant one. Update catalog rows in README files.
-4. The orchestrator deletes the original. Git history preserves it.
+4. The orchestrator deletes the original. JJ history preserves it.
 
 ## Replace Flow
 
@@ -78,9 +78,9 @@ When a replacement is needed, read the documentation contract files and pass the
 
 - `references/schema.yaml` — frontmatter fields and enum values
 - `references/yaml-schema.md` — category mapping
-- `assets/resolution-template.md` — section structure
+- `assets/resolution-template.md` — semantic body contract
 
-Do not let replacement subagents invent frontmatter fields, enum values, or section order from memory.
+Do not let replacement subagents invent frontmatter fields, enum values, or body requirements from memory.
 
 **When evidence is sufficient:**
 
@@ -89,7 +89,7 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
    - A summary of the investigation evidence (what changed, what the current code does, why the old guidance is misleading)
    - The target path and category (same category as the old learning unless the category itself changed)
    - The relevant contents of the three support files listed above
-2. The subagent writes the new learning using the support files as the source of truth: `references/schema.yaml` for frontmatter fields and enum values, `references/yaml-schema.md` for category mapping and YAML-safety rules for array items, and `assets/resolution-template.md` for section order. It should use dedicated file search and read tools if it needs additional context beyond what was passed.
+2. The subagent writes the new learning using the support files as the source of truth: `references/schema.yaml` for frontmatter fields and enum values, `references/yaml-schema.md` for category mapping and YAML-safety rules for array items, and `assets/resolution-template.md` for semantic body requirements. It derives headings, ordering, and layout from repository-local documentation conventions and uses dedicated file search and read tools if it needs additional context beyond what was passed.
 3. **Validate parser-safety of the new learning's frontmatter** to catch silent-corruption issues the prose rules miss: malformed `---` delimiter lines, unquoted ` #` in scalar values (silent comment truncation), and unquoted `: ` in scalar values (silent mapping confusion). The bundled validator ships **inside the skill bundle**; set `SKILL_DIR` to the absolute path of the directory containing this skill's SKILL.md and run it through an existence guard so platforms that cannot locate the script fall back to a manual check instead of silently skipping the protection:
 
    ```bash
@@ -109,7 +109,7 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
      Nested values, array items, and already-quoted values are out of scope here (array-item quoting is handled by the schema/YAML-safety step above). Then note in the completion output that the bundled script validator was unavailable on this platform and the checks were applied manually.
 
    The validator does not enforce schema rules and does not flag YAML reserved-indicator characters (those produce loud parser errors downstream rather than silent corruption — out of scope). Uses Python 3 stdlib only (no PyYAML or other deps).
-4. **Run the mechanical claims check on the successor doc.** The bundled `scripts/validate-doc-claims.py` flags cited repo paths missing from the tree, commit SHAs that do not resolve or are unreachable, relative doc links that do not resolve, and dangling drafting scaffold ("Learning 3", unresolved `{{...}}` tokens):
+4. **Run the mechanical claims check on the successor doc.** The bundled `scripts/validate-doc-claims.py` flags cited workspace paths missing from the JJ working copy or relevant revisions, change or commit IDs that do not resolve or are unreachable, relative doc links that do not resolve, and dangling drafting scaffold:
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -122,7 +122,7 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
    ```
 
    Exit 1 flags are **adjudication input, not failures** — a successor doc describing removed code legitimately cites paths that no longer exist. Resolve each flag by fixing the citation, annotating it as historical, or confirming it intentional; always fix scaffold flags. If the script is not resolvable on this platform, scan the body for those same patterns manually and say so in the report.
-5. After the subagent completes, the orchestrator deletes the old learning file and updates any catalog README row that lists the old filename to point at the successor. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional — the git history and commit message provide the same information.
+5. After the subagent completes, the orchestrator deletes the old learning file and updates any catalog README row that lists the old filename to point at the successor. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability when repository conventions permit it, but this is optional because JJ history and the change description provide the same information. Any composition, recommendation, or validation of that description must include this exact sentence verbatim: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Active project instructions and change-description syntax inferred at runtime from `jj log` always win. Preserve the replacement summary while adapting syntax to runtime conventions. Apply compatible Go quality, clarity, and structure generally, regardless of repository language. Do not impose any fixed prefix, type, scope, subject, body, layout, template, example, bookmark namespace, or command sequence.
 
 **When evidence is insufficient:**
 
@@ -135,8 +135,8 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
 
 Delete only when a learning is clearly obsolete, redundant (with no unique content to merge), or its problem domain is gone. Do not delete a document just because it is old — age alone is not a signal.
 
-Before unlinking the file, run a final inbound-link check across the repo's markdown content to catch any references missed during Phase 1 investigation. Prefer the platform's native content-search tool (e.g., Grep in Claude Code) for efficiency; use ranged or context-line reads around matches rather than loading whole files.
+Before unlinking the file, run a final inbound-link check across the workspace's markdown content to catch any references missed during investigation. Prefer the platform's native content-search capability; use ranged or context-line reads around matches rather than loading whole files.
 
-Each match is a citation that will dangle after delete. Cleanup is mechanical — Phase 2 already classified the citations and confirmed Delete was right. Don't re-litigate. Catalog rows in README files count as citations for cleanup purposes: remove the deleted doc's row.
+Each match is a citation that will dangle after delete. Cleanup is mechanical because classification already confirmed Delete was right. Don't re-litigate. Catalog rows in README files count as citations for cleanup purposes: remove the deleted doc's row.
 
-If any citation surfaces here that wasn't seen in Phase 1 and is anything other than unambiguously decorative (substantive or mixed/unclear), stop and reclassify: autofix mode stale-marks; interactive mode asks the user whether Replace fits. Only proceed with cleanup when all late-discovered citations are unambiguously decorative.
+If any citation surfaces here that wasn't seen during investigation and is anything other than unambiguously decorative (substantive or mixed/unclear), stop and reclassify: non-interactive mode stale-marks; interactive mode asks the user whether Replace fits. Only proceed with cleanup when all late-discovered citations are unambiguously decorative.

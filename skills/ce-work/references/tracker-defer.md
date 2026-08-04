@@ -22,7 +22,7 @@ Used by autonomous callers like `lfg` that must not prompt. All blocking questio
 
 - No confirmation on the first generic-label Defer; proceed directly.
 - On execution failure, automatically fall to the next tier without prompting. Record the failure.
-- On total chain exhaustion (every tier failed or no sink available), return findings in the `no_sink` bucket so the caller can route them to another surface (e.g., inline them in a PR description).
+- On total chain exhaustion, return findings in the `no_sink` bucket so the caller can route them to another surface, such as a pull-request description.
 - Return a structured result: `{ filed: [{ finding_id, tracker, url }], failed: [{ finding_id, tracker, reason }], no_sink: [{ finding_id, title, severity, file, line }] }`.
 
 The caller decides how to surface the result to the user. The non-interactive mode treats "no sink available" as a data-producing outcome, not a prompt trigger.
@@ -94,13 +94,13 @@ Every Defer action creates a ticket with the following content, adapted to the t
 
 - **Title:** the merged finding's `title` (schema-capped at 10 words).
 - **Body:**
-  - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `<artifact-path>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
+  - Plain-English problem statement — reads `why_it_matters` from `<workspace-root>/.tmp/rocketclaw/code-review/<run-id>/{reviewer}.json`, resolving `<workspace-root>` with `jj workspace root` and `pwd -P` fallback. Match with `file + line_bucket(line, +/-3) + normalize(title)`. Fall back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` when no artifact match is available.
   - Suggested fix (when present in the finding's `suggested_fix`).
   - Evidence (direct quotes from the reviewer's artifact).
-  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the branch and head commit SHA, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
+  - Source: a link to the pull request when one exists; otherwise the JJ change ID and publication bookmark, when present. Back-fill a later pull-request link best-effort.
   - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Reviewer(s): <list>`, `Finding ID: <fingerprint>`.
 - **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`) and, when the tracker convention supports it, a category label sourced from the reviewer name.
-- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in ce-code-review run artifact: <artifact-path>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
+  - **Length cap:** when the body exceeds a tracker limit, truncate with `... (continued in review run artifact: <workspace-root>/.tmp/rocketclaw/code-review/<run-id>/)` and include the finding ID.
 
 The finding_id is a stable fingerprint composed as `normalize(file) + line_bucket(line, +/-3) + normalize(title)` — the same fingerprint used by the merge pipeline.
 

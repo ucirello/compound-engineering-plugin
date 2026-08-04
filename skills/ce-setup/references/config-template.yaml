@@ -1,34 +1,34 @@
-# Compound Engineering -- local config
-# Copy to .compound-engineering/config.local.yaml in your project root.
+# RocketClaw -- local config
+# Copy to .rocketclaw/config.local.yaml in your workspace root.
 # All settings are optional. Invalid values fall through to defaults
 # (except docs_root -- see below, which fails closed on an unusable value).
 
 # --- Artifact root ---
 # Relocate every CE-written artifact folder (solutions, plans, ideation,
 # explainers, residual-review-findings, pulse-reports, dogfood-reports,
-# feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location CE reads
-# and writes; CE never falls back to reading `docs/`.
+# feedback-sweep, personas) under one workspace-relative root. Unset -> `docs`,
+# byte-identical to today. A configured root becomes the sole location the skills
+# read and write; they never fall back to reading `docs/`.
 #
-# Where to put it: prefer the TRACKED `.compound-engineering/config.yaml` (not
-# this gitignored local file) so the setting propagates to every clone and
-# worktree of the project. Setting it here in config.local.yaml works but is
-# per-checkout, which splits one project's artifacts across two locations.
+# Where to put it: prefer the tracked `.rocketclaw/config.yaml` (not this ignored
+# local file) so the setting propagates to every workspace. Setting it here in
+# config.local.yaml works but is per-workspace, which can split one project's
+# artifacts across two locations.
 #
-# The value must be a repo-relative directory whose real (symlink-resolved) path
-# stays inside the repo, is not the repo root itself, and is not under `.git/`.
+# The value must be a workspace-relative directory whose real (symlink-resolved) path
+# stays inside the workspace, is not the workspace root itself, and is not under `.jj/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- setup stops with an error so a typo can't silently write artifacts into
 # the location you configured away from. `/ce-setup` reports the resolved root
 # and which layer supplied it.
 
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # workspace-relative dir (default: docs)
 
 # --- Product pulse ---
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
 # argument `setup` or `reconfigure` to edit interactively.
 
-# pulse_product_name: "Spiral"                          # used in report titles (no default)
+# pulse_product_name: "Example Product"                 # used in report titles (no default)
 # pulse_lookback_default: 24h                           # 1h | 24h | 7d | 30d (default: 24h)
 # pulse_primary_event: "session_started"                # the event that means "user showed up"
 # pulse_value_event: "task_completed"                   # the event that means "user got value"
@@ -67,8 +67,8 @@
 #
 # Cross-harness: setting a key means every harness you run these skills in will
 # attempt that model. The host serves it natively where it can; otherwise the
-# Claude CLI is invoked when installed and authenticated; otherwise the step runs
-# on your session model and the run says so. Invalid/commented/missing -> no
+# A configured provider CLI is invoked when installed and authenticated; otherwise
+# the step runs on your session model and the run says so. Invalid/commented/missing -> no
 # elevation.
 
 # plan_model: fable              # model alias for the plan-authoring step (no default)
@@ -80,8 +80,8 @@
 # the single gate: off disables judgment, the section, the /ce-explain offer,
 # and archival. Archival additionally writes the explainer to docs/explainers/
 # and links it from the PR (full-workflow runs only; override per run with
-# archive:on|off). Note: this file is gitignored and per-checkout -- fresh
-# worktrees don't inherit it.
+# archive:on|off). Note: this file is ignored by JJ and workspace-local -- fresh
+# workspaces don't inherit it.
 
 # pr_teaching_section: false     # true | false (default: true)
 # pr_teaching_archive: true      # true | false (default: false; full-workflow runs only)
@@ -131,7 +131,7 @@
 #   - harness: claude             # configured default model
 
 # --- ce-promote ---
-# Written automatically when you decline the Spiral setup offer in /ce-promote.
+# Written automatically when you decline the setup offer in /ce-promote.
 # Suppresses that one-time setup nudge in this project. Remove the key to re-enable.
 
 # ce_promote_spiral_optout: true   # true | (absent) (default: absent -- offer once)
@@ -141,13 +141,13 @@
 # Feedback sources swept by /ce-sweep. Generic key: other skills may read this list.
 # Each entry: type (slack | github-issues | email), id (short name), target (channel ID /
 # owner/repo / mailbox), ack_action, closeout_action, sensitive (true withholds content
-# from committed state/plan text), approved (standing approval for source-side writes).
+# from tracked state/plan text), approved (standing approval for source-side writes).
 # feedback_sources:
 #   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # tracked (multi-agent) or $(jj workspace root)/.tmp/rocketclaw/feedback-sweep/state.yml; use local .tmp/rocketclaw/feedback-sweep/state.yml outside a JJ workspace (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
-# sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
+# sweep_shared_bookmark: false                      # true: push-gated lease for shared-docs-bookmark topology

@@ -4,20 +4,23 @@
 // tool-result content in the working turn outranks a system-prompt default.
 import { execFileSync } from 'node:child_process';
 
-function git(...args) {
+function jj(...args) {
   try {
-    return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execFileSync('jj', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return '';
   }
 }
 
 function buildResolvedContext() {
+  const workspaceRoot = jj('workspace', 'root');
+  const currentChange = jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()');
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `branch: ${git('rev-parse', '--abbrev-ref', 'HEAD') || '(not a git repository)'}`,
-    `head: ${git('rev-parse', '--short', 'HEAD') || '(none)'}`,
+    `workspace_root: ${workspaceRoot || '(not a JJ workspace)'}`,
+    `current_change: ${currentChange || '(none)'}`,
+    `retune_scratch: ${process.argv[2] || '(unavailable)'}`,
   ].join('\n');
 }
 
@@ -38,10 +41,7 @@ const SUBAGENT_AUTHORIZATION = [
   'Disclose any substitution in one line.',
 ].join(' ');
 
-// Observed in the field: a model substituted inline for dispatch and told the
-// user "your standing instruction prohibits agent dispatch" — a system-prompt
-// default re-narrated as a user preference the user never stated and so
-// cannot correct.
+// Prevent system-prompt defaults from being re-narrated as user preferences.
 const HARNESS_ATTRIBUTION = [
   'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
   "is never described to the user as their instruction, preference, or standing request.",

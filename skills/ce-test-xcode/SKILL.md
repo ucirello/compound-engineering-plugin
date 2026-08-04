@@ -22,7 +22,7 @@ Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures
 
 Check that the XcodeBuildMCP MCP server is connected by calling its `list_simulators` tool.
 
-MCP tool namespaces vary by platform. Use the tool mapped to the `XcodeBuildMCP` server's `list_simulators` method in the current harness.
+MCP tool namespaces vary by provider and harness. Use the tool mapped to the `XcodeBuildMCP` server's `list_simulators` method in the active harness.
 
 If the tool is not found or errors, inform the user they need to add the XcodeBuildMCP MCP server:
 
@@ -76,7 +76,7 @@ Call `build_ios_sim_app` with the project path and scheme name.
 For each key screen in the app:
 
 **Take screenshot:**
-Create `$(jj workspace root)/.tmp/rocketclaw/test-xcode/<run-id>/`, then call `take_screenshot` with the simulator UUID and a descriptive path under it. Outside a JJ workspace, create and use `$PWD/.tmp/rocketclaw/test-xcode/<run-id>/` instead.
+Resolve `WORKSPACE_ROOT` with `jj workspace root`, falling back to the physical current directory from `pwd -P`, create `$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-xcode`, and create a per-run directory with `mktemp -d "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-xcode/run.XXXXXX"`. Then call `take_screenshot` with the simulator UUID and a descriptive path under that directory.
 
 **Review screenshot for:**
 - UI elements rendered correctly
@@ -107,7 +107,7 @@ Pause for human input when testing touches flows that require device interaction
 | Location | "Allow location access and verify map updates" |
 | SwiftUI Text links | "Please tap on [element description] manually — automated taps cannot trigger inline text links" |
 
-Ask the user using the current harness's blocking question capability. Discover or load its mapped tool first when necessary. Fall back to numbered options in chat only when no blocking question capability exists or the call errors, not merely because its schema must be loaded. Never silently skip the question:
+Ask the user using the active harness's blocking question capability. Discover or load its mapped tool first when necessary. Fall back to numbered options in chat only when no blocking question capability exists or the call errors, not merely because its schema must be loaded. Never silently skip the question:
 
 ```
 Human Verification Needed
@@ -203,4 +203,4 @@ After testing:
 
 ## Integration with ce-code-review
 
-When reviewing PRs that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.
+When reviewing JJ changes or revisions that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.

@@ -1,129 +1,145 @@
 ---
 name: lfg
-description: Run the full hands-off engineering pipeline from planning through a green PR.
-disable-model-invocation: true
-argument-hint: "[feature description]"
+description: "Run the full autonomous shipping pipeline end-to-end, hands-off with no check-ins: plan, implement, review and fix, record JJ changes, publish a bookmark, open a PR, and watch CI to green. Use only when the user explicitly asks to build or ship something autonomously all the way to an open PR, or invokes lfg directly — it publishes and opens a PR without stopping. Not for in-the-loop work where the user reviews each step: use ce-plan to plan, ce-work to implement a plan, ce-debug to fix a bug, or ce-commit-push-pr to record existing changes and open a PR."
+argument-hint: "[feature description; optionally assign planning and/or implementation to a model or harness]"
 ---
 
 CRITICAL: You MUST execute every step below IN ORDER. Do NOT skip any required step. Do NOT jump ahead to coding or implementation. The plan phase (step 1) MUST be completed and verified BEFORE any work begins. Violating this order produces bad output.
 
-When invoking any skill referenced below, resolve its name against the available-skills list the host platform provides and use that exact entry. Platforms may list a skill under a provider namespace or by its bare name. Invoking a short-form guess that isn't in the list will fail — always match a listed entry verbatim before calling the Skill/Task tool.
+When invoking any skill referenced below, resolve its name against the available-skills list the host platform provides and use that exact entry. Some platforms list skills under a plugin namespace (e.g., `RocketClaw:ce-plan`); others list the bare name. Invoking a short-form guess that isn't in the list will fail — always match a listed entry verbatim before calling the Skill/Task tool.
 
-Use JJ for version-control operations: changes instead of commits, bookmarks instead of branches, `jj workspace` instead of alternate worktrees, and `jj git ...` for remotes. Preserve GitHub integration through `gh`, `.github/`, and `.gitignore`. The only direct Git command in this workflow is the required `git log` inspection for change-description style.
+## Task Visibility
 
-Keep scratch files under `$(jj workspace root)/.tmp`; if `jj workspace root` fails during recovery, use `$PWD/.tmp`. Never use an OS/global temporary API or path.
+Before step 1, use the platform's task-tracking capability when available to publish a short stage-level view of the remaining pipeline. Derive it from the user-meaningful outcomes below rather than mirroring all ten steps or exposing internal gates. Before invoking a child skill, replace or clear LFG's view so only the child skill's task surface is visible; after it returns, recreate or refresh LFG's remaining pipeline work before invoking the next child. Add conditional work only when its gate fires. If no task-tracking capability is available, continue normally without simulating a task list in chat.
 
-1. Invoke the `ce-plan` skill with `$ARGUMENTS`.
+## Artifact Root
 
-   GATE: STOP. If ce-plan reported the task is non-software and cannot be processed in pipeline mode, stop the pipeline and inform the user that this workflow requires software tasks. Otherwise, verify that the `ce-plan` workflow produced a plan file in `docs/plans/`. If no plan file was created, invoke `ce-plan` again with `$ARGUMENTS`. Do NOT proceed to step 2 until a written plan exists. **Record the plan file path** — it will be passed to ce-work in step 2 and ce-code-review in step 4.
+This pipeline records the plan under `<root>/plans/` and review residuals under `<root>/residual-review-findings/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it.
 
-   Read the plan metadata before continuing. If the plan has `artifact_contract: unified-plan/v1`, proceed only when it has `artifact_readiness: implementation-ready` and `execution: code`. Stop the pipeline for `artifact_readiness: requirements-only`, any unrecognized readiness value, `execution: knowledge-work`, approach-plan outputs, answer-seeking/universal outputs, or invalid progress-like readiness values. This workflow never launches `/goal` directly; when goal-mode or dynamic workflows are appropriate, `ce-work` owns that implementation engine choice and must return control afterward.
+<!-- ce-docs-root:start -->
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-2. Invoke the `ce-work` skill with `mode:return-to-caller <plan-path-from-step-1>`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.local.yaml`, then `<repo-root>/.rocketclaw/config.yaml`; first non-empty value wins (`<repo-root>` = `jj root`). Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
+<!-- ce-docs-root:end -->
 
-   GATE: STOP. Verify that implementation work was performed - files were created or modified beyond the plan. Read the structured return and require `status: complete`, the same plan path, changed files, U-IDs attempted/completed when present, verification results, blocker list, behavior-change signal, and `standalone_shipping_skipped: true`. When `behavior_change: true`, also require `verification_evidence` that names the relevant units/tasks, existing tests inspected, tests added/changed or used unchanged, red failure or characterization evidence when applicable, verification run, and any deliberate test exception. Do NOT decide the test strategy inside this workflow; the evidence is ce-work's contract.
+Use `<repo-root>/.tmp/` for every transient file created while composing descriptions, briefs, ticket bodies, PR bodies, or handoff payloads. Remove those transient files after their consumer succeeds; durable pipeline artifacts remain under `<root>`. At every composition or handoff site, the repository's local syntax and conventions take precedence; never require a fixed message. Do not add tool, model, or agent credit.
 
-   If `behavior_change: true` but `verification_evidence` is missing or too vague to tell how behavior was protected, invoke `ce-work` one more time with the same `mode:return-to-caller <plan-path-from-step-1>` argument. Do not prompt the user and do not alter the plan path argument. The retry relies on ce-work's idempotency path to inspect the already-implemented work, fill the missing evidence, and return without reimplementing. If the second return still lacks coherent verification evidence, stop as blocked and report the missing fields instead of continuing to simplify/review/ship.
+## Per-stage routing carriers
+
+Before step 1, interpret whether the invoking conversation expresses **semantic intent to assign a pipeline stage** — planning or implementation — to a specific model or harness. This is judgment, not keyword or prompt-token matching: an explicit instruction such as "plan with fable" or "use Codex for implementation" creates an assignment, while a plain mention of Codex, Composer, Fable, or another model/harness in feature content, quoted material, comparison text, or a filename does not. Two pipeline stages are routable, each with its own carrier:
+
+- **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier — the plan-authoring **model** (model elevation), model-only. Example aliases: `fable`, `opus`. Planning has no cross-harness engine: an assignment that scopes a *harness* to planning ("plan with codex", "plan on cursor") is **not supported** — surface it as a routing-carrier blocker rather than encoding a harness name as `plan_model:<harness>`, which `ce-plan` cannot serve and would silently fall back to the session model. Only the implementation stage routes to a different harness.
+- **Implementation** routes to `ce-work` as an `implementation_engine` object (grammar below) — the authoring harness/model.
+
+Resolve each directive by scope:
+
+1. **Scoped directive** — the instruction names the stage ("plan with fable", "codex for implementation", "plan fable, codex work"). Route it to that stage's carrier. Multiple scoped directives may resolve at once, each to its own stage.
+2. **Unscoped directive** — a bare model/harness assignment with no stage named ("use fable", "with codex"). Bind it to the **implementation stage only**; never broaden an unscoped directive to planning or to every stage. Disclose the resolved binding in LFG's opening line before step 1 (e.g. "Routing implementation to Codex; planning stays on the session model.").
+3. **Unscoped and genuinely ambiguous, human present** — when an unscoped directive could credibly belong to more than one stage *and* mis-binding would be materially costly, *and* the host is interactive (exposes a blocking-question tool and is not a `disable-model-invocation`/headless run), ask exactly **one** upfront question to bind the stage before step 1, then proceed hands-off. In a `disable-model-invocation`/headless run, never ask — apply the implementation default and disclose it. The default path is mandatory: LFG runs from schedulers, loops, and nested orchestrators with no user to answer, so an unresolved directive must always fall to the disclosed default rather than block.
+
+Requirement strength is inferred from the whole instruction, not one word: "use Codex for implementation" is preference-strength (`prefer`); "only use Composer for implementation" is requirement-strength (`require`) because its meaning rejects native fallback.
+
+**Implementation carrier grammar.** When implementation resolves to one candidate, retain one transient `implementation_engine` object with exactly these four fields:
+
+- `mode`: `prefer` or `require`
+- `target`: exactly one of `codex`, `claude`, `grok`, `cursor`, or `composer` — a **harness** name, never a model name
+- `model`: the explicit model pin, otherwise `null`
+- `source`: caller-visible provenance identifying the current LFG instruction
+
+A directive that names a bare **model** with no harness (e.g. "use fable", "with opus") is a model *pin*, not a target: encode it as the harness that serves that model family with the alias in `model` — a Claude-family model (`fable`, `opus`, `sonnet`, `haiku`) is `{"target":"claude","model":"<alias>"}`. Never put a model name in `target`; if you cannot map the named model to one of the five harnesses, that is a routing-carrier blocker, not a `null` binding that silently drops the user's instruction.
+
+When the implementation instruction instead names an ordered fallback list, do not truncate it to the scalar carrier — retain the whole ordered assignment as current-task implementation intent and pass no `implementation_engine:` object. At the ce-work seam, that still-active current-task assignment outranks config and is normalized/preflighted in order. This is stage-scoped context, not plan content; if the host cannot preserve that context across its skill invocation, stop with a routing-carrier blocker rather than silently dropping later candidates.
+
+**Sanitize product input.** Remove every routing directive from the feature request that enters planning, keeping the request otherwise unchanged. Never pass the `implementation_engine` object or any removed directive to `ce-plan`, `ce-doc-review`, `ce-code-review`, the settled-decisions brief, or any planning or review **product** input — the carrier is stage-scoped routing authority, not product content or a settled product decision. The `plan_model:<alias>` carrier is the one exception: it is structured routing data handed to `ce-plan` *alongside* — never woven into — the sanitized request. Do not construct a carrier from standing configuration here: when no explicit binding exists for a stage, `ce-work` and `ce-plan` own resolution of still-applicable session/project intent and standing per-checkout configuration.
+
+1. Invoke the `ce-plan` skill with the sanitized feature request prepared above (or the unchanged arguments you were invoked with when no routing directive was present). When a planning-stage directive resolved, prefix the invocation with its `plan_model:<alias>` carrier — structured routing data beside the request, never woven into it — so `ce-plan`'s model elevation authors the plan on the chosen model even in pipeline mode.
+
+   Before invoking, compose a **settled-decisions brief** from the invoking conversation and pass it with those arguments: direction (1-2 lines); settled decisions, each with four required fields — the decision, its provenance class (`user-directed` or `user-approved`), the rejected alternative, and a one-line reason; open areas; and a standing report-conflicts line. An entry whose rejected alternative cannot be stated demotes to a directive or open area. Scope topically — only decisions about the feature being shipped; when in doubt, demote (re-litigation is the safe floor; importing stale settlements is not). If the conversation contains no settled decisions, skip composition entirely and invoke `ce-plan` exactly as above — no empty-brief ceremony. The brief is transient: once ce-plan writes the plan, the plan's labeled KTDs are canonical.
+
+   GATE: STOP. If ce-plan reported the task is non-software and cannot be processed in pipeline mode, stop the pipeline and inform the user that LFG requires software tasks. If ce-plan returned a blocked report containing `settled-decision-invalidated`, stop the pipeline and inform the user with the reason — do not retry. Otherwise, verify that the `ce-plan` workflow produced a plan file in `<root>/plans/`. If no plan file was created, invoke `ce-plan` again with those same arguments. The retry reuses the composed brief verbatim — never recompose it. Do NOT proceed to step 2 until a written plan exists. **Record the plan file path** — it will be passed to ce-work in step 2 and ce-code-review in step 4.
+
+   Read the plan metadata before continuing. If the plan has `artifact_contract: ce-unified-plan/v1`, proceed only when it has `artifact_readiness: implementation-ready` and `execution: code`. Stop the pipeline for `artifact_readiness: requirements-only`, any unrecognized readiness value, `execution: knowledge-work`, approach-plan outputs, answer-seeking/universal outputs, or invalid progress-like readiness values. LFG never launches `/goal` directly; when goal-mode or dynamic workflows are appropriate, `ce-work` owns that implementation engine choice and must return control to LFG afterward.
+
+2. Invoke the `ce-work` skill with `mode:return-to-caller <plan-path-from-step-1>` when no scalar transient carrier exists, including when a retained ordered current-task assignment is still active in context. When the scalar carrier exists, use the exact string-host form `mode:return-to-caller implementation_engine:<compact-json> <plan-path-from-step-1>`.
+
+   If the scalar transient carrier exists, serialize its exact `implementation_engine.{mode,target,model,source}` data as compact JSON immediately after the `implementation_engine:` prefix (for example `implementation_engine:{"mode":"prefer","target":"codex","model":null,"source":"lfg-current-turn"}`). This is structured caller data in a portable string envelope, not part of the plan path or implementation prompt. Pass no empty carrier when it does not exist. `ce-work` then resolves a retained ordered current-task assignment when present, otherwise applicable session/project intent and standing per-checkout configuration. LFG is an automatic, headless caller: it never prompts to weaken a requirement-strength route.
+
+   The optional `implementation_run:<safe-id>` carrier is recovery-only. Never include it on the initial step-2 call. On the one evidence-reconciliation recovery below, place it after the same engine carrier when one existed and before the unchanged plan path: `mode:return-to-caller implementation_run:<safe-id> <plan-path-from-step-1>` or `mode:return-to-caller implementation_engine:<compact-json> implementation_run:<safe-id> <plan-path-from-step-1>`. A safe id matches `^[A-Za-z0-9._-]{1,128}$` and contains at least one non-period character. Reject a malformed or duplicate run/engine carrier instead of launching work.
+
+   GATE: STOP. Read the structured return before continuing. A `status: blocked` or `status: failed` return stops the pipeline. In particular, an unavailable `require` route must not prompt, fall back, or start native work. A completed `prefer` fallback may continue to step 3 exactly once after prominently disclosing its requested-versus-actual route/model and `fallback_reason` to the user; fallback is not a reason to invoke implementation again.
+
+   For `status: complete`, verify that implementation work was performed - files were created or modified beyond the plan. Require the same plan path, changed files, U-IDs attempted/completed when present, verification results, behavior-change signal, and `standalone_shipping_skipped: true`. Also require the route-aware receipt fields `implementation_engine_binding`, `requested_route`, `actual_route`, `requested_model`, `actual_model`, `fallback_reason`, `run_id`, `unit_receipts`, `plan_checkpoint`, `blockers`, and `recovery_path`. These fields are required even when native execution makes some values `null`; together they carry binding provenance, requested-versus-actual identity, fallback, the durable run, per-unit process/integration/verification/change-record state, checkpoint disclosure, blockers, and recovery. A resumed return must carry the same `run_id`; never treat resume as permission to start a new unit or a second LFG tail.
+
+   When `behavior_change: true`, also require `verification_evidence` that names the relevant units/tasks, existing tests inspected, tests added/changed or used unchanged, red failure or characterization evidence when applicable, verification run, and any deliberate test exception. Do NOT decide the test strategy inside LFG; the evidence is ce-work's contract. Also read `settled_decision_conflicts` from the return: blocker-routed entries arrive as `status: blocked` and stop the pipeline; **record any proceeded-and-flagged entries** — they must reach step 6's durable residual record and step 8's PR-description context, since later review may not rediscover them.
+
+   If `behavior_change: true` but `verification_evidence` is missing or too vague to tell how behavior was protected, invoke `ce-work` one more time in recovery mode. Reuse the same `implementation_engine:<compact-json>` carrier when one existed and keep the same plan path. With a safe non-null `run_id`, add `implementation_run:<safe-id>` with that exact value from the first return. When `actual_route` is `native` and `run_id` is `null`, repeat the original ce-work invocation once without an `implementation_run:` carrier; this preserves the pre-existing native idempotency/evidence-reconciliation path. A non-native return without a safe run id remains blocked instead of attempting discovery or a second implementation. Do not prompt the user and do not alter the plan path or engine carrier; this is evidence reconciliation, not a fresh dispatch. The recovery relies on ce-work's reconciliation path to inspect the already-implemented work, fill the missing evidence, and return without reimplementing. If the second return still lacks coherent verification evidence, stop as blocked and report the missing fields instead of continuing to simplify/review/ship.
 
 3. Invoke the `ce-simplify-code` skill on the current JJ change-stack diff.
 
-   This runs before review so the code-review in step 4 covers the simplified code. **Skip** this step when the change is docs-only (only markdown/docs paths changed) or trivial (roughly under 10 changed lines). Otherwise let `ce-simplify-code` resolve the JJ change-stack scope itself; it preserves behavior and runs the test suite.
+   This runs before review so the code-review in step 4 covers the simplified code. **Skip** this step when the change is docs-only (only markdown/docs paths changed) or trivial (roughly under 10 changed lines). Otherwise let `ce-simplify-code` resolve the JJ change-stack scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope (the change stack remains the scope), with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
 
-   Do not record a separate JJ change in this step. `ce-simplify-code` leaves its edits in the working-copy change; step 4 reviews that change, and step 8's `ce-commit-push-pr` records whatever remains. Recording here could separate edits that belong to the implementation and stall a workflow waiting for an empty working-copy change.
+   Do not record a new change in this step. `ce-simplify-code` leaves its edits in the JJ workspace; step 4's review scopes the workspace (unrecorded edits included), and step 8's `ce-commit-push-pr` records whatever remains. Recording here could sweep still-unrecorded `ce-work` edits into a misleading change and stall a workspace that never becomes clean.
 
 4. Invoke the `ce-code-review` skill with `mode:agent plan:<plan-path-from-step-1>`.
 
-   Pass the plan file path from step 1 so ce-code-review can verify requirements completeness. Read the **Actionable Findings** summary the skill emits.
+   Pass the plan file path from step 1 so ce-code-review can verify requirements completeness. Read the **Actionable Findings** summary the skill emits. Also read any findings stamped `settled_conflict` (each names the conflicting KTD). A stamped finding whose evidence is invalidating — the settled decision cannot work: infeasible, wrong-thing, or destructive — stops the pipeline as blocked, with the finding reported, before the shipping precondition. Stamped preference-grade findings proceed (they are report-only) but must flow into step 6's residual record.
 
-   `mode:agent` is report-only **by design** — it surfaces findings but never edits the tree; step 5 applies the eligible ones. When narrating progress to the user, frame this as "review found X → applied X in step 5," not as "code review did not auto-fix." A report-only review followed by a workflow-applied fix is the intended contract, not a gap.
+   `mode:agent` is report-only **by design** — it surfaces findings but never edits the tree; LFG applies the eligible ones in step 5. When narrating progress to the user, frame this as "review found X → applied X in step 5," not as "code review did not auto-fix." A report-only review followed by an LFG-applied fix is the intended contract, not a gap.
 
-**Shipping identity and precondition (steps 5–9).** Run `jj bookmark list -r @` once. Resolve the intended PR bookmark from that output and retain its exact local name as `BOOKMARK` for every later step. If exactly one local bookmark points to `@`, select it. If zero or multiple local bookmarks point to `@`, require explicit user input naming the intended PR bookmark; do not infer one from recency, tracking state, Git configuration, or another revision. Verify an existing selected bookmark points to `@`; create a new bookmark at `@` only when the user explicitly supplied that new name.
+**Shipping precondition (steps 5–9).** Run `jj git remote list` once before the shipping steps. If it lists **no remote** (for example, a sandbox or throwaway JJ workspace with no `origin`), shipping is **local-only**: record every JJ change the steps below call for, but **skip every bookmark publication, PR create/edit, and CI-watch action** - the publications in steps 5 and 6, publication and PR creation in step 8, and step 9 in full. A missing remote is a terminal local-only state, not an error: never retry publication or hunt for a remote; record the local changes and proceed to step 10. Run steps 5-9 normally when a remote exists.
 
-Run `jj git remote list` once and retain the intended remote's exact name as `REMOTE`. If exactly one remote exists, select it. If multiple remotes exist, require explicit user input naming one of the listed remotes; do not infer it from bookmark tracking state, remote order, or a conventional name such as `origin`. If it lists **no remote** (for example, in a sandbox or throwaway workspace), shipping is **local-only**: record every JJ change the steps below call for, but **skip every push, PR create/edit, and CI-watch action** — the pushes in steps 5 and 6, the push and PR creation in step 8, and step 9 in full. A missing remote is a terminal local-only state, not an error: never retry a push or hunt for a remote; record the local changes and proceed to step 10. When `REMOTE` exists, every push in this workflow must target only the retained shipping identity with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`.
+**Change descriptions.** At every composition, edit, validation, recommendation, and delegated handoff site below, inspect the project's active instructions and actual message history with the required read-only `git log`; those repository-local conventions always win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Preserve each site's semantic requirements, apply compatible Go guidance only for quality, clarity, and structure, impose no fixed prefix, type, scope, subject, body, layout, template, or example, and use `<description-composed-from-runtime-conventions>` where an interface needs a message.
 
 5. **Apply and persist review fixes** (REQUIRED after step 4, before residual handoff)
 
-   Load `references/review-followup.md`, pass the retained `BOOKMARK` and `REMOTE` (or the explicit local-only state), and execute its apply step (mechanical apply + record/push when changes exist). Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working-copy change and unrecorded.
+   Load `references/review-followup.md` and execute its apply step (mechanical apply plus JJ recording/publication when changes exist). Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only as unrecorded workspace edits.
 
 6. **Autonomous residual handoff** (only when step 4 reported one or more actionable `downstream-resolver` findings not applied in step 5; skip when it reported `Actionable findings: none.`)
 
-   Do not prompt the user. This step embraces the autopilot contract: residuals must become durable before DONE, but the agent never stops to ask.
+   Do not prompt the user. This step embraces the autopilot contract: residuals must become durable before DONE, but the agent never stops to ask. Also run this step when step 4 emitted any `settled_conflict`-stamped findings, or when step 2's return carried proceeded-and-flagged `settled_decision_conflicts` entries — both sit outside the apply path, but they are the divergent class and must be made durable here.
 
    1. Load `references/tracker-defer.md` in **non-interactive mode**. Pass the residual actionable findings from step 4/5 (or the run artifact when the summary was truncated).
    2. Collect the structured return: `{ filed: [...], failed: [...], no_sink: [...] }`.
-   3. Compose a `## Residual Review Findings` markdown section from the structured return:
+   3. Compose a `## Residual Review Findings` markdown section from the structured return (this goes into the durable record file, **not** the PR body):
       - For each item in `filed`: a bullet with severity, file:line, title, and a link to the tracker ticket URL.
       - For each item in `failed`: a bullet with severity, file:line, title, and the failure reason (e.g., `Defer failed: gh returned 401 — tracker unavailable`).
-      - For each item in `no_sink`: a bullet with severity, file:line, and title inlined verbatim so the PR body or fallback file is the durable record.
-   4. Detect the retained PR bookmark's open PR without prompting:
+      - For each item in `no_sink`: a bullet with severity, file:line, and title inlined verbatim so the recorded file is the durable record.
+      - For each `settled_conflict`-stamped finding from step 4: a bullet with severity, file:line, title, and the conflicting KTD the stamp names — included even though the finding is report-only.
+      - For each proceeded-and-flagged `settled_decision_conflicts` entry from step 2: a bullet with the KTD, the evidence, and how it was routed.
+   4. **Durable record - never the PR body.** Do NOT write a `## Residual Review Findings` section into the PR description; it duplicates GitHub's own tracking and goes stale as items resolve. Review residuals have no GitHub thread of their own, so they are made durable by the tracker tickets filed in step 2 plus a recorded file - not a PR-body section and not a PR comment that duplicates the tickets. Create or replace `<root>/residual-review-findings/<bookmark-or-change-id>.md` with the composed section (ticket links included) and source run context. Invoke `ce-commit` to record only that file. Before composing the change description, follow the repository's local syntax and conventions; they take precedence. Never require a fixed description. When a remote is configured, publish the bookmark returned by `ce-commit` with `jj git push --bookmark <bookmark>`; if there is no remote, the local JJ change is the durable sink.
 
-      ```bash
-      gh pr view "$BOOKMARK" --json number,url,body,state
-      ```
-
-   5. If an open PR exists, update it directly with `gh`; do not load any confirmation-driven PR update skill. Append or replace the `## Residual Review Findings` section in that PR body. Resolve `WORKSPACE_ROOT="$(jj workspace root)"`; if that fails during recovery, use `WORKSPACE_ROOT="$PWD"`. Create `BODY_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw"`, write the new body to a file under that directory, then run:
-
-      ```bash
-      gh pr edit PR_NUMBER --body-file BODY_FILE
-      ```
-
-   6. If no open PR exists, create a tracked fallback file at `docs/residual-review-findings/<bookmark-or-change-id>.md` containing the composed section and the source PR-review run context. Record only that file as a JJ change, move the retained `BOOKMARK` to the recorded revision when needed, and push **when `REMOTE` exists** (per the shipping precondition). The description must identify that residual review findings were recorded. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and message syntax found in actual `git log` output take precedence; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed message syntax or examples. Push only with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`. If there is no remote at all, do not push — the locally recorded JJ change suffices. This is the durable no-PR sink. Do not output DONE until the residual findings are durable: either the existing PR body has been updated, or this fallback-file change has been recorded (and pushed when a remote exists). A push that fails when a remote exists is a stop-and-report; never retry a push, or block DONE, when no remote exists.
-
-   Never block DONE on tracker filing failures once residuals have been durably recorded. A `no_sink` outcome is success only when the findings are present in the PR body or in the pushed fallback file.
+   Do not output DONE until the residuals are durable (tracker tickets filed and/or the record file recorded). Never block DONE on tracker filing failures once the record file exists. A publication that fails when a remote exists is a stop-and-report; never retry publication, or block DONE, when no remote exists.
 
 7. Invoke the `ce-test-browser` skill with `mode:pipeline`.
 
-8. Invoke the `ce-commit-push-pr` skill with `mode:pipeline bookmark:<exact-BOOKMARK> remote:<exact-REMOTE>`.
+8. Invoke the `ce-commit-push-pr` skill with `mode:pipeline`. Thread the recorded plan path from step 1 into the invocation, along with any proceeded-and-flagged `settled_decision_conflicts` entries from step 2, so the PR body's settled-decisions provenance line and its proceed-under-flag clause can fire. Do not request or add tool, model, or agent credit.
 
-   This records any remaining changes, pushes only the explicitly passed PR bookmark to the explicitly passed remote with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`, and opens a pull request — non-interactively, per the mode token. Do not permit `ce-commit-push-pr` to select or substitute a bookmark or remote. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 10. If step 6 already found an open PR (check with `gh pr view "$BOOKMARK" --json number,url,state`), skip PR creation but still record and push any unrecorded changes. **Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr`; instead invoke the listed `ce-commit` skill to record any remaining changes locally and skip the push and PR creation entirely.** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and message syntax found in actual `git log` output take precedence; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed message syntax or examples.
+   This records any remaining JJ changes, publishes the bookmark, and opens a pull request - non-interactively, per the mode token. Before it composes any change or PR description, the repository's local syntax and conventions take precedence, and no fixed description may be required. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 10. Once the PR URL is known, back-fill it into any residual tickets filed in step 6 (the `filed` list) so each ticket links to the PR carrying the finding - best-effort, and never block DONE on a failed ticket update. If step 6 already opened a PR, detect it with `gh pr view --json number,url,state`; skip PR creation but still record and publish any remaining JJ changes. **Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr`. Invoke `ce-commit` for any remaining local edits, with local change-description syntax taking precedence and no fixed description, then skip bookmark publication and PR creation entirely.**
 
-9. **CI watch and autofix loop** (only when an open PR exists for the retained `BOOKMARK`)
+9. **Watch the PR to CI-decided via `ce-babysit-pr`** (only when an open PR exists for the published bookmark)
 
    Detect the PR; if none exists or `gh` is unavailable, skip this step entirely and proceed to step 10.
 
    ```bash
-   gh pr view "$BOOKMARK" --json number,url,state
+   gh pr view --json number,url,state
    ```
 
-   For up to **3 fix iterations**, repeat:
+   Invoke **`ce-babysit-pr mode:pipeline <pr-url>`**. It runs the bounded pipeline loop: watches CI, repairs real (convergent) failures via `ce-debug mode:pipeline` — never weakening, skipping, or mocking an assertion — resolves any review comments that arrived via `ce-resolve-pr-feedback mode:pipeline`, and stops when CI is decided or its budget (default 3 fix rounds) is hit. This replaces LFG's former hand-rolled CI loop; do not reimplement CI-watching here. Invoke it unconditionally whenever an open PR exists — a run whose CI looks likely-clean is not a reason to skip babysit and poll `gh pr checks` yourself. Green CI at one instant is not this step's goal: babysit also resolves review comments across the PR's life, so a passing check while advisory checks (e.g. Bugbot) are still pending or comments are unhandled is not "done" and never substitutes for the invocation.
 
-   1. Wait for CI to complete:
-
-      ```bash
-      gh pr checks "$BOOKMARK" --watch
-      ```
-
-      If the command exits 0, all checks passed. Break out of the loop and proceed to step 10.
-
-      If it exits non-zero, one or more checks failed. Continue to (2).
-
-   2. Identify failing checks and pull their failure logs. Use `gh pr checks "$BOOKMARK" --json name,state,conclusion,workflow,link` to enumerate failures, then for each failing check read the run logs:
-
-      ```bash
-      gh run view <run-id> --log-failed
-      ```
-
-      where `<run-id>` is parsed from the check's details URL or workflow run.
-
-   3. Read the failure logs, identify the root cause, and apply a fix in the JJ working-copy change. Do NOT weaken, skip, or mock the failing assertion to make it pass — repair the actual issue. If the failure is a flaky test that has no fix path, document that as the residual outcome below rather than retrying without a code change.
-
-   4. Record only the files you changed as a JJ change, move the retained `BOOKMARK` to the recorded revision when needed, and push only with `jj git push --remote "$REMOTE" --bookmark "exact:$BOOKMARK"`. The description must identify the CI failure that was repaired. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and message syntax found in actual `git log` output take precedence; apply compatible Go guidance only to quality, clarity, and structure. Do not impose fixed message syntax or examples.
-
-   5. Return to iteration (1) with the next attempt counter.
-
-   GATE: STOP iterating after 3 failed attempts. If CI is still red after 3 fix cycles:
-
-   - Compose a `## CI Failures Unresolved` markdown section listing each remaining failing check, the failure summary, and the run/check URL.
-   - Append or replace this section in the PR body. Resolve `WORKSPACE_ROOT="$(jj workspace root)"`; if that fails during recovery, use `WORKSPACE_ROOT="$PWD"`. Create `BODY_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw"`, and write the new body to a file under that directory, then run:
-
-     ```bash
-     gh pr edit PR_NUMBER --body-file BODY_FILE
-     ```
-
-   - Do NOT continue looping. The autopilot contract is "make residuals durable, then exit." Proceed to step 10.
+   Collect its structured result (`{ status, fixes_applied, residuals }`). It surfaces unfixable CI as a **run-report comment on the PR** and returns residuals — do **NOT** write a `## CI Failures Unresolved` PR-body section. A `needs-human` residual (a fix that would need a product/design decision) is deferred, not applied — that is the autopilot contract, unchanged. Do not block DONE once babysit has surfaced residuals.
 
 10. Output `<promise>DONE</promise>` when complete
 
-    If step 8 recorded a `New concepts:` trailer, first echo one line per concept: `New concept introduced: <name> — run /ce-explain <name> to go deeper.` Then output the DONE promise.
+    For the two user-runnable handoffs below, default to `/ce-explain <name>` / `/ce-babysit-pr <pr-url>`. Use `$ce-explain <name>` / `$ce-babysit-pr <pr-url>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
-Start with step 1 now. Remember: plan FIRST, then work. Never skip the plan.
+    If step 8 recorded a `New concepts:` trailer, first echo one line per concept: `New concept introduced: <name> — run <rendered ce-explain invocation> to go deeper.`
+
+    If an open PR exists, add one line pointing the user to the interactive watch-to-merge (pipeline mode stopped at "CI decided," not "merged"): `PR is moving — run <rendered ce-babysit-pr invocation> to watch it through review to merge.`
+
+    Before the DONE promise, inspect the canonical plan from step 1 for the semantic role `work-relationships`. Load `references/next-work-handoff.md` when that role exists, or when an older unmarked Product Contract appears to name the area this plan owns plus future separately planned areas and their relationships; the reference owns the cautious legacy semantic fallback, candidate selection, and opt-in offer contract. Do not match an exact visible heading, treat ordinary non-goals as future work, or invoke `ce-handoff` before the user explicitly accepts the offer. If neither semantic signal exists, do not load the reference and make no next-work offer.
+
+    Then output the DONE promise.
+
+Go.

@@ -1,6 +1,6 @@
 # Test Matrix Taxonomy
 
-Use these dimensions to turn a JJ stack diff into an exhaustive browser test matrix. Not every dimension applies to every change — pick the ones the diff actually touches, but err toward coverage. The goal is to test **complete user journeys**, not isolated widgets.
+Use these dimensions to turn a JJ change-stack diff into an exhaustive browser test matrix. Not every dimension applies to every change — pick the ones the diff actually touches, but err toward coverage. The goal is to test **complete user journeys**, not isolated widgets.
 
 ## 1. Journeys (the spine of the matrix)
 
@@ -25,15 +25,15 @@ The email test is the canonical example: "an email sends" is not a pass. Right r
 
 ## 3. Experiential checks — "does it feel right?"
 
-- Does it align with the product's vision and existing UX patterns?
+- Does it align with existing UX patterns?
 - Is the copy clear and consistent with the rest of the app?
 - Are loading, success, and transition states present and unsurprising?
 - Does the layout look intentional, or is something visibly broken/misaligned?
 - Would a real user understand what to do without explanation?
 
-### Persona paper cuts
+### Paper cuts
 
-Walk each flow as each primary persona (from STRATEGY.md "Who it's for", VISION.md, or a persona doc). A **paper cut** is small friction that passes functional tests but degrades the experience for that persona: confusing label, extra click, unexpected jump, slow-feeling step, missing feedback, copy that doesn't match how they think. Record the paper cut, which persona feels it, and severity. Functionally-passing scenarios can still carry paper cuts.
+A **paper cut** is small friction that passes functional tests but degrades the experience: a confusing label, extra click, unexpected jump, slow-feeling step, missing feedback, or inconsistent copy. Record the paper cut and severity. Functionally passing scenarios can still carry paper cuts.
 
 ## 4. Edge, error, and empty states
 

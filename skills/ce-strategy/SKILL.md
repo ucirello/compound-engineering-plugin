@@ -8,7 +8,7 @@ argument-hint: "[optional: section to revisit, e.g. 'metrics' or 'approach']"
 
 **Note: The current year is 2026.** Use this when dating the strategy document.
 
-This skill produces and maintains `STRATEGY.md` - a short, durable anchor document that captures what the product is, who it serves, how it succeeds, and where the team is investing. It lives at the JJ workspace root as a canonical, well-known file (peer of `README.md`). Downstream skills (`ce-ideate`, `ce-brainstorm`, `ce-plan`) read it as grounding when it exists.
+`ce-strategy` produces and maintains `STRATEGY.md` - a short, durable anchor document that captures what the product is, who it serves, how it succeeds, and where the team is investing. It lives at the repo root as a canonical, well-known file (peer of `README.md`). Downstream skills (`ce-ideate`, `ce-brainstorm`, `ce-plan`) read it as grounding when it exists.
 
 The document is short and structured on purpose. Good answers to a handful of sharp questions produce a better strategy than any amount of prose. This skill asks those questions, pushes back on weak answers, and writes the doc.
 
@@ -20,7 +20,7 @@ Ask one question at a time. Prefer free-form responses for the substantive secti
 
 ## Focus Hint
 
-<focus_hint> #$ARGUMENTS </focus_hint>
+The **focus hint** is any optional argument this skill was invoked with — present in the current prompt or conversation, whether the user gave it directly or a calling skill passed it (empty if none was given).
 
 Interpret any argument as an optional focus: a section name to revisit (`metrics`, `approach`, `tracks`) or a scope hint. With no argument, proceed open-ended and let the file state decide the path.
 
@@ -35,7 +35,7 @@ Interpret any argument as an optional focus: a section name to revisit (`metrics
 
 ### Phase 0: Route by File State
 
-Resolve the workspace root with `jj workspace root`; if that fails because the current directory is not in a JJ workspace, use `pwd`. Read `STRATEGY.md` at that root using the native file-read tool, and use that same path for every later read or write.
+Read `STRATEGY.md` using the native file-read tool.
 
 - **File does not exist** -> First run. Go to Phase 1.
 - **File exists and argument names a specific section** -> Targeted update. Go to Phase 2.
@@ -83,7 +83,7 @@ Write the updated doc back to `STRATEGY.md`.
 
 After writing, note in one line where the file lives and that `ce-ideate`, `ce-brainstorm`, and `ce-plan` will pick it up as grounding on their next run.
 
-If no downstream skill has run yet in this workspace, suggest `ce-ideate` or `ce-brainstorm` skills as a next step.
+If no downstream skill has run yet on this repo, suggest `ce-ideate` or `ce-brainstorm` skills as a next step.
 
 ## What This Skill Does Not Do
 

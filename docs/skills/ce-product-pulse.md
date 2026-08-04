@@ -19,6 +19,26 @@ The compound-engineering ideation chain is `/ce-ideate → /ce-brainstorm → /c
 
 ---
 
+## Example invocations
+
+```text
+# Use the configured default window, or 24 hours when none is configured
+/ce-product-pulse
+
+# Review a weekly window
+/ce-product-pulse 7d
+
+# Run a narrow launch check while still respecting ingestion delay
+/ce-product-pulse 1h
+
+# Re-run the source and metric setup interview
+/ce-product-pulse reconfigure
+```
+
+Choose the shortest window that answers the question: a launch check and a weekly operating review should not use the same horizon.
+
+---
+
 ## The Problem
 
 Most "how are we doing?" reports fail in predictable ways:
@@ -185,7 +205,7 @@ Past reports remain in the folder as a browseable timeline. The folder is meant 
 | `24h`, `48h`, `72h`, `7d`, `30d`, `1h` | Trailing time window |
 | `setup` / `reconfigure` / `edit config` | Re-run the interview regardless of config state |
 
-Configuration lives in `.compound-engineering/config.local.yaml` (gitignored, machine-local) under `pulse_*` keys: product name, primary event, value event, completion events, quality scoring, quality dimension, analytics source, tracing source, payments source, DB enabled, per-metric source overrides, pending metrics, excluded metrics, default lookback.
+Configuration lives in `.compound-engineering/config.local.yaml` (gitignored, machine-local) under `pulse_*` keys: product name, primary event, value event, completion events, quality scoring, quality dimension, analytics source, tracing source, payments source, DB enabled, per-metric source overrides, pending metrics, excluded metrics, default lookback. See the [configuration reference](./configuration.md) for the complete key list.
 
 ---
 

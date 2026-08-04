@@ -34,8 +34,15 @@ cd "$PROJECT_DIR" || {
   exit 0
 }
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo '{"mode":"serial","blockers":[{"type":"missing_dependency","description":"python3 is required for structured probe output","suggestion":"Install python3 or skip the probe and review parallel-readiness manually"}],"blocker_count":1}'
+PY=""
+for c in python3 python py; do
+  if command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1; then
+    PY="$c"
+    break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo '{"mode":"serial","blockers":[{"type":"missing_dependency","description":"A working Python 3 interpreter is required for structured probe output","suggestion":"Install Python 3 (python3, python, or py on PATH) or skip the probe and review parallel-readiness manually"}],"blocker_count":1}'
   exit 0
 fi
 
@@ -46,7 +53,7 @@ add_blocker() {
   local type="$1"
   local desc="$2"
   local suggestion="$3"
-  BLOCKERS=$(echo "$BLOCKERS" | python3 -c "
+  BLOCKERS=$(echo "$BLOCKERS" | "$PY" -c "
 import json, sys
 b = json.load(sys.stdin)
 b.append({'type': '$type', 'description': '''$desc''', 'suggestion': '''$suggestion'''})
@@ -87,14 +94,14 @@ if [[ -n "$MEASUREMENT_CMD" ]]; then
 fi
 
 # Check 2: SQLite databases in the measurement workdir or declared shared files
-SQLITE_FILES=$(find "${SCAN_PATHS[@]}" -maxdepth 4 -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \) ! -path '*/.jj/*' ! -path '*/node_modules/*' ! -path '*/.claude/*' ! -path '*/.context/*' ! -path '*/.tmp/*' 2>/dev/null | head -10 || true)
+SQLITE_FILES=$(find "${SCAN_PATHS[@]}" -maxdepth 4 -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \) ! -path '*/.jj/*' ! -path '*/node_modules/*' ! -path '*/.context/*' ! -path '*/.tmp/*' 2>/dev/null | head -10 || true)
 if [[ -n "$SQLITE_FILES" ]]; then
   FILE_COUNT=$(echo "$SQLITE_FILES" | wc -l | tr -d ' ')
   add_blocker "shared_file" "Found $FILE_COUNT SQLite database file(s)" "Copy database files into each experiment workspace"
 fi
 
 # Check 3: Lock/PID files in the measurement workdir or declared shared files
-LOCK_FILES=$(find "${SCAN_PATHS[@]}" -maxdepth 4 -type f \( -name '*.lock' -o -name '*.pid' \) ! -path '*/.jj/*' ! -path '*/node_modules/*' ! -path '*/.claude/*' ! -path '*/.context/*' ! -path '*/.tmp/*' ! -name 'package-lock.json' ! -name 'yarn.lock' ! -name 'bun.lock' ! -name 'bun.lockb' ! -name 'Gemfile.lock' ! -name 'poetry.lock' ! -name 'Cargo.lock' 2>/dev/null | head -10 || true)
+LOCK_FILES=$(find "${SCAN_PATHS[@]}" -maxdepth 4 -type f \( -name '*.lock' -o -name '*.pid' \) ! -path '*/.jj/*' ! -path '*/node_modules/*' ! -path '*/.context/*' ! -path '*/.tmp/*' ! -name 'package-lock.json' ! -name 'yarn.lock' ! -name 'bun.lock' ! -name 'bun.lockb' ! -name 'Gemfile.lock' ! -name 'poetry.lock' ! -name 'Cargo.lock' 2>/dev/null | head -10 || true)
 if [[ -n "$LOCK_FILES" ]]; then
   FILE_COUNT=$(echo "$LOCK_FILES" | wc -l | tr -d ' ')
   add_blocker "lock_file" "Found $FILE_COUNT lock/PID file(s) that may cause contention" "Ensure measurement command cleans up lock files, or run in serial mode"
@@ -106,18 +113,18 @@ if [[ -n "$MEASUREMENT_CMD" ]] && echo "$MEASUREMENT_CMD" | grep -qiE '(cuda|gpu
 fi
 
 # Determine mode
-BLOCKER_COUNT=$(echo "$BLOCKERS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+BLOCKER_COUNT=$(echo "$BLOCKERS" | "$PY" -c "import json,sys; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
 
 if [[ "$BLOCKER_COUNT" == "0" ]]; then
   MODE="parallel"
-elif echo "$BLOCKERS" | python3 -c "import json,sys; b=json.load(sys.stdin); exit(0 if any(x['type']=='exclusive_resource' for x in b) else 1)" 2>/dev/null; then
+elif echo "$BLOCKERS" | "$PY" -c "import json,sys; b=json.load(sys.stdin); exit(0 if any(x['type']=='exclusive_resource' for x in b) else 1)" 2>/dev/null; then
   MODE="serial"
 else
   MODE="user-decision"
 fi
 
 # Output JSON result
-python3 -c "
+"$PY" -c "
 import json
 print(json.dumps({
     'mode': '$MODE',

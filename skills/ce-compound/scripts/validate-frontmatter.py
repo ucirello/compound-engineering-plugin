@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate ce-compound docs/solutions/ frontmatter for parser-safety issues.
+"""Validate ce-compound learning-doc frontmatter for parser-safety issues.
 
 Usage:
     python3 validate-frontmatter.py <doc-path>
@@ -19,7 +19,7 @@ Checks (regex-based, no YAML parser dependency):
     1. File starts and ends frontmatter with `---` lines (matched as full
        lines, not substrings — `----` and `---extra` are rejected)
     2. No top-level scalar value contains ` #` unquoted (silent comment
-       truncation found during prior review)
+       truncation — what Codex caught on PR #695)
     3. No top-level scalar value contains `: ` unquoted (mapping confusion —
        what surfaced in a 2026-04-16 plan doc's `title:` field)
 

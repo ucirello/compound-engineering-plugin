@@ -1,6 +1,6 @@
 # Experiment Worker Prompt Template
 
-This template is used by the orchestrator to dispatch each experiment to a subagent or Codex. Variable substitution slots are filled at spawn time.
+This template is used by the orchestrator to dispatch each experiment to a subagent. Variable substitution slots are filled at spawn time.
 
 ---
 
@@ -55,9 +55,9 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 2. Implement the hypothesis described above
 3. Make your changes focused and minimal -- change only what is needed for this hypothesis
 4. Do NOT run the measurement harness (the orchestrator handles this)
-5. Do NOT describe the JJ change (the orchestrator handles the winning change before integration)
+5. Do NOT describe, rebase, or bookmark the change (the orchestrator handles accepted changes)
 6. Do NOT modify files outside the mutable scope
-7. When done, run `jj diff --stat -r @` so the orchestrator can see your changes
+7. When done, run `jj diff --stat` so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.
@@ -82,8 +82,6 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 
 ## Notes
 
-- This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch: write the filled template under `$(jj workspace root)/.tmp/rocketclaw/optimize/` and pipe it via stdin; if root discovery fails, use `$PWD/.tmp/rocketclaw/optimize/`.
-- For subagent dispatch: pass the filled template as the subagent prompt.
+- Pass the filled template as the subagent prompt. If the harness requires a prompt file, write it under the current workspace's `.tmp/rocketclaw/ce-optimize/<spec-name>/prompts/` directory.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

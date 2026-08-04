@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip, standalone video, standalone audio, and
 meeting notes text/markdown. The script extracts transcript, high-signal
-video frames when available, and planning-friendly markdown artifacts.
+video frames when available, and workflow-friendly markdown artifacts.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted evidence/kickoff artifacts. Defaults to docs/brainstorms/riffrec-feedback/<source-stem> when available; durable ce-brainstorm outputs live in docs/plans/.",
+        help="Directory for extracted evidence/kickoff artifacts. Defaults to docs/brainstorms/riffrec-feedback/<source-stem> when available; durable ce-brainstorm outputs live in the plans artifact directory.",
     )
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
@@ -680,7 +680,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a requirements document.")
+    lines.append("- Use workspace-relative screenshot paths when moving evidence into a requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -853,7 +853,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; include generated Markdown/JSON/manifests in a JJ change when useful for brainstorm/planning traceability.",
+        "- Recording policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; record generated Markdown/JSON/manifests in JJ when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -874,10 +874,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not safe to publish by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not safe to record by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be included in a change by default.")
+    lines.append("Extracted screenshots are retained locally for agent inspection and should not be recorded by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -896,7 +896,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not include these in a change unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally local-only by default. Do not record these unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")
@@ -1113,8 +1113,8 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
-    print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under docs/plans/.")
+    print(f"Brainstorm handoff: invoke `ce-brainstorm` with {display_path(kickoff_md, repo_root)}")
+    print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 
 

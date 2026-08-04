@@ -116,29 +116,29 @@ Produce a complete Go/No-Go checklist that an engineer can literally execute:
 ```markdown
 # Deployment Checklist: [PR Title]
 
-## Pre-Deploy (Required)
+## 🔴 Pre-Deploy (Required)
 - [ ] Run baseline SQL queries
 - [ ] Save expected values
 - [ ] Verify staging test passed
 - [ ] Confirm rollback plan reviewed
 
-## Deploy Steps
-1. [ ] Deploy revision [change ID]
+## 🟡 Deploy Steps
+1. [ ] Deploy revision [commit ID]
 2. [ ] Run migration
 3. [ ] Enable feature flag
 
-## Post-Deploy (Within 5 Minutes)
+## 🟢 Post-Deploy (Within 5 Minutes)
 - [ ] Run verification queries
 - [ ] Compare with baseline
 - [ ] Check error dashboard
 - [ ] Spot check in console
 
-## Monitoring (24 Hours)
+## 🔵 Monitoring (24 Hours)
 - [ ] Set up alerts
 - [ ] Check metrics at +1h, +4h, +24h
 - [ ] Close deployment ticket
 
-## Rollback (If Needed)
+## 🔄 Rollback (If Needed)
 1. [ ] Disable feature flag
 2. [ ] Deploy rollback revision
 3. [ ] Run data restoration
@@ -154,4 +154,4 @@ Invoke this agent when:
 - Data Migration Expert flags critical findings
 - Any change that could silently corrupt/lose data
 
-Be thorough. Be specific. Produce executable checklists, not vague recommendations.
+Every checklist item must name the command or observable signal that proves the step succeeded.

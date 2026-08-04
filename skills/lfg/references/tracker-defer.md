@@ -1,6 +1,6 @@
 # Tracker Detection and Defer Execution
 
-This reference covers how Defer actions file tickets in the project's tracker. It is loaded by `SKILL.md` when Interactive mode's routing question needs to decide whether to offer option C (File tickets), when the walk-through's Defer option executes, and when the bulk-preview of option C is shown. It is also loaded by autonomous callers that need to file residual actionable findings without user prompts — see Execution Modes below.
+This reference covers how Defer actions file tickets in the project's tracker. It is loaded by `SKILL.md` when Interactive mode's routing question needs to decide whether to offer option C (File tickets), when the walk-through's Defer option executes, and when the bulk-preview of option C is shown. It is also loaded by autonomous callers (e.g., `lfg`) that need to file residual actionable findings without user prompts — see Execution Modes below.
 
 ---
 
@@ -18,11 +18,11 @@ Used by `ce-code-review` Interactive mode's routing question, walk-through Defer
 
 ### Non-interactive mode
 
-Used by autonomous callers that must not prompt. All blocking questions are skipped; the fallback chain is executed silently in order. Behavior:
+Used by autonomous callers like `lfg` that must not prompt. All blocking questions are skipped; the fallback chain is executed silently in order. Behavior:
 
 - No confirmation on the first generic-label Defer; proceed directly.
 - On execution failure, automatically fall to the next tier without prompting. Record the failure.
-- On total chain exhaustion (every tier failed or no sink available), return findings in the `no_sink` bucket so the caller can route them to another surface (e.g., inline them in a PR description).
+- On total chain exhaustion (every tier failed or no sink available), return findings in the `no_sink` bucket so the caller can route them to another durable surface.
 - Return a structured result: `{ filed: [{ finding_id, tracker, url }], failed: [{ finding_id, tracker, reason }], no_sink: [{ finding_id, title, severity, file, line }] }`.
 
 The caller decides how to surface the result to the user. The non-interactive mode treats "no sink available" as a data-producing outcome, not a prompt trigger.
@@ -90,16 +90,17 @@ Previously this chain included a third in-session fallback tier. That tier was r
 
 ## Ticket composition
 
-Every Defer action creates a ticket with the following content, adapted to the tracker's capabilities:
+Every Defer action creates a ticket with the following content, adapted to the tracker's capabilities. Compose transient ticket bodies under the repository's `.tmp/` directory and remove them after use. The project's local ticket syntax and conventions take precedence; never require a fixed ticket message.
 
 - **Title:** the merged finding's `title` (schema-capped at 10 words).
 - **Body:**
-  - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `$(jj workspace root)/.tmp/rocketclaw/ce-code-review/<run-id>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). If `jj workspace root` cannot be resolved during recovery, use `$PWD/.tmp/rocketclaw/ce-code-review/<run-id>/{reviewer}.json`. Never use an OS/global temporary API or path. Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
+  - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `<artifact-path>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
   - Suggested fix (when present in the finding's `suggested_fix`).
   - Evidence (direct quotes from the reviewer's artifact).
+  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the active bookmark (when present), change ID, and current revision identifier, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
   - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Reviewer(s): <list>`, `Finding ID: <fingerprint>`.
 - **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`) and, when the tracker convention supports it, a category label sourced from the reviewer name.
-- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with a continuation notice pointing to `$(jj workspace root)/.tmp/rocketclaw/ce-code-review/<run-id>/` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable. If `jj workspace root` cannot be resolved during recovery, point to `$PWD/.tmp/rocketclaw/ce-code-review/<run-id>/` instead. Never use an OS/global temporary API or path.
+- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in ce-code-review run artifact: <artifact-path>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
 
 The finding_id is a stable fingerprint composed as `normalize(file) + line_bucket(line, +/-3) + normalize(title)` — the same fingerprint used by the merge pipeline.
 

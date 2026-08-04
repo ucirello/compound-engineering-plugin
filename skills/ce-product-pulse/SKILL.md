@@ -14,19 +14,19 @@ allowed-tools:
 
 # Product Pulse
 
-`ce-product-pulse` queries the product's data sources for a given time window and produces a compact, single-page report covering usage, performance, errors, and followups. The report is saved to `docs/pulse-reports/` and the key points are surfaced in chat.
+`ce-product-pulse` queries the configured data sources for a given time window and produces a compact, single-page report covering usage, performance, errors, and followups. The report is saved to `<root>/pulse-reports/` and the key points are surfaced in chat.
 
-The skill does not mutate the product, the database, or any external system. Its only writes are pulse settings appended to `.rocketclaw/config.local.yaml` (ignored, machine-local) and the report file (`docs/pulse-reports/...`). MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them.
+The skill does not mutate the application, the database, or any external system. Its only writes are pulse settings merged into `.rocketclaw/config.local.yaml` (the unified local config, ignored by JJ, machine-local) and the report file (`<root>/pulse-reports/...`). MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them.
 
 ## Interaction Method
 
-Default to the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+Default to the active harness's blocking question capability. Fall back to numbered options in chat only when no blocking question capability exists or the call errors, not merely because capability discovery or schema loading is required. Never silently skip the question.
 
 Ask one question at a time. Reserve multi-select for first-run configuration only.
 
 ## Lookback Window
 
-<lookback> #$ARGUMENTS </lookback>
+The **lookback window** is the time range this skill was invoked with (e.g. `24h`, `7d`) — present in the current prompt or conversation, whether the user gave it directly or a calling skill passed it.
 
 Interpret the argument as a time window. Common forms:
 
@@ -38,13 +38,33 @@ If the argument is empty, default to `pulse_lookback_default` from config (resol
 
 Apply a **15-minute trailing buffer** to the window's upper bound. Many analytics and tracing tools have ingestion lag; querying right up to `now` under-reports the most recent events. For a `24h` window, query `[now - 24h - 15m, now - 15m]`.
 
+## Artifact Root
+
+This skill writes pulse reports under `<root>/pulse-reports/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it.
+
+<!-- ce-docs-root:start -->
+**Resolve the artifact root `<root>` before composing any artifact path.**
+
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml`; first non-empty value wins (`<workspace-root>` = `jj workspace root`, falling back to the physical current directory when unavailable). Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under VCS metadata. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
+<!-- ce-docs-root:end -->
+
+## Workspace-Local Scratch
+
+If temporary run artifacts are needed, resolve `<workspace-root>` with `jj workspace root`; if that fails, use the physical current directory. Write them only under `<workspace-root>/.tmp/rocketclaw/ce-product-pulse/<run-id>/`. Never use an OS or global temporary directory.
+
+## JJ Change Descriptions
+
+If this workflow composes, edits, validates, or recommends a JJ change description, inspect the project's active instructions and runtime `jj log` history first. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. Active project instructions and change-description syntax inferred at runtime from `jj log` always win. Preserve the site's semantic content while adapting syntax to runtime conventions. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, example, bookmark namespace, or command sequence. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a description field. Do not add creator, model, provider, tool, or runtime attribution to the JJ description.
+
 ## Core Principles
 
 1. **Read it like a founder.** No hardcoded thresholds. Do not label things "bad" or "good" by default - present the numbers and let the reader judge.
 2. **Single page.** Target 30-40 lines of terminal output. If the report is getting long, cut.
 3. **No PII in saved reports.** Do not include user emails, account IDs, or message content in the report written to disk.
 4. **Parallel where safe, serial where it matters.** Analytics and tracing queries run in parallel. Database queries run serially to avoid load.
-5. **Memory through saved reports.** Every run writes to `docs/pulse-reports/` so past pulses are browseable as a timeline.
+5. **Memory through saved reports.** Every run writes to `<root>/pulse-reports/` so past pulses are browseable as a timeline.
 6. **Read-only database access only.** If a database is used as a data source, the connection must be read-only. The interview refuses to accept read-write credentials. Database access is optional - many products complete the pulse with analytics and tracing alone.
 7. **Strategy-seeded when available.** If `STRATEGY.md` exists, the interview reads it before asking questions and carries forward the product name and key metrics as seeds. The goal of data-source setup is to wire up whatever connections are needed to actually measure those metrics.
 
@@ -52,10 +72,7 @@ Apply a **15-minute trailing buffer** to the window's upper bound. Many analytic
 
 ### Phase 0: Route by Config State
 
-**Read config.** The workspace root is pre-resolved at skill load:
-!`jj workspace root 2>/dev/null || pwd -P`
-
-If the line above is an absolute path, use it as `<workspace-root>`. If it is empty or still shows a backtick command string (a non-Claude harness that did not run the pre-resolution), resolve `<workspace-root>` at runtime by running `jj workspace root 2>/dev/null || pwd -P` with the shell tool. Then read `<workspace-root>/.rocketclaw/config.local.yaml` with the native file-read tool (e.g., Read in Claude Code, read_file in Codex). If the file does not exist, treat this as a first run. Otherwise extract values for the `pulse_*` keys listed under "Config keys" below.
+**Read config.** Resolve `<workspace-root>` at runtime by running `jj workspace root` with the shell tool, falling back to the physical current directory when unavailable. Then read `<workspace-root>/.rocketclaw/config.local.yaml` with the native file-read capability. If the file does not exist, treat this as a first run. Otherwise extract values for the `pulse_*` keys listed under "Config keys" below.
 
 **Config keys:**
 - `pulse_product_name` -- string, used in report titles. Required for routing: if unset, skill is unconfigured.
@@ -112,13 +129,13 @@ Apply the pushback rules in `references/interview.md` for each section. Treat ev
 
 If the user offers read-write database access, refuse and offer the alternatives documented in `references/interview.md` section 6.
 
-Write the captured config to `<workspace-root>/.rocketclaw/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the workspace root with `jj workspace root 2>/dev/null || pwd -P`. To write: (1) if the file or directory does not exist, create `.rocketclaw/` and write the YAML file; (2) if the file exists, merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `work_delegate_*`) untouched. If `.rocketclaw/config.local.yaml` is not already covered by the workspace's `.gitignore`, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
+Write the captured config to `<workspace-root>/.rocketclaw/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the workspace root with `jj workspace root`, falling back to the physical current directory when unavailable. To write: (1) if the file or directory does not exist, create `.rocketclaw/` and write the YAML file; (2) if the file exists, merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `plan_*`) untouched. If `.rocketclaw/config.local.yaml` is not already covered by the workspace's ignore rules, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
 
 After the config is written, run the **scheduling recommendation** from `references/interview.md` section 9: offer to set up a recurring run so the user gets the pulse on a cadence instead of having to remember to run it. Accept yes/no/later. If yes, hand off to whichever scheduling primitive the current harness exposes — the in-plugin `schedule` skill if it is installed, otherwise note that scheduling is platform-specific (cron, GitHub Actions, the host's own automation) and emit a brief hint covering what would need to run. Do not schedule inline. Then proceed to Phase 2.
 
 ### Phase 2: Run the Pulse
 
-If Phase 1 ran (first run, or `setup`/`reconfigure` argument), re-read `.rocketclaw/config.local.yaml` from the workspace root using the native file-read tool to pick up any edits accepted during the Phase 1 review step. Otherwise, use the `pulse_*` values already extracted in Phase 0. Apply hard defaults for any unset settings (see Phase 0 "Config keys").
+If Phase 1 ran (first run, or `setup`/`reconfigure` argument), re-read `.rocketclaw/config.local.yaml` from the workspace root using the native file-read capability to pick up any edits accepted during the Phase 1 review step. Otherwise, use the `pulse_*` values already extracted in Phase 0. Apply hard defaults for any unset settings (see Phase 0 "Config keys").
 
 #### 2.1 Dispatch Queries
 
@@ -153,7 +170,7 @@ Keep the total to 30-40 lines. If a section is thin, leave it thin; do not pad.
 
 #### 2.4 Write the Report
 
-Save to `docs/pulse-reports/YYYY-MM-DD_HH-MM.md` using the local time of the run. Create `docs/pulse-reports/` if it does not exist.
+Save to `<root>/pulse-reports/YYYY-MM-DD_HH-MM.md` using the local time of the run. Create `<root>/pulse-reports/` if it does not exist.
 
 Surface the Headlines and top Followup in chat. Provide the full file path so the user can open the saved report.
 
@@ -168,7 +185,7 @@ Never schedule automatically. Any scheduling handoff requires explicit confirmat
 
 ## What This Skill Does Not Do
 
-- Does not report "what shipped." Shipped work lives in the issue tracker and change history shown by `jj log`, not here. Pulse is strictly about user experience and system performance.
+- Does not report "what shipped." Shipped work lives in the issue tracker and JJ history, not here. Pulse is strictly about user experience and system performance.
 - Does not set thresholds or alert the user. The reader interprets.
 - Does not persist PII in saved reports.
 - Does not mutate the database or any external system. All queries are read-only.

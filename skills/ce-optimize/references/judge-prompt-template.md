@@ -103,8 +103,9 @@ Rules:
 
 ## Notes
 
-- Designed for Haiku by default -- prompts are concise and well-structured for smaller models
+- Designed to remain concise and structured for the runtime's available judge model
 - The rubric is part of the immutable measurement harness -- the experiment agent cannot modify it
 - The `ambiguous` flag on items helps the orchestrator identify noisy evaluations without forcing bad scores
 - For singleton evaluation, the orchestrator provides cluster summaries (not full contents) to keep judge context lean
 - Each sub-agent evaluates one batch independently -- sub-agents do not see each other's results
+- **That independence is required, not merely preferred.** These scores gate accept/revert, so a judge must be a separate context from the one that authored the hypothesis and ran the experiment. Where no dispatch is available, block the judge pass rather than scoring inline — an orchestrator grading its own experiment is not a measurement.

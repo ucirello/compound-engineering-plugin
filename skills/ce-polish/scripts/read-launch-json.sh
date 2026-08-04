@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# read-launch-json.sh — read .claude/launch.json from the repo root and emit
+# read-launch-json.sh — read .rocketclaw/launch.json from the workspace
+# root and emit
 # the selected configuration as JSON on stdout, or a sentinel on failure.
 #
 # Usage:
@@ -33,15 +34,14 @@ set -u
 
 REQUESTED_NAME="${1:-}"
 
-workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
-REPO_ROOT="$workspace_root"
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
   exit 1
 fi
 
-LAUNCH_PATH="$REPO_ROOT/.claude/launch.json"
+LAUNCH_PATH="$WORKSPACE_ROOT/.rocketclaw/launch.json"
 
 if [ ! -f "$LAUNCH_PATH" ]; then
   echo "__NO_LAUNCH_JSON__"

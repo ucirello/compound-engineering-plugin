@@ -31,8 +31,26 @@ afterAll(() => {
 const REAL_TOOLS = [
   "bash", "sh", "jq", "python3", "date", "sed", "tr", "cat", "wc", "awk",
   "dirname", "basename", "mktemp", "env", "perl", "timeout", "gtimeout", "sleep", "rm",
-  "mv", "chmod", "cp", "printf", "kill", "mkdir",
+  "mv", "chmod", "cp", "printf", "kill", "mkdir", "grep", "tail", "ps",
 ]
+// A version-manager shim (pyenv/rbenv/perlbrew/mise) for an interpreter is a
+// wrapper *script*, not a symlink: `command -v python3` returns the shim, but
+// the sandbox PATH deliberately excludes the manager, so the linked shim cannot
+// exec (the script's JSON-recovery helper then fails to start Python). Resolve
+// interpreters to their real standalone binary by asking the interpreter
+// itself, so the sandbox links the executable rather than the shim. Already-real
+// paths and non-interpreter tools pass through unchanged.
+function resolveInterpreter(tool: string, resolved: string): string {
+  const probe =
+    tool === "python3"
+      ? ["-c", "import sys; print(sys.executable)"]
+      : tool === "perl"
+        ? ["-MConfig", "-e", "print $Config{perlpath}"]
+        : null
+  if (!probe) return resolved
+  const real = spawnSync(resolved, probe, { encoding: "utf8" }).stdout?.trim()
+  return real && existsSync(real) ? real : resolved
+}
 let resolvedTools: Array<[string, string]> | null = null
 function realToolPaths(): Array<[string, string]> {
   if (resolvedTools) return resolvedTools
@@ -42,7 +60,8 @@ function realToolPaths(): Array<[string, string]> {
       encoding: "utf8",
       shell: "/bin/bash",
     }).stdout?.trim()
-    if (real && existsSync(real)) resolvedTools.push([tool, real])
+    if (real && existsSync(real))
+      resolvedTools.push([tool, resolveInterpreter(tool, real)])
   }
   return resolvedTools
 }
@@ -57,7 +76,7 @@ const SCRIPT = path.join(
   "../../skills/ce-doc-review/scripts/cross-model-doc-review.sh",
 )
 
-const ROUTES = ["codex", "claude", "grok-cli", "grok-cursor", "composer"] as const
+const ROUTES = ["codex", "claude", "grok-cli", "grok-cursor", "cursor", "composer"] as const
 
 // Flags that must NEVER appear on any route — they would grant the peer write /
 // auto-approve / no-sandbox privileges (R17).
@@ -69,9 +88,10 @@ const NEVER_FLAGS = [
   "--dangerously-skip-permissions",
 ]
 
-function emitAdapter(route: string): string {
+function emitAdapter(route: string, extraEnv: Record<string, string> = {}): string {
   const r = spawnSync("bash", [SCRIPT, "--emit-adapter", route], {
     encoding: "utf8",
+    env: { ...process.env, ...extraEnv },
   })
   expect(r.status).toBe(0)
   return (r.stdout ?? "").trim()
@@ -121,7 +141,19 @@ function run(
   runDir: string,
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  const r = spawnSync("bash", [SCRIPT, ...args], { encoding: "utf8", env })
+  const effectiveEnv = { ...env }
+  if (!("CROSS_MODEL_DRY_RUN" in effectiveEnv) && !("CROSS_MODEL_FIXED_ROUTE" in effectiveEnv)) {
+    const target = args[1]
+    const grokAvailable = target === "grok" && Boolean(spawnSync("command", ["-v", "grok"], {
+      encoding: "utf8",
+      env: effectiveEnv,
+      shell: "/bin/bash",
+    }).stdout?.trim())
+    effectiveEnv.CROSS_MODEL_FIXED_ROUTE = target === "grok"
+      ? (grokAvailable ? "grok-cli" : "grok-cursor")
+      : target
+  }
+  const r = spawnSync("bash", [SCRIPT, ...args], { encoding: "utf8", env: effectiveEnv })
   return {
     code: r.status ?? -1,
     stdout: r.stdout ?? "",
@@ -150,6 +182,20 @@ function resolvePeers(
 }
 
 describe("cross-model-doc-review route safety (R17)", () => {
+  test("EXIT cleanup removes prompt logs, raw output, and the private peer workspace", () => {
+    const source = readFileSync(SCRIPT, "utf8")
+    expect(source).toContain("trap 'cleanup_temp' EXIT")
+    expect(source).toContain('rm -f "$RAW_OUT"')
+    expect(source).toContain('rm -rf "$PEER_WORKDIR"')
+    // Zombies report as Z+ on macOS; exact "Z" alone leaves them "alive".
+    expect(source).toContain('[ "${st#Z}" = "$st" ]')
+    // Match peer-job-runner: empty ps state => not alive; kill -0 only if ps missing.
+    expect(source).toContain("command -v ps")
+    expect(source).toContain("[ -n \"$st\" ] || return 1")
+    // After reap no longer waits, TERM/INT must wait the peer leader.
+    expect(source).toMatch(/reap "\$_term_peer"[\s\S]*?wait "\$_term_peer"/)
+  })
+
   test("every route carries read-only / no-prompt / least-privilege flags and no NEVER-use flag", () => {
     for (const route of ROUTES) {
       const cmd = emitAdapter(route)
@@ -161,21 +207,74 @@ describe("cross-model-doc-review route safety (R17)", () => {
     }
   })
 
-  test("codex: read-only sandbox + skip-git-repo-check + high reasoning", () => {
+  test("live dispatch without a host-sanctioned fixed route fails closed", () => {
+    const invoked = path.join(mkTempRoot("xmodel-dr-invoked-"), "marker")
+    const { env } = sandbox(["claude"], `#!/bin/sh\n: > '${invoked}'\n`)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["codex", "claude", "adversarial", doc, "plan", "none", runDir], runDir, {
+      ...env,
+      CROSS_MODEL_FIXED_ROUTE: "",
+    })
+    expect(existsSync(invoked)).toBe(false)
+    expect(r.files).not.toContain("adversarial-claude.json")
+    expect(r.stderr).toContain("host must resolve one fixed route before egress")
+  })
+
+  test("live dispatch runs a sanctioned target later than the discovery cap", () => {
+    const markers = mkTempRoot("xmodel-dr-fixed-target-")
+    const body = `#!/bin/sh
+name="\${0##*/}"
+: > "\${MARKER_DIR}/\${name}"
+cat >/dev/null
+printf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[],"residual_risks":[],"deferred_questions":[]}}'
+`
+    const { env } = sandbox(["claude", "cursor-agent"], body)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["codex", "claude,cursor", "adversarial", doc, "plan", "none", runDir], runDir, {
+      ...env,
+      MARKER_DIR: markers,
+      CROSS_MODEL_FIXED_ROUTE: "cursor",
+      CROSS_MODEL_MAX_PEERS: "1",
+    })
+    expect(existsSync(path.join(markers, "cursor-agent"))).toBe(true)
+    expect(existsSync(path.join(markers, "claude"))).toBe(false)
+    expect(r.files).toContain("adversarial-cursor.json")
+  })
+
+  test("schema-valid output from a timed-out peer is never published", () => {
+    const body = `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"reviewer":"adversarial","findings":[{"section":"X","title":"late"}]}'\nsleep 5\n`
+    const { env } = sandbox(["cursor-agent"], body)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["claude", "cursor", "adversarial", doc, "plan", "none", runDir], runDir, {
+      ...env,
+      CROSS_MODEL_HARD_SECS: "1",
+    })
+    expect(r.files).not.toContain("adversarial-cursor.json")
+    expect(r.stderr).toContain("peer exited non-zero or timed out")
+  })
+
+  test("codex: read-only sandbox + skip-git-repo-check + xhigh reasoning", () => {
     const cmd = emitAdapter("codex")
     expect(cmd).toContain("-s read-only")
     expect(cmd).toContain("--skip-git-repo-check")
-    expect(cmd).toContain('model_reasoning_effort="high"')
-    expect(cmd).toContain("gpt-5.6-sol")
+    expect(cmd).toContain('model_reasoning_effort="xhigh"')
+    expect(cmd).toContain("gpt-5.6-luna")
   })
 
-  test("claude: all tools disabled + bare (no project context) + dontAsk + effort high", () => {
+  test("claude: all tools disabled + safe mode + dontAsk + effort high", () => {
     const cmd = emitAdapter("claude")
     expect(cmd).toContain("--permission-mode dontAsk")
     expect(cmd).toContain("--tools") // allowlist deny-all ("" disables every built-in)
-    expect(cmd).toContain("--bare") // skip CLAUDE.md/MCP/hooks/plugins auto-discovery
+    expect(cmd).toContain("--safe-mode")
+    expect(cmd).toContain("--disable-slash-commands")
+    expect(cmd).not.toContain("--bare")
     expect(cmd).toContain("--effort high")
     expect(cmd).toContain("--model opus")
+    expect(cmd).toContain("--output-format stream-json")
+    expect(cmd).toContain("--verbose")
   })
 
   test("grok CLI: deny Read + web/subagents off + dontAsk + effort high", () => {
@@ -186,17 +285,22 @@ describe("cross-model-doc-review route safety (R17)", () => {
     expect(cmd).toContain("--permission-mode dontAsk")
     expect(cmd).toContain("--effort high")
     expect(cmd).toContain("--model grok-4.5")
+    expect(cmd).toContain("--json-schema")
+    expect(cmd).toContain("--output-format json")
+    expect(cmd).not.toContain("stream-json")
   })
 
   test("cursor-agent routes: ask mode + sandbox enabled + scratch workspace", () => {
-    for (const route of ["grok-cursor", "composer"]) {
+    for (const route of ["grok-cursor", "cursor", "composer"]) {
       const cmd = emitAdapter(route)
       expect(cmd).toContain("--mode ask")
       expect(cmd).toContain("--trust")
       expect(cmd).toContain("--sandbox enabled")
       expect(cmd).toContain("--workspace")
+      expect(cmd).toContain("--output-format stream-json")
     }
-    expect(emitAdapter("grok-cursor")).toContain("grok-4.5-high")
+    expect(emitAdapter("grok-cursor")).toContain("cursor-grok-4.5-high")
+    expect(emitAdapter("cursor")).not.toContain("--model")
     expect(emitAdapter("composer")).toContain("composer-2.5-fast")
   })
 
@@ -299,6 +403,12 @@ describe("cross-model-doc-review provider selection (R7, R15, R16)", () => {
     ).toBe("grok")
   })
 
+  test("explicit cursor allowance also sanctions the Cursor intermediary", () => {
+    expect(resolvePeers("claude", "grok", ["cursor-agent"], {
+      CROSS_MODEL_PEERS: "grok,cursor",
+    })).toBe("grok")
+  })
+
   test("creates a non-existent scratch run-dir instead of skipping (no silent no-op)", () => {
     // ce-doc-review has no pre-existing run-artifact dir; a fresh caller path must be
     // created, not treated as "not a directory" and skipped (which would silently
@@ -320,7 +430,6 @@ describe("cross-model-doc-review provider selection (R7, R15, R16)", () => {
 describe("cross-model-doc-review skip paths (R11, R16) — non-blocking, no file", () => {
   const cases: Array<[string, string[], Record<string, string>]> = [
     ["un-attestable host (empty)", ["", "codex,claude"], {}],
-    ["un-attestable host (unknown)", ["unknown", "codex,claude"], {}],
     ["MAX_PEERS=0 disables the pass", ["claude", "codex"], { CROSS_MODEL_MAX_PEERS: "0" }],
     ["host is the only candidate", ["codex", "codex"], {}],
   ]
@@ -345,6 +454,65 @@ describe("cross-model-doc-review skip paths (R11, R16) — non-blocking, no file
     const runDir = makeRunDir()
     expect(run(["claude", "codex", "not-a-lens", doc, "plan", "none", runDir], runDir, env).code).toBe(0)
     expect(run(["claude", "codex", "adversarial", "/no/such/doc", "plan", "none", runDir], runDir, env).files).toHaveLength(0)
+  })
+
+  test("surfaces short provider errors without dropping the diagnostic", () => {
+    const { env } = sandbox(
+      ["claude"],
+      "#!/bin/sh\ncat >/dev/null\nprintf '%s' 'schema invalid' >&2\nexit 1\n",
+    )
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(
+      ["codex", "claude", "adversarial", doc, "plan", "none", runDir],
+      runDir,
+      env,
+    )
+    expect(r.code).toBe(0)
+    expect(r.stderr).toContain("peer skip evidence (stderr): schema invalid")
+  })
+
+  test("surfaces structured Claude auth errors even when the envelope is long", () => {
+    const payload = JSON.stringify({
+      result: "Not logged in · Please run /login",
+      filler: "x".repeat(1000),
+      api_error_status: null,
+      terminal_reason: "api_error",
+    })
+    const { env } = sandbox(
+      ["claude"],
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '${payload}'\nexit 1\n`,
+    )
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(
+      ["codex", "claude", "adversarial", doc, "plan", "none", runDir],
+      runDir,
+      env,
+    )
+    expect(r.stderr).toContain("Not logged in")
+    expect(r.stderr).toContain("terminal_reason=api_error")
+  })
+
+  test("ancillary structured fields do not hide an unrecognized human-readable diagnostic", () => {
+    const payload = JSON.stringify({
+      diagnostic: "Provider rejected the request for this account",
+      terminal_reason: "api_error",
+    })
+    const { env } = sandbox(
+      ["claude"],
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '${payload}'\nexit 1\n`,
+    )
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(
+      ["codex", "claude", "adversarial", doc, "plan", "none", runDir],
+      runDir,
+      env,
+    )
+
+    expect(r.stderr).toContain("Provider rejected the request for this account")
+    expect(r.stderr).toContain("terminal_reason=api_error")
   })
 })
 
@@ -371,6 +539,7 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
     expect(Array.isArray(out.findings)).toBe(true)
     // The artifact records the actual route so the egress disclosure can reconcile it.
     expect(out.cross_model_route).toBe("claude")
+    expect(out.independence_verified).toBe(true)
   })
 
   test("drops the return when findings is not an array", () => {
@@ -402,6 +571,195 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
     expect(readdirSync(runDir).filter((f) => f.endsWith(".raw.json"))).toEqual([])
   })
 
+  test("records model_requested and the dated model_actual when the claude receipt matches (R7)", () => {
+    // Real claude CLI envelope shape: modelUsage at the envelope top level, keyed
+    // by the full dated id that actually served the run. Requested alias "opus"
+    // expects a served id starting claude-opus-.
+    const receiptStub =
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]},"modelUsage":{"claude-opus-4-8-20260115":{"inputTokens":10}}}'\n`
+    const { env } = sandbox(["claude"], receiptStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["codex", "claude", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    expect(r.code).toBe(0)
+    const out = JSON.parse(
+      readFileSync(path.join(runDir, "adversarial-claude.json"), "utf8"),
+    )
+    expect(out.cross_model_route).toBe("claude")
+    expect(out.model_requested).toBe("opus")
+    expect(out.model_actual).toBe("claude-opus-4-8-20260115")
+    expect(r.stderr).not.toContain("model mismatch")
+  })
+
+  test("multi-key receipt: prefers the requested-family key over the alphabetically-first auxiliary key (R7)", () => {
+    // A real envelope can carry an auxiliary model's usage (here haiku) beside
+    // the serving model. jq `keys` sorts, so a naive keys[0] (or any sorted
+    // pick) would choose haiku; the prefix match must select the opus key and
+    // raise no mismatch warning.
+    const multiKeyStub =
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]},"modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":2},"claude-opus-4-8-20260115":{"inputTokens":10}}}'\n`
+    const { env } = sandbox(["claude"], multiKeyStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["codex", "claude", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    expect(r.code).toBe(0)
+    const out = JSON.parse(
+      readFileSync(path.join(runDir, "adversarial-claude.json"), "utf8"),
+    )
+    expect(out.model_requested).toBe("opus")
+    expect(out.model_actual).toBe("claude-opus-4-8-20260115")
+    expect(r.stderr).not.toContain("model mismatch")
+  })
+
+  test("keeps the served id and warns prominently on a receipt mismatch (R7)", () => {
+    // Backend served a haiku id while opus was requested: the artifact must carry
+    // the ACTUAL id (never the requested value) and stderr must warn.
+    const mismatchStub =
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]},"modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":10}}}'\n`
+    const { env } = sandbox(["claude"], mismatchStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["codex", "claude", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    const out = JSON.parse(
+      readFileSync(path.join(runDir, "adversarial-claude.json"), "utf8"),
+    )
+    expect(out.model_requested).toBe("opus")
+    expect(out.model_actual).toBe("claude-haiku-4-5-20251001")
+    expect(r.stderr).toContain("WARNING: model mismatch - requested opus, backend served claude-haiku-4-5-20251001")
+  })
+
+  test("records model_actual unverified with a parse warning when the claude envelope carries no receipt (R8)", () => {
+    // claudeStub emits no modelUsage: never fall back to the requested value —
+    // record the literal "unverified", warn on stderr, and still fold in.
+    const { env } = sandbox(["claude"], claudeStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["codex", "claude", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    expect(r.files).toContain("adversarial-claude.json")
+    const out = JSON.parse(
+      readFileSync(path.join(runDir, "adversarial-claude.json"), "utf8"),
+    )
+    expect(out.model_requested).toBe("opus")
+    expect(out.model_actual).toBe("unverified")
+    expect(r.stderr).toContain("model receipt absent/unparseable on claude route; recording unverified")
+  })
+
+  test("unknown host family skips automatic review before provider invocation", () => {
+    const { env } = sandbox(["claude"], claudeStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["unknown", "claude", "adversarial", doc, "plan", "none", runDir], runDir, {
+      ...env,
+      CROSS_MODEL_HOST_HARNESS: "cursor",
+    })
+    expect(r.files).not.toContain("adversarial-claude.json")
+    expect(r.stderr).toContain("host serving family unattested")
+  })
+
+  test("Cursor default omits a model request and is never assumed independent", () => {
+    const cursorStub =
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]}'\n`
+    const { env } = sandbox(["cursor-agent"], cursorStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    run(["claude", "cursor", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    const out = JSON.parse(readFileSync(path.join(runDir, "adversarial-cursor.json"), "utf8"))
+    expect(out.cross_model_target).toBe("cursor")
+    expect(out.cross_model_harness).toBe("cursor-agent")
+    expect(out.model_requested).toBe("auto")
+    expect(out.model_actual).toBe("unverified")
+    expect(out.independence_verified).toBe(false)
+  })
+
+  test("receiptless Composer through Cursor cannot claim an independent serving family", () => {
+    const { env } = sandbox(["cursor-agent"], `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"reviewer":"adversarial","findings":[]}'\n`)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["claude", "composer", "adversarial", doc, "plan", "none", runDir], runDir, {
+      ...env,
+      CROSS_MODEL_MODEL_OVERRIDE_TARGET: "composer",
+      CROSS_MODEL_MODEL_OVERRIDE: "composer-next-fast",
+    })
+    const out = JSON.parse(readFileSync(path.join(runDir, "adversarial-composer.json"), "utf8"))
+    expect(out.model_actual).toBe("unverified")
+    expect(out.serving_family).toBe("unknown")
+    expect(out.independence_verified).toBe(false)
+    expect(r.stderr).toContain("model=composer-next-fast")
+  })
+
+  test("model overrides are bound to their declared target", () => {
+    const override = {
+      CROSS_MODEL_MODEL_OVERRIDE_TARGET: "composer",
+      CROSS_MODEL_MODEL_OVERRIDE: "composer-next",
+    }
+    expect(emitAdapter("composer", override)).toContain("--model composer-next")
+    expect(emitAdapter("grok-cursor", override)).toContain("--model cursor-grok-4.5-high")
+    expect(emitAdapter("cursor", override)).not.toContain("--model")
+
+    const crossFamily = spawnSync("bash", [SCRIPT, "--emit-adapter", "composer"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CROSS_MODEL_MODEL_OVERRIDE_TARGET: "composer",
+        CROSS_MODEL_MODEL_OVERRIDE: "gpt-5.6-sol",
+      },
+    })
+    expect(crossFamily.status).toBe(2)
+    expect(crossFamily.stderr).toContain("not compatible with route")
+  })
+
+  test("codex route records model_actual unverified — no served-model receipt on that route (R8)", () => {
+    // The codex stub writes findings to stdout (the -o file recovery path); the
+    // route exposes no authoritative identity report, so model_actual is the
+    // literal "unverified" and cross_model_route still records the route.
+    const codexStub =
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]}'\n`
+    const { env } = sandbox(["codex"], codexStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["claude", "codex", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    expect(r.files).toContain("adversarial-codex.json")
+    const out = JSON.parse(
+      readFileSync(path.join(runDir, "adversarial-codex.json"), "utf8"),
+    )
+    expect(out.cross_model_route).toBe("codex")
+    expect(out.model_requested).toBe("gpt-5.6-luna")
+    expect(out.model_actual).toBe("unverified")
+  }, 20_000) // the codex liveness poll sleeps in 5s slices even for a fast stub
+
+  test("codex stdout recovery is string-aware — an in-string brace does not let a draft object win", () => {
+    // A brace-counting scanner desyncs on the real answer's in-string "{" (quoted
+    // code in evidence) and keeps an earlier balanced draft instead. See #1197.
+    const codexStub =
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"findings":[{"section":"X","title":"DRAFT placeholder"}]}\n{"reviewer":"adversarial","findings":[{"section":"X","title":"unterminated block","evidence":"the loop body starts with { and never closes"}]}'\n`
+    const { env } = sandbox(["codex"], codexStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["claude", "codex", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    expect(r.files).toContain("adversarial-codex.json")
+    const out = JSON.parse(
+      readFileSync(path.join(runDir, "adversarial-codex.json"), "utf8"),
+    )
+    expect(out.findings[0].title).toBe("unterminated block")
+  }, 20_000)
+
+  test("codex stdout recovery handles an escaped quote-brace inside a JSON string", () => {
+    // A naive brace counter (pre-raw_decode) treats every "{" as a nesting
+    // level even inside a string, so an escaped \"{\" in a findings value
+    // pushes it one level too deep and it never unwinds back to zero.
+    const codexStub =
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"reviewer":"adversarial","findings":[{"section":"X","title":"t","evidence":"payload was literally \\"{\\" and stayed valid"}]}'\n`
+    const { env } = sandbox(["codex"], codexStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["claude", "codex", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    expect(r.files).toContain("adversarial-codex.json")
+    const out = JSON.parse(
+      readFileSync(path.join(runDir, "adversarial-codex.json"), "utf8"),
+    )
+    expect(out.findings[0].title).toBe("t")
+  }, 20_000)
+
   test("the whole-doc sweep reviewer-name is accepted and normalizes to whole-doc-<provider>", () => {
     // R20/U9: the broad whole-document sweep runs under reviewer-name `whole-doc`.
     const stub =
@@ -431,15 +789,12 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
   })
 })
 
-describe("cross-model-doc-review run-loop failover (R15, R16)", () => {
+describe("cross-model-doc-review fixed-recipient dispatch (R15, R16)", () => {
   const okStub =
     `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]}}'\n`
   const failStub = `#!/bin/sh\ncat >/dev/null 2>&1\nexit 1\n`
 
-  test("falls through an installed-but-failing provider to the next reachable one", () => {
-    // The first candidate (claude) is installed but 'unauthenticated' (fails, writes
-    // no output); with MAX_PEERS=1 the pass must not silently no-op — it should fall
-    // through to the reachable grok rather than stopping at the failed first choice.
+  test("does not send to a second recipient after the sanctioned target fails", () => {
     const { bin, env } = sandbox(["claude", "grok"])
     writeFileSync(path.join(bin, "claude"), failStub)
     chmodSync(path.join(bin, "claude"), 0o755)
@@ -450,27 +805,38 @@ describe("cross-model-doc-review run-loop failover (R15, R16)", () => {
     // host=codex excludes codex; candidates claude,grok; MAX_PEERS defaults to 1.
     const r = run(["codex", "claude,grok", "adversarial", doc, "plan", "none", runDir], runDir, env)
     expect(r.code).toBe(0)
-    expect(r.files).toContain("adversarial-grok.json")
+    expect(r.files).not.toContain("adversarial-grok.json")
     expect(r.files).not.toContain("adversarial-claude.json")
   })
 
-  test("records the grok-cursor route when the grok CLI fails and cursor-agent succeeds (egress disclosure)", () => {
-    // grok CLI installed but 'unauthenticated' (fails); the grok-cursor fallback
-    // succeeds, so Cursor actually received the document. The <lens>-grok.json name
-    // can't encode that, so the artifact must carry cross_model_route=grok-cursor for
-    // the egress reconciliation to name the Cursor hop.
-    const { bin, env } = sandbox(["grok", "cursor-agent"])
-    writeFileSync(path.join(bin, "grok"), failStub)
-    chmodSync(path.join(bin, "grok"), 0o755)
+  test("runs a pre-sanctioned Grok-via-Cursor route without an internal hop", () => {
+    const { bin, env } = sandbox(["cursor-agent"])
     writeFileSync(path.join(bin, "cursor-agent"), okStub)
     chmodSync(path.join(bin, "cursor-agent"), 0o755)
     const doc = makeDoc()
     const runDir = makeRunDir()
-    const r = run(["codex", "grok", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    const r = run(["codex", "grok", "adversarial", doc, "plan", "none", runDir], runDir, {
+      ...env,
+      CROSS_MODEL_PEERS: "grok,cursor",
+      CROSS_MODEL_FIXED_ROUTE: "grok-cursor",
+    })
     expect(r.code).toBe(0)
     expect(r.files).toContain("adversarial-grok.json")
     const out = JSON.parse(readFileSync(path.join(runDir, "adversarial-grok.json"), "utf8"))
     expect(out.cross_model_route).toBe("grok-cursor")
+  })
+
+  test("a fixed Grok-via-Cursor route still requires Cursor intermediary sanction", () => {
+    const { env } = sandbox(["grok", "cursor-agent"], okStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["codex", "grok", "adversarial", doc, "plan", "none", runDir], runDir, {
+      ...env,
+      CROSS_MODEL_PEERS: "grok",
+      CROSS_MODEL_FIXED_ROUTE: "grok-cursor",
+    })
+    expect(r.files).not.toContain("adversarial-grok.json")
+    expect(r.stderr).toContain("requires Cursor intermediary sanction")
   })
 })
 

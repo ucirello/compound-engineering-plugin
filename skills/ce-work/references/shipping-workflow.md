@@ -12,13 +12,12 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    # Run full test suite (use project's test command)
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-   # Run linting (per the project's configured lint command / active instructions)
-   # Use linting-agent before pushing to origin
+   # Run linting per the project's active instructions
    ```
 
 2. **Simplify** (conditional — separate from code review)
 
-   Before code review, invoke **`ce-simplify-code`** when the diff is non-mechanical and large enough to benefit (default: **>=30 changed lines**). Skip when the diff is purely mechanical (formatting, dependency bumps, lint-only fixes, generated artifacts).
+   Before code review, invoke **`ce-simplify-code`** when the diff has enough substantive code to benefit (default: **>=30 substantive changed code lines** — count human-authored code, not total diff lines). Skip when the diff is purely mechanical (formatting, dependency bumps, lint-only fixes, generated artifacts) or when substantive code stays under the floor even though the total diff is larger.
 
    This step refines reuse, quality, and efficiency on the **current diff** so any later review sees cleaner code. It is not a substitute for code review.
 
@@ -26,35 +25,37 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 3. **Code Review**
 
-   Review the diff with **`ce-code-review`** — the plugin's portable review skill — as the single path. It self-right-sizes (a lite roster for small, low-risk, code-only diffs; the full roster otherwise), so there is no "escalate to a heavier reviewer" decision and **no harness-specific review detection** — it behaves identically on every harness. (This replaces the former Tier 1 harness-native `/review` / Tier 2 escalation split: the size and sensitive-surface judgment that used to live here now lives inside `ce-code-review`'s own reviewer selection and small-diff gate.)
+   Review the JJ stack diff with **`ce-code-review`** as the single path. It self-right-sizes, so there is no separate escalation decision.
 
    **Skip dedicated review only for a purely mechanical diff** — formatting, dependency-version bumps, lint-only fixes, generated artifacts (the same class step 2 skips for simplify). Note in the shipping summary: `Code review: skipped (mechanical diff)`. Everything else gets reviewed.
 
    **Review is not fix — two steps:**
 
-   **3a. Review (read-only).** Invoke `ce-code-review` with `mode:agent` (add `plan:<path>` when known; `base:<ref>` when the diff base is resolved). Pass **`depth:full`** when the plan, the task, or the user explicitly asked for a full / deep / thorough review — that is the one escalation signal `ce-code-review` cannot infer from the diff alone. Do not pass `mode:autofix`. Parse the JSON.
+   **3a. Review (read-only).** Resolve the boundary from JJ history, normally the fork point between the current stack and `trunk()`, and inspect it with `jj log` and `jj diff`. Invoke `ce-code-review` with `mode:agent` (add `plan:<path>` when known; `base:<jj-revision-or-revset>` when resolved). Pass **`depth:full`** when explicitly requested. Do not pass `mode:autofix`. Parse the JSON.
 
-   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, dispatch fix subagents. The orchestrator integrates JJ changes, tests, and commits. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields. Then proceed to the Residual Work Gate.
+   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, dispatch fix subagents. The orchestrator integrates JJ changes, tests, and closes coherent boundaries. Then proceed to the Residual Work Gate.
 
    **If `ce-code-review` cannot run at all** — subagent dispatch unavailable, unauthenticated, or hard-capped, returning `status: failed`/`degraded` with no coverage even after its own sequential Fallback: in an **interactive** session, run the harness-native review if one exists (e.g. `/review`) and fix inline; in a **non-interactive** session (autonomous pipeline, or no native review available), skip the dedicated step, note `Code review: skipped (ce-code-review unavailable)`, and add an explicit manual diff scan to Final Validation. Never silently ship a non-mechanical change with no review of any kind.
 
 4. **Residual Work Gate** (REQUIRED when `ce-code-review` ran and left actionable residuals)
 
-   After code review and review-findings followup, inspect the **Actionable Findings** summary (or read the run artifact at `$(jj workspace root 2>/dev/null || pwd -P)/.tmp/rocketclaw/ce-code-review/<run-id>/` if the summary was truncated). If one or more actionable `downstream-resolver` findings were not applied in followup, do not proceed to Final Validation until they are resolved or durably recorded.
+   After code review and review-findings followup, inspect the **Actionable Findings** summary. If truncated, read `<workspace-root>/.tmp/rocketclaw/code-review/<run-id>/`, resolving `<workspace-root>` with `jj workspace root` and `pwd -P` fallback. If actionable `downstream-resolver` findings remain, do not proceed until they are resolved or durably recorded.
 
-   **Non-interactive / autonomous sessions (no human can answer — e.g. an `lfg`-style pipeline or a headless run):** do **not** call the blocking tool — that would hang the pipeline. After step 3b auto-applied every mechanically-eligible finding, take the `Accept and proceed` path automatically: record the remaining actionable residuals verbatim to the durable Known Residuals sink (the PR description's Known Residuals section, or `docs/residual-review-findings/<bookmark-or-change-id>.md` on the no-PR path) and continue to Final Validation. When editing that PR change description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields. Residuals are recorded, never dropped — this keeps autonomous shipping unblocked without losing findings.
+   **Non-interactive / autonomous sessions:** do not call a blocking tool. After eligible findings are applied, record remaining residuals in the pull-request description's Known Residuals section or, on the no-pull-request path, `<root>/residual-review-findings/<change-id>.md`. Keep that file in the appropriate JJ change. Residuals are never dropped.
+
+   A settlement-invalidating conflict — evidence a `session-settled:`-labeled decision cannot work — is never auto-accepted as a residual; it is a blocker (`status: blocked` return in return-to-caller mode; stop-and-surface in standalone runs).
 
    **Interactive sessions:** Ask the user using the platform's blocking question tool (`AskUserQuestion` in Claude Code with `ToolSearch select:AskUserQuestion` pre-loaded if needed, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension)). Fall back to numbered options in chat only when the harness genuinely lacks a blocking tool. Never silently skip the gate.
 
    Stem: `Code review left N actionable finding(s) not yet fixed. How should the agent proceed?`
 
    Options (four or fewer, self-contained labels):
-   - `Apply/fix now` — load `references/review-findings-followup.md`, dispatch batched fix subagents for remaining eligible findings, run tests, commit if needed; optionally re-run `ce-code-review` only after the diff changed materially. For any commit: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
+   - `Apply/fix now` — load `references/review-findings-followup.md`, dispatch batched fix subagents, run tests, and close coherent JJ boundaries; re-run review only after a material diff change.
    - `File tickets via project tracker` — load `references/tracker-defer.md` in Interactive mode; the agent files tickets in the project's detected tracker (or `gh` fallback, or leaves them in the report if no sink exists) and proceeds to Final Validation.
-   - `Accept and proceed` — record the residual findings verbatim in a durable "Known Residuals" sink before shipping. If a PR will be created or updated in Phase 4, include them in the PR description's "Known Residuals" section (the agent owns this when calling `ce-commit-push-pr`). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields. If the user later chooses the no-PR `ce-commit` path, create `docs/residual-review-findings/<bookmark-or-change-id>.md`, include the accepted findings and source review-run context, include it in the implementation's JJ change/commit, and mention the file path in the final summary. The user has acknowledged the risk, but the findings must not live only in the transient session.
+   - `Accept and proceed` — record residuals in the pull-request Known Residuals section or `<root>/residual-review-findings/<change-id>.md`; include source review context, keep the file in the appropriate JJ change, and report the path.
    - `Stop — do not ship` — abort the shipping workflow. The user will handle findings manually before re-invoking.
 
-   Skip this gate entirely when the review reported `Actionable findings: none.` (and followup applied everything mechanical), or when dedicated review was skipped (mechanical diff or `ce-code-review` unavailable). Do not proceed past this gate on an `Accept and proceed` decision (including the autonomous auto-accept above) until the agent has recorded whether the durable sink is `PR Known Residuals` or `docs/residual-review-findings/<bookmark-or-change-id>.md`.
+   Skip this gate when review reported no actionable findings or dedicated review was skipped. Do not proceed after `Accept and proceed` until the durable sink is recorded as pull-request Known Residuals, a tracker ticket, or `<root>/residual-review-findings/<change-id>.md`.
 
 5. **Final Validation**
    - All tasks marked completed
@@ -67,7 +68,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    - If any `Deferred to Implementation` questions were noted, confirm they were resolved during execution
 
 6. **Prepare Operational Validation Plan** (REQUIRED)
-   - Add a `## Post-Deploy Monitoring & Validation` section to the PR description for every change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
+   - Add a `## Post-Deploy Monitoring & Validation` section to the pull-request description for every change.
    - Include concrete:
      - Log queries/search terms
      - Metrics or dashboards to watch
@@ -80,33 +81,40 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 1. **Prepare Validation Context**
 
-   Do not try to launch a dedicated evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
+   Use available browser, screenshot, terminal-recording, and artifact-capture tools directly only when the user asks or when an artifact already exists.
 
-   Note whether the completed work has observable behavior (UI rendering, CLI output, API/library behavior with a runnable example, generated artifacts, or workflow output), and summarize any manual validation performed. If the user supplied evidence (URL, markdown embed, local artifact path), pass it to `ce-commit-push-pr` as PR-description context. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
+   Note whether the completed work has observable behavior and summarize manual validation. If the user supplied evidence, pass it to `ce-commit-push-pr` as pull-request-description context.
 
-2. **Commit and Create Pull Request**
+2. **Finalize JJ Changes and Create Pull Request**
 
-   Load the `ce-commit-push-pr` skill to handle committing, pushing, and PR creation. The skill handles convention detection, bookmark safety, logical commit splitting, and adaptive PR descriptions through JJ with `gh` interoperability. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
+   Before handoff, run `jj status`, inspect the stack with `jj log`, and inspect the intended boundary with `jj diff`. Ensure every change is coherent and described; use `jj split` for mixed changes.
 
-   When providing context for the PR description, include the items below. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
+   Load `ce-commit-push-pr` to finalize descriptions, create or update the publication bookmark, push it, and create or update the pull request. Load `ce-commit` instead when the user wants local JJ changes without publication.
+
+   For every JJ description composed, edited, validated, or recommended in this phase, use `<description-composed-from-runtime-conventions>` as the neutral placeholder. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Preserve every semantic content requirement stated by this phase while adapting syntax to runtime conventions. The project's active instructions and description conventions inferred from `jj log` take precedence. Apply compatible Go guidance only for quality, clarity, and structure; do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
+
+   When providing pull-request-description context, include:
    - The plan's summary and key decisions
    - Testing notes (tests added/modified, manual testing performed)
    - Evidence context from step 1, so `ce-commit-push-pr` can decide whether to ask about capturing evidence
    - Figma design link (if applicable)
    - The Post-Deploy Monitoring & Validation section (see Phase 3 Step 6)
-   - Any "Known Residuals" accepted in the Phase 3 Residual Work Gate, rendered as a dedicated section in the PR body with severity, file:line, and title per finding
+   - Any "Known Residuals" accepted in the Phase 3 Residual Work Gate, rendered as a dedicated section with severity, file:line, and title per finding
 
-   If the user prefers to commit without creating a PR, load the `ce-commit` skill instead. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
+   If the Residual Work Gate filed tracker tickets, back-fill the opened pull request's URL best-effort.
+
+   Do not add creator, model, provider, tool, runtime attribution, or badges to descriptions or pull-request text.
 
 3. **Notify User**
    - Summarize what was completed
-   - Link to PR (if one was created)
+   - Link to the pull request (if one was created)
+   - Report the JJ change IDs included and the publication bookmark, if any
    - Note any follow-up work needed
    - Suggest next steps if applicable
 
 ## Quality Checklist
 
-Before creating PR, verify:
+Before creating a pull request, verify:
 
 - [ ] All clarifying questions asked and answered
 - [ ] All tasks marked completed
@@ -114,12 +122,14 @@ Before creating PR, verify:
 - [ ] Linting passes (use linting-agent)
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
-- [ ] Validation/evidence context passed to `ce-commit-push-pr` when the change has observable behavior. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
-- [ ] Commit messages were composed and validated under this rule: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
-- [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale), validated under this rule: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
-- [ ] Simplify: `ce-simplify-code` when diff >=30 lines (or skipped with reason)
+- [ ] Validation/evidence context passed to `ce-commit-push-pr` when the change has observable behavior
+- [ ] JJ changes are coherent, independently reviewable, and described according to active project instructions and `jj log`
+- [ ] Description validation used `<description-composed-from-runtime-conventions>` as its neutral placeholder. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Preserve every semantic content requirement stated by this phase while adapting syntax to runtime conventions. The project's active instructions and description conventions inferred from `jj log` take precedence. Apply compatible Go guidance only for quality, clarity, and structure; do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
+- [ ] Pull-request description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
+- [ ] Simplify: `ce-simplify-code` when the diff has >=30 substantive changed code lines (or skipped with reason)
 - [ ] Code review: `ce-code-review` ran (self-sized), or skipped (mechanical diff / unavailable — noted in summary); residuals handled via the Residual Work Gate
-- [ ] PR description includes summary, testing notes, and evidence when captured. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and the message syntax observed in actual `git log` output take precedence over compatible Go guidance. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example, and use neutral placeholders where an interface requires fields.
+- [ ] Pull-request description includes summary, testing notes, and evidence when captured
+- [ ] Pull-request description contains no creator, model, provider, tool, runtime attribution, or badges
 
 ## Code Review
 

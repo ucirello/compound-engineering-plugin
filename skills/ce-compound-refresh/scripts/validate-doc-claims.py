@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against a Jujutsu workspace.
+"""Validate cited claims in a solution doc against a JJ repository.
 
 Usage:
     python3 validate-doc-claims.py <doc-path>
@@ -13,28 +13,29 @@ Scope: mechanical grounding checks on a written doc's *body*. Complements
 validate-frontmatter.py (parser-safety) — this script checks the body's
 citations against the repository:
 
-    1. Cited repo-relative paths (backticked, containing at least one '/')
-       exist in the workspace; tokens containing '../' resolve from the
-       doc's directory (those escaping the repo are skipped). Misses tracked
-       at the working-copy change or trunk still count as real paths and
-       are classified (deleted/current removal vs stale workspace). Tokens
+    1. Cited workspace-relative paths (backticked, containing at least one '/')
+       exist in the working copy; tokens containing '../' resolve from the
+       doc's directory (those escaping the workspace are skipped). Misses tracked
+       at @ or trunk() still count as real paths and are classified. Tokens
        missing everywhere are flagged only when path-shaped; slash-delimited
-       identifiers (bookmark names, revision symbols, or provider IDs) are skipped.
-    2. Cited commit SHAs (7-40 hex chars with at least one digit and one
-       a-f letter) resolve to commits, classified by reachability from
-       the working-copy change and trunk.
+       identifiers (bookmark names and provider/model IDs) are skipped.
+    2. Cited JJ change or commit IDs resolve and are classified by reachability
+       from @ and trunk().
     3. Relative markdown link targets resolve from the doc's location.
     4. Dangling drafting scaffold: "Learning(s) N" numbering and
-       unresolved {{...}} placeholder tokens.
+       unresolved {{...}} placeholder tokens. Inline code spans and fenced
+       code blocks are masked first, so a {{...}} shown as documented syntax
+       (Handlebars, a CI variable, a GitHub ruleset placeholder) is not
+       mistaken for a leaked scaffold; only a bare token in prose is flagged.
 
 Flags are adjudication input, NOT hard failures — a doc may legitimately
 cite a path deleted by the very fix it documents. The calling agent
 decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
-The script never touches the network; classification uses local Jujutsu
-state. Run `jj git fetch` first when remote freshness matters. Pure stdlib
-(no third-party deps).
+The script never touches the network; classification uses local JJ state.
+JJ calls ignore the working copy so validation does not snapshot or otherwise
+update repository state. Pure stdlib (no third-party deps).
 """
 import os
 import re
@@ -45,9 +46,11 @@ import sys
 PLACEHOLDER_CHARS = set("<>{}*$")
 PLACEHOLDER_SUBSTRINGS = ("path/to", "...", "…")
 
-SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+COMMIT_ID_RE = re.compile(r"\b[0-9a-f]{7,64}\b")
+CHANGE_ID_RE = re.compile(r"\b[k-z]{8,64}\b")
 BACKTICK_RE = re.compile(r"`([^`\n]+)`")
 MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 SCAFFOLD_RES = (
     re.compile(r"\bLearnings?\s+#?\d"),
     re.compile(r"\{\{[^}\n]*\}\}"),
@@ -62,7 +65,7 @@ def usage_fail(msg: str) -> "NoReturn":
 def jj(args: list[str], cwd: str) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["jj", *args],
+            ["jj", "--ignore-working-copy", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -94,8 +97,8 @@ def is_path_candidate(token: str) -> bool:
         return False
     if "://" in token or token.startswith(("http", "#", "/", "~")):
         return False
-    if token.startswith(("origin/", "upstream/", "refs/")):
-        return False  # revision symbols, not repo paths
+    if token.startswith(("bookmarks/", "tags/")):
+        return False  # JJ namespaces, not workspace paths
     if PLACEHOLDER_CHARS & set(token):
         return False
     if any(sub in token for sub in PLACEHOLDER_SUBSTRINGS):
@@ -105,13 +108,42 @@ def is_path_candidate(token: str) -> bool:
 
 def is_path_shaped(token: str, base: str) -> bool:
     """Distinguish a path citation from a slash-delimited identifier
-    (bookmark name or provider ID) among tokens found nowhere in the workspace."""
+    (bookmark name, provider/model ID) among tokens absent from JJ revisions."""
     segments = token.split("/")
     if re.search(r"\.[A-Za-z0-9]{1,8}$", segments[-1]):
         return True
     if token.endswith("/"):
         return True
     return os.path.isdir(os.path.join(base, segments[0]))
+
+
+def mask_code(lines: list[str]) -> list[str]:
+    """Blank out fenced code blocks and inline code spans, preserving line
+    count and length. Illustrative {{...}} in quoted code must not read as a
+    leaked drafting scaffold; only bare tokens in prose should."""
+    masked: list[str] = []
+    fence: str | None = None  # active fence run (e.g. "```"), or None
+    for line in lines:
+        m = FENCE_RE.match(line)
+        if fence is None and m:
+            fence = m.group(1)
+            masked.append(" " * len(line))
+            continue
+        if fence is not None:
+            # CommonMark: a closing fence is the same char, at least as long,
+            # and followed only by whitespace — an info string (```json) opens
+            # but never closes, so it stays block content.
+            if (
+                m
+                and m.group(1)[0] == fence[0]
+                and len(m.group(1)) >= len(fence)
+                and not m.group(2).strip()
+            ):
+                fence = None
+            masked.append(" " * len(line))
+            continue
+        masked.append(BACKTICK_RE.sub(lambda x: " " * len(x.group(0)), line))
+    return masked
 
 
 def normalize_path(token: str) -> str:
@@ -146,59 +178,38 @@ def main(argv: list[str]) -> int:
     infos: list[str] = []
     flags: list[str] = []
 
-    # --- Repo context -----------------------------------------------------
-    code, repo_root = jj(["workspace", "root"], doc_dir)
-    in_jj = code == 0 and bool(repo_root)
-    trunk: str | None = None
+    # --- Workspace context ------------------------------------------------
+    code, workspace_root = jj(["workspace", "root"], doc_dir)
+    in_jj = code == 0 and bool(workspace_root)
+    has_trunk = False
     if in_jj:
-        code, trunk_commit = jj(
-            ["log", "--no-graph", "-r", "trunk()", "-T", 'commit_id ++ "\\n"'],
-            repo_root,
+        code, _ = jj(
+            ["log", "-r", "trunk()", "--no-graph", "-T", "commit_id"],
+            workspace_root,
         )
-        if code == 0 and trunk_commit:
-            trunk = "trunk()"
-            code, behind = jj(
-                ["log", "--no-graph", "-r", "@..trunk()", "-T", 'commit_id ++ "\\n"'],
-                repo_root,
-            )
-            if code == 0:
-                behind_count = len(behind.splitlines()) if behind else 0
-                if behind_count:
-                    infos.append(
-                        f"INFO: working-copy change is {behind_count} revisions behind "
-                        "trunk — verify merge-state claims against remote truth "
-                        "(gh pr view), not this workspace"
-                    )
-        else:
+        has_trunk = code == 0
+        if not has_trunk:
             infos.append(
-                "INFO: trunk() does not resolve — path/SHA classification "
-                "limited to the working-copy change"
+                "INFO: trunk() is unavailable - repository classification is limited to @"
             )
     else:
         infos.append(
-            "INFO: not a Jujutsu workspace — path and SHA classification skipped "
+            "INFO: not a JJ repository - path and revision-ID classification skipped "
             "(scaffold and link checks still apply)"
         )
 
-    def revision_has_path(revision: str | None, path: str) -> bool:
-        if not (in_jj and revision):
-            return False
-        code, _ = jj(["file", "show", "-r", revision, path], repo_root)
-        return code == 0
-
-    def revset_has_match(revset: str) -> bool:
+    def revision_has_path(revision: str, path: str) -> bool:
         if not in_jj:
             return False
         code, output = jj(
-            ["log", "--no-graph", "-r", revset, "-T", 'commit_id ++ "\\n"'],
-            repo_root,
+            ["file", "list", "-r", revision, "--", path], workspace_root
         )
         return code == 0 and bool(output)
 
-    # --- 1. Cited repo paths ----------------------------------------------
+    # --- 1. Cited workspace paths -----------------------------------------
     checked_paths = 0
     seen_paths: set[str] = set()
-    base = repo_root if in_jj else os.getcwd()
+    base = workspace_root if in_jj else os.getcwd()
     for raw in BACKTICK_RE.findall(body):
         token = normalize_path(raw)
         if not is_path_candidate(token):
@@ -206,94 +217,105 @@ def main(argv: list[str]) -> int:
         check = token
         if token.startswith("../") or "/../" in token:
             # A `../` citation is doc-relative (matching how markdown links
-            # resolve), so map it to a repo-root path before checking.
+            # resolve), so map it to a workspace-root path before checking.
             if not in_jj:
                 continue
             resolved = os.path.realpath(os.path.join(doc_dir, token))
             check = os.path.relpath(resolved, os.path.realpath(base))
             if check.startswith(".."):
-                continue  # escapes the repo — not checkable as a repo path
+                continue  # escapes the workspace
         if check in seen_paths:
             continue
         seen_paths.add(check)
         if os.path.exists(os.path.join(base, check)):
             checked_paths += 1
             continue
-        tracked_current = revision_has_path("@", check)
-        tracked_trunk = revision_has_path(trunk, check)
-        if not (tracked_current or tracked_trunk) and not is_path_shaped(
+        tracked_at = revision_has_path("@", check)
+        tracked_trunk = has_trunk and revision_has_path("trunk()", check)
+        if not (tracked_at or tracked_trunk) and not is_path_shaped(
             check, base
         ):
             continue  # bookmark name / provider ID, not a path citation
         checked_paths += 1
         loc = loc_suffix(raw)
-        if tracked_current:
+        if tracked_at:
             flags.append(
-                f"FLAG path `{token}`{loc} — present in the working-copy change "
-                "snapshot but missing from the workspace: stale snapshot? Annotate as "
-                "historical (e.g. removed by this fix) or restore it."
+                f"FLAG path `{token}`{loc} - present in @ but missing from the "
+                "working copy; annotate it as historical or restore it."
             )
         elif tracked_trunk:
             flags.append(
-                f"FLAG path `{token}`{loc} — not in the workspace but exists at "
-                "trunk(): current removal? Annotate or verify against trunk."
+                f"FLAG path `{token}`{loc} - absent from the working copy and @ "
+                "but present in trunk(); verify the current change or annotate it."
             )
         else:
-            where = (
-                "workspace or trunk()" if trunk else "workspace"
-            )
+            where = "working copy, @, or trunk()" if has_trunk else "working copy or @"
             flags.append(
-                f"FLAG path `{token}`{loc} — not found in {where}. Fix the "
-                "citation, or annotate it as historical (e.g. removed by this fix)."
+                f"FLAG path `{token}`{loc} - not found in {where}; fix the citation "
+                "or annotate it as historical."
             )
 
-    # --- 2. Cited commit SHAs ----------------------------------------------
-    checked_shas = 0
-    seen_shas: set[str] = set()
+    # --- 2. Cited revision IDs ---------------------------------------------
+    checked_ids = 0
+    seen_ids: set[str] = set()
     if in_jj:
-        for m in SHA_RE.finditer(body):
-            sha = m.group(0)
-            if sha in seen_shas:
+        candidates = sorted(
+            [*COMMIT_ID_RE.finditer(body), *CHANGE_ID_RE.finditer(body)],
+            key=lambda match: match.start(),
+        )
+        for match in candidates:
+            revision_id = match.group(0)
+            if revision_id in seen_ids:
                 continue
-            if not (any(c.isdigit() for c in sha) and any(c in "abcdef" for c in sha)):
-                continue  # dates and decimal ids are not SHAs
-            seen_shas.add(sha)
-            checked_shas += 1
-            loc = loc_suffix(sha)
+            if not (
+                CHANGE_ID_RE.fullmatch(revision_id)
+                or (
+                    any(char.isdigit() for char in revision_id)
+                    and any(char in "abcdef" for char in revision_id)
+                )
+            ):
+                continue
+            seen_ids.add(revision_id)
+            checked_ids += 1
+            loc = loc_suffix(revision_id)
             code, _ = jj(
-                ["log", "--no-graph", "-r", sha, "-T", 'commit_id ++ "\\n"'],
-                repo_root,
+                ["log", "-r", revision_id, "--no-graph", "-T", "commit_id"],
+                workspace_root,
             )
             if code != 0:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — does not resolve to a commit in this "
-                    "repository. Replace with the PR number, or drop it."
+                    f"FLAG revision ID {revision_id}{loc} - it does not resolve in "
+                    "this repository; replace it with a durable review reference or remove it."
                 )
                 continue
-            in_current = revset_has_match(f"{sha} & ::@")
-            in_trunk = trunk is not None and revset_has_match(
-                f"{sha} & ::trunk()"
+            in_current = bool(
+                jj(
+                    ["log", "-r", f"{revision_id} & ::@", "--no-graph", "-T", "commit_id"],
+                    workspace_root,
+                )[1]
             )
-            if in_current and (in_trunk or trunk is None):
+            in_trunk = has_trunk and bool(
+                jj(
+                    ["log", "-r", f"{revision_id} & ::trunk()", "--no-graph", "-T", "commit_id"],
+                    workspace_root,
+                )[1]
+            )
+            if in_current and (in_trunk or not has_trunk):
                 continue
-            if in_current and not in_trunk:
+            if in_current:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — reachable from the working-copy change "
-                    "but not trunk(): local-only commit whose SHA may be rewritten. "
-                    "Prefer citing the PR number."
+                    f"FLAG revision ID {revision_id}{loc} - reachable from @ but not "
+                    "trunk(); prefer a stable review reference if publication may rewrite it."
                 )
             elif in_trunk:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — not reachable from the working-copy change "
-                    "but reachable from trunk(): this workspace predates the merge. Add a "
-                    "temporal qualifier or verify the claim via gh."
+                    f"FLAG revision ID {revision_id}{loc} - reachable from trunk() but not @; "
+                    "add a temporal qualifier or verify GitHub review state with gh."
                 )
             else:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — exists but is unreachable from the "
-                    "working-copy change"
-                    + (" or trunk()" if trunk else "")
-                    + ": likely a rebased-away commit. Prefer citing the PR number."
+                    f"FLAG revision ID {revision_id}{loc} - it exists but is unreachable "
+                    "from @ or trunk(); prefer a stable review reference."
                 )
 
     # --- 3. Relative markdown links -----------------------------------------
@@ -317,7 +339,7 @@ def main(argv: list[str]) -> int:
             )
 
     # --- 4. Dangling drafting scaffold ---------------------------------------
-    for i, line_text in enumerate(body_lines):
+    for i, line_text in enumerate(mask_code(body_lines)):
         for pattern in SCAFFOLD_RES:
             m = pattern.search(line_text)
             if m:
@@ -333,7 +355,7 @@ def main(argv: list[str]) -> int:
     for flag in flags:
         print(flag)
     print(
-        f"checked {checked_paths} paths, {checked_shas} SHAs, "
+        f"checked {checked_paths} paths, {checked_ids} revision IDs, "
         f"{checked_links} links; {len(flags)} flags"
     )
     if flags:

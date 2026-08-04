@@ -7,12 +7,56 @@ async function readRepoFile(relativePath: string): Promise<string> {
 }
 
 describe("ce-commit-push-pr contract", () => {
+  test("reconciles the complete branch scope before composition", async () => {
+    const content = await readRepoFile(
+      "skills/ce-commit-push-pr/references/pr-description-writing.md",
+    )
+
+    expect(content).not.toContain("Read every commit")
+    const sizingSection = content.match(
+      /## Step A: Size the description([\s\S]+?)## Step B:/,
+    )?.[1]
+    expect(sizingSection).toContain(
+      "complete oneline commit list and final three-dot diff",
+    )
+    expect(sizingSection).toContain("scope map")
+    expect(sizingSection).toContain("umbrella outcome")
+    expect(sizingSection).toContain("consult the fuller messages only")
+    const titleSection = content.match(
+      /## Step B: Compose the title([\s\S]+?)## Step B1:/,
+    )?.[1]
+    expect(titleSection).toContain("scope map")
+    expect(titleSection).toContain("umbrella outcome")
+    const auditSection = content.match(
+      /## Step E: Pre-apply coverage audit([\s\S]+)\s*$/,
+    )?.[1]
+    expect(auditSection).toContain("scope map")
+    expect(auditSection).toContain("every material outcome")
+  })
+
+  test("repository PR-body contracts set structure without replacing editorial guidance", async () => {
+    const content = await readRepoFile(
+      "skills/ce-commit-push-pr/references/pr-description-writing.md",
+    )
+
+    const contractIndex = content.indexOf("## Project PR-body contract")
+    expect(contractIndex).toBeGreaterThan(-1)
+    expect(contractIndex).toBeLessThan(content.indexOf("## Step Pre-A"))
+    expect(content).toMatch(/template as a minimum.+exact\/template-only body/is)
+    expect(content).toContain("add no sections beyond those the project permits")
+    expect(content).toMatch(/structural floor.+sizes the content within it/is)
+    expect(content).toMatch(/Step C:[\s\S]+preserve that structure.+sections it permits/i)
+    expect(content).toMatch(/project PR-body contract supplies a heading or location for the opening.+place it there without inventing or renaming a heading/is)
+    expect(content).toMatch(/Otherwise, the opening goes under `## Summary`.+bare paragraph/is)
+    expect(content).toMatch(/Step E:[\s\S]+except for headings, fields, checklists, or boilerplate.+requires/i)
+  })
+
   test("existing PR rewrites carry the old body into composition", async () => {
     const content = await readRepoFile("skills/ce-commit-push-pr/SKILL.md")
 
     // Existing-PR detection uses `gh pr list` (exits 0, returns `[]` when none)
     // rather than `gh pr view` (exits 1 with no PR, which aborted `!` load).
-    expect(content).toContain("gh pr list --head <branch> --state open --json number,url,title,body,state,headRefName,headRepositoryOwner")
+    expect(content).toContain("gh pr list --head <branch> --state open --json number,url,title,body,state,isDraft,headRefName,headRepositoryOwner")
     // Multi-fork same-branch matches are disambiguated by head owner, not index 0 (PR #1109 review).
     expect(content).toContain("do **not** blindly take index 0")
     expect(content).toContain("Note the URL and body from that entry")
@@ -51,6 +95,29 @@ describe("ce-commit-push-pr contract", () => {
     expect(content).toMatch(/PR description.+not.+comment/i)
   })
 
+  test("adds generic Compound Engineering branding only on an explicit signal", async () => {
+    const reference = await readRepoFile(
+      "skills/ce-commit-push-pr/references/pr-description-writing.md",
+    )
+    const skill = await readRepoFile("skills/ce-commit-push-pr/SKILL.md")
+
+    expect(reference).toContain("Built_with-Compound_Engineering")
+    expect(reference).not.toContain("MODEL_SLUG")
+    expect(reference).not.toMatch(/\| Harness \|/)
+    expect(reference).not.toMatch(/model slug/i)
+    expect(reference).toMatch(/new PR body.+resolved branding gate is on/is)
+    expect(reference).toMatch(/otherwise omit/is)
+    expect(reference).toMatch(/existing PR body.+preserve.+verbatim/is)
+    expect(reference).toMatch(/never add one when absent/is)
+    expect(reference).toMatch(/explicitly asks.+remove or replace/is)
+    expect(skill).toMatch(/branding-only delta.+explicitly request/is)
+    expect(skill).toMatch(/branding is \*\*off unless.+branding:on/is)
+    expect(skill).toContain("normalize that natural-language request to `branding:on`")
+    expect(skill).toContain("If both tokens are present, stop and report the conflict")
+    expect(skill).not.toContain("pr_branding")
+    expect(skill).toMatch(/branding:on\|off/)
+  })
+
   test("babysit handoff is default-on with off-switches and drivable fork PRs", async () => {
     const content = await readRepoFile("skills/ce-commit-push-pr/SKILL.md")
 
@@ -70,13 +137,14 @@ describe("ce-commit-push-pr contract", () => {
     expect(content).toMatch(/pushes fixes to the \*\*head\*\* repo/i)
   })
 
-  test("config template and example document the auto_babysit opt-out", async () => {
+  test("config template and example keep branding out of ambient configuration", async () => {
     for (const p of [
       "skills/ce-setup/references/config-template.yaml",
       ".compound-engineering/config.local.example.yaml",
     ]) {
       const template = await readRepoFile(p)
       expect(template).toContain("auto_babysit")
+      expect(template).not.toContain("pr_branding")
     }
   })
 })
@@ -84,6 +152,9 @@ describe("ce-commit-push-pr contract", () => {
 describe("PR concept teaching contract", () => {
   test("SKILL.md wires the teaching gate, pipeline mode, and trailer", async () => {
     const content = await readRepoFile("skills/ce-commit-push-pr/SKILL.md")
+    const trailerStart = content.indexOf("**User-runnable invocation rendering.**")
+    const trailerEnd = content.indexOf("**Babysit handoff", trailerStart)
+    const trailer = content.slice(trailerStart, trailerEnd)
 
     // Non-interactive modifier for orchestrated callers
     expect(content).toContain("mode:pipeline")
@@ -95,15 +166,20 @@ describe("PR concept teaching contract", () => {
     expect(content).toContain("active (non-commented)")
     expect(content).toContain("Step B2")
 
-    // Machine-readable trailer + interactive offer
-    expect(content).toContain("New concepts:")
-    expect(content).toContain("Run /ce-explain")
+    // Machine-readable trailer + host-rendered interactive offer
+    expect(trailerStart).toBeGreaterThan(-1)
+    expect(trailerEnd).toBeGreaterThan(trailerStart)
+    expect(trailer).toContain("New concepts:")
+    expect(trailer).toContain("using the rendering rule above")
+    expect(trailer).toContain("$ce-explain <name>")
+    expect(trailer).toContain("/ce-explain <name>")
+    expect(trailer).toMatch(/default to `\/ce-explain <name>`[\s\S]{0,220}Codex[\s\S]{0,160}output one form only/i)
   })
 
   test("SKILL.md archival transition guards ordering, gitignore, and modes", async () => {
     const content = await readRepoFile("skills/ce-commit-push-pr/SKILL.md")
 
-    expect(content).toContain("docs/explainers/")
+    expect(content).toContain("<root>/explainers/")
     expect(content).toContain("input_shape: concept")
     expect(content).toContain("docs(explainer): teach")
     // Declined rewrite must not leave a stray committed-but-unlinked doc
@@ -135,5 +211,27 @@ describe("PR concept teaching contract", () => {
 
     expect(template).toContain("pr_teaching_section")
     expect(template).toContain("pr_teaching_archive")
+  })
+
+  test("babysit handoff is a hard skill invocation, never ad-hoc babysit mechanics", async () => {
+    const content = await readRepoFile("skills/ce-commit-push-pr/SKILL.md")
+
+    const handoff = content.match(/\*\*Babysit handoff — default on\.\*\*[\s\S]+?(?=\n\n)/)?.[0]
+    expect(handoff).toBeDefined()
+    // Observed drift (Nugget PR #1933): the shipping agent ran a bare
+    // `pr-snapshot watch --pr N` instead of invoking ce-babysit-pr, skipping its
+    // Step 2 bootstrap. The handoff must pin the invocation mechanism and forbid
+    // reconstructing babysit's loop at this seam.
+    expect(handoff).toContain("skill-invocation primitive")
+    expect(handoff).toContain("Never start babysit mechanics yourself")
+    expect(handoff).toContain("`pr-snapshot`")
+
+    // Observed drift (Nugget PR #1934): auto-babysit fired on a draft design PR, forcing the
+    // session to improvise "never mark ready" caveats. Drafts are a not-ready signal; the
+    // auto-handoff must not fire on them (explicit babysit tokens still force it).
+    const doNotFire = content.match(/\*\*Do not fire \(auto-detected[\s\S]+?(?=\n\n)/)?.[0]
+    expect(doNotFire).toBeDefined()
+    expect(doNotFire).toContain("draft")
+    expect(doNotFire).toContain("`babysit:continuous`")
   })
 })

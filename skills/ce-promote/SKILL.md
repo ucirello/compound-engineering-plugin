@@ -13,7 +13,7 @@ Turn a feature that just shipped into copy-pasteable, user-facing announcement c
 
 After you ship, the messaging shouldn't wait for a separate marketing pass. `ce-promote` figures out what shipped, picks the right channels, and drafts the copy. It is **spiral-agnostic by default**: with nothing installed it draws on a lite layer of editorial and social-media expertise to produce strong channel-specific copy. When the Spiral CLI (see `references/spiral-cli.md`) is present and authed, it uses Spiral so the drafts are voice-matched to your brand — a subtle enhancement, never a requirement.
 
-**This skill drafts only. It never posts, publishes, commits, or opens PRs.** Posting is a human action. The output is always drafts for you to review, edit, and ship yourself.
+**This skill drafts only. It never posts, publishes, describes changes, moves bookmarks, or opens PRs.** Posting is a human action. The output is always drafts for you to review, edit, and ship yourself.
 
 ## Usage
 
@@ -30,10 +30,10 @@ If the user gave a free-form description of the feature, use it as the source of
 
 Otherwise, derive it from context (use what's available; don't block on any one source):
 
-- **Merged/active PR** — use `jj bookmark list -r 'heads(::@ & bookmarks())'` to identify the nearest bookmark, then run `gh pr view <bookmark> --json title,body,url 2>/dev/null`. The title and body usually state the user-facing value.
-- **The diff** — resolve one validated trunk revision from the project's active conventions (use `trunk()` only when it resolves unambiguously), then run `jj diff --from '<validated-trunk-revision>' --to @ --stat` and skim notable changes to ground the claim in what actually changed.
+- **Merged/active PR** — inspect `jj git remote list` for the GitHub remote and identify local bookmarks targeting `@` with `jj bookmark list -r @`; Jujutsu has no current bookmark. Use `gh pr view --json title,body,url` when GitHub can resolve the working copy, or query `gh pr list --head <bookmark>` for each candidate until the associated PR is unambiguous. The title and body usually state the user-facing value.
+- **The diff** — use `jj diff --from <project-trunk-or-merge-base> --to @ --stat`, choosing the base from the project's active conventions and current revsets, and skim notable changes to ground the claim in what actually changed.
 - **Changelog** — the top/`[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar.
-- **Recent changes** — use `jj log` with syntax supported by the installed JJ version to inspect the recent ancestors of `@` for the arc of the change.
+- **Recent changes** — use `jj log -n 15` for the arc of the working-copy change and its nearby history. Respect the project's configured log presentation rather than imposing a template.
 
 Then write a 1–3 sentence summary of the **user-facing value** — what a user can now do that they couldn't before, and why they'd care. Describe the outcome, not the implementation. ("You can now export any report to CSV in one click" — not "Added a CsvSerializer and an export endpoint.")
 
@@ -126,7 +126,8 @@ Show every draft as a clean, copy-pasteable block, labeled by channel. For each:
 
 - If Spiral produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app.
 - Offer to revise (tone, length, angle, more variations, another channel).
-- **Do not post, publish, schedule, commit, or open a PR.** End by reminding the user the drafts are theirs to ship.
+- Do not add creator, model, provider, tool, agent, runtime, workflow, or generated-by attribution, badges, or standalone product decoration to any draft.
+- **Do not post, publish, schedule, describe changes, move bookmarks, or open a PR.** End by reminding the user the drafts are theirs to ship.
 
 ## Examples
 

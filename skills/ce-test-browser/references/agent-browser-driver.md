@@ -36,14 +36,12 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot "<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/out.png"
-agent-browser screenshot --full "<workspace-root>/.tmp/rocketclaw/test-browser/<run-id>/out-full.png"
+agent-browser screenshot out.png
+agent-browser screenshot --full out-full.png
 
 # Navigation and waits
 agent-browser back
 agent-browser wait @e1
 ```
-
-Resolve `<workspace-root>` with `jj workspace root`; outside a JJ workspace, use `$PWD` so evidence remains under `$PWD/.tmp/rocketclaw/test-browser/<run-id>/`.
 
 Use the installed core documentation for console-error inspection and any command not shown here. Do not switch to another browser driver after the first route is tested.

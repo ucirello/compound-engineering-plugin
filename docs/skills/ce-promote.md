@@ -4,6 +4,8 @@
 
 `ce-promote` is the **post-ship messaging** skill. After a feature merges, it figures out what shipped, picks the right channels, and drafts the announcement copy — an X post or thread, a one-line changelog blurb, a LinkedIn post, an email, a blog intro, a short demo script. It produces good copy with nothing installed, and uses the [Spiral CLI](https://www.npmjs.com/package/@every-env/spiral-cli) for brand-voice-matched drafts when it's present and authed.
 
+Declining the one-time Spiral setup offer is remembered in the checkout-local config; see the [configuration reference](./configuration.md).
+
 It drafts only. It never posts, publishes, commits, or opens PRs — shipping the copy is a human action.
 
 ---
@@ -16,6 +18,26 @@ It drafts only. It never posts, publishes, commits, or opens PRs — shipping th
 | When to use it | Right after a feature ships and you want the user-facing messaging drafted in-workflow |
 | What it produces | Copy-pasteable drafts, labeled by channel — never an auto-post |
 | Spiral | Optional enhancement: voice-matched drafts when the CLI is ready; otherwise offers setup once, then drafts with a lite layer of editorial & social expertise |
+
+---
+
+## Example invocations
+
+```text
+# Derive what shipped from the current project and draft the default channels
+/ce-promote
+
+# Supply the shipped value when the repository context is not enough
+/ce-promote announce one-click CSV export for account reports
+
+# Ask for several alternatives on one channel
+/ce-promote 3 tweet options for the new one-click CSV export
+
+# Draft a coordinated cross-channel launch set
+/ce-promote a launch across X, LinkedIn, and email for one-click CSV export
+```
+
+Name channels when you need a particular distribution shape; otherwise the skill chooses a small default set. It always drafts and never posts.
 
 ---
 

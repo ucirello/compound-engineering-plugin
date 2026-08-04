@@ -1,65 +1,77 @@
 ---
 name: ce-simplify-code
-description: "Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving behavior. Use for tidy/refactor passes; use ce-debug for bugs."
-argument-hint: "[blank to simplify the current JJ change stack, or describe what to simplify]"
+description: "Simplify settled, recently changed code for clarity, reuse, quality, and efficiency while preserving behavior. Use after implementation and before review; use ce-debug for bugs."
+argument-hint: "[blank to simplify the current change, or describe what to simplify]"
 ---
 
 Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
+
+## Setup
+
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== ce-simplify-code context` header and ends with `CE_SIMPLIFY_CODE_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+
+```bash
+CE_SIMPLIFY_CODE_SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+CE_SIMPLIFY_CODE_NODE="$(for c in node nodejs; do command -v "$c" >/dev/null 2>&1 && "$c" -e '' >/dev/null 2>&1 && { echo "$c"; break; }; done)";
+if [ -n "$CE_SIMPLIFY_CODE_NODE" ]; then
+"$CE_SIMPLIFY_CODE_NODE" "$CE_SIMPLIFY_CODE_SKILL_DIR/scripts/context.mjs" || echo "ce-simplify-code context script failed; continue with the skill's normal behavior";
+else
+echo "no Node runtime; continue with the skill's normal behavior";
+fi
+```
 
 ## Step 1: Identify scope
 
 Resolve the simplification scope in this order:
 
-1. **If the user explicitly named a scope** (a file, a directory, "the function I just wrote", "the changes from this morning"), use that scope. Treat user-named scope as authoritative — do not widen it.
-2. **Otherwise, in a JJ workspace**, inspect the working-copy state and conflicts with `jj status`, then default to the diff for the current change stack relative to its base. Resolve the stack and base with the project's active JJ revset conventions, inspecting history with `jj log` and the resulting changes with `jj diff`. This covers the common case of simplifying everything added to a stack before opening a PR. If no stack base can be resolved, fall back to the current working-copy change with `jj diff -r @`.
-3. **For GitHub PR scope or Git interoperability**, retain `gh` and JJ's Git interoperability where they provide authoritative PR metadata, diffs, refs, or remote state. Do not replace a JJ-native local workflow with standalone Git commands.
-4. **Outside a JJ workspace or when no diff is available**, review the most recently modified files mentioned by the user or edited earlier in this conversation.
+1. **User-named scope** is authoritative; do not widen it.
+2. **Otherwise, in a Jujutsu workspace**, use the current change (`jj diff -r @`).
+3. **Outside Jujutsu or without a diff**, use files the user named or that were edited earlier in the conversation.
 
 If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+
+**Preflight.** If the scope has no substantive human-authored code — only documentation, generated or vendored files, dependencies or lockfiles, or mechanical churn — report that there is nothing to simplify and stop without reviewers. For mixed scopes, retain only the code. This is a kind gate, never a size gate: explicit small scopes still run, and callers own any size or cost threshold.
+
+When the platform's task-tracking capability is available, show the review, apply, and verification outcomes without creating one task per reviewer. Otherwise continue without simulating a task list in chat.
 
 ## Step 2: Launch 3 review agents in parallel
 
 Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set) so it has complete context:
 
-- `references/personas/code-reuse-reviewer.md` — existing utilities, duplicated functionality, reimplemented stdlib/runtime primitives.
-- `references/personas/code-quality-reviewer.md` — redundant state, parameter sprawl, copy-paste, leaky abstractions, stringly-typed code, dead code, over-nesting, and the over-simplification balance guard.
-- `references/personas/efficiency-reviewer.md` — unnecessary work, missed concurrency, hot-path bloat, no-op updates, memory leaks.
+- `references/personas/code-reuse-reviewer.md`
+- `references/personas/code-quality-reviewer.md`
+- `references/personas/efficiency-reviewer.md`
 
 Do not paraphrase these rubrics from memory — read each file and pass it verbatim, or the reviewer loses the gating rules that keep the pass behavior-preserving.
 
-**Bounded dispatch.** Queue the three reviewers and launch only as many as the harness accepts at once; treat a concurrency/active-agent-limit error as backpressure (leave the reviewer queued and retry after a slot frees), not as reviewer failure.
+**Bounded dispatch.** Queue the three reviewers and launch only as many as the harness accepts at once; treat a concurrency/active-agent-limit error as backpressure (leave the reviewer queued and retry after a slot frees), not as reviewer failure. If a dispatch fails for any other reason, run that reviewer's pass inline in the parent context using the same prompt asset, and disclose the substitution in one line.
 
-**Model selection.** Use the platform's mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class; in Codex use the current mini/mid-tier model exposed by `spawn_agent` when known. On platforms where the model-override parameter is unavailable or the model name is unknown or unrecognized, omit the override -- a working pass on the parent model beats a broken dispatch.
+**Model selection.** Use the platform's balanced mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
 
 **Permission mode.** Omit the `mode` parameter on the dispatch call so the user's configured permission settings apply.
 
 ## Step 3: Fix issues
 
-Wait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on. Do not argue with the finding or raise questions to the user, just skip it.
+Proceed only after all three review outcomes are complete, whether returned by subagents or produced inline. Apply worthwhile findings directly; record false positives and low-value findings as skipped without asking the user.
 
-Before applying each fix, confirm it preserves behavior: same output for every input, same error behavior, and same side effects and ordering. If a fix can't clear that test, skip it — automated checks in Step 4 don't cover every behavior.
+Inspect beyond the resolved scope when needed to evaluate a finding, but edit only that scope and its necessary import/export seams. For a user-named file or directory scope, those seams must also be inside it; skip any fix that would edit outside the mutation boundary.
 
-**Never simplify away a safety check.** Input validation at trust boundaries, error handling that prevents data loss, security checks (authorization, escaping, sanitization), and accessibility affordances are not removable boilerplate — preserve them even when a finding frames them as redundant or inline-able. Code that drops one of these is not simpler, it is unfinished. If a proposed simplification would thin or remove one, skip it.
+Each fix must preserve outputs, errors, side effects, and ordering. If that cannot be established, skip it.
+
+An interface or data shape that existed only in an earlier iteration of the current unshipped scope is not protected behavior once you verify it has no deployed, persisted, public, external, dependent-change, or in-repo caller outside the resolved scope. Remove that compatibility path only when every required caller update fits the existing mutation boundary; otherwise preserve it.
+
+**Never simplify away a safety check.** Preserve trust-boundary validation, data-loss protection, security checks, and accessibility affordances. Skip any finding that would thin or remove one.
+
+**Honor caller-passed structure pins.** A plan path passed with the structure-pin constraint is context, not scope. Preserve its `session-settled:` Key Technical Decisions, including deliberate duplication or separation.
 
 ## Step 4: Verify behavior is preserved
 
-The premise of this skill is that simplification preserves exact functionality. After applying fixes:
+Run project-wide typecheck and lint. Run tests matched to blast radius: scoped tests for local changes, broader tests for shared or wide-reach changes, and the full suite when the runner cannot scope tests.
 
-**Run typecheck and lint over the full project.** They are usually fast and catch the most common simplification regressions — broken imports, unused exports, dropped type narrowings, dead code other modules still reference.
-
-**Run tests:**
-- Run tests scoped to the changed paths. CI runs the full suite on PR — this local check is a fast signal, not the final guarantee. Match scope to blast radius; a 3-line simplification doesn't warrant a 20-minute test run.
-- Broaden scope when the change has obvious wide reach — e.g., a heavily-imported utility was rewritten, or the code-quality reviewer's consolidation/dedup fixes modified shared code. This is a judgment call about ripple risk, not a mechanical rule.
-- If the test runner has no scoping mechanism, run the full suite.
-
-Surface any failure clearly with the failing check name and the relevant output. Do not relax assertions, weaken type signatures, or skip tests to make checks pass — that defeats the "preserves functionality" guarantee. Either fix the underlying break introduced by simplification, or revert the specific change that caused the regression.
+Report failures with the check name and relevant output. Fix simplification-caused failures or revert the responsible change; never relax assertions, weaken types, or skip tests.
 
 If no test suite, lint, or typecheck is configured, state that explicitly in the summary; do not silently skip verification.
 
 ## Step 5: Summarize
 
-Briefly summarize what was good vs improved and fixed, including which checks were run and their results. If there were no findings to act on, confirm the code didn't require any changes.
-
-When composing or revising the change description, apply this policy: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and description conventions observed through the project's actual `git log` invocation take precedence; determine that invocation at runtime rather than prescribing fixed `git log` syntax. This required history inspection is only for message style; use JJ for repository operations. Apply compatible Go guidance only to quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, syntax, template, or example; use neutral placeholders when discussing variable content.
-
-**Quantify the impact by dimension.** Report what was actually applied, not a line count: fixes applied per reviewer dimension (reuse, quality, efficiency), how many findings were skipped as false-positive or not worth addressing, and the behavior-preservation result (checks run and outcome). For example: "Applied 6 — reuse 2, quality 3, efficiency 1; skipped 2 false positives; typecheck + lint clean, 11 scoped tests pass." Do not headline a net-lines-removed figure or frame fewer lines as the win — many clarity, safety, and efficiency fixes preserve or add lines. The measure is what improved and that behavior held, not how much code shrank.
+Summarize what was already sound and what improved. Report applied counts by reuse, quality, and efficiency; skipped count; and check outcomes. If nothing changed, say so. Do not use net lines removed as the success metric.

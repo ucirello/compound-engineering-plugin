@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# detect-project-type.sh — inspect signature files at the repo root (and, if
+# detect-project-type.sh — inspect signature files at the workspace root (and, if
 # no root match is found, probe shallow subdirectories) to emit a project-type
 # identifier on stdout.
 #
@@ -41,10 +41,9 @@
 
 set -u
 
-workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
-REPO_ROOT="$workspace_root"
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
 
-cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }
+cd "$WORKSPACE_ROOT" || { echo "ERROR: cannot cd to workspace root" >&2; exit 1; }
 
 MATCHES=()
 

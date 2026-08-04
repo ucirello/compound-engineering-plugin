@@ -16,13 +16,13 @@ The verdict, expanded — lead with the decision, then the evidence the TL;DR om
 ## Format and economy
 
 - **HTML by default** — a single self-contained file (a verdict is a thing people share). Use markdown when the user asks, or when the write-up will feed `ce-brainstorm`/`ce-plan`.
-- For a throwaway report, write under `$(jj workspace root)/.tmp/rocketclaw/ce-pov/`; if JJ cannot resolve a workspace root, use `$PWD/.tmp/rocketclaw/ce-pov/` instead. Write under `docs/` when the user wants it kept. Announce the absolute path. Do **not** introduce a new mandated `docs/` location — that store is deferred.
+- Write to `<workspace-root>/.tmp/rocketclaw/ce-pov/`, falling back to the current directory's `.tmp/rocketclaw/ce-pov/` when outside a JJ workspace, or under `<root>/` when the user wants it kept; announce the absolute path. Do **not** introduce a new mandated durable location — that store is deferred.
 - Lead with the verdict, and **cite** evidence rather than pasting dossiers wholesale — the report is a tighter case for a human, not a research dump.
 
 ## Sharing
 
 Publish via whatever the user has — best available, never required:
 
-- `ce-proof` (Proof) — markdown-only, so if the report is HTML, render a throwaway markdown copy in the same workspace-local `.tmp/rocketclaw/ce-pov/` directory as the Proof source.
+- `ce-proof` (Proof) — markdown-only, so if the report is HTML, render a throwaway markdown copy of it as the Proof source.
 - Otherwise an available HTML publishing tool the user has connected.
 - If neither is reachable, the local file is the deliverable — announce its path.

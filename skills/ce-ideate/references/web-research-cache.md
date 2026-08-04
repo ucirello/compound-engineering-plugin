@@ -25,8 +25,8 @@ Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` 
 Before dispatching `web-researcher`, resolve the scratch root (the parent of `<scratch-dir>`) in bash and list sibling run-id directories — refinement loops within a session may legitimately reuse another run's cache by topic, not run-id:
 
 ```bash
-workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
-SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw/ce-ideate"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-ideate";
 find "$SCRATCH_ROOT" -maxdepth 2 -name 'web-research-cache.json' -type f 2>/dev/null
 ```
 

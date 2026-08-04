@@ -44,6 +44,14 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
+- **Source / composition signal.** A visible footer at the bottom of
+  the doc names the composition timestamp and, when one exists, the input source
+  (the user prompt context or the upstream brainstorm doc). Do not add an
+  author, agent, skill attribution, or byline. Example shape:
+  `<footer class="composition-signal">Composed 2026-05-17T14:23Z · Source: <code>docs/brainstorms/...-requirements.md</code></footer>`.
+  Under exclusive output mode this signal is the artifact's own
+  provenance — there's no markdown sibling to reference. Omitting it
+  leaves readers unable to tell how stale the rendering is.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -96,11 +104,13 @@ these locations, first match wins:
 
 1. JJ workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to another workspace. Users who
-want HTML defaults can add DESIGN.md to the current workspace.
+Workspace-root only — do not fall through to another workspace. Users
+working from a JJ workspace who want HTML defaults can add DESIGN.md to the
+workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -216,22 +226,19 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's canonical GitHub URL and default branch once at compose time:
+Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-gh repo view --json url,defaultBranchRef
 jj git remote list
 ```
 
-Prefer the authenticated `gh` result. If that is unavailable, normalize the
-`jj git remote list` URLs and use a repository URL only when exactly one remote
-points to GitHub; use `HEAD` as the branch segment when the default branch is
-unknown. Do not assume a remote name or branch name.
+Select the `origin` URL from the output. Keep this `jj git` interoperability
+command because the value belongs to the backing remote.
 
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/<default-branch>/<path>`.
+  `<root>/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -239,9 +246,9 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If no unambiguous GitHub URL is available (GitLab,
-Bitbucket, internal host, or multiple unmatched remotes) and the equivalent
-tree URL pattern isn't obvious, leave entries as `<code>` text. If the external
+**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
+Bitbucket, internal host) and the equivalent main-tree URL pattern
+isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.
 
@@ -269,6 +276,12 @@ anchor ID and visible heading text:
 Long HTML plans are agent-consumed as source text as often as they are read in
 a browser. Keep the heading text visible and adjacent to the `id`; do not rely
 on a nav link alone to carry the section name.
+
+Optional sections with a contract-defined semantic role put that role on their
+wrapping `<section>` with `data-ce-section`. For example, the broader-work
+relationship section uses `data-ce-section="work-relationships"`. The role is
+stable even when the visible heading changes; it supplements, rather than
+replaces, readable heading text and any useful anchor.
 
 ### Text contrast is local
 
@@ -353,7 +366,10 @@ contracts — the agent picks shapes that fit the content.
 - **Key Technical Decisions** — repeating cards with the decision ID,
   bold decision title (often with inline code for technical
   identifiers), and prose rationale. Flat cards (not collapsibles) —
-  these are reference material readers scan, not drill into.
+  these are reference material readers scan, not drill into. A
+  `session-settled:` annotation renders as visible text in the card —
+  never an attribute or hidden markup — stem preserved verbatim so
+  grep works on the HTML artifact.
 - **Risks** — cards with a color-coded status eyebrow (e.g., "RISK ·
   MITIGATED" / "OPEN · DEFERRED FOLLOW-UP") and prose body. Communicate
   status through the eyebrow's color plus an optional subtle full-card
@@ -468,7 +484,7 @@ with a UI/layout shape can carry a wireframe, whether or not the brainstorm
 as a whole is "a visual product" — a backend-heavy brainstorm with one
 screen change still earns a wireframe for that requirement. It still applies
 to brainstorm **requirements** output — the requirements-only unified plan
-`ce-brainstorm` writes (now under `docs/plans/`), not an implementation-ready
+`ce-brainstorm` writes (now under `<root>/plans/`), not an implementation-ready
 plan (`ce-plan`'s enriched output) — and only to UI-shaped requirements — a
 non-visual requirement (API design, data model, agent workflow,
 infrastructure) takes a conceptual diagram instead, not a
@@ -595,6 +611,9 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
+- **Source / composition signal** is present as a visible footer at
+  the bottom of the doc (composition timestamp plus input source when one exists,
+  without an author or skill byline).
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

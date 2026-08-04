@@ -10,7 +10,7 @@
 # Arguments:
 #   repo-name  Folder name of the repo (e.g., "my-repo"). Used for directory matching.
 #   days       Scan window in days (e.g., 7). Files older than this are skipped.
-#   --cwd      Absolute workspace root. Used for exact Pi encoded-CWD discovery.
+#   --cwd      Absolute JJ workspace root. Used for exact Pi encoded-CWD discovery.
 #   --platform Restrict to a single platform. Omit to search all.
 
 set -euo pipefail

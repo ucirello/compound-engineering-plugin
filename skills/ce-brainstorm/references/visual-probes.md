@@ -72,16 +72,22 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WORKSPACE_ROOT="$(jj workspace root)" || WORKSPACE_ROOT="$PWD";
-node "$SKILL_DIR/scripts/visual-probe-server.js" start --root "$WORKSPACE_ROOT/.tmp/rocketclaw/brainstorm-visual/<run-id>"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
+if [ -z "$WORKSPACE_ROOT" ]; then WORKSPACE_ROOT="$PWD"; fi;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"; (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
+node "$SKILL_DIR/scripts/visual-probe-server.js" start --root "$PROBE_DIR"
 ```
 
-Append `--foreground` to that `start` command for foreground mode. Status and stop take the same anchors — and because shell variables do not persist between Bash invocations, each call must re-set both `SKILL_DIR` and `WORKSPACE_ROOT` rather than reuse the `start` block's values:
+Append `--foreground` to that `start` command for foreground mode. Status and stop take the same anchor — and because `SKILL_DIR` does not persist between Bash invocations, each must re-set it in its own call rather than reuse the `start` block's value:
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WORKSPACE_ROOT="$(jj workspace root)" || WORKSPACE_ROOT="$PWD";
-node "$SKILL_DIR/scripts/visual-probe-server.js" status --root "$WORKSPACE_ROOT/.tmp/rocketclaw/brainstorm-visual/<run-id>"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
+if [ -z "$WORKSPACE_ROOT" ]; then WORKSPACE_ROOT="$PWD"; fi;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"; (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
+node "$SKILL_DIR/scripts/visual-probe-server.js" status --root "$PROBE_DIR"
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)
 ```
 
@@ -135,15 +141,14 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use workspace-local scratch:
+Use `$(jj workspace root)/.tmp` by default, falling back to the current directory's `.tmp` when the current directory is not in a JJ repository:
 
 ```text
-$(jj workspace root)/.tmp/rocketclaw/brainstorm-visual/<run-id>/
-# Fallback: $PWD/.tmp/rocketclaw/brainstorm-visual/<run-id>/
+<scratch-root>/ce-brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/
     display-info.json
 ```
 
-If the user explicitly wants to preserve or curate the sketches after the session, move the selected artifacts to an appropriate durable project path. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `docs/plans/`.
+Use `.context/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `<root>/plans/`.

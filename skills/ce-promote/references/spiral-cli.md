@@ -23,9 +23,9 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 
 ### Check the opt-out
 
-Resolve the workspace root with `jj workspace root`, never from CWD, then read `<root>/.rocketclaw/config.local.yaml` with the native file-read tool. If the workspace root cannot be resolved or the file is absent, treat the config as absent.
+Resolve the workspace root with `jj workspace root`, then read `<workspace-root>/.rocketclaw/config.local.yaml` with the native file-read tool. If JJ cannot resolve a workspace root or the file does not exist, treat the config as absent.
 
-If the contents have an **uncommented** top-level `ce_promote_spiral_optout: true` line, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template ships a `# ce_promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
+If the contents have an **uncommented** top-level `ce_promote_spiral_optout: true` line, **skip Path 0** and go straight to Path B. **Ignore commented lines** — the setup template ships a `# ce_promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
 
 ### Ask
 
@@ -58,14 +58,14 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the workspace root with `jj workspace root`, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+Resolve the workspace root with `jj workspace root`, then add `ce_promote_spiral_optout: true` as a top-level key to `<workspace-root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
 
 - **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it (and its `.rocketclaw/` directory) with the key, AND make sure the machine-local config won't be included in a change. Resolve the underlying Git directory with `jj git root`, read its `info/exclude` file with the native file-read tool, and append `.rocketclaw/*.local.yaml` with the native file-write/edit tool unless that exact rule is already present. This works for colocated and non-colocated Git-backed JJ workspaces without hardcoding `<root>/.git/info/exclude`. Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids changing a tracked file during a drafts-only action. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally include machine-local opt-out state in a change. JJ snapshots the working copy automatically; do not stage files.
+- **File absent:** create it (and its `.rocketclaw/` directory) with the key, AND make sure the machine-local config does not enter the working-copy change. If `.rocketclaw/*.local.yaml` is not already ignored, resolve the backing Git directory with `jj git root` and append that pattern to its local `info/exclude` file. Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. The setup workflow is the canonical place that adds the shared `.gitignore` entry for teammates. Confirm with `jj status` that the config is absent from the working-copy change; if it appears, remove the newly created config and proceed to Path B without recording the opt-out.
 
 If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of version control). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
+After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of the working-copy change). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it. Do not add creator, model, provider, tool, agent, runtime, workflow, or generated-by attribution, badges, or standalone product decoration to this message.
 
 ## Generate
 

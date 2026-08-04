@@ -6,35 +6,53 @@ It also contains:
 - the Bun/TypeScript CLI that converts Claude Code plugins into other agent platform formats
 - shared release and metadata infrastructure for the CLI, marketplace, and plugin
 
-`AGENTS.md` is the canonical repo instruction file. Root `CLAUDE.md` exists only as a compatibility shim for tools and conversions that still look for it.
+`AGENTS.md` is the canonical repo instruction file. Root `CLAUDE.md` is a symlink to `AGENTS.md` so Claude Code and other tools that look for `CLAUDE.md` still find it at the expected path. Keep that symlink (do not replace it with a regular file): a real root `CLAUDE.md` makes `claude plugin validate --strict` fail because this checkout is also the plugin root.
 
 ## Quick Start
 
 ```bash
 bun install
-bun test                  # full test suite
-bun run release:validate  # check plugin/marketplace consistency
+bun run test              # full test suite (also runs in CI; `--parallel` across worker processes)
+bun run release:validate  # plugin/marketplace consistency (also runs in CI)
+bun run plugin:validate   # Claude marketplace + plugin schema (also runs in CI; needs `claude` on PATH)
 ```
+
+### Codex Local Plugin Development
+
+When testing current skill files in Codex, run the repository workflow from the checkout or worktree you intend to test:
+
+```bash
+bun run codex:dev -- local    # link this worktree's skills and remove CE plugin installs
+bun run codex:dev -- status   # show local/remote state and checkout provenance
+bun run codex:dev -- remote   # restore the official marketplace-backed plugin
+bun run codex:dev -- remove   # remove both supported CE installation surfaces
+```
+
+`refresh` is an idempotent alias for `local`. Local mode manages only the exact `$CODEX_HOME/skills/compound-engineering-local` symlink and Compound Engineering plugin IDs; it must not alter unrelated user skills. The symlink includes modified and untracked files from the selected worktree. Start a new Codex session after switching installation modes. Current Codex versions detect direct skill edits automatically; restart only if an edit does not appear. For live local testing, use this workflow instead of adding the repository as a marketplace: a marketplace install caches a snapshot, while local mode links the current skill files.
 
 ## Working Agreement
 
 - **Branching:** Create a feature branch for any non-trivial change. If already on the correct branch for the task, keep using it; do not create additional branches or worktrees unless explicitly requested.
 - **Merge policy:** All changes to `main` go through pull requests. Direct pushes and direct merges are not allowed; branch protection on `main` enforces this by requiring the `test` status check to pass. The direct path bypasses `release:validate`, the test suite, and PR title validation — past direct merges have caused version drift requiring multi-PR recovery (see `docs/solutions/workflow/release-please-version-drift-recovery.md`).
+- **Contribution gate (non-maintainers):** If you are not a repository maintainer or admin, do not open a PR without a linked issue — file the issue first and reference it from the PR. Adding a **new skill** has a stricter gate: non-maintainers and non-admins must raise a discussion in an issue and get explicit maintainer approval **before** starting the work; do not open a new-skill PR that has not been approved this way. Maintainers and admins are exempt from both gates but still follow the merge policy above.
+- **PR disclosure:** `.github/pull_request_template.md` ends with `## Security Disclosure` and `## Agent Disclosure` sections. Fill both when opening a PR — including PRs authored via `gh pr create --body`/`--body-file`, which bypass the template so nothing pre-fills them. State any security-relevant changes (or "No security-relevant changes"), and the model that did the bulk of the work — your harness plus the most specific model identity your own context gives you, e.g. `Claude Code · claude-opus-4-8` or `Codex CLI · GPT-5`. Copy an exact model ID verbatim when your harness states one; when it exposes only a generic family, report the family and stop. Measured 2026-07-24: Codex and Cursor agents cannot see their running model at all (Codex's "based on GPT-5" is fixed boilerplate), so do not upgrade a family to a version, and do not read config files for one — the configured default is often not the model actually running. Never invent a version or variant. The body above those sections stays freeform — add whatever sections best explain the change.
 - **Safety:** Do not delete or overwrite user data. Avoid destructive commands.
-- **Testing:** Run `bun test` after changes that affect parsing, conversion, or output.
+- **Testing:** Run `bun run test` after changes that affect parsing, conversion, output, skill conventions, or other mechanical guards. Local `bun run test` is the same suite CI runs — there is no separate local-only unit-test lane. Prefer it over bare `bun test`: the package script carries `--parallel`, which is where the suite's speed comes from. Bare `bun test <file>` is still the right tool for iterating on one file.
 - **Release versioning:** Releases are prepared by release automation, not normal feature PRs. The repo has one root plugin/package release component (`compound-engineering`) plus marketplace components (`marketplace`, `cursor-marketplace`). GitHub release PRs and GitHub Releases are the canonical release-notes surface for new releases; root `CHANGELOG.md` is only a pointer to that history. Use conventional titles such as `feat:` and `fix:` so release automation can classify change intent, but do not hand-bump release-owned versions or hand-author release notes in routine PRs.
 - **Output Paths:** Keep OpenCode output at `opencode.json` and `.opencode/{agents,skills,plugins}`. For OpenCode, commands go to `~/.config/opencode/commands/<name>.md`; `opencode.json` is deep-merged (never overwritten wholesale).
 - **Scratch Space:** Default to OS temp. Use `.context/` only when explicitly justified by the rules below.
   - **Default: OS temp** — covers most scratch, including per-run throwaway AND cross-invocation reusable, regardless of whether a repo is present or whether other skills may read the files. A stable OS-temp prefix handles cross-skill and cross-invocation coordination equally well as an in-repo path; repo-adjacency is rarely the relevant property.
-    - **Per-run throwaway**: `mktemp -d -t <prefix>-XXXXXX` (OS handles cleanup). Use for files consumed once and discarded — captured screenshots, stitched GIFs, intermediate build outputs, recordings, delegation prompts/results, single-run checkpoints. The resulting path is opaque (on macOS it resolves under `$TMPDIR`/`/var/folders/...`) — that is appropriate for throwaway files users are not meant to access.
-    - **Cross-invocation reusable**: stable path `/tmp/compound-engineering/<skill-name>/<run-id>/` — **not** `mktemp -d` — so later invocations of the same skill can discover sibling run-ids. Use `/tmp` directly rather than `$TMPDIR` so paths stay accessible: `$TMPDIR` on macOS resolves to `/var/folders/64/.../T/`, which is hostile for users who want to inspect checkpoints, grep them, or copy them out. The per-user isolation `$TMPDIR` provides is not valuable for cross-invocation reusable scratch where users are the intended audience. Use for caches keyed by session, checkpoints meant to survive context compaction within a loose session, or any state where later runs of the same skill need to locate prior outputs.
+    - **Per-run throwaway**: `mktemp -d "${TMPDIR:-/tmp}/<prefix>-XXXXXX"` (OS handles cleanup). Use for files consumed once and discarded — captured screenshots, stitched GIFs, intermediate build outputs, recordings, delegation prompts/results, single-run checkpoints. Always pass an explicit template under `${TMPDIR:-/tmp}`. Do not use bare `mktemp`, bare `mktemp -d`, `mktemp -t`, or `mktemp -d -t`: those forms ignore `$TMPDIR` on macOS and can resolve outside a sandbox's writable temp directory.
+    - **Cross-invocation reusable**: use a stable, effective-user-owned prefix under `/tmp/compound-engineering-<effective-uid>/<skill-name>/` — **not** `mktemp -d` — so later invocations by the same OS user can find prior outputs without sharing a writable root with other users. Derive the effective UID with `id -u`, reject a symlink or path not owned by the current user, and create or repair the top-level root to mode `0700` before use. The default layout is one `<scratch-root>/<skill-name>/<run-id>/` directory per run; use it for caches keyed by session, checkpoints meant to survive context compaction, intermediate state, and outputs whose lifecycle or mutation belongs to one run.
+      - **Discoverable collection exception**: omit the per-run directory only when later invocations intentionally enumerate multiple sibling **final artifacts** as core product behavior and run isolation would materially worsen discovery or the user-facing path. Use a stable collection namespace (for example, repository identity plus a `general` fallback), descriptive immutable filenames, metadata that supports ranking, and no-overwrite collision handling that atomically reserves the final filename and retries with the next suffix on collision; never check availability and then write. Do not use this exception for caches, checkpoints, intermediate files, or merely to shorten a path.
+      - Use `/tmp` directly rather than `$TMPDIR` so paths stay accessible: `$TMPDIR` on macOS resolves to `/var/folders/64/.../T/`, which is hostile for users who want to inspect checkpoints, grep them, or copy them out. The explicit effective-UID segment supplies the required cross-user boundary while preserving a readable path. Agents running as the same OS user intentionally remain in one discretionary-access-control principal.
   - **Exception: `.context/`** — use only when the artifact is genuinely bound to the CWD repo AND meets at least one of:
     - (a) **User-curated**: the user is expected to inspect, manipulate, or manually curate the artifact outside the skill (e.g., a per-repo TODO database, a per-spec optimization log that survives across sessions on the same checkout).
     - (b) **Repo+branch-inseparable**: the artifact's meaning is inseparable from this specific repo or branch (e.g., branch-specific resume state that a user expects to pick up again in the same checkout).
     - (c) **Path is core UX**: surfacing the artifact path back to the user is a core part of the skill's output and that path is easier to communicate as a repo-relative location than an OS-temp one.
     Namespace under `.context/compound-engineering/<workflow-or-skill-name>/`, add a per-run subdirectory when concurrent runs are plausible, and decide cleanup behavior per the artifact's lifecycle (per-run scratch clears on success; user-curated state persists). "Shared between skills" is not by itself sufficient — OS temp handles that equally well.
   - **Durable outputs** (plans, specs, learnings, docs, final deliverables) belong in `docs/` or another repo-tracked location, not in either scratch tier.
-  - **Cross-platform note:** `/tmp` is writable on macOS (symlink to `/private/tmp`), Linux, and WSL. `mktemp -d -t <prefix>-XXXXXX` also works on all three. Skills authored here assume Unix-like shells; native Windows is not a current target.
+  - **Cross-platform note:** `/tmp` is writable on macOS (symlink to `/private/tmp`), Linux, and WSL. For per-run throwaway files, use an explicit `${TMPDIR:-/tmp}` template so macOS and sandboxed hosts honor the selected temp parent. Skills authored here assume Unix-like shells (bash on macOS/Linux, or Git Bash on Windows). Native Windows is a supported target for Python interpreter resolution and peer-job detach — never hardcode `python3`; probe execution per `docs/solutions/conventions/resolve-python-interpreter-not-python3.md`.
 - **Character encoding:**
   - **Identifiers** (file names, agent names, command names): ASCII only -- converters and regex patterns depend on it.
   - **Markdown tables:** Use pipe-delimited (`| col | col |`), never box-drawing characters.
@@ -71,6 +89,7 @@ When changing plugin content:
 
 - Update substantive docs like `README.md` when the plugin behavior, inventory, or usage changes.
 - When adding a user-facing skill, document it: create a `docs/skills/<skill-name>.md` page (purpose, novel mechanics, when to use, chain position — follow the shape of the existing pages) and add a catalog row under the right category in `docs/skills/README.md`, alongside the root `README.md` inventory row and the skill-count bump in `tests/release-metadata.test.ts`. Keep these in sync when a skill's purpose or inventory changes. This is convention, not yet validated by a test, so it is easy to miss — most skills have a page; the few that don't (e.g. `lfg`, `ce-dogfood-beta`) are the exception, not the rule.
+- When adding, removing, renaming, or changing the meaning/default/consumer of a `.compound-engineering/config.local.yaml` option, update `skills/ce-setup/references/config-template.yaml`, its byte-identical `.compound-engineering/config.local.example.yaml` copy, the centralized `docs/skills/configuration.md` reference, and the affected consumer skill docs in the same change. Keep local config as optional checkout-local defaults; durable team instructions belong in the project's normal agent-instructions mechanism.
 - Do not hand-bump release-owned versions in plugin or marketplace manifests.
 - Do not hand-add release entries to `CHANGELOG.md` or treat it as the canonical source for new releases.
 - Run `bun run release:validate` if agents, commands, skills, MCP servers, or release-owned descriptions/counts may have changed.
@@ -88,7 +107,7 @@ cat .claude-plugin/plugin.json | jq .
 
 ## Runtime vs Authoring Context
 
-`AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` are authoring context for this source repository. Skills are installed into end-user environments, where they run against the user's local instruction files, not this repo's. Behavioral rules that must affect a skill at runtime belong in that skill's `SKILL.md` or files under its own `references/` directory.
+`AGENTS.md`, `CLAUDE.md` (symlink to `AGENTS.md`), and `GEMINI.md` are authoring context for this source repository. Skills are installed into end-user environments, where they run against the user's local instruction files, not this repo's. Behavioral rules that must affect a skill at runtime belong in that skill's `SKILL.md` or files under its own `references/` directory.
 
 ## Cross-Model Skill Authoring
 
@@ -102,6 +121,12 @@ That field guide is the canonical reasoning layer for outcome-first authoring, m
 - Do not keep vague effort or quality language such as "be thorough" or "produce high-quality work" as a standalone instruction. Replace it with an observable rule, or retain a targeted effort cue only when it counters a documented runtime tendency and has been evaluated there.
 - Do not append motivational rationale to a directive that already stands on its own.
 - Repeat an instruction only at a demonstrated drift point where placement changes whether it fires. Protect genuinely required always-loaded duplicates with a parity test.
+
+### User-Facing Skill Invocations
+
+Keep agent-to-agent or skill-to-skill routing semantic: format formal skill names as inline code (for example, `ce-plan`) and invoke the named skill through the active harness's callable skill mechanism. When a skill prints or copies a user-runnable invocation, default to `/skill-name`; use `$skill-name` only when the active harness is Codex or explicitly documents dollar-prefixed skill invocation. In prose, render only the invocation as inline code; use a fenced block only when the command stands alone. Output exactly one form. Do not apply this rendering rule to built-in commands such as `/goal`.
+
+At runtime, put the smallest self-contained rendering rule immediately before the smallest section that contains all affected user-copy seams. Do not repeat it in every step; repeat it only in a separately loaded reference that independently owns output.
 
 ### Applying Feedback to Skills
 
@@ -153,6 +178,46 @@ Behavioral changes to a plugin skill or skill-local persona (anything under `ski
 - **A version-matched cache is not automatically stale — confirm by content, not by version.** When this working tree is the local marketplace source, a session (re)start re-copies it into `~/.claude/plugins/cache/.../compound-engineering/<version>/` (a plain copy, no `.git`; `<version>` is the working tree's `.claude-plugin/plugin.json` version), so the loaded plugin can be identical to — and as current as — your edits. Do not assume the running copy is stale just because it lives under the cache path; equally, do not assume a matching `<version>` means it includes your latest change. Version match is necessary but not sufficient: edits within a release do not bump the version, so a matching segment proves only that the cache was built from this release, not that it captured your most recent edit. To know which copy is actually loaded, diff the specific cache file against the working-tree file — identical means the running plugin is your current edit and you can trust it; differing means the session predates the edit, so restart (or use skill-creator). Never infer "stale" or "current" from the version segment alone.
 
 - **Mechanical changes do not have this restriction.** Skill scripts (e.g., `extract-metadata.py`), parser logic, conversion code, and anything `bun test` exercises always run the current source. The caching issue only affects LLM-driven skill prose behavior dispatched through the plugin loader.
+
+## CI and Quality Gates
+
+PR CI (`.github/workflows/ci.yml`) is the merge gate. It runs, in order: PR-title lint (PRs only), `bun run release:validate`, `bun run plugin:validate`, and `bun run test`. Do not invent a parallel local-only mechanical suite — if a check is deterministic and should block merges, put it in one of those steps (usually `bun run test`).
+
+The `test` script runs `bun test --parallel`, which distributes test *files* across worker processes (one file still runs its own tests serially, and `--parallel` implies `--isolate`). This is the single biggest lever on CI wall time, because most of the suite is spent blocked on subprocesses — `python3`, `bash`, `git`, and `bun run src/index.ts` — not on CPU. Keeping it in the package script rather than the workflow means CI and a contributor's local run cannot drift apart.
+
+That makes cross-file isolation load-bearing rather than incidental: a test file may not depend on another file's leftovers, and any test that writes outside its own `mktemp` directory is a latent flake. `tests/skills/ce-code-review-cross-model-routes.test.ts` is the one deliberate exception — it stages a marker file in the repo root to exercise dirty-tree handling, and cleans it up in `afterAll`.
+
+**Do not pin a worker count.** `--parallel` with no value tracks the runner's core count, which is what you want. Raising it looks free — the suite is idle-bound, so more workers should pack better — but it was measured on CI and it is not: at `--parallel=8` on a 4-core runner, wall time improved ~9% (102s -> 93s) while total test-CPU inflated from 223s to 343s, and five tests crossed the 5000ms default per-test timeout. That converts runner busyness into red builds. A file that legitimately runs for seconds should call `setDefaultTimeout` instead, as the subprocess-heavy suites do.
+
+Wall time is now bounded by the **slowest single file**, since a file never splits across workers. As measured: `tests/skills/ce-work-unit-workspace.test.ts` is 61s of a ~100s run and `tests/ce-babysit-pr-snapshot.test.ts` is 40s. The next real speedup is splitting those two, not more workers.
+
+### What belongs where
+
+| Kind of check | Where it lives | Notes |
+|---|---|---|
+| Deterministic invariants (frontmatter, parity, path safety, script behavior, converter/writer output, greppable skill contracts) | `bun test` / `release:validate` / `plugin:validate` | Must pass in CI |
+| Skill *prose behavior* (routing judgment, restraint, cross-model peer outcomes) | `skill-creator` eval, local / PR evidence | Not a CI job; non-deterministic and needs a model |
+
+That split is intentional. See `docs/solutions/skill-design/portable-agent-skill-authoring.md` ("Evaluate proportionally"). Mechanical checks belong in CI; behavioral agent evals are best-effort evidence, not an exhaustive CI matrix.
+
+### Right-size new mechanical guards
+
+When a review bot or human finds a greppable invariant that `bun test` missed:
+
+1. Prefer **tightening an existing guard** over adding a new suite (e.g. widen a regex that already documents the rule).
+2. Pin the **smallest falsifiable unit** — a token, enum, path, heading, or one fixture that would have failed on the regressing diff. Do not snapshot whole skill bodies or pin incidental wording.
+3. If the failure needs an LLM to judge, keep it in skill-creator; do not fake it as a brittle string test.
+
+### Maintaining `plugin:validate`
+
+- `package.json` `plugin:validate` must validate **both** the marketplace catalog and the plugin manifest, with `--strict` on each. Paths: `.claude-plugin/marketplace.json` and `.claude-plugin/plugin.json`. Do **not** use `claude plugin validate .` — that resolves this repo as a marketplace only (because `.claude-plugin/marketplace.json` exists with `source: "./"`) and skips plugin-root checks.
+- CI pins `@anthropic-ai/claude-code` for reproducible schema rules. Bump the pin deliberately when adopting new upstream rules; do not float `@latest`.
+- Root `CLAUDE.md` must remain a **symlink** to `AGENTS.md` (path stays at the repo root where contributors expect it). Upstream warns on a regular-file plugin-root `CLAUDE.md` because it is not loaded as end-user project context; the symlink avoids that warning so `--strict` can stay on. Do not replace the symlink with a regular `@AGENTS.md` shim or relocate the file just for validators.
+- If `--strict` starts failing again on `CLAUDE.md` after an upstream bump, check whether the symlink was materialized into a regular file (Windows/`core.symlinks=false` checkouts) or whether the validator started following symlinks — fix the layout or pin, do not silently drop `--strict`.
+
+### When CI comments look "stale"
+
+If CI claims a deferred warning or a missing gate, reproduce with the **pinned** `claude` version against `.claude-plugin/plugin.json` before treating the comment as current. Marketplace-only validation can hide plugin warnings.
 
 ## Coding Conventions
 
@@ -226,22 +291,9 @@ If two skills need the same supporting file, duplicate it into each skill's dire
 
 > **Note (March 2026):** This constraint reflects current Claude Code skill resolution behavior and known path-resolution bugs ([#11011](https://github.com/anthropics/claude-code/issues/11011), [#17741](https://github.com/anthropics/claude-code/issues/17741), [#12541](https://github.com/anthropics/claude-code/issues/12541)). If Anthropic introduces a shared-files mechanism or cross-skill imports in the future, this guidance should be revisited with supporting documentation.
 
-## Shared Repo-Grounding Profile Cache
+## Lean Repo Grounding
 
-Repo-grounding skills (`ce-pov`, `ce-plan`, `ce-optimize`, `ce-ideate`, `ce-brainstorm`, `ce-code-review`, plus lighter consumers `ce-compound` — which still derives **and persists** on a miss — and `ce-debug`, which only opportunistically reads `conventions.testing` and never derives/persists) reuse one cached **question-agnostic project profile** (stack, deps, conventions, structure) instead of each re-deriving it. The profile is git-keyed and stored at `/tmp/compound-engineering/repo-profile/<root-sha>/<head-sha>.json`.
-
-The mechanism is three **byte-duplicated** assets per consuming skill (the plugin has no cross-skill import — see "File References in Skills"):
-
-- `references/repo-profile-cache.md` — the schema + protocol (authoritative; read it before wiring a new consumer).
-- `scripts/repo-profile-cache.py` — deterministic `get`/`put`, invoked via the `SKILL_DIR` anchor (never the legacy `${CLAUDE_SKILL_DIR}` guard).
-- `references/agents/repo-profiler.md` — the persona that derives the profile on a miss.
-
-Rules:
-
-- A consumer resolves the agnostic profile through the cache (`get` → HIT load / MISS derive-and-`put` / NO-CACHE derive-fresh), then runs **only its question-specific grounding fresh**. The cache is an optimization, never a correctness dependency, and must never let a stale profile change an output.
-- **Always re-globbed fresh, never cached:** the `docs/solutions/` enumeration and subdirectory-scoped instruction files. Caching them would risk serving a stale match (e.g. a just-written learning), and re-globbing is ~free.
-- **Adding a consumer:** drop byte-identical copies of the three assets into the skill, add its name to `CONSUMER_SKILLS` in `tests/repo-profile-cache-parity.test.ts`, and wire its grounding phase. The parity test guards *file* drift; the per-consumer `skill-creator` eval (agnostic-from-cache, question-specific-fresh) guards *integration* drift.
-- Any change to the schema or protocol must be edited in **all** copies (the parity test fails otherwise) and bump `PROFILE_SCHEMA_VERSION` in the helper so older cache entries invalidate. Renaming or moving a profile **field** additionally requires updating every consumer `SKILL.md` that reads a named field path (grep the consumers for it, e.g. `conventions.testing`, `vocabulary`) — those per-skill field reads are not byte-duplicated, so the parity test does not guard them.
+Use the project's active instructions already in the main agent's context, then go directly to task-specific current evidence. Pass fresh subagents the relevant project and task context, or have them read the applicable current instruction source when operational rules affect their work. If a task cannot be scoped from that context, use one targeted probe. Do not create a reusable generic repo profile or run a default root, stack, or layout scan.
 
 ## Platform-Specific Variables in Skills
 
@@ -267,7 +319,7 @@ An existence guard (`if [ -f "$SKILL_DIR/scripts/my-script.sh" ]; then … else 
 
 `SKILL_DIR` is a **model-filled** value, not a harness variable: every harness loads SKILL.md from a real absolute path the agent knows, so the skill instructs the agent to set `SKILL_DIR` to that directory. This works identically on Claude Code, Codex, and Cursor precisely because it depends on no host-specific variable — `SKILL_DIR`, `CLAUDE_SKILL_DIR`, `CODEX_SKILL_DIR`, `AGENT_SKILL_DIR` are **not** env vars on any of them, yet the script runs because the agent supplies the path. This is the production pattern used by widely-installed cross-host skills (e.g. `last30days`). Two constraints: (1) shell state does **not** persist between separate Bash-tool calls, so `SKILL_DIR` cannot be set once and reused — each invocation must carry the absolute path (set it inline in the same command). (2) A script that needs its *own* directory (to read a sibling file) derives it from `BASH_SOURCE`, not `SKILL_DIR`, since `SKILL_DIR` is the orchestrator's shell var and is not exported to the child process — see `skills/ce-code-review/scripts/cross-model-adversarial-review.sh` for the reference implementation. `last30days` adopted this anchor for its critical multi-host engine after a path-resolution regression; it is the right tool when a script must run *reliably*, which is why it is the tier-3 default — but tiers 1 and 2 deliberately stay lighter.
 
-**Avoid `${CLAUDE_SKILL_DIR}` here — in this cross-agent plugin it is a footgun, not a neutral alternative.** Every skill in this repo is authored once and installed across Claude Code, Codex, Cursor, and Gemini, and `${CLAUDE_SKILL_DIR}` is a Claude-Code-only SKILL.md *content* substitution (not an env var) that is **empty on every other host**. So a `${CLAUDE_SKILL_DIR}`-guarded call's `then` branch quietly never fires off-Claude — the **genuine silent skip** — and a Claude-only mechanism breaks on Codex/Cursor because the converter doesn't rewrite these paths and the native Codex install loads raw `SKILL.md` (no `ce_platforms` filtering). The model-filled `SKILL_DIR` anchor works on every host, so it is the right replacement wherever a `${CLAUDE_SKILL_DIR}`-guarded executed-shell call exists today (tier 3). Do not reach for `${CLAUDE_SKILL_DIR}` as a "portable" option — it isn't. Reach for it only for behavior that is genuinely Claude-Code-only and will *never* run on another harness — which, given this plugin's cross-host install model, is essentially never; treat any new use as a smell to justify or remove. (Existing guarded uses such as `ce-compound`'s `validate-frontmatter.py` survive off-Claude only via an inline `else` fallback and should migrate to the anchor.)
+**Avoid `${CLAUDE_SKILL_DIR}` here — in this cross-agent plugin it is a footgun, not a neutral alternative.** Every skill in this repo is authored once and installed across Claude Code, Codex, Cursor, and Gemini, and `${CLAUDE_SKILL_DIR}` is a Claude-Code-only SKILL.md *content* substitution (not an env var) that is **empty on every other host**. So a `${CLAUDE_SKILL_DIR}`-guarded call's `then` branch quietly never fires off-Claude — the **genuine silent skip** — and a Claude-only mechanism breaks on Codex/Cursor because the converter doesn't rewrite these paths and the native Codex install loads raw `SKILL.md` (no `ce_platforms` filtering). The model-filled `SKILL_DIR` anchor works on every host, so it is the right replacement wherever a `${CLAUDE_SKILL_DIR}`-guarded executed-shell call exists today (tier 3). Do not reach for `${CLAUDE_SKILL_DIR}` as a "portable" option — it isn't. Reach for it only for behavior that is genuinely Claude-Code-only and will *never* run on another harness — which, given this plugin's cross-host install model, is essentially never; treat any new use as a smell to justify or remove.
 
 So: a skill's *core* behavior **can** live in a bundled script across hosts — invoke it via the `SKILL_DIR`-from-read-path anchor. You no longer need to avoid bundled scripts for portability; anchor them instead. Read-time references (`references/*.md`) still resolve against the skill dir on all targets and need no anchor.
 

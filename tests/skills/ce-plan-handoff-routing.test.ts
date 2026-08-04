@@ -38,8 +38,8 @@ const ISSUE_CREATION_SECTION =
 // detection); only the bare per-option action must be inline.
 //
 // Symptom when this regresses: the agent renders the menu, the user picks
-// "Start `/ce-work` (Recommended)", and the agent stops in prose without
-// invoking the ce-work skill.
+// "Start `ce-work` (Recommended)", and the agent stops in prose without
+// invoking the `ce-work` skill.
 describe("ce-plan post-generation menu routing", () => {
   test("SKILL.md contains inline routing for all four menu options", () => {
     // Anchor on the Phase 5.4 region so a stray match elsewhere in the file
@@ -62,7 +62,7 @@ describe("ce-plan post-generation menu routing", () => {
     // Testing for a label fragment (not the full label) tolerates label
     // phrasing tweaks without the assertion becoming brittle.
     const optionFragments: { name: string; fragment: string }[] = [
-      { name: "Start /ce-work", fragment: "Start `/ce-work`" },
+      { name: "Start `ce-work`", fragment: "Start `ce-work`" },
       { name: "Run it as a /goal", fragment: "Run it as a `/goal`" },
       { name: "Create Issue", fragment: "Create Issue" },
       { name: "Publish to Proof", fragment: "Publish to Proof" },
@@ -93,53 +93,53 @@ describe("ce-plan post-generation menu routing", () => {
     }
   })
 
-  test("Start /ce-work routing names the host skill mechanism and plan path", () => {
+  test("Start `ce-work` routing names the host skill mechanism and plan path", () => {
     const phaseStart = SKILL_BODY.indexOf("##### 5.3.8")
     const phaseRegion = SKILL_BODY.slice(phaseStart)
 
-    // The Start /ce-work routing BULLET (not the menu list entry) must name
+    // The Start `ce-work` routing BULLET (not the menu list entry) must name
     // both (a) the host's skill-invocation mechanism and (b) the plan path
     // being passed as the argument.
     // This is what makes the difference between "tell the user to type
-    // /ce-work" and "fire the Skill tool now."
+    // a user invocation and "fire the Skill tool now."
     //
-    // Anchor on the bullet form `- **Start \`/ce-work\`**` to avoid matching
-    // the numbered menu list entry `1. **Start \`/ce-work\`** (recommended) -`,
+    // Anchor on the bullet form `- **Start \`ce-work\`**` to avoid matching
+    // the numbered menu list entry `1. **Start \`ce-work\`** (recommended) -`,
     // which legitimately doesn't carry the routing language.
     const ceWorkRoutingMatch = phaseRegion.match(
-      /^- \*\*Start `\/ce-work`\*\*[\s\S]{0,500}/m,
+      /^- \*\*Start `ce-work`\*\*[\s\S]{0,500}/m,
     )
     expect(
       ceWorkRoutingMatch,
-      "ce-plan SKILL.md Phase 5.4 is missing the inline '- **Start `/ce-work`** ...' routing bullet (distinct from the numbered menu list entry).",
+      "`ce-plan` SKILL.md Phase 5.4 is missing the inline '- **Start `ce-work`** ...' routing bullet (distinct from the numbered menu list entry).",
     ).not.toBeNull()
     const block = ceWorkRoutingMatch![0]
 
     expect(
       /skill[\s-]?invocation|Skill tool|skill primitive/i.test(block),
-      "ce-plan SKILL.md 'Start /ce-work' routing must name the host's skill-invocation mechanism so the agent fires the invocation rather than announcing a handoff in prose. See issue #714.",
+      "`ce-plan` SKILL.md 'Start `ce-work`' routing must name the host's skill-invocation mechanism so the agent fires the invocation rather than announcing a handoff in prose. See issue #714.",
     ).toBe(true)
 
     expect(
       /plan path|plan file path|plan as the (?:skill )?argument|passing the plan/i.test(block),
-      "ce-plan SKILL.md 'Start /ce-work' routing must name the plan path as the argument so the agent passes it correctly to ce-work. See issue #714.",
+      "`ce-plan` SKILL.md 'Start `ce-work`' routing must name the plan path as the argument so the agent passes it correctly to `ce-work`. See issue #714.",
     ).toBe(true)
   })
 
-  test("plan-handoff.md routing for Start /ce-work matches the inline host-generic phrasing", () => {
+  test("plan-handoff.md routing for Start `ce-work` matches the inline host-generic phrasing", () => {
     // Both surfaces must converge so that an agent which loads the reference
     // sees compatible, host-generic guidance.
     const ceWorkLine = HANDOFF_BODY.match(
-      /\*\*Start `\/ce-work`\*\*[^\n]*->[^\n]+/,
+      /\*\*Start `ce-work`\*\*[^\n]*->[^\n]+/,
     )
     expect(
       ceWorkLine,
-      "references/plan-handoff.md is missing the routing line for 'Start /ce-work'.",
+      "references/plan-handoff.md is missing the routing line for 'Start `ce-work`'.",
     ).not.toBeNull()
 
     expect(
       /skill[\s-]?invocation|Skill tool|skill primitive/i.test(ceWorkLine![0]),
-      `references/plan-handoff.md 'Start /ce-work' routing must use host-generic invocation language matching SKILL.md. The bare 'Call /ce-work with the plan path' phrasing was the regression. Found: ${JSON.stringify(ceWorkLine![0])}`,
+      `references/plan-handoff.md 'Start \`ce-work\`' routing must use host-generic invocation language matching SKILL.md. The bare user-command handoff was the regression. Found: ${JSON.stringify(ceWorkLine![0])}`,
     ).toBe(true)
   })
 
@@ -185,7 +185,7 @@ describe("ce-plan post-generation menu routing", () => {
       ).toBe(false)
     }
 
-    for (const route of ["Start `/ce-work`", "Decide on the review's open items", "Publish to Proof"]) {
+    for (const route of ["Start `ce-work`", "Decide on the review's open items", "Publish to Proof"]) {
       const escaped = route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
       const bullet = SKILL_BODY.match(new RegExp(`^- \\*\\*${escaped}[^\\n]+`, "m"))?.[0]
       expect(bullet, `ce-plan SKILL.md is missing the inline ${route} routing bullet.`).toBeDefined()
@@ -213,12 +213,12 @@ describe("ce-plan post-generation menu routing", () => {
 
   test("caller and callee responsibilities stay explicit in failure paths", () => {
     expect(
-      /\*\*Headless argument contract:\*\*/.test(DOC_REVIEW_BODY),
-      "ce-doc-review must present mode:headless as its input contract, not as an instruction to invoke itself.",
+      /\*\*Non-interactive argument contract:\*\*/.test(DOC_REVIEW_BODY),
+      "ce-doc-review must present mode:non-interactive as its input contract, not as an instruction to invoke itself.",
     ).toBe(true)
     expect(
       DOC_REVIEW_BODY.includes(
-        "Review failed: headless mode requires a document path. Expected arguments: mode:headless <path>",
+        "Review failed: non-interactive mode requires a document path. Expected arguments: mode:non-interactive <path>",
       ),
       "ce-doc-review's missing-path error must report the expected arguments without telling the skill to re-invoke itself.",
     ).toBe(true)
@@ -270,7 +270,7 @@ describe("ce-plan post-generation menu routing", () => {
       "ce-plan's completion guard must attribute its synthetic pre-entry envelope to ce-plan, not to ce-doc-review.",
     ).toBe(true)
     expect(
-      /ce-doc-review` has run in headless mode or returned the documented `skill_unreachable` envelope/.test(
+      /ce-doc-review` has run in (?:headless|non-interactive) mode or returned the documented `skill_unreachable` envelope/.test(
         SKILL_BODY,
       ),
       "a review workflow that never started cannot return ce-plan's synthetic envelope.",
@@ -352,8 +352,8 @@ describe("ce-plan post-generation menu routing", () => {
       "Top completion contract must include the literal Phase 5.4 handoff question.",
     ).toBe(true)
     expect(
-      /headless review state or documented skip state is summarized/i.test(topContract),
-      "Top completion contract must allow documented skip-state summaries, not only headless review summaries.",
+      /non-interactive review state or documented skip state is summarized/i.test(topContract),
+      "Top completion contract must allow documented skip-state summaries, not only non-interactive review summaries.",
     ).toBe(true)
 
     const checklistStart = SKILL_BODY.indexOf("**Final pre-response checklist:**")
@@ -374,7 +374,7 @@ describe("ce-plan post-generation menu routing", () => {
     const finalGuard = SKILL_BODY.slice(checklistStart, SKILL_BODY.indexOf("**Pipeline mode exception:**"))
     for (const expected of [
       "Plan file exists on disk",
-      "Headless review state or documented skip state was summarized above the menu",
+      "Non-interactive review state or documented skip state was summarized above the menu",
       "Phase 5.4 menu was presented for software implementation-plan runs, even if the user only asked to create the plan or run doc review, unless pipeline mode returned control to the caller",
       "If the user selected an action, the selected routing was executed",
       'Incorrect final response: "Created the plan and ran doc review."',
@@ -397,14 +397,14 @@ describe("ce-plan post-generation menu routing", () => {
     //
     // Construct the same regex shape used above and exercise it directly
     // against a hand-rolled fixture — no live SKILL.md needed.
-    const fragment = "Start `/ce-work`"
+    const fragment = "Start `ce-work`"
     const escaped = fragment.replace(/[.*+?^${}()|[\]\\`]/g, "\\$&")
     const fixedRegex = new RegExp(
       `^- \\*\\*[^\\n]*${escaped}[^\\n]*\\*\\*[ \\t]*(?:[—\\-]+>?|->)[ \\t]*[^\\n]+`,
       "m",
     )
     const broken = [
-      "- **Start `/ce-work`**",
+      "- **Start `ce-work`**",
       "- **Done for now** — End the turn.",
     ].join("\n")
     expect(
@@ -414,7 +414,7 @@ describe("ce-plan post-generation menu routing", () => {
 
     // And confirm the regex still matches the legitimate same-line shape so
     // the negative case isn't masking a positive-case breakage.
-    const valid = "- **Start `/ce-work`** — Invoke the ce-work skill, passing the plan path."
+    const valid = "- **Start `ce-work`** — Invoke the `ce-work` skill, passing the plan path."
     expect(fixedRegex.test(valid)).toBe(true)
   })
 

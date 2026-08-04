@@ -2,7 +2,7 @@
 # This is the canonical schema for the experiment log file that accumulates
 # across an optimization run.
 #
-# Location: $(jj workspace root)/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml
+# Location: <workspace-root>/.context/ce-optimize/<spec-name>/experiment-log.yaml
 #
 # PERSISTENCE MODEL:
 # The experiment log on disk is the SINGLE SOURCE OF TRUTH. The agent's
@@ -141,16 +141,16 @@ experiment_entry:
       type: enum
       values:
         - measured                # measurement finished and metrics were persisted, awaiting batch evaluation
-        - kept                    # primary metric improved, gates passed -> integrated into the optimization bookmark
+        - kept                    # primary metric improved, gates passed -> optimization bookmark advanced
         - reverted                # primary metric did not improve or was worse -> changes discarded
         - degenerate              # degenerate gate failed -> immediately reverted, no judge evaluation
         - error                   # measurement command crashed, timed out, or produced malformed output
         - deferred_needs_approval # experiment needs an unapproved dependency -> set aside for batch approval
         - timeout                 # measurement command exceeded timeout_seconds
-        - runner_up_kept          # file-disjoint runner-up rebased and re-measured successfully
-        - runner_up_reverted      # file-disjoint runner-up rebased but not retained after combined measurement
+        - runner_up_kept          # file-disjoint runner-up that was rebased and re-measured successfully
+        - runner_up_reverted      # file-disjoint runner-up that was rebased but combined measurement was not better
       description: >
-        Load-bearing state: the loop branches on this value.
+        Load-bearing state: the loop selects its next action from this value.
         'measured' is the only non-terminal state and exists so CP-3 can persist
         raw metrics before batch-level comparison decides the final outcome.
         'kept' and 'runner_up_kept' advance the optimization bookmark.
@@ -202,7 +202,7 @@ experiment_entry:
 
     change_id:
       type: string
-      description: "JJ change ID reachable from the optimization bookmark (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "JJ change ID retained by the optimization bookmark (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string
@@ -212,9 +212,9 @@ experiment_entry:
       type: string
       description: "Error details (only for 'error' and 'timeout' outcomes)"
 
-    merged_with:
+    integrated_with:
       type: integer
-      description: "Iteration number of the experiment this was combined with (only for 'runner_up_kept' and 'runner_up_reverted')"
+      description: "Iteration number of the experiment this was integrated with (only for 'runner_up_kept' and 'runner_up_reverted')"
 
 # ============================================================================
 # OUTCOME STATE TRANSITIONS
@@ -237,7 +237,7 @@ experiment_entry:
 #             -> not improved             -> outcome: reverted
 #       -> needs unapproved dep    -> outcome: deferred_needs_approval
 #
-# Only 'kept' and 'runner_up_kept' advance the optimization bookmark to a described JJ change.
+# Only 'kept' and 'runner_up_kept' retain a change on the optimization bookmark.
 # Only 'deferred_needs_approval' items are re-presented at wrap-up for approval.
 
 # ============================================================================
@@ -245,7 +245,7 @@ experiment_entry:
 # ============================================================================
 #
 # Written after each batch to:
-#   $(jj workspace root)/.tmp/rocketclaw/optimize/<spec-name>/strategy-digest.md
+#   <workspace-root>/.context/ce-optimize/<spec-name>/strategy-digest.md
 #
 # Contains a compressed summary of:
 # - What hypothesis categories have been tried

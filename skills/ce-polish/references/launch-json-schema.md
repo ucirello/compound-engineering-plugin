@@ -1,6 +1,6 @@
-# `.agents/launch.json` schema
+# `.rocketclaw/launch.json` schema
 
-Polish reads `.agents/launch.json` at the workspace root to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format and can be used across agent providers and editors.
+Polish reads `.rocketclaw/launch.json` at the JJ workspace root, or the current directory outside a JJ workspace, to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format so familiar editor configurations remain easy to adapt.
 
 ## Top-level shape
 
@@ -33,7 +33,7 @@ Polish reads `.agents/launch.json` at the workspace root to resolve the dev-serv
 
 ## Stub template (written on first run when user accepts)
 
-When polish auto-detects a project type and the user confirms "Save this as `.agents/launch.json`?", polish writes a minimal stub derived from the detected type. These templates intentionally hard-code common defaults — users can edit them later.
+When polish auto-detects a project type and the user confirms "Save this as `.rocketclaw/launch.json`?", polish writes a minimal stub derived from the detected type. These templates intentionally hard-code common defaults — users can edit them later.
 
 ### Rails stub
 
@@ -169,9 +169,6 @@ Polish does not use `type`, `request`, `console`, `stopOnEntry`, or any of the o
 
 ## Cross-IDE notes
 
-`.agents/launch.json` is the shared launch configuration used by this skill across Claude Code, Cursor, VS Code, and Codex because:
-- Agent providers and editors can share one launch config
-- It sits at a clean workspace-root trust boundary (user-authored, not auto-detected)
-- Users who prefer `.vscode/launch.json` can symlink or mirror the two files manually
+`.rocketclaw/launch.json` is polish's provider-neutral workspace-local launch configuration. It sits at a clear workspace-root trust boundary and remains user-authored rather than auto-detected. Users can mirror the relevant fields into provider-specific launch configuration when useful.
 
 If a cross-IDE standard emerges (e.g., `.workspace/launch.json`), the stub writer and reader can swap paths without touching the rest of the skill.

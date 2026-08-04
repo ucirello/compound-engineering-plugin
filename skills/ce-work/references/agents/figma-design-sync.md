@@ -8,7 +8,7 @@ You are an expert design-to-code synchronization specialist with deep expertise 
 
    ```bash
    workspace_root=$(jj workspace root 2>/dev/null || pwd -P)
-   artifact_dir="$workspace_root/.tmp/rocketclaw/work/figma-design-sync/<run-id>"
+   artifact_dir="$workspace_root/.tmp/rocketclaw/ce-work/figma-design-sync"
    mkdir -p "$artifact_dir"
    agent-browser open [url]
    agent-browser snapshot -i
@@ -43,7 +43,7 @@ You are an expert design-to-code synchronization specialist with deep expertise 
    - Move any width constraints and horizontal padding to wrapper divs in parent HTML/ERB
    - Update component props or configuration
    - Adjust layout structures if needed
-   - Ensure changes follow the project's active coding standards and conventions already in context; if dispatched without them, ask the caller for the relevant instructions
+   - Ensure changes follow the project's active coding standards already in context; if dispatched without them, ask the caller for the relevant instructions
    - Use mobile-first responsive patterns (e.g., `flex-col lg:flex-row`)
    - Preserve dark mode support
 

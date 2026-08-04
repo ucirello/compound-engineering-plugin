@@ -8,13 +8,13 @@ merge, the single-writer lease, and the closed-item evidence rule are enforced
 in exactly one place. See `references/state-schema.md` for the cross-agent
 contract this script implements.
 
-Design rules (mirrors the repo's repo-profile-cache helper):
+Design rules (shared with the repo's other state helpers):
   - Pure Python 3 stdlib. No third-party dependencies.
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a unique temp file under the workspace-local atomic
-    directory + os.replace, so a concurrent reader never sees a torn file.
+  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
+    POSIX), so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -40,9 +40,8 @@ are emitted as inline JSON flow on a single line — itself valid YAML.
 import argparse
 import json
 import os
-import secrets
-import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 
 try:
@@ -256,12 +255,13 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path) as f:
-            # The state file is a correctness dependency (lease, cursors,
-            # closed status) as well as an injection sink (item bodies are
-            # re-read into agent context). Reject a file not owned by us so a
-            # co-tenant cannot plant a forged lease/cursor or attacker-authored
-            # item text. Skip where geteuid is unavailable (non-POSIX), where
-            # the threat does not apply.
+            # A machine-local state file is still a correctness dependency
+            # (lease, cursors, closed status) as
+            # well as an injection sink (item bodies re-read into agent
+            # context). Reject a file not owned by us so a co-tenant cannot
+            # plant a forged lease/cursor or attacker-authored item text. Skip
+            # where geteuid is unavailable (non-POSIX), where the threat does
+            # not apply.
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return ("corrupt", None)
@@ -287,40 +287,13 @@ def new_state():
     return {"schema_version": SCHEMA_VERSION, "sources": {}, "items": {}}
 
 
-def _workspace_root():
-    """Resolve the JJ workspace root, falling back to the physical cwd."""
-    cwd = os.getcwd()
-    try:
-        root = subprocess.check_output(
-            ["jj", "workspace", "root"],
-            cwd=cwd,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except (OSError, subprocess.CalledProcessError):
-        return cwd
-    return os.path.realpath(root) if root else cwd
-
-
 def write_state(path, state):
     """Atomic write of the state file. Returns True on success."""
     state["schema_version"] = SCHEMA_VERSION
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    atomic_dir = os.path.join(
-        _workspace_root(), ".tmp", "rocketclaw", "ce-sweep", "atomic"
-    )
-    os.makedirs(atomic_dir, exist_ok=True)
-    while True:
-        tmp = os.path.join(
-            atomic_dir, f".tmp-sweep-{secrets.token_hex(16)}.yml"
-        )
-        try:
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            break
-        except FileExistsError:
-            continue
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
     try:
         with os.fdopen(fd, "w") as f:
             f.write(text)
@@ -447,7 +420,7 @@ def _load_owned_state(args):
     return data, None
 
 
-def _commit_owned(args, data):
+def _write_owned(args, data):
     """Shared tail for lease-gated mutations: re-stamp the lease, persist."""
     restamp_lease(data, args.writer, resolve_now(args))
     write_state(args.state, data)
@@ -485,7 +458,7 @@ def cmd_upsert_item(args):
             merged.pop(f, None)
 
     items[key] = merged
-    return _commit_owned(args, data)
+    return _write_owned(args, data)
 
 
 def cmd_cursor_get(args):
@@ -514,7 +487,7 @@ def cmd_cursor_advance(args):
     if current is not None and _cursor_lt(str(args.to), str(current)):
         return emit("REFUSED")
     entry["cursor"] = args.to
-    return _commit_owned(args, data)
+    return _write_owned(args, data)
 
 
 def _cursor_lt(a, b):
@@ -570,7 +543,7 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-change mode there
+    # the lease yet must still record its outcome. In local-record mode there
     # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":

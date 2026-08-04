@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip, standalone video, standalone audio, and
 meeting notes text/markdown. The script extracts transcript, high-signal
-video frames when available, and workflow-ready markdown artifacts.
+video frames when available, and CE-friendly markdown artifacts.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted evidence/kickoff artifacts. Defaults to docs/brainstorms/riffrec-feedback/<source-stem> when available; durable ce-brainstorm outputs live in docs/plans/.",
+        help="Directory for extracted evidence/kickoff artifacts. Defaults to docs/brainstorms/riffrec-feedback/<source-stem> when available; durable ce-brainstorm outputs live in the plans artifact directory.",
     )
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
@@ -103,19 +103,11 @@ def safe_extract(zip_path: Path, dest: Path) -> None:
 
 
 def default_output_dir(zip_path: Path) -> Path:
-    root = workspace_root()
+    cwd = Path.cwd()
     stem = slugify(zip_path.stem)
-    if (root / "docs" / "brainstorms").is_dir():
-        return root / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return root / "riffrec-feedback" / stem
-
-
-def workspace_root() -> Path:
-    if shutil.which("jj"):
-        result = subprocess.run(["jj", "workspace", "root"], capture_output=True, text=True, timeout=10)
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip()).resolve()
-    return Path.cwd().resolve()
+    if (cwd / "docs" / "brainstorms").is_dir():
+        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
+    return cwd / "riffrec-feedback" / stem
 
 
 def classify_source(source_path: Path) -> str:
@@ -861,7 +853,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- JJ change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; track generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
+        "- Commit policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; commit generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -882,10 +874,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not suitable for inclusion in a JJ change by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not commit-safe by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be included in a JJ change by default.")
+    lines.append("Extracted screenshots are retained locally for agent inspection and should not be committed by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -904,7 +896,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not include these in a JJ change unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally local-only by default. Do not commit these unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")
@@ -1078,7 +1070,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = workspace_root()
+    repo_root = Path.cwd()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
@@ -1121,8 +1113,8 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
-    print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under docs/plans/.")
+    print(f"Brainstorm handoff: $RocketClaw:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 
 

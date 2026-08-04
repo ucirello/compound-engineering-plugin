@@ -11,15 +11,15 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 ```markdown
 ## Code Review Results
 
-**Scope:** common ancestor with the review base bookmark -> working-copy revision (14 files, 342 lines)
+**Scope:** common ancestor with the review base bookmark -> working copy (14 files, 342 lines)
 **Intent:** Add order export endpoint with CSV and JSON format support
-**Mode:** interactive
+**Mode:** markdown + explicit local apply
 
 **Reviewers:** correctness, testing, maintainability, security, api-contract
 - security -- new public endpoint accepts user-provided format parameter
 - api-contract -- new /api/orders/export route with response schema
 
-### Applied (safe, verified)
+### Applied (explicit local apply; safe, verified)
 
 | # | File | Fix | Reviewer |
 |---|------|-----|----------|
@@ -27,7 +27,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 | 7 | `orders_controller.rb:88` (+test) | Tightened export file perms `0644 -> 0600` (security-posture — verify in diff) | security |
 
 Validation: export tests 11 -> 13; suite 214 pass, lint clean.
-Described: `<description-composed-from-runtime-conventions>` (`@` was initially empty; runtime project convention applied).
+Described change: `<description-composed-from-runtime-conventions>`; advanced with `jj new` (`@` was empty before review).
 
 ### Triage Groups
 
@@ -78,9 +78,11 @@ Described: `<description-composed-from-runtime-conventions>` (`@` was initially 
 |---|------|-------|----------|
 | 1 | `orders_controller.rb:12` | Broad rescue masking failed permission check | correctness |
 
+Detail lines for Pre-existing and history-dependent P0/P1 findings may include the same short provenance string the artifact `evidence` carries (e.g. `provenance: a1b2c3d Alice 2024-08-12 - harden rescue`) when that history was load-bearing — do not dump full-file blame into the report.
+
 ### Learnings & Past Solutions
 
-- [Known Pattern] `docs/solutions/export-pagination.md` -- previous export pagination fix applies to this endpoint
+- [Known Pattern] `<root>/solutions/export-pagination.md` -- previous export pagination fix applies to this endpoint
 
 ### Agent-Native Gaps
 
@@ -141,12 +143,12 @@ This fails because of the **box-drawing `────` separators between items*
 - **No `Route` column in the per-severity tables** -- the synthesized route (``<autofix_class> -> <owner>``) appears only in the Actionable Findings table and the `mode:agent` JSON. The scannable severity tables are 5 columns: `# | File | Issue | Reviewer | Confidence`.
 - **Detail line (per finding, as needed)** -- keep the scannable line short (the symptom + `file:line`, not the mechanism); put the why-it-matters + fix/options in a per-finding detail line keyed by stable `#`: `- **#N** — <why it matters + what response it needs>`. Add it whenever the one-liner isn't self-sufficient -- usually P0/P1; P2/P3 are often terse-only. This keyed detail is the home for depth -- don't paste code or restate the diff, and match weight to weight.
 - **Header includes** scope, intent, and reviewer team with per-conditional justifications
-- **Mode line** -- include `interactive` or `agent`
+- **Mode line** -- include `markdown report-only`, `markdown local-apply`, or `agent report-only`
 - **Triage Groups section (when groups exist)** -- pipe table `| Group | Findings | Context | Preferred Resolution | Why |` rendered after Applied and before the severity tables. The `Findings` cell lists stable `#`s (e.g. `#2, #3`); every referenced `#` must appear in a severity table below. Groups are a triage lens over the findings -- they never replace the severity tables, merge findings, or renumber them. Omit when `grouping:off` is active or no groups survived Stage 5b/5c pruning.
-- **Applied section (default mode only)** -- when the review applied fixes (Stage 5c), list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome and the **description status** — described with `jj describe` when `@` was initially empty, or left with its existing description when it already had changes. Do not run `jj new` or otherwise change revision topology. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and actual `git log` syntax win; neutralize fixed syntax, templates, and examples while preserving semantic requirements. A fix spanning multiple files is **one row with one `#`** -- never duplicate the number across rows. Flag green-but-unverifiable edits (auth/contract/concurrency) inline in the `Fix` cell. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit in `mode:agent` and when nothing was applied
+- **Applied section (explicit local apply only)** -- when Stage 5c was authorized and applied fixes, list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome and the **change status**: described as an isolated review-labeled change and followed by `jj new` when `@` was initially empty, or left in the user's existing change when it was non-empty. A fix spanning multiple files is one row with one `#`; never duplicate the number across rows. Flag green-but-unverifiable edits inline in the `Fix` cell. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit when local apply was not authorized or nothing was applied
 - **Actionable Findings section** -- include when the actionable queue is non-empty (findings for the caller to handle)
 - **Pre-existing section** -- separate table, no confidence column (these are informational)
-- **Learnings & Past Solutions section** -- results from the `learnings-researcher` local prompt asset, with links to docs/solutions/ files
+- **Learnings & Past Solutions section** -- results from the `learnings-researcher` local prompt asset, with links to <root>/solutions/ files
 - **Agent-Native Gaps section** -- results from the `agent-native-reviewer` local prompt asset. Omit if no gaps found.
 - **Deployment Notes section** -- key checklist items from the `deployment-verification-agent` local prompt asset. Omit if the prompt did not run. Schema drift surfaces as `data-migration` findings — no separate section.
 - **Coverage section** -- suppressed count, removable surface (only when deletion-oriented maintainability findings exist; approximate net lines/files removable if applied -- a dead-weight signal, never a reduction target, omit otherwise), residual risks, testing gaps, failed reviewers
@@ -156,15 +158,15 @@ This fails because of the **box-drawing `────` separators between items*
 
 ## Agent mode (JSON)
 
-When `mode:agent` is active, **do not** emit the markdown table report above. Emit **one parseable JSON object** as the primary response and write the same payload to `review.json` under `<workspace-root>/.tmp/rocketclaw/ce-code-review/<run-id>/`.
+When `mode:agent` is active, **do not** emit the markdown table report above. Emit **one parseable JSON object** as the primary response and write the same payload to `review.json` under the resolved `<run-dir>`.
 
 The contract is defined in SKILL.md under **`### JSON output format (`mode:agent` only)`**. Minimum fields: `status`, `verdict`, `scope`, `intent`, `reviewers`, `findings`, `actionable_findings`, `artifact_path`, `run_id`.
 
-Key differences from the interactive markdown format:
+Key differences from the human-facing markdown format:
 
 - **No pipe-delimited tables** — findings are JSON arrays with merged fields (`#`, `title`, `severity`, `file`, `line`, `confidence`, `autofix_class`, `owner`, `suggested_fix`, `why_it_matters`, `evidence`, `reviewers`, etc.).
 - **`actionable_findings`** — subset for caller apply workflows (`gated_auto` / `manual` with `downstream-resolver`).
 - **`triage_groups`** — the markdown Triage Groups section serialized as `{title, findings: [<stable #s>], context, preferred_resolution, why}` objects, so callers can batch related fixes by theme. Groups span the full finding set — a triage lens, not an apply queue — so a caller must intersect each group's `findings` with `actionable_findings` before applying; the apply handoff stays `actionable_findings`. Empty when `grouping:off` or no groups.
-- **No `applied_fixes` and no Applied section** — `mode:agent` does not apply fixes; the caller does. Applied work surfaces only in default-mode markdown (Stage 5c/6). The handoff is `actionable_findings`.
+- **No `applied_fixes` and no Applied section** — `mode:agent` does not apply fixes; the caller does. Applied work surfaces only in explicitly authorized local-apply markdown (Stage 5c/6). The handoff is `actionable_findings`.
 - **Failure/degraded paths** — `{"status":"failed","reason":"..."}` or `"status":"degraded"` with reason; never mix markdown tables into the JSON response.
 - **Stable `#`** — same numbering as Stage 5 synthesis, carried in JSON finding objects for downstream apply/residual tracking.

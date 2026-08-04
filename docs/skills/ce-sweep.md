@@ -3,10 +3,29 @@
 | | |
 |---|---|
 | **Purpose** | Sweep configured feedback sources for new items, track each item's lifecycle to verified resolution, and emit an `/lfg`-ready plan |
-| **Inputs** | `feedback_sources` config (set up on first run); optional `setup`/`reconfigure` and `mode:headless` tokens |
+| **Inputs** | `feedback_sources` config (set up on first run); optional `setup`/`reconfigure` and `mode:non-interactive` tokens (deprecated alias `mode:headless`) |
 | **Outputs** | A rolling requirements-only unified plan (`docs/plans/feedback-sweep-plan.md`), a durable state file, source-side acknowledgments, a run summary |
-| **Invocation** | Manual (`/ce-sweep`) or scheduled (`/ce-sweep mode:headless`); never model-invoked |
+| **Invocation** | Manual (`/ce-sweep`) or scheduled (`/ce-sweep mode:non-interactive`); never model-invoked |
 | **Position** | Around the loop — feeds `/lfg` and `ce-plan` from customer feedback |
+
+## Example invocations
+
+```text
+# First run: configure sources, approvals, state location, and scheduling
+/ce-sweep
+
+# Later runs: fetch, acknowledge, analyze, verify, and reconcile the plan
+/ce-sweep
+
+# Scheduled or unattended run: defer ambiguous decisions into the plan
+/ce-sweep mode:non-interactive
+
+# Re-enter setup to add or edit feedback sources
+/ce-sweep reconfigure
+
+# Ship the reconciled open items through the autonomous pipeline
+/lfg docs/plans/feedback-sweep-plan.md
+```
 
 ## Problem
 
@@ -16,6 +35,8 @@ Feedback triage tends to become a bespoke, per-repo ritual: scan a Slack channel
 
 `ce-sweep` makes the sweep a repeatable skill. Sources are declared once in a shared `feedback_sources` config. Each run fetches items newer than a per-source cursor, acknowledges them at the source (emoji reaction on Slack, label on GitHub Issues), analyzes attached recordings in parallel subagents, verifies claimed fixes are actually merged to the main branch before closing anything out, and reconciles one rolling plan of open actionable items that `/lfg` can execute directly.
 
+The [configuration reference](./configuration.md) lists the feedback-source and sweep coordination keys written by first-run setup.
+
 Every item's lifecycle lives in a durable YAML state file with a versioned schema, so runs resume cleanly, peer agents can share the state, and a crashed run never double-acknowledges a customer's message.
 
 ## What Makes It Novel
@@ -24,18 +45,7 @@ Every item's lifecycle lives in a durable YAML state file with a versioned schem
 2. **Per-item durability ordering.** Acknowledge at source → confirm it's readable → write state → advance the cursor last. A crash at any point recovers without duplicate customer-visible actions.
 3. **Fix verification trusts only merge evidence.** Thread claims never close an item — only a verified merge to the default branch does, recorded with the merge SHA.
 4. **The plan is a view, not a log.** One rolling plan at a stable path is reconciled every run: new items append, verified-fixed items drain, and a human-owned notes region survives untouched. If `/lfg` has enriched the plan in place, the sweep archives it and starts a fresh view rather than clobbering execution state.
-5. **Headless-safe by contract.** `mode:headless` never prompts: ambiguous product calls defer into the plan's outstanding questions, and an acknowledgment volume circuit-breaker defers rather than mass-reacting when a cursor looks wrong.
-
-## Quick Example
-
-```
-/ce-sweep                    # first run: interactive setup (sources, approvals, state location, schedule offer)
-/ce-sweep                    # subsequent runs: sweep, acknowledge, analyze, verify, reconcile plan
-/ce-sweep mode:headless      # scheduled/unattended run — defers decisions into the plan
-/ce-sweep reconfigure        # re-enter setup to add or edit sources
-```
-
-After a sweep: `/lfg docs/plans/feedback-sweep-plan.md` ships the open items.
+5. **Non-interactive-safe by contract.** `mode:non-interactive` never prompts: ambiguous product calls defer into the plan's outstanding questions, and an acknowledgment volume circuit-breaker defers rather than mass-reacting when a cursor looks wrong.
 
 ## When to Reach For It
 

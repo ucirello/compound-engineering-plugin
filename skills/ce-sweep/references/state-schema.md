@@ -81,7 +81,7 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 | field | meaning |
 | --- | --- |
 | `fix_ref` | Reference to the fix (PR/commit/issue link). |
-| `verified_merge_sha` | The merge or landing commit SHA verified on the default remote bookmark. |
+| `verified_merge_sha` | The merge commit SHA the fix landed on. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
 `validate` scans every item and downgrades any `closed` item missing (or with a
@@ -145,10 +145,8 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-change mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same JJ workspace (e.g. a cron sweep and a manual one). The file is written in-tree and may remain in a local change. No cross-machine guarantee. |
-| pushed-shared-bookmark | One writer **per repo**. | The state file is published through a retained `$SHARED_BOOKMARK` and `$REMOTE` that multiple workspaces update. `lease-acquire` must be described, published with `jj git push --remote "$REMOTE" --bookmark "exact:$SHARED_BOOKMARK"`, and confirmed after `jj git fetch --remote "$REMOTE"` **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
-
-At either site that describes or recommends publishing a lease change: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Inspect actual message syntax with `git log`; do not use Git for any other purpose. The project's active instructions and conventions and the syntax observed in `git log` always take precedence over compatible Go guidance. Retain the repository's semantic requirements, but do not impose fixed syntax, prefixes, types, scopes, subjects, bodies, examples, or templates.
+| local-record mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same workspace (e.g. a cron sweep and a manual one). The file is workspace-internal and may be recorded in a local JJ change. No cross-machine guarantee. |
+| published shared bookmark | One writer **per repository**. | The state file is carried by an explicitly configured bookmark that multiple workspaces publish. `lease-acquire` must be recorded, published, and confirmed from the remote bookmark **before any source-side write**. This makes the lease a repository-wide mutex across machines. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -172,8 +170,8 @@ subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
 whole load-modify-write, so two concurrent invocations serialize their writes
 regardless of lease ownership. The lease decides *who owns the sweep*; the file
 lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never included in the sweep change (the skill includes only the state file
-and the plan, never unrelated paths).
+and never recorded (the skill's path-scoped JJ operation includes only the state
+file and plan).
 
 ## Engine status words
 

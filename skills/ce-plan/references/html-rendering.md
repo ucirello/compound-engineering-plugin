@@ -44,6 +44,15 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
+- **Source / composition signal.** A visible footer at the bottom of
+  the doc names the composition timestamp and the source identifier
+  (the user prompt context, the upstream brainstorm doc when one
+  exists, or just the composing skill name when there's no external
+  source). Example shape:
+  `<footer class="composition-signal">Composed 2026-05-17T14:23Z by ce-plan from <code>docs/brainstorms/...-requirements.md</code></footer>`.
+  Under exclusive output mode this signal is the artifact's own
+  provenance — there's no markdown sibling to reference. Omitting it
+  leaves readers unable to tell how stale the rendering is.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -94,8 +103,9 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve with `workspace_root=$(jj workspace root 2>/dev/null || printf '%s\n' "$PWD")`).
+1. Workspace root (resolve via `jj workspace root`, with `PWD` fallback).
 2. `docs/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
@@ -217,16 +227,19 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time through Jujutsu's Git interoperability:
+Resolve the repo's GitHub URL once at compose time:
 
 ```bash
 jj git remote list
 ```
 
+Select the `origin` URL from the output. Keep this `jj git` interoperability
+command because the value belongs to the backing remote.
+
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `docs/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
+  `<root>/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -265,6 +278,12 @@ Long HTML plans are agent-consumed as source text as often as they are read in
 a browser. Keep the heading text visible and adjacent to the `id`; do not rely
 on a nav link alone to carry the section name.
 
+Optional sections with a contract-defined semantic role put that role on their
+wrapping `<section>` with `data-ce-section`. For example, the broader-work
+relationship section uses `data-ce-section="work-relationships"`. The role is
+stable even when the visible heading changes; it supplements, rather than
+replaces, readable heading text and any useful anchor.
+
 ### Text contrast is local
 
 Every text-on-background pairing must hold up on its own. A color that
@@ -293,7 +312,7 @@ chip) is being styled.
 Status chips, ID chips, and metric pills in the same row share one shape
 — same border-radius, border weight, and fill treatment. Differentiate
 categories only by the chip's overall fill/text color (applied to the
-whole pill with a soft tint), never by an accent on one edge. A
+whole pill, like a soft-tint badge), never by an accent on one edge. A
 colored stripe or arc on a single side of a pill reads as broken and
 asymmetric — as if a border half-failed to render — so avoid it. The same
 holds for any element, not just chips: differentiate by a full tint, not
@@ -348,7 +367,10 @@ contracts — the agent picks shapes that fit the content.
 - **Key Technical Decisions** — repeating cards with the decision ID,
   bold decision title (often with inline code for technical
   identifiers), and prose rationale. Flat cards (not collapsibles) —
-  these are reference material readers scan, not drill into.
+  these are reference material readers scan, not drill into. A
+  `session-settled:` annotation renders as visible text in the card —
+  never an attribute or hidden markup — stem preserved verbatim so
+  grep works on the HTML artifact.
 - **Risks** — cards with a color-coded status eyebrow (e.g., "RISK ·
   MITIGATED" / "OPEN · DEFERRED FOLLOW-UP") and prose body. Communicate
   status through the eyebrow's color plus an optional subtle full-card
@@ -426,7 +448,7 @@ labeled arrow, each shape edge, and each text label:
 - **Avoid long curves that traverse the diagram** to connect a
   component on one side to one on the other. If A and D need a labeled
   connection across a multi-component layout, prefer reordering boxes
-  so A and D are adjacent, numbered step markers next to each
+  so A and D are adjacent, numbered step badges next to each
   participant that the caption ties together, or a short
   labeled-channel notation — rather than one curve crossing multiple
   unrelated elements.
@@ -463,7 +485,7 @@ with a UI/layout shape can carry a wireframe, whether or not the brainstorm
 as a whole is "a visual product" — a backend-heavy brainstorm with one
 screen change still earns a wireframe for that requirement. It still applies
 to brainstorm **requirements** output — the requirements-only unified plan
-`ce-brainstorm` writes (now under `docs/plans/`), not an implementation-ready
+`ce-brainstorm` writes (now under `<root>/plans/`), not an implementation-ready
 plan (`ce-plan`'s enriched output) — and only to UI-shaped requirements — a
 non-visual requirement (API design, data model, agent workflow,
 infrastructure) takes a conceptual diagram instead, not a
@@ -590,6 +612,8 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
+- **Source / composition signal** is present as a visible footer at
+  the bottom of the doc (composition timestamp + source identifier).
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

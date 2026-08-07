@@ -1,19 +1,19 @@
 # Strategy Template
 
-Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `STRATEGY.md`.
+Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `<workspace-root>/STRATEGY.md`.
 
 ## Rules for filling in
 
 - Use the user's own language where possible. Do not paraphrase into generic PM-speak.
 - Each section stays compact. The whole doc should read in under 5 minutes.
-- Section order is locked. Do not add new top-level sections.
+- Keep the section order and headings exactly as shown because downstream skills consume them. Do not add new top-level sections.
 - Optional sections: delete entirely if unused. Do not leave empty headers.
 - Set `last_updated` in the YAML frontmatter to today's ISO date (YYYY-MM-DD). Do not duplicate the date in prose.
 - Set `name` in the frontmatter to the product or initiative name (the same value used in the H1 title).
 
 ## Template
 
-The block below is the literal file to write (minus this line and the fences). Replace every `{{placeholder}}` with the captured answer. Delete any optional section whose placeholder wasn't answered.
+Use the block below as the required document structure (minus this line and the fences). Keep its frontmatter keys and section headings exact, replace every `{{placeholder}}` with prose adapted to the project's runtime conventions, and delete any optional section whose placeholder wasn't answered.
 
 ~~~markdown
 ---

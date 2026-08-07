@@ -1,17 +1,17 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current JJ change stack, a revision, or a PR.
+argument-hint: "[PR number, JJ revision/bookmark (branch name accepted as an alias), 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a PR or JJ changes using the best approved browser driver available in the active harness.
 
 ## Modes
 
 - **Manual (default):** the user controls the dev server. When the fallback driver is `agent-browser`, ask whether to run headed or headless.
-- **Pipeline (`mode:pipeline`):** invoked by LFG or another automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and visibility prompts (step 6). It still uses the preferred port that step 4 computes.
+- **Pipeline (`mode:pipeline`):** invoked by an automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and visibility prompts (step 6). It still uses the preferred port that step 4 computes.
 
 ## Browser Driver Policy
 
@@ -27,24 +27,18 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 ### 1. Select the Browser Driver
 
-Apply the Browser Driver Policy above and record the selected driver. This also requires a git repository with changes to test.
+Apply the Browser Driver Policy above and record the selected driver. Require a Jujutsu workspace for local scope and browser-test artifacts. Use Jujutsu for local history, workspace, diff, and target operations. A colocated `.git` entry may be a directory or a `gitdir:` file containing backing Git metadata; its presence does not make another VCS CLI the local interface. Use `jj git` only for remote Git interoperability, and retain `gh` for GitHub metadata and API operations. Keep shell commands and paths compatible with Git Bash.
 
 ### 2. Determine Test Scope
 
-**If PR number provided:**
+Resolve the requested target before mapping files. Do not silently substitute the working-copy change, a default bookmark, or another revision when the requested target cannot be resolved uniquely.
+
+**If PR number provided:** use `gh pr view` to retain the GitHub PR's head and base identities. Match its repositories to configured remotes from `jj git remote list`, fetch missing remote bookmarks through `jj git fetch`, resolve the retained head and base in `jj log`, and scope the changed files with `jj diff`. A fork PR's head and base may require different remotes. If repository ownership, remote mapping, or either revision remains ambiguous, stop and report the unresolved target rather than testing another change.
 ```bash
-gh pr view [number] --json files -q '.files[].path'
+gh pr view [number] --json headRefName,headRefOid,baseRefName,headRepository,baseRepository,isCrossRepository
 ```
 
-**If 'current' or empty:**
-```bash
-git diff --name-only main...HEAD
-```
-
-**If branch name provided:**
-```bash
-git diff --name-only main...[branch]
-```
+**If `current` or empty:** scope the current mutable change stack through `@`. **If a JJ revision or bookmark is provided:** scope through that exact target; a branch name is accepted only when it resolves uniquely as a colocated bookmark. For either form, inspect `jj log`, select the base from the project's active instructions and runtime repository topology, and use `jj diff --name-only` over the resolved range. Use revision syntax accepted by the installed JJ version rather than hard-coding a default bookmark or remote-revision spelling.
 
 ### 3. Map Changed Files to Routes
 
@@ -112,7 +106,7 @@ Visibility is independent from unattended execution:
 
 - **Host-native integrated browser:** keep its normal integrated surface visible and non-blocking so the user can watch progress when useful. Do not repeatedly steal focus as routes change. This applies in both manual and pipeline modes.
 - **`agent-browser` fallback, pipeline mode:** run headless without asking.
-- **`agent-browser` fallback, manual mode:** ask the user whether to run headed or headless using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors. Never silently skip the question:
+- **`agent-browser` fallback, manual mode:** ask the user whether to run headed or headless with the active harness's blocking question capability. If that capability must be discovered or loaded first, do so. Fall back to presenting options in chat only when no blocking capability exists or the call errors, not merely because discovery is required. Never silently skip the question:
 
   ```
   Do you want to watch the browser tests run?
@@ -136,7 +130,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize transient screenshots only under a collision-resistant run directory in `<workspace-root>/.tmp/ce-test-browser/`, where `<workspace-root>` comes from `jj workspace root`; keep them out of the JJ working-copy change. When a later workflow needs durable evidence, copy only that evidence to its owned artifact location. Otherwise in-app evidence is sufficient.
 
 ### 8. Human Verification (When Required)
 
@@ -185,7 +179,7 @@ When a test fails (**pipeline mode:** do not ask how to proceed — capture the 
    2. Skip - continue testing other pages
    ```
 
-3. **If "Fix now":** investigate, propose a fix, apply, re-run the failing test
+3. **If "Fix now":** investigate, propose a fix, apply, and re-run the failing test. Keep the fix in the resolved target's JJ scope and do not move or publish another bookmark. Do not add product branding, generated-by text, or creator, model, provider, tool, agent, runtime, workflow, or co-author attribution.
 4. **If "Skip":** log as skipped, continue
 
 ### 10. Test Summary
@@ -195,7 +189,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [JJ revision or bookmark]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -223,14 +217,14 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test the current JJ change stack (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test specific branch
-/ce-test-browser feature/new-dashboard
+# Test a specific JJ revision or bookmark (branch names remain accepted)
+/ce-test-browser <revision-or-bookmark>
 
 # Test on a specific port
 /ce-test-browser --port 5000

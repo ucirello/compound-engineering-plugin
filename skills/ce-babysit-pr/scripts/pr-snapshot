@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic snapshot + state helper for ce-babysit-pr.
+"""Deterministic PR snapshot and state helper for ce-babysit-pr.
 
 The agent (SKILL.md) owns judgment and mutations; this script owns the parts
 prose cannot do reliably: a combined fetch of both event streams, atomic state
@@ -297,7 +297,7 @@ def _split_repo(repo):
 def _resolve_repo_ref(repo, url):
     """Resolve (owner, name, host) from --repo + the PR url, else one `gh repo view` call.
     The host is parsed from the url and threaded into every `gh api` call so a GitHub Enterprise
-    PR queries the right host — without it, `gh api` defaults to github.com and a GHE babysitter
+    PR queries the right host — without it, `gh api` defaults to github.com and a GHE watcher
     fetches the PR via `gh pr view` but then reads review threads / workflow runs from github.com.
     Parsing the url (already fetched by `fetch`) also avoids a redundant `gh repo view` per tick."""
     owner, name = _split_repo(repo)
@@ -431,6 +431,30 @@ def _base_ref_blocker(base):
     if identity == BASE_REF_LEGACY_STALE:
         return BASE_REF_LEGACY_STALE
     return BASE_REF_PROBE_ERROR
+
+
+def fetch_host_branch_update_capability(pr, owner, name, host=None):
+    """Read GitHub's operation-specific update-branch capability without mutating.
+
+    This fact intentionally says nothing about direct publication authority, which DIRTY repair must
+    prove separately. Probe and response-shape uncertainty fail closed as `unknown`.
+    """
+    query = """
+query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){ viewerCanUpdateBranch }
+  }
+}"""
+    r = _run(["gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}",
+              "-f", f"repo={name}", "-F", f"pr={pr}", "-f", f"query={query}"])
+    if r.returncode != 0:
+        return "unknown"
+    try:
+        capability = json.loads(r.stdout)["data"]["repository"]["pullRequest"][
+            "viewerCanUpdateBranch"]
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return "unknown"
+    return capability if isinstance(capability, bool) else "unknown"
 
 
 def _eyes_reaction_identities(reaction_pages):
@@ -576,30 +600,8 @@ def _chain_from_entries(entries, pr, source, trunk=None, current_branch=None,
     return chain
 
 
-def _chain_from_stack_view(raw, pr, target_url):
-    entries = []
-    for index, branch in enumerate((raw or {}).get("branches") or []):
-        remote_pr = branch.get("pr") or {}
-        entries.append({
-            "position": index + 1,
-            "name": branch.get("name"),
-            "head": branch.get("head"),
-            "base": branch.get("base"),
-            "is_current": bool(branch.get("isCurrent")),
-            "is_merged": bool(branch.get("isMerged")),
-            "is_queued": bool(branch.get("isQueued")),
-            "needs_rebase": branch.get("needsRebase"),
-            "number": remote_pr.get("number"),
-            "url": remote_pr.get("url"),
-            "state": remote_pr.get("state"),
-            "isDraft": remote_pr.get("isDraft"),
-        })
-    return _chain_from_entries(entries, pr, "gh-stack", (raw or {}).get("trunk"),
-                               (raw or {}).get("currentBranch"), target_url=target_url)
-
-
 def _fetch_graphql_stack(pr, owner, name, host=None):
-    """Read-only remote membership fallback. A successful null stack is distinct from failure."""
+    """Read remote stack membership. A successful null stack is distinct from failure."""
     query = """
 query($owner:String!,$repo:String!,$pr:Int!){
   repository(owner:$owner,name:$repo){
@@ -607,8 +609,8 @@ query($owner:String!,$repo:String!,$pr:Int!){
     pullRequest(number:$pr){
     stackEntry{ position }
     stack{ id number size baseRefName
-      entries(first:100){ nodes{ position pullRequest{
-        number url state isDraft baseRefName headRefName headRefOid
+        entries(first:100){ nodes{ position pullRequest{
+        number url state isDraft baseRefName baseRefOid headRefName headRefOid
       } } }
     }
   } }
@@ -639,9 +641,16 @@ query($owner:String!,$repo:String!,$pr:Int!){
             "name": remote_pr.get("headRefName"),
             "head": remote_pr.get("headRefOid"),
             "base_ref_name": remote_pr.get("baseRefName"),
-            "needs_rebase": None,
+            "base_oid": remote_pr.get("baseRefOid"),
             **(_pr_summary(remote_pr) or {}),
         })
+    stack_base = fetch_base_ref(owner, name, stack.get("baseRefName"),
+                                entries[0].get("base_oid") if entries else None, host)
+    prior_head = stack_base.get("oid") if stack_base.get("freshness") == BASE_REF_CURRENT else None
+    for entry in entries:
+        entry["needs_rebase"] = (
+            entry.get("base_oid") != prior_head if entry.get("base_oid") and prior_head else None)
+        prior_head = entry.get("head")
     chain = _chain_from_entries(entries, pr, "graphql", stack.get("baseRefName"),
                                 manager_id=stack.get("id"), manager_number=stack.get("number"))
     return ((MANAGER_CONFIRMED, chain, default_branch) if chain
@@ -681,18 +690,9 @@ def _manual_relationships(pr, repo, base_ref_name, head_ref_name, owner, name,
 def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, host=None):
     """Classify manager membership and ordinary dependency relationships without mutation.
 
-    The local manager is the fast/rich path, but its output is accepted only when it contains the
-    requested PR. `gh stack view` has no target argument and may describe a different current stack.
+    Managed membership and freshness come from host-qualified GitHub API reads. Local repository
+    state cannot establish remote stack membership and is intentionally not inspected here.
     """
-    local = _run(["gh", "stack", "view", "--json"])
-    if local.returncode == 0:
-        try:
-            chain = _chain_from_stack_view(json.loads(local.stdout), pr, url)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            chain = None
-        if chain:
-            return chain
-
     manager_status, chain, default_branch = _fetch_graphql_stack(pr, owner, name, host)
     if manager_status == MANAGER_CONFIRMED:
         chain["default_branch"] = default_branch
@@ -776,8 +776,8 @@ def fetch(pr, repo):
         if isinstance(capability, bool):
             host_branch_update_capability = capability
 
-    # In-progress review signal: an 👀 (EYES) reaction on the PR body is how several review bots
-    # (Codex among them) announce a review is *underway* — a present in-progress signal means the PR
+    # Some reviewers use an 👀 (EYES) reaction on the PR body to announce work in progress. A
+    # present in-progress signal means the PR
     # is NOT settled, regardless of quiet time. A present signal is meaningful; absence tells us
     # nothing (many reviewers give no signal), so this only ever *delays* a merge-ready read.
     review_signal_identities = fetch_eyes_reactors(v.get("number") or pr, owner, name, host)
@@ -799,7 +799,7 @@ def fetch(pr, repo):
         "review_signal_count": review_signal_count,
         "review_signal_identities": review_signal_identities,
         "threads": fetch_threads(pr, owner, name, host),
-        # Non-thread feedback: top-level PR comments + review submission bodies. ce-resolve-pr-feedback
+        # Non-thread feedback: top-level PR comments plus review submission bodies. ce-resolve-pr-feedback
         # handles these too, so a Changes-Requested review body or an actionable top-level comment with
         # NO inline thread must not be invisible to the loop. Content-actionability is entirely the
         # resolver's judgment; this deterministic layer keeps every non-empty non-author body.
@@ -1155,7 +1155,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace-local .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -1446,8 +1446,8 @@ def diff(state, cur, now=None, advance_trajectory=True):
     #   - Feedback (top-level comments + review bodies): no remote "resolve" exists, so an item
     #     never drops out on its own — `mark --comment <id>` is the only thing that silences it.
     #     Reactivation on a body edit is per-disposition: a `dispatched` item is NEVER
-    #     auto-reactivated — status bots (changeset-bot, CodeRabbit, Codecov) rewrite their own
-    #     comment bodies on every push, so edit-keyed reactivation re-actionized handled bot
+    #     auto-reactivated — status services may rewrite their own
+    #     comment bodies on every push, so edit-keyed reactivation re-actionized handled
     #     comments forever and the merge-ready gate could never fire (#1309) — while a
     #     `needs-human` item still reactivates on edit, because a human may answer the parked
     #     question by editing the same comment/review body. New requests otherwise arrive as
@@ -2484,11 +2484,11 @@ def cmd_mark(args):
 WATCH_BOOTSTRAP_FLAGS = ("--state-dir", "--invocation-id", "--session-started-at",
                          "--invocation-budget-seconds")
 WATCH_BOOTSTRAP_HINT = """\
-watch cannot start a babysit run: it only arms the change detector for an
+watch cannot start a ce-babysit-pr run: it only arms the change detector for an
 invocation that was already bootstrapped by a snapshot --start-invocation run
 (the ce-babysit-pr Step 2 bootstrap).
 To recover, invoke the ce-babysit-pr skill through your harness's callable
-skill mechanism with this PR: its instructions own the bootstrap, arming,
+skill mechanism with this PR; its instructions own the bootstrap, arming,
 marks, and stop protocol. Do not drive pr-snapshot directly outside that skill.
 Never mint the bootstrap values yourself; they come from the skill's
 bootstrap snapshot."""

@@ -4,6 +4,8 @@ Use this only at LFG closeout, after the current pipeline has reached its
 terminal state. Its purpose is to offer continuity into a separately planned
 area without silently extending the completed plan or current session.
 
+If a recommendation later describes a change, use `jj describe` locally and `jj git` for publication; never impose a fixed type, scope, prefix, message, template, or example.
+
 ## Establish whether an offer is warranted
 
 Start from the canonical plan path retained from LFG step 1. Locate a Product

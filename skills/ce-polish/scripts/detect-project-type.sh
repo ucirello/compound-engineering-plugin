@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# detect-project-type.sh — inspect signature files at the repo root (and, if
+# detect-project-type.sh — inspect signature files at the workspace root (and, if
 # no root match is found, probe shallow subdirectories) to emit a project-type
 # identifier on stdout.
 #
@@ -41,13 +41,12 @@
 
 set -u
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a git repository" >&2
-  exit 1
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+if [ -z "$WORKSPACE_ROOT" ]; then
+  WORKSPACE_ROOT=$(pwd -P)
 fi
 
-cd "$REPO_ROOT" || { echo "ERROR: cannot cd to repo root" >&2; exit 1; }
+cd "$WORKSPACE_ROOT" || { echo "ERROR: cannot cd to workspace root" >&2; exit 1; }
 
 MATCHES=()
 

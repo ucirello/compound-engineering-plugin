@@ -114,8 +114,8 @@ discover_pi() {
 }
 
 # --- oh-my-pi (omp) ---
-# Encode omp's raw bucket name for a cwd: home-relative "-<rel>",
-# tmp-relative "-tmp-<rel>", and otherwise "--<abs>--", with path separators
+# Encode omp's raw bucket name for a cwd: home-relative "-<rel>" and otherwise
+# "--<abs>--", with path separators
 # and ":" encoded as "-" (session-paths.ts getDefaultSessionDirName /
 # encodeLegacyAbsoluteSessionDirName). This raw scheme predates the hashed
 # scheme and is current again since omp 17.2.9 (#7646 restored it and removed
@@ -123,7 +123,7 @@ discover_pi() {
 # with physical paths so symlinked cwds resolve to the same bucket, mirroring
 # omp's resolveEquivalentPath. Prints nothing when the cwd cannot be resolved.
 encode_omp_raw_cwd() {
-    local cwd canon_home canon_tmp rel
+    local cwd canon_home rel
     cwd="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
     canon_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || canon_home="$HOME"
     case "$cwd" in
@@ -135,20 +135,8 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
-            canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
-            case "$cwd" in
-                "$canon_tmp")
-                    printf -- '-tmp'
-                    ;;
-                "$canon_tmp"/*)
-                    rel="$(printf '%s' "${cwd#"$canon_tmp"/}" | sed 's/[/\\:]/-/g')"
-                    printf -- '-tmp-%s' "$rel"
-                    ;;
-                *)
-                    rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
-                    printf -- '--%s--' "$rel"
-                    ;;
-            esac
+            rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
+            printf -- '--%s--' "$rel"
             ;;
     esac
 }
@@ -174,7 +162,7 @@ discover_omp() {
 
     # omp has two bucket-naming schemes in the wild, and both keep the raw
     # repo basename (spaces and all) inside the bucket name:
-    #   - raw: "-<home-rel>", "-tmp-<tmp-rel>", "--<abs>--" (legacy relative to
+    #   - raw: "-<home-rel>", "--<abs>--" (legacy relative to
     #     the hashed scheme; restored as current in omp 17.2.9, #7646)
     #   - hashed: "<scope>-<sanitized-basename>-<sha256-of-canonical-cwd>"
     #     (intermediate releases; basename runs of [^a-zA-Z0-9._-] collapse to

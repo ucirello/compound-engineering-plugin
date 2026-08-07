@@ -2,6 +2,12 @@
 
 Read this reference when Mode Detection (in SKILL.md) routes to **Targeted Mode** — a specific comment or thread URL was provided. Targeted mode addresses only that thread.
 
+## Composition Standard
+
+At every site in this reference that composes, edits, validates, or recommends a JJ description, apply this exact sentence: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The sentence's `git log` wording is not an operational instruction: inspect the project's active instructions and current `jj log` history; their runtime syntax and conventions take precedence. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, heading, subject, body, layout, template, example, or path inventory.
+
+For all output, preserve each site's required facts, quoted review context, verdict semantics, and machine-readable values. Fixed fields and examples define required content rather than mandatory message syntax. Do not add product branding, generated-by text, or creator, model, provider, tool, agent, runtime, workflow, or co-author attribution.
+
 ## 1. Extract Thread Context
 
 Parse the URL to extract HOST, OWNER, REPO, PR number, and comment REST ID:
@@ -9,7 +15,7 @@ Parse the URL to extract HOST, OWNER, REPO, PR number, and comment REST ID:
 https://HOST/OWNER/REPO/pull/NUMBER#discussion_rCOMMENT_ID
 ```
 
-**GitHub Enterprise host.** Take the host from the URL (targeted mode is always URL-triggered). When it is **not** `github.com`, pass it as a `GH_HOST=<host>` env prefix inline on **every** `gh api` / bundled-script call below (`gh api` honors `GH_HOST` as the request host) so an enterprise thread is fetched, replied to, and resolved on the right host instead of `github.com`. On `github.com`, drop the `GH_HOST=<host> ` prefix. Carry the same host into the reply/resolve calls you run from Full Mode steps 5-7.
+**GitHub Enterprise host.** Take the host from the URL (targeted mode is always URL-triggered). When it is **not** `github.com`, pass it as a `GH_HOST=<host>` environment prefix inline on **every** `gh api` / bundled-script call below (`gh api` honors `GH_HOST` as the request host) so an enterprise thread is fetched, replied to, and resolved on the right host instead of `github.com`. On `github.com`, drop the prefix. Carry the same host into the reply/resolve calls you run from Full Mode steps 5-7.
 
 **Step 1** -- Get comment details and GraphQL node ID via REST (cheap, single comment):
 ```bash
@@ -17,9 +23,9 @@ GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
   --jq '{node_id, path, line, body}'   # omit GH_HOST=<host> on github.com
 ```
 
-**Step 2** -- Map comment to its thread ID. Use [scripts/get-thread-for-comment](../scripts/get-thread-for-comment). Set `SKILL_DIR` to the absolute directory you loaded the ce-resolve-pr-feedback SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, and shell state does not persist between Bash calls, so set it inline. If the bundled script is missing, use Full Mode's fallback `gh` commands to inspect the PR comments:
+**Step 2** -- Map comment to its thread ID. Use [scripts/get-thread-for-comment](../scripts/get-thread-for-comment). Set `SKILL_DIR` to the absolute directory containing the SKILL.md you loaded — the Bash tool's CWD is the user's project, not that directory, and shell state does not persist between Bash calls, so set it inline. If the bundled script is missing, use Full Mode's fallback `gh` commands to inspect the PR comments:
 ```bash
-SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you loaded>";
 GH_HOST=<host> bash "$SKILL_DIR/scripts/get-thread-for-comment" PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]
 ```
 
@@ -35,12 +41,12 @@ If this prints anything, stop. Tell the user they have an unsubmitted review on 
 
 ## 2. Judge, Fix, Reply, Resolve
 
-**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read (callers, invariants, `git blame`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
+**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
 
 **Then act on the verdict:**
 
 - **`fixed` / `fixed-differently`** — read `references/agents/pr-comment-resolver.md` and spawn a single generic subagent seeded with that fixer prompt to implement it. Do not dispatch a standalone agent by type/name. Pass the file/location fields (resolved location or anchor if outdated), the comment text, and your note on what to change and why it's valid. The fixer is a pure executor. **When the harness exposes no way to dispatch (or the dispatch fails), apply the fix yourself in this context**, using that same prompt as your own instructions — the fixer implements a change this step already approved, so running it here costs nothing but the separate context (see Full Mode step 4).
-- **`replied` / `not-addressing` / `declined`** — no subagent. Compose the reply text per the rubric and proceed to reply/resolve.
-- **`needs-human`** — compose `decision_context` and the natural-sounding reply per the rubric, leave the thread open (don't resolve), and present the decision to the user (use the platform's blocking question tool as in Full Mode step 9). The shared reply step below posts the reply once — do not post it here.
+- **`replied` / `not-addressing` / `declined`** — no subagent. Compose the reply text under the Composition Standard and rubric, then proceed to reply/resolve.
+- **`needs-human`** — compose `decision_context` and the natural-sounding reply under the Composition Standard and rubric, leave the thread open (don't resolve), and present the decision through an available blocking-question capability as in Full Mode step 9. The shared reply step below posts the reply once — do not post it here.
 
-Then follow the same validate -> commit -> push -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validate/commit when no code changed.
+Then follow the same validate -> record -> push -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validation and recording when no code changed.

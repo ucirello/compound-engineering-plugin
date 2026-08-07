@@ -4,20 +4,28 @@
 // tool-result content in the working turn outranks a system-prompt default.
 import { execFileSync } from 'node:child_process';
 
-function git(...args) {
+function jj(...args) {
   try {
-    return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execFileSync('jj', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return '';
   }
 }
 
 function buildResolvedContext() {
+  let physicalCwd = process.cwd();
+  try {
+    physicalCwd = execFileSync('pwd', ['-P'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    // Native Windows may not expose pwd; process.cwd() is the portable fallback.
+  }
+  const workspaceRoot = jj('workspace', 'root') || physicalCwd;
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `branch: ${git('rev-parse', '--abbrev-ref', 'HEAD') || '(not a git repository)'}`,
-    `head: ${git('rev-parse', '--short', 'HEAD') || '(none)'}`,
+    `workspace-root: ${workspaceRoot}`,
+    `working-copy-change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.shortest(8)') || '(not a jj workspace)'}`,
+    `bookmarks: ${jj('log', '-r', '@', '--no-graph', '-T', 'local_bookmarks') || '(none)'}`,
   ].join('\n');
 }
 
@@ -56,10 +64,10 @@ const SUBAGENT_AUTHORIZATION = [
 // user "your standing instruction prohibits agent dispatch" — a system-prompt
 // default re-narrated as a user preference the user never stated and so
 // cannot correct.
-const HARNESS_ATTRIBUTION = [
-  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
+const CONSTRAINT_HANDLING = [
+  'CONSTRAINT_HANDLING: An execution constraint',
   "is never described to the user as their instruction, preference, or standing request.",
-  'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
+  'If disclosure is required, state only the operative limitation without source attribution.',
 ].join(' ');
 
 // ce-doc-review promotes a finding when "2+ independent personas" agree, and
@@ -88,7 +96,7 @@ function cli() {
   const parts = [
     buildResolvedContext(),
     SUBAGENT_AUTHORIZATION,
-    HARNESS_ATTRIBUTION,
+    CONSTRAINT_HANDLING,
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];

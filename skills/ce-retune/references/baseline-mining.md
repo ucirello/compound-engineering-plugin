@@ -1,5 +1,7 @@
 # Phase 1: mine the archive
 
+Preserve required evidence, metrics, machine-readable values, and operational benchmark, model, and harness references. Fixed examples and report wording specify substance, not mandatory syntax, unless an exact token is machine-readable. Do not add product branding, generated-by text, or creator, model, provider, tool, harness, agent, runtime, workflow, or co-author attribution; operational references are evidence, not attribution.
+
 Zero model cost. Everything here reads files that already exist on disk. Do not run the harness in this phase — Phase 2 owns the first paid runs (`references/noise-floor.md`).
 
 An archive is usually an order of magnitude larger than the experiment you can afford this week. In the engagement this method came from, 745 archived runs were on disk and 458 carried usable traces — more evidence than any deliberate sample, sitting unread.
@@ -49,7 +51,7 @@ Treat those bands as the shape to look for, not as thresholds to import. Find yo
 **The two booleans the spine requires, derived independently:**
 
 ```
-task_done       = the run's expected deliverable exists (artifact on disk, commit, PR, file changed)
+task_done       = the run's expected deliverable exists (artifact on disk, JJ change, PR, file changed)
 process_followed = every required phase appears in phase_trace, in spine order
 ```
 

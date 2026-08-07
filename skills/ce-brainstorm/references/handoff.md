@@ -56,10 +56,11 @@ The override sentence is load-bearing, not padding: the planning options are hid
 Present only the options that apply. Renumber so visible options stay contiguous starting at 1.
 
 1. **Create the implementation plan** *(recommended)* - Hand off to `ce-plan` and sharpen the requirements into a complete, testable plan. Shown only when `Resolve Before Planning` is empty.
-2. **Ship it autonomously with `lfg`** - Hand the requirements to the full autonomous pipeline: `lfg` plans (`ce-plan`), implements, simplifies, runs independent code review and applies the fixes, opens a PR, and watches CI to green — hands-off, no check-ins. It plans first (unlike a raw `/goal` straight from requirements), so it's the safer autonomous path. Best when you trust the requirements and want it built and shipped without steering. **Opens a PR and pushes a branch.** Shown only for software brainstorms (`execution: code`) with `Resolve Before Planning` empty **and a unified plan artifact was created** — `lfg` hands `ce-plan` that artifact path in pipeline mode and cannot prompt, so with no artifact (e.g. a brief-alignment brainstorm that skipped doc creation per the "Decide whether a doc is warranted" rule) there is nothing to enrich; offer option 1 instead, which can plan interactively from the conversation. For a quicker plan-then-decide flow, or to run a `/goal` yourself, pick option 1 and choose at the `ce-plan` handoff.
+2. **Ship it autonomously with `lfg`** - Hand the requirements to the full autonomous pipeline: `lfg` plans (`ce-plan`), implements, simplifies, runs independent code review and applies the fixes, opens a PR, and watches CI to green — hands-off, no check-ins. It plans first (unlike a raw `/goal` straight from requirements), so it's the safer autonomous path. Best when you trust the requirements and want it built and shipped without steering. **Opens a PR and pushes a bookmark.** Shown only for software brainstorms (`execution: code`) with `Resolve Before Planning` empty **and a unified plan artifact was created** — `lfg` hands `ce-plan` that artifact path in pipeline mode and cannot prompt, so with no artifact (e.g. a brief-alignment brainstorm that skipped doc creation per the "Decide whether a doc is warranted" rule) there is nothing to enrich; offer option 1 instead, which can plan interactively from the conversation. For a quicker plan-then-decide flow, or to run a `/goal` yourself, pick option 1 and choose at the `ce-plan` handoff.
 3. **Pressure-test the requirements** - Dispatch reviewer agents with `ce-doc-review` to find gaps, conflicts, weak premises, and scope issues in the requirements; auto-apply safe fixes in the artifact's native format; route the rest interactively. Shown only when a unified plan exists **and no remaining question meets Interaction Rule 7**. When **Prototype a remaining feel-question** is shown, omit this option from the same menu.
 3. **Prototype a remaining feel-question** - Invoke `ce-prototype` on a named remaining question that meets Interaction Rule 7. Shown only when such a question remains. A visual-probe question that already settled fails this predicate. The option description names the proposed slice. When this option is shown, omit **Pressure-test the requirements** from the same menu.
-4. **Open in browser** — open the HTML unified plan locally for review and sharing. Shown only when an HTML unified plan exists. **Render only when `OUTPUT_FORMAT=html`.**
+4. **Publish to Proof — shareable link** - Publish the markdown unified plan to Proof and get a shareable link to read, comment on, or share with others. One-way: the local doc stays canonical. Shown only when a markdown unified plan exists. **Render only when `OUTPUT_FORMAT=md`** (Proof operates on markdown and cannot ingest HTML).
+4. **Open in browser** — open the HTML unified plan locally for review and sharing. Shown only when an HTML unified plan exists. **Render only when `OUTPUT_FORMAT=html`.** Replaces "Publish to Proof" at the same slot under exclusive output mode — the artifact is either markdown OR HTML, never both, so exactly one of the two labels applies per run.
 5. **More clarifying questions to sharpen the scope** - Keep refining scope, edge cases, constraints, and preferences through further dialogue. Always shown — so the label names the scope rather than the doc, which stays true on a run that correctly skipped doc creation.
 
 There is no "done" / "pause" option — the blocking question already waits, and the user ends by dismissing it (Esc) or saying they're finished. The unified plan artifact is already saved.
@@ -76,7 +77,7 @@ Immediately load the `ce-plan` skill in the current session. Pass the unified
 plan artifact path when one exists; otherwise pass a concise summary of the
 finalized brainstorm decisions. When the Phase 1.1 grounding scout produced a
 dossier and the file still exists, also pass its path
-(`<scratch-root>/ce-brainstorm/<run-id>/grounding.md`) — it gives
+(`<scratch-root>/rocketclaw/ce-brainstorm/<run-id>/grounding.md`) — it gives
 planning verified quotes with `file:line` pointers to start from instead of
 re-scanning the repo. Do not print the closing summary first.
 
@@ -96,10 +97,10 @@ skill-invocation primitive, passing the unified plan artifact path as its
 argument so `lfg`'s `ce-plan` step enriches *this* requirements-only artifact in
 place rather than bootstrapping a new plan. `lfg` then owns the full pipeline
 autonomously — plan, implement (`ce-work` in `return-to-caller` mode), simplify,
-independent code review and applied fixes, commit/push/open PR, and CI watch to
+independent code review and applied fixes, record/publish/open PR, and CI watch to
 green. Do not also start a `/goal` or load `ce-work` directly — `lfg`
 orchestrates them. Unlike a goal tool, `lfg` is host-agnostic: it works wherever
-skills run (plus `git`/`gh` for the PR/CI tail, which it guards when absent).
+skills run (plus `jj`/`gh` for the PR/CI tail, which it guards when absent).
 
 Where the host exposes no skill-invocation primitive, print the `lfg <plan-path>`
 invocation for the user to run and note that it will plan, build, review, and
@@ -112,6 +113,21 @@ Do not print the closing summary first.
 **If user selects "Prototype a remaining feel-question":**
 
 Invoke the `ce-prototype` skill via the host's normal skill-invocation mechanism, passing the unified plan artifact path when one exists — the exact plan artifact path returned by the write step (including any collision suffix), never one rebuilt from the naming convention. Do not build a prototype in this skill. Do not substitute a generic Task, Agent, or subagent.
+
+**If user selects "Publish to Proof — shareable link":**
+
+Load the `ce-proof` skill to publish the markdown unified plan. Pass:
+
+- **source file:** the exact markdown unified plan path returned by the write step, including any collision suffix
+- **doc title:** `Plan: <topic title> (requirements-only)`
+
+ce-proof creates a shared Proof doc from the markdown plan file (Create and
+Share workflow) and returns the share URL. Surface the URL to the user — they
+can open it to read, comment, or share with others — then return to the Phase 4
+options and re-render the menu. This is a one-way publish: the local doc stays
+canonical and nothing syncs back, so option eligibility is unchanged.
+
+If the upload fails (network error, Proof API down), retry once after a short wait. If it still fails, tell the user the upload didn't succeed and briefly explain why, then return to the Phase 4 options — don't leave them wondering why the option did nothing.
 
 **If user selects "Open in browser":** Display the absolute path to the `.html` unified plan so the user can open it locally. Where the platform exposes a browser-opening primitive (e.g., `open` on macOS, `xdg-open` on Linux, `start` on Windows), the agent may invoke it directly; otherwise print the absolute path and let the user open it. After the path is displayed (or the browser is opened), return to the Phase 4 options so the user can pick a follow-up action.
 

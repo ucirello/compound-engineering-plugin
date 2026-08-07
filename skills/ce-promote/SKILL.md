@@ -9,18 +9,22 @@ argument-hint: "[optional: what shipped and/or channels, e.g. 'a tweet thread an
 
 Turn a feature that just shipped into copy-pasteable, user-facing announcement copy, right inside the engineering workflow — so the messaging doesn't wait for a separate marketing pass.
 
-**Done when:** every drafted channel is presented as a labeled, copy-pasteable block and the user has been offered a revision. **This skill drafts only — it never posts, publishes, schedules, commits, or opens PRs.** Posting is a human action.
+**Done when:** every drafted channel is presented as a labeled, copy-pasteable block and the user has been offered a revision. **This skill drafts only — it never posts, publishes, schedules, describes changes, moves bookmarks, or opens PRs.** Posting is a human action.
 
 It is **spiral-agnostic**: with nothing installed it drafts directly from the editorial and social fundamentals in Path B. When the Spiral CLI is present and authed, drafts come back voice-matched to the user's brand — an enhancement, never a requirement.
+
+Do not add product branding, badges, generated-by text, standalone product decoration, or creator, model, provider, tool, agent, runtime, workflow, or co-author attribution to drafts or workflow messages.
+
+Do not add branding, generated-by text, or creator, model, provider, tool, agent, runtime, workflow, or co-author attribution.
 
 ## Phase 1 — Figure out what shipped
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what's available and blocking on no single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — inspect `jj git remote list` for the GitHub remote and `jj bookmark list -r @` for local bookmarks targeting the working-copy change; Jujutsu has no current bookmark. Use `gh pr view --json title,body,url` when GitHub can resolve the working copy, or query `gh pr list --head <bookmark>` for each candidate until the associated PR is unambiguous. The title and body usually state the user-facing value.
+- **The diff** — use `jj diff --from <project-trunk-or-merge-base> --to @ --stat`, choosing the base from the project's active conventions and current revsets, then skim notable changes so the claim is grounded in what actually changed.
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent changes** — use `jj log -n 15` for the arc of the working-copy change and nearby history. Respect the project's configured log presentation rather than imposing a template.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 
@@ -89,4 +93,14 @@ Show every draft as a clean, copy-pasteable block labeled by channel:
 <the copy>
 ```
 
-When Path A produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app. Offer to revise (tone, length, angle, more variations, another channel). **Do not post, publish, schedule, commit, or open a PR** — end by reminding the user the drafts are theirs to ship.
+When Path A produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app. Offer to revise (tone, length, angle, more variations, another channel). **Do not post, publish, schedule, describe changes, move bookmarks, or open a PR** — end by reminding the user the drafts are theirs to ship.
+
+## Examples
+
+**Single-channel variations — "3 tweet options":**
+> User: `/ce-promote 3 tweet options for the new one-click CSV export`
+> -> Summarize the value. Spiral path: `spiral write "3 tweet options for one-click CSV export" --instant --num-drafts 3 --json` (no cue words). No-Spiral path: write 3 distinct tweets directly. Present all three.
+
+**Multi-channel set — "a campaign across X, LinkedIn, and email":**
+> User: `/ce-promote draft a launch across X, LinkedIn, and email`
+> -> Spiral path: `spiral write "announcing one-click CSV export — a launch across X, LinkedIn, and email" --instant --json` returns a set of drafts per channel (Spiral decides the count — often several), each carrying its `channel`. (`--num-drafts` is ignored here.) No-Spiral path: draft one X post, one LinkedIn post, and one email directly. Present every returned draft, grouped by channel.

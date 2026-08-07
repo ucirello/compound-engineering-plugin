@@ -8,9 +8,17 @@ argument-hint: "[optional: section to revisit, e.g. 'metrics' or 'approach']"
 
 **Note: The current year is 2026.** Use this when dating the strategy document.
 
-`ce-strategy` produces and maintains `STRATEGY.md` - a short, durable anchor document that captures what the product is, who it serves, how it succeeds, and where the team is investing. It lives at the repo root as a canonical, well-known file (peer of `README.md`). Downstream skills (`ce-ideate`, `ce-brainstorm`, `ce-plan`) read it as grounding when it exists.
+`ce-strategy` produces and maintains `STRATEGY.md` - a short, durable anchor document that captures what the product is, who it serves, how it succeeds, and where the team is investing. It lives at the workspace root as a canonical, well-known file (peer of `README.md`). Downstream skills (`ce-ideate`, `ce-brainstorm`, `ce-plan`) read it as grounding when it exists.
 
 The document is short and structured on purpose. Good answers to a handful of sharp questions produce a better strategy than any amount of prose. This skill asks those questions, pushes back on weak answers, and writes the doc.
+
+## Runtime Conventions
+
+Resolve the target workspace root with `jj workspace root`; if no Jujutsu workspace is available, use the physical current directory from `pwd -P` for local-only operation. Read and write `STRATEGY.md` only at that root. If temporary or intermediate files become necessary, keep all of them under `<workspace-root>/.tmp/ce-strategy/`; never use an OS-global temporary location or write generated artifacts elsewhere.
+
+Use Jujutsu for local version-control status, history, diffs, and changes. Use `jj git` for Git interoperability rather than substituting Git CLI operations; a colocated `.git` directory may still contain Git metadata managed through `jj git`.
+
+Preserve each site's required strategy content, interaction, and machine-readable fields. Quoted questions, announcements, option labels, placeholders, and examples define required substance rather than fixed wording; exact frontmatter keys and section headings in the strategy template remain fixed because downstream consumers depend on them. Do not add product branding, generated-by text, or creator, model, provider, tool, agent, runtime, workflow, or co-author attribution.
 
 ## Interaction Method
 
@@ -35,7 +43,7 @@ Interpret any argument as an optional focus: a section name to revisit (`metrics
 
 ### Phase 0: Route by File State
 
-Read `STRATEGY.md` using the native file-read tool.
+Read `<workspace-root>/STRATEGY.md` using the native file-read tool.
 
 - **File does not exist** -> First run. Go to Phase 1.
 - **File exists and argument names a specific section** -> Targeted update. Go to Phase 2.
@@ -60,11 +68,11 @@ Run the interview in the section order of the final document:
 
 For each section, ask the opening question, apply the pushback rules, and capture the final answer in the user's own language. Do not skip the pushback step - it is the core of the skill. Two rounds of pushback per section maximum; capture what the user has given after that and note the section is worth revisiting on the next run.
 
-When all required sections (1-5) are captured, read `references/strategy-template.md`, fill it in, and present the full draft in chat before writing. Offer one round of edits. Then write to `STRATEGY.md`.
+When all required sections (1-5) are captured, read `references/strategy-template.md`, fill it in, and present the full draft in chat before writing. Offer one round of edits. Then write to `<workspace-root>/STRATEGY.md`.
 
 ### Phase 2: Update Run
 
-Read the existing `STRATEGY.md` thoroughly. Summarize current state in 3-5 lines so the user sees what is on file.
+Read the existing `<workspace-root>/STRATEGY.md` thoroughly. Summarize current state in 3-5 lines so the user sees what is on file.
 
 If the argument named a specific section, jump to that section in `references/interview.md`. Preserve all other sections exactly. Apply pushback as if this were a first run - do not rubber-stamp existing weak content just because it is already written.
 
@@ -77,7 +85,7 @@ If no specific target, ask the user which section to revisit using the blocking 
 
 For each revisited section, re-interview with full pushback. For sections the user confirms are still accurate, leave them untouched. Update the `last_updated` value in the YAML frontmatter to today's ISO date.
 
-Write the updated doc back to `STRATEGY.md`.
+Write the updated doc back to `<workspace-root>/STRATEGY.md`.
 
 ### Phase 3: Downstream Handoff
 

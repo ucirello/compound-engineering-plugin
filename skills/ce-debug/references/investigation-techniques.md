@@ -76,27 +76,15 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), record the current change ID and inspect `jj status`, then use Jujutsu's bisect revset to find the first bad revision. The command edits the working copy to each candidate revision while it runs.
 
 ```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
+jj bisect run --range '<known-good-revision>..@' -- <test-command> [args...]
 ```
 
-The test command should exit 0 for good, non-zero for bad.
+The test command should exit 0 for good, any other non-zero status for bad, and 125 when the revision must be skipped. Inspect the first bad revision reported by the command with `jj show -r <revision>` and confirm the working-copy state with `jj status` when bisection finishes.
 
 ---
 
@@ -132,7 +120,7 @@ A 5% reproduction rate confirms the bug exists but suggests timing or data sensi
 - Run the suite with randomized test order (most runners support a seed flag) — a different failing-test neighbor each run implies global state mutation
 - Bisect the preceding tests: run the failing test with just the first half of the earlier tests, then the second half, then narrow
 
-Common culprits once isolated: module-level state, mocks not torn down, temp files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
+Common culprits once isolated: module-level state, mocks not torn down, scratch files under `<workspace-root>/.tmp/rocketclaw/ce-debug/` not cleaned up, database rows not rolled back, environment variables mutated and not restored. Resolve `<workspace-root>` with `jj workspace root` and use `pwd -P` as the fallback; never use OS-global temporary storage.
 
 ---
 
@@ -273,6 +261,11 @@ The defining rule: if the bug is sensitive to observation, the fix must survive 
 When investigating UI bugs with `agent-browser` or equivalent tools:
 
 ```bash
+# Resolve scratch storage before browser capture
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-debug/browser";
+mkdir -p "$SCRATCH_DIR"
+
 # Open the affected page
 agent-browser open http://localhost:${PORT:-3000}/affected/route
 
@@ -285,7 +278,7 @@ agent-browser fill @ref "text"    # fill a form field
 agent-browser snapshot -i         # capture state after interaction
 
 # Save visual evidence
-agent-browser screenshot bug-evidence.png
+agent-browser screenshot "$SCRATCH_DIR/bug-evidence.png"
 ```
 
 **Port detection:** If your in-context project instructions explicitly state the dev-server port, use it (don't grep instruction prose for a port — it's false-positive-prone); otherwise check `package.json` dev scripts, then `.env` files, falling back to `3000`.

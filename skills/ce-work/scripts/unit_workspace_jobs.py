@@ -1124,10 +1124,10 @@ def terminalize(run_id: str, unit_id: str) -> dict:
         commit = existing
     else:
         env = {
-            "GIT_AUTHOR_NAME": "ce-work transport",
-            "GIT_AUTHOR_EMAIL": "ce-work@localhost",
-            "GIT_COMMITTER_NAME": "ce-work transport",
-            "GIT_COMMITTER_EMAIL": "ce-work@localhost",
+            "GIT_AUTHOR_NAME": "AI Assistant",
+            "GIT_AUTHOR_EMAIL": "ai:assistant",
+            "GIT_COMMITTER_NAME": "AI Assistant",
+            "GIT_COMMITTER_EMAIL": "ai:assistant",
         }
         commit = git(repo, "commit-tree", tree, "-p", base, input_data=f"ce-work transport {run_id}/{unit_id}\n".encode(), env=env).decode().strip()
         zero = "0" * len(commit)

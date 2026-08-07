@@ -41,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("checkpoint-plan")
     p.add_argument("--run-id", required=True)
+    p.add_argument("--description", required=True)
 
     p = sub.add_parser("prepare")
     p.add_argument("--run-id", required=True)

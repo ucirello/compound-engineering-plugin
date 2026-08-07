@@ -20,11 +20,7 @@ Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures
 
 ### 0. Verify XcodeBuildMCP is Available
 
-Check that the XcodeBuildMCP MCP server is connected by calling its `list_simulators` tool.
-
-MCP tool names vary by platform:
-- Claude Code: `mcp__xcodebuildmcp__list_simulators`
-- Other platforms: use the equivalent MCP tool call for the `XcodeBuildMCP` server's `list_simulators` method
+Check that the XcodeBuildMCP MCP server is connected by calling its `list_simulators` method through the harness's available MCP interface. Discover the callable tool when the interface does not expose it immediately; do not depend on a platform-specific generated tool name.
 
 If the tool is not found or errors, inform the user they need to add the XcodeBuildMCP MCP server:
 
@@ -75,10 +71,12 @@ Call `build_ios_sim_app` with the project path and scheme name.
 
 ### 5. Test Key Screens
 
+Resolve `<workspace-root>` with `jj workspace root`. If the project is not in a JJ workspace, derive the root from the Xcode project or workspace selected in step 1 rather than assuming the current directory is the root. Create a collision-resistant run directory under `<workspace-root>/.tmp/ce-test-xcode/` and keep all transient screenshots and exported copies of captured logs there. Never place transient artifacts outside `<workspace-root>/.tmp/`.
+
 For each key screen in the app:
 
 **Take screenshot:**
-Call `take_screenshot` with the simulator UUID and a descriptive filename (e.g., `screen-home.png`).
+Call `take_screenshot` with the simulator UUID and a descriptive path in the run directory (e.g., `<run-dir>/screen-home.png`).
 
 **Review screenshot for:**
 - UI elements rendered correctly
@@ -109,7 +107,7 @@ Pause for human input when testing touches flows that require device interaction
 | Location | "Allow location access and verify map updates" |
 | SwiftUI Text links | "Please tap on [element description] manually — automated taps cannot trigger inline text links" |
 
-Ask the user using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question:
+Ask with the harness's blocking question capability. If it is not immediately available, use the harness's tool-discovery capability before falling back. Present numbered options in chat only when no blocking question capability exists or the call errors; never silently skip the question:
 
 ```
 Human Verification Needed
@@ -145,7 +143,7 @@ When a test fails:
    2. Skip - continue testing other screens
    ```
 
-3. **If "Fix now":** investigate, propose a fix, rebuild and retest
+3. **If "Fix now":** inspect `jj status`, `jj diff`, and current `jj log` before editing. Preserve unrelated working-copy changes, use JJ for local version-control inspection and mutation, investigate the failure, apply only the requested fix, then rebuild and retest. Do not add creator, model, provider, tool, runtime, product, or generated-by attribution.
 4. **If "Skip":** log as skipped, continue
 
 ### 8. Test Summary
@@ -192,17 +190,14 @@ After testing:
 
 ## Quick Usage Examples
 
-```bash
-# Test with default scheme
-/ce-test-xcode
+When presenting a user-runnable invocation, render `ce-test-xcode` in the active harness's local callable-skill syntax rather than hard-coding a platform prefix. Show exactly one locally valid form:
 
-# Test specific scheme
-/ce-test-xcode MyApp-Debug
+| Intent | Argument |
+|--------|----------|
+| Test with the default scheme | none |
+| Test a specific scheme | `MyApp-Debug` |
+| Test after making changes | `current` |
 
-# Test after making changes
-/ce-test-xcode current
-```
+## Integration with `ce-code-review`
 
-## Integration with ce-code-review
-
-When reviewing PRs that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.
+When reviewing a change or revision that touches iOS code, `ce-code-review` can invoke this skill through the active harness's callable skill mechanism to build on the simulator, test key screens, and check for crashes.

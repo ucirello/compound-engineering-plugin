@@ -80,7 +80,7 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 
 | field | meaning |
 | --- | --- |
-| `fix_ref` | Reference to the fix (PR/commit/issue link). |
+| `fix_ref` | Reference to the fix (PR/change/issue link). |
 | `verified_merge_sha` | The merge commit SHA the fix landed on. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
@@ -145,8 +145,8 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-commit mode (default) | Single writer **per checkout**. | The lease serializes overlapping sweeps in the same working tree (e.g. a cron sweep and a manual one). The file is written in-tree (and may be committed locally). No cross-machine guarantee. |
-| pushed-shared-branch | One writer **per repo**. | The state file lives on a shared branch multiple checkouts push to. `lease-acquire` must be committed, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
+| local-recorded mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same workspace (e.g. a scheduled sweep and a manual one). The file is written in-workspace and may be recorded in a JJ change. No cross-machine guarantee. |
+| published shared bookmark | One writer **per project**. | The state file lives on a shared bookmark published by multiple workspaces. `lease-acquire` must be recorded, the bookmark moved and verified, and only that bookmark published with `jj git push` **before any source-side write**. This makes the lease a project-wide mutex across machines. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -170,8 +170,7 @@ subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
 whole load-modify-write, so two concurrent invocations serialize their writes
 regardless of lease ownership. The lease decides *who owns the sweep*; the file
 lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never committed (the skill's commit step adds only the state file and the
-plan, never `-A`).
+and never recorded (the skill records only the state file and plan paths).
 
 ## Engine status words
 

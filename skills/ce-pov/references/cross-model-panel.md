@@ -123,8 +123,8 @@ never promise that secrets inside the readable scope are inaccessible. Peers may
 search and read within the declared scope but may not mutate the project or
 intentionally inspect outside it.
 
-Before initial dispatch, capture one **repository-scope identity**: the committed
-revision plus a digest of dirty and untracked content inside the normalized
+Before initial dispatch, capture one **repository-scope identity** from JJ: the
+current change ID plus a digest of working-copy content inside the normalized
 scope. Include it in every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
 voices into the current project: disclose the change and either restart all
@@ -184,7 +184,7 @@ within these rules is reported, never silently replaced or dropped.
 The pre-dispatch update should say who will inspect the subject and that the
 review is read-only. Do not recite scope mechanics, promise that repository
 secrets are inaccessible, or describe probe results, CLI versions, model tiers,
-commit hashes, repository identity, route health, job lifecycle, or scratch
+change IDs, repository identity, route health, job lifecycle, or scratch
 paths. Mention a cooperative scope restriction only when it materially changes
 the user's choice. Refer to the codebase as "this project" or "the repository"
 unless the user supplied a recognizable name.
@@ -232,9 +232,9 @@ fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Fill in the start command below rather than reconstructing the worker's
 arguments from its usage header. Pass the actual repository root separately from
 any narrower read root, and pre-create the round output directory as private
-scratch outside the repository. For named peers, start one job per exact target;
-for a selected panel, start one job per selected peer. Start all jobs before
-waiting.
+scratch beneath the resolved `$SCRATCH_DIR`. For named peers, start one job per
+exact target; for a selected panel, start one job per selected peer. Start all
+jobs before waiting.
 
 **At the defaults, the peer budget needs nothing from you.** This skill's worker
 self-bounds at 600s and the runner supervisor derives a floor of 1230s, so the

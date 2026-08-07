@@ -43,7 +43,7 @@ Phase 0 is designed to be fast and cheap. The goal is signal, not exhaustive enu
 
 **0.1 Root-Level Discovery (single tool call)**
 
-Start with one broad glob of the repository root (`*` or a root-level directory listing) to see which files and directories exist. Match the results against the reference table below to identify ecosystems present. Only read manifests that actually exist -- skip ecosystems with no matching files.
+Start with one broad glob of the JJ workspace root (`*` or a root-level directory listing) to see which files and directories exist. Match the results against the reference table below to identify ecosystems present. Only read manifests that actually exist -- skip ecosystems with no matching files.
 
 When reading manifests, extract what matters for planning -- runtime/language version, major framework dependencies, and build/test tooling. Skip transitive dependency lists and lock files.
 
@@ -243,7 +243,7 @@ Structure your findings as:
 - Distinguish between official guidelines and observed patterns
 - Note the recency of documentation (check last update dates)
 - Flag any contradictions or outdated information
-- Provide specific file paths (repo-relative, never absolute) and examples to support findings
+- Provide specific file paths (workspace-relative, never absolute) and examples to support findings
 
 **Tool Selection:** Use native file-search/glob (e.g., `Glob`), content-search (e.g., `Grep`), and file-read (e.g., `Read`) tools for repository exploration. Only use shell for commands with no native equivalent (e.g., `ast-grep`), one command at a time.
 

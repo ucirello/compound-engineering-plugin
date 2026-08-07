@@ -1,5 +1,7 @@
 # Workflow Shapes
 
+Preserve required evidence, schemas, machine-readable values, and operational benchmark, model, and harness references. Fixed examples and report wording specify substance, not mandatory syntax, unless an exact token is machine-readable. Do not add product branding, generated-by text, or creator, model, provider, tool, harness, agent, runtime, workflow, or co-author attribution; operational references are evidence, not attribution.
+
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
 Two primitives are assumed, both platform-neutral:

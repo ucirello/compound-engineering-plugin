@@ -1,5 +1,7 @@
 # Halt Taxonomy
 
+Preserve required diagnostics, machine-readable values, and operational benchmark, model, and harness references. Fixed replacements, examples, and report wording specify substance, not mandatory syntax, unless an exact token is machine-readable. Do not add product branding, generated-by text, or creator, model, provider, tool, harness, agent, runtime, workflow, or co-author attribution; operational references are evidence, not attribution.
+
 ## The mechanism
 
 When a workflow "phase" is invoked by loading its instructions into the **same conversation** — a skill load, an include, a prose route to "the review phase" — rather than by spawning a separate process, the model on both sides of that seam is one model in one turn. In an unattended run there is no second party and no next user message, and a reply that contains no tool call ends the session. So an instruction to return, hand back, or report to a caller has exactly one expressible form at that seam: stop. The prose is not wrong about its protocol; the protocol has no runtime.

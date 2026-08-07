@@ -1,5 +1,7 @@
 # Phase 3: Adversarial Corpus Audit
 
+Preserve required evidence, citations, schemas, machine-readable values, and operational benchmark, model, and harness references. Fixed examples and report wording specify substance, not mandatory syntax, unless an exact token is machine-readable. Do not add product branding, generated-by text, or creator, model, provider, tool, harness, agent, runtime, workflow, or co-author attribution; operational references are evidence, not attribution.
+
 Produces one finding set per corpus unit, each finding carrying a defender ruling. That ruling set is the input to Phase 4's passes — nothing here edits a file.
 
 The audit is not evidence. It ranks candidates; only the harness says whether a cut helped. Do not let a large finding count imply a large effect — a corpus's run-to-run spread on fixed inputs (`references/noise-floor.md`) is the same whether the audit found 6 findings or 600.
@@ -16,13 +18,13 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite — grep a distinctive substring of the target text.
-3. Version history — `git log -S '<substring>'` for the commit that introduced the line, then read that commit message and the PR it belongs to.
+3. Version history — `jj log -r 'all() & diff_contains(substring:"<substring>")' -p` for the change that introduced the line, then read that change description and use `gh` to read the PR it belongs to when one exists.
 
-Source 3 is unavailable in a corpus checkout with no history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a checkout that has history, or record the whole audit's provenance basis as partial.
+Source 3 is unavailable in a corpus copy with no history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a JJ workspace that has history, or record the whole audit's provenance basis as partial.
 
 **Pipeline the waves.** Start a unit's defense as soon as its proposal set returns; do not wait for wave 1 to finish — the two waves share no state across units. It is 2N dispatches on N units, so plan the wave count against the host's concurrency cap (`references/workflow-shapes.md`).
 
-Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a commit message returns "no provenance found" for everything, which silently converts the audit into a demolition.
+Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a change description returns "no provenance found" for everything, which silently converts the audit into a demolition.
 
 ## Finding schema
 
@@ -70,7 +72,7 @@ Exactly three, one per finding:
 
 - **`cut`** — a real search over all three sources found no provenance. The proposal stands.
 - **`reduce`** — the constraint is real and the prose states it at several times the length needed. The defender returns the minimal form that preserves the constraint.
-- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a commit that added it to fix a named bug. The ruling must carry the citation — path, test name, or sha.
+- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a JJ change that added it to fix a named bug. The ruling must carry the citation — path, test name, or change ID.
 
 A defender returns one row per finding, in these fields, and nothing else:
 
@@ -79,7 +81,7 @@ A defender returns one row per finding, in these fields, and nothing else:
 | `id` | the proposer's finding id, unchanged; a ruling that cannot be joined back is discarded |
 | `ruling` | `cut` / `reduce` / `keep` |
 | `sources_searched` | which of the three, named; plus the query used, so an empty search is visible |
-| `citation` | required on `keep`: path, test name, or sha. Empty is not a `keep` |
+| `citation` | required on `keep`: path, test name, or change ID. Empty is not a `keep` |
 | `minimal_form` | required on `reduce`: the shortest text preserving the constraint |
 | `pinning_test` | test path and assertion if a grep of the target text hits the suite, else empty |
 

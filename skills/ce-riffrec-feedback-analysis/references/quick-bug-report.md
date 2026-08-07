@@ -4,20 +4,23 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Run the analyzer to a temp directory so nothing pollutes the repo (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command — shell state does not persist between Bash calls):
+1. Resolve the workspace root with `jj workspace root` in a standalone shell call. If that fails because the input is outside a JJ workspace, use the current working directory. Then run the analyzer below that root's `.tmp` directory (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command because shell state does not persist between Bash calls):
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the ce-riffrec-feedback-analysis SKILL.md>";
-   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$(mktemp -d "${TMPDIR:-/tmp}/riffrec-quick-XXXXXX")"
+   WORKSPACE_ROOT="<absolute workspace root resolved above>";
+   OUTPUT_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw-quick-$(date +%Y%m%d-%H%M%S)-$$";
+   mkdir -p "$OUTPUT_DIR";
+   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$OUTPUT_DIR"
    ```
 
-   Capture the printed output directory; later steps read from it.
+   Capture the printed output directory; later steps read from it. Remove this run directory after the report is complete unless the user asks to retain it.
 
-2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
+2. Read only `analysis.md` from the workspace-local scratch output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 
 3. Pick at most one or two screenshots from `frames/` that directly show the reported issue. Prefer frames near a verbal complaint, a failed click, a console error, or a failed network request.
 
-4. Emit a single concise bug report. Default to printing it inline in the chat so the user can confirm before anything is written to disk. Only write a file if the user asks for one — and even then, prefer a single `bug-report.md` next to the source recording or in a path the user names. Do not auto-create `docs/brainstorms/...` for this path.
+4. Emit a single concise bug report. Default to printing it inline in the chat so the user can confirm before anything is written to disk. Only write a file if the user asks for one, and keep that generated file below the run directory in `<workspace-root>/.tmp/`.
 
 ## Bug report shape
 
@@ -37,9 +40,9 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only in the temp dir and are discarded by the OS.
+- Do not track `raw/` or `frames/` in a JJ change. They live only in the workspace-local scratch directory and are removed after the report.
 - No source-mapping pass across the codebase.
 
 ## Escalation
 
-If, while reading the transcript, the recording turns out to contain multiple distinct issues, requirements, or a workflow walkthrough, stop and tell the user: "This recording has more than one issue — switching to the extensive path." Then load `references/extensive-analysis.md` and re-run the analyzer with a non-temp output directory.
+If the recording turns out to contain multiple distinct issues, requirements, or a workflow walkthrough, report that the quick path is escalating, then load `references/extensive-analysis.md` and re-run the analyzer in a new run directory below `<workspace-root>/.tmp/`. Preserve the escalation fact without requiring fixed wording.

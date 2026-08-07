@@ -2,13 +2,13 @@
 
 Per-destination mechanics for Phase 6. The menu itself and the one-line action per option live inline in SKILL.md — this file carries only the elaborate sub-flows. Detection is by capability: probe the current session's tools and context; a missing binary, env var, or unloaded MCP tool is not proof of absence when a connector could supply the capability. Local file is the always-present floor.
 
-## Claude Artifact
+## Artifact surface
 
-Offered for HTML output when the session is Claude Code and its Artifact tool is present. Give the tool the canonical `$RUN_DIR/explainer.html`, follow its current contract, and confirm the returned URL or reference to the user. The tool owns any adaptation needed for its artifact runtime; do not pre-process the HTML for it.
+Offered for HTML output when an artifact-publishing capability is present. Give it the canonical `$RUN_DIR/explainer.html`, follow its current contract, and confirm the returned URL or reference to the user. The capability owns any adaptation needed for its artifact runtime; do not pre-process the HTML for it.
 
 ## Publish publicly to ht-ml.app
 
-This is the preferred HTML publisher when the Claude Artifact adapter is not selected. ht-ml.app accepts the complete standalone HTML document and works through ordinary HTTP, independent of the agent harness.
+This is the preferred HTML publisher when an artifact-surface adapter is not selected. ht-ml.app accepts the complete standalone HTML document and works through ordinary HTTP, independent of the agent harness.
 
 Before publishing, the destination option itself must state: **the page is public and may be indexed, crawled, copied, or archived**. Whenever ht-ml.app is chosen without that warned option in front of the user — their initial request selected it and the menu was skipped, or they named it after the one-preferred-publisher rule kept it off a menu that *was* shown — state the same full warning in chat and ask for explicit confirmation after the warning before any publish; “this is public” is not the complete warning, and the initial request itself does not count as confirmation. Only a warned menu selection or explicit post-warning confirmation permits publishing. If confirmation cannot be obtained, do not publish; preserve the canonical `$RUN_DIR/explainer.html` and report its local path. Never publish headlessly or infer consent from the fact that an explainer was requested. If the content is sensitive, route to Local file instead.
 
@@ -26,7 +26,7 @@ After the user selects the warned option or explicitly confirms after the warnin
 
 ## Publish to Proof (markdown output only)
 
-Proof ingests markdown, so this option renders only when the run resolved `output:md`. Invoke the `ce-proof` skill via the platform's skill-invocation primitive when it is installed, passing the artifact path, a title (`Explainer: <subject>`), and identity `ai:compound-engineering` / `Compound Engineering`; surface the returned share URL. When the skill is not installed but the Proof web API is reachable, POST the markdown per that API. On failure: retry once after a short wait, then report plainly that the upload didn't succeed and why, and fall back to the local-file path. One-way publish; the run-dir file stays canonical.
+Proof ingests markdown, so this option renders only when the run resolved `output:md`. Invoke the `ce-proof` skill via the platform's skill-invocation primitive when it is installed, passing the artifact path and a title (`Explainer: <subject>`); surface the returned share URL. When the skill is not installed but the Proof web API is reachable, POST the markdown per that API. On failure: retry once after a short wait, then report plainly that the upload didn't succeed and why, and fall back to the local-file path. One-way publish; the run-dir file stays canonical.
 
 ## Send to Thinkroom
 

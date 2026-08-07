@@ -1,6 +1,8 @@
 # Product Pulse First-Run Interview
 
-Loaded by `SKILL.md` at the start of Phase 1. Captures the configuration that will be merged into `.compound-engineering/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys through the ordinary-key cascade (local then `config.yaml`).
+Loaded by `SKILL.md` at the start of Phase 1. Captures the configuration that will be merged into `.rocketclaw/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys through the ordinary-key cascade (local then `config.yaml`).
+
+Preserve the question's required decision, safety boundary, and routing behavior. Quoted prompts and examples specify intent rather than fixed message syntax. Do not add branding, generated-by text, or creator, model, provider, tool, agent, runtime, workflow, co-author, or other attribution.
 
 For each section: ask the opening question, evaluate the answer against the quality bar, push back when it falls into a named anti-pattern, and capture the final answer in the user's own language.
 
@@ -47,9 +49,9 @@ This is the heartbeat of the pulse. Pick one event - the one that represents a u
 - **Page view or visit** ("pageview", "app opened", "login") -> "Those tell you someone showed up. I'm looking for the event that says they actually *used* the product. What fires when a user is doing the thing the product is for?"
 - **Multiple events with no clear primary** ("well, it could be X or Y or Z depending on the flow") -> "For the pulse, pick the one that's closest to 'a user is active using the core product.' If two candidates are genuinely tied, pick the one that happens *when the user spends time in exchange for value* - for async products that's usually 'contributed content' over 'opened app'."
 - **Too deep in the funnel** ("purchase_completed") -> "That's a conversion event - we'll capture that separately. For the primary engagement event, what happens earlier - when they're using the product, not when they've already converted?"
-- **Vague** ("interaction", "activity") -> "Is there a specific event name in your analytics tool? I want to write down the literal event name so this is repeatable."
+- **Vague** ("interaction", "activity") -> ask for the specific event name used by the analytics source so the query is repeatable.
 
-**Capture:** Event name verbatim (e.g., `message_sent`, `document_edited`, `ride_started`). Plus a one-line description of what it means.
+**Capture:** The exact event name (e.g., `message_sent`, `document_edited`, `ride_started`) plus a one-line description of what it means.
 
 ---
 
@@ -212,7 +214,7 @@ After the config is written and shown to the user, make a scheduling offer befor
 
 **Handling the answer:**
 
-- **Yes (daily or weekly)** -> "I'll hand this to the `schedule` skill. Confirm the time/day and it'll set up the recurring job." Do not schedule inline - hand off to the `schedule` skill explicitly, which is the single source of truth for recurring tasks. On Claude Code, this uses the Routines feature.
+- **Yes (daily or weekly)** -> "I'll hand this to the `schedule` skill. Confirm the time/day and it'll set up the recurring job." Do not schedule inline - hand off to the `schedule` skill explicitly, which is the single source of truth for recurring tasks.
 - **Not now** -> capture `schedule: manual` in the config. No nag.
 - **Later** -> capture `schedule: ask-again-after-3-runs` in the config. The SKILL.md Phase 3 logic re-surfaces the offer after 3 manual runs.
 
@@ -224,9 +226,9 @@ Skipping this entirely is fine - the skill does not require a schedule to functi
 
 ## Config File Shape
 
-After the interview completes, merge a `pulse_*` block into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `git rev-parse --show-toplevel`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
+After the interview completes, merge a `pulse_*` block into `<workspace-root>/.rocketclaw/config.local.yaml`. Resolve the workspace root with `jj workspace root`; if that fails, use the current local directory. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
 
-If the file does not yet exist, create the directory and file. If `.compound-engineering/config.local.yaml` is not already covered by `.gitignore`, offer to add the entry before writing.
+If the file does not yet exist, create the directory and file. If `jj file list .rocketclaw/config.local.yaml` reports the file, offer to add it to the workspace's ignore rules and run `jj file untrack .rocketclaw/config.local.yaml` after approval.
 
 The pulse block uses skill-prefixed flat keys so it can share the config file without owning unrelated settings:
 

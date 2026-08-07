@@ -31,14 +31,9 @@ from pathlib import Path
 
 
 SCHEMA_VERSION = 1
-PLAN_CHECKPOINT_MESSAGE = "docs(ce-work): checkpoint selected implementation plan"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-OWNER_SCRATCH_ROOT = (
-    os.path.join("/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
-    if _EFFECTIVE_UID is not None
-    else None
-)
+OWNER_SCRATCH_ROOT = None
 MAX_JSON_BYTES = 2 * 1024 * 1024
 MAX_PACKET_BYTES = 200_000
 SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -95,7 +90,7 @@ def test_fault(point: str) -> None:
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe: a sandbox that denies writes under /tmp refuses the
+    Creation is the probe: a sandbox that denies writes under workspace scratch refuses the
     mkdir, and one that lets a pre-existing root stand still fails the access
     check, so both land on the fallback instead of failing at the first run.
     """
@@ -116,26 +111,38 @@ def _private_root_usable(path: str) -> bool:
     return os.access(path, os.W_OK)
 
 
-def _fallback_scratch_root() -> str:
-    return os.path.join(os.environ.get("TMPDIR") or "/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
+def workspace_root() -> str:
+    try:
+        proc = subprocess.run(
+            ["jj", "workspace", "root"], capture_output=True, text=True,
+            check=False,
+        )
+    except OSError:
+        proc = None
+    root = proc.stdout.strip() if proc and proc.returncode == 0 else ""
+    return os.path.abspath(root or os.path.realpath(os.getcwd()))
 
 
 def owner_scratch_root() -> str:
-    """The owner-private scratch root, in the same candidate order as the skills' shell preamble."""
-    if OWNER_SCRATCH_ROOT is None:
-        raise TrustFailure("effective user ID is unavailable; cannot derive the runs root")
-    if _private_root_usable(OWNER_SCRATCH_ROOT):
-        return OWNER_SCRATCH_ROOT
-    return _fallback_scratch_root()
+    """The workspace-local scratch root."""
+    return os.path.join(workspace_root(), ".tmp", "rocketclaw")
 
 
 def runs_root() -> str:
     configured = os.environ.get("CE_WORK_RUNS_ROOT")
     if configured:
-        return os.path.abspath(configured)
+        configured = os.path.abspath(configured)
+        allowed = os.path.join(workspace_root(), ".tmp")
+        if os.path.commonpath([allowed, configured]) != allowed:
+            raise TrustFailure("CE_WORK_RUNS_ROOT must stay under the current workspace .tmp")
+        return configured
     peer_root = os.environ.get("CE_PEER_JOBS_ROOT")
     if peer_root:
-        return os.path.join(os.path.abspath(peer_root), "ce-work")
+        candidate = os.path.join(os.path.abspath(peer_root), "ce-work")
+        allowed = os.path.join(workspace_root(), ".tmp")
+        if os.path.commonpath([allowed, candidate]) != allowed:
+            raise TrustFailure("CE_PEER_JOBS_ROOT must stay under the current workspace .tmp")
+        return candidate
     return os.path.join(owner_scratch_root(), "ce-work")
 
 
@@ -438,22 +445,8 @@ def atomic_private_json(path: str, doc: dict) -> None:
 
 
 def candidate_runs_roots() -> list:
-    """Every root an existing run may live under (configured root alone, or the
-    /tmp root and the $TMPDIR fallback, primary first). Creation uses runs_root();
-    lookup must not depend on which root this invocation would create under."""
-    configured = os.environ.get("CE_WORK_RUNS_ROOT")
-    if configured:
-        return [os.path.abspath(configured)]
-    peer_root = os.environ.get("CE_PEER_JOBS_ROOT")
-    if peer_root:
-        return [os.path.join(os.path.abspath(peer_root), "ce-work")]
-    if OWNER_SCRATCH_ROOT is None:
-        raise TrustFailure("effective user ID is unavailable; cannot derive the runs root")
-    roots = [os.path.join(os.path.abspath(OWNER_SCRATCH_ROOT), "ce-work")]
-    fallback = os.path.join(os.path.abspath(_fallback_scratch_root()), "ce-work")
-    if fallback not in roots:
-        roots.append(fallback)
-    return roots
+    """The single workspace-local root where runs may live."""
+    return [runs_root()]
 
 
 def run_dir(run_id: str) -> str:
@@ -603,8 +596,8 @@ def resolve_plan(repo: str, plan: str) -> tuple[str, str]:
         raise Operational("REFUSED", f"selected plan is missing: {exc}") from exc
     if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
         raise Operational("REFUSED", "selected plan must be one regular non-symlink file")
-    # OS temp roots may themselves be compatibility symlinks (macOS /var ->
-    # /private/var). Reject a symlink at the selected file, then compare the
+    # Workspace roots may themselves contain compatibility symlinks. Reject a
+    # symlink at the selected file, then compare the
     # resolved file against the already-resolved canonical repository.
     absolute = os.path.realpath(supplied)
     if os.path.commonpath([repo, absolute]) != repo:
@@ -896,7 +889,7 @@ def status_paths(repo: str) -> set[str]:
     return paths
 
 
-def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -> dict | None:
+def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str, description: str) -> dict | None:
     """Recover the controller's plan commit when its manifest receipt was interrupted."""
     prior = doc.get("branch", {}).get("initial_head")
     commit = info["head"]
@@ -910,7 +903,7 @@ def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -
         not _valid_git_object_id(prior)
         or lineage != [commit, prior]
         or changed != {plan_rel}
-        or message != PLAN_CHECKPOINT_MESSAGE
+        or message != description
         or digest_bytes(plan_bytes) != doc["plan"]["digest"]
     ):
         raise Operational(
@@ -930,6 +923,9 @@ def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -
 
 
 def cmd_checkpoint_plan(args) -> tuple[str, dict]:
+    description = args.description.strip()
+    if not description or len(description.encode()) > 1024:
+        raise Operational("REFUSED", "checkpoint description must be non-empty and at most 1024 bytes")
     with locked_manifest(args.run_id, write=True) as doc:
         info = validate_repo(doc)
         repo = info["toplevel"]
@@ -948,7 +944,7 @@ def cmd_checkpoint_plan(args) -> tuple[str, dict]:
             checkpoint = doc["plan"].get("checkpoint")
             if checkpoint is not None:
                 return "NOOP", {"checkpoint": checkpoint, "head": info["head"]}
-            checkpoint = reconcile_plan_checkpoint(repo, doc, info, plan_rel)
+            checkpoint = reconcile_plan_checkpoint(repo, doc, info, plan_rel, description)
             if checkpoint is None:
                 return "NOOP", {"checkpoint": None, "head": info["head"]}
             doc["plan"]["checkpoint"] = checkpoint
@@ -963,7 +959,7 @@ def cmd_checkpoint_plan(args) -> tuple[str, dict]:
         git(repo, "reset", "--mixed", prior)
         raise Operational("BLOCKED", "staged paths are not exactly the selected plan")
     try:
-        commit_index_tree(repo, PLAN_CHECKPOINT_MESSAGE)
+        commit_index_tree(repo, description)
     except Operational:
         git(repo, "reset", "--mixed", prior, check=False)
         raise

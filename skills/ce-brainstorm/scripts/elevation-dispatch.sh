@@ -51,9 +51,8 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole OS temp root ($TMPDIR / /tmp) instead would
-  # expose every other same-user scratch file and credential to the elevated
-  # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
+  # via --add-dir. Adding the whole workspace scratch root instead would expose
+  # other run artifacts to the elevated model; the scoped dir does not.
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
   # --no-session-persistence: this is a one-shot background model call, so the
@@ -103,7 +102,11 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/elevation-peer-XXXXXX")"
+WORK_DIR="$HANDOFF_DIR/worker-$$-${RANDOM:-0}"
+(umask 077; mkdir "$WORK_DIR") || { log "cannot create private worker dir"; exit 2; }
+chmod 700 "$WORK_DIR" || { log "cannot secure private worker dir"; exit 2; }
+PEERLOG="$WORK_DIR/peer.log"
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
@@ -271,4 +274,5 @@ else
     '{status:"failed", requested_model:$m, evidence:$e}')"
   log "elevated step failed; wrote failure envelope"
 fi
-rm -f "$PEERLOG"
+rm -rf "$WORK_DIR"
+trap - EXIT

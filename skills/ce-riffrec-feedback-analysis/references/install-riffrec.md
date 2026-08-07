@@ -1,16 +1,16 @@
-# Setup: Add Riffrec to a project
+# Setup: Add RocketClaw to a project
 
-Use this path when the user has no recording yet and wants to start capturing product feedback with [Riffrec](https://github.com/kieranklaassen/riffrec).
+Use this path when the user has no recording yet and wants to start capturing product feedback with RocketClaw. Its capture format builds on [Kieran Klaassen's Riffrec project](https://github.com/kieranklaassen/riffrec).
 
-Riffrec is a browser-based capture tool that records the screen, microphone audio, console output, network requests, and DOM events into a single `riffrec-*.zip` bundle. The bundle is what this skill consumes downstream.
+RocketClaw is a browser-based capture tool that records the screen, microphone audio, console output, network requests, and DOM events into a single `rocketclaw-*.zip` bundle. The bundle is what this skill consumes downstream.
 
 ## What to tell the user
 
-1. Riffrec lives at <https://github.com/kieranklaassen/riffrec>. Refer them to the README for the current install command — it is the source of truth and may change.
+1. Refer the user to the current RocketClaw installation source available in the active environment; its install instructions are the source of truth and may change. Preserve the Riffrec link above as format provenance, not as the RocketClaw install destination.
 2. The general shape of integration:
-   - Add the Riffrec capture script or package to the project's web app.
+   - Add the RocketClaw capture script or package to the project's web app.
    - Wire a "Record feedback" affordance somewhere accessible during real use (a bug report button, a dev-only floating recorder, or a keyboard shortcut).
-   - Confirm a sample session ends with a downloadable `riffrec-*.zip`.
+   - Confirm a sample session ends with a downloadable `rocketclaw-*.zip`.
 3. Once a zip exists, the user runs this skill again with the zip path. The skill will pick the **quick bug report** or **extensive analysis** path automatically based on length and content.
 
 ## Recommended capture habits

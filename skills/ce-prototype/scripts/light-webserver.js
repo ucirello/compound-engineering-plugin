@@ -212,7 +212,7 @@ function wrapFragment(options, content) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CE local web</title>
+  <title>Prototype preview</title>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; background: #f7f7f8; color: #1f2328; }
     header { padding: 10px 18px; border-bottom: 1px solid #d8dee4; background: #fff; color: #57606a; font-size: 13px; }
@@ -220,7 +220,7 @@ function wrapFragment(options, content) {
   </style>
 </head>
 <body>
-  <header>CE local web - newest screen, reloads on change</header>
+  <header>Prototype preview - newest screen, reloads on change</header>
   <main>${content}</main>
   ${refreshScript(options)}
 </body>
@@ -237,7 +237,7 @@ function injectRefresh(options, html) {
 function renderPage(options) {
   const screen = newestScreen(options)
   if (!screen) {
-    return wrapFragment(options, "<h1>Waiting for a page...</h1><p>The agent will update this page when a screen is ready.</p>")
+    return wrapFragment(options, "<h1>Waiting for a page...</h1><p>This page updates when a screen is ready.</p>")
   }
   const html = fs.readFileSync(screen, "utf8")
   return isFullDocument(html) ? injectRefresh(options, html) : wrapFragment(options, html)

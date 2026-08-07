@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run one pre-sanctioned, write-capable implementation route in a controller-
-# supplied detached workspace. The adapter never creates worktrees, changes
+# supplied isolated workspace. The adapter never creates workspaces, changes
 # recipients, integrates output, or retries through another route.
 #
 # Usage:
@@ -179,7 +179,10 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/ce-work-adapter-XXXXXX")" || exit 2
+SCRATCH_PARENT="$RESULT_DIR/adapter-scratch"
+mkdir -p "$SCRATCH_PARENT" "$RESULT_DIR/tmp" || exit 2
+chmod 700 "$SCRATCH_PARENT" "$RESULT_DIR/tmp" 2>/dev/null || true
+SCRATCH="$(mktemp -d "$SCRATCH_PARENT/run-XXXXXX")" || exit 2
 chmod 700 "$SCRATCH"
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
@@ -682,7 +685,7 @@ while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROU
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-[ -n "${TMPDIR:-}" ] && MIN_ENV+=("TMPDIR=$TMPDIR")
+MIN_ENV+=("TMPDIR=$RESULT_DIR/tmp")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")

@@ -55,7 +55,7 @@ The ideation artifact is produced **automatically** — persistence is not opt-i
    - Extension follows `OUTPUT_FORMAT` (`.html` default, `.md` on override).
    - **Repo mode:** ensure `<root>/ideation/` exists (create if absent).
    - **Elsewhere mode with `<root>/ideation/` already present:** use it.
-   - **Otherwise (no repo, or elsewhere with no `<root>/ideation/`):** write into the run's CE temp area — the `<scratch-dir>` resolved in Phase 1 (`<scratch-root>/ce-ideate/<run-id>/`). Do **not** write into the user's current working directory, and do **not** create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path and note it is temporary (`/tmp` is cleared on reboot — move it to keep it).
+   - **Otherwise (no repo, or elsewhere with no `<root>/ideation/`):** write into the run's workspace-local scratch area — the `<scratch-dir>` resolved in Phase 1 (`<workspace-root>/.tmp/ce-ideate/<run-id>/`, with physical-CWD `pwd -P` fallback when `jj workspace root` is unavailable). Never use OS temp. Do **not** write directly into the user's current working directory, and do **not** create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path and note that `.tmp` is scratch storage that the user must move elsewhere to keep permanently.
 2. **Choose the file path:** `<dir>/YYYY-MM-DD-<topic>-ideation.<ext>` (or `<dir>/YYYY-MM-DD-open-ideation.<ext>` when no focus exists).
 3. **Load the section contract and rendering reference** (deferred from Phase 0.0): read `references/ideation-sections.md` and the format-rendering reference matching `OUTPUT_FORMAT` — `references/markdown-rendering.md` for `md`, `references/html-rendering.md` for `html`.
 4. **Write the document** per those references. `ideation-sections.md` defines the section contract (metadata, Grounding Context, Topic Axes, Ranked Ideas with per-idea fields, Rejection Summary); the rendering reference defines how the resolved format presents it. Content is identical across formats; only presentation differs.
@@ -91,8 +91,8 @@ Offer four options (self-contained labels with the distinguishing word front-loa
 
 1. *(when `OUTPUT_FORMAT=html`)* **Open in browser** — open the saved HTML deliverable (re-open if it was already opened).
    *(when `OUTPUT_FORMAT=md`)* **Publish to Proof** — publish the saved markdown to Proof and get a shareable link; one-way, the local file stays canonical.
-2. **Brainstorm one idea with `ce-brainstorm`** — commit a chosen idea to a requirements-only unified plan under `<root>/plans/`; leaves ce-ideate. Asks which idea first.
-3. **Discuss or refine the ideas first** — stay here to think across the set before committing: adjust or interrogate one idea, compare several, or combine/merge them. Asks what you want to work on.
+2. **Brainstorm one idea with `ce-brainstorm`** — develop a chosen idea into a requirements-only unified plan under `<root>/plans/`; leaves ce-ideate. Asks which idea first.
+3. **Discuss or refine the ideas first** — stay here to think across the set before choosing: adjust or interrogate one idea, compare several, or combine/merge them. Asks what you want to work on.
 4. **Done — keep the file and stop.**
 
 **Adjacent nudge (prose, not a slot):** "Don't want it kept? Say 'discard' and the agent deletes the file." Handled via free text (see §5.5); it is create-only and never deletes a resumed or pre-existing doc.
@@ -105,8 +105,6 @@ If the user already named what they want to work on inline (e.g. "brainstorm the
 - **Markdown — Publish to Proof.** The local markdown file already exists (Phase 4) and stays canonical; Proof is a one-way published copy, not a sync target. Load the `ce-proof` skill to publish, passing:
   - **source file:** the saved `.md` file from Phase 4.
   - **doc title:** `Ideation: <topic>` or the doc's H1.
-  - **identity:** `ai:compound-engineering` / `Compound Engineering`.
-
   ce-proof creates a shared Proof doc (Create and Share workflow) and returns the share URL. Surface it to the user, then return to the Phase 5 menu — nothing syncs back to disk. If the Proof handoff fails after the proof skill's internal retry plus one orchestrator-side retry (~2s pause, narrated as "Retrying Proof... attempt 2/2"), tell the user Proof is unavailable and that the local file is intact at `<path>`, then return to the menu — the deliverable was never at risk (it was written in Phase 4). *(If the user explicitly asked for Proof during an HTML run: Proof is markdown-only and cannot ingest HTML, so render a throwaway markdown copy of the survivors as the Proof source and do not upload the `.html`.)*
 
 ### 5.2 Brainstorm One Idea
@@ -117,13 +115,13 @@ If the user already named what they want to work on inline (e.g. "brainstorm the
    > `<title> — <description>. Basis: <basis/evidence>. Why it matters: <rationale>. Known tradeoffs: <downsides>.`
 
    The basis/evidence directly feeds `ce-brainstorm`'s product-pressure-test, so it won't re-derive what we already know. Append a one-line provenance pointer: `(Seeded from ce-ideate: <path>, idea "<title>")` — it records origin and lets brainstorm pull adjacent detail if it wants, without being forced to read anything.
-3. **Load the `ce-brainstorm` skill** with that seed. The saved file is already the record — no extra write step. `OUTPUT_FORMAT` does **not** propagate: ce-brainstorm re-resolves its own `brainstorm_output` config independently. Asymmetric output (`ideation.html` plus a markdown unified plan) is expected; a user who wants HTML for both sets both keys in CE config (`config.local.yaml` then `config.yaml`).
+3. **Load the `ce-brainstorm` skill** with that seed. The saved file is already the record — no extra write step. `OUTPUT_FORMAT` does **not** propagate: ce-brainstorm re-resolves its own `brainstorm_output` config independently. Asymmetric output (`ideation.html` plus a markdown unified plan) is expected; a user who wants HTML for both sets both keys in project config (`config.local.yaml` then `config.yaml`).
 
 **Repo mode only:** do **not** skip brainstorming and go straight to `ce-plan` — `ce-plan` wants a brainstorm-grounded Product Contract. In elsewhere modes, ideation is a legitimate terminal state; brainstorming is optional deeper development of one idea, not a required next rung on an implementation ladder that does not exist in these modes.
 
 ### 5.3 Discuss or Refine the Ideas First
 
-This stays in ce-ideate — no skill handoff. It is the "think across the set before committing" step, and it is a normal, expected outcome of ideation: seeing several strong candidates and wanting to deliberate is more common than instantly committing one. The orchestrator still holds the full grounding and generation context, so it can reason across every survivor — this is where that context pays off. The work here is either **single-idea** (sharpen or interrogate one) or **cross-idea** (compare, combine, or merge several); do not force the user to name a single idea before they can engage.
+This stays in ce-ideate — no skill handoff. It is the "think across the set before choosing" step, and it is a normal, expected outcome of ideation: seeing several strong candidates and wanting to deliberate is more common than instantly choosing one. The orchestrator still holds the full grounding and generation context, so it can reason across every survivor — this is where that context pays off. The work here is either **single-idea** (sharpen or interrogate one) or **cross-idea** (compare, combine, or merge several); do not force the user to name a single idea before they can engage.
 
 1. **Establish what the user wants to work on and how.** Infer from their phrasing when given; otherwise ask one open question ("What do you want to work on?") rather than assuming a single idea. The scope may be one idea, a subset, or the whole set.
 2. **Route by intent:**
@@ -138,8 +136,8 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a git repo:** offer to commit only the ideation doc (do not create a branch, do not push; if the user declines, leave it uncommitted).
-- **Temp-area or non-repo file:** skip the commit offer.
+- **Inside a JJ workspace:** offer to record only the ideation doc in a JJ change (do not create or move a bookmark and do not push; if the user declines, leave it in the working copy). At this change-description composition and validation site, the project's active runtime instructions and change-description syntax inferred from current `jj log` always win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Preserve every semantic content requirement stated by this site while adapting syntax to runtime conventions. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose or recommend any fixed prefix, type, scope, subject, body, layout, template, or example; use `<description-composed-from-runtime-conventions>` wherever command syntax or prose would otherwise supply one. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`.
+- **Scratch-area or non-repo file:** skip the change offer.
 
 Then narrate the path and end the session — do not return to the menu.
 
@@ -147,7 +145,7 @@ Then narrate the path and end the session — do not return to the menu.
 
 Only when the file was **created fresh this run**: delete it, confirm the deletion, and end. On a **resume** run (a pre-existing file was updated in place), do **not** delete — tell the user the existing doc at `<path>` remains and offer no destructive action. Discard is never a default; it fires only on an explicit request.
 
-Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the V15 web-research cache reused across run-ids by later ideation invocations in the same session (see `references/web-research-cache.md`), the Checkpoint A/B files, the evidence dossiers, and (in the no-repo case) the deliverable itself. OS handles eventual cleanup.
+Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the V15 web-research cache reused across run-ids by later ideation invocations in the same session (see `references/web-research-cache.md`), the Checkpoint A/B files, the evidence dossiers, and (in the no-repo case) the deliverable itself. It remains under the workspace-local `.tmp` tree until the user or workspace tooling removes it.
 
 ## Quality Bar
 
@@ -164,6 +162,6 @@ Before finishing, check:
 - if sub-agents were used, they improved diversity without replacing the core workflow
 - every rejected idea has a reason
 - survivors are materially better than a naive "give me ideas" list
-- the deliverable was written automatically in both modes (Phase 4) — to `<root>/ideation/` when present, else the CE temp area, never the user's CWD
+- the deliverable was written automatically in both modes (Phase 4) — to `<root>/ideation/` when present, else the workspace-local scratch area, never directly in the user's CWD
 - the session showed a concise summary, not a reproduction of the full deliverable
 - acting on an idea routes to `ce-brainstorm` (with a substance seed, not the whole file), not directly to implementation

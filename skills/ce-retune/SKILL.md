@@ -15,15 +15,29 @@ A corpus that degrades on a new model is a measurement problem before it is a wr
 
 **Non-goal:** word reduction. Leanness and performance are separate programs that happen to share a corpus, and only one of them is the result. Report completion, not word count.
 
+At every site in this skill and its references that composes, edits, validates, or recommends a JJ change description, apply this exact sentence: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The sentence's `git log` wording is not an operational instruction: inspect the project's active runtime instructions and current `jj log` history; their tone, vocabulary, and syntax take precedence. Apply compatible Go guidance only for quality, clarity, and structure.
+
+For all output, preserve required facts, machine-readable contracts, and operational benchmark, model, and harness references. Fixed stems, headings, templates, quoted outputs, and examples define required substance rather than mandatory syntax unless a machine-readable contract explicitly requires exact tokens. Do not add product branding, generated-by text, or creator, model, provider, tool, harness, agent, runtime, workflow, or co-author attribution; operational references are evidence, not attribution.
+
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CE_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CE_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. This skill requires a JJ workspace so every temporary artifact remains under its workspace root. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || { echo "ce-retune requires a JJ workspace" >&2; exit 1; };
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
+if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+mkdir -p "$SCRATCH_ROOT";
+if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+chmod 700 "$SCRATCH_ROOT";
+mkdir -p "$SCRATCH_ROOT/ce-retune";
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$";
+RETUNE_SCRATCH="$SCRATCH_ROOT/ce-retune/$RUN_ID";
+mkdir -m 700 "$RETUNE_SCRATCH" || exit 1;
 NODE="$(for c in node nodejs; do command -v "$c" >/dev/null 2>&1 && "$c" -e '' >/dev/null 2>&1 && { echo "$c"; break; }; done)";
 if [ -n "$NODE" ]; then
-"$NODE" "$SKILL_DIR/scripts/context.mjs" || echo "context script failed; continue with the skill's normal behavior";
+"$NODE" "$SKILL_DIR/scripts/context.mjs" "$RETUNE_SCRATCH" "$WORKSPACE_ROOT" || echo "context script failed; continue with the skill's normal behavior";
 else
 echo "no Node runtime; continue with the skill's normal behavior";
 fi
@@ -34,7 +48,7 @@ fi
 This skill cannot run without a way to observe behavior. Check for all three, and name whichever is missing:
 
 1. **A run archive or a harness that produces one** — per-run logs carrying the tool-call trace, a terminal marker, token counts, and the final message.
-2. **A build selector** — the harness can point a run at a specific source checkout of the corpus (a `--plugin-dir`-style override, a configurable skills path, an env var), so two builds are comparable under one runner.
+2. **A build selector** — the harness can point a run at a specific source path for the corpus (a `--plugin-dir`-style override, a configurable skills path, an env var), so two builds are comparable under one runner.
 3. **A repeatable task** the corpus actually executes end to end.
 
 If any is missing, **stop and say so**, naming what to build. Do not fall back to a static audit and present it as retuning: an audit can say what looks cuttable and can never say whether cutting helped, which is the error this skill exists to prevent. An audit-only pass is a legitimate thing to want; it is a different request.
@@ -52,7 +66,7 @@ It carries the outcome taxonomy, the fields to extract, and the two corrections 
 
 ## Phase 2: establish the noise floor before any claim
 
-Run the harness against **two identical copies** of the corpus, same commit on both sides. Whatever difference appears is noise, and it is the floor every later claim must clear.
+Run the harness against **two identical copies** of the corpus, same JJ revision on both sides. Whatever difference appears is noise, and it is the floor every later claim must clear.
 
 Read `references/noise-floor.md` for the protocol, the interleaving rule, and the power calculation that converts the observed variance into a required sample size.
 
@@ -62,7 +76,7 @@ Expect the floor to be wider than intuition suggests. If a corpus produces a lar
 
 ## Phase 3: audit the corpus, adversarially
 
-One agent per skill, each reading that skill's full directory, proposing cuts with a target and a reason. Then a second agent per skill whose job is the opposite: **defend the existing prose** using the project's own documented learnings, its tests, and git history.
+One agent per skill, each reading that skill's full directory, proposing cuts with a target and a reason. Then a second agent per skill whose job is the opposite: **defend the existing prose** using the project's own documented learnings, its tests, and JJ history.
 
 Read `references/corpus-audit.md` for the dispatch shape, the finding schema, and the classes worth hunting.
 
@@ -102,7 +116,11 @@ Loop Phase 4 and 5 until the registered bar is cleared. Then stop; a bar cleared
 
 ## Phase 6: ship
 
-Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+Record each pass as a separate JJ change so history says which change was made and why, and so release tooling can classify intent. Before recording a pass, inspect `jj status`, `jj diff`, and recent descriptions with `jj log`; preserve unrelated working-copy content. Use the repository's change-recording workflow to describe the pass, then continue from a fresh working-copy change.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. The project's active runtime instructions and change-description syntax inferred from current `jj log` history always win. Preserve the pass's semantic summary while adapting syntax to runtime conventions. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, example, bookmark namespace, or command sequence; use `<description-composed-from-runtime-conventions>` wherever a command needs a description placeholder. Do not add product branding, generated-by text, or creator, model, provider, tool, harness, agent, runtime, workflow, or co-author attribution to the JJ description.
+
+Keep durable measurement artifacts in the repository's normal documentation location. Keep intermediate state under the `RETUNE_SCRATCH` path printed by Setup, and remove that run directory after successful completion unless the user needs it for diagnosis.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.
 

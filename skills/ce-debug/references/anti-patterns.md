@@ -32,7 +32,7 @@ Changing multiple things at once to "see if it helps."
 
 **What actually happens:** If the bug goes away, you do not know which change fixed it. If it persists, you do not know which changes are relevant. You have introduced variables instead of eliminating them.
 
-**The fix:** One hypothesis, one change, one test. If the first change does not fix it, revert it before trying the next. Changes should be additive to understanding, not cumulative to the codebase.
+**The fix:** One hypothesis, one change, one test. If the first change does not fix it, discard only that attempted change with JJ before trying the next, preserving all pre-existing work. Changes should be additive to understanding, not cumulative to the codebase.
 
 ---
 

@@ -63,7 +63,7 @@ Skip document creation when **both** hold:
 - The user only needs brief alignment — no exploration produced novel scope,
   framing, or decisions worth preserving in IDed shape.
 - Any durable decisions made during the dialogue can flow naturally to
-  downstream artifacts (`ce-plan`, the commit message, `<root>/solutions/`)
+  downstream artifacts (`ce-plan`, a later change description, `<root>/solutions/`)
   without a brainstorm doc as an intermediary.
 
 The trigger for creating a doc is when the dialogue surfaced enough
@@ -74,7 +74,7 @@ durable, IDed form — not just as conversational artifacts.
 **Stress test:** a brainstorm about a tiny bug fix where the user asks "fix
 this with a null check or with upstream validation?" and the agent confirms
 "upstream validation, here's why" doesn't need a brainstorm doc. The
-decision flows to `ce-plan` (or directly to commit message, or to
+decision flows to `ce-plan` (or directly to a later change description, or to
 `<root>/solutions/` if it's a pattern worth carrying) without a brainstorm
 artifact in the middle.
 
@@ -244,7 +244,7 @@ worse than omitting it.
   of`, and `Still to decide`; indentation groups the prose but never carries the
   relationship by itself. Future areas are contextual candidates, never
   Requirements or implied Implementation Units. A later plan may revise, split,
-  merge, or discard them and cite the earlier plan with a repo-relative path;
+  merge, or discard them and cite the earlier plan with a workspace-relative path;
   do not create or synchronize a separate master map. Keep Scope Boundaries as
   the authority for what this plan excludes rather than duplicating the full
   relationship list there. Use no diagram by default. Add one only when
@@ -361,10 +361,14 @@ artifact.
 - **`title`** — the artifact's descriptive name with a ` - Plan` suffix
   (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML). It is a unified plan at every readiness state, so the title
-  stays stable when `ce-plan` enriches it. Do not put a conventional-commit
-  prefix (`feat:`/`fix:`) in the title — the `type` field carries that.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `docs`, etc.).
+  stays stable when `ce-plan` enriches it. Do not put change-description syntax
+  in the title; the `type` field carries the artifact classification.
+- **`type`** — the project-defined intent classification. Resolve it from the
+  project's active instructions and conventions already in context, then from
+  description syntax visible in `jj log`; use a neutral placeholder such as
+  `<type>` in guidance when the project has no established values. It carries
+  the intent a later JJ change description or commit message should reflect.
+
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
   Matches the calendar date in the filename
   (`<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>`), which adds the
@@ -383,8 +387,8 @@ artifact.
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No CE artifact carries mutable progress state; whether work shipped
-is derived from git, not stored in the doc. Do not introduce one.
+progress. No RocketClaw artifact carries mutable progress state; whether work shipped
+is derived from Jujutsu, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 
@@ -404,10 +408,10 @@ Same shape as plan rules.
 - **Bold leader labels** inside Flows and Acceptance Examples
   (`**Trigger:**`, `**Covers R4, R8.**`) provide structure without deeper
   heading levels.
-- **Repo-relative paths.** Always. Never absolute paths.
+- **Workspace-relative paths.** Always. Never absolute paths.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to ce-plan, no italic provenance lines. Engineering process
-  metadata belongs in commit messages and tool output, not the artifact.
+  metadata belongs in change descriptions and tool output, not the artifact.
 - **No implementation details by default.** Libraries, schemas, endpoints,
   file layouts, code structure stay out unless the brainstorm itself is
   inherently about a technical or architectural change and those details are

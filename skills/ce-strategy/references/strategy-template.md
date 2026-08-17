@@ -1,6 +1,6 @@
 # Strategy Template
 
-Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `STRATEGY.md`.
+Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `<workspace-root>/STRATEGY.md` as resolved there.
 
 ## Rules for filling in
 
@@ -23,7 +23,7 @@ last_updated: {{YYYY-MM-DD}}
 
 # {{product_name}} Strategy
 
-{{If a sibling product doc exists at the repo root - VISION.md, PRODUCT.md - one line here pointing to it, e.g. "See VISION.md for the project's north star; this document carries direction." Then do not restate what that doc already says: where a section below would repeat it, keep this doc's section to what is specific to strategy and defer to the sibling for the rest. Omit the line when no sibling exists.}}
+{{If a sibling product doc exists at the workspace root - VISION.md, PRODUCT.md - one line here pointing to it, e.g. "See VISION.md for the project's north star; this document carries direction." Then do not restate what that doc already says: where a section below would repeat it, keep this doc's section to what is specific to strategy and defer to the sibling for the rest. Omit the line when no sibling exists.}}
 
 ## Purpose
 

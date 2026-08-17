@@ -1,55 +1,52 @@
-# Branch creation from default branch
+# Bookmark Creation from the Default Bookmark
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+The local default bookmark may differ from its remote bookmark because another workspace advanced it or because the user has local changes based on it. Resolve that state before naming and publishing the work.
 
-## Decision flow
+## Decision Flow
 
-### 1. Fetch fresh remote base
-
-```bash
-git fetch --no-tags origin <base>
-```
-
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
-
-### 2. Check for unpushed local commits on `<base>`
+### 1. Fetch the Remote Base
 
 ```bash
-git log origin/<base>..HEAD --oneline
+jj git fetch --remote <remote>
 ```
 
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
+If fetch fails because the network, authentication, or remote is unavailable, use the fallback below.
 
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
+### 2. Check the Local Default Bookmark
 
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
-
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
-
-### 3. Create the feature branch
+Run these separately:
 
 ```bash
-git checkout -b <branch-name> "$BASE_REF"
+jj bookmark list <base> --all-remotes
+jj log -r '<base>@<remote>..<base>'
 ```
 
-If checkout fails because uncommitted changes would be overwritten, stash and retry:
+- **No local-only changes:** Use `<base>@<remote>` as the destination for any required rebase.
+- **Local-only changes:** Show them and ask whether they belong in the feature work or must remain reachable only from the local default bookmark.
+
+If they belong in the feature work, preserve the current ancestry. If they must remain on the local default bookmark, rebase only the intended feature changes onto `<base>@<remote>`; do not rebase the local-only default-bookmark changes with them. Use the narrowest correct `jj rebase` selector after inspecting `jj help rebase`. Stop and surface conflicts instead of resolving them without direction.
+
+Never move or delete the local default bookmark merely to make the remote and local names agree. A feature bookmark is the publication boundary.
+
+### 3. Create the Feature Bookmark
+
+Before composing, editing, checking, or recommending the change description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Finish and describe the intended change according to project instructions and runtime history, applying only compatible Go guidance and no fixed syntax. Use:
 
 ```bash
-git stash push -u -m "ce-commit-push-pr: pre-branch <branch-name>"
-git checkout -b <branch-name> "$BASE_REF"
-git stash pop
+jj describe -r <change> -m "<message composed from the standards above>"
+jj bookmark create <bookmark> -r <change>
 ```
 
-If `git stash pop` reports conflicts, surface the conflict output and the stash ref to the user — do not auto-resolve.
+If the bookmark name already exists, inspect its target. Reuse it only when it identifies this work; otherwise choose a non-conflicting name or ask when the intended identity is ambiguous.
 
-## Fetch failure fallback
+## Fetch Failure Fallback
 
-If `git fetch` fails, branch from current local HEAD:
+Create the feature bookmark at the intended local change without rebasing it:
 
 ```bash
-git checkout -b <branch-name>
+jj bookmark create <bookmark> -r <change>
 ```
 
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+Report that remote-base freshness was not verified. Do not claim the change is current with the default bookmark, and do not push until the remote can be checked.

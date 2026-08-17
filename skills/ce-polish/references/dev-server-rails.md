@@ -1,6 +1,6 @@
 # Rails dev-server recipe (auto-detect fallback)
 
-Loaded when `detect-project-type.sh` returns `rails` and there is no `.claude/launch.json` to consult.
+Loaded when `detect-project-type.sh` returns `rails` and there is no `.rocketclaw/launch.json` to consult.
 
 ## Signature
 
@@ -23,9 +23,9 @@ Default: `3000`. Overrides follow the cascade in `references/dev-server-detectio
 3. `.env` / `.env.development` `PORT=<n>`
 4. a dev-server port explicitly stated in the project's active instructions in context (not grepped from instruction files)
 
-## Stub generation for `.claude/launch.json`
+## Stub generation for `.rocketclaw/launch.json`
 
-When the user accepts "Save this as `.claude/launch.json`?", emit the Rails stub from `launch-json-schema.md`:
+When the user accepts "Save this as `.rocketclaw/launch.json`?", emit the Rails stub from `launch-json-schema.md`:
 
 ```json
 {
@@ -47,4 +47,4 @@ If the cascade resolved a non-3000 port, substitute it in the stub's `port` fiel
 
 - **Bundler path:** some machines require `bundle exec bin/dev`. If `bin/dev` fails with a load-path error, fall back to `bundle exec bin/dev`.
 - **Foreman vs overmind:** `Procfile` vs `Procfile.dev` often both exist. Rails' `bin/dev` resolves to `Procfile.dev`; if the project uses `overmind` explicitly, prefer `overmind start -f Procfile.dev` (see `dev-server-procfile.md`).
-- **SSL dev server:** `rails s --ssl` serves over `https://`, but polish's reachability probe, browser handoff, and printed URL are all `http://localhost:<port>` — and the scheme is not configurable via `.claude/launch.json` (it has no scheme/URL field). The probe will therefore fail against an HTTPS-only server; that failure is non-fatal (polish shows the log and asks what to do), so open `https://localhost:<port>` manually to continue. Setting `port` explicitly in `.claude/launch.json` still helps polish target the right port.
+- **SSL dev server:** `rails s --ssl` serves over `https://`, but polish's reachability probe, browser handoff, and printed URL are all `http://localhost:<port>` — and the scheme is not configurable via `.rocketclaw/launch.json` (it has no scheme/URL field). The probe will therefore fail against an HTTPS-only server; that failure is non-fatal (polish shows the log and asks what to do), so open `https://localhost:<port>` manually to continue. Setting `port` explicitly in `.rocketclaw/launch.json` still helps polish target the right port.

@@ -81,7 +81,7 @@ rank candidates. Include:
 - **Relationship to completed work:** the explicit depends-on, enables, shares,
   or independent relationship.
 - **Actual delivery state:** what finished and what remains in the current tail,
-  such as implemented, PR open, CI decided, or not merged.
+  such as implemented, changes recorded, PR open, CI decided, or not merged.
 - **Carry-forward decisions:** only prior decisions that constrain the next
   area.
 - **Assumptions to revalidate:** provisional relationships or facts that the

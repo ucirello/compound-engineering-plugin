@@ -2,7 +2,7 @@
 
 Load this when serving a local web prototype. Feedback stays in chat.
 
-This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that. The file is a byte-identical copy of brainstorm's helper.
+This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that. Preserve this support asset and its newest-screen behavior with the skill.
 
 Use the bundled helper when the current platform can run a bundled skill script. Invoke it via the `SKILL_DIR` anchor: set `SKILL_DIR` to the absolute path of the directory containing the `ce-prototype` `SKILL.md` you loaded (the Bash tool's cwd is the user's project, not the skill dir), and re-set it in the same command on each call since shell vars do not persist between Bash invocations. Do not resolve the helper from the user's project CWD.
 
@@ -12,29 +12,23 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
-RUN_KEEP="yes";
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)";
-TEMP_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$TEMP_ROOT" ] && (umask 077; mkdir -p "$TEMP_ROOT") 2>/dev/null && [ ! -L "$TEMP_ROOT" ] && [ -O "$TEMP_ROOT" ] && [ -w "$TEMP_ROOT" ] || TEMP_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ "$RUN_KEEP" = yes ] && [ -n "$REPO_ROOT" ] && [ ! -L "$REPO_ROOT/.context" ] && [ ! -L "$REPO_ROOT/.context/compound-engineering" ] && git -C "$REPO_ROOT" check-ignore -q .context/compound-engineering/ 2>/dev/null; then
-ROOT="$REPO_ROOT/.context/compound-engineering";
-else
-ROOT="$TEMP_ROOT";
-fi;
-while :; do
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
+if [ -z "$WORKSPACE_ROOT" ]; then WORKSPACE_ROOT="$(pwd -P)"; fi;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
+if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch-root symlink: $SCRATCH_ROOT" >&2; exit 1;
+elif ! (umask 077; mkdir -p "$SCRATCH_ROOT"); then echo "could not create $SCRATCH_ROOT" >&2; exit 1;
+elif [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1;
+elif ! chmod 700 "$SCRATCH_ROOT"; then echo "could not restrict $SCRATCH_ROOT" >&2; exit 1; fi;
+ROOT="$SCRATCH_ROOT/rocketclaw";
 BASE="$ROOT/ce-prototype";
-if [ -L "$ROOT" ]; then echo "unsafe root symlink: $ROOT" >&2;
-elif ! (umask 077; mkdir -p "$ROOT"); then echo "could not create $ROOT" >&2;
-elif [ -L "$ROOT" ] || [ ! -O "$ROOT" ]; then echo "root is not owned by the current user: $ROOT" >&2;
-elif ! chmod 700 "$ROOT"; then echo "could not restrict $ROOT" >&2;
-elif [ -L "$BASE" ]; then echo "unsafe base symlink: $BASE" >&2;
-elif ! (umask 077; mkdir -p "$BASE"); then echo "could not create $BASE" >&2;
-elif [ ! -O "$BASE" ]; then echo "base is not owned by the current user: $BASE" >&2;
-elif ! chmod 700 "$BASE"; then echo "could not restrict $BASE" >&2;
-else break; fi;
-if [ "$ROOT" = "$TEMP_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
-echo "falling back to $TEMP_ROOT" >&2; ROOT="$TEMP_ROOT";
-done;
+if [ -L "$ROOT" ]; then echo "unsafe root symlink: $ROOT" >&2; exit 1;
+elif ! (umask 077; mkdir -p "$ROOT"); then echo "could not create $ROOT" >&2; exit 1;
+elif [ -L "$ROOT" ] || [ ! -O "$ROOT" ]; then echo "root is not owned by the current user: $ROOT" >&2; exit 1;
+elif ! chmod 700 "$ROOT"; then echo "could not restrict $ROOT" >&2; exit 1;
+elif [ -L "$BASE" ]; then echo "unsafe base symlink: $BASE" >&2; exit 1;
+elif ! (umask 077; mkdir -p "$BASE"); then echo "could not create $BASE" >&2; exit 1;
+elif [ ! -O "$BASE" ]; then echo "base is not owned by the current user: $BASE" >&2; exit 1;
+elif ! chmod 700 "$BASE"; then echo "could not restrict $BASE" >&2; exit 1; fi;
 RUN_DIR="$BASE/$RUN_SLUG"; n=1;
 while ! (umask 077; mkdir "$RUN_DIR") 2>/dev/null; do
 if [ ! -e "$RUN_DIR" ]; then echo "could not create $RUN_DIR" >&2; exit 1; fi;
@@ -45,9 +39,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-Set `RUN_KEEP="no"` when the user asked that this run not be left in the repo; it sends the run to OS temp without touching the rest of the block.
-
-Three things this block is careful about. The symlink and ownership checks run against both the **root** — the directory sitting in a shared or world-writable location — and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe in-repo path at either level falls back to OS temp rather than aborting — a hostile or misconfigured `.context` costs the run its durability, not the run itself, and only a temp root that also fails is fatal.
+The workspace root is resolved through JJ. When that is unavailable, the physical current directory is the local fallback; no OS-global temporary root is used. The symlink and ownership checks cover `.tmp`, the RocketClaw root, and the `ce-prototype` directory beneath it because `mkdir -p` follows an existing symlink and `chmod` would then affect its target. An unsafe local root stops before writing anywhere else.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -93,7 +85,7 @@ The browser reloads only when the newest screen changes; it must not continually
 Write screens under:
 
 ```text
-<repo>/.context/compound-engineering/ce-prototype/<YYYY-MM-DD>-<run-slug>/
+<workspace>/.tmp/rocketclaw/ce-prototype/<YYYY-MM-DD>-<run-slug>/
   decisions.md               # run capsule for the next skill; not a plan
   01-<question-slug>/
     screens/
@@ -107,14 +99,14 @@ Write screens under:
     state/
 ```
 
-The fallback root takes the same shape under `/tmp/compound-engineering-<uid>/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+Without a JJ workspace, the same `.tmp/rocketclaw/ce-prototype/` shape is rooted at the physical current directory. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Launch mode by platform
 
 The server is the same everywhere; only the launch mode changes.
 
-- **Claude Code / Claude desktop app:** detached `start` is the default path. If the app opens localhost URLs, show the returned URL and continue.
-- **Codex CLI / Codex app:** if detached processes are reaped or the URL dies after the tool call, use `start --foreground` through the platform's long-running/background terminal mechanism.
+- **Harnesses that preserve detached processes:** detached `start` is the default path. If the harness opens localhost URLs, show the returned URL and continue.
+- **Harnesses that reap detached processes:** use `start --foreground` through the platform's long-running or background terminal mechanism.
 - **Plain terminal UI:** print the returned URL for the user to open manually.
 - **Remote or containerized sessions:** if `localhost` is not reachable from the user's browser, start with `--host 0.0.0.0` and tell the user which host/port to open. That serves the run directory to anything that can reach the port, with no auth — do it only on a network the user trusts, and say so when you hand over the URL.
 

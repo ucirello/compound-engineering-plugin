@@ -65,8 +65,8 @@ PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
    stubbed `<reviewer-name>-<provider>.json` return with
    `independence_verified: true` whose finding 3.3 merged with an
    in-process twin, assert synthesis promotes the merged finding by one anchor
-   step and attributes both reviewers. Repeat with
-   `independence_verified: false` and assert the finding remains attributed
+   step and credits both reviewers. Repeat with
+   `independence_verified: false` and assert the finding retains its source
    evidence but receives no agreement promotion. Assert the peer finding is
    **never** rendered/applied as
    `safe_auto`. Also assert the promotion
@@ -101,7 +101,7 @@ PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
     `whole-doc-<provider>`, and a sweep finding 3.3 merged with *any*
     in-process finding promotes one anchor step (no in-process twin needed) only
     when the whole-doc artifact has `independence_verified: true`; with false or
-    absent independence it remains attributed evidence without promotion. The
+    absent independence it remains sourced evidence without promotion. The
     sweep is never `safe_auto`. Assert that on a **unified plan** the trio peers
     receive their in-process twin's slice (e.g. product-lens/adversarial get the
     Product Contract), not the full document.

@@ -8,7 +8,7 @@ argument-hint: "[Plan path, work description, or recovery request with run id; b
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CE_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it, truncate its output, or bundle it with other commands. Its output opens with a `=== skill context` header and ends with `WORK_CONTEXT_END`; if only one boundary appears, rerun the fence verbatim once. Otherwise do not rerun it within the same invocation. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -25,7 +25,7 @@ fi
 - **Result:** A fully implemented, locally verified change set from a plan, specification, or concrete work prompt.
 - **Next consumer:** In standalone use, the shipping workflow takes the verified change through review and delivery. In Return-to-Caller Mode, the invoking workflow receives the structured implementation and verification envelope and owns its remaining gates.
 - **Done:** Every in-scope task is complete, required verification evidence is recorded, relevant checks pass, and the run reaches either its owned shipping handoff (with a code-review receipt or explicit skip phrase — see Phase 3-4), a complete return envelope, or an explicit blocker.
-- **Intent:** Finish the requested feature without renegotiating the plan or transferring canonical integration authority. Workers receive bounded units; the host orchestrator inspects actual changes and owns authoritative verification and canonical commits.
+- **Intent:** Finish the requested feature without renegotiating the plan or transferring canonical integration authority. Workers receive bounded units; the host orchestrator inspects actual changes and owns authoritative verification and canonical Jujutsu changes.
 
 ## Input Document
 
@@ -38,10 +38,10 @@ Invocation origin is not observable or relevant: apply the same source-resolutio
 This skill discovers plans under `<root>/plans/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it; pass the resolved path to any subagent, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from the project configuration already identified by the active instructions (`<repo-root>` = `jj workspace root`). Do not read it from a local override. Unset -> `<root>` is `docs`.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.tmp/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -57,16 +57,16 @@ This skill discovers plans under `<root>/plans/`. Resolve `<root>` when you firs
 
 When `implementation_run:<safe-id>` is present, recovery wins over ordinary input classification: read `references/cross-model-execution.md`, use `resume --run-id <safe-id>` as the authoritative entrypoint, and return the normal Return-to-Caller envelope after reconciliation. Preserve the supplied `implementation_engine` binding when present. Do not resolve a different route, redispatch, reimplement, rerun completed verification, or start another caller tail.
 
-When a valid `implementation_engine:` binding is present without recovery, **pre-controller discovery is read-only**. Do not run baseline, test, build, format, install, or generation commands in the canonical checkout before resolving the binding and initializing the external controller: those commands can create ignored or untracked artifacts before the controller records its clean starting point. Limit triage to reads such as metadata, source, configuration, branch, status, and command-availability probes. If a non-read probe is genuinely required to decide whether the route can start, run it only with artifact suppression and prove the canonical Git snapshot is byte-for-byte unchanged before continuing; otherwise stop with a route blocker.
+When a valid `implementation_engine:` binding is present without recovery, **pre-controller discovery is read-only**. Do not run baseline, test, build, format, install, or generation commands in the canonical workspace before resolving the binding and initializing the external controller: those commands can create ignored artifacts before the controller records its clean starting point. Limit triage to metadata, source, configuration, bookmarks, `jj status`, and command-availability probes. If a non-read probe is genuinely required, suppress its artifacts and prove the canonical Jujutsu snapshot and operation are unchanged before continuing; otherwise stop with a route blocker.
 
 **Resolve a session-carried plan before blank or bare-prompt classification.** When the current request is continuation language such as "proceed" and the conversation identifies exactly one current plan/spec path that was authored, selected, or accepted for this work, treat that path as `<input_document>`. If multiple session plans are plausible, ask which one; do not choose by recency. Do not replace a concrete new work request with an unrelated earlier plan. This rule depends only on visible conversation state, never on whether invocation was explicit or automatic.
 
-**Every non-recovery code path must resolve its implementation engine before execution.** Once metadata or prompt triage identifies code work, but before reading active implementation units, creating tasks, writing files, or committing, read `references/execution-engines.md` and perform its route-resolution gate. This applies with or without an `implementation_engine:` carrier: apply the ordinary-key rule below to `work_engine_mode` and `work_engine_preferences` independently, because standing configuration remains eligible in both standalone and carrierless Return-to-Caller Mode. Do not choose inline/native execution until that gate has ruled out or validly exhausted the applicable higher-authority routes.
+**Every non-recovery code path must resolve its implementation engine before execution.** Once metadata or prompt triage identifies code work, but before reading active implementation units, creating tasks, writing files, or finalizing a change, read `references/execution-engines.md` and perform its route-resolution gate. This applies with or without an `implementation_engine:` carrier: apply the ordinary-key rule below to `work_engine_mode` and `work_engine_preferences` independently, because standing configuration remains eligible in both standalone and carrierless Return-to-Caller Mode. Do not choose inline/native execution until that gate has ruled out or validly exhausted the applicable higher-authority routes.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary workflow YAML keys from the project's team and local configuration layers.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** the local override, then the team configuration (`<repo-root>` = `jj workspace root`). Missing layers are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -121,17 +121,15 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    - If anything is unclear or ambiguous, ask clarifying questions now
    - If clarifying questions were needed above, get user approval on the resolved answers. If no clarifications were needed, proceed without a separate approval step — plan scope is the plan's authority, not something to renegotiate
    - **Do not skip this** - better to ask questions now than build the wrong thing
-   - **Do not edit the plan body during execution.** The plan is a decision artifact; progress lives in git commits and the task tracker, not the plan. `ce-work` does not mutate the plan — whether it shipped is derived from git, not recorded in the doc. Legacy plans may contain `- [ ]` / `- [x]` marks on unit headings or a `status:` field — ignore them as state; per-unit completion is determined during execution by reading the current file state.
+   - **Do not edit the plan body during execution.** The plan is a decision artifact; progress lives in Jujutsu changes and the task tracker, not the plan. Whether it shipped is derived from the current change graph and GitHub state, not recorded in the document. Ignore legacy progress marks as execution state.
 
 2. **Setup Environment**
 
-   Two things must hold before the first edit: the work lands on a feature branch, and nothing the user did not offer up gets committed or published by this run. Neither is a question for the user — a branch move is a one-command undo, so do it and say so in one line.
+   Two things must hold before the first edit: implementation occupies work-owned Jujutsu changes, and nothing the user did not offer is published. Both are local and reversible.
 
-   **Branch.** Determine the default branch (`origin/HEAD`; else what the host reports as the default, e.g. `gh repo view --json defaultBranchRef`; else `main`/`master` when one exists). If you are on it, detached, or cannot tell, create a feature branch named from the plan or work description (e.g. `feat/user-authentication`) and re-read `git branch --show-current`. Base it on the fresh remote tip (`git fetch origin <default>`, then `origin/<default>`) when `HEAD` has no commits beyond it, so the work builds on current code; base it on `HEAD` when it does (those commits stay visible to the idempotency check, and the shipping gate decides whether they publish) or when there is no remote; the safe direction when unsure is a spare branch, never incremental commits on the real default. Otherwise continue on the branch you were invoked on — that is where the work belongs; do not rename it and do not ask whether to. A worktree is used only when the user asked for one this session (`ce-worktree`); the default branch is committed to only when the user explicitly said so this session.
+   **Change base.** Run `jj git fetch` when an `origin` remote exists. Treat `main@origin` as a useful prior port reference, not an automatic reset target: preserve newer local release changes and the current ancestry. Resolve the actual default bookmark from live project/GitHub evidence (`gh repo view --json defaultBranchRef` is allowed), then inspect `jj log` to determine whether `@` already belongs to the requested work. If it does, continue there. Otherwise preserve the user's current `@` change and run `jj new @`; leave the new change undescribed until its actual outcome is known. Create or move a local bookmark only when the publication path needs one.
 
-   **Pre-work scope.** Before editing, record `git status --short --untracked-files=all` (the user's in-progress files) and whether `HEAD` carries commits not on the remote default (`git log origin/<default>..HEAD`; "unknown" without a remote). Nothing in that set is yours to commit or publish, and it rides along on the branch move untouched — no stash, no question, no effect on naming. It is enforced without a menu:
-   - Incremental commits stage only work-owned files and are path-limited (Phase 2), so untouched WIP never enters a commit; the Phase 4 handoff passes every pre-work file this run did not commit as `exclude:<paths>`, and ships locally via `ce-commit` when pre-existing unpushed commits are on the branch (`references/shipping-workflow.md`).
-   - A unit that must edit a file that was already dirty is the one case a commit cannot separate. Ask once, covering every such file, at the first commit that would include one: commit those files with the user's edits included, or leave them uncommitted (an exclusion for the rest of the run, named in the final summary as unshipped). In Return-to-Caller Mode do not ask and do not edit the file — return `status: blocked` naming it, so the user's WIP stays intact and commit-or-stash-and-rerun is a clean recovery.
+   **Pre-work scope.** Before editing, record `jj status`, `jj diff --summary`, the current change ID and commit ID, the parent IDs, local bookmarks, and work not reachable from the resolved remote default. The current `@` delta belongs to the user unless this run created it. Starting a child change preserves that delta as ancestry without folding it into the work-owned delta. If a unit must alter a path already changed in a user-owned ancestor, ask once in interactive mode; in Return-to-Caller Mode return `status: blocked` rather than rewriting the user's change.
 
 3. **Create Task List** _(skip if Phase 0 already built one, or if Phase 0 routed as Trivial)_
    - Use the platform's task-tracking capability when available (`TaskCreate`/`TaskUpdate`/`TaskList` in Claude Code, `update_plan` in Codex, or the equivalent on other harnesses) to break the plan into actionable tasks. If none is available, continue normally without simulating a task list in chat
@@ -149,7 +147,7 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
 4. **Choose Execution Engine, then Strategy**
 
-   **Route resolution is a mandatory pre-write gate.** Before any implementation write, native worker dispatch, or implementation commit, read `references/execution-engines.md`; inspect applicable live/session/project intent, any typed caller binding, and `.compound-engineering/config.local.yaml` then `config.yaml` when they exist; then resolve and record the engine. Do not infer native execution merely because no typed carrier was supplied. Native is eligible only after this gate finds no higher-authority cross-model selection or exhausts a `prefer` route under the reference's fallback contract.
+   **Route resolution is a mandatory pre-write gate.** Before any implementation write, native worker dispatch, or implementation change, read `references/execution-engines.md`; inspect applicable live/session/project intent, any typed caller binding, and the project configuration layers when they exist; then resolve and record the engine. Do not infer native execution merely because no typed carrier was supplied. Native is eligible only after this gate finds no higher-authority cross-model selection or exhausts a `prefer` route under the reference's fallback contract.
 
    First pick the **engine** that runs implementation: inline/subagent, goal-mode, dynamic-workflow, or cross-model execution. When no applicable live intent, typed caller binding, or enabled standing configuration selects cross-model execution, native execution remains the default inline/subagent path. Goal-mode and dynamic-workflow remain limited to implementation-ready unified code plans and are usable only when the host exposes a callable primitive for them — Codex exposes `create_goal` (a skill can start a goal directly), while Claude Code exposes no goal tools, so on Claude Code they are prompt-emission only (never invoked from inside this skill). Prefer dynamic-workflow over goal-mode for large fan-out plans (many independent U-IDs, codebase-wide sweeps, migrations, adversarial cross-checking). The loaded reference defines authority-and-scope route resolution, the ordered standing preference contract, host-capability probe, plan-shape selection table, copyable goal-mode/`ultracode:` prompts, and resume-tail rules. An engine choice never changes tail ownership — after implementation, resume standalone quality gates in normal use, or return the return-to-caller envelope when invoked by `lfg`. Legacy and bare-prompt code work otherwise use the inline/subagent engine directly.
 
@@ -169,16 +167,16 @@ Determine how to proceed based on what was provided in `<input_document>` (after
 
    **Parallel Safety Check** — scheduling is separate from engine and workspace selection. Apply this gate to native and cross-model candidates before dispatching a wave:
 
-   1. Start only with units whose dependencies are already committed and whose peers in the same readiness layer do not depend on one another.
+   1. Start only with units whose dependency changes are already integrated and whose peers in the same readiness layer do not depend on one another.
    2. Map declared files to units from each candidate's `Files:` section, then reason beyond those declarations. File overlap is necessary but not sufficient: shared types/APIs/interfaces, migrations, lockfiles, generated artifacts/clients, registry or config/schema surfaces, and an environment singleton (one dev server/port, shared database, browser session, package install, or rate limit) all create contention.
-   3. Estimate expected merge and verification cost. Even isolated workers serialize when they share a contract or when reconciling their likely outputs is not obviously smaller and safer than serial authoring.
-   4. Dispatch together only when dependencies, declared files, semantic surfaces, runtime resources, and expected merge cost all support independence; **decline parallelism on uncertainty**. Speed is optional.
+   3. Estimate expected integration and verification cost. Even isolated workers serialize when they share a contract or when reconciling their likely outputs is not obviously smaller and safer than serial authoring.
+   4. Dispatch together only when dependencies, declared files, semantic surfaces, runtime resources, and expected integration cost all support independence; **decline parallelism on uncertainty**. Speed is optional.
    5. Require an isolated workspace for every concurrent worker. A synchronous native unit stays in the active checkout, but a shared-workspace worker runs serially regardless of declared file disjointness.
    6. Cap concurrency at a bounded batch (~3-5 workers), even when more units appear independent.
    7. Abort criteria: broad unplanned edits, semantic overlap, out-of-scope failures, or repeated collision disables further waves; preserve or finish affected work serially.
 
-   **For ordinary native workers, isolation is the harness's job, never ce-work's** — never run `git worktree add` yourself for inline/subagent, goal-mode, or dynamic-workflow execution. The only exception is the external cross-model controller, which owns its detached sibling worktrees outside the repository under the separate cross-model protocol. Probe what your native subagent mechanism provides and pick the parallel path:
-   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages: for example, Claude Code `Agent` with worktree isolation or a harness worker capability whose receipt confirms an isolated workspace. This works even when you are already inside a worktree because the harness-managed worktrees are peers, not nested. Parallelize only units that pass the Safety Check; isolation makes recovery possible, not overlap safe.
+   **For ordinary native workers, isolation is the harness's job, never this skill's.** Do not create a Jujutsu workspace for inline/subagent, goal-mode, or dynamic-workflow execution. The external cross-model controller is the sole exception: it owns named sibling Jujutsu workspaces under `<workspace-root>/.tmp/ce-work/<run-id>/`. Probe the native worker capability and pick the parallel path:
+   - **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages. Parallelize only units that pass the Safety Check; isolation makes recovery possible, not overlap safe.
    - **Shared workspace only** — subagents edit your working directory. Run them serially. Do not infer isolation from the presence of a subagent API; use only a capability the active harness actually exposes.
    - **No subagent mechanism:** run inline.
 
@@ -192,68 +190,72 @@ Determine how to proceed based on what was provided in `<input_document>` (after
    - Instruction to check whether the unit's test scenarios cover all applicable categories (happy paths, edge cases, error paths, integration) and supplement gaps before writing tests.
    - **Instruction to choose the unit's evidence strategy and gather the evidence** (see Evidence Strategy in Phase 2) — for behavior-bearing changes, honor the Execution note and default to proof-first or characterization-first: create/update/strengthen the test and observe the red failure or characterization baseline **before** changing production code. The worker is the only party that witnesses this, so it must capture it as it goes.
    - **Instruction to report, in its final message, both (a) the file paths it changed and (b) the unit's verification evidence** — `behavior_changed`, existing tests inspected, tests added/changed or used unchanged, the red failure or characterization observed (when applicable), the verification run and result, and any deliberate no-test exception with its reason. The handoff is a text summary on most harnesses with no guaranteed diff, so reported paths are the orchestrator's starting hint (it still verifies the actual tree); the evidence fields are **not** reconstructable from the tree afterward, so a worker that omits them forces the orchestrator to re-derive or leave `verification_evidence` incomplete.
-   - **Do not commit.** Ordinary native workers implement and may run their *own unit's* focused tests in isolation as a self-check, but the **orchestrator owns staging, committing, and the authoritative test runs**. An external cross-model worker also must not run `git add`, `git commit`, or another Git index write. Leave its working tree uncommitted; the host snapshots that tree into an isolated transport commit. Those are change transport, never canonical commits. (Capability note: a harness that *reaps* the isolated workspace on worker completion — none of our current targets do — would instead require the worker to commit to its branch; confirm before assuming it.)
+   - **Do not finalize or publish changes.** Workers may edit and run focused checks in their isolated workspace, but the orchestrator owns authoritative verification, descriptions, integration, bookmarks, and publication. Jujutsu automatically snapshots working-copy content; workers must not run `jj describe`, `jj new`, `jj squash`, `jj rebase`, bookmark, operation-recovery, or remote-mutating commands. The host identifies the worker's isolated change by change ID and integrates only its inspected delta.
 
-   **Shared-workspace constraints** — when subagents share your working directory (no isolation): they must not `git add`, commit, or run the full test suite concurrently (index corruption + test interference); the orchestrator does all of that after the batch. A worker may run a single focused unit test only if it touches no shared state.
+   **Shared-workspace constraints** — when subagents share the active workspace, they run serially and must not alter Jujutsu descriptions, ancestry, bookmarks, operations, or remotes. The orchestrator owns those transitions. A worker may run one focused unit test only when it touches no shared state.
 
    **Permission mode:** Omit the `mode` parameter when dispatching subagents so the user's configured permission settings apply. Do not pass `mode: "auto"` — it overrides user-level settings like `bypassPermissions`.
 
-   **After each serial inline/subagent unit:** review the diff against the unit's scope and `Files:`, run the relevant tests, fix before starting the next (never on a broken tree), record the unit's verification evidence (from the worker's return when a worker ran), update the task list (never edit the plan body — progress lives in commits), and commit. If the unit used a native subagent worker, retire its handle (closing/releasing it only when the harness exposes that operation and assigns that lifecycle action to the caller), then dispatch the next subagent unit in a new worker context. An inline unit has no worker handle to retire; start the next unit directly.
+   Before composing, editing, validating, or recommending any unit description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime local conventions and history win; apply only compatible Go quality guidance and no fixed type, scope, or canned example.
+
+   **After each serial inline/subagent unit:** review `jj diff` against the unit's scope and `Files:`, run the relevant tests, fix before starting the next, record the unit's verification evidence, update the task list, describe the completed work-owned change, and run `jj new` before the next logical unit. Retire a native worker handle before dispatching another unit.
 
    **After a parallel inline/subagent batch — the orchestrator integrates; never trust the handoff summary alone:**
    1. Wait for every worker in the batch to finish.
-   2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed (`git status`/diff in its workspace or the shared dir). Reported paths are a hint; declared `Files:` are often incomplete — workers create/modify files the plan didn't anticipate.
-   3. **Detect real collisions and semantic contention** — compare actual paths plus shared contracts, generated/config surfaces, and verification effects. A clean merge is not proof of compatibility. Preserve or re-run colliding units on the advancing canonical base; never blind-merge them.
-   4. **Review, test, commit, and retire each unit in dependency order — the orchestrator owns commits.** Integrate one result, inspect actual scope, run authoritative verification, create its canonical commit, then immediately retire that unit's worker before considering the next. Never send the retired handle another implementation unit or keep it in an orchestrator-managed idle pool. Invoke an explicit close/release operation only when the harness exposes it and assigns that lifecycle action to the caller; otherwise completion is the worker's release boundary. Clean up an isolated workspace only when the harness assigns that cleanup to the caller and only after proving the unit's work was integrated — never infer manual cleanup commands from the provider name. Revalidate every remaining result against the advancing canonical tree. Capture each worker's returned verification evidence into the run's `verification_evidence` roll-up — if a worker omitted it, re-derive what the tree allows and mark the rest as unverified rather than fabricating a red-before-implementation observation the worker never reported.
-   5. Update the task list (progress lives in the commits).
+   2. **Inspect the actual tree, not reported paths.** Determine what each worker really changed with `jj status` and `jj diff --summary` in its workspace. Reported paths are only a hint.
+   3. **Detect real collisions and semantic contention** — compare actual paths plus shared contracts, generated/config surfaces, and verification effects. A conflict-free Jujutsu integration is not proof of compatibility. Preserve or re-run colliding units on the advancing canonical base; never integrate them blindly.
+   4. **Review, test, integrate, and retire each unit in dependency order.** Integrate one isolated change, inspect actual scope, run authoritative verification, compose and validate its description, then retire that unit's worker before considering the next. Revalidate every remaining result against the advancing canonical change and preserve honest verification evidence.
+   5. Update the task list; progress lives in Jujutsu changes.
    6. Dispatch the next dependency layer only after every unit in the batch has been integrated and its worker retired. Any remaining isolated-workspace cleanup follows the active harness's ownership and lifecycle contract.
 
    **Per-harness integration (examples — the universal flow above is the contract):**
-   - **Harness-owned worktree/branch:** integrate one branch in dependency order, verify, and commit before the next; on conflict abort and re-run or explicitly resolve that unit against the advanced tree.
-   - **Harness-owned uploaded change set:** accept one isolated result, inspect and verify it, commit it canonically, then release the worker before the next result.
+   - **Harness-owned workspace/change:** integrate one change in dependency order, verify, and describe it before the next; on conflict preserve both changes and re-run or explicitly resolve against the advanced change.
+   - **Harness-owned uploaded change set:** accept one isolated result, inspect, verify, and record it as a canonical change, then release the worker before the next result.
    - **Shared workspace:** no parallel batch is permitted; use the serial path.
-   - **External cross-model workspace:** follow the conditionally loaded cross-model parallel-wave protocol and controller receipts; ordinary branch-merge shortcuts do not apply.
+   - **External cross-model workspace:** follow the conditionally loaded cross-model parallel-wave protocol and controller receipts; provider-specific integration shortcuts do not apply.
 
 ### Phase 2: Execute
 
-Before implementing the first task, you must read `references/implementation-loop.md`. Follow that reference for every task's evidence choice, implementation, verification, and completion stops before moving to incremental commits.
+Before implementing the first task, you must read `references/implementation-loop.md`. Follow that reference for every task's evidence choice, implementation, verification, and completion stops before moving to incremental changes.
 
-2. **Incremental Commits**
+2. **Incremental Changes**
 
-   After completing each task, evaluate whether to create an incremental commit:
+   After completing each task, decide whether the current change is a complete, valuable unit. Keep partial work in the same change; use `jj new` only at a meaningful boundary.
 
-   | Commit when... | Don't commit when... |
+   | Start the next change when... | Keep editing the current change when... |
    |----------------|---------------------|
-   | Logical unit complete (model, service, component) | Small part of a larger unit |
-   | Tests pass + meaningful progress | Tests failing |
-   | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-   | About to attempt risky/uncertain changes | Would need a "WIP" commit message |
+   | Logical unit complete | Small part of a larger unit |
+   | Tests pass and progress is independently valuable | Tests failing |
+   | About to switch implementation context | Pure scaffolding with no behavior |
+   | About to attempt risky or uncertain work | The description would say only "WIP" or "partial" |
 
-   **Heuristic:** "Can I write a commit message that describes a complete, valuable change? If yes, commit. If the message would be 'WIP' or 'partial X', wait."
+   **Description standard:** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-   If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
+   Runtime project conventions and visible local history win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed type, scope, subject form, body layout, or canned example.
 
-   **Commit workflow:**
+   Use implementation units as a starting guide for change boundaries, adapting to the code. Use each unit's Goal and the actual `jj diff` to compose the description.
+
+   **Change workflow:**
    ```bash
    # 1. Verify tests pass (use project's test command)
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-   # 2. Stage only files related to this logical unit (not `git add .`)
-   git add <files related to this logical unit>
+   # 2. Inspect the automatically snapshotted working-copy change
+   jj status
+   jj diff --summary
 
-   # 3. Commit with conventional message, limited to those same paths
-   git commit -m "feat(scope): description of this unit" -- <files related to this logical unit>
+   # 3. Describe the complete logical unit using the runtime-derived local standard
+   jj describe
+
+   # 4. Start the next work-owned change only after this one is complete
+   jj new
    ```
 
-   The path limit on `git commit` is load-bearing: a bare `git commit` takes the whole index, so anything the user had staged before this run started (Phase 1 Step 2's pre-work scope) would ride into the unit's commit. Naming the paths commits only them and leaves the user's staged entries in the index.
+   Jujutsu has no staging-index boundary. Isolation comes from preserving the user's original change and doing implementation in child changes. Before each `jj describe`, prove that `jj diff --summary -r @` contains only the active unit; split or restore paths if it does not.
 
-   **Handling merge conflicts:** If conflicts arise during rebasing or merging, resolve them immediately. Incremental commits make conflict resolution easier since each commit is small and focused.
+   **Conflicts:** Jujutsu records conflicts in changes instead of requiring an in-progress merge state. Inspect `jj status`, resolve conflict markers or use `jj resolve`, verify the result with `jj diff`, and do not advance while the active change remains conflicted.
 
-   **Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
-
-   **Parallel subagent mode:** Commit ownership is split by isolation mode (see Phase 1 Step 4):
-   - **Worktree-isolated:** subagents may stage and commit inside their own worktree branch; the orchestrator merges those branches in dependency order after the batch.
-   - **Shared-directory fallback:** subagents do not commit; the orchestrator stages and commits each unit after the entire parallel batch completes.
+   **Parallel subagent mode:** workers only author content. The orchestrator integrates each isolated workspace change in dependency order, composes its description, and starts the next canonical change. Shared-workspace workers remain serial.
 
 3. **Follow Existing Patterns**
 
@@ -309,17 +311,17 @@ Before implementing the first task, you must read `references/implementation-loo
 
 When all Phase 2 tasks are complete and execution transitions to quality check, you must read `references/shipping-workflow.md` for the full shipping workflow. Do not skip this.
 
-**Code-review completion gate (standalone shipping only — default on).** This standalone run is **not done** — and must not call `ce-commit-push-pr` / `ce-commit` (or a project-defined shipping process, which overrides those defaults per `shipping-workflow.md`) or report ship-complete — until exactly one of:
+**Code-review completion gate (standalone shipping only — default on).** This standalone run is **not done** and must not publish a bookmark, mutate a PR, invoke a project-defined shipping process, or report ship-complete until exactly one of:
 
 1. **Review receipt:** you invoked `ce-code-review` through the host's normal skill-invocation mechanism and hold a **completed** receipt — `mode:agent` JSON with `status: complete` plus `artifact_path` or `run_id`, or default-mode markdown with Actionable Findings, Coverage, and Verdict — then ran apply/residuals per `shipping-workflow.md`. Do **not** treat `status: failed`, `degraded`, or `skipped` as a completed receipt even if `artifact_path`/`run_id` is present; those enter the unavailable path in `shipping-workflow.md`; or
 2. **Explicit skip phrase** in the shipping summary, exactly one of: `Code review: skipped (mechanical diff)`, `Code review: skipped (ce-code-review unavailable)`, or (interactive only, after a real harness-native review ran because `ce-code-review` could not) `Code review: harness-native fallback`, each with a one-line reason.
 
 **Mechanical** means only formatting, dependency-version bumps, lint-only fixes, or generated artifacts — including multi-file mechanical-only diffs (e.g. package manifest + lockfile, formatter output across files). **Not mechanical:** behavior-bearing work (single- or multi-file), control-flow/error-class/tests-for-behavior changes, or applying external/prior review findings. **Never substitute** mental self-review, "findings already applied," or ad-hoc skimming. Harness-native `/review` alone is **not** a substitute when `ce-code-review` can load; it only satisfies the gate via the `harness-native fallback` phrase after the documented unavailable path. Full path lives in `shipping-workflow.md`. This gate does **not** apply in Return-to-Caller Mode — the caller owns review.
 
-**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the checkout, commits, or applies fixes.
+**Review is two steps — review, then fix.** `ce-code-review` is review-only. It returns findings (markdown or `mode:agent` JSON); it never edits the workspace, describes changes, or applies fixes.
 
-1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<ref>` when the merge base is known, and `depth:full` when a deep/thorough review was explicitly requested.
-2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents (parallel when file sets are disjoint). The orchestrator merges diffs, runs tests, and commits — it does not pre-investigate findings.
+1. **Review** — Invoke the `ce-code-review` skill (invocation command in `references/review-findings-followup.md` § Fallback). Use `mode:agent` in orchestrated workflows; pass `plan:<path>` when you have a plan, `base:<revset>` when the review base is known, and `depth:full` when a deep/thorough review was explicitly requested.
+2. **Apply fixes** — Load `references/review-findings-followup.md`. Filter eligibility on JSON only, **batch applicable findings by file**, dispatch fix subagents when file sets are disjoint. The orchestrator integrates deltas, runs tests, and describes changes; it does not pre-investigate findings.
 3. **Residual Work Gate** — Only after followup; unresolved actionable findings go through the gate in `shipping-workflow.md` (autonomous sessions auto-accept + record residuals; interactive sessions ask).
 
 ## Return-to-Caller Mode
@@ -346,8 +348,8 @@ Return:
 - `fallback_reason`: `null` when none, otherwise the observed route-unavailable or substitution reason
 - `run_id`: durable external run identifier, or `null` for native execution
 - `source_kind` and `source_digest`: controller-recorded implementation authority (`plan` plus its digest in Return-to-Caller Mode; standalone bare-prompt runs use `prompt`)
-- `unit_receipts`: route, model, detached-process, integration, verification, canonical-commit, and cleanup state for each attempted unit
-- `plan_checkpoint`: the disclosed checkpoint commit when the selected plan was the only canonical dirt, otherwise `null`
+- `unit_receipts`: route, model, detached-process, integration, verification, canonical-change, and cleanup state for each attempted unit
+- `plan_checkpoint`: the disclosed checkpoint change when the selected plan was the only canonical delta, otherwise `null`
 - `blockers`
 - `recovery_path`: preserved owner-checked run/workspace location when recovery remains, otherwise `null`
 - `settled_decision_conflicts`: conflicts with `session-settled:`-labeled KTDs or Key Decisions encountered during implementation — each entry names the labeled entry, the evidence, and how it was routed (proceeded-and-flagged vs blocker); empty when none
@@ -386,7 +388,7 @@ gates.
 
 ### Quality is Built In
 
-- Standalone shipping holds a `ce-code-review` receipt or an explicit fixed-phrase skip before commit/PR (completion gate in Phase 3-4; details in `shipping-workflow.md`)
+- Standalone shipping holds a `ce-code-review` receipt or an explicit fixed-phrase skip before bookmark publication or PR mutation
 
 ### Ship Complete Features
 

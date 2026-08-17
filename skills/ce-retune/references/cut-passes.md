@@ -12,7 +12,7 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides, each prompt carrying: the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and record the pass as its own JJ change under the description rule below.
 
 Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
 
@@ -32,18 +32,22 @@ Fan out by **unit** instead: one agent owns one skill directory and applies the 
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate JJ workspaces or disjoint paths in one workspace
 
-Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
+Disjoint paths in one workspace are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and one workspace keeps `jj diff` readable and the resulting change easy to describe.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Pay for a separate JJ workspace per agent when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit — lockfiles, caches, generated output, a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations; one git index shared by parallel agents corrupts staging.
-- A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
+- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on workspace-local `.tmp` artifacts and working-copy snapshots.
+- Agents describe, abandon, rebase, or move bookmarks; concurrent repository operations must not target the same working-copy change.
+- A pass may need to be abandoned wholesale, and an isolated `jj abandon` is worth more than a shared change.
 
-Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+Otherwise the isolation cost is real: N workspaces and changes to create, N results to rebase or squash, and conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+## Record each pass
+
+Before every composition, edit, validation, or recommendation of a pass description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational command; inspect descriptions with `jj log`, using `main@origin` as the only prior reference. The project's active instructions and description syntax visible in runtime history win; apply compatible Go guidance only to quality, clarity, and structure. Preserve the requirement that the description identify the problem class and measured result. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a description, apply it with `jj describe -m <description-composed-from-runtime-conventions>`, and start the next pass with `jj new`. Do not add creator, model, provider, tool, or runtime metadata to the description.
 
 ## The shared-asset trap
 

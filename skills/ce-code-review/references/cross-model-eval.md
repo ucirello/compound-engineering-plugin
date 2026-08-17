@@ -12,7 +12,7 @@ and Codex with fake peer CLIs first on PATH.
 1. **Activation fires only on the existing gate.** A local-aligned or standalone
    diff that selects `adversarial-reviewer` launches one detached cross-model
    adversarial job in the Stage 4 wave. A trivial diff that does not select the
-   persona launches none. A `pr-remote` or `branch-remote` review launches none
+   persona launches none. A `pr-remote` or `bookmark-remote` review launches none
    even when adversarial analysis is warranted.
 
 2. **Host identity and fixed route precede egress.** The orchestrator keeps host

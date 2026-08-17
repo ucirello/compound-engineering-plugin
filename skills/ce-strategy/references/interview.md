@@ -11,7 +11,7 @@ For each section: ask the opening question, evaluate the answer against the qual
 3. **Quote the user back at them.** When challenging an answer, use the user's own words verbatim. Paraphrasing softens the challenge and is easier to dismiss.
 4. **Keep each answer to 1-3 sentences.** Longer answers are usually hiding something vague. If the user writes a paragraph, ask them to pick the sentence that matters most.
 5. **Don't leak the anti-pattern names.** The user does not need to hear "that's a vanity metric" - just ask the sharper question that follows.
-6. **Ground the question, not the answer.** When the repo model from `SKILL.md` Phase 0 bears on a section, open with what it suggests ("From the README this looks like X - is that the problem?") and let the user confirm or correct; cite repo specifics when an answer contradicts what the repo states. Never write a section from the repo model alone, and never let recent activity stand in for what the product is. Where stated intent and the user's answer disagree, that is the pushback question, and the user's answer is what gets captured.
+6. **Ground the question, not the answer.** When the workspace model from `SKILL.md` Phase 0 bears on a section, open with what it suggests ("From the README this looks like X - is that the problem?") and let the user confirm or correct; cite workspace specifics when an answer contradicts what the workspace states. Never write a section from the workspace model alone, and never let recent activity stand in for what the product is. Where stated intent and the user's answer disagree, that is the pushback question, and the user's answer is what gets captured.
 
 ---
 
@@ -110,7 +110,7 @@ Strong answers stay at 2-4 (not 8, not 1), connect clearly back to the approach,
 - **Too vague** ("improve the product") -> "Every track is 'improve the product.' What's the specific investment area that's different from the others?"
 - **One track only** -> "With one track, there's no real choice being made. What are the 2-3 things the product needs to be good at, and how are they different?"
 
-Recent commits or PRs show where attention has gone lately, so this is the one section where they help. Offer what they show as a question ("most recent work is in X - is that a track, a temporary push, or unrelated?"), and take the user's answer: a burst of work in one area does not make it a track.
+Recent Jujutsu changes or GitHub PRs show where attention has gone lately, so this is the one section where they help. Offer what they show as a question ("most recent work is in X - is that a track, a temporary push, or unrelated?"), and take the user's answer: a burst of work in one area does not make it a track.
 
 **Capture:** 2-4 tracks. For each: a name, a one-line purpose, and a short note on why this serves the approach.
 
@@ -120,7 +120,7 @@ Recent commits or PRs show where attention has gone lately, so this is the one s
 
 Run this once sections 1-5 are captured, before Boundaries and the optional sections and before drafting. A strategy is only useful if it decides things, so test whether the assembled answers do.
 
-Pose 3-5 concrete proposals, one at a time, aimed at the draft's fault lines: a tempting feature that sits just off the approach, a second persona pulling in a different direction, a track that would starve another, a metric that would look good while the approach failed. Pick proposals whose answer the user could reasonably give either way, so the test carries information; the draft may already imply a position on it - that implied position is what the user's answer confirms or overturns. Skip proposals that are obviously on- or off-strategy for anyone ("add payroll" to a product whose README already excludes it), since the user's answer is a foregone conclusion and tests nothing. Where the repo model shows a tempting direction (a request in the issues, a recent burst of work outside the tracks), use it.
+Pose 3-5 concrete proposals, one at a time, aimed at the draft's fault lines: a tempting feature that sits just off the approach, a second persona pulling in a different direction, a track that would starve another, a metric that would look good while the approach failed. Pick proposals whose answer the user could reasonably give either way, so the test carries information; the draft may already imply a position on it - that implied position is what the user's answer confirms or overturns. Skip proposals that are obviously on- or off-strategy for anyone ("add payroll" to a product whose README already excludes it), since the user's answer is a foregone conclusion and tests nothing. Where the workspace model shows a tempting direction (a request in the issues, a recent burst of work outside the tracks), use it.
 
 For each answer:
 
@@ -162,4 +162,4 @@ Skip by default. Keep to 2-3 lines if present.
 
 ## After the Interview
 
-Once sections 1-5 are captured, the stress test has run, Boundaries (section 6) is captured - it is always written, even if only to say nothing is named yet - and any optional sections the user engaged with are captured, read `strategy-template.md` and fill it in. Present the full draft in chat before writing. Offer one edit round. Then write to `STRATEGY.md`.
+Once sections 1-5 are captured, the stress test has run, Boundaries (section 6) is captured - it is always written, even if only to say nothing is named yet - and any optional sections the user engaged with are captured, read `strategy-template.md` and fill it in. Present the full draft in chat before writing. Offer one edit round. Then write to `<workspace-root>/STRATEGY.md` as resolved by `SKILL.md`.

@@ -1,6 +1,6 @@
 # Review followup (LFG step 4–5)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then commits.
+`ce-code-review` is review-only. LFG applies eligible fixes itself, then records the Jujutsu change.
 
 ## Step 4 — invoke review
 
@@ -10,13 +10,13 @@ ce-code-review mode:agent plan:<plan-path-from-step-1>
 
 Read the **Actionable Findings** summary and artifact path. Do not pass `mode:autofix`.
 
-Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) or the markdown Actionable Findings section. If `status` is `failed`, stop and surface `reason`.
+Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) or the markdown Actionable Findings section. Resolve review artifacts under `<workspace-root>/.tmp/rocketclaw/code-review/<run-id>/`, where `<workspace-root>` comes from `jj workspace root` with the current local directory as fallback. If `status` is `failed`, stop and surface `reason`.
 
 ## Step 5 — apply and persist review fixes
 
 ### What to apply
 
-Apply a finding in the working tree only when **all** of the following hold:
+Apply a finding in the Jujutsu working-copy change only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -35,10 +35,10 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
+2. Apply eligible fixes in the Jujutsu working-copy change in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files, commit `fix(review): apply review findings`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), resolve a writable remote dynamically: prefer `origin` when present, otherwise use `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push — the local commit suffices. If no eligible fixes were applied, note explicitly and skip commit.
+4. Run `jj status` and `jj diff --name-only`. If review-driven changes exist, isolate only those paths in a completed Jujutsu change, move the publication bookmark to that change, and publish with `jj git push --remote <remote> --bookmark <bookmark>` before step 6 when a remote is configured. The description must identify that review findings were applied. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and descriptions visible in runtime `jj log` win; preserve the required meaning, apply compatible Go guidance only to quality, clarity, and structure, and do not impose a fixed prefix, type, scope, subject, body, layout, example, template, or message. The required sentence's `git log` wording is guidance only. If there is no remote, the local recorded change suffices. If no eligible fixes were applied, note explicitly and skip recording an empty change.
 
 ## Step 6 — residual handoff
 
-Residuals are actionable findings **not** applied in step 5 — not leftovers from in-skill autofix. Use the Actionable Findings summary / artifact from step 4.
+Residuals are actionable findings **not** applied in step 5 — not leftovers from in-skill autofix. Use the Actionable Findings summary or workspace-local artifact from step 4.

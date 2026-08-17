@@ -58,13 +58,13 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  ROCKETCLAW_PEER_JOBS_ROOT base dir (<workspace>/.tmp/rocketclaw/peer-jobs)
-  ROCKETCLAW_WORK_RUNS_ROOT parent work dir containing all <run-id>/ dirs
+  ROCKETCLAW_PEER_JOBS_ROOT base dir (<workspace>/.tmp/rocketclaw)
+  ROCKETCLAW_WORK_RUNS_ROOT parent ce-work dir containing all <run-id>/ dirs
   ROCKETCLAW_PEER_IDLE_SECS idle window, no out.log growth (240)
   ROCKETCLAW_PEER_HARD_SECS hard cap on worker wall clock
-                            (default: max(1230, CROSS_MODEL_HARD_SECS+30);
+                            (default: max(1230, ROCKETCLAW_CROSS_MODEL_HARD_SECS+30);
                             an explicit value always wins)
-  CROSS_MODEL_HARD_SECS     when ROCKETCLAW_PEER_HARD_SECS is unset, widens the
+  ROCKETCLAW_CROSS_MODEL_HARD_SECS when ROCKETCLAW_PEER_HARD_SECS is unset, widens the
                             supervisor hard window (see above)
   ROCKETCLAW_PEER_LOG_MAX_BYTES     out.log byte cap (10485760)
   ROCKETCLAW_PEER_RESULT_MAX_BYTES  result byte cap, supervise + read (5242880)
@@ -73,10 +73,10 @@ Environment overrides (defaults in parentheses):
   ROCKETCLAW_PEER_BASH              Windows: absolute bash.exe for peer workers
                             (preferred over PATH / WSL System32 bash)
   CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
-                             ROCKETCLAW_PEER_BASH is unset (#1268)
+                            ROCKETCLAW_PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
-the current workspace's `.tmp/rocketclaw`. Every read of job state opens the file first (no-follow) and
+the workspace-local `.tmp/rocketclaw` namespace. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -109,8 +109,8 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the current workspace's `.tmp\\rocketclaw\\peer-jobs`,
-            owner-private and local to the project.
+  jobs root defaults under the current JJ workspace's `.tmp\\rocketclaw`
+            directory, with the physical current directory as the non-JJ fallback.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -124,7 +124,6 @@ import signal
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -146,17 +145,19 @@ _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
 def _workspace_root() -> str:
     try:
         result = subprocess.run(
-            ["jj", "workspace", "root"], capture_output=True, text=True,
+            ["jj", "--ignore-working-copy", "workspace", "root"],
+            capture_output=True,
+            text=True,
             check=False,
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return os.path.abspath(result.stdout.strip())
     except OSError:
-        pass
-    return os.path.abspath(os.getcwd())
+        return os.getcwd()
+    root = result.stdout.strip()
+    return root if result.returncode == 0 and root else os.getcwd()
 
 
-DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw", "peer-jobs")
+DEFAULT_TMP_ROOT = os.path.join(_workspace_root(), ".tmp")
+DEFAULT_ROOT = os.path.join(DEFAULT_TMP_ROOT, "rocketclaw")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -182,10 +183,9 @@ exit codes:
   4  ownership check failed (job state or result not owned by the current
      user) — content is never emitted
 
-environment overrides: ROCKETCLAW_PEER_JOBS_ROOT, ROCKETCLAW_WORK_RUNS_ROOT,
-ROCKETCLAW_PEER_IDLE_SECS, ROCKETCLAW_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS,
-ROCKETCLAW_PEER_LOG_MAX_BYTES, ROCKETCLAW_PEER_RESULT_MAX_BYTES,
-ROCKETCLAW_PEER_POLL_SECS, ROCKETCLAW_PEER_GRACE_SECS (defaults in
+environment overrides: ROCKETCLAW_PEER_JOBS_ROOT, ROCKETCLAW_WORK_RUNS_ROOT, ROCKETCLAW_PEER_IDLE_SECS,
+ROCKETCLAW_PEER_HARD_SECS, ROCKETCLAW_CROSS_MODEL_HARD_SECS, ROCKETCLAW_PEER_LOG_MAX_BYTES,
+ROCKETCLAW_PEER_RESULT_MAX_BYTES, ROCKETCLAW_PEER_POLL_SECS, ROCKETCLAW_PEER_GRACE_SECS (defaults in
 the module docstring).
 """
 
@@ -201,7 +201,7 @@ class Unreadable(Exception):
 # --- configuration -----------------------------------------------------------
 
 # Supervisor hard-window floor: clears the highest cross-model worker default
-# (review skills use CROSS_MODEL_HARD_SECS:-1200) so an unset knob still nests
+# (review skills use ROCKETCLAW_CROSS_MODEL_HARD_SECS:-1200) so an unset knob still nests
 # worker < deadline < runner without orchestrator arithmetic. Grace matches the
 # historical prose +30s so a raised knob widens the runner the same way.
 _RUNNER_HARD_FLOOR = 1230.0
@@ -212,13 +212,32 @@ def jobs_root_base() -> str:
     configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
+    try:
+        os.mkdir(DEFAULT_TMP_ROOT, 0o700)
+    except FileExistsError:
+        pass
+    _check_owned_dir(DEFAULT_TMP_ROOT)
     return os.path.abspath(DEFAULT_ROOT)
+
+
+def candidate_jobs_root_bases() -> list:
+    """Return the configured root or the workspace-local default root."""
+    configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
+    if configured:
+        return [os.path.abspath(configured)]
+    return [os.path.abspath(DEFAULT_ROOT)]
 
 
 def skill_runs_root(skill: str) -> str:
     if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
         return os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])
     return os.path.join(jobs_root_base(), skill)
+
+
+def candidate_skill_runs_roots(skill: str) -> list:
+    if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
+        return [os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])]
+    return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 
 def _env_num(name: str, default: float, conv, *, allow_zero: bool = False):
@@ -237,11 +256,11 @@ def _env_num(name: str, default: float, conv, *, allow_zero: bool = False):
 def _derived_hard_default() -> float:
     """Outermost supervisor hard window when ROCKETCLAW_PEER_HARD_SECS is unset.
 
-    Reads ambient CROSS_MODEL_HARD_SECS (the runner already forwards os.environ
+    Reads ambient ROCKETCLAW_CROSS_MODEL_HARD_SECS (the runner already forwards os.environ
     to the worker, so a user-set knob is present here). Explicit ROCKETCLAW_PEER_HARD_SECS
     still wins via cfg() — ce-work and elevation paths keep their own windows.
     """
-    cross = _env_num("CROSS_MODEL_HARD_SECS", 0.0, float)
+    cross = _env_num("ROCKETCLAW_CROSS_MODEL_HARD_SECS", 0.0, float)
     return max(_RUNNER_HARD_FLOOR, cross + _RUNNER_HARD_GRACE)
 
 
@@ -770,7 +789,17 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
+    fd = -1
+    tmp = ""
+    for _ in range(CLAIM_ATTEMPTS):
+        tmp = os.path.join(os.path.dirname(path), f".tmp-{os.urandom(8).hex()}")
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
+            break
+        except FileExistsError:
+            continue
+    if fd < 0:
+        raise OSError(f"could not reserve an atomic write path beside {path}")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -828,14 +857,14 @@ def resolve_job_dir(ref: str, skill=None) -> str:
     if skill is not None:
         if not _is_safe_token(skill):
             raise RunnerError(f"invalid skill: {skill!r}")
-        search_root = skill_runs_root(skill)
-        patterns = [os.path.join(search_root, "*", "jobs", ref)]
+        search_roots = candidate_skill_runs_roots(skill)
+        patterns = [os.path.join(root, "*", "jobs", ref) for root in search_roots]
     else:
-        search_root = jobs_root_base()
-        patterns = [os.path.join(search_root, "*", "*", "jobs", ref)]
+        search_roots = candidate_jobs_root_bases()
+        patterns = [os.path.join(root, "*", "*", "jobs", ref) for root in search_roots]
     matches = sorted({match for pattern in patterns for match in glob.glob(pattern)})
     if not matches:
-        raise RunnerError(f"job not found under {search_root}: {ref}")
+        raise RunnerError(f"job not found under {', '.join(search_roots)}: {ref}")
     if len(matches) > 1:
         raise RunnerError(f"ambiguous job id {ref}: {len(matches)} matches; pass the job dir path")
     return matches[0]
@@ -1940,7 +1969,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace-local path unchecked.
+        # consumer must never read a predictable workspace scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

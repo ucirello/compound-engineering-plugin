@@ -18,7 +18,8 @@
 set -e
 
 if [ $# -lt 1 ]; then
-    echo "Usage: reply-to-pr-thread THREAD_ID < REPLY_FILE"
+    echo "Usage: echo 'reply body' | reply-to-pr-thread THREAD_ID"
+    echo "Example: echo 'Addressed: added null check' | reply-to-pr-thread PRRT_kwDOABC123"
     exit 1
 fi
 

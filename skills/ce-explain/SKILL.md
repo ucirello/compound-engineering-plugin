@@ -14,7 +14,7 @@ What to explain is the input this skill was invoked with, present in the current
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `SKILL_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== RocketClaw skill context` header and ends with `ROCKETCLAW_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -45,19 +45,19 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 - **Extraction tier** — the work-recap scout: search-and-quote work. Use the platform's cheapest capable model when the harness exposes a known override; otherwise inherit.
 - **Ceiling tier** — the explainer composition, the check-in reasoning, and the corrections. These run in the main conversation on the orchestrator's model; nothing is dispatched for them.
 
-**Degradation rule.** When the platform's subagent primitive cannot select per-agent models, dispatch scouts on the inherited model and keep their read budgets. When the platform has no subagent primitive at all, run the scout work inline with the same budgets. When a dispatch fails, treat a concurrency or active-agent-limit error as backpressure — retry after a slot frees; a launch that fails for any other reason runs that scout's work inline with the same budgets, disclosed in one line.
+**Degradation rule.** When the platform's subagent primitive cannot select per-agent models, dispatch scouts on the inherited model and keep their read budgets. When the platform has no subagent primitive at all, run the scout work inline with the same budgets. When a dispatch fails, treat a concurrency or active-agent-limit error as backpressure — retry after a slot frees; a launch that fails for a reason that survives correcting the invocation runs that scout's work inline with the same budgets, disclosed in one line.
 
 ## Artifact Root
 
 This skill writes an explainer under `<root>/explainers/` only when it archives one to the repo, and may read learnings under `<root>/solutions/`. Resolve `<root>` (per the block below) only when you actually compose such a path — a scratch-only or external-concept explainer writes to its run directory and never needs it, so do not resolve or create a root at the start of every run. Pass the resolved path to any subagent when you do resolve it, not the config.
 
-<!-- ce-docs-root:start -->
-**Resolve the artifact root `<root>` before composing any artifact path.**
+<!-- rocketclaw-docs-root:start -->
+**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml`; first non-empty value wins (`<repo-root>` = `jj workspace root`). Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.tmp/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+<!-- rocketclaw-docs-root:end -->
 
 ## Execution Flow
 
@@ -74,22 +74,22 @@ Read `references/intake.md` now and classify the request into one of the four in
 Match grounding to the input shape. Create the run directory first — every run gets one, before any artifact exists:
 
 ```bash
-if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; then SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw"; else SCRATCH_ROOT="$PWD/.tmp/rocketclaw"; fi;
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUN_DIR="$SCRATCH_ROOT/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$(pwd -P)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-explain";
+(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1; chmod 700 "$SCRATCH_ROOT" || exit 1;
+RUN_DIR="$SCRATCH_ROOT/$(date +%Y%m%d)-$(openssl rand -hex 3)";
 (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR";
 ```
 
-**Repo-touching inputs** (a concept with footprint in this repo, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or changes. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted root or workspace probe.
+**Repo-touching inputs** (a concept with footprint in this workspace, a diff, a recap): use the project's active instructions already in context and go directly to `jj diff`, call-sites, current source, or Jujutsu changes. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted workspace probe.
 
-- **Diff mode:** resolve the change (the `diff:` ref, or the most recent substantial change when the request points at one implicitly) and gather its evidence — the diff itself, the files it touches, any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied. **Empty selection** (the ref resolves to no revisions, or the selected revisions contain no file changes): do not silently explain something else. Say what the ref resolved to, name the nearest real candidate (the current change `@`, the parent change `@-`), and use it only after the user agrees — or, when they can't be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject doesn't exist in this repo at all ("the retry logic" where there is none): report that before explaining an adjacent thing.
-- **Recap mode:** dispatch a generic subagent directly, seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the repo root, and `$RUN_DIR`. Do not pre-scan, count, or characterize the window in the main conversation; the scout owns that evidence pass, and an early all-revisions `jj log` summary can seed it with a false bookmark or activity model. **When the harness exposes no subagent primitive**, the degradation rule above applies: run the scout inline against its own prompt's sources and budgets, and still write `recap-evidence.md`. The no-pre-scan rule then means what it protects rather than where it runs — do the scout's evidence pass first and form no view of the window until it is done. It returns an evidence summary with change IDs and `file:line` pointers. **Empty window** (no JJ activity, no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
+- **Diff mode:** resolve the Jujutsu change or revset (the `diff:` ref, or the most recent substantial change when the request points at one implicitly) and gather its evidence with `jj diff` — the changed lines, the files it touches, and any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied. **Empty revset or diff** (for example, `main@origin..@` resolves to no changes while relevant work is in another working-copy change): do not silently explain something else. Say what the ref resolved to, name the nearest real candidate (the current working-copy change or its parent), and use it only after the user agrees — or, when they can't be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject doesn't exist in this workspace at all ("the retry logic" where there is none): report that before explaining an adjacent thing.
+- **Recap mode:** dispatch a generic subagent directly, seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the workspace root, and `$RUN_DIR`. Do not pre-scan, count, or characterize the window in the main conversation; the scout owns that evidence pass, and an early all-revisions `jj log` summary can seed it with a false bookmark or activity model. **When the harness exposes no subagent primitive**, the degradation rule above applies: run the scout inline against its own prompt's sources and budgets, and still write `recap-evidence.md`. The no-pre-scan rule then means what it protects rather than where it runs — do the scout's evidence pass first and form no view of the window until it is done. It returns an evidence summary with change IDs and `file:line` pointers. **Empty window** (no Jujutsu change activity and no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
 - **External concepts** (no footprint in this repo): skip repo grounding entirely — do not force repo context into the output. Research with whatever web tools are reachable. When none are, you may explain from model knowledge, but the artifact must label that content **Unverified — from model knowledge, not checked against current sources** in its metadata header.
 - **Idea mode:** the idea is a fixed given. Explain its implications, mechanics, and trade-offs for the user's understanding. Never scope it (`ce-brainstorm`'s job), never generate and rank alternatives (`ce-ideate`'s job).
+
+At every site in this skill or its loaded references that composes, edits, validates, or recommends a JJ change description, preserve the site's semantic requirement while deriving syntax from the project's active instructions and descriptions visible in runtime `jj log`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The required sentence's `git log` wording is guidance, not permission to run Git. Apply compatible Go guidance only to quality, clarity, and structure, and do not impose a fixed prefix, type, scope, subject, body, layout, example, template, or message.
 
 ### Phase 3: Check-in gate — before anything is revealed
 
@@ -114,7 +114,7 @@ Detect destinations by capability — probe the agent's own toolset and session 
 - **Local file** — copy the artifact out of `$RUN_DIR` to the path the user names, then where the platform exposes a browser-opening primitive (`open` on macOS, `xdg-open` on Linux, `start` on Windows) offer to open it; otherwise print the absolute path.
 - **Publish to Proof** (markdown output only) — publish per `references/destinations.md` and surface the returned share URL; on failure retry once, then report and move on.
 - **Send to Thinkroom** (offered only when a Thinkroom skill or CLI capability is detected) — send per `references/destinations.md`.
-- **Leave it** — report the `$RUN_DIR` path and state it is a temporary location that does not survive reboot; nothing else is written.
+- **Leave it** — report the `$RUN_DIR` path and state it is workspace-local scratch that may be cleaned; nothing else is written.
 
 **Audience mismatch.** When the artifact was composed in the personal default and the user selects a destination that puts it in front of other people (ht-ml.app, Proof, Thinkroom — not Claude Artifact, which is private until the user shares it), offer once to re-render it for that audience per the compose-time reference before sending. Take their answer and proceed either way; never re-render unasked, and never block the send on it.
 
@@ -124,7 +124,7 @@ Detect destinations by capability — probe the agent's own toolset and session 
 
 **Improvement observations.** When composing the explainer surfaced things that could be better, route them by type once the destination is settled — offer, don't auto-fire. "Settled" means the artifact was sent, or the user declined, or the run stopped at a consent gate they didn't answer; in that last case the run ends there and these offers are skipped, like the non-interactive case above. Never raise them while any of the asks above is still open — the destination question, the audience re-render offer, or a publisher's consent gate.
 
-**User-runnable invocation rendering.** Only the user-run handoff below uses printed invocation syntax. Default to `/ce-polish`; use `$ce-polish` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
+**User-runnable invocation rendering.** Only the user-run handoff below uses printed invocation syntax. Default to `/ce-polish`; use `$ce-polish` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. On oh-my-pi (`omp`), use `/skill:ce-polish`. Render only the invocation as inline code and output one form only.
 
 - **New-capability ideas** — offer first; on acceptance invoke the `ce-ideate` skill via the platform's skill-invocation primitive, passing the observations as seed context. Do not merely tell the user to run it.
 - **Code-clarity findings** — offer first; on acceptance invoke the `ce-simplify-code` skill via the platform's skill-invocation primitive, passing the observations and the files they concern. Do not merely tell the user to run it.

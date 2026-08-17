@@ -1,10 +1,19 @@
 # `ce-strategy`
 
-> Create or maintain `STRATEGY.md` — a short, durable anchor that captures what the product is, who it serves, how it succeeds, and where the team is investing.
+> Create or maintain `STRATEGY.md`: what the product is, who it is for, how it succeeds, and where the team is investing.
 
-`ce-strategy` is the **upstream anchor** skill. It produces and maintains a single canonical document at the repo root (peer of `README.md`) that downstream skills read as grounding. The document is short and structured on purpose — good answers to a handful of sharp questions produce a better strategy than any amount of prose. This skill asks those questions, pushes back on weak answers, and writes the doc.
+`ce-strategy` is the **upstream anchor**. It writes one short document at the repo root, next to `README.md`. It is not a step in `/ce-ideate` → `/ce-brainstorm` → `/ce-plan` → `/ce-work`. Those skills read `STRATEGY.md` when it exists and weight their suggestions toward the active tracks and the stated approach. `ce-product-pulse` also reads it to seed the metrics it measures.
 
-The compound-engineering ideation chain is `/ce-ideate → /ce-brainstorm → /ce-plan → /ce-work`. `STRATEGY.md` sits **upstream of the chain** — `ce-ideate`, `ce-brainstorm`, and `ce-plan` all read it as grounding when it exists, weighting their suggestions toward the active tracks and stated approach. `ce-product-pulse` also reads it to seed the metrics that get measured.
+The doc is short on purpose. The skill grounds itself in what the repo already says the product is, asks a handful of sharp questions, pushes back on slogans and feature lists, and writes what you actually said.
+
+Skip this when you already know the one thing to build. That is `ce-ideate` (which directions), `ce-brainstorm` (what this needs to be), `ce-plan` (guardrails), or `ce-work` (build it).
+
+```text
+/ce-strategy                 /ce-ideate         /ce-brainstorm      /ce-plan             /ce-work
+Write the durable            "What's worth      "What does this     "What's needed       "Build it."
+anchor, then stay out         exploring?"        need to be?"        to accomplish
+of the loop.                                                         this?"
+```
 
 ---
 
@@ -12,108 +21,117 @@ The compound-engineering ideation chain is `/ce-ideate → /ce-brainstorm → /c
 
 | Question | Answer |
 |----------|--------|
-| What does it do? | Runs an interview with pushback rules, then writes/updates `STRATEGY.md` at the repo root |
-| When to use it | Starting a new product; updating direction; "what are we working on?"; before kicking off ideation if no strategy exists yet |
-| What it produces | `STRATEGY.md` with target problem, approach, persona, key metrics, tracks, optional milestones / non-goals / marketing |
-| What's next | `/ce-ideate`, `/ce-brainstorm`, `/ce-plan`, or `/ce-product-pulse` — all consult the doc as grounding |
+| What does it do? | Reads what the repo already says the product is, interviews you with pushback rules, stress-tests the answers, then writes or updates `STRATEGY.md` at the repo root |
+| When to use it | New product; adding a strategy doc to an existing repo; direction changed; "what are we working on?" has no written answer; a downstream skill flagged missing strategy grounding |
+| What it produces | `STRATEGY.md` with purpose, positioning, users, 3-5 key metrics, 2-4 tracks, boundaries, and optional milestones / brand. Frontmatter carries `name` and `last_updated`. |
+| What's next | `/ce-ideate` or `/ce-brainstorm` if nothing downstream has run yet. `/ce-product-pulse` if you want those metrics measured. |
 
 ---
 
 ## Example invocations
 
+An empty invoke follows the file. A section name or scope hint jumps to that part and leaves the rest untouched.
+
 ```text
-# Create STRATEGY.md through the full interview when none exists
+# No STRATEGY.md yet: interview the required sections, show a draft, offer one edit pass, then write the repo-root file
 /ce-strategy
 
-# Revisit one section without reopening the entire strategy
-/ce-strategy approach
+# File already exists: summarize what is on file in 3-5 lines, then ask which section to revisit
+/ce-strategy
 
-# Focus a section update on a specific question
+# Jump to one section. Other sections stay as written.
+/ce-strategy positioning
+/ce-strategy metrics
+/ce-strategy tracks
+
+# Narrower than a whole section
 /ce-strategy metrics for retention
 
-# Invoke without arguments on an existing strategy to choose sections interactively
-/ce-strategy
+# Rewrite the diagnosis after a direction change
+/ce-strategy purpose
 ```
 
-Prefer a section or scope hint for targeted maintenance; a bare invocation is intentionally broader when `STRATEGY.md` already exists.
+Prefer a section or scope hint for maintenance. A bare invoke on an existing file is the broader path: it asks which section to open.
 
 ---
 
 ## The Problem
 
-Most teams either don't have a strategy doc, or have one that's so long nobody reads it. Failure shapes:
+Most teams have no strategy doc, or have one so long nobody opens it.
 
-- **Missing entirely** — every new piece of work re-litigates "are we even working on the right thing?"
-- **Slogan, not strategy** — "we delight users" tells the agent (and humans) nothing actionable
-- **Goals dressed up as strategy** — "grow ARR by 30%" is a goal, not a guiding choice
-- **Feature lists in place of guiding policy** — "we're building X, Y, and Z" doesn't say *why*
-- **Stale and untouched** — the strategy doc was written once and forgotten; it now describes a product the team isn't building anymore
-- **Too long to scan** — a 20-page strategy nobody opens during day-to-day work doesn't anchor anything
+- Missing entirely: every new piece of work re-litigates whether you are working on the right thing
+- Slogan, not strategy: "we delight users" gives the agent (and humans) nothing to act on
+- A goal dressed as strategy: "grow ARR by 30%" is a target, not a guiding choice
+- A feature list in place of policy: "we're building X, Y, and Z" does not say why
+- Written once and left: the doc describes a product the team is no longer building
+- Too long to scan: a 20-page strategy does not get read during day-to-day work
 
-A good strategy doc is short, sharp, and read often. The hard part is producing one — most "write a strategy" prompts collapse into prose generation that papers over weak thinking.
+A useful strategy doc is short and opened often. A generic "write a strategy" prompt usually produces prose that hides weak thinking.
 
 ## The Solution
 
-`ce-strategy` runs an interview with explicit pushback rules:
+`ce-strategy` runs a repo-grounded interview with named pushback rules.
 
-- **Anchor, not plan** — strategy is what the product is and why; features belong in `ce-brainstorm`, schedules belong in the issue tracker
-- **Rigor in the questions, not the headings** — the section headers are plain English; the interview enforces the discipline
-- **Short is a feature** — the template is constrained; expansion is pushed back on
-- **Durable across runs** — re-runs update in place, preserving what's working and only revisiting weak sections
-- **Pushback rules per section** — each section has named anti-patterns and probe questions that push past slogans, goals-as-strategy, and feature lists
+- It reads the README, `CONCEPTS.md`, and `docs/` first, so the interview opens from a working model of the product instead of a blank page. Recent commits and PRs are read separately, as a signal of where attention has gone lately - useful for tracks, not for what the product is.
 
-Inspired by Richard Rumelt's *Good Strategy Bad Strategy* — specifically his kernel of diagnosis, guiding policy, and coherent action. The interview questions are designed to push past the patterns Rumelt calls "bad strategy."
+- Strategy is what the product is and why. Features belong in `ce-brainstorm`. Schedules belong in the issue tracker.
+- Section headers are plain English. The interview is where the discipline lives.
+- The template is constrained. Extra sections get pushback.
+- Re-runs update in place. Accurate sections stay; weak ones get the same pushback as a first write.
+- Each section has anti-patterns and probe questions that catch slogans, goals-as-strategy, and feature lists.
+
+The "Purpose / Positioning / Tracks" shape follows Richard Rumelt's kernel in *Good Strategy Bad Strategy*: diagnosis, guiding policy, and coherent action.
 
 ---
 
 ## What Makes It Novel
 
-### 1. Pushback discipline in the interview
+### Grounded in the repo, decided by you
 
-For each section, the skill asks the opening question, then applies named pushback rules — pushing past fluff, slogans, vanity goals, and feature lists. Two rounds of pushback per section maximum; if the answer is still weak after that, capture what the user gave and note the section is worth revisiting next run. The pushback is the core of the skill — without it, the interview becomes passive transcription.
+Before the first question the skill shows a three-to-five-line repo model - what it takes the product to be, who it seems to serve, where recent attention has gone - with sources named, and asks you to correct it. Evidence seeds the questions and sharpens the pushback ("the README says X; you just said Y - which is it?"). It never fills in a section on its own, and a burst of recent work in one area is offered as a question about tracks, not treated as the product's focus. A new or empty repo runs the interview ungrounded; that is a normal path.
 
-### 2. Updates in place — durable across runs
+### Pushback in the interview
 
-Re-running the skill on an existing `STRATEGY.md` doesn't rewrite from scratch. Phase 2 reads the existing doc, summarizes current state in 3-5 lines so the user sees what's on file, and asks which section to revisit (or jumps directly when the argument names a section). Sections the user confirms are still accurate are left untouched. The `last_updated` field in YAML frontmatter is updated to today. Strong sections aren't second-guessed; weak ones get the full pushback.
+For each section the skill asks the opening question, then applies that section's pushback rules. Two rounds maximum. If the answer is still weak, it captures what you gave and notes the section is worth another pass next run. Without that step the interview is just transcription.
 
-### 3. Read by downstream skills as grounding
+Required sections, in order: Purpose, Positioning, Users, Key metrics, Tracks, then Boundaries (always written, even if only to say nothing is named yet). Optional: Milestones, Brand - skipped when nothing came up. Unused optional sections are omitted, not left as empty headers. Metrics stay at 3-5. Tracks stay at 2-4.
 
-When `STRATEGY.md` exists at the repo root, downstream skills read it:
+On a first run, the filled draft is shown in chat and you get one edit pass before anything is written.
 
-- **`ce-ideate`** — codebase-scan grounding agent reads it; ideation weights toward strategy-aligned directions automatically
-- **`ce-brainstorm`** — Phase 1.1 constraint check reads it; product/scope decisions stay anchored to active tracks
-- **`ce-plan`** — repo-research-analyst reads it; plan flags decisions that pull away from active tracks or the stated approach
-- **`ce-product-pulse`** — first-run interview seeds product name and key metrics from the doc, then wires up data sources to actually measure those metrics
+### Stress test before the draft
 
-The doc is a peer of `README.md` (canonical, well-known location at the repo root) so the skills find it predictably.
+After the five required sections, the skill poses three to five concrete proposals aimed at the draft's fault lines - a tempting feature just off the approach, a second persona pulling the other way, a track that would starve another - chosen so your answer is not predictable from the draft. If the strategy already decides a proposal, it is confirmed. If it cannot, the approach or a track gets sharpened. Proposals you resist become Boundaries entries and feed a one-line "Resist a change when ..." test, so that section carries real content a downstream agent can apply.
 
-### 4. Rumelt-inspired structure
+### Updates in place
 
-The "Target problem / Our approach / Tracks" structure follows Rumelt's kernel: **diagnosis** (what's the situation, what's broken, what does it cost), **guiding policy** (the chosen approach, the strategic bet), **coherent action** (the active tracks of work that flow from the policy). The interview questions are designed to push past slogans toward this kernel.
+A second run does not start over. It reads the existing doc, summarizes it in 3-5 lines, checks it for drift against the repo and what has landed since `last_updated`, names any section that looks stale as a candidate, and either jumps to the section you named or asks which to revisit. The menu is Purpose; Positioning; Users; or Metrics, tracks, boundaries, or other. Sections you confirm are still accurate are left alone. `last_updated` is set to today.
 
-### 5. Bounded section count
+### Read by downstream skills
 
-The required template is five sections (Target problem, Our approach, Who it's for, Key metrics, Tracks). Three optional sections (Milestones, Not working on, Marketing) are available but pushed back on when they don't carry weight. The constraint is the feature — strategy that needs 12 sections isn't strategy.
+When `STRATEGY.md` is at the repo root:
 
-### 6. Frontmatter for staleness tracking
+- `ce-ideate` weights toward strategy-aligned directions
+- `ce-brainstorm` keeps product and scope decisions on the active tracks
+- `ce-plan` flags decisions that pull away from the tracks or the stated positioning, or land inside the stated boundaries
+- `ce-product-pulse` seeds product name and key metrics, then wires sources to measure them
 
-`STRATEGY.md` carries a `last_updated` field in YAML frontmatter. Downstream skills can flag the doc as potentially stale based on age; re-running the skill updates the timestamp.
+The skills work without the file. With it, they have a signal for what kind of work matters right now. `ce-ideate`, `ce-brainstorm`, `ce-plan`, and `ce-dogfood` read by section meaning rather than exact heading, and also pick up `PRODUCT.md` or `VISION.md` written by other tools; `ce-strategy` itself reads those as stated intent when grounding. `ce-product-pulse` is the exception: it reads `STRATEGY.md` only and takes metrics from its `## Key metrics` section by exact heading, so metrics kept elsewhere or under another heading do not reach the pulse.
+
+The skill does not compute metric values, update the issue tracker, prioritize a backlog, or write requirements or plans.
 
 ---
 
 ## Quick Example
 
-You're starting a new product and want a strategy doc before kicking off `ce-ideate`. You invoke `/ce-strategy`.
+You are adding a strategy doc to a repo you have worked in for a year. You run `/ce-strategy`. No file exists. The skill reads the README and docs, shows a short repo model ("a PR-review tool for engineering teams; recent work is mostly in the GitHub integration") and asks you to correct it, then starts the interview.
 
-The skill checks for an existing `STRATEGY.md` (none found) and announces "Strategy doc not found — let's write it." It reads `references/interview.md` and runs the interview in section order.
+Purpose: you answer "we help teams ship faster." That is a slogan, so the pushback asks whose teams, shipping what, and what "faster" means. You sharpen to engineering managers at 50-200 person companies cutting PR-review cycle time from days to hours.
 
-**Target problem.** "What problem are you solving and for whom?" You answer "we help teams ship faster." The pushback fires: that's a slogan. "Whose teams? Shipping what? What does 'faster' mean — saving time per task, fewer bugs, less coordination overhead?" You sharpen: "we help engineering managers at 50-200 person companies cut PR-review cycle time from days to hours." That's specific enough.
+Positioning: you answer "use AI." That is a tool, not a bet. The pushback asks what you are betting AI does here that the obvious alternative does not. You name the actual choice.
 
-**Our approach.** "What's the strategic bet — the choice that shapes everything else?" You answer "use AI." The pushback fires: that's a tool, not a bet. "What's the bet about AI specifically — that AI can review better than juniors? That AI can pre-process review concerns before humans see them? That review doesn't need humans at all?" You sharpen.
+The interview continues through Users, Key metrics, and Tracks - where the skill asks whether the recent GitHub work is a track or a push, and you say push. Then three proposals test the draft; you resist one ("a Slack bot for review nudges"), and it lands under Boundaries. You see the full draft, get one edit pass, and the file is written to `STRATEGY.md`.
 
-The interview proceeds through Who it's for, Key metrics, Tracks. Two rounds of pushback per section maximum. After all required sections are captured, the skill reads `references/strategy-template.md`, fills it in, presents the full draft in chat, offers one round of edits, then writes to `STRATEGY.md`.
-
-Phase 3 notes the doc is now in place and `ce-ideate`, `ce-brainstorm`, `ce-plan`, and `ce-product-pulse` will pick it up on their next run. Suggests `/ce-ideate` as a natural next step.
+The skill notes that `ce-ideate`, `ce-brainstorm`, and `ce-plan` will pick the file up on their next run, and suggests `ce-ideate` or `ce-brainstorm` if nothing downstream has run yet.
 
 ---
 
@@ -121,65 +139,47 @@ Phase 3 notes the doc is now in place and `ce-ideate`, `ce-brainstorm`, `ce-plan
 
 Reach for `ce-strategy` when:
 
-- You're starting a new product and want a strategy doc before kicking off ideation
-- The product direction has shifted and the existing strategy is stale
-- "What are we working on?" keeps coming up because the answer isn't documented anywhere
-- A specific section feels weak and you want to revisit it (`/ce-strategy approach`)
-- A downstream skill (`ce-ideate`, `ce-brainstorm`) flagged the absence of `STRATEGY.md` as missing grounding
+- You are starting a product and want an anchor before ideation
+- You are adopting the workflow in an existing repo and want the strategy written down
+- Direction has shifted and the existing file is stale
+- "What are we working on?" keeps coming up because the answer is not written down
+- One section is weak and you want to reopen just that part (`/ce-strategy positioning`)
+- `ce-ideate` or `ce-brainstorm` flagged the missing file as missing grounding
 
 Skip `ce-strategy` when:
 
-- The strategy is on file and still accurate — re-running adds noise without value
-- You're trying to plan a single feature → `/ce-brainstorm`
-- You're trying to schedule work → that's the issue tracker, not strategy
-- You want a roadmap with dates → strategy is direction; roadmaps are sequencing
+- The file is on disk and still accurate. Re-running adds noise.
+- You are shaping one feature → `/ce-brainstorm`
+- You are scheduling work. That is the issue tracker.
+- You want a dated roadmap. Strategy is direction. Sequencing lives elsewhere.
 
 ---
 
 ## Use as Part of the Workflow
 
-`ce-strategy` is upstream of the chain. The recommended sequence on a new product or major direction shift:
+`ce-strategy` sits above the loop. Recommended sequence on a new product or a major direction change:
 
 ```text
-/ce-strategy → /ce-ideate (consults STRATEGY.md) → /ce-brainstorm → /ce-plan → /ce-work
-                                                              ↑
-                                          all read STRATEGY.md as grounding
+/ce-strategy → /ce-ideate → /ce-brainstorm → /ce-plan → /ce-work
+                   ↑              ↑              ↑
+                   all read STRATEGY.md when it exists
 ```
 
-The downstream skills don't *require* `STRATEGY.md` — they work without it. But when the doc exists, the active tracks and stated approach pull ideation, brainstorming, and planning toward strategy-aligned directions automatically. When `STRATEGY.md` is absent, `ce-ideate` can still ground in the codebase, but it has no signal about what *kind* of work matters most right now.
+Downstream skills do not require the file. When it exists, the tracks and the positioning pull ideation, brainstorming, and planning toward aligned work. Without it, `ce-ideate` can still ground in the codebase, but it has no signal for what kind of work matters most right now.
 
-`ce-product-pulse` similarly seeds its first-run interview from `STRATEGY.md`'s key metrics — wiring up data sources to measure what the strategy says matters.
+`ce-product-pulse` seeds its first-run interview from the key metrics in `STRATEGY.md`.
 
 ---
 
 ## Use Standalone
 
-The skill is always invoked standalone — strategy isn't downstream of any other skill in the chain.
+This skill is always invoked on its own. Nothing in the loop produces `STRATEGY.md`.
 
-- **First run** — `/ce-strategy` (no `STRATEGY.md` exists)
-- **Targeted update** — `/ce-strategy approach` jumps directly to that section
-- **Open update** — `/ce-strategy` (file exists, no argument) asks which section(s) to revisit
+- First run: `/ce-strategy` (no file yet)
+- Targeted update: `/ce-strategy positioning` jumps to that section
+- Open update: `/ce-strategy` (file exists, no argument) asks which section to revisit
 
----
-
-## Output Artifact
-
-```text
-STRATEGY.md  (repo root, peer of README.md)
-```
-
-Sections (required unless noted):
-
-- **Target problem** — the diagnosis: what's broken, for whom, and what it costs
-- **Our approach** — the guiding policy: the strategic bet that shapes everything
-- **Who it's for** — the persona; specific enough that design decisions can reference it
-- **Key metrics** — what the product measures itself by
-- **Tracks** — coherent action: the active tracks of work
-- **Milestones** _(optional)_ — meaningful upcoming markers
-- **Not working on** _(optional)_ — explicit non-goals; useful when the team faces "should we do X?" pressure
-- **Marketing** _(optional)_ — positioning and messaging direction when relevant
-
-YAML frontmatter carries `last_updated: YYYY-MM-DD`. The doc is short by design — typically 1-2 pages, not a chapter book.
+The file is meant to be readable in under five minutes.
 
 ---
 
@@ -187,43 +187,44 @@ YAML frontmatter carries `last_updated: YYYY-MM-DD`. The doc is short by design 
 
 | Argument | Effect |
 |----------|--------|
-| _(empty)_ | First run if no `STRATEGY.md`; otherwise asks which section to revisit |
-| `<section name>` | e.g., `metrics`, `approach`, `tracks` — jumps to that section |
-| `<scope hint>` | e.g., "metrics for retention" — focuses the revisit |
+| _(empty)_ | No file: full interview, draft in chat, then write. File exists: summarize and ask which section to revisit. |
+| `<section name>` | Jump to that section and preserve the rest. Names include `metrics`, `positioning`, `tracks`, `purpose`, `users`, `boundaries`, plus the optional `milestones` and `brand`; older names (`approach`, `target problem`, `who it's for`, `not working on`, `marketing`) still resolve. |
+| `<scope hint>` | Focus a revisit, e.g. `metrics for retention` |
+
+Output: `STRATEGY.md` at the repo root (not under `docs/`). YAML frontmatter has `name` and `last_updated: YYYY-MM-DD`.
+
+Required sections: Purpose, Positioning, Users, Key metrics (3-5), Tracks (2-4), Boundaries. Optional: Milestones (external dates only), Brand. Files written with the older headings are read as-is and renamed in place on the next update. A `STRATEGY.md` in any other shape (hand-written, or from another tool) is read by meaning and updated in its own shape, never restructured into the template.
 
 ---
 
 ## FAQ
 
 **Why is the doc so short?**
-Because long strategy docs aren't read. The discipline forces sharp answers to a small number of questions. If you find yourself wanting more sections, the answer is usually "those belong in ce-brainstorm or the issue tracker, not in strategy."
+Long strategy docs are not read. The template forces short answers to a small set of questions. Extra sections usually belong in `ce-brainstorm` or the issue tracker.
 
 **What's the difference between strategy and a roadmap?**
-Strategy is direction (what we're doing and why). A roadmap is sequencing (what's coming when). Strategy lives in `STRATEGY.md`; roadmaps live in the issue tracker, planning tools, or whatever the team uses for scheduling. The skill explicitly stays in the strategy lane.
+Strategy is direction (what you are doing and why). A roadmap is sequencing (what comes when). This skill stays in the strategy lane.
 
 **What if my answers are weak?**
-The skill applies pushback rules per section — two rounds maximum. If the answer is still weak after that, the skill captures what you gave and notes the section is worth revisiting next run. Strategy is iterative; it doesn't have to be perfect on first write.
+Two rounds of pushback per section, then it records what you gave and marks the section for a later pass. The first write does not have to be final.
 
-**Why does the doc go at the repo root?**
-So downstream skills can find it predictably without configuration. Like `README.md`, `STRATEGY.md` is a canonical, well-known location.
+**Why does the file go at the repo root?**
+So downstream skills can find it without configuration, the same way they find `README.md`.
 
 **What if I don't want downstream skills to read it?**
-They will if it exists. The behavior is intentional — anchoring the chain to a stated strategy is the value. If you want to suppress this, delete the doc; you can recreate it later.
+They will if the file exists. That is the point of the anchor. Delete the file to suppress it; you can recreate it later.
 
 **Is it useful for a non-software product?**
-Yes — the structure (target problem, approach, persona, metrics, tracks) generalizes to any product. The pushback rules apply equally to a SaaS feature roadmap, a consulting practice, or a non-profit initiative.
+The same sections (purpose, positioning, users, metrics, tracks, boundaries) apply to a consulting practice or a non-profit initiative as well as a SaaS product.
 
----
-
-## Learn More
-
-The "Target problem / Our approach / Tracks" structure is informed by Richard Rumelt's *Good Strategy Bad Strategy* — specifically his kernel of diagnosis, guiding policy, and coherent action. The interview questions in `references/interview.md` are designed to push past the patterns Rumelt calls "bad strategy": fluff, goals dressed up as strategy, and feature lists in place of a guiding choice. The book is the recommended follow-up reading if the distinction between a slogan and a strategy isn't yet sharp.
+**Does it compute the current metric values?**
+No. It records which metrics matter and, when you know, where they live. `ce-product-pulse` is the skill that queries sources.
 
 ---
 
 ## See Also
 
-- [`ce-ideate`](./ce-ideate.md) — reads `STRATEGY.md` as grounding for ideation
-- [`ce-brainstorm`](./ce-brainstorm.md) — reads it for constraint awareness during scope work
-- [`ce-plan`](./ce-plan.md) — reads it; flags plan decisions that pull away from active tracks
-- [`ce-product-pulse`](./ce-product-pulse.md) — seeds first-run setup from the strategy's key metrics
+- [`ce-ideate`](./ce-ideate.md): reads `STRATEGY.md` as grounding for ideation
+- [`ce-brainstorm`](./ce-brainstorm.md): reads it for constraint awareness during scope work
+- [`ce-plan`](./ce-plan.md): reads it and flags plan decisions that pull away from active tracks
+- [`ce-product-pulse`](./ce-product-pulse.md): seeds first-run setup from the strategy's key metrics

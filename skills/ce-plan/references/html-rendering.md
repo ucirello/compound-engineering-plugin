@@ -10,11 +10,10 @@ content rendered by different skills shares the same HTML principles.
 
 The HTML artifact is the *only* artifact the skill produces for that run —
 output mode is exclusive (markdown OR HTML, never both). Downstream
-consumers that read HTML today (`ce-work`, human readers) do so directly;
-the agent-consumability rules below make that work. `ce-doc-review` is
-*not* currently an HTML consumer — its mutation mechanics are markdown-only,
-so the ce-plan handoff gates the 5.3.8 doc-review pass to `OUTPUT_FORMAT=md`
-runs and skips it for HTML.
+consumers that read HTML today (`ce-doc-review`, `ce-work`, human readers) do
+so directly; the agent-consumability rules below make that work. `ce-doc-review`
+also applies fixes in the artifact's native format while preserving its
+existing structure.
 
 ## Hard invariants
 
@@ -103,14 +102,14 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj workspace root`, with `PWD` fallback).
+1. Workspace root (resolve via `jj workspace root`, with current-directory fallback).
 2. `docs/DESIGN.md`.
 3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
 Workspace-root only — do not fall through to another workspace. Users
-working from a workspace who want HTML defaults can add DESIGN.md to that
+working from a workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
@@ -311,8 +310,8 @@ chip) is being styled.
 
 Status chips, ID chips, and metric pills in the same row share one shape
 — same border-radius, border weight, and fill treatment. Differentiate
-categories only by the chip's overall fill/text color (applied to the
-whole pill, like a soft-tint badge), never by an accent on one edge. A
+categories only by the chip's overall fill/text color applied to the
+whole pill, never by an accent on one edge. A
 colored stripe or arc on a single side of a pill reads as broken and
 asymmetric — as if a border half-failed to render — so avoid it. The same
 holds for any element, not just chips: differentiate by a full tint, not
@@ -448,7 +447,7 @@ labeled arrow, each shape edge, and each text label:
 - **Avoid long curves that traverse the diagram** to connect a
   component on one side to one on the other. If A and D need a labeled
   connection across a multi-component layout, prefer reordering boxes
-  so A and D are adjacent, numbered step badges next to each
+  so A and D are adjacent, numbered step markers next to each
   participant that the caption ties together, or a short
   labeled-channel notation — rather than one curve crossing multiple
   unrelated elements.
@@ -555,11 +554,10 @@ fine when the content suggests them.
 
 ## Agent-consumability rules
 
-Downstream agents that read HTML today (`ce-work`, a skill re-reading its
-own prior artifact on a resume run, future consumers) reason over the HTML
-as text — the way they reason over markdown, not via DOM extraction or a
-script-style parse. `ce-doc-review` is not a current HTML consumer (see
-opening note).
+Downstream agents that read HTML today (`ce-doc-review`, `ce-work`, a skill
+re-reading its own prior artifact on a resume run, future consumers) reason
+over the HTML as text — the way they reason over markdown, not via DOM
+extraction or a script-style parse.
 
 These rules are why such a consumer can locate one item (a single
 requirement, unit, idea, or other ID-bearing entry) and reason over it from

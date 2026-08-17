@@ -1,12 +1,16 @@
 #!/bin/bash
 
-# Compatibility entrypoint for JJ experiment workspace management.
+# JJ Experiment Workspace Manager
+# Creates, cleans up, and manages isolated workspaces for optimization experiments.
 #
 # Usage:
 #   experiment-worktree.sh create <spec_name> <exp_index> <base_bookmark> [shared_file ...]
 #   experiment-worktree.sh cleanup <spec_name> <exp_index>
 #   experiment-worktree.sh cleanup-all <spec_name>
 #   experiment-worktree.sh count
+#
+# Workspaces are created under: .tmp/rocketclaw/ce-optimize/workspaces/
+# Temporary bookmarks are named: optimize-exp/<spec>/exp-<NNN>
 
 set -euo pipefail
 
@@ -23,6 +27,19 @@ WORKSPACE_ROOT=$(jj workspace root 2>/dev/null) || {
 CANONICAL_ROOT=$(cd "$WORKSPACE_ROOT" && pwd -P)
 REPO_KEY=$(printf '%s' "$CANONICAL_ROOT" | cksum | cut -d ' ' -f 1)
 MANAGED_DIR="$CANONICAL_ROOT/.tmp/rocketclaw/ce-optimize/workspaces/$REPO_KEY"
+
+ensure_managed_dir() {
+  local path="$CANONICAL_ROOT"
+  local component
+  for component in .tmp rocketclaw ce-optimize workspaces "$REPO_KEY"; do
+    path="$path/$component"
+    if [[ -L "$path" ]]; then
+      echo -e "${RED}Error: Refusing symlinked scratch path component: $path${NC}" >&2
+      return 1
+    fi
+    mkdir -p "$path"
+  done
+}
 
 validate_spec_name() {
   local spec_name="${1:?Error: spec_name required}"
@@ -63,6 +80,7 @@ experiment_bookmark() {
   printf 'optimize-exp/%s/exp-%s\n' "$spec_name" "$padded_index"
 }
 
+# Create an isolated experiment workspace and change.
 create_workspace() {
   local spec_name="${1:?Error: spec_name required}"
   local exp_index="${2:?Error: exp_index required}"
@@ -71,7 +89,7 @@ create_workspace() {
   validate_spec_name "$spec_name"
 
   local padded_index
-  padded_index=$(printf '%03d' "$exp_index")
+  padded_index=$(printf "%03d" "$exp_index")
   local name
   name=$(workspace_name "$spec_name" "$padded_index")
   local bookmark
@@ -89,21 +107,22 @@ create_workspace() {
     return 1
   fi
 
-  mkdir -p "$MANAGED_DIR"
-  jj workspace add --name "$name" -r "$base_bookmark" "$workspace_path" >/dev/null
-
   if jj bookmark list "$bookmark" -T 'name ++ "\n"' 2>/dev/null | grep -Fxq "$bookmark"; then
-    jj -R "$workspace_path" bookmark set "$bookmark" -r @ >/dev/null
-  else
-    jj -R "$workspace_path" bookmark create "$bookmark" -r @ >/dev/null
+    echo -e "${RED}Error: Temporary experiment bookmark already exists: $bookmark${NC}" >&2
+    echo -e "${RED}Clean up or preserve that change explicitly before rerunning this experiment.${NC}" >&2
+    return 1
   fi
 
-  for file in "$WORKSPACE_ROOT"/.env*; do
-    if [[ -f "$file" ]]; then
+  ensure_managed_dir
+  jj workspace add --name "$name" -r "$base_bookmark" "$workspace_path" >/dev/null
+  jj -R "$workspace_path" bookmark create "$bookmark" -r @ >/dev/null
+
+  for f in "$WORKSPACE_ROOT"/.env*; do
+    if [[ -f "$f" ]]; then
       local basename
-      basename=$(basename "$file")
+      basename=$(basename "$f")
       if [[ "$basename" != ".env.example" ]]; then
-        cp "$file" "$workspace_path/$basename"
+        cp "$f" "$workspace_path/$basename"
       fi
     fi
   done
@@ -125,15 +144,16 @@ cleanup_workspace() {
   local spec_name="${1:?Error: spec_name required}"
   local exp_index="${2:?Error: exp_index required}"
   validate_spec_name "$spec_name"
+
   local padded_index
-  padded_index=$(printf '%03d' "$exp_index")
+  padded_index=$(printf "%03d" "$exp_index")
   local name
   name=$(workspace_name "$spec_name" "$padded_index")
   local bookmark
   bookmark=$(experiment_bookmark "$spec_name" "$padded_index")
   local workspace_path="$MANAGED_DIR/$name"
 
-  local registered_path registered_canonical expected_canonical revision_id=""
+  local registered_path registered_canonical expected_canonical change_id=""
   if registered_path=$(registered_workspace_path "$name"); then
     registered_canonical=$(canonical_path "$registered_path") || return 1
     expected_canonical=$(canonical_path "$workspace_path") || return 1
@@ -141,12 +161,12 @@ cleanup_workspace() {
       echo -e "${RED}Error: Refusing cleanup because the registered workspace path differs from the managed path${NC}" >&2
       return 1
     fi
-    revision_id=$(jj -R "$registered_canonical" log -r @ --no-graph -T change_id 2>/dev/null || true)
+    change_id=$(jj -R "$registered_canonical" log -r @ --no-graph -T 'change_id ++ "\n"' 2>/dev/null || true)
     jj bookmark delete "$bookmark" >/dev/null 2>&1 || true
     jj workspace forget "$name" >/dev/null
     rm -rf -- "$registered_canonical"
-    if [[ -n "$revision_id" ]] && [[ -z "$(jj bookmark list -r "$revision_id" -T 'name ++ "\n"' 2>/dev/null)" ]]; then
-      jj abandon "$revision_id" >/dev/null 2>&1 || true
+    if [[ -n "$change_id" ]] && [[ -z "$(jj bookmark list -r "$change_id" -T 'name ++ "\n"' 2>/dev/null)" ]]; then
+      jj abandon "$change_id" >/dev/null 2>&1 || true
     fi
   elif [[ -e "$workspace_path" ]]; then
     echo -e "${RED}Error: Refusing to remove an unregistered path: $workspace_path${NC}" >&2
@@ -193,6 +213,7 @@ count_workspaces() {
   printf '%s\n' "$count"
 }
 
+# Main
 main() {
   local command="${1:-help}"
 
@@ -213,7 +234,7 @@ main() {
       count_workspaces
       ;;
     help)
-      cat <<'EOF'
+      cat << 'EOF'
 JJ Experiment Workspace Manager
 
 Usage:
@@ -221,6 +242,12 @@ Usage:
   experiment-worktree.sh cleanup <spec_name> <exp_index>
   experiment-worktree.sh cleanup-all <spec_name>
   experiment-worktree.sh count
+
+Commands:
+  create       Create an isolated experiment workspace and change
+  cleanup      Forget and remove one managed experiment workspace
+  cleanup-all  Forget and remove all managed experiment workspaces for a spec
+  count        Count managed experiment workspaces
 EOF
       ;;
     *)

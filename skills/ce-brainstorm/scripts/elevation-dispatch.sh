@@ -103,9 +103,16 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-# The prompt is already in a workspace-local per-run directory, so the internal
-# atomic log may use mktemp there without escaping to OS-global temp.
-PEERLOG="$(mktemp "$HANDOFF_DIR/elevation-peer-XXXXXX")"
+# Reserve the private log beside the prompt without consulting host scratch settings.
+PEERLOG=""
+for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  candidate="$HANDOFF_DIR/elevation-peer-$$-$i"
+  if (umask 077; set -C; : > "$candidate") 2>/dev/null; then
+    PEERLOG="$candidate"
+    break
+  fi
+done
+[ -n "$PEERLOG" ] || { log "cannot reserve peer log — degrading to inline"; exit 0; }
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a

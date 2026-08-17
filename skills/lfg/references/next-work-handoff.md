@@ -70,10 +70,7 @@ the offer is optional continuity, not another LFG step.
 Only after explicit acceptance, resolve `ce-handoff` against the host's
 available-skills list and invoke `create` with a compact, labeled next-work
 brief. LFG owns the recommendation; do not ask `ce-handoff` to rediscover or
-rank candidates. Compose any transient handoff payload under the repository's
-`.tmp/` directory and remove it after `ce-handoff` accepts it. The project's
-local handoff syntax and conventions take precedence; never require a fixed
-handoff message. Include:
+rank candidates. Include:
 
 - **Next-session objective:** brainstorm one coherent next area and produce a
   requirements-only unified plan.
@@ -84,7 +81,7 @@ handoff message. Include:
 - **Relationship to completed work:** the explicit depends-on, enables, shares,
   or independent relationship.
 - **Actual delivery state:** what finished and what remains in the current tail,
-  such as implemented, PR open, CI decided, or not merged.
+  such as implemented, changes recorded, PR open, CI decided, or not merged.
 - **Carry-forward decisions:** only prior decisions that constrain the next
   area.
 - **Assumptions to revalidate:** provisional relationships or facts that the

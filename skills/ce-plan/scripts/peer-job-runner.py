@@ -58,10 +58,10 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  ROCKETCLAW_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw)
-  ROCKETCLAW_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
-  ROCKETCLAW_PEER_IDLE_SECS         idle window, no out.log growth (240)
-  ROCKETCLAW_PEER_HARD_SECS         hard cap on worker wall clock
+  ROCKETCLAW_PEER_JOBS_ROOT base dir (<workspace>/.tmp/rocketclaw)
+  ROCKETCLAW_WORK_RUNS_ROOT parent ce-work dir containing all <run-id>/ dirs
+  ROCKETCLAW_PEER_IDLE_SECS idle window, no out.log growth (240)
+  ROCKETCLAW_PEER_HARD_SECS hard cap on worker wall clock
                             (default: max(1230, ROCKETCLAW_CROSS_MODEL_HARD_SECS+30);
                             an explicit value always wins)
   ROCKETCLAW_CROSS_MODEL_HARD_SECS when ROCKETCLAW_PEER_HARD_SECS is unset, widens the
@@ -110,7 +110,7 @@ POSIX path is behaviorally unchanged:
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
   jobs root defaults under the current JJ workspace's `.tmp\\rocketclaw`
-            directory, with the current directory as the non-JJ fallback.
+            directory, with the physical current directory as the non-JJ fallback.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -141,10 +141,12 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
+
+
 def _workspace_root() -> str:
     try:
         result = subprocess.run(
-            ["jj", "workspace", "root"],
+            ["jj", "--ignore-working-copy", "workspace", "root"],
             capture_output=True,
             text=True,
             check=False,
@@ -219,10 +221,24 @@ def jobs_root_base() -> str:
     return os.path.abspath(DEFAULT_ROOT)
 
 
+def candidate_jobs_root_bases() -> list:
+    """Return the configured root or the workspace-local default root."""
+    configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
+    if configured:
+        return [os.path.abspath(configured)]
+    return [os.path.abspath(DEFAULT_ROOT)]
+
+
 def skill_runs_root(skill: str) -> str:
     if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
         return os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])
     return os.path.join(jobs_root_base(), skill)
+
+
+def candidate_skill_runs_roots(skill: str) -> list:
+    if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
+        return [os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])]
+    return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 
 def _env_num(name: str, default: float, conv, *, allow_zero: bool = False):
@@ -832,14 +848,14 @@ def resolve_job_dir(ref: str, skill=None) -> str:
     if skill is not None:
         if not _is_safe_token(skill):
             raise RunnerError(f"invalid skill: {skill!r}")
-        search_root = skill_runs_root(skill)
-        patterns = [os.path.join(search_root, "*", "jobs", ref)]
+        search_roots = candidate_skill_runs_roots(skill)
+        patterns = [os.path.join(root, "*", "jobs", ref) for root in search_roots]
     else:
-        search_root = jobs_root_base()
-        patterns = [os.path.join(search_root, "*", "*", "jobs", ref)]
+        search_roots = candidate_jobs_root_bases()
+        patterns = [os.path.join(root, "*", "*", "jobs", ref) for root in search_roots]
     matches = sorted({match for pattern in patterns for match in glob.glob(pattern)})
     if not matches:
-        raise RunnerError(f"job not found under {search_root}: {ref}")
+        raise RunnerError(f"job not found under {', '.join(search_roots)}: {ref}")
     if len(matches) > 1:
         raise RunnerError(f"ambiguous job id {ref}: {len(matches)} matches; pass the job dir path")
     return matches[0]

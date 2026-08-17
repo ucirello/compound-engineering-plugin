@@ -2,7 +2,7 @@
 
 Zero model cost. Everything here reads files that already exist on disk. Do not run the harness in this phase — Phase 2 owns the first paid runs (`references/noise-floor.md`).
 
-An archive is usually an order of magnitude larger than the experiment you can afford this week, often leaving more evidence than any affordable deliberate sample sitting unread.
+An archive is usually an order of magnitude larger than the experiment you can afford this week. In the engagement this method came from, 745 archived runs were on disk and 458 carried usable traces — more evidence than any deliberate sample, sitting unread.
 
 ## What the archive must contain
 
@@ -42,14 +42,14 @@ Derive `phase_trace` from **artifacts, not claims**. A phase fired if the trace 
 
 **Tokens per minute is the metric that separates working from stalling.** `output_tokens / wall_clock_min`. Compute it for every run and look for bimodality before looking at anything else.
 
-Look for separated healthy and failing bands rather than importing fixed thresholds. A run burning hours at a much lower token rate is waiting rather than thinking hard — the prose may have told it a second party would respond. Duration alone cannot show this: a long successful run and a long stalled run look identical until you divide.
+In the engagement, healthy cells ran 10-12k tokens/min; every failing cell sat at 1.5-3.8k. A run burning hours at 2k tok/min is not thinking hard, it is waiting — the prose told it a second party would respond. Duration alone cannot show this: a long successful run and a long stalled run look identical until you divide.
 
 Treat those bands as the shape to look for, not as thresholds to import. Find your own corpus's two clusters, then read the gap.
 
 **The two booleans the spine requires, derived independently:**
 
 ```
-task_done       = the run's expected deliverable exists (artifact on disk, JJ change, provider review request, file changed)
+task_done       = the run's expected deliverable exists (artifact on disk, recorded JJ change, PR, file changed)
 process_followed = every required phase appears in phase_trace, in spine order
 ```
 
@@ -69,7 +69,7 @@ Apply in order. First match wins. `broken` is first so that a harness fault can 
 | 6 | `ran-but-no-marker` | substantial trace, no marker, no hand-off language — ambiguous, keep the bucket rather than forcing it |
 | 7 | `bail-early` | trace ends inside the first phase or two |
 
-Report the `broken` count as its own number every time you report a rate. Excluding broken runs can falsify an apparently clean relationship manufactured by those runs clustering in one cell (see Confounds).
+Report the `broken` count as its own number every time you report a rate. In the engagement 20% of usable-looking runs were broken, and excluding them falsified the first headline finding — an apparently clean monotonic relationship between reasoning effort and completion, which was the broken runs clustering in one cell (see Confounds).
 
 ## Halt language in the final message
 
@@ -90,11 +90,11 @@ These are **evidence that the run stopped, not proof of why.** A match tells you
 
 ## Confounds that fool careful analysts
 
-Run each rule-out before reporting the effect.
+Each of these was believed by someone competent before being ruled out. Run the rule-out before reporting the effect.
 
 | Apparent finding | Why it is suspect | Rule it out by |
 |---|---|---|
-| "The harness is timing out" | the cheapest explanation, and it makes the corpus innocent | comparing durations. A timeout hypothesis requires failing runs to reach the configured limit; failures that end earlier than successes indicate behavior, not that limit |
+| "The harness is timing out" | the cheapest explanation, and it makes the corpus innocent | comparing durations. Timed-out runs are **longer** than successes. In the engagement failures averaged 48 min against 88 for successes — shorter, so the timeout hypothesis died. Failing *early* is a behavior, not a limit |
 | "More helper dispatches cause success" | `helper_dispatches` is a **collider**: it measures how far the run got. A run that stopped in phase 2 cannot dispatch phase 5's helpers | never reading it as a cause. Use it as a position estimate. If you want the causal claim, it needs a build that changes dispatch behavior and a Phase 2 comparison |
 | A clean dose-response across a setting | `broken` runs cluster by cell (one config, one date range, one machine), manufacturing the gradient | re-running the cross-tab with `broken` excluded. If the effect vanishes, it was never there. Also check whether exclusions land evenly across arms |
 | "This model is worse at the task" | model identity and workload are often confounded in an archive nobody designed | checking whether the arms ran the *same* task list. Unequal task mixes make any per-model rate meaningless |
@@ -109,7 +109,7 @@ Cross-tabulate `outcome` against, at minimum:
 2. **settings** — reasoning effort, temperature, context budget, whatever the harness varies
 3. **terminal phase** — the last entry in `phase_trace`, i.e. where the run died
 
-Read the third one against the first two. A phase boundary whose failure rate separates model or settings cells localizes the defect without first reading the whole corpus, turning Phase 3 from a broad sweep into a targeted read.
+Read the third one against the first two. In the engagement, model identity explained roughly 3x the variance that reasoning-effort settings did, and the failing models died at **one specific phase boundary** 38-58% of the time while succeeding models died there 0-8%. That single cross-tab localized the defect without reading a line of corpus prose, and it turned Phase 3's audit from a 31-skill sweep into a targeted read.
 
 Watch cell counts. A 3-of-4 cell is not a rate; label small cells rather than ranking them. If every cell is small, the stratification's output is a hypothesis list, which is still the correct output of this phase.
 

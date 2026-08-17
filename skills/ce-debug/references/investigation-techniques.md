@@ -78,13 +78,13 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use JJ's bisection runner to find the breaking change:
+When a bug is a regression ("it worked before"), use JJ's binary search to find the first bad revision. Supply a revset range whose heads are bad and whose ancestors outside the range are good:
 
 ```bash
-jj bisect run -r '<known-good-revision>::@' <test-command>
+jj bisect run --range '<known-good-revision>..<bad-revision>' -- <test-command>
 ```
 
-The command should exit 0 for good revisions and non-zero for bad revisions. JJ records no checkout state to reset; inspect the reported boundary change and keep the working-copy change intact.
+JJ directly edits each candidate revision into the current working copy and restores the original working copy when the run finishes. The test command must exit 0 for good, 125 to skip a revision, 127 to abort because the command is unavailable, and any other non-zero status for bad. For manual testing, pass a shell as the command and exit it with the corresponding status after each candidate.
 
 ---
 
@@ -273,7 +273,7 @@ agent-browser fill @ref "text"    # fill a form field
 agent-browser snapshot -i         # capture state after interaction
 
 # Save visual evidence
-agent-browser screenshot bug-evidence.png
+agent-browser screenshot <scratch-base>/bug-evidence.png
 ```
 
 **Port detection:** If your in-context project instructions explicitly state the dev-server port, use it (don't grep instruction prose for a port — it's false-positive-prone); otherwise check `package.json` dev scripts, then `.env` files, falling back to `3000`.

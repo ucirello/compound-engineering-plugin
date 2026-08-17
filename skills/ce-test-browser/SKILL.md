@@ -4,14 +4,14 @@ description: Run browser tests for pages affected by the current JJ change stack
 argument-hint: "[PR number, revision, 'current', or --port PORT]"
 ---
 
-# Browser Test Skill
+# RocketClaw Browser Test Skill
 
 Run end-to-end browser tests on pages affected by a PR or JJ revision using the best approved browser driver available in the active harness.
 
 ## Modes
 
 - **Manual (default):** the user controls the dev server. When the fallback driver is `agent-browser`, ask whether to run headed or headless.
-- **Pipeline (`mode:pipeline`):** invoked by LFG or another automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and visibility prompts (step 6). It still uses the preferred port that step 4 computes.
+- **Pipeline (`mode:pipeline`):** invoked by RocketClaw automation. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides the free-port scan (step 4), dev-server startup (step 5), and visibility prompts (step 6). It still uses the preferred port that step 4 computes.
 
 ## Browser Driver Policy
 
@@ -36,7 +36,7 @@ Apply the Browser Driver Policy above and record the selected driver. This also 
 gh pr view [number] --json files -q '.files[].path'
 ```
 
-**If 'current' or empty:**
+**If `current` or empty:**
 ```bash
 jj diff --from 'fork_point(main@origin | @)' --to @ --name-only
 ```
@@ -112,7 +112,7 @@ Visibility is independent from unattended execution:
 
 - **Host-native integrated browser:** keep its normal integrated surface visible and non-blocking so the user can watch progress when useful. Do not repeatedly steal focus as routes change. This applies in both manual and pipeline modes.
 - **`agent-browser` fallback, pipeline mode:** run headless without asking.
-- **`agent-browser` fallback, manual mode:** ask the user whether to run headed or headless using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options in chat only when no blocking tool exists in the harness or the call errors. Never silently skip the question:
+- **`agent-browser` fallback, manual mode:** ask the user whether to run headed or headless with RocketClaw's blocking question capability. If that capability must be discovered or loaded first, do so. Fall back to presenting options in chat only when no blocking capability exists or the call errors, not merely because discovery is required. Never silently skip the question:
 
   ```
   Do you want to watch the browser tests run?
@@ -136,7 +136,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. When screenshots must be materialized, resolve `<workspace-root>` with `jj workspace root` and create a collision-resistant run directory under `<workspace-root>/.tmp/rocketclaw/ce-test-browser/`; keep it out of the JJ working-copy change. When a later workflow needs durable evidence, copy only that evidence to its owned artifact location. Otherwise in-app evidence is sufficient.
 
 ### 8. Human Verification (When Required)
 
@@ -150,7 +150,7 @@ Pause for human input when testing touches flows that require external interacti
 | SMS | "Verify you received the SMS code" |
 | External APIs | "Confirm the [service] integration is working" |
 
-Ask the user (using the platform's question tool, or present numbered options and wait):
+Ask the user with RocketClaw's blocking question capability, or present numbered options and wait when that capability is unavailable:
 
 ```
 Human Verification Needed
@@ -185,7 +185,7 @@ When a test fails (**pipeline mode:** do not ask how to proceed — capture the 
    2. Skip - continue testing other pages
    ```
 
-3. **If "Fix now":** investigate, propose a fix, apply, re-run the failing test
+3. **If "Fix now":** investigate, propose a fix, apply, and re-run the failing test. Keep the fix in the tested JJ scope. Do not add generated-by text or creator, model, provider, tool, agent, runtime, workflow, or co-author attribution.
 4. **If "Skip":** log as skipped, continue
 
 ### 10. Test Summary
@@ -195,7 +195,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [revision]
+**Test Scope:** PR #[number] / [JJ revision]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -223,14 +223,14 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current JJ change stack (auto-detects port)
+# Test the current JJ change stack (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
 /ce-test-browser 847
 
-# Test specific revision
-/ce-test-browser feature/new-dashboard
+# Test a specific JJ revision
+/ce-test-browser <revision>
 
 # Test on a specific port
 /ce-test-browser --port 5000

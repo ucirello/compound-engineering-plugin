@@ -38,7 +38,6 @@ import re
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import uuid
@@ -75,8 +74,10 @@ RELATIONSHIP_DEPENDENT = "dependent"
 RELATIONSHIP_INDEPENDENT = "independent"
 RELATIONSHIP_PROBE_ERROR = "probe-error"
 BASE_REF_CURRENT = "current"
-BASE_REF_STALE = "stale"
+BASE_REF_RACE = "race"
+BASE_REF_MERGEABILITY_PENDING = "mergeability-pending"
 BASE_REF_PROBE_ERROR = "probe-error"
+BASE_REF_LEGACY_STALE = "stale"
 
 # First judgment point for an incomplete review lifecycle. The agent may extend once to 1800s when
 # concrete prior-round timing supports it; the skill contract owns that semantic decision.
@@ -250,6 +251,31 @@ def _replace_atomic(src, dst):
             time.sleep(_WIN_RETRY_SECONDS)
 
 
+def _write_json_atomic(path, value, indent=None):
+    """Write JSON through an exclusively reserved sibling, then replace atomically."""
+    parent = os.path.dirname(path)
+    for _ in range(16):
+        candidate = os.path.join(parent, f".atomic-{uuid.uuid4().hex}")
+        try:
+            fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            continue
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(value, f, indent=indent)
+                f.flush()
+                os.fsync(f.fileno())
+            _replace_atomic(candidate, path)
+            return
+        except BaseException:
+            try:
+                os.unlink(candidate)
+            except FileNotFoundError:
+                pass
+            raise
+    raise RuntimeError(f"could not reserve atomic sibling for {path}")
+
+
 class _WatchSuperseded(Exception):
     """Internal control flow: this watch lost ownership and must unwind immediately."""
 
@@ -270,7 +296,7 @@ def _iso(dt):
 
 
 def _run(cmd):
-    return subprocess.run(cmd, capture_output=True, text=True)
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
 
 
 def _run_checked(cmd, label):
@@ -322,22 +348,67 @@ def _host_args(host):
     return ["--hostname", host] if host else []
 
 
-def fetch_base_ref(owner, name, ref, pr_oid, host=None):
-    """Bind the PR object's cached base OID to the repository's current exact branch ref.
+def _valid_oid(value):
+    return isinstance(value, str) and bool(
+        re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", value))
 
-    `mergeStateStatus` and `baseRefOid` are fields on one PR-object read. They can lag the live
-    branch ref together, so neither is independent freshness evidence. Probe uncertainty is a
-    first-class fail-closed result rather than a fallback to the cached OID.
+
+def fetch_pr_merge_identity(pr, owner, name, host=None):
+    """Read mergeability and the identities it was computed from in one GraphQL observation."""
+    query = """
+query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){ pullRequest(number:$pr){
+    mergeable mergeStateStatus headRefOid baseRefOid baseRefName viewerCanUpdateBranch
+    baseRef { target { oid } }
+    potentialMergeCommit { oid parents(first:2) { nodes { oid } } }
+  } }
+}"""
+    r = _run(["gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}",
+              "-f", f"repo={name}", "-F", f"pr={pr}", "-f", f"query={query}"])
+    if r.returncode != 0:
+        return None
+    try:
+        value = json.loads(r.stdout)["data"]["repository"]["pullRequest"]
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def fetch_base_ref(owner, name, ref, merge_identity, host=None):
+    """Bind GitHub's mergeability observation to an independently probed current base ref.
+
+    `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
+    PR's `baseRef.target.oid` and an independent exact-ref read through GitHub; a usable generated test merge must then
+    name that base and the observed PR head as its two parents. Some valid private-repository OAuth
+    sessions return 404 from the REST exact-ref endpoint, so that response falls back to a separate
+    authenticated GitHub GraphQL exact-ref query.
     """
+    historical_oid = (merge_identity or {}).get("baseRefOid")
+    head_oid = (merge_identity or {}).get("headRefOid")
+    mergeable = (merge_identity or {}).get("mergeable")
+    merge_state_status = (merge_identity or {}).get("mergeStateStatus")
+    graphql_oid = (((merge_identity or {}).get("baseRef") or {}).get("target") or {}).get("oid")
+    potential_merge = (merge_identity or {}).get("potentialMergeCommit")
+    merge_commit_oid = potential_merge.get("oid") if isinstance(potential_merge, dict) else None
+    merge_parent_oids = (((potential_merge or {}).get("parents") or {}).get("nodes")
+                         if isinstance(potential_merge, dict) else None)
+    if isinstance(merge_parent_oids, list):
+        merge_parent_oids = [node.get("oid") if isinstance(node, dict) else None
+                             for node in merge_parent_oids]
+    else:
+        merge_parent_oids = []
     base = {
         "host": host or "github.com",
         "repository": f"{owner}/{name}",
         "ref": ref,
         "oid": None,
-        "pr_oid": pr_oid,
-        "freshness": BASE_REF_PROBE_ERROR,
+        "graphql_oid": graphql_oid,
+        "historical_oid": historical_oid,
+        "merge_commit_oid": merge_commit_oid,
+        "merge_parent_oids": merge_parent_oids,
+        "identity": BASE_REF_PROBE_ERROR,
     }
-    if not ref or not pr_oid:
+    if not ref:
         return base
     encoded_ref = quote(ref, safe="/")
     r = _run([
@@ -346,45 +417,59 @@ def fetch_base_ref(owner, name, ref, pr_oid, host=None):
         "--jq", ".object.sha",
     ])
     current_oid = (r.stdout or "").strip()
-    if (r.returncode != 0 or not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", current_oid)):
+    if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
+        qualified_ref = f"refs/heads/{ref}"
+        query = """
+query($owner:String!,$repo:String!,$ref:String!){
+  repository(owner:$owner,name:$repo){ ref(qualifiedName:$ref){ target{ oid } } }
+}"""
+        r = _run([
+            "gh", "api", "graphql", *_host_args(host),
+            "-f", f"owner={owner}", "-f", f"repo={name}",
+            "-f", f"ref={qualified_ref}", "-f", f"query={query}",
+            "--jq", ".data.repository.ref.target.oid",
+        ])
+        current_oid = (r.stdout or "").strip()
+    if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
-    base["freshness"] = (
-        BASE_REF_CURRENT if current_oid.lower() == pr_oid.lower() else BASE_REF_STALE)
+    if not (_valid_oid(graphql_oid) and _valid_oid(head_oid)):
+        return base
+    if current_oid.lower() != graphql_oid.lower():
+        base["identity"] = BASE_REF_RACE
+        return base
+
+    if mergeable == "MERGEABLE" and merge_state_status not in (None, "UNKNOWN", "DIRTY"):
+        if potential_merge is None:
+            base["identity"] = BASE_REF_MERGEABILITY_PENDING
+            return base
+        if (not _valid_oid(merge_commit_oid) or len(merge_parent_oids) != 2
+                or not all(_valid_oid(oid) for oid in merge_parent_oids)):
+            return base
+        if (merge_parent_oids[0].lower() != current_oid.lower()
+                or merge_parent_oids[1].lower() != head_oid.lower()):
+            base["identity"] = BASE_REF_RACE
+            return base
+    elif not (mergeable == "CONFLICTING" and merge_state_status == "DIRTY"):
+        base["identity"] = BASE_REF_MERGEABILITY_PENDING
+        return base
+
+    base["identity"] = BASE_REF_CURRENT
     return base
 
 
 def _base_ref_blocker(base):
-    freshness = (base or {}).get("freshness")
-    if freshness == BASE_REF_CURRENT:
+    identity = (base or {}).get("identity")
+    if identity is None:
+        # Compatibility for pre-change --fetch-file fixtures and persisted snapshots.
+        identity = (base or {}).get("freshness")
+    if identity == BASE_REF_CURRENT:
         return None
-    if freshness == BASE_REF_STALE:
-        return BASE_REF_STALE
+    if identity in (BASE_REF_RACE, BASE_REF_MERGEABILITY_PENDING):
+        return identity
+    if identity == BASE_REF_LEGACY_STALE:
+        return BASE_REF_LEGACY_STALE
     return BASE_REF_PROBE_ERROR
-
-
-def fetch_host_branch_update_capability(pr, owner, name, host=None):
-    """Read GitHub's operation-specific update-branch capability without mutating.
-
-    This fact intentionally says nothing about Jujutsu bookmark-push authority, which DIRTY repair must
-    prove separately. Probe and response-shape uncertainty fail closed as `unknown`.
-    """
-    query = """
-query($owner:String!,$repo:String!,$pr:Int!){
-  repository(owner:$owner,name:$repo){
-    pullRequest(number:$pr){ viewerCanUpdateBranch }
-  }
-}"""
-    r = _run(["gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}",
-              "-f", f"repo={name}", "-F", f"pr={pr}", "-f", f"query={query}"])
-    if r.returncode != 0:
-        return "unknown"
-    try:
-        capability = json.loads(r.stdout)["data"]["repository"]["pullRequest"][
-            "viewerCanUpdateBranch"]
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-        return "unknown"
-    return capability if isinstance(capability, bool) else "unknown"
 
 
 def _eyes_reaction_identities(reaction_pages):
@@ -698,21 +783,37 @@ def fetch(pr, repo):
             })
 
     owner, name, host = _resolve_repo_ref(repo, v.get("url"))
-    base = fetch_base_ref(
-        owner, name, v.get("baseRefName"), v.get("baseRefOid"), host)
+    merge_identity = fetch_pr_merge_identity(v.get("number") or pr, owner, name, host)
+    merge_observation = merge_identity or v
+    mergeable = merge_observation.get("mergeable")
+    merge_state_status = merge_observation.get("mergeStateStatus")
+    head = v.get("headRefOid")
+    base = fetch_base_ref(owner, name, v.get("baseRefName"), merge_observation, host)
+    if merge_identity is not None:
+        identity_head = merge_identity.get("headRefOid")
+        identity_base_ref = merge_identity.get("baseRefName")
+        if (not isinstance(identity_base_ref, str)
+                or not (_valid_oid(identity_head) and _valid_oid(head))):
+            base["identity"] = BASE_REF_PROBE_ERROR
+        elif (identity_head.lower() != head.lower()
+                or identity_base_ref != v.get("baseRefName")):
+            # The checks and review payload came from `v`; do not combine them with mergeability
+            # observed for a different head or base branch.
+            base["identity"] = BASE_REF_RACE
     pr_chain = fetch_pr_chain(v.get("number") or pr, repo, v.get("url"),
                               v.get("baseRefName"), v.get("headRefName"), owner, name, host)
     currency_probe = {
-        "mergeable": v.get("mergeable"),
-        "merge_state_status": v.get("mergeStateStatus"),
+        "mergeable": mergeable,
+        "merge_state_status": merge_state_status,
         "base": base,
         "pr_chain": pr_chain,
     }
     host_branch_update_capability = "unknown"
-    if (v.get("mergeStateStatus") == "BEHIND"
-            and _branch_currency_observation(currency_probe, v.get("headRefOid")) is not None):
-        host_branch_update_capability = fetch_host_branch_update_capability(
-            v.get("number") or pr, owner, name, host)
+    if (merge_state_status == "BEHIND"
+            and _branch_currency_observation(currency_probe, head) is not None):
+        capability = merge_observation.get("viewerCanUpdateBranch")
+        if isinstance(capability, bool):
+            host_branch_update_capability = capability
 
     # In-progress review signal: an 👀 (EYES) reaction on the PR body is how several review bots
     # (Codex among them) announce a review is *underway* — a present in-progress signal means the PR
@@ -722,12 +823,11 @@ def fetch(pr, repo):
     review_signal_count = len(review_signal_identities)
     review_in_progress = review_signal_count > 0
 
-    head = v.get("headRefOid")
     return {
         "pr_state": v.get("state"),
         "pr_is_draft": v.get("isDraft"),
-        "mergeable": v.get("mergeable"),
-        "merge_state_status": v.get("mergeStateStatus"),
+        "mergeable": mergeable,
+        "merge_state_status": merge_state_status,
         "review_decision": v.get("reviewDecision") or None,
         "head_sha": head,
         "base": base,
@@ -750,9 +850,11 @@ def fetch(pr, repo):
 
 def _body_hash(body):
     """Edit identity for a top-level comment / review body: `gh pr view --json` exposes no
-    updatedAt, so hash the body. When a dispatched wrapper is later edited to add an actionable
-    request, this changes and the item reactivates (unlike a thread, our reply is a separate
-    top-level comment and never edits the original, so there is no self-reply retrigger)."""
+    updatedAt, so hash the body. Feeds the external_review_moved activity signal (an edit wakes
+    the watch and extends the settle clock) and `needs-human` reactivation (a human may answer a
+    parked question by editing the same comment), but deliberately NOT `dispatched` reactivation:
+    status bots rewrite their bodies on every push, so edit-keyed reactivation of handled items
+    re-actionized bot comments forever (#1309)."""
     return hashlib.sha1((body or "").encode("utf-8")).hexdigest()[:16]
 
 
@@ -1092,7 +1194,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in workspace-local .tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in the workspace-local .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -1233,22 +1335,32 @@ def _update_trajectory(state, head, new_checks, new_threads, new_feedback, actio
     }
 
 
-def _apply_dispositions(items, id_key, prior, identity_fn=None):
+def _apply_dispositions(items, id_key, prior, identity_fn=None,
+                        reactivate_dispositions=(DISPOSITION_DISPATCHED, DISPOSITION_NEEDS_HUMAN)):
     """Claim->act->confirm dedup for a review stream: an item stays actionable until `mark`
     records a non-open disposition (persisted in prior[id]['disposition']). Returns
     (persisted_by_id, actionable_list, open_needs_human_count).
 
-    When identity_fn is given, a `dispatched` **or** `needs-human` item is *reactivated* — set back
-    to open and re-actionized — once its last-comment / edit identity moves past the one we acted on.
-    That acted-on identity is captured lazily on the first tick we observe the item parked, which is
-    *after* our own reply (a fix acknowledgment, or a needs-human `decision_context` reply) has
-    already landed in the fetch — so our reply becomes the baseline and does not re-trigger, while a
-    genuine later comment does. For `needs-human` this is exactly how a **human answering the parked
-    question** (a reviewer reply, or an edit of the top-level comment) re-opens it and wakes the loop,
-    instead of it sitting parked forever; an explicit `mark --disposition open` still forces it too.
-    This is also what stops a dispatched-but-unresolved thread with fresh reviewer activity from being
-    silenced out of counts.threads and letting the merge-ready gate call the PR ready. An item with no
-    identity_fn never auto-reactivates (a brand-new top-level comment is just a new id)."""
+    When identity_fn is given, an item whose disposition is in `reactivate_dispositions` is
+    *reactivated* — set back to open and re-actionized — once its last-comment / edit identity moves
+    past the one we acted on. That acted-on identity is captured lazily on the first tick we observe
+    the item parked, which is *after* our own reply (a fix acknowledgment, or a needs-human
+    `decision_context` reply) has already landed in the fetch — so our reply becomes the baseline
+    and does not re-trigger, while a genuine later comment does. For `needs-human` this is exactly
+    how a **human answering the parked question** (a reviewer reply on the thread, or an edit of the
+    parked top-level comment) re-opens it and wakes the loop, instead of it sitting parked forever;
+    an explicit `mark --disposition open` still forces it too. This is also what stops a
+    dispatched-but-unresolved thread with fresh reviewer activity from being silenced out of
+    counts.threads and letting the merge-ready gate call the PR ready.
+
+    The feedback stream excludes DISPATCHED from `reactivate_dispositions` deliberately: status
+    bots rewrite their comment bodies on every push, so edit-keyed reactivation re-actionized
+    handled bot comments forever and merge-ready could never fire (#1309). A `needs-human`
+    feedback item still reactivates on edit — a human answering by editing their own comment must
+    wake the loop, mirroring the thread semantics. (A bot comment parked `needs-human` can churn
+    open on bot self-edits; that costs a redundant resolve pass, not a stuck loop — merge-ready is
+    blocked by open_needs_human either way.) A brand-new comment is just a new id, always
+    actionable."""
     persisted, actionable, needs_human = {}, [], 0
     for it in items:
         iid = it.get(id_key)
@@ -1257,7 +1369,7 @@ def _apply_dispositions(items, id_key, prior, identity_fn=None):
         pri = prior.get(iid, {})
         disposition = pri.get("disposition", DISPOSITION_OPEN)
         acted_identity = pri.get("acted_identity")
-        if disposition in (DISPOSITION_DISPATCHED, DISPOSITION_NEEDS_HUMAN) and identity_fn is not None:
+        if disposition in reactivate_dispositions and identity_fn is not None:
             current_identity = identity_fn(it)
             if acted_identity is None:
                 acted_identity = current_identity   # first post-action observation: adopt as baseline
@@ -1371,17 +1483,25 @@ def diff(state, cur, now=None, advance_trajectory=True):
     #     firing) until a *human* answers it — a later reply/edit past that same baseline reopens and
     #     wakes it — or an explicit `mark --disposition open` forces it.
     #   - Feedback (top-level comments + review bodies): no remote "resolve" exists, so an item
-    #     never drops out on its own — `mark --comment <id>` is the only thing that silences it. A
-    #     dispatched item reactivates only when its own body is *edited* (edit_id changes) to add a
-    #     new request; a brand-new comment is just a new id. Our reply is a separate top-level
-    #     comment, never an edit of the original, so it never retriggers.
+    #     never drops out on its own — `mark --comment <id>` is the only thing that silences it.
+    #     Reactivation on a body edit is per-disposition: a `dispatched` item is NEVER
+    #     auto-reactivated — status bots (changeset-bot, CodeRabbit, Codecov) rewrite their own
+    #     comment bodies on every push, so edit-keyed reactivation re-actionized handled bot
+    #     comments forever and the merge-ready gate could never fire (#1309) — while a
+    #     `needs-human` item still reactivates on edit, because a human may answer the parked
+    #     question by editing the same comment/review body. New requests otherwise arrive as
+    #     review threads or brand-new comments (new ids), both still actionable; edit_id also
+    #     feeds external_review_moved below, so a dispatched item's edit wakes/extends the settle
+    #     clock without re-actionizing it.
     # Either stream's open needs-human items feed open_needs_human so the merge-ready gate
     # refuses to call the PR ready while a human decision is still pending.
     new_threads, actionable_threads, human_threads = _apply_dispositions(
         cur["threads"], "thread_id", prior_threads,
         identity_fn=lambda t: [t.get("last_comment_id"), t.get("last_comment_at")])
     new_feedback, actionable_feedback, human_feedback = _apply_dispositions(
-        cur.get("feedback") or [], "id", prior_feedback, identity_fn=lambda c: [c.get("edit_id")])
+        cur.get("feedback") or [], "id", prior_feedback,
+        identity_fn=lambda c: [c.get("edit_id")],
+        reactivate_dispositions=(DISPOSITION_NEEDS_HUMAN,))
     current_thread_activity = {
         item.get("thread_id"): _thread_identity(item)
         for item in cur["threads"] if item.get("thread_id")
@@ -1560,7 +1680,10 @@ def _change_sig(state):
     """Everything whose movement should reset the settle clock."""
     checks = {k: (v.get("status"), v.get("conclusion")) for k, v in state.get("checks", {}).items()}
     threads = {tid: _thread_identity(v) for tid, v in state.get("threads", {}).items()}
-    feedback = {fid: v.get("disposition") for fid, v in state.get("feedback", {}).items()}
+    # edit_id is part of the signal so a body edit of a silenced item still resets the settle
+    # clock (review activity happened) even though it no longer reopens the item (#1309).
+    feedback = {fid: (v.get("disposition"), v.get("edit_id"))
+                for fid, v in state.get("feedback", {}).items()}
     currency = _load_branch_currency_state(state)
     current_currency = currency.get("items", {}).get(currency.get("current_key")) or {}
     return (checks, threads, feedback, state.get("review_decision"), state.get("mergeable"),
@@ -1667,13 +1790,7 @@ def locked_state(state_dir, pr, repo, now):
         state.setdefault("invocation_backstop_seconds", DEFAULT_INVOCATION_BACKSTOP_SECONDS)
         box = {"state": state}
         yield box
-        # Keep the atomic replacement file beside state.json in workspace-local .tmp.
-        tmp = tempfile.NamedTemporaryFile("w", dir=state_dir, delete=False)
-        json.dump(box["state"], tmp, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp.close()
-        _replace_atomic(tmp.name, state_path)
+        _write_json_atomic(state_path, box["state"], indent=2)
 
 
 def _fetch_snapshot(args):
@@ -1918,7 +2035,7 @@ def _process_identity(pid):
         return _win_process_identity(pid)
     try:
         r = subprocess.run(["ps", "-p", str(pid), "-o", "lstart=", "-o", "command="],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8")
     except OSError:
         return None   # no ps on PATH: unproven identity, same as a failed lookup
     if r.returncode != 0:
@@ -1948,13 +2065,7 @@ def _reserve_watch_candidate(args, generation):
     }
     with _state_lock(args.state_dir, exclusive=True):
         previous = _read_watch_candidate(args)
-        # Keep the atomic replacement file inside the workspace-local state directory.
-        tmp = tempfile.NamedTemporaryFile("w", dir=args.state_dir, delete=False)
-        json.dump(candidate, tmp)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp.close()
-        _replace_atomic(tmp.name, _watch_candidate_path(args))
+        _write_json_atomic(_watch_candidate_path(args), candidate)
     return previous
 
 
@@ -2390,7 +2501,10 @@ def cmd_mark(args):
                         entry["acted_identity"] = ident
                 elif args.comment and args.acted_edit_id:
                     # our reply is a separate top-level comment and never edits THIS one, so the
-                    # snapshot-time edit_id the agent passes is already the correct baseline (no fetch).
+                    # snapshot-time edit_id the agent passes is already the correct baseline (no
+                    # fetch). Only a `needs-human` mark ever reads it (dispatched comments no
+                    # longer reactivate on edit, #1309), but storing it unconditionally is
+                    # harmless and closes the answered-by-edit race for parked comments.
                     entry["acted_identity"] = [args.acted_edit_id]
             state["last_action"] = f"{args.disposition} {label} {item_id}"
     print(json.dumps({"marked": args.currency_key or args.check or args.thread or args.comment}))
@@ -2465,7 +2579,7 @@ def main():
     m.add_argument("--check", default=None)
     m.add_argument("--comment", default=None)
     m.add_argument("--fetch-file", default=None)  # reuse the tick's fetch for the at-mark baseline
-    m.add_argument("--acted-edit-id", default=None)  # snapshot-time edit_id baseline for a --comment
+    m.add_argument("--acted-edit-id", default=None)  # snapshot-time edit_id baseline; read only by needs-human comment reactivation (#1309)
     m.add_argument("--currency-key", default=None,
                    help="exact branch-currency observation key emitted by snapshot")
     m.add_argument("--currency-disposition",

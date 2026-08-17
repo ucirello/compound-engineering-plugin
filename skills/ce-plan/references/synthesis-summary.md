@@ -4,7 +4,7 @@
 
 **Two-stage shape: internal draft, then chat-time synthesis.** The synthesis is composed in two stages. Stage 1 is an internal three-bucket draft (Stated / Inferred / Out of scope) the agent uses to think comprehensively about scope. Stage 2 is the compressed chat-time output: a tier-shaped summary plus "Call outs" (zero or more, capped by plan depth — see the cap table under "How many call-outs are right?") — the specific forks where the user might redirect. The user only sees stage 2. The internal draft still informs the plan body via the doc-shape routing below; it just doesn't reach the user verbatim. This split exists because the comprehensive audit shape produced too much detail for the user to weigh in on, even when the granularity rules were followed.
 
-**Three-bucket structure is the internal draft, not the user-facing artifact.** It does its scope-thinking job during stage 1 and dissolves when Phase 5.2 writes the plan: Stated content informs the Product Contract's Requirements, Inferred content informs Key Technical Decisions / Implementation Units (normal interactive mode) or the Planning Contract's `### Assumptions` (non-interactive mode, or an interactive `SKIP_SCOPING_CONFIRM` skip run), Out-of-scope content informs the Product Contract's Scope Boundaries. The plan has no parallel `## Synthesis` section — only the stage-2 summary embeds, under the Product Contract's `### Summary`. See "Doc shape after confirmation" below for the exact routing and section nesting.
+**Three-bucket structure is the internal draft, not the user-facing artifact.** It does its scope-thinking job during stage 1 and dissolves when Phase 5.2 writes the plan: Stated content informs the Product Contract's Requirements and Problem Frame, success signals inform its Success Criteria — from either bucket on a confirmed interactive run, Stated only on the unconfirmed paths, session-settled product decisions inform its Key Decisions, Inferred content informs Key Technical Decisions / Implementation Units (normal interactive mode) or the Planning Contract's `### Assumptions` (non-interactive mode, or an interactive `SKIP_SCOPING_CONFIRM` skip run), Out-of-scope content informs the Product Contract's Scope Boundaries. The plan has no parallel `## Synthesis` section — only the stage-2 summary embeds, under the Product Contract's `### Summary`. See "Doc shape after confirmation" below for the exact routing and section nesting.
 
 This content is loaded when a synthesis-summary phase fires in ce-plan. There are two variants — they share structure but differ in timing and content focus:
 
@@ -214,7 +214,7 @@ Planning a mechanical PII redaction gate before promote (the unguarded leak path
 
 **Call outs:**
 - Person-name filter works by JSON key (allowlist of provenance keys: `printer`, `printer_name`, `owner_name`, `author`), not by name value.
-- Promote scans the working-copy snapshot before the copy step, not the destination copy.
+- Promote scans the working-dir snapshot before the copy step, not the staged copy.
 - Publish combines PII + vendor-prefix findings into one report, not fail-fast on first.
 
 Confirm and I'll proceed to research, drawing on this scope.
@@ -301,7 +301,7 @@ Items to surface in the internal draft:
 
 Most of these will not survive the keep test as separate call-outs. Surface only the forks where another reasonable agent might choose differently and the user can correct cheaply now.
 
-**Reads from the Product Contract, not a synthesis section**: the upstream artifact is a requirements-only unified plan (`product_contract_source: brainstorm`), not a separate brainstorm doc, and it has no `## Synthesis` section (the synthesis is a chat-time artifact in ce-brainstorm; only the prose summary embeds, under the Product Contract). Phase 5.1.5 derives plan-time decisions from the Product Contract's sections — Summary, Problem Frame, Requirements, Key Flows, Scope Boundaries — plus Phase 1 research. Legacy standalone requirements docs (`origin: docs/brainstorms/...`) and older brainstorms that may carry a legacy `## Synthesis` section still work; that content is treated as supplementary, not authoritative, with the Product Contract / body sections taking precedence.
+**Reads from the Product Contract, not a synthesis section**: the upstream artifact is a requirements-only unified plan (`product_contract_source: ce-brainstorm`), not a separate brainstorm doc, and it has no `## Synthesis` section (the synthesis is a chat-time artifact in ce-brainstorm; only the prose summary embeds, under the Product Contract). Phase 5.1.5 derives plan-time decisions from the Product Contract's sections — Summary, Problem Frame, Requirements, Key Flows, Scope Boundaries — plus Phase 1 research. Legacy standalone requirements docs (`origin: docs/brainstorms/...`) and older brainstorms that may carry a legacy `## Synthesis` section still work; that content is treated as supplementary, not authoritative, with the Product Contract / body sections taking precedence.
 
 **Why pre-write, not pre-research**: brainstorm doc + R1 synthesis already validated WHAT, so research is well-targeted. Plan-time decisions emerge during research and structuring (Phases 1-4), so pre-write catches them at the latest cheap moment — before Phase 5.2 commits the plan to disk.
 
@@ -368,13 +368,18 @@ When the skill is invoked from an automated workflow such as LFG or any `disable
 **Shared behavior across both variants:**
 
 - **No user prompt; no stage 2; no auto-proceed announcement.** All three are moot.
-- **Route internal-draft content with mode-aware shape** (nested under Product Contract / Planning Contract in a `unified-plan/v1` artifact; top-level `##` headings in a legacy standalone plan):
-  - **Stated** content → Product Contract `### Requirements` (user-stated constraints, traced to origin's R-IDs when present)
+- **Route internal-draft content with mode-aware shape** (nested under Product Contract / Planning Contract in a `ce-unified-plan/v1` artifact; top-level `##` headings in a legacy standalone plan):
+  - **Stated** content → Product Contract `### Requirements` (user-stated constraints, traced to origin's R-IDs when present), and where relevant `### Problem Frame` for narrative context
+  - **Success signals — Stated only on these paths** → Product Contract `### Success Criteria` when its catalog entry fires. An *inferred* success signal does not come here: these paths never confirmed it, so it stays under `### Assumptions` with the other un-validated bets.
   - **Out-of-scope** content → Product Contract `### Scope Boundaries`
   - **Inferred** content → Planning Contract `### Assumptions` — explicitly labeled as un-validated agent bets. Do NOT route Inferred items into Key Technical Decisions or Implementation Units; that would make un-validated bets indistinguishable from user-confirmed decisions.
   - **Session-settled decisions** (including those from a passed brief) → settled product decisions route to their labeled Product Contract Key Decisions with exact `Governs R…` links; settled planning/how decisions route to labeled Key Technical Decisions. Neither belongs in `### Assumptions` — they are user-confirmed; the Assumptions firewall covers agent-inferred bets only. A brief entry that fails the settlement test (cannot state its rejected alternative) demotes to a directive or open area instead.
 
 The `### Assumptions` section appears in non-interactive plans and in interactive plans where the user opted into `SKIP_SCOPING_CONFIRM` — both cases proceed without confirming Inferred bets, so those bets must stay visibly labeled. A normal interactive plan doesn't need it (Inferred bets either get user-corrected via call-outs and become Key Technical Decisions, are revised away, or were judged not-fork material by the keep test and dissolved into Implementation Units silently).
+
+**On a normal interactive plan, two Inferred items are exempt from that silent dissolve**, named by the bucket's own vocabulary above: *success criteria extrapolated from intent*, and *scope boundaries the user never explicitly named*. Both route to their Product Contract sections — `### Success Criteria` and `### Scope Boundaries` — whether or not they survived the call-out keep test. The keep test decides what the user is asked about; it does not decide whether product scope reaches the document. Every other Inferred item keeps the dissolve behavior described above.
+
+The exemption is scoped to that confirmed interactive path and does **not** apply on headless or `SKIP_SCOPING_CONFIRM` runs. Those proceed without confirming any Inferred bet, so the `### Assumptions` firewall governs every one of them — an un-validated guess must stay labeled there rather than appearing as an unlabeled product statement.
 
 This restores the audit visibility the original design intended (un-validated bets must not propagate as authoritative content), but surfaces them under their own label rather than hiding them. Downstream review (ce-doc-review, ce-work, human PR review) can scrutinize Assumptions specifically.
 
@@ -393,7 +398,7 @@ In either case: stop ce-plan, suggest the alternative skill, offer to load it in
 
 ## Doc shape after confirmation
 
-After user confirmation (or after the soft-cut decision proceeds), Phase 5.2 writes the plan doc. The internal draft does NOT carry into the plan as a `## Synthesis` section. Only the stage-2 summary embeds, under the Product Contract's `### Summary`. Internal-draft content dissolves into the unified plan's sections. In a `unified-plan/v1` artifact these destinations are nested — Summary, Problem Frame, Requirements, and Scope Boundaries live under `## Product Contract`; Key Technical Decisions and Assumptions live under `## Planning Contract`; Implementation Units is its own top-level section. (Legacy standalone plans without `artifact_contract` keep these as top-level `##` headings.)
+After user confirmation (or after the soft-cut decision proceeds), Phase 5.2 writes the plan doc. The internal draft does NOT carry into the plan as a `## Synthesis` section. Only the stage-2 summary embeds, under the Product Contract's `### Summary`. Internal-draft content dissolves into the unified plan's sections. In a `ce-unified-plan/v1` artifact these destinations are nested — Summary, Problem Frame, Requirements, and Scope Boundaries live under `## Product Contract`; Key Technical Decisions and Assumptions live under `## Planning Contract`; Implementation Units is its own top-level section. (Legacy standalone plans without `artifact_contract` keep these as top-level `##` headings.)
 
 | Internal-draft element | Where it goes in the unified plan |
 |---|---|
@@ -401,6 +406,8 @@ After user confirmation (or after the soft-cut decision proceeds), Phase 5.2 wri
 | Stated bullets | Product Contract `### Requirements` (R-IDs) and where relevant `### Problem Frame` for narrative context |
 | Inferred bullets | Planning Contract `### Key Technical Decisions` (with rationale) and Implementation Units when the bet drives a structural choice. In non-interactive mode **or an interactive `SKIP_SCOPING_CONFIRM` skip run**, route to Planning Contract `### Assumptions` instead — both proceed without confirming the bets, so they must stay labeled; see Headless mode above. |
 | Out-of-scope bullets | Product Contract `### Scope Boundaries` — including the `#### Deferred to Follow-Up Work` subsection when relevant |
+| Success signals | Product Contract `### Success Criteria` when its catalog entry fires — quality, metric, or handoff signals the Requirements don't already carry. This row **overrides** the generic Stated and Inferred rows for those items: a success signal routes here *instead of*, never in addition. Stated signals always. An **Inferred** signal only on a confirmed interactive run; on a `SKIP_SCOPING_CONFIRM` skip run it goes to `### Assumptions` with the other unconfirmed bets, exactly as the Inferred row above routes them. |
+| Session-settled product decisions | Product Contract `### Key Decisions`, carrying the `session-settled:` annotation and exact `Governs R…` links. Settled planning/how decisions route to `### Key Technical Decisions` instead |
 
 No italic capture-context note (e.g., "Captured at Phase 0.7..."). It would leak engineering process into an artifact whose readers do not need that signal.
 

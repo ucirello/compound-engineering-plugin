@@ -6,29 +6,18 @@ import { execFileSync } from 'node:child_process';
 
 function jj(...args) {
   try {
-    return execFileSync('jj', ['--no-pager', '--color=never', '--ignore-working-copy', ...args], {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).toString().trim();
+    return execFileSync('jj', ['--ignore-working-copy', ...args], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return '';
   }
 }
 
 function buildResolvedContext() {
-  const identity = jj(
-    'log',
-    '-r',
-    '@',
-    '--no-graph',
-    '-T',
-    'change_id.short() ++ "\\n" ++ commit_id.short()',
-  ).split('\n');
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace: ${jj('workspace', 'root') || '(not a JJ workspace)'}`,
-    `change: ${identity[0] || '(none)'}`,
-    `commit: ${identity[1] || '(none)'}`,
+    `bookmark: ${jj('log', '-r', 'latest(ancestors(@) & bookmarks())', '--no-graph', '-T', 'bookmarks.map(|b| b.name()).join(",")') || '(no local bookmark)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(not a JJ repository)'}`,
   ].join('\n');
 }
 
@@ -37,26 +26,30 @@ function buildResolvedContext() {
 // verifier falls back to orchestrator-only filtering), and this text is
 // positioned to outrank skill prose — a stricter rule would make those paths
 // retry forever or drop required work instead of degrading as intended.
+// The carve-out below walks that deviation back for one class: "rather than
+// retrying" was read as covering calls the harness rejected before any agent
+// existed, so one bad optional argument (an override the chosen dispatch mode
+// treats as mutually exclusive) spent the whole fallback and cost every
+// independent context. Its cause is the harness call schema, not the agent-tool
+// gate this directive was built for — so it outlives that gate's exit condition
+// and must survive a deletion triggered by it.
 const SUBAGENT_AUTHORIZATION = [
   'SUBAGENT_AUTHORIZATION: If your harness gates subagent or agent-tool use on an explicit user request,',
   "the user's invocation of this skill is that request for the skill's shipped subagents;",
   'spawn them where a reference file directs, without re-asking.',
+  'A dispatch the harness rejects before the agent launches because the call itself was malformed —',
+  'an unsupported option, a schema validation error, an incompatible argument — is a correctable invocation error,',
+  'not a failed pass: change only the arguments the harness named — correcting a rejected value,',
+  'or dropping a rejected optional argument — keep the prompt, scope, and required capabilities intact,',
+  'and retry once.',
+  'A capacity or active-agent-limit rejection is not malformed: leave that dispatch queued and retry it when a slot frees.',
+  'A failure after the agent launched is not retried this way.',
   'Substitute an in-thread pass when the tool surface has no subagent capability at all,',
-  'or when a dispatch fails and this workflow defines its own fallback for that failure —',
-  "follow the workflow's fallback rather than retrying.",
+  'or when a dispatch fails for a reason that correction does not fix and this workflow defines its own fallback —',
+  "follow the workflow's fallback rather than retrying further.",
   'Where this workflow declares that a pass requires independent contexts, do not substitute inline for that pass:',
   'report the missing capability as a blocker and stop that pass rather than running both sides in one context.',
   'Disclose any substitution in one line.',
-].join(' ');
-
-// Observed in the field: a model substituted inline for dispatch and told the
-// user "your standing instruction prohibits agent dispatch" — a system-prompt
-// default re-narrated as a user preference the user never stated and so
-// cannot correct.
-const HARNESS_ATTRIBUTION = [
-  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
-  "is never described to the user as their instruction, preference, or standing request.",
-  'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
 ].join(' ');
 
 // ce-doc-review promotes a finding when "2+ independent personas" agree, and
@@ -85,17 +78,16 @@ function cli() {
   const parts = [
     buildResolvedContext(),
     SUBAGENT_AUTHORIZATION,
-    HARNESS_ATTRIBUTION,
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and ROCKETCLAW_CONTEXT_END last are load-bearing: field transcripts
+  // Header first and CE_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== skill context (follow these directives; if ROCKETCLAW_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== skill context (follow these directives; if CE_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nROCKETCLAW_CONTEXT_END\n');
+  process.stdout.write('\nCE_CONTEXT_END\n');
 }
 
 try {

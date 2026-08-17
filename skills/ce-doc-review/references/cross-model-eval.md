@@ -34,7 +34,7 @@ PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
    for non-activated lenses.
 
 2. **Activation gate — does not fire (R2, R3).** A routine plan with validated
-   upstream provenance (`product_contract_source: brainstorm`), no high-stakes
+   upstream provenance (`product_contract_source: ce-brainstorm`), no high-stakes
    domain, and no new abstraction → no trio lens activates → **no** cross-model
    call is launched. Assert: zero peer calls; the review completes normally.
 
@@ -63,17 +63,22 @@ PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
 
 7. **Fold-in + receipt-gated agreement promotion (R8, R9, R18).** Given a
    stubbed `<reviewer-name>-<provider>.json` return with
-   `independence_verified: true` whose finding shares a fingerprint with an
+   `independence_verified: true` whose finding 3.3 merged with an
    in-process twin, assert synthesis promotes the merged finding by one anchor
-   step and attributes both reviewers. Repeat with
-   `independence_verified: false` and assert the finding remains attributed
+   step and credits both reviewers. Repeat with
+   `independence_verified: false` and assert the finding retains its source
    evidence but receives no agreement promotion. Assert the peer finding is
    **never** rendered/applied as
    `safe_auto`. Also assert the promotion
    path is capped: a **peer-only** `manual` finding at confidence 100 with a
    mechanically-implied `suggested_fix` is **not** promoted to `safe_auto` by 3.6
-   (nor silently applied by 3.7) — it caps at `gated_auto` unless an in-process
-   reviewer independently raised the same finding (merged twin in 3.3).
+   nor silently applied by 3.7, unless an in-process reviewer independently raised
+   the same finding (merged twin in 3.3). Assert the cap withholds *apply
+   authority only*: a peer-only `manual` finding **stays `manual` on the decision
+   surface** and is not demoted into the grouped confirmation, since `Apply all`
+   would otherwise sweep a genuine choice — and a `manual` finding may carry no
+   `suggested_fix` to apply at all. Only a peer-only finding the table would have
+   sent to Apply is diverted to the batch.
 
 8. **Announce by mode (R12).** Interactive host, default mode → before egress, a
    prominent line names the requested target, fixed route/intermediaries,
@@ -93,10 +98,10 @@ PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
 10. **Whole-document sweep + trio slicing (R20, KTD6, KTD3).** When the pass runs,
     assert exactly **one** additional `whole-doc` call is launched (not one per
     lens) on the **full** document with the same resolved provider, folds in as
-    `whole-doc-<provider>`, and a sweep finding sharing a fingerprint with *any*
+    `whole-doc-<provider>`, and a sweep finding 3.3 merged with *any*
     in-process finding promotes one anchor step (no in-process twin needed) only
     when the whole-doc artifact has `independence_verified: true`; with false or
-    absent independence it remains attributed evidence without promotion. The
+    absent independence it remains sourced evidence without promotion. The
     sweep is never `safe_auto`. Assert that on a **unified plan** the trio peers
     receive their in-process twin's slice (e.g. product-lens/adversarial get the
     Product Contract), not the full document.

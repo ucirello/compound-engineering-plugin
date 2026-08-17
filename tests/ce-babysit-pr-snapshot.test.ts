@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, setDefaultTimeout } from "bun:test"
 import { spawn, spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, writeFileSync, readFileSync, renameSync } from "node:fs"
+import { chmodSync, existsSync, mkdtempSync, writeFileSync, readFileSync, renameSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -174,37 +174,85 @@ function eyesReactionIdentities(pages: unknown): string[] {
   return JSON.parse(r.stdout.trim())
 }
 
-function probeHostBranchUpdateCapability(response: { status: number; stdout?: unknown }): {
-  capability: boolean | "unknown"
-  call: string[]
-} {
-  const payload = JSON.stringify(response)
-  const r = spawnSync(
-    "python3",
-    [
-      "-c",
-      `import json
+function probeBaseIdentity(options: {
+  refStatus?: number
+  refError?: string
+  refOid?: string
+  gitStatus?: number
+  gitOutput?: string
+  gitTimeout?: boolean
+  gitOSError?: boolean
+  historicalOid?: string
+  graphqlOid?: string | null
+  headOid?: string
+  mergeable?: string
+  mergeStateStatus?: string
+  mergeCommitOid?: string | null
+  parentOids?: string[]
+  host?: string
+}): { base: any; calls: string[][] } {
+  const values = {
+    refStatus: 0,
+    refError: "not found",
+    refOid: "2".repeat(40),
+    gitStatus: 1,
+    gitOutput: "",
+    gitTimeout: false,
+    gitOSError: false,
+    historicalOid: "1".repeat(40),
+    graphqlOid: "2".repeat(40) as string | null,
+    headOid: "3".repeat(40),
+    mergeable: "MERGEABLE",
+    mergeStateStatus: "CLEAN",
+    mergeCommitOid: "4".repeat(40) as string | null,
+    parentOids: ["2".repeat(40), "3".repeat(40)],
+    host: "ghe.acme.test",
+    ...options,
+  }
+  const r = spawnSync("python3", ["-c", `
+import json, subprocess
 from importlib.machinery import SourceFileLoader
-m=SourceFileLoader('prs', ${JSON.stringify(SCRIPT)}).load_module()
-p=json.loads(${JSON.stringify(payload)})
-calls=[]
+m = SourceFileLoader("prs", ${JSON.stringify(SCRIPT)}).load_module()
+values = json.loads(${JSON.stringify(JSON.stringify(values))})
+calls = []
 class Result: pass
-def fake(cmd):
+def run(cmd):
     calls.append(cmd)
-    result=Result()
-    result.returncode=p["status"]
-    result.stderr="probe failed" if result.returncode else ""
-    value=p.get("stdout")
-    result.stdout=value if isinstance(value, str) else json.dumps(value)
+    result = Result()
+    result.returncode = values["refStatus"]
+    result.stderr = values["refError"] if result.returncode else ""
+    result.stdout = values["refOid"] + "\\n" if result.returncode == 0 else ""
     return result
-m._run=fake
-capability=m.fetch_host_branch_update_capability(7, "o", "r", "ghe.acme.test")
-print(json.dumps({"capability": capability, "call": calls[0]}))`,
-    ],
-    { encoding: "utf8" },
-  )
+def run_git(cmd):
+    calls.append(cmd)
+    if values["gitTimeout"]:
+        raise subprocess.TimeoutExpired(cmd, 30)
+    if values["gitOSError"]:
+        raise FileNotFoundError("git")
+    result = Result()
+    result.returncode = values["gitStatus"]
+    result.stderr = "git ref probe failed" if result.returncode else ""
+    result.stdout = values["gitOutput"]
+    return result
+m._run = run
+m._run_git = run_git
+potential = None if values["mergeCommitOid"] is None else {
+    "oid": values["mergeCommitOid"],
+    "parents": {"nodes": [{"oid": oid} for oid in values["parentOids"]]},
+}
+identity = {
+    "baseRefOid": values["historicalOid"],
+    "headRefOid": values["headOid"],
+    "mergeable": values["mergeable"],
+    "mergeStateStatus": values["mergeStateStatus"],
+    "baseRef": {"target": {"oid": values["graphqlOid"]}},
+    "potentialMergeCommit": potential,
+}
+base = m.fetch_base_ref("o", "r", "main", identity, values["host"])
+print(json.dumps({"base": base, "calls": calls}))
+`], { encoding: "utf8" })
   expect(r.status, r.stderr).toBe(0)
-  return JSON.parse(r.stdout.trim())
+  return JSON.parse(r.stdout)
 }
 
 function probeAwaitingApproval(response: { status: number; stdout?: string }): number | null {
@@ -1122,35 +1170,18 @@ describe("ce-babysit-pr pr-snapshot engine", () => {
     }
   }, 15000)
 
-  test("host branch-update capability reads the operation-specific true, false, and unknown outcomes", () => {
-    const positive = probeHostBranchUpdateCapability({
-      status: 0,
-      stdout: { data: { repository: { pullRequest: { viewerCanUpdateBranch: true } } } },
-    })
-    expect(positive.capability).toBe(true)
-    expect(positive.call.join(" ")).toContain("viewerCanUpdateBranch")
-    expect(positive.call).toContain("--hostname")
-    expect(positive.call).toContain("ghe.acme.test")
-
-    expect(probeHostBranchUpdateCapability({
-      status: 0,
-      stdout: { data: { repository: { pullRequest: { viewerCanUpdateBranch: false } } } },
-    }).capability).toBe(false)
-    expect(probeHostBranchUpdateCapability({ status: 1 }).capability).toBe("unknown")
-    expect(probeHostBranchUpdateCapability({
-      status: 0,
-      stdout: { data: { repository: { pullRequest: {} } } },
-    }).capability).toBe("unknown")
-  })
-
-  test("live fetch requires the host-qualified current base ref before probing an eligible BEHIND update", () => {
+  test("live fetch binds mergeability to GraphQL base/head parents plus the host-qualified exact ref", () => {
     const python = `
 import json
 from importlib.machinery import SourceFileLoader
 m = SourceFileLoader("prs", ${JSON.stringify(SCRIPT)}).load_module()
 calls = []
-capability_calls = []
-current_base_oid = "1111111111111111111111111111111111111111"
+historical_oid = "1111111111111111111111111111111111111111"
+reported_base_oid = "2222222222222222222222222222222222222222"
+current_base_oid = reported_base_oid
+head_oid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+identity_head_oid = head_oid
+identity_base_ref = "main"
 ref_probe_status = 0
 class Result: pass
 def checked(cmd, label):
@@ -1160,8 +1191,8 @@ def checked(cmd, label):
     result.stderr = ""
     result.stdout = json.dumps({
         "state": "OPEN", "mergeable": "MERGEABLE", "mergeStateStatus": "BEHIND",
-        "reviewDecision": "APPROVED", "headRefOid": "head-1",
-        "baseRefOid": "1111111111111111111111111111111111111111",
+        "reviewDecision": "APPROVED", "headRefOid": head_oid,
+        "baseRefOid": historical_oid,
         "baseRefName": "main", "headRefName": "feature", "number": 7,
         "url": "https://ghe.acme.test/o/r/pull/7", "statusCheckRollup": [],
         "author": {"login": "author"}, "comments": [], "reviews": []})
@@ -1169,6 +1200,19 @@ def checked(cmd, label):
 def run(cmd):
     calls.append(cmd)
     result = Result()
+    if "graphql" in cmd:
+        result.returncode = 0
+        result.stderr = ""
+        result.stdout = json.dumps({"data": {"repository": {"pullRequest": {
+            "mergeable": "MERGEABLE", "mergeStateStatus": "BEHIND",
+            "headRefOid": identity_head_oid, "baseRefOid": historical_oid,
+            "baseRefName": identity_base_ref,
+            "viewerCanUpdateBranch": True,
+            "baseRef": {"target": {"oid": reported_base_oid}},
+            "potentialMergeCommit": {"oid": "4444444444444444444444444444444444444444",
+                "parents": {"nodes": [{"oid": reported_base_oid}, {"oid": head_oid}]}}
+        }}}})
+        return result
     result.returncode = ref_probe_status
     result.stderr = "base ref probe failed" if result.returncode else ""
     result.stdout = current_base_oid + "\\n" if result.returncode == 0 else ""
@@ -1180,25 +1224,33 @@ m.fetch_threads = lambda *args: []
 m.fetch_awaiting_approval = lambda *args: 0
 m.fetch_pr_chain = lambda *args: {"manager_status": "absent", "relationship_status": "independent",
                                   "default_branch": "main", "parent_prs": [], "dependent_prs": []}
-def capability(*args):
-    capability_calls.append(args)
-    return True
-m.fetch_host_branch_update_capability = capability
 current = m.fetch(7, "ghe.acme.test/o/r")
-current_base_oid = "2222222222222222222222222222222222222222"
-stale = m.fetch(7, "ghe.acme.test/o/r")
+identity_head_oid = head_oid.upper()
+same_head_mixed_case = m.fetch(7, "ghe.acme.test/o/r")
+identity_head_oid = "6666666666666666666666666666666666666666"
+head_race = m.fetch(7, "ghe.acme.test/o/r")
+identity_head_oid = head_oid
+current_base_oid = "5555555555555555555555555555555555555555"
+race = m.fetch(7, "ghe.acme.test/o/r")
 ref_probe_status = 1
 probe_error = m.fetch(7, "ghe.acme.test/o/r")
-print(json.dumps({"current": current, "stale": stale, "probe_error": probe_error,
-                  "calls": calls, "capability_calls": len(capability_calls)}))
+print(json.dumps({"current": current, "same_head_mixed_case": same_head_mixed_case,
+                  "head_race": head_race, "race": race,
+                  "probe_error": probe_error, "calls": calls}))
 `
     const r = spawnSync("python3", ["-c", python], { encoding: "utf8" })
     expect(r.status, r.stderr).toBe(0)
     const result = JSON.parse(r.stdout)
     expect(result.calls[0].join(" ")).toContain("baseRefOid")
     const refCalls = result.calls.filter((call: string[]) => call.includes("repos/o/r/git/ref/heads/main"))
-    expect(refCalls).toHaveLength(3)
+    expect(refCalls).toHaveLength(5)
     for (const call of refCalls) {
+      expect(call).toContain("--hostname")
+      expect(call).toContain("ghe.acme.test")
+    }
+    const identityCalls = result.calls.filter((call: string[]) => call.includes("graphql") && call.join(" ").includes("potentialMergeCommit"))
+    expect(identityCalls).toHaveLength(5)
+    for (const call of identityCalls) {
       expect(call).toContain("--hostname")
       expect(call).toContain("ghe.acme.test")
     }
@@ -1206,30 +1258,24 @@ print(json.dumps({"current": current, "stale": stale, "probe_error": probe_error
       host: "ghe.acme.test",
       repository: "o/r",
       ref: "main",
-      oid: "1111111111111111111111111111111111111111",
-      pr_oid: "1111111111111111111111111111111111111111",
-      freshness: "current",
+      oid: "2222222222222222222222222222222222222222",
+      graphql_oid: "2222222222222222222222222222222222222222",
+      historical_oid: "1111111111111111111111111111111111111111",
+      merge_commit_oid: "4444444444444444444444444444444444444444",
+      merge_parent_oids: ["2222222222222222222222222222222222222222", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+      identity: "current",
     })
     expect(result.current.host_branch_update_capability).toBe(true)
-    expect(result.stale.base).toEqual({
-      host: "ghe.acme.test",
-      repository: "o/r",
-      ref: "main",
-      oid: "2222222222222222222222222222222222222222",
-      pr_oid: "1111111111111111111111111111111111111111",
-      freshness: "stale",
-    })
-    expect(result.stale.host_branch_update_capability).toBe("unknown")
-    expect(result.probe_error.base).toEqual({
-      host: "ghe.acme.test",
-      repository: "o/r",
-      ref: "main",
-      oid: null,
-      pr_oid: "1111111111111111111111111111111111111111",
-      freshness: "probe-error",
-    })
+    expect(result.same_head_mixed_case.base.identity).toBe("current")
+    expect(result.head_race.head_sha).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    expect(result.head_race.base.identity).toBe("race")
+    expect(result.head_race.host_branch_update_capability).toBe("unknown")
+    expect(result.race.base.identity).toBe("race")
+    expect(result.race.base.oid).toBe("5555555555555555555555555555555555555555")
+    expect(result.race.host_branch_update_capability).toBe("unknown")
+    expect(result.probe_error.base.identity).toBe("probe-error")
+    expect(result.probe_error.base.oid).toBeNull()
     expect(result.probe_error.host_branch_update_capability).toBe("unknown")
-    expect(result.capability_calls).toBe(1)
   })
 
   test("base-ref freshness blocks readiness, resets quiet on current-to-stale, and fails closed on probe error", () => {
@@ -1289,9 +1335,288 @@ print(json.dumps({"current": current, "stale": stale, "probe_error": probe_error
     expect(wakeReason(probeError, 0)).toBe("base-ref-blocked")
   })
 
-  test("watch keeps polling an already-surfaced base-ref blocker instead of busy-waking or declaring ready", () => {
-    const stale = {
+  test("historical base movement does not block a merge computation proven against the current base", () => {
+    const historicalBase = "60a8e4348581471105797264808676f1f562bea5"
+    const liveBase = "5c8913cd7466b57bed5aee0d9809bf90b9e83115"
+    const head = "d0108be80bf04447ee768dfb6c925301c4cdc74f"
+    const clean = {
       ...FAILING,
+      head_sha: head,
+      merge_state_status: "CLEAN",
+      review_decision: "APPROVED",
+      checks: [{ key: "CI/test", name: "test", status: "COMPLETED", conclusion: "SUCCESS", details_url: "u" }],
+      threads: [],
+      base: {
+        host: "github.com",
+        repository: "Esper-Labs/nugget",
+        ref: "main",
+        oid: liveBase,
+        graphql_oid: liveBase,
+        historical_oid: historicalBase,
+        merge_commit_oid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        merge_parent_oids: [liveBase, head],
+        identity: "current",
+      },
+    }
+
+    const current = snapshot(state, fetchFile(dir, "historical-base-current.json", clean))
+    expect(current.base_ref_blocker).toBeNull()
+    expect(current.mergeability_certain).toBe(true)
+    expect(current.base.historical_oid).toBe(historicalBase)
+    expect(current.base.oid).toBe(liveBase)
+    expect(wakeReason(current, 0)).toBe("merge-ready")
+  })
+
+  test("base identity fails closed for races, pending merge generation, malformed refs, and deleted refs", () => {
+    const race = probeBaseIdentity({ refOid: "5".repeat(40) }).base
+    const pending = probeBaseIdentity({ mergeCommitOid: null }).base
+    expect(race.identity).toBe("race")
+    expect(pending.identity).toBe("mergeability-pending")
+    expect(probeBaseIdentity({ refOid: "not-a-sha" }).base.identity).toBe("probe-error")
+    expect(probeBaseIdentity({ refStatus: 1 }).base.identity).toBe("probe-error")
+    expect(probeBaseIdentity({ parentOids: ["2".repeat(40)] }).base.identity).toBe("probe-error")
+    expect(probeBaseIdentity({ parentOids: ["not-an-oid", "3".repeat(40)] }).base.identity).toBe("probe-error")
+    expect(probeBaseIdentity({ parentOids: ["3".repeat(40), "2".repeat(40)] }).base.identity).toBe("race")
+    expect(probeBaseIdentity({ parentOids: ["5".repeat(40), "3".repeat(40)] }).base.identity).toBe("race")
+
+    expect(probeBaseIdentity({
+      mergeable: "CONFLICTING",
+      mergeStateStatus: "CLEAN",
+      mergeCommitOid: null,
+    }).base.identity).toBe("mergeability-pending")
+
+    for (const [name, base] of [["race", race], ["pending", pending]] as const) {
+      const value = snapshot(path.join(dir, `base-${name}`), fetchFile(dir, `base-${name}.json`, {
+        ...FAILING,
+        head_sha: "3".repeat(40),
+        merge_state_status: "CLEAN",
+        review_decision: "APPROVED",
+        checks: [{ key: "CI/test", name: "test", status: "COMPLETED", conclusion: "SUCCESS", details_url: "u" }],
+        threads: [],
+        base,
+      }))
+      expect(value.base_ref_blocker).toBe(base.identity)
+      expect(value.mergeability_certain).toBe(false)
+      expect(wakeReason(value, 0)).toBe("base-ref-blocked")
+    }
+  })
+
+  test("base identity accepts SHA-1 and SHA-256 object IDs and routes GitHub Enterprise probes", () => {
+    for (const length of [40, 64]) {
+      const baseOid = "a".repeat(length)
+      const headOid = "b".repeat(length)
+      const result = probeBaseIdentity({
+        refOid: baseOid,
+        graphqlOid: baseOid,
+        headOid,
+        historicalOid: "c".repeat(length),
+        mergeCommitOid: "d".repeat(length),
+        parentOids: [baseOid, headOid],
+      })
+      expect(result.base.identity).toBe("current")
+      expect(result.calls[0]).toContain("--hostname")
+      expect(result.calls[0]).toContain("ghe.acme.test")
+    }
+  })
+
+  test("private REST ref 404 falls back to an exact non-interactive Git ref probe", () => {
+    const baseOid = "a".repeat(40)
+    const headOid = "b".repeat(40)
+    const result = probeBaseIdentity({
+      refStatus: 1,
+      refError: "gh: Not Found (HTTP 404)",
+      gitStatus: 0,
+      gitOutput: `${baseOid}\trefs/heads/main\n`,
+      graphqlOid: baseOid,
+      headOid,
+      mergeCommitOid: "d".repeat(40),
+      parentOids: [baseOid, headOid],
+    })
+
+    expect(result.base.identity).toBe("current")
+    expect(result.base.oid).toBe(baseOid)
+    expect(result.calls).toHaveLength(2)
+    expect(result.calls[1]).toEqual([
+      "git", "-c", "core.askPass=",
+      "-c", "credential.helper=",
+      "-c", "credential.helper=!gh auth git-credential",
+      "ls-remote", "--exit-code", "--refs",
+      "https://ghe.acme.test/o/r.git", "refs/heads/main",
+    ])
+
+    expect(probeBaseIdentity({
+      refStatus: 1,
+      refError: "gh: Not Found (HTTP 404)",
+      gitStatus: 1,
+    }).base.identity).toBe("probe-error")
+    expect(probeBaseIdentity({
+      refStatus: 1,
+      refError: "gh: Not Found (HTTP 404)",
+      gitStatus: 0,
+      gitOutput: `${baseOid}\trefs/heads/not-main\n`,
+    }).base.identity).toBe("probe-error")
+    expect(probeBaseIdentity({
+      refStatus: 1,
+      refError: "gh: Not Found (HTTP 404)",
+      gitStatus: 0,
+      gitOutput: `not-an-oid\trefs/heads/main\n`,
+    }).base.identity).toBe("probe-error")
+    expect(probeBaseIdentity({
+      refStatus: 1,
+      refError: "gh: Not Found (HTTP 404)",
+      gitStatus: 0,
+      gitOutput: `${baseOid}\trefs/heads/main\n${baseOid}\trefs/heads/main\n`,
+    }).base.identity).toBe("probe-error")
+    expect(probeBaseIdentity({
+      refStatus: 1,
+      refError: "gh: Not Found (HTTP 404)",
+      gitTimeout: true,
+    }).base.identity).toBe("probe-error")
+    expect(probeBaseIdentity({
+      refStatus: 1,
+      refError: "gh: Not Found (HTTP 404)",
+      gitOSError: true,
+    }).base.identity).toBe("probe-error")
+
+    const forbidden = probeBaseIdentity({
+      refStatus: 1,
+      refError: "gh: Forbidden (HTTP 403)",
+      gitStatus: 0,
+      gitOutput: `${baseOid}\trefs/heads/main\n`,
+    })
+    expect(forbidden.base.identity).toBe("probe-error")
+    expect(forbidden.calls).toHaveLength(1)
+  })
+
+  test("private ref fallback clears configured helpers and delegates credentials to gh auth", () => {
+    const credentialDir = mkdtempSync(path.join(tmpdir(), "ce-babysit-pr-credential-"))
+    const fakeGh = path.join(credentialDir, "gh")
+    const poisonHelper = path.join(credentialDir, "poison-helper")
+    const poisonMarker = path.join(credentialDir, "poison-invoked")
+    writeFileSync(fakeGh, `#!/bin/sh
+if [ "$1 $2 $3" != "auth git-credential get" ]; then
+  exit 92
+fi
+printf 'username=oauth-user\\npassword=session-token\\n'
+`)
+    writeFileSync(poisonHelper, `#!/bin/sh
+: > "$PR_SNAPSHOT_POISON_MARKER"
+exit 91
+`)
+    chmodSync(fakeGh, 0o755)
+    chmodSync(poisonHelper, 0o755)
+    writeFileSync(path.join(credentialDir, ".gitconfig"), `[credential]
+\thelper = !${poisonHelper}
+`)
+
+    const result = spawnSync("git", [
+      "-c", "core.askPass=",
+      "-c", "credential.helper=",
+      "-c", "credential.helper=!gh auth git-credential",
+      "credential", "fill",
+    ], {
+      encoding: "utf8",
+      input: "protocol=https\nhost=ghe.acme.test\n\n",
+      env: {
+        ...process.env,
+        HOME: credentialDir,
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_TERMINAL_PROMPT: "0",
+        GCM_INTERACTIVE: "never",
+        GIT_ASKPASS: "",
+        SSH_ASKPASS: "",
+        PATH: `${credentialDir}:${process.env.PATH ?? ""}`,
+        PR_SNAPSHOT_POISON_MARKER: poisonMarker,
+      },
+    })
+
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout).toContain("username=oauth-user")
+    expect(result.stdout).toContain("password=session-token")
+    expect(existsSync(poisonMarker)).toBe(false)
+  })
+
+  test("Git ref probes are bounded and non-interactive", () => {
+    const r = spawnSync("python3", ["-c", `
+import json, os
+from importlib.machinery import SourceFileLoader
+m = SourceFileLoader("pr_snapshot", ${JSON.stringify(SCRIPT)}).load_module()
+observed = {}
+class Result:
+    returncode = 1
+    stdout = ""
+    stderr = ""
+def run(cmd, **kwargs):
+    observed.update(kwargs)
+    observed["inherited"] = kwargs["env"].get("PR_SNAPSHOT_TEST_ENV")
+    return Result()
+m.subprocess.run = run
+os.environ["PR_SNAPSHOT_TEST_ENV"] = "preserved"
+m._run_git(["git", "ls-remote"])
+print(json.dumps({
+    "prompt": observed["env"].get("GIT_TERMINAL_PROMPT"),
+    "gcm": observed["env"].get("GCM_INTERACTIVE"),
+    "askpass": observed["env"].get("GIT_ASKPASS"),
+    "ssh_askpass": observed["env"].get("SSH_ASKPASS"),
+    "inherited": observed["inherited"],
+    "timeout": observed["timeout"],
+}))
+`], { encoding: "utf8" })
+    expect(r.status, r.stderr).toBe(0)
+    expect(JSON.parse(r.stdout)).toEqual({
+      prompt: "0",
+      gcm: "never",
+      askpass: "",
+      ssh_askpass: "",
+      inherited: "preserved",
+      timeout: 30,
+    })
+  })
+
+  test("DIRTY conflict state does not require a generated test merge commit", () => {
+    const baseOid = "a".repeat(40)
+    const result = probeBaseIdentity({
+      refOid: baseOid,
+      graphqlOid: baseOid,
+      mergeable: "CONFLICTING",
+      mergeStateStatus: "DIRTY",
+      mergeCommitOid: null,
+    })
+    expect(result.base.identity).toBe("current")
+    expect(result.base.merge_commit_oid).toBeNull()
+  })
+
+  test("BEHIND emits branch currency when current merge identity is proven despite historical base movement", () => {
+    const historicalBase = "1".repeat(40)
+    const liveBase = "2".repeat(40)
+    const head = "3".repeat(40)
+    const behind = snapshot(state, fetchFile(dir, "behind-historical-base.json", quietCurrencyFixture({
+      head_sha: head,
+      base: {
+        host: "github.com",
+        repository: "o/r",
+        ref: "main",
+        oid: liveBase,
+        graphql_oid: liveBase,
+        historical_oid: historicalBase,
+        merge_commit_oid: "4".repeat(40),
+        merge_parent_oids: [liveBase, head],
+        identity: "current",
+      },
+    })))
+    expect(behind.base_ref_blocker).toBeNull()
+    expect(behind.mergeability_certain).toBe(true)
+    expect(behind.branch_currency).toMatchObject({ status: "BEHIND", base_oid: liveBase, head_sha: head })
+    expect(wakeReason(behind, 0)).toBe("branch-currency")
+  })
+
+  test("watch does not turn ordinary historical base movement into a standing base-ref residual", () => {
+    const historicalBase = "1".repeat(40)
+    const liveBase = "2".repeat(40)
+    const head = "3".repeat(40)
+    const clean = {
+      ...FAILING,
+      head_sha: head,
       merge_state_status: "CLEAN",
       review_decision: "APPROVED",
       checks: [{ key: "CI/test", name: "test", status: "COMPLETED", conclusion: "SUCCESS", details_url: "u" }],
@@ -1300,15 +1625,18 @@ print(json.dumps({"current": current, "stale": stale, "probe_error": probe_error
         host: "github.com",
         repository: "o/r",
         ref: "main",
-        oid: "base-2",
-        pr_oid: "base-1",
-        freshness: "stale",
+        oid: liveBase,
+        graphql_oid: liveBase,
+        historical_oid: historicalBase,
+        merge_commit_oid: "4".repeat(40),
+        merge_parent_oids: [liveBase, head],
+        identity: "current",
       },
     }
-    const staleFile = fetchFile(dir, "base-stale-standing.json", stale)
-    const staleState = path.join(dir, "base-stale-standing")
-    snapshot(staleState, staleFile, EXPIRING_TEST_INVOCATION)
-    expect(watch(staleState, staleFile, ["--settle-seconds", "0"]).reason).toBe("max-runtime")
+    const cleanFile = fetchFile(dir, "base-moved-current.json", clean)
+    const cleanState = path.join(dir, "base-moved-current")
+    snapshot(cleanState, cleanFile)
+    expect(watch(cleanState, cleanFile, ["--settle-seconds", "0"]).reason).toBe("merge-ready")
   }, 15000)
 
   test("first snapshot: thread + failing check are actionable; checks terminal", () => {
@@ -2063,17 +2391,39 @@ m.cmd_snapshot(args)
     expect(d.open_needs_human).toBe(0)
   })
 
-  test("mark --comment with --acted-edit-id captures the baseline at mark time (closes the edit race)", () => {
+  test("mark --comment needs-human with --acted-edit-id captures the baseline at mark time (closes the answered-by-edit race)", () => {
     const sd = path.join(dir, "cmark")
     const fb = (edit: string) => ({
       ...FAILING, merge_state_status: "CLEAN", review_decision: "APPROVED", checks: [], threads: [],
       feedback: [{ id: "IC_1", kind: "comment", author: "reviewer", edit_id: edit }],
     })
     snapshot(sd, fetchFile(dir, "cm1.json", fb("h1")))
-    // mark dispatched with the snapshot-time edit_id (h1) as the explicit baseline (our reply never edits it)
-    mark(sd, ["--comment", "IC_1", "--disposition", "dispatched", "--acted-edit-id", "h1"])
+    // park needs-human with the snapshot-time edit_id as the explicit baseline
+    mark(sd, ["--comment", "IC_1", "--disposition", "needs-human", "--acted-edit-id", "h1"])
     // an edit that races in (h2) before the next snapshot -> reactivated, not swallowed as baseline
-    expect(snapshot(sd, fetchFile(dir, "cm2.json", fb("h2"))).counts.comments).toBe(1)
+    const raced = snapshot(sd, fetchFile(dir, "cm2.json", fb("h2")))
+    expect(raced.counts.comments).toBe(1)
+    expect(raced.open_needs_human).toBe(0)
+    // on a dispatched mark the same flag is stored but never read: an edit stays silenced
+    mark(sd, ["--comment", "IC_1", "--disposition", "dispatched", "--acted-edit-id", "h2"])
+    expect(snapshot(sd, fetchFile(dir, "cm3.json", fb("h3"))).counts.comments).toBe(0)
+  })
+
+  test("a needs-human comment reactivates when a human answers by editing it (lazy baseline), while parked it blocks merge-ready", () => {
+    const sd = path.join(dir, "nhedit")
+    const fb = (edit: string) => ({
+      ...FAILING, merge_state_status: "CLEAN", review_decision: "APPROVED", checks: [], threads: [],
+      feedback: [{ id: "IC_q", kind: "comment", author: "reviewer", edit_id: edit }],
+    })
+    snapshot(sd, fetchFile(dir, "nh1.json", fb("q1")))
+    mark(sd, ["--comment", "IC_q", "--disposition", "needs-human"]) // lazy baseline
+    const parked = snapshot(sd, fetchFile(dir, "nh2.json", fb("q1")))
+    expect(parked.counts.comments).toBe(0)
+    expect(parked.open_needs_human).toBe(1) // parked -> blocks merge-ready
+    // the human answers by editing the same comment -> reactivated and actionable again
+    const answered = snapshot(sd, fetchFile(dir, "nh3.json", fb("q2")))
+    expect(answered.counts.comments).toBe(1)
+    expect(answered.open_needs_human).toBe(0)
   })
 
   test("a dispatched thread reactivates when an EARLIER comment is edited (same last_comment_id, bumped last_comment_at)", () => {
@@ -2090,18 +2440,42 @@ m.cmd_snapshot(args)
     expect(snapshot(sd, fetchFile(dir, "ee3.json", thr("t2"))).counts.threads).toBe(1) // reactivated
   })
 
-  test("a dispatched top-level comment reactivates when its body is edited (edit_id changes), not on our reply", () => {
-    // A non-actionable wrapper marked dispatched, later edited to add an actionable request, must
-    // return to actionable — our own reply is a separate top-level comment and never edits it.
+  test("a dispatched top-level comment does NOT reactivate when its body is edited; a new comment id still does (#1309)", () => {
+    // Status bots (changeset-bot, CodeRabbit, Codecov) rewrite their own comment bodies on every
+    // push. Edit-keyed reactivation re-actionized the handled comment on every rewrite, so
+    // counts.comments never reached 0 and merge-ready could never fire. A marked comment stays
+    // silenced across edits; a genuinely new request is a new comment id and stays actionable.
     const sd = path.join(dir, "editfb")
-    const fb = (edit: string) => ({
+    const fb = (feedback: object[]) => ({
       ...FAILING, merge_state_status: "CLEAN", review_decision: "APPROVED", checks: [], threads: [],
-      feedback: [{ id: "IC_1", kind: "comment", author: "reviewer", edit_id: edit }],
+      feedback,
     })
-    snapshot(sd, fetchFile(dir, "e1.json", fb("h1"))) // actionable
+    const bot = (edit: string) => ({ id: "IC_1", kind: "comment", author: "changeset-bot", edit_id: edit })
+    snapshot(sd, fetchFile(dir, "e1.json", fb([bot("h1")]))) // actionable
     mark(sd, ["--comment", "IC_1", "--disposition", "dispatched"])
-    expect(snapshot(sd, fetchFile(dir, "e2.json", fb("h1"))).counts.comments).toBe(0) // same body -> silenced
-    expect(snapshot(sd, fetchFile(dir, "e3.json", fb("h2"))).counts.comments).toBe(1) // edited -> reactivated
+    expect(snapshot(sd, fetchFile(dir, "e2.json", fb([bot("h1")]))).counts.comments).toBe(0) // same body -> silenced
+    // bot rewrites its status comment on the next push -> STAYS silenced, but the edit is still
+    // review activity: it must reset the settle clock so merge-ready cannot fire off an old quiet
+    // window right after fresh edits (edit_id is part of _change_sig even though it no longer
+    // reopens the item)
+    patchState(sd, { last_change_at: isoAgo(60 * 60) })
+    const edited = snapshot(sd, fetchFile(dir, "e3.json", fb([bot("h2")])))
+    expect(edited.counts.comments).toBe(0)
+    expect(edited.changed_this_tick).toBe(true)
+    expect(edited.quiet_seconds).toBeLessThan(2)
+    // an unchanged tick after the edit settles normally
+    patchState(sd, { last_change_at: isoAgo(60 * 60) })
+    const settled = snapshot(sd, fetchFile(dir, "e3b.json", fb([bot("h2")])))
+    expect(settled.changed_this_tick).toBe(false)
+    expect(settled.quiet_seconds).toBeGreaterThan(60)
+    expect(snapshot(sd, fetchFile(dir, "e4.json", fb([bot("h3")]))).counts.comments).toBe(0)
+    // a brand-new comment is a new id -> actionable; the handled one stays out of the count
+    const next = snapshot(sd, fetchFile(dir, "e5.json", fb([bot("h3"), { id: "IC_2", kind: "comment", author: "reviewer", edit_id: "x1" }])))
+    expect(next.counts.comments).toBe(1)
+    expect(next.actionable.comments.map((c: any) => c.id)).toEqual(["IC_2"])
+    // explicit re-open still works
+    mark(sd, ["--comment", "IC_1", "--disposition", "open"])
+    expect(snapshot(sd, fetchFile(dir, "e6.json", fb([bot("h3"), { id: "IC_2", kind: "comment", author: "reviewer", edit_id: "x1" }]))).counts.comments).toBe(2)
   })
 
   test("a fork-PR workflow awaiting maintainer approval blocks 'all_checks_ok' and flags blocked_external", () => {
@@ -3309,4 +3683,40 @@ print(json.dumps({"ids": [t["thread_id"] for t in threads], "calls": calls}))
     snapshot(sd, withNew, ["--start-invocation"])
     expect(watch(sd, withNew).reason).toBe("actionable")
   }, 15000)
+})
+
+// UTF-8 gh/git output under a non-UTF-8 locale (issue #1346)
+//
+// _run() used subprocess.run(..., text=True) with no encoding=, so Python decoded
+// stdout with the locale encoding (cp1252 on Windows, ascii under C). gh emits UTF-8;
+// a curly quote (U+201D, last byte 0x9d) crashed the reader thread and left stdout None.
+// Forcing C + PYTHONUTF8=0 reproduces that decode failure on UTF-8 CI.
+describe("pr-snapshot _run pins UTF-8 under a non-UTF-8 locale (#1346)", () => {
+  const NON_UTF8_LOCALE = {
+    ...process.env,
+    LC_ALL: "C",
+    LANG: "C",
+    LC_CTYPE: "C",
+    PYTHONUTF8: "0",
+    PYTHONCOERCECLOCALE: "0",
+  }
+
+  test("_run decodes UTF-8 curly-quote stdout instead of raising UnicodeDecodeError", () => {
+    const python = `
+import json, sys
+from importlib.machinery import SourceFileLoader
+m = SourceFileLoader("prs", ${JSON.stringify(SCRIPT)}).load_module()
+child = [sys.executable, "-c",
+         "import sys; sys.stdout.buffer.write(b'{\\"title\\": \\"hello \\\\xe2\\\\x80\\\\x9d world\\"}')"]
+r = m._run(child)
+print(json.dumps({"returncode": r.returncode, "stdout": r.stdout, "title": json.loads(r.stdout)["title"]}))
+`
+    const r = spawnSync("python3", ["-c", python], { encoding: "utf8", env: NON_UTF8_LOCALE })
+    expect(r.status, r.stderr).toBe(0)
+    expect(JSON.parse(r.stdout)).toEqual({
+      returncode: 0,
+      stdout: '{"title": "hello \u201d world"}',
+      title: "hello \u201d world",
+    })
+  })
 })

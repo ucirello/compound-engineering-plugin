@@ -16,32 +16,44 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace: ${jj('workspace', 'root') || '(not a JJ workspace)'}`,
-    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.shortest(8)') || '(none)'}`,
+    `workspace_root: ${jj('workspace', 'root') || '(not a JJ workspace)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(none)'}`,
+    `description: ${jj('log', '-r', '@', '--no-graph', '-T', 'description.first_line()') || '<jj-description-derived-from-local-standards>'}`,
+    `prior_main_origin: ${jj('log', '-r', 'main@origin', '--no-graph', '-T', 'change_id.short()') || '(unavailable)'}`,
   ].join('\n');
 }
 
 // Substitution stays allowed on a failed dispatch, not only on an empty tool
-// surface: workflows here define their own degrade paths (the brainstorm
+// surface: workflows here define their own degrade paths (ce-brainstorm's
 // verifier falls back to orchestrator-only filtering), and this text is
 // positioned to outrank skill prose — a stricter rule would make those paths
 // retry forever or drop required work instead of degrading as intended.
+// The carve-out below walks that deviation back for one class: "rather than
+// retrying" was read as covering calls the harness rejected before any agent
+// existed, so one bad optional argument (an override the chosen dispatch mode
+// treats as mutually exclusive) spent the whole fallback and cost every
+// independent context. Its cause is the harness call schema, not the agent-tool
+// gate this directive was built for — so it outlives that gate's exit condition
+// and must survive a deletion triggered by it.
 const SUBAGENT_AUTHORIZATION = [
   'SUBAGENT_AUTHORIZATION: If your harness gates subagent or agent-tool use on an explicit user request,',
   "the user's invocation of this skill is that request for the skill's shipped subagents;",
   'spawn them where a reference file directs, without re-asking.',
+  'A dispatch the harness rejects before the agent launches because the call itself was malformed —',
+  'an unsupported option, a schema validation error, an incompatible argument — is a correctable invocation error,',
+  'not a failed pass: change only the arguments the harness named — correcting a rejected value,',
+  'or dropping a rejected optional argument — keep the prompt, scope, and required capabilities intact,',
+  'and retry once.',
+  'A capacity or active-agent-limit rejection is not malformed: leave that dispatch queued and retry it when a slot frees.',
+  'A failure after the agent launched is not retried this way.',
   'Substitute an in-thread pass when the tool surface has no subagent capability at all,',
-  'or when a dispatch fails and this workflow defines its own fallback for that failure —',
-  "follow the workflow's fallback rather than retrying.",
+  'or when a dispatch fails for a reason that correction does not fix and this workflow defines its own fallback —',
+  "follow the workflow's fallback rather than retrying further.",
   'Where this workflow declares that a pass requires independent contexts, do not substitute inline for that pass:',
   'report the missing capability as a blocker and stop that pass rather than running both sides in one context.',
   'Disclose any substitution in one line.',
 ].join(' ');
 
-// Observed in the field: a model substituted inline for dispatch and told the
-// user "your standing instruction prohibits agent dispatch" — a system-prompt
-// default re-narrated as a user preference the user never stated and so
-// cannot correct.
 // ce-doc-review promotes a finding when "2+ independent personas" agree, and
 // nothing verified they ran in separate processes — inline, one context reasoned
 // both lenses and still stamped confidence 100.

@@ -8,9 +8,23 @@ argument-hint: "[path to optimization spec YAML, or describe the optimization go
 
 Run metric-driven iterative optimization. Define a goal, build measurement scaffolding, then run parallel experiments that converge toward the best solution.
 
+## Setup
+
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `ROCKETCLAW_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+
+```bash
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+NODE="$(for c in node nodejs; do command -v "$c" >/dev/null 2>&1 && "$c" -e '' >/dev/null 2>&1 && { echo "$c"; break; }; done)";
+if [ -n "$NODE" ]; then
+"$NODE" "$SKILL_DIR/scripts/context.mjs" || echo "context script failed; continue with the skill's normal behavior";
+else
+echo "no Node runtime; continue with the skill's normal behavior";
+fi
+```
+
 ## Interaction Method
 
-Use the platform's blocking question capability. Fall back to numbered options in chat only when no blocking question capability exists or the call errors. Never silently skip the question.
+Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
 ## Input
 
@@ -252,7 +266,7 @@ mkdir -p "$WORKSPACE_ROOT/.context/ce-optimize/<spec-name>/"
 
 **This phase is a HARD GATE. The user must approve baseline and parallel readiness before Phase 2.**
 
-**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `parallel-probe.sh`, and the compatibility-named `experiment-worktree.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it); replace the placeholder with the directory containing this SKILL.md before running.
+**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `parallel-probe.sh`, and `experiment-worktree.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it); replace the placeholder with the directory containing this SKILL.md before running.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
@@ -451,7 +465,7 @@ If the backlog is non-empty but no runnable hypotheses remain because everything
 
 For each hypothesis in the batch, dispatch according to `execution.mode`. In `serial` mode, run exactly one experiment to completion before selecting the next hypothesis. In `parallel` mode, dispatch the batch concurrently.
 
-**Bounded dispatch.** Do not assume the host will accept all concurrent subagents at once; the active-subagent cap varies by host and profile and is independent of `execution.max_concurrent` (which caps workspaces, a separate budget). Queue the selected experiments, dispatch only as many as the host accepts, and when a capacity or active-agent-limit error appears, treat it as backpressure — retry the queued experiment after a slot frees rather than marking it failed. Mark an experiment failed only when dispatch fails for a non-capacity reason or a successfully dispatched experiment errors/times out.
+**Bounded dispatch.** Do not assume the host will accept all concurrent subagents at once; the active-subagent cap varies by host and profile and is independent of `execution.max_concurrent` (which caps workspaces, a separate budget). Queue the selected experiments, dispatch only as many as the host accepts, and when a capacity or active-agent-limit error appears, treat it as backpressure — retry the queued experiment after a slot frees rather than marking it failed. Mark an experiment failed only when dispatch fails for a non-capacity reason that survives correcting the invocation, or a successfully dispatched experiment errors/times out.
 
 The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-optimize` skill directory; see the Bundled scripts note in Phase 1) — shell state does not persist from Phase 1, so each block carries its own assignment.
 
@@ -469,7 +483,20 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
    - Mutable and immutable scope
    - Constraints and approved dependencies
    - Rolling window of last 10 experiments (concise summaries)
-4. Dispatch a generic subagent with the filled prompt, working in the experiment workspace. If the harness requires a prompt file, resolve the workspace root with `jj workspace root`, fall back to the physical current directory when unavailable, and create a collision-resistant file under `<workspace-root>/.tmp/rocketclaw/ce-optimize/<spec-name>/prompts/`.
+4. Dispatch a generic subagent with the filled prompt, working in the experiment workspace.
+
+**Codex backend:**
+1. Do not delegate if the active harness already runs inside a Codex sandbox; use the harness's subagent capability instead. Preserve Codex's runtime environment signals when detecting this state rather than probing Git metadata.
+   ```bash
+   test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}"
+   ```
+2. Fill the experiment prompt template
+3. Resolve the repository scratch root with `jj workspace root`; if no JJ workspace is available, use the physical current directory. Create `.tmp/rocketclaw/ce-optimize/<spec-name>/prompts/` below that root and atomically write the filled prompt there with a collision-resistant name.
+4. Dispatch via Codex:
+   ```bash
+   codex exec --skip-git-repo-check - < "<scratch-root>/.tmp/rocketclaw/ce-optimize/<spec-name>/prompts/experiment-<NNN>.txt"
+   ```
+5. Security posture: use the user's selection (ask once per session if not set in spec)
 
 ### 3.3 Collect and Persist Results
 
@@ -495,7 +522,7 @@ For each completed experiment, **immediately**:
    - If ANY gate fails: mark outcome as `degenerate`, skip judge evaluation, save money
 
 5. **If gates pass AND primary type is `judge`**:
-   - **Independence gate — check before dispatching.** A judge must not have authored the hypothesis or run the experiment it is scoring, and must not see other judges' results; that independence is what makes these scores usable as an accept/revert gate. If the host exposes no way to dispatch judges as separate agents, do **not** score inline: mark the experiment's outcome `error` with the reason (judges undispatchable), skip judge evaluation exactly as a failed degenerate gate does, and continue to the log-and-append step so the entry is still written to disk. An experiment stopped here never carries judge metrics, so it is not eligible to become `best` and does not enter the accept/revert comparison — it is unmeasured, not poor-scoring. Report the blocker to the user at the batch summary.
+   - **Independence gate — check before dispatching.** A judge must not have authored the hypothesis or run the experiment it is scoring, and must not see other judges' results; that independence is what makes these scores usable as an accept/reject gate. If the host exposes no way to dispatch judges as separate agents, do **not** score inline: mark the experiment's outcome `error` with the reason (judges undispatchable), skip judge evaluation exactly as a failed degenerate gate does, and continue to the log-and-append step so the entry is still written to disk. An experiment stopped here never carries judge metrics, so it is not eligible to become `best` and does not enter the accept/reject comparison — it is unmeasured, not poor-scoring. Report the blocker to the user at the batch summary.
    - Read the experiment's output (cluster assignments, search results, etc.)
    - Apply stratified sampling per `metric.judge.stratification` config (using `sample_seed`)
    - Group samples into batches of `metric.judge.batch_size`
@@ -508,7 +535,7 @@ For each completed experiment, **immediately**:
 6. **If gates pass AND primary type is `hard`**:
    - Use the metric value directly from the measurement output
 
-7. **IMMEDIATELY append to experiment log on disk (CP-3)** — do not defer this to batch evaluation. Write the experiment entry (iteration, hypothesis, outcome, metrics, learnings) to `<workspace-root>/.context/ce-optimize/<spec-name>/experiment-log.yaml` right now. Use the transitional outcome `measured` once the experiment has valid metrics but has not yet been compared to the current best. Update the outcome to `kept`, `reverted`, or another terminal state in the evaluation step, but the raw metrics are on disk and safe from context compaction.
+7. **IMMEDIATELY append to experiment log on disk (CP-3)** — do not defer this to batch evaluation. Write the experiment entry (iteration, hypothesis, outcome, metrics, learnings) to `<workspace-root>/.context/ce-optimize/<spec-name>/experiment-log.yaml` right now. Use the transitional outcome `measured` once the experiment has valid metrics but has not yet been compared to the current best. Update the outcome to `kept`, `abandoned`, or another terminal state in the evaluation step, but the raw metrics are on disk and safe from context compaction.
 
 8. **VERIFY the write (CP-3 verification)** — read the experiment log back from disk and confirm the entry just written is present. If verification fails, retry the write. Do NOT proceed to the next experiment until this entry is confirmed on disk.
 
@@ -543,12 +570,12 @@ After all experiments in the batch have been measured:
    - Preserve every semantic content requirement stated by this site while adapting syntax to runtime conventions.
    - Active project instructions and change-description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a message field. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. Apply the description with `jj describe -m <description-composed-from-runtime-conventions>`; it must identify the combined measured improvement.
    - If combined measurement is strictly better: move the optimization bookmark to the rebased runner-up change (outcome: `runner_up_kept`), then clean up that runner-up's experiment workspace and temporary bookmark
-   - Otherwise: abandon the rebased runner-up change, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment workspace and temporary bookmark
+   - Otherwise: abandon the rebased runner-up change, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_abandoned`), then clean up the runner-up's experiment workspace and temporary bookmark
    - Stop after first failed combination
 
 5. **Handle deferred deps**: experiments that need unapproved dependencies get outcome `deferred_needs_approval`
 
-6. **Abandon all others**: abandon their experiment changes, clean up their workspaces and temporary bookmarks, and log them as `reverted`
+6. **Abandon all others**: abandon their experiment changes, clean up their workspaces and temporary bookmarks, and log them as `abandoned`
 
 ### 3.5 Update State (CP-4)
 
@@ -556,7 +583,7 @@ After all experiments in the batch have been measured:
 
 1. **Re-read the experiment log from disk** — do not trust in-memory state. The log is the source of truth.
 
-2. **Finalize outcomes** — update experiment entries from step 3.4 evaluation (mark `kept`, `reverted`, `runner_up_kept`, etc.). Write these outcome updates to disk immediately.
+2. **Finalize outcomes** — update experiment entries from step 3.4 evaluation (mark `kept`, `abandoned`, `runner_up_kept`, etc.). Write these outcome updates to disk immediately.
 
 3. **Update the `best` section** in the experiment log if a new best was found. Write to disk.
 
@@ -593,6 +620,8 @@ If no stopping criterion is met, proceed to the next batch (step 3.1).
 
 ### 3.7 Cross-Cutting Concerns
 
+**Codex failure cascade**: Track consecutive Codex delegation failures. After 3 consecutive failures, auto-disable Codex for remaining experiments and fall back to subagent dispatch. Log the switch.
+
 **Error handling**: If an experiment's measurement command crashes, times out, or produces malformed output:
 - Log as outcome `error` or `timeout` with the error message
 - Abandon the experiment change and clean up its workspace and temporary bookmark
@@ -626,7 +655,7 @@ Optimization: <spec-name>
 Duration: <wall-clock time>
 Total experiments: <count>
   Kept: <count> (including <runner_up_kept_count> runner-up integrations)
-  Reverted: <count>
+  Abandoned: <count>
   Degenerate: <count>
   Errors: <count>
   Deferred: <count>
@@ -654,7 +683,7 @@ Present post-completion options via the platform question tool:
 1. **Run structured code review** on the cumulative diff (baseline to final) at the optimization bookmark. Invoke `ce-code-review` through the active harness's callable skill mechanism. To land eligible fixes before the next option, apply the mechanical-apply bar below.
 
    **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Leave the fixes in a JJ change for the Create PR option.
-2. **Document the winning strategy** as an institutional learning by invoking `ce-compound` through the active harness's callable skill mechanism.
+2. **Document the winning strategy** as an institutional learning through the project's learning-capture workflow.
 3. **Create a GitHub PR**: describe any final change containing review fixes before moving or pushing the bookmark. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Preserve every semantic content requirement stated by this site while adapting syntax to runtime conventions. Active project instructions and change-description syntax inferred at runtime from `jj log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a message field. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. The description must identify the applied review fixes; apply it with `jj describe -m <description-composed-from-runtime-conventions>`. Then move the optimization bookmark to the final change, resolve one writable publication remote from the project's active instructions, `jj git remote list`, and GitHub ownership, publish with `jj git push --remote <remote> --bookmark "optimize/<spec-name>"`, and create the PR with `gh pr create` while preserving repository templates and conventions.
 4. **Continue** with more experiments: re-enter Phase 3 with the current state. State re-read first.
 5. **Done** -- leave the optimization bookmark for manual review.

@@ -4,8 +4,8 @@
 # Runs one pre-sanctioned different-model route in a read-only, least-privilege
 # process and writes its POV as JSON into the run dir.
 # Every peer receives the canonical POV persona, schema, and a caller-prepared
-# subject payload. The peer also receives the caller-declared workspace read
-# scope; private prompt/result scratch stays under workspace-local `.tmp`.
+# subject payload. The peer also receives the caller-declared repository read
+# scope; private prompt/result scratch stays under the workspace-local `.tmp/rocketclaw` namespace.
 #
 # Independence is by PROVIDER, not CLI brand. A provider is reached by a ROUTE:
 # its dedicated CLI, or (for the fixed grok-cursor / composer routes) cursor-agent. All
@@ -13,11 +13,13 @@
 # -fast tier is its ceiling, an accepted exception).
 #
 # Usage:
-#   cross-model-pov.sh <host-provider> <fixed-route> <subject-payload> <run-dir>
+#   cross-model-pov.sh <host-serving-family> <fixed-route> <subject-payload> <run-dir>
 #
-#   <host-provider> the peer-key of the host's OWN serving provider, attested by
-#                   the calling skill (it knows its harness): openai->codex,
-#                   anthropic->claude, xai->grok, cursor/composer->composer.
+#   <host-serving-family>
+#                   the peer-key of the host's OWN serving family, attested by
+#                   the calling skill (it knows its harness). A peer-key, never
+#                   a provider name: openai->codex, anthropic->claude,
+#                   xai->grok, cursor/composer->composer.
 #                   Used only to verify independence. `unknown` is allowed for an
 #                   explicitly named peer, but its receipt remains unverified;
 #                   automatic discovery must exclude it before calling this worker.
@@ -26,12 +28,12 @@
 #                   returns no artifact; only the host may disclose and retry a
 #                   different recipient.
 #   <subject-payload> framed question plus any conversation-only subject material.
-#                     Point to workspace files instead of copying their contents;
+#                     Point to repository files instead of copying their contents;
 #                     the peer grounds itself from the shared working copy.
-#   <run-dir>         existing private dir under workspace-local `.tmp`; output ->
+#   <run-dir>         existing private dir under the workspace's `.tmp/rocketclaw`; output ->
 #                     <run-dir>/pov-<target>.json, where <target> is the resolved
 #                     <fixed-route> target (grok-cli/grok-cursor both collapse to
-#                     grok) -- NOT the <host-provider> key.
+#                     grok) -- NOT the <host-serving-family> key.
 #
 # Test/introspection mode (no model call, no side effects):
 #   cross-model-pov.sh --emit-adapter <route>
@@ -81,34 +83,38 @@ skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no o
 # ONE model at HIGH reasoning per provider. Concrete IDs are the CURRENT instance of the tier principle
 # and the single maintenance point when model families change.
 M_CODEX="gpt-5.6-sol"          # codex CLI            (-c model_reasoning_effort="high")
-M_CLAUDE="opus"                # claude CLI, Opus 4.8 (--effort high)
-M_GROK="grok-4.5"              # grok CLI             (--effort high)
-M_GROK_CURSOR="cursor-grok-4.5-high" # cursor-agent grok route (reasoning baked into id)
+M_CLAUDE="claude-opus-5"       # claude CLI, Opus 5   (--effort high)
+M_GROK="grok-4.6"              # grok CLI             (--effort high)
+M_GROK_CURSOR="cursor-grok-4.6-high" # cursor-agent grok route (reasoning baked into id)
 M_COMPOSER="composer-2.5-fast" # cursor-agent composer (no high tier; -fast is the ceiling)
 
 # --- model-identity receipt (R7/R8) -----------------------------------------
 # "Which model ran" is a claim that needs a serving-side receipt. Only the
 # claude CLI reports one today: its JSON envelope carries a modelUsage object
 # keyed by the full dated id that actually served the run. Match requested vs
-# actual by expected full-family prefix (alias -> dated id counts as a match;
-# never substring). Every other route records the literal "unverified" — never
-# a fallback to the requested value. Keep this block byte-identical across
+# actual by expected family prefix, delimited on "-": the served id must equal
+# the prefix or continue it with "-" (alias or undated id -> dated id counts
+# as a match; a longer sibling such as claude-opus-50-* does not; never
+# substring). Every other route records the literal
+# "unverified" — never a fallback to the requested value. Keep this block byte-identical across
 # ce-code-review and ce-doc-review (kernel parity).
-expected_model_prefix() {   # <requested-alias> -> expected served-id prefix
+expected_model_prefix() {   # <requested-alias-or-id> -> expected served-id family prefix
   case "$1" in
-    opus)   printf 'claude-opus-' ;;
-    sonnet) printf 'claude-sonnet-' ;;
-    haiku)  printf 'claude-haiku-' ;;
+    fable)    printf 'claude-fable' ;;
+    opus)     printf 'claude-opus' ;;
+    sonnet)   printf 'claude-sonnet' ;;
+    haiku)    printf 'claude-haiku' ;;
+    claude-*) printf '%s' "$1" ;;
   esac
 }
 
 route_model() {   # <route> -> the M_* constant that route requests
   local target
   target="$(route_target "$1")"
-  if [ -n "${CROSS_MODEL_MODEL_OVERRIDE:-}" ] &&
-     [ "${CROSS_MODEL_MODEL_OVERRIDE_TARGET:-}" = "$target" ] &&
+  if [ -n "${ROCKETCLAW_CROSS_MODEL_MODEL_OVERRIDE:-}" ] &&
+     [ "${ROCKETCLAW_CROSS_MODEL_MODEL_OVERRIDE_TARGET:-}" = "$target" ] &&
      [ "$target" != "cursor" ]; then
-    printf '%s' "$CROSS_MODEL_MODEL_OVERRIDE"
+    printf '%s' "$ROCKETCLAW_CROSS_MODEL_MODEL_OVERRIDE"
     return 0
   fi
   case "$1" in
@@ -163,12 +169,13 @@ extract_model_receipt() {   # <route>; reads the envelope in $PEERLOG, sets MODE
   # requested value).
   matched=""
   if [ -n "$prefix" ]; then
-    # first modelUsage key matching the expected family prefix (jq-native, no
-    # external `head`: the route sandbox may not carry coreutils on PATH).
+    # first modelUsage key equal to, or delimited under, the expected prefix
+    # (jq-native, no external `head`: the route sandbox may not carry coreutils
+    # on PATH).
     if [ -n "$envelope" ]; then
-      matched="$(printf '%s' "$envelope" | jq -r --arg p "$prefix" 'first((.modelUsage // {} | keys[] | select(startswith($p)))) // empty' 2>/dev/null)"
+      matched="$(printf '%s' "$envelope" | jq -r --arg p "$prefix" 'first((.modelUsage // {} | keys[] | select(. == $p or startswith($p + "-")))) // empty' 2>/dev/null)"
     else
-      matched="$(jq -r --arg p "$prefix" 'first((.modelUsage // {} | keys[] | select(startswith($p)))) // empty' "$PEERLOG" 2>/dev/null)"
+      matched="$(jq -r --arg p "$prefix" 'first((.modelUsage // {} | keys[] | select(. == $p or startswith($p + "-")))) // empty' "$PEERLOG" 2>/dev/null)"
     fi
   fi
   if [ -n "$matched" ]; then
@@ -205,7 +212,7 @@ adapter_argv() {
         -o "$RAW_OUT" -m "$(route_model codex)" -c 'model_reasoning_effort="high"' -c 'hide_agent_reasoning=false'
       ;;
     claude)
-      # Keep project auto-discovery disabled while allowing only workspace reads
+      # Keep project auto-discovery disabled while allowing only repository reads
       # and bounded public web checks. Mutating tools, Bash, MCP, and subagents are
       # absent from the allowlist.
       # stream-json + --verbose for PEERLOG idle (#1270); schema still composes.
@@ -216,7 +223,9 @@ adapter_argv() {
       ;;
     grok-cli)
       # Schema forces buffered json — hard-only, no PEERLOG idle (#1270).
-      printf '%s\0' grok --prompt-file "$PROMPT_FILE" --model "$(route_model grok-cli)" --effort high \
+      # --verbatim: without it grok offloads a large prompt to a session file and
+      # sends only a preview, spending scarce turns to re-read what it was given.
+      printf '%s\0' grok --prompt-file "$PROMPT_FILE" --verbatim --model "$(route_model grok-cli)" --effort high \
         --cwd "$READ_ROOT" --permission-mode dontAsk \
         --deny Edit --deny Write --deny Bash --deny Task --deny 'mcp__*' \
         --no-subagents --max-turns 15 \
@@ -241,14 +250,14 @@ adapter_argv() {
 # The host may replace a stale concrete model only within the fixed route's
 # target family. Values are passed as one argv token; they never enter eval.
 apply_model_override() {
-  local route="$1" override="${CROSS_MODEL_MODEL_OVERRIDE:-}" override_target="${CROSS_MODEL_MODEL_OVERRIDE_TARGET:-}" target
+  local route="$1" override="${ROCKETCLAW_CROSS_MODEL_MODEL_OVERRIDE:-}" override_target="${ROCKETCLAW_CROSS_MODEL_MODEL_OVERRIDE_TARGET:-}" target
   [ -n "$override" ] || { [ -z "$override_target" ]; return; }
   target="$(route_target "$route")" || return 1
   [ "$override_target" = "$target" ] || return 1
   [ "$target" != "cursor" ] || return 1
   case "$route:$override" in
     codex:gpt-*|codex:o[0-9]* ) ;;
-    claude:opus|claude:sonnet|claude:haiku|claude:claude-* ) ;;
+    claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-* ) ;;
     grok-cli:grok-* ) ;;
     grok-cursor:cursor-grok-* ) ;;
     composer:composer-* ) ;;
@@ -263,7 +272,7 @@ if [ "${1:-}" = "--emit-adapter" ]; then
   RAW_OUT="<peer-workdir>/pov-<provider>.raw.json"
   PROMPT_FILE="<prompt-file>"; SCHEMA_REF="<schema>"
   route="${2:-}"
-  apply_model_override "$route" 2>/dev/null || { echo "model override '${CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$route'" >&2; exit 2; }
+  apply_model_override "$route" 2>/dev/null || { echo "model override '${ROCKETCLAW_CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$route'" >&2; exit 2; }
   # adapter_argv emits NUL-delimited argv (can't be captured in a shell var), so
   # validate the route first, then render for humans with NUL -> space.
   adapter_argv "$route" >/dev/null 2>&1 || { echo "unknown route '$route' (want codex|claude|grok-cli|grok-cursor|cursor|composer)" >&2; exit 2; }
@@ -272,22 +281,22 @@ if [ "${1:-}" = "--emit-adapter" ]; then
 fi
 
 HOST_PROVIDER="${1:-unknown}"
-HOST_HARNESS="${CROSS_MODEL_HOST_HARNESS:-unknown}"
+HOST_HARNESS="${ROCKETCLAW_CROSS_MODEL_HOST_HARNESS:-unknown}"
 FIXED_ROUTE="${2:-}"
 PAYLOAD_PATH="${3:-}"
 RUN_DIR="${4:-}"
 
 # --- validate inputs -------------------------------------------------------
 [ -n "$PAYLOAD_PATH" ] && [ -f "$PAYLOAD_PATH" ] || skip "subject payload '${PAYLOAD_PATH:-<empty>}' not readable on disk; skipping"
-READ_ROOT="${CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
+READ_ROOT="${ROCKETCLAW_CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
 [ -d "$READ_ROOT" ] || skip "declared workspace/read root '$READ_ROOT' is not a directory"
 READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve workspace/read root '$READ_ROOT'"
-if [ -n "${CROSS_MODEL_WORKSPACE_ROOT:-}" ]; then
-  WORKSPACE_ROOT="$CROSS_MODEL_WORKSPACE_ROOT"
-elif command -v jj >/dev/null 2>&1 && _workspace_root="$(jj -R "$READ_ROOT" workspace root 2>/dev/null)"; then
+if [ -n "${ROCKETCLAW_CROSS_MODEL_WORKSPACE_ROOT:-}" ]; then
+  WORKSPACE_ROOT="$ROCKETCLAW_CROSS_MODEL_WORKSPACE_ROOT"
+elif _workspace_root="$(jj workspace root 2>/dev/null)" && [ -n "$_workspace_root" ]; then
   WORKSPACE_ROOT="$_workspace_root"
 else
-  WORKSPACE_ROOT="$(pwd -P)"
+  WORKSPACE_ROOT="$READ_ROOT"
 fi
 [ -d "$WORKSPACE_ROOT" ] || skip "declared workspace root '$WORKSPACE_ROOT' is not a directory"
 WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" && pwd -P)" || skip "cannot resolve workspace root '$WORKSPACE_ROOT'"
@@ -303,13 +312,13 @@ else
   RUN_PARENT="$(cd "$RUN_PARENT" && pwd -P)" || skip "cannot resolve run-dir parent '$RUN_PARENT'"
   RUN_DIR_RESOLVED="$RUN_PARENT/$RUN_BASENAME"
 fi
-case "$RUN_DIR_RESOLVED/" in "$WORKSPACE_ROOT/.tmp/"*) ;; *) skip "run-dir must be under workspace-local .tmp" ;; esac
+case "$RUN_DIR_RESOLVED/" in "$WORKSPACE_ROOT/.tmp/rocketclaw/"*) ;; *) skip "run-dir must be under '$WORKSPACE_ROOT/.tmp/rocketclaw'" ;; esac
 [ -d "$RUN_DIR_RESOLVED" ] || skip "run-dir '$RUN_DIR' must already exist"
 RUN_DIR="$RUN_DIR_RESOLVED"
 chmod 700 "$RUN_DIR" 2>/dev/null || skip "run-dir '$RUN_DIR' could not be made private"
 command -v jq >/dev/null 2>&1 || skip "jq not installed; skipping"
-INCLUDE_PATHS="${CROSS_MODEL_INCLUDE_PATHS:-}"
-EXCLUDE_PATHS="${CROSS_MODEL_EXCLUDE_PATHS:-}"
+INCLUDE_PATHS="${ROCKETCLAW_CROSS_MODEL_INCLUDE_PATHS:-}"
+EXCLUDE_PATHS="${ROCKETCLAW_CROSS_MODEL_EXCLUDE_PATHS:-}"
 
 case "$HOST_PROVIDER" in
   codex|claude|grok|composer|unknown) ;;
@@ -325,7 +334,7 @@ case "$FIXED_ROUTE" in
   *) skip "unknown fixed route '${FIXED_ROUTE:-<empty>}'; host must resolve one route before egress" ;;
 esac
 TARGET="$(route_target "$FIXED_ROUTE")" || skip "unknown fixed route '${FIXED_ROUTE:-<empty>}'; host must resolve one route before egress"
-apply_model_override "$FIXED_ROUTE" || skip "model override '${CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$FIXED_ROUTE'"
+apply_model_override "$FIXED_ROUTE" || skip "model override '${ROCKETCLAW_CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$FIXED_ROUTE'"
 
 # --- self-locate skill root + canonical sibling files ----------------------
 SKILL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" || skip "cannot resolve skill root; skipping"
@@ -337,17 +346,27 @@ SCHEMA_CONTENT="$(cat "$SCHEMA")" || skip "cannot read POV schema; skipping"
 SCHEMA_REF="$SCHEMA_CONTENT"   # adapter_argv references SCHEMA_REF for --json-schema routes
 
 # --- validate the host-resolved fixed route and egress allowlist -------------
-ALLOW="${CROSS_MODEL_PEERS:-}"                 # optional egress allowlist (R19)
+ALLOW="${ROCKETCLAW_CROSS_MODEL_PEERS:-}"                 # optional egress allowlist (R19)
 
 in_csv() { case ",$2," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 # Require a usable POV, not merely valid JSON. Error envelopes and incomplete
 # objects fail the fixed route and return control to the host without publishing
 # a cross-check artifact.
-out_missing_or_invalid() {
-  [ ! -s "$RAW_OUT" ] || ! jq -e \
-    '(.voice|type)=="string" and (.voice|length)>0 and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held")' \
-    "$RAW_OUT" >/dev/null 2>&1
+pov_shaped() {   # <file>: schema-shaped POV (finality is a separate gate)
+  [ -s "$1" ] && jq -e \
+    '(.voice|type)=="string" and (.voice|length)>0 and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and all(.evidence[]; type=="string" and length>0) and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held")' \
+    "$1" >/dev/null 2>&1
 }
+out_missing_or_invalid() { ! pov_shaped "$RAW_OUT"; }
+
+# A usable position is a settled answer to the framed question. The peer
+# declares that itself through the schema's required `final` boolean: a
+# schema-shaped artifact whose `final` is not true is non-final (a placeholder
+# emitted before the peer finished inspecting -- observed on grok-cli in the
+# #1402 panel, where the model returned its final schema object on turn one)
+# and must not be published as a peer voice. Finality lives in the owned output
+# contract, never in a phrase list over model prose.
+out_final() { [ -s "$RAW_OUT" ] && jq -e '.final == true' "$RAW_OUT" >/dev/null 2>&1; }
 
 # Backward-compatible matrix: legacy `composer` continues to sanction Cursor as
 # the Grok intermediary, while the distinct Cursor-default target requires the
@@ -367,11 +386,23 @@ route_allowlisted() {
 
 # Soft size gate: peer prompt embeds the full subject payload. Over-budget payloads skip
 # cleanly (R11) rather than collapsing silently inside the provider context window.
-MAX_PAYLOAD_CHARS="${CROSS_MODEL_MAX_PAYLOAD_CHARS:-200000}"
+MAX_PAYLOAD_CHARS="${ROCKETCLAW_CROSS_MODEL_MAX_PAYLOAD_CHARS:-200000}"
 case "$MAX_PAYLOAD_CHARS" in ''|*[!0-9]*) MAX_PAYLOAD_CHARS=200000 ;; esac
 PAYLOAD_CHARS="$(wc -c <"$PAYLOAD_PATH" | tr -d '[:space:]')"
 if [ "$PAYLOAD_CHARS" -gt "$MAX_PAYLOAD_CHARS" ]; then
   skip "subject payload is ${PAYLOAD_CHARS} bytes (limit ${MAX_PAYLOAD_CHARS}); skipping cross-model pass rather than truncating"
+fi
+
+# The Codex desktop app (Codex.app, or ChatGPT.app since the July 2026 merger)
+# ships `codex` at Contents/Resources without linking it onto PATH (#1272).
+# Append, never prepend, so a PATH-installed CLI stays authoritative.
+# ROCKETCLAW_CROSS_MODEL_CODEX_APP_DIRS (colon-separated) overrides the probed dirs.
+if ! command -v codex >/dev/null 2>&1; then
+  OLDIFS="$IFS"; IFS=':'
+  for d in ${ROCKETCLAW_CROSS_MODEL_CODEX_APP_DIRS-"${HOME:-}/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources:${HOME:-}/Applications/Codex.app/Contents/Resources:/Applications/Codex.app/Contents/Resources"}; do
+    if [ -n "$d" ] && [ -x "$d/codex" ]; then PATH="${PATH:+$PATH:}$d"; export PATH; break; fi
+  done
+  IFS="$OLDIFS"
 fi
 
 route_available() {
@@ -383,18 +414,18 @@ route_available() {
     *) return 1 ;;
   esac
 }
-route_allowlisted "$FIXED_ROUTE" || skip "fixed route '$FIXED_ROUTE' is not fully sanctioned by CROSS_MODEL_PEERS; skipping before egress"
+route_allowlisted "$FIXED_ROUTE" || skip "fixed route '$FIXED_ROUTE' is not fully sanctioned by ROCKETCLAW_CROSS_MODEL_PEERS; skipping before egress"
 route_available "$FIXED_ROUTE" || skip "fixed route '$FIXED_ROUTE' is unavailable; host must disclose and choose any retry"
 log "fixed cross-model POV route: target=$TARGET route=$FIXED_ROUTE (host $HOST_PROVIDER excluded)"
 
 # --- compose the peer prompt from the canonical persona (single source) ----
 # The payload is prepared by ce-pov and embeds the framed question plus any
-# conversation-only subject material needed for this round. Workspace evidence
+# conversation-only subject material needed for this round. Repository evidence
 # stays in the shared working copy for the peer to inspect directly.
-SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$WORKSPACE_ROOT/.tmp/rocketclaw/ce-pov/peer-workdirs}"
+SCRATCH_PARENT="${ROCKETCLAW_CROSS_MODEL_SCRATCH_PARENT:-$WORKSPACE_ROOT/.tmp/rocketclaw/ce-pov/providers}"
 [ -d "$SCRATCH_PARENT" ] || mkdir -p "$SCRATCH_PARENT" 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
 SCRATCH_PARENT="$(cd "$SCRATCH_PARENT" && pwd -P)" || skip "cannot resolve private scratch parent"
-case "$SCRATCH_PARENT/" in "$WORKSPACE_ROOT/.tmp/"*) ;; *) skip "private scratch parent must be under workspace-local .tmp" ;; esac
+case "$SCRATCH_PARENT/" in "$WORKSPACE_ROOT/.tmp/rocketclaw/"*) ;; *) skip "private scratch parent must be under '$WORKSPACE_ROOT/.tmp/rocketclaw'" ;; esac
 if ! PEER_WORKDIR="$(mktemp -d "$SCRATCH_PARENT/xmodel-pov-peer-XXXXXX")"; then
   skip "provider $TARGET workspace isolation unavailable; skipping provider"
 fi
@@ -417,9 +448,9 @@ trap 'cleanup_private_scratch' EXIT
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
   printf '\n\nSet the top-level "voice" field to "peer" (it will be namespaced to the provider on fold-in).\n'
-  printf '\n<workspace-read-scope enforcement="cooperative-unless-adapter-supported">\n'
+  printf '\n<repository-read-scope enforcement="cooperative-unless-adapter-supported">\n'
   printf 'root: %s\nincludes: %s\nexcludes: %s\n' "$READ_ROOT" "${INCLUDE_PATHS:-<all>}" "${EXCLUDE_PATHS:-<none>}"
-  printf '</workspace-read-scope>\n'
+  printf '</repository-read-scope>\n'
   printf '\n<subject-payload>\n'
   cat "$PAYLOAD_PATH"
   printf '\n</subject-payload>\n'
@@ -432,12 +463,13 @@ trap 'cleanup_private_scratch' EXIT
 # grok-cli keeps --json-schema (buffered) and stays hard-only on
 # UNGUARDED_HARD_SECS. This skill's default HARD_SECS stays at 600s because its
 # codex route runs the lower sol/high tier -- ce-code-review and ce-doc-review
-# run luna/xhigh and default higher. `CROSS_MODEL_HARD_SECS` is shared across
+# run luna/xhigh and default higher. `ROCKETCLAW_CROSS_MODEL_HARD_SECS` is shared across
 # all three, and the orchestrator's aggregate deadline derives from it (see
 # references/cross-model-panel.md), so a raised knob raises both windows.
-IDLE_SECS="${CROSS_MODEL_IDLE_SECS:-180}"
-HARD_SECS="${CROSS_MODEL_HARD_SECS:-600}"
-UNGUARDED_HARD_SECS="${CROSS_MODEL_HARD_SECS:-600}"
+IDLE_SECS="${ROCKETCLAW_CROSS_MODEL_IDLE_SECS:-180}"
+HARD_SECS="${ROCKETCLAW_CROSS_MODEL_HARD_SECS:-600}"
+UNGUARDED_HARD_SECS="${ROCKETCLAW_CROSS_MODEL_HARD_SECS:-600}"
+RETRY_MIN_SECS="${ROCKETCLAW_CROSS_MODEL_RETRY_MIN_SECS:-60}"   # least window worth spending on a non-final retry
 TO_BIN="$(command -v gtimeout || command -v timeout || true)"
 
 # Reap a backgrounded job's whole process group: TERM, then KILL after a grace.
@@ -508,13 +540,13 @@ build_cmd() {
 # own stdout/stderr during a long model call. An outer supervisor that watches
 # THIS process's output for liveness (the peer-job runner's out.log byte-growth
 # idle window) would mistake a healthy multi-minute run for a wedge. A background
-# writer emits one stderr line every CROSS_MODEL_HEARTBEAT_SECS (default 60s) so
+# writer emits one stderr line every ROCKETCLAW_CROSS_MODEL_HEARTBEAT_SECS (default 60s) so
 # that liveness is visible; it is torn down as soon as the foreground wait returns,
 # so it adds no latency to a fast run. Keep this block byte-identical across
 # the peer worker scripts (lifecycle parity).
 _HEARTBEAT_PID=""
 start_heartbeat() {
-  local every="${CROSS_MODEL_HEARTBEAT_SECS:-60}" parent_pid="$$"
+  local every="${ROCKETCLAW_CROSS_MODEL_HEARTBEAT_SECS:-60}" parent_pid="$$"
   # Floor to 1s: a non-numeric or 0 value would make `sleep` return instantly and
   # spin the loop, flooding out.log into the runner's byte cap.
   case "$every" in ''|*[!0-9]*) every=60 ;; esac; [ "$every" -lt 1 ] && every=1
@@ -574,7 +606,7 @@ run_timeout_cmd() {
   # $1 = stdin file ("" -> /dev/null). $2 = hard cap secs. $3 = "idle" | "no-idle".
   RUN_SUCCEEDED=false
   # Run from the declared read root. Private prompt/output paths are absolute and
-  # remain under workspace-local `.tmp`; route adapters separately carry the same root.
+  # remain under workspace-local private scratch; route adapters separately carry the same root.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
   local idle_mode="${3:-idle}"
@@ -624,13 +656,38 @@ recover_pov_json() {   # <logfile> <outfile>
 import sys, json
 txt = open(sys.argv[1], encoding="utf-8", errors="replace").read()
 best = None
+best_score = -1
 decoder = json.JSONDecoder()
+def shaped(d):
+    # Mirror of pov_shaped() in the shell: the same field types and enums,
+    # so ranking cannot promote a fully keyed but invalid draft.
+    return (
+        isinstance(d.get("voice"), str) and d["voice"] != ""
+        and isinstance(d.get("position"), str) and d["position"] != ""
+        and isinstance(d.get("reasoning"), str) and d["reasoning"] != ""
+        and isinstance(d.get("evidence"), list)
+        and all(isinstance(e, str) and e != "" for e in d["evidence"])
+        and d.get("external_check") in ("ran", "unavailable")
+        and d.get("mode") in ("independent", "skeptic")
+        and d.get("movement") in ("initial", "moved", "held")
+    )
+
+def score(d):
+    # Prefer a schema-shaped final POV over a shaped non-final one over any
+    # dict that merely carries a position; ties go to the later candidate.
+    if shaped(d) and d.get("final") is True:
+        return 2
+    if shaped(d):
+        return 1
+    return 0
 
 def inspect(value):
-    global best
+    global best, best_score
     if isinstance(value, dict):
         if "position" in value:
-            best = value
+            sc = score(value)
+            if sc >= best_score:
+                best, best_score = value, sc
         for child in value.values():
             inspect(child)
     elif isinstance(value, list):
@@ -653,18 +710,44 @@ PY
 }
 
 # Parse a schema-shaped object out of a headless CLI JSON envelope (claude/grok/cursor).
+# The published candidate is the highest-scoring POV anywhere in the envelope --
+# schema-shaped and final, then shaped, then any position-bearing object -- with
+# ties to the later candidate. A structured field (structured_output /
+# structuredOutput / result) is one candidate among those, not an authority:
+# grok >= 1.0.4 names it structuredOutput and its text can carry a first-turn
+# placeholder beside the settled object, a bare stub beside a shaped answer,
+# or a bare {"final":true} beside the real POV. Take the structured field first
+# only as a shortcut when it already scores top; otherwise the scored scan
+# over the whole envelope decides.
+pov_score() {   # <file> -> 2 shaped+final, 1 shaped, 0 otherwise
+  if pov_shaped "$1"; then
+    if jq -e '.final == true' "$1" >/dev/null 2>&1; then echo 2; else echo 1; fi
+  else echo 0; fi
+}
 parse_structured() {   # <logfile> <outfile>
+  local picked=false
   # Buffered single-object envelopes (grok-cli json, test stubs).
-  jq -e '.structured_output' "$1" > "$2" 2>/dev/null && return 0
-  jq -r '.result // empty' "$1" 2>/dev/null | jq -e '.' > "$2" 2>/dev/null && return 0
-  # stream-json NDJSON: last type=result event (elevation-dispatch pattern).
-  local event
-  event="$(grep -a '"type":"result"' "$1" 2>/dev/null | tail -1 || true)"
-  if [ -n "$event" ]; then
-    printf '%s' "$event" | jq -e '.structured_output' > "$2" 2>/dev/null && return 0
-    printf '%s' "$event" | jq -r '.result // empty' 2>/dev/null | jq -e '.' > "$2" 2>/dev/null && return 0
+  if jq -e '.structured_output // .structuredOutput' "$1" > "$2" 2>/dev/null; then picked=true
+  elif jq -r '.result // empty' "$1" 2>/dev/null | jq -e '.' > "$2" 2>/dev/null; then picked=true
+  else
+    # stream-json NDJSON: last type=result event (elevation-dispatch pattern).
+    local event
+    event="$(grep -a '"type":"result"' "$1" 2>/dev/null | tail -1 || true)"
+    if [ -n "$event" ]; then
+      if printf '%s' "$event" | jq -e '.structured_output // .structuredOutput' > "$2" 2>/dev/null; then picked=true
+      elif printf '%s' "$event" | jq -r '.result // empty' 2>/dev/null | jq -e '.' > "$2" 2>/dev/null; then picked=true
+      fi
+    fi
   fi
-  recover_pov_json "$1" "$2"
+  if [ "$picked" = true ] && [ "$(pov_score "$2")" = 2 ]; then return 0; fi
+  local scan="$2.scan"
+  if recover_pov_json "$1" "$scan"; then
+    if [ "$picked" != true ] || [ "$(pov_score "$scan")" -ge "$(pov_score "$2")" ]; then
+      mv "$scan" "$2"; return 0
+    fi
+  fi
+  rm -f "$scan"
+  [ "$picked" = true ]
 }
 
 bounded_failure_evidence() {   # <logfile>; prefer structured diagnostics, then bounded head+tail
@@ -722,7 +805,7 @@ attempt_route() {   # <provider> <route>
     grok-cursor|cursor|composer)
       # cursor-agent reads the prompt from stdin (verified). Use stdin, NOT a
       # positional argv token: the composed prompt (persona + schema + template +
-      # full subject payload, up to CROSS_MODEL_MAX_PAYLOAD_CHARS) can exceed ARG_MAX and fail
+      # full subject payload, up to ROCKETCLAW_CROSS_MODEL_MAX_PAYLOAD_CHARS) can exceed ARG_MAX and fail
       # the exec with E2BIG on low-limit hosts, whereas stdin has no size limit.
       run_timeout_cmd "$PROMPT_FILE" "$HARD_SECS" idle
       [ "$RUN_SUCCEEDED" = true ] && parse_structured "$PEERLOG" "$RAW_OUT" ;;
@@ -742,7 +825,33 @@ run_fixed_route() {
   local provider="$TARGET"
   OUT="$RUN_DIR/pov-$provider.json"
   ACTUAL_ROUTE="$FIXED_ROUTE"
+  ROUTE_STARTED_AT="$(date +%s)"
   attempt_route "$provider" "$FIXED_ROUTE"
+  # One bounded retry on the same route, target, model, and scope; the only
+  # change is a final-answer instruction. The retry gets only what is left of
+  # this worker's HARD_SECS window so both attempts stay inside the panel's
+  # aggregate deadline (cross-model-panel.md: ROCKETCLAW_CROSS_MODEL_HARD_SECS + 10s);
+  # too little left means no retry. A second non-final position drops the
+  # voice with skip evidence -- no route hopping.
+  nonfinal_position=""
+  if [ "$RUN_SUCCEEDED" = true ] && ! out_missing_or_invalid && ! out_final; then
+    position="$(jq -r '.position' "$RAW_OUT" 2>/dev/null)"
+    remaining=$(( HARD_SECS - ( $(date +%s) - ROUTE_STARTED_AT ) ))
+    if [ "$remaining" -lt "$RETRY_MIN_SECS" ]; then
+      log "peer returned a non-final position (\"${position:0:120}\") with ${remaining}s of the ${HARD_SECS}s window left; not retrying"
+      nonfinal_position="$position"
+      rm -f "$RAW_OUT"
+    else
+      log "peer returned a non-final position (\"${position:0:120}\"); retrying once on the same route with a final-answer requirement (${remaining}s left)"
+      printf '\n\nYour previous response set final to false. This response is the final one: inspect the subject and shared working copy now, then return the settled position with its evidence and final set to true.\n' >> "$PROMPT_FILE"
+      HARD_SECS="$remaining"; UNGUARDED_HARD_SECS="$remaining"
+      attempt_route "$provider" "$FIXED_ROUTE"
+      if [ "$RUN_SUCCEEDED" = true ] && ! out_missing_or_invalid && ! out_final; then
+        nonfinal_position="$(jq -r '.position' "$RAW_OUT" 2>/dev/null)"
+        rm -f "$RAW_OUT"
+      fi
+    fi
+  fi
 
   # --- normalize + validate against the peer POV contract ------------------
   # Force voice = peer-<provider>, preserve the POV fields, and add route/model
@@ -766,7 +875,7 @@ run_fixed_route() {
          --arg family "$serving_family" \
          --arg mreq "$(route_model "$ACTUAL_ROUTE")" --arg mact "$MODEL_ACTUAL" \
          --argjson independent "$independence" \
-         'if ((.voice|type)=="string" and (.voice|length)>0 and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held"))
+         'if ((.voice|type)=="string" and (.voice|length)>0 and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and all(.evidence[]; type=="string" and length>0) and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held") and .final==true)
           then { voice: $v,
                  cross_model_route: $route,
                  cross_model_target: $target,
@@ -780,7 +889,8 @@ run_fixed_route() {
                  evidence: .evidence,
                  external_check: .external_check,
                  mode: .mode,
-                 movement: .movement }
+                 movement: .movement,
+                 final: true }
           else empty end' \
          "$RAW_OUT" > "$_norm" 2>/dev/null; then
       mv "$_norm" "$OUT"
@@ -791,11 +901,12 @@ run_fixed_route() {
     rm -f "$RAW_OUT"
   fi
   if [ -s "$OUT" ] && jq -e \
-    '(.voice|type)=="string" and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held") and (.independence_verified|type)=="boolean"' \
+    '(.voice|type)=="string" and (.position|type)=="string" and (.position|length)>0 and (.reasoning|type)=="string" and (.reasoning|length)>0 and (.evidence|type)=="array" and all(.evidence[]; type=="string" and length>0) and (.external_check=="ran" or .external_check=="unavailable") and (.mode=="independent" or .mode=="skeptic") and (.movement=="initial" or .movement=="moved" or .movement=="held") and (.independence_verified|type)=="boolean"' \
     "$OUT" >/dev/null 2>&1; then
     log "wrote peer POV to $OUT (voice peer-$provider)"
   else
     log "provider $provider produced no usable schema-shaped output; skipping fold-in"
+    [ -n "$nonfinal_position" ] && log "  peer skip evidence: non-final position: ${nonfinal_position:0:200}"
     # Surface bounded, actionable peer evidence so the orchestrator can
     # reason about WHY it was skipped (quota/usage-limit exhaustion vs an ordinary
     # empty review) and, in a repeated-pass session, deprioritize an exhausted

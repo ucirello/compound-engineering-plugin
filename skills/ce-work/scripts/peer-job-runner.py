@@ -58,25 +58,25 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw)
-  CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
-  CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
-  CE_PEER_HARD_SECS         hard cap on worker wall clock
+  ROCKETCLAW_PEER_JOBS_ROOT         base dir inside <workspace-root>/.tmp
+  ROCKETCLAW_WORK_RUNS_ROOT         parent work-run dir inside the same .tmp
+  ROCKETCLAW_PEER_IDLE_SECS         idle window, no out.log growth (240)
+  ROCKETCLAW_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
                             an explicit value always wins)
-  CROSS_MODEL_HARD_SECS     when CE_PEER_HARD_SECS is unset, widens the
+  CROSS_MODEL_HARD_SECS     when ROCKETCLAW_PEER_HARD_SECS is unset, widens the
                             supervisor hard window (see above)
-  CE_PEER_LOG_MAX_BYTES     out.log byte cap (10485760)
-  CE_PEER_RESULT_MAX_BYTES  result byte cap, supervise + read (5242880)
-  CE_PEER_POLL_SECS         supervisor poll interval (2)
-  CE_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
-  CE_PEER_BASH              Windows: absolute bash.exe for peer workers
+  ROCKETCLAW_PEER_LOG_MAX_BYTES     out.log byte cap (10485760)
+  ROCKETCLAW_PEER_RESULT_MAX_BYTES  result byte cap, supervise + read (5242880)
+  ROCKETCLAW_PEER_POLL_SECS         supervisor poll interval (2)
+  ROCKETCLAW_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
+  ROCKETCLAW_PEER_BASH              Windows: absolute bash.exe for peer workers
                             (preferred over PATH / WSL System32 bash)
   CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
-                            CE_PEER_BASH is unset (#1268)
+                            ROCKETCLAW_PEER_BASH is unset (#1268)
 
-Security posture: the job root is a predictable, owner-private directory under
-workspace-local .tmp. Every read of job state opens the file first (no-follow) and
+Security posture: the job root is a predictable owner-private directory under
+the current Jujutsu workspace's `.tmp`. Every read opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -109,8 +109,8 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the current JJ workspace's `.tmp\\rocketclaw`
-            directory, with the physical current directory as the non-JJ fallback.
+  jobs root defaults under the current workspace's `.tmp`, with local `.tmp`
+            as the fallback before workspace discovery.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -119,12 +119,12 @@ import glob
 import json
 import os
 import re
+import secrets
 import shutil
 import signal
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -141,23 +141,7 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-
-
-def _workspace_root() -> str:
-    try:
-        result = subprocess.run(
-            ["jj", "workspace", "root"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        return os.getcwd()
-    root = result.stdout.strip()
-    return root if result.returncode == 0 and root else os.getcwd()
-
-
-DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw")
+DEFAULT_ROOT = None
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -183,9 +167,9 @@ exit codes:
   4  ownership check failed (job state or result not owned by the current
      user) — content is never emitted
 
-environment overrides: CE_PEER_JOBS_ROOT, CE_WORK_RUNS_ROOT, CE_PEER_IDLE_SECS,
-CE_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS, CE_PEER_LOG_MAX_BYTES,
-CE_PEER_RESULT_MAX_BYTES, CE_PEER_POLL_SECS, CE_PEER_GRACE_SECS (defaults in
+environment overrides: ROCKETCLAW_PEER_JOBS_ROOT, ROCKETCLAW_WORK_RUNS_ROOT, ROCKETCLAW_PEER_IDLE_SECS,
+ROCKETCLAW_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS, ROCKETCLAW_PEER_LOG_MAX_BYTES,
+ROCKETCLAW_PEER_RESULT_MAX_BYTES, ROCKETCLAW_PEER_POLL_SECS, ROCKETCLAW_PEER_GRACE_SECS (defaults in
 the module docstring).
 """
 
@@ -208,19 +192,47 @@ _RUNNER_HARD_FLOOR = 1230.0
 _RUNNER_HARD_GRACE = 30.0
 
 
+def _workspace_tmp() -> str:
+    try:
+        proc = subprocess.run(
+            ["jj", "--no-pager", "--ignore-working-copy", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        root = proc.stdout.strip() if proc.returncode == 0 else os.getcwd()
+    except OSError:
+        root = os.getcwd()
+    return os.path.abspath(os.path.join(root, ".tmp"))
+
+
 def jobs_root_base() -> str:
-    configured = os.environ.get("CE_PEER_JOBS_ROOT")
-    if configured:
-        return os.path.abspath(configured)
-    if DEFAULT_ROOT is None:
-        raise RunnerError("effective user ID is unavailable; cannot derive the jobs root")
-    return os.path.abspath(DEFAULT_ROOT)
+    configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
+    root = _workspace_tmp()
+    candidate = os.path.abspath(configured) if configured else root
+    if os.path.commonpath([root, candidate]) != root:
+        raise RunnerError("ROCKETCLAW_PEER_JOBS_ROOT must remain inside the workspace-root .tmp directory")
+    return candidate
+
+
+def candidate_jobs_root_bases() -> list:
+    return [jobs_root_base()]
 
 
 def skill_runs_root(skill: str) -> str:
-    if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])
+    if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
+        candidate = os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])
+        root = _workspace_tmp()
+        if os.path.commonpath([root, candidate]) != root:
+            raise RunnerError("ROCKETCLAW_WORK_RUNS_ROOT must remain inside the workspace-root .tmp directory")
+        return candidate
     return os.path.join(jobs_root_base(), skill)
+
+
+def candidate_skill_runs_roots(skill: str) -> list:
+    if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
+        return [skill_runs_root(skill)]
+    return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 
 def _env_num(name: str, default: float, conv, *, allow_zero: bool = False):
@@ -237,10 +249,10 @@ def _env_num(name: str, default: float, conv, *, allow_zero: bool = False):
 
 
 def _derived_hard_default() -> float:
-    """Outermost supervisor hard window when CE_PEER_HARD_SECS is unset.
+    """Outermost supervisor hard window when ROCKETCLAW_PEER_HARD_SECS is unset.
 
     Reads ambient CROSS_MODEL_HARD_SECS (the runner already forwards os.environ
-    to the worker, so a user-set knob is present here). Explicit CE_PEER_HARD_SECS
+    to the worker, so a user-set knob is present here). Explicit ROCKETCLAW_PEER_HARD_SECS
     still wins via cfg() — ce-work and elevation paths keep their own windows.
     """
     cross = _env_num("CROSS_MODEL_HARD_SECS", 0.0, float)
@@ -249,12 +261,12 @@ def _derived_hard_default() -> float:
 
 def cfg(skill=None) -> dict:
     return {
-        "idle": _env_num("CE_PEER_IDLE_SECS", 240.0, float, allow_zero=skill == "ce-work"),
-        "hard": _env_num("CE_PEER_HARD_SECS", _derived_hard_default(), float),
-        "log_max": int(_env_num("CE_PEER_LOG_MAX_BYTES", 10 * 1024 * 1024, int)),
-        "result_max": int(_env_num("CE_PEER_RESULT_MAX_BYTES", 5 * 1024 * 1024, int)),
-        "poll": _env_num("CE_PEER_POLL_SECS", 2.0, float),
-        "grace": _env_num("CE_PEER_GRACE_SECS", 5.0, float),
+        "idle": _env_num("ROCKETCLAW_PEER_IDLE_SECS", 240.0, float, allow_zero=skill == "ce-work"),
+        "hard": _env_num("ROCKETCLAW_PEER_HARD_SECS", _derived_hard_default(), float),
+        "log_max": int(_env_num("ROCKETCLAW_PEER_LOG_MAX_BYTES", 10 * 1024 * 1024, int)),
+        "result_max": int(_env_num("ROCKETCLAW_PEER_RESULT_MAX_BYTES", 5 * 1024 * 1024, int)),
+        "poll": _env_num("ROCKETCLAW_PEER_POLL_SECS", 2.0, float),
+        "grace": _env_num("ROCKETCLAW_PEER_GRACE_SECS", 5.0, float),
     }
 
 
@@ -696,9 +708,9 @@ def ensure_owned_dirs(base: str, path: str) -> None:
         # only re-ACL a root this runner owns -- one we just created, or the
         # managed default (repairing a default left non-private, which is what
         # the POSIX unconditional chmod is for). A pre-existing user-supplied
-        # CE_PEER_JOBS_ROOT keeps its ACLs and rests on the owner check.
+        # ROCKETCLAW_PEER_JOBS_ROOT keeps its ACLs and rests on the owner check.
         default_root = os.path.abspath(DEFAULT_ROOT) if DEFAULT_ROOT else None
-        ours = created_base or (
+        ours = created_base or os.path.basename(cur) == ".tmp" or (
             default_root is not None
             and os.path.normcase(cur) == os.path.normcase(default_root))
         if ours and not _win_harden_acl(cur):
@@ -772,7 +784,8 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
+    tmp = os.path.join(os.path.dirname(path), f".atomic-{secrets.token_hex(8)}")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -830,14 +843,14 @@ def resolve_job_dir(ref: str, skill=None) -> str:
     if skill is not None:
         if not _is_safe_token(skill):
             raise RunnerError(f"invalid skill: {skill!r}")
-        search_root = skill_runs_root(skill)
-        patterns = [os.path.join(search_root, "*", "jobs", ref)]
+        search_roots = candidate_skill_runs_roots(skill)
+        patterns = [os.path.join(root, "*", "jobs", ref) for root in search_roots]
     else:
-        search_root = jobs_root_base()
-        patterns = [os.path.join(search_root, "*", "*", "jobs", ref)]
+        search_roots = candidate_jobs_root_bases()
+        patterns = [os.path.join(root, "*", "*", "jobs", ref) for root in search_roots]
     matches = sorted({match for pattern in patterns for match in glob.glob(pattern)})
     if not matches:
-        raise RunnerError(f"job not found under {search_root}: {ref}")
+        raise RunnerError(f"job not found under {', '.join(search_roots)}: {ref}")
     if len(matches) > 1:
         raise RunnerError(f"ambiguous job id {ref}: {len(matches)} matches; pass the job dir path")
     return matches[0]
@@ -1322,12 +1335,12 @@ def _rewrite_windows_env_bash_argv(argv):
 def _resolve_windows_posix_shell() -> str:
     """Absolute path to a non-WSL POSIX shell for native Windows peer workers.
 
-    Order: CE_PEER_BASH, CLAUDE_CODE_GIT_BASH_PATH, well-known Git Bash
+    Order: ROCKETCLAW_PEER_BASH, CLAUDE_CODE_GIT_BASH_PATH, well-known Git Bash
     installs, then every PATH bash/sh excluding System32 WSL. Fail closed when
     nothing usable remains — never select System32\\bash.exe (#1268).
     """
     candidates = []
-    for key in ("CE_PEER_BASH", "CLAUDE_CODE_GIT_BASH_PATH"):
+    for key in ("ROCKETCLAW_PEER_BASH", "CLAUDE_CODE_GIT_BASH_PATH"):
         val = (os.environ.get(key) or "").strip()
         if val:
             candidates.append(val)
@@ -1349,7 +1362,7 @@ def _resolve_windows_posix_shell() -> str:
 
     raise RunnerError(
         "no usable Git Bash (or other non-WSL POSIX shell) for native Windows "
-        "peer workers; install Git for Windows or set CE_PEER_BASH / "
+        "peer workers; install Git for Windows or set ROCKETCLAW_PEER_BASH / "
         "CLAUDE_CODE_GIT_BASH_PATH to an absolute bash.exe path "
         "(System32\\bash.exe / WSL is not used)"
     )
@@ -1437,8 +1450,8 @@ def supervise(job_dir: str, argv, result_path, conf: dict, ack_fd: int) -> None:
             # python3 stub — see resolve-python convention / #1247.
             worker_env = {
                 **os.environ,
-                "CE_PEER_JOB_ID": os.path.basename(job_dir),
-                "CE_PEER_PYTHON": sys.executable,
+                "ROCKETCLAW_PEER_JOB_ID": os.path.basename(job_dir),
+                "ROCKETCLAW_PEER_PYTHON": sys.executable,
             }
             popen_kwargs = dict(
                 stdin=devnull,
@@ -1747,8 +1760,7 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (see "
-            "EveryInc/RocketClaw-plugin#1243)."
+            "a Windows Python 3 build."
         )
 
 
@@ -1943,7 +1955,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace-temp path unchecked.
+        # consumer must never read a predictable workspace-scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

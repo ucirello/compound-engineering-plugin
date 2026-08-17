@@ -16,9 +16,9 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite — grep a distinctive substring of the target text.
-3. JJ history — search `jj log` for the distinctive substring to locate the change that introduced the line, then read its description and any linked provider review request.
+3. JJ history — use `jj file annotate <target-path>` to identify the change that introduced the targeted line, then inspect that change and its description with `jj log` / `jj show`, plus the PR it belongs to. When the current line is insufficient, inspect the path's patches through `jj log -r '::main@origin' -p <target-path>`; `main@origin` is the only prior reference.
 
-Source 3 is unavailable in a corpus snapshot with no JJ history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a JJ workspace that has history, or record the whole audit's provenance basis as partial.
+Source 3 is unavailable in a corpus copy with no JJ history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a JJ workspace that has history, or record the whole audit's provenance basis as partial.
 
 **Pipeline the waves.** Start a unit's defense as soon as its proposal set returns; do not wait for wave 1 to finish — the two waves share no state across units. It is 2N dispatches on N units, so plan the wave count against the host's concurrency cap (`references/workflow-shapes.md`).
 
@@ -79,7 +79,7 @@ A defender returns one row per finding, in these fields, and nothing else:
 | `id` | the proposer's finding id, unchanged; a ruling that cannot be joined back is discarded |
 | `ruling` | `cut` / `reduce` / `keep` |
 | `sources_searched` | which of the three, named; plus the query used, so an empty search is visible |
-| `citation` | required on `keep`: path, test name, or JJ change ID. Empty is not a `keep` |
+| `citation` | required on `keep`: path, test name, or change ID. Empty is not a `keep` |
 | `minimal_form` | required on `reduce`: the shortest text preserving the constraint |
 | `pinning_test` | test path and assertion if a grep of the target text hits the suite, else empty |
 
@@ -97,7 +97,7 @@ For three categories the default inverts: **absence of provenance is not grounds
 
 What *is* cuttable around all three is the justification clause — the sentence explaining that a separate consumer is waiting on the string. Keep the data, cut the story about who wants it. That is usually a `reduce`, and it is frequently also a `phantom-handoff`.
 
-`cross-unit-duplication` collides with this category more than any other class. Before proposing a factor-out, check whether the duplication is mandated: a documented decision, or a test that forbids sharing the block. The most-duplicated block in a corpus is often the one thing that must stay duplicated, such as a security guard whose duplication a test explicitly requires.
+`cross-unit-duplication` collides with this category more than any other class. Before proposing a factor-out, check whether the duplication is mandated: a documented decision, or a test that forbids sharing the block. The most-duplicated block in a corpus is often the one thing that must stay duplicated — in the engagement it was a security guard whose duplication a test explicitly required, and the largest duplication mandate was itself the documented fix for a bug that had regressed twice.
 
 ## Synthesis: rank contradiction above confirmation
 
@@ -105,7 +105,7 @@ The synthesis leads with what contradicts the premise the audit started from, be
 
 - **Which proposals did defenders save, with citations?** Report the count and the strongest saves. A defense rate near zero means the defenders did not search, not that the corpus is pure junk.
 - **Which unit was leaner than its word count implied?** Use the always-loaded / conditionally-loaded split. The largest unit by words is often not the largest by context cost.
-- **Where does the corpus already contain a documented argument against its own ceremony that nobody had searched for?** Corpora that document their own decisions accumulate these. A duplication mandate that is itself the recorded fix for a recurring bug is the shape to look for — the ceremony you were about to cut may be a scar.
+- **Where does the corpus already contain a documented argument against its own ceremony that nobody had grepped for?** Corpora that document their own decisions accumulate these. A duplication mandate that is itself the recorded fix for a bug that regressed twice is the shape to look for — the ceremony you were about to cut may be a scar.
 
 A synthesis that only confirms the premise is a finding about the audit, not about the corpus. Say so rather than shipping it.
 

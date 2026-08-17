@@ -22,7 +22,7 @@ Used by autonomous callers like `lfg` that must not prompt. All blocking questio
 
 - No confirmation on the first generic-label Defer; proceed directly.
 - On execution failure, automatically fall to the next tier without prompting. Record the failure.
-- On total chain exhaustion (every tier failed or no sink available), return findings in the `no_sink` bucket so the caller can route them to another durable surface.
+- On total chain exhaustion (every tier failed or no sink available), return findings in the `no_sink` bucket so the caller can route them to another surface (e.g., inline them in a PR description).
 - Return a structured result: `{ filed: [{ finding_id, tracker, url }], failed: [{ finding_id, tracker, reason }], no_sink: [{ finding_id, title, severity, file, line }] }`.
 
 The caller decides how to surface the result to the user. The non-interactive mode treats "no sink available" as a data-producing outcome, not a prompt trigger.
@@ -90,17 +90,17 @@ Previously this chain included a third in-session fallback tier. That tier was r
 
 ## Ticket composition
 
-Every Defer action creates a ticket with the following content, adapted to the tracker's capabilities. Compose transient ticket bodies under the repository's `.tmp/` directory and remove them after use. The project's local ticket syntax and conventions take precedence; never require a fixed ticket message.
+Every Defer action creates a ticket with the following content, adapted to the tracker's capabilities:
 
 - **Title:** the merged finding's `title` (schema-capped at 10 words).
 - **Body:**
-  - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `<artifact-path>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
+  - Plain-English problem statement — resolves `<workspace-root>` with `jj workspace root`, falling back to the current local directory, then reads the persona-produced `why_it_matters` from `<workspace-root>/.tmp/rocketclaw/code-review/<run-id>/{reviewer}.json`. Match with `file + line_bucket(line, +/-3) + normalize(title)`, as agent mode does (see SKILL.md Stage 6 detail enrichment). Fall back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
   - Suggested fix (when present in the finding's `suggested_fix`).
   - Evidence (direct quotes from the reviewer's artifact).
-  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the active bookmark (when present), change ID, and current revision identifier, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
+  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the publication bookmark and Jujutsu change ID, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
   - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Reviewer(s): <list>`, `Finding ID: <fingerprint>`.
 - **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`) and, when the tracker convention supports it, a category label sourced from the reviewer name.
-- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in ce-code-review run artifact: <artifact-path>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
+- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in review run artifact: <workspace-root>/.tmp/rocketclaw/code-review/<run-id>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
 
 The finding_id is a stable fingerprint composed as `normalize(file) + line_bucket(line, +/-3) + normalize(title)` — the same fingerprint used by the merge pipeline.
 

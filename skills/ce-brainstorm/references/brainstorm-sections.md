@@ -25,7 +25,7 @@ Sections earn their place by serving one of these audiences. Omit padding.
 New `ce-brainstorm` outputs live under `<root>/plans/` and use the unified plan
 artifact contract:
 
-- **Path:** `<root>/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>`.
+- **Path:** `<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>` (local wall-clock write time; no daily sequence number). Reserve the path atomically; on collision, retry with the smallest available numeric suffix before the extension rather than overwriting.
 - **`artifact_contract: ce-unified-plan/v1`**.
 - **`artifact_readiness: requirements-only`**.
 - **`product_contract_source: ce-brainstorm`**.
@@ -78,7 +78,7 @@ decision flows to `ce-plan` (or directly to a JJ change description, or to
 `<root>/solutions/` if it's a pattern worth carrying) without a brainstorm
 artifact in the middle.
 
-When composing, editing, validating, or recommending that change description, resolve the backing Git directory with `jj git root`, then inspect actual history with `git --git-dir <resolved-git-root> log -n 10 --format=full`; run these as separate shell calls and use Git only for this read. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and message syntax observed in the actual `git log` output take precedence; apply compatible Go guidance only for quality, clarity, and structure, without imposing a fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a description field.
+When composing, editing, validating, or recommending that change description, inspect actual history with `jj log -r :: -n 10 --no-graph -T 'description ++ "\n\n"'`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and description syntax observed in the actual `jj log` output take precedence; apply compatible Go guidance only for quality, clarity, and structure, without imposing a fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` in `jj describe -m '<description-composed-from-runtime-conventions>'` wherever a change description is required.
 
 Conversely, a brainstorm about a multi-actor feature with contested scope
 and several behavioral conditions probably does need a doc — the planning
@@ -368,7 +368,9 @@ artifact.
 - **`type`** — a short work classification derived from repository-local
   instructions and current repository conventions; do not impose a fixed set.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
-  Used in the filename (`<root>/plans/YYYY-MM-DD-NNN-<type>-<topic>-plan.<md|html>`).
+  Matches the calendar date in the filename
+  (`<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>`), which adds the
+  local wall-clock time at write.
 - **`topic`** — kebab-case slug identifying the brainstorm subject (e.g.,
   `surface-scope-earlier`, `demo-reel-local-save`). Used in the filename and
   as the resume-detection key when `ce-brainstorm` scans for an existing
@@ -383,7 +385,7 @@ artifact.
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No artifact carries mutable progress state; whether work shipped
+progress. No RocketClaw artifact carries mutable progress state; whether work shipped
 is derived from JJ, not stored in the doc. Do not introduce one.
 
 ### Field-name stability

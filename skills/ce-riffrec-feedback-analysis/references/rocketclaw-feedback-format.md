@@ -1,6 +1,6 @@
-# RocketClaw Feedback Format
+# Feedback Format
 
-Use this shape when converting RocketClaw evidence into a durable brainstorm or planning input.
+Use this shape when converting Riffrec evidence into a durable brainstorm or planning input.
 
 ## Finding
 
@@ -42,7 +42,7 @@ topic: <topic>
 ## Key Flows
 
 - F1. Recorded feedback triage
-  - **Trigger:** A RocketClaw zip is available for review.
+  - **Trigger:** A Riffrec zip is available for review.
   - **Actors:** A1, A2
   - **Steps:** <3-7 product steps seen in the recording>
   - **Outcome:** <What should be true after the fix>
@@ -113,4 +113,4 @@ topic: <topic>
 - Prefer moment IDs and screenshot links over prose-only claims.
 - Mark visual interpretation as an inference when the screenshot does not prove intent.
 - Requirements should describe product behavior, not implementation details.
-- Do not include absolute local paths in RocketClaw docs; use repo-relative paths when possible.
+- Do not include absolute local paths in generated docs; use workspace-relative paths when possible.

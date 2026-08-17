@@ -22,7 +22,7 @@ Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures
 
 Check that the XcodeBuildMCP MCP server is connected by calling its `list_simulators` tool.
 
-MCP tool namespaces vary by provider and harness. Use the tool mapped to the `XcodeBuildMCP` server's `list_simulators` method in the active harness.
+Use RocketClaw's connected MCP capability to call the `XcodeBuildMCP` server's `list_simulators` method. Tool naming is runtime-specific; do not require a platform-specific tool name.
 
 If the tool is not found or errors, inform the user they need to add the XcodeBuildMCP MCP server:
 
@@ -35,8 +35,8 @@ Install via Homebrew:
 Or via npx (no global install needed):
   npx -y xcodebuildmcp@latest mcp
 
-Then add "XcodeBuildMCP" as an MCP server in your agent configuration
-and restart your agent.
+Then add "XcodeBuildMCP" as an MCP server in RocketClaw's configuration
+and restart RocketClaw.
 ```
 
 Do NOT proceed until XcodeBuildMCP is confirmed working.
@@ -76,7 +76,7 @@ Call `build_ios_sim_app` with the project path and scheme name.
 For each key screen in the app:
 
 **Take screenshot:**
-Resolve `WORKSPACE_ROOT` with `jj workspace root`, falling back to the physical current directory from `pwd -P`, create `$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-xcode`, and create a per-run directory with `mktemp -d "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-xcode/run.XXXXXX"`. Then call `take_screenshot` with the simulator UUID and a descriptive path under that directory.
+Call `take_screenshot` with the simulator UUID and a descriptive filename (e.g., `screen-home.png`).
 
 **Review screenshot for:**
 - UI elements rendered correctly
@@ -107,7 +107,7 @@ Pause for human input when testing touches flows that require device interaction
 | Location | "Allow location access and verify map updates" |
 | SwiftUI Text links | "Please tap on [element description] manually — automated taps cannot trigger inline text links" |
 
-Ask the user using the active harness's blocking question capability. Discover or load its mapped tool first when necessary. Fall back to numbered options in chat only when no blocking question capability exists or the call errors, not merely because its schema must be loaded. Never silently skip the question:
+Ask the user with RocketClaw's blocking question capability. Fall back to numbered options in chat only when no blocking capability exists or the call errors. Never silently skip the question:
 
 ```
 Human Verification Needed
@@ -203,4 +203,4 @@ After testing:
 
 ## Integration with ce-code-review
 
-When reviewing JJ changes or revisions that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.
+When reviewing PRs that touch iOS code, the `ce-code-review` workflow can dispatch a worker to run this skill, build on the simulator, test key screens, and check for crashes.

@@ -20,7 +20,7 @@ grep -rniE 'return control|hand back|hand off to|the caller (owns|applies)' <cor
 
 **Why it halts:** a mandated fan-out plus a wait ceiling. If the helpers were never spawned concurrently, or the runtime reaped them at turn end, the wait resolves to nothing — and "wait" has no tool call to express it, so the turn ends inside the ceiling.
 
-**Falsifiable check before touching it:** from the archive, measure the maximum number of helpers dispatched *concurrently* per run (see `references/baseline-mining.md` for the extraction). If nearly every run stays serial, the measured behavior falsifies any wall-clock justification for mandatory fan-out machinery.
+**Falsifiable check before touching it:** from the archive, measure the maximum number of helpers dispatched *concurrently* per run (see `references/baseline-mining.md` for the extraction). In the engagement, 331 of 332 runs never exceeded one at a time, which falsified the wall-clock justification the corpus had written for its own fan-out machinery.
 
 **Replacement:** dispatch serially, or state parallelism as an allowance rather than a mandate, and delete the wait ceiling with the wall-clock rationale that justified it.
 
@@ -102,7 +102,7 @@ This class belongs here because the cure for 1 through 9 causes it.
 
 A dispatch mandate carries two payloads: the fictional seam, and the requirement that the phase run at all. Remove the first without preserving the second and nothing in the corpus says the workflow's own phases are required.
 
-**Failure:** after a dispatch-mandate removal, a run can do the task inline and report success with no artifacts. The transcript looks clean. That defect is invisible to a did-it-finish metric and surfaces only if process adherence and task completion are tracked as separate numbers (`references/baseline-mining.md`).
+**Observed:** after a dispatch-mandate removal, a run did the task inline and reported success with no artifacts. The transcript looked clean. That defect is invisible to a did-it-finish metric and surfaces only if process adherence and task completion are tracked as separate numbers (`references/baseline-mining.md`).
 
 **Replacement:** keep the requirement, drop the seam — "Phase N is required. Do it in this session; do not skip it." Then verify the phase by artifact existence, never by the final message.
 

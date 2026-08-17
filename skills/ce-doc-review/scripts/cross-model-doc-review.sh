@@ -16,18 +16,20 @@
 # on extra-high; composer's -fast tier is its ceiling (accepted exceptions).
 #
 # Usage:
-#   cross-model-doc-review.sh <host-provider> <candidates> <reviewer-name> \
+#   cross-model-doc-review.sh <host-serving-family> <candidates> <reviewer-name> \
 #                             <document-path> <document-type> <origin> <run-dir>
 #
-#   <host-provider> the peer-key of the host's OWN serving provider, attested by
-#                   the calling skill (it knows its harness): openai->codex,
-#                   anthropic->claude, xai->grok, cursor/composer->composer.
+#   <host-serving-family>
+#                   the peer-key of the host's OWN serving family, attested by
+#                   the calling skill (it knows its harness). A peer-key, never
+#                   a provider name: openai->codex, anthropic->claude,
+#                   xai->grok, cursor/composer->composer.
 #                   Excluded from selection when attested. `unknown` is allowed,
 #                   but any returned review remains non-independent and cannot
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > config.local.yaml >
+#                   resolved preference (conversation > RocketClaw config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -82,25 +84,47 @@ skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no o
 # ONE model per provider at high reasoning, except codex on extra-high (supersedes
 # the old per-lens sol/terra split). Concrete IDs are the CURRENT instance of the
 # tier principle and the single maintenance point when model families change.
+# A workspace may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
+# CROSS_MODEL_MODEL_OVERRIDE, same target/family only) and the reasoning effort
+# (CROSS_MODEL_EFFORT_OVERRIDE, validated per route); both fail closed.
+# codex: luna/xhigh is the benchmarked pick on API dollars (~0.30x sol-medium, tied
+# detection, slower tail) -- docs/solutions/skill-design/benchmark-review-peer-model-and-reasoning-tier.md
 M_CODEX="gpt-5.6-luna"         # codex CLI            (-c model_reasoning_effort="xhigh")
-M_CLAUDE="opus"                # claude CLI, Opus 4.8 (--effort high)
-M_GROK="grok-4.5"              # grok CLI             (--effort high)
-M_GROK_CURSOR="cursor-grok-4.5-high"  # fixed cursor-agent Grok route (current id)
+M_CLAUDE="claude-opus-5"       # claude CLI, Opus 5   (--effort high)
+M_GROK="grok-4.6"              # grok CLI             (--effort high)
+M_GROK_CURSOR="cursor-grok-4.6-high"  # fixed cursor-agent Grok route (current id)
 M_COMPOSER="composer-2.5-fast" # cursor-agent composer (no high tier; -fast is the ceiling)
+
+route_effort() {   # <route> -> requested effort: the override where the route takes one, else editorial
+  if [ -n "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ]; then
+    case "$1" in codex|claude|grok-cli) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;; esac
+  fi
+  case "$1" in
+    codex) printf 'xhigh' ;;
+    claude|grok-cli) printf 'high' ;;
+    grok-cursor) printf 'model-implied-high' ;;
+    composer) printf 'fast' ;;
+    cursor) printf 'unverified' ;;
+  esac
+}
 
 # --- model-identity receipt (R7/R8) -----------------------------------------
 # "Which model ran" is a claim that needs a serving-side receipt. Only the
 # claude CLI reports one today: its JSON envelope carries a modelUsage object
 # keyed by the full dated id that actually served the run. Match requested vs
-# actual by expected full-family prefix (alias -> dated id counts as a match;
-# never substring). Every other route records the literal "unverified" — never
-# a fallback to the requested value. Keep this block byte-identical across
+# actual by expected family prefix, delimited on "-": the served id must equal
+# the prefix or continue it with "-" (alias or undated id -> dated id counts
+# as a match; a longer sibling such as claude-opus-50-* does not; never
+# substring). Every other route records the literal
+# "unverified" — never a fallback to the requested value. Keep this block byte-identical across
 # ce-code-review and ce-doc-review (kernel parity).
-expected_model_prefix() {   # <requested-alias> -> expected served-id prefix
+expected_model_prefix() {   # <requested-alias-or-id> -> expected served-id family prefix
   case "$1" in
-    opus)   printf 'claude-opus-' ;;
-    sonnet) printf 'claude-sonnet-' ;;
-    haiku)  printf 'claude-haiku-' ;;
+    fable)    printf 'claude-fable' ;;
+    opus)     printf 'claude-opus' ;;
+    sonnet)   printf 'claude-sonnet' ;;
+    haiku)    printf 'claude-haiku' ;;
+    claude-*) printf '%s' "$1" ;;
   esac
 }
 
@@ -165,12 +189,13 @@ extract_model_receipt() {   # <route>; reads the envelope in $PEERLOG, sets MODE
   # requested value).
   matched=""
   if [ -n "$prefix" ]; then
-    # first modelUsage key matching the expected family prefix (jq-native, no
-    # external `head`: the route sandbox may not carry coreutils on PATH).
+    # first modelUsage key equal to, or delimited under, the expected prefix
+    # (jq-native, no external `head`: the route sandbox may not carry coreutils
+    # on PATH).
     if [ -n "$envelope" ]; then
-      matched="$(printf '%s' "$envelope" | jq -r --arg p "$prefix" 'first((.modelUsage // {} | keys[] | select(startswith($p)))) // empty' 2>/dev/null)"
+      matched="$(printf '%s' "$envelope" | jq -r --arg p "$prefix" 'first((.modelUsage // {} | keys[] | select(. == $p or startswith($p + "-")))) // empty' 2>/dev/null)"
     else
-      matched="$(jq -r --arg p "$prefix" 'first((.modelUsage // {} | keys[] | select(startswith($p)))) // empty' "$PEERLOG" 2>/dev/null)"
+      matched="$(jq -r --arg p "$prefix" 'first((.modelUsage // {} | keys[] | select(. == $p or startswith($p + "-")))) // empty' "$PEERLOG" 2>/dev/null)"
     fi
   fi
   if [ -n "$matched" ]; then
@@ -204,7 +229,7 @@ adapter_argv() {
   case "$1" in
     codex)
       printf '%s\0' codex exec - -C "$PEER_WORKDIR" --skip-git-repo-check -s read-only \
-        -o "$RAW_OUT" -m "$(route_model codex)" -c 'model_reasoning_effort="xhigh"' -c 'hide_agent_reasoning=false'
+        -o "$RAW_OUT" -m "$(route_model codex)" -c "model_reasoning_effort=\"$(route_effort codex)\"" -c 'hide_agent_reasoning=false'
       ;;
     claude)
       # --tools "" disables ALL built-in tools (allowlist deny-all, no denylist gap
@@ -214,14 +239,16 @@ adapter_argv() {
       # the peer has no repo -- or sibling peer's fold-in artifact -- in reach.
       # R17 tool-less isolation.
       # stream-json + --verbose for PEERLOG idle (#1270); schema still composes.
-      printf '%s\0' claude -p --model "$(route_model claude)" --effort high --permission-mode dontAsk \
+      printf '%s\0' claude -p --model "$(route_model claude)" --effort "$(route_effort claude)" --permission-mode dontAsk \
         --safe-mode --disable-slash-commands --tools "" \
         --max-turns 15 --no-session-persistence --json-schema "$SCHEMA_REF" \
         --output-format stream-json --verbose
       ;;
     grok-cli)
       # Schema forces buffered json — hard-only, no PEERLOG idle (#1270).
-      printf '%s\0' grok --prompt-file "$PROMPT_FILE" --model "$(route_model grok-cli)" --effort high \
+      # --verbatim: without it grok offloads a large prompt to a session file and
+      # sends only a preview — unrecoverable here, because Read is denied below.
+      printf '%s\0' grok --prompt-file "$PROMPT_FILE" --verbatim --model "$(route_model grok-cli)" --effort "$(route_effort grok-cli)" \
         --cwd "$PEER_WORKDIR" --permission-mode dontAsk \
         --deny Read --deny Edit --deny Write --deny Bash --deny Task --deny 'mcp__*' \
         --disable-web-search --no-subagents --max-turns 15 \
@@ -254,7 +281,23 @@ validate_model_override() {
   [ "$override_target" = "$target" ] || return 0
   [ "$target" != "cursor" ] || return 1
   case "$route:$override" in
-    codex:gpt-*|codex:o[0-9]*|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|composer:composer-*) ;;
+    codex:gpt-*|codex:o[0-9]*|claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|composer:composer-*) ;;
+    *) return 1 ;;
+  esac
+}
+
+# Accept an effort override only where the route exposes an effort flag and the
+# value is one that CLI documents (claude: low|medium|high|xhigh|max; codex
+# model_reasoning_effort: minimal|low|medium|high|xhigh; grok: low|medium|high).
+# cursor-agent routes imply effort in the model id, so any override there is
+# invalid for the route rather than silently dropped. Empty means "no override".
+validate_effort_override() {
+  local route="$1" effort="${CROSS_MODEL_EFFORT_OVERRIDE:-}"
+  [ -n "$effort" ] || return 0
+  case "$route:$effort" in
+    claude:low|claude:medium|claude:high|claude:xhigh|claude:max) ;;
+    codex:minimal|codex:low|codex:medium|codex:high|codex:xhigh) ;;
+    grok-cli:low|grok-cli:medium|grok-cli:high) ;;
     *) return 1 ;;
   esac
 }
@@ -267,6 +310,7 @@ if [ "${1:-}" = "--emit-adapter" ]; then
   PROMPT_FILE="<prompt-file>"; SCHEMA_REF="<schema>"
   route="${2:-}"
   validate_model_override "$route" 2>/dev/null || { echo "model override '${CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$route'" >&2; exit 2; }
+  validate_effort_override "$route" 2>/dev/null || { echo "effort override '${CROSS_MODEL_EFFORT_OVERRIDE:-}' not compatible with route '$route'" >&2; exit 2; }
   # adapter_argv emits NUL-delimited argv (can't be captured in a shell var), so
   # validate the route first, then render for humans with NUL -> space.
   adapter_argv "$route" >/dev/null 2>&1 || { echo "unknown route '$route' (want codex|claude|grok-cli|grok-cursor|cursor|composer)" >&2; exit 2; }
@@ -346,6 +390,8 @@ CONTEXT_SLOT_RULES="$(awk '/<context-slots-rules>/{f=1} f; /<\/context-slots-rul
 # its in-process twin, weakening the cross-model agreement signal (R13 parity).
 OUTPUT_CONTRACT_RULES="$(awk '/<output-contract>/{f=1} f; /<\/output-contract>/{if(f)exit}' "$TEMPLATE" 2>/dev/null)"
 [ -n "$OUTPUT_CONTRACT_RULES" ] || log "output-contract not found in $TEMPLATE; peer prompt omits the shared confidence rubric / FP catalog (calibration may differ from the twin)"
+CHANGE_DESCRIPTION_RULES="$(awk '/<change-description-rules>/{f=1} f; /<\/change-description-rules>/{if(f)exit}' "$TEMPLATE" 2>/dev/null)"
+[ -n "$CHANGE_DESCRIPTION_RULES" ] || log "change-description rules not found in $TEMPLATE; peer prompt omits local-history guidance"
 
 # --- resolve which provider(s) to run (exclude host, allowlist, availability) --
 ALLOW="${CROSS_MODEL_PEERS:-}"                 # optional egress allowlist (R19)
@@ -375,6 +421,18 @@ case "$MAX_DOC_CHARS" in ''|*[!0-9]*) MAX_DOC_CHARS=200000 ;; esac
 DOC_CHARS="$(wc -c <"$DOC_PATH" | tr -d '[:space:]')"
 if [ "$DOC_CHARS" -gt "$MAX_DOC_CHARS" ]; then
   skip "document is ${DOC_CHARS} bytes (limit ${MAX_DOC_CHARS}); skipping cross-model pass rather than truncating"
+fi
+
+# The Codex desktop app (Codex.app, or ChatGPT.app since the July 2026 merger)
+# ships `codex` at Contents/Resources without linking it onto PATH (#1272).
+# Append, never prepend, so a PATH-installed CLI stays authoritative.
+# CROSS_MODEL_CODEX_APP_DIRS (colon-separated) overrides the probed dirs.
+if ! command -v codex >/dev/null 2>&1; then
+  OLDIFS="$IFS"; IFS=':'
+  for d in ${CROSS_MODEL_CODEX_APP_DIRS-"${HOME:-}/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources:${HOME:-}/Applications/Codex.app/Contents/Resources:/Applications/Codex.app/Contents/Resources"}; do
+    if [ -n "$d" ] && [ -x "$d/codex" ]; then PATH="${PATH:+$PATH:}$d"; export PATH; break; fi
+  done
+  IFS="$OLDIFS"
 fi
 
 provider_available() {
@@ -411,7 +469,7 @@ IFS="$OLDIFS"
 SELECTED="$(printf '%s' "$SELECTED" | sed 's/^ *//')"
 
 [ "$MAX_PEERS" -ge 1 ] || skip "CROSS_MODEL_MAX_PEERS=0; cross-model pass disabled"
-[ -n "$SELECTED" ] || skip "no different-provider peer reachable (host=$HOST_PROVIDER, candidates='$CANDIDATES'); skipping"
+[ -n "$SELECTED" ] || skip "no different-provider peer reachable (host=$HOST_PROVIDER, candidates='$CANDIDATES'); the pass needs a peer agent CLI on PATH (codex, claude, grok, or cursor-agent), not an API key alone; skipping"
 log "reachable cross-model candidates for lens $REVIEWER_NAME: $SELECTED (host $HOST_PROVIDER excluded; up to $MAX_PEERS successful peer(s))"
 
 # first_n <max> <space-separated list> -> the first <max> tokens.
@@ -435,16 +493,16 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-LOCAL_SCRATCH="$RUN_DIR/.scratch"
-mkdir -p "$LOCAL_SCRATCH" 2>/dev/null || skip "workspace-local scratch '$LOCAL_SCRATCH' could not be created; skipping"
-chmod 700 "$LOCAL_SCRATCH" 2>/dev/null || true
-PROMPT_FILE="$(mktemp "$LOCAL_SCRATCH/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "$LOCAL_SCRATCH/xmodel-doc-log-XXXXXX")"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"
+LOCAL_TMP="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-doc-review"
+(umask 077; mkdir -p "$LOCAL_TMP") || { echo "cannot create workspace-local scratch directory: $LOCAL_TMP" >&2; exit 1; }
+PROMPT_FILE="$(mktemp "$LOCAL_TMP/xmodel-doc-prompt-XXXXXX")"
+PEERLOG="$(mktemp "$LOCAL_TMP/xmodel-doc-log-XXXXXX")"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "$LOCAL_SCRATCH/xmodel-doc-err-XXXXXX")"
+PEERERR="$(mktemp "$LOCAL_TMP/xmodel-doc-err-XXXXXX")"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
@@ -463,7 +521,8 @@ DOC_BASENAME="$(basename "$DOC_PATH")"
   # Shared output-contract (confidence rubric + FP catalog) the persona brief defers
   # to, so the peer calibrates like its in-process twin.
   [ -n "$OUTPUT_CONTRACT_RULES" ] && printf '%s\n\n' "$OUTPUT_CONTRACT_RULES"
-  printf 'This is an authorized document review of the maintainer\047s own repository.\n'
+  [ -n "$CHANGE_DESCRIPTION_RULES" ] && printf '%s\n\n' "$CHANGE_DESCRIPTION_RULES"
+  printf 'This is an authorized review of a document supplied by the maintainer.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
   printf '\n\nSet the top-level "reviewer" field to "%s" (it will be namespaced to the peer provider on fold-in).\n' "$REVIEWER_NAME"
@@ -676,7 +735,9 @@ run_timeout_cmd() {
 }
 
 # Decode each {...} object in raw stdout via raw_decode (string/escape-aware,
-# unlike brace counting) and keep the last one shaped like findings.
+# unlike brace counting) and keep the last one shaped like findings. Envelope
+# routes nest that object inside a JSON *string* field, so string values that
+# could hold one are re-scanned rather than skipped.
 recover_findings_json() {   # <logfile> <outfile>
   # Probe execution, not just PATH presence — Windows Store's python3 stub
   # satisfies `command -v` then exits nonzero (see resolve-python convention).
@@ -686,28 +747,63 @@ recover_findings_json() {   # <logfile> <outfile>
   "$py" - "$1" "$2" <<'PY' 2>/dev/null
 import sys, json
 txt = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-# Any selectable object carries a literal `"findings"` key; if the raw text has
-# none, there is nothing to recover. Skip the scan — raw_decode probing every
-# `{` is O(n^2) on brace-dense non-findings stdout (error/crash dumps).
-if '"findings"' not in txt: sys.exit(0)
+# Any selectable object carries a `findings` key; if the raw text has none,
+# there is nothing to recover. Skip the scan — raw_decode probing every `{` is
+# O(n^2) on brace-dense non-findings stdout (error/crash dumps). Match the bare
+# word, not `"findings"`: nested inside an envelope's JSON string the key
+# arrives escaped as \"findings\", which the quoted form does not match.
+if 'findings' not in txt: sys.exit(0)
 dec = json.JSONDecoder()
-best, i = None, 0
-while True:
-    j = txt.find('{', i)
-    if j < 0: break
-    try:
-        obj, end = dec.raw_decode(txt, j)
-    except Exception:
-        i = j + 1
-        continue
-    if isinstance(obj, dict):
-        if isinstance(obj.get("findings"), list):
-            best = obj
-        else:
-            so = obj.get("structured_output")
-            if isinstance(so, dict) and isinstance(so.get("findings"), list):
-                best = so
-    i = end
+# (obj, depth) — depth>0 means recovered from inside a JSON string (envelope .text)
+found = []
+
+def scan(text, depth):
+    i = 0
+    while True:
+        j = text.find('{', i)
+        if j < 0: break
+        try:
+            obj, end = dec.raw_decode(text, j)
+        except Exception:
+            i = j + 1
+            continue
+        if isinstance(obj, dict):
+            # structuredOutput is grok-cli's spelling of the same field.
+            for cand in (obj, obj.get("structured_output"), obj.get("structuredOutput")):
+                if isinstance(cand, dict) and isinstance(cand.get("findings"), list):
+                    found.append((cand, depth))
+            # An envelope route (grok-cli's `.text`) returns the review as a JSON
+            # *string*, whose `{` were never candidates here — raw_decode consumed
+            # the envelope whole and moved past it. Re-scan its strings so a
+            # wrapped review is recovered instead of reported as "no usable
+            # output". Unconditional: an envelope can carry its own empty
+            # `findings` beside the string holding the real one. The `findings`
+            # substring test bounds the nested scan's cost.
+            if depth < 3:
+                for v in obj.values():
+                    if isinstance(v, str) and 'findings' in v:
+                        scan(v, depth + 1)
+        i = end
+
+scan(txt, 0)
+# Nested (string-unwrapped) candidates are the grok .text stub case: order of
+# empty vs populated is not guaranteed, so prefer a populated review. Top-level
+# sequential objects (codex/noisy stdout) keep last-shaped-wins — a final
+# findings:[] after an earlier draft must not revive the draft.
+nested = [o for o, d in found if d > 0]
+top = [o for o, d in found if d == 0]
+if nested:
+    nested_pick = next((o for o in reversed(nested) if o["findings"]), nested[-1])
+    if nested_pick["findings"]:
+        best = nested_pick
+    elif top:
+        best = top[-1]
+    else:
+        best = nested_pick
+elif top:
+    best = top[-1]
+else:
+    best = None
 if best is not None: open(sys.argv[2], "w").write(json.dumps(best))
 PY
   [ -s "$2" ]
@@ -718,6 +814,22 @@ parse_structured() {   # <logfile> <outfile>
   # Buffered single-object envelopes (grok-cli json, test stubs).
   jq -e '.structured_output' "$1" > "$2" 2>/dev/null && return 0
   jq -r '.result // empty' "$1" 2>/dev/null | jq -e '.' > "$2" 2>/dev/null && return 0
+  # grok-cli names its parsed structured output in camelCase, so the snake_case
+  # probe above never matches it and a complete review looks like no output.
+  # Prefer a populated object first: an empty findings array is schema-valid, so
+  # accepting it here would skip .text when the real review only lives there
+  # (empty schema stub + populated .text).
+  jq -e '.structuredOutput | select((.findings|type)=="array" and (.findings|length)>0)' "$1" > "$2" 2>/dev/null && return 0
+  # Envelopes that carry the model's answer verbatim in a string (grok-cli `.text`).
+  # Slurp it: grok emits an empty stub beside the real object, and an unslurped jq
+  # streams BOTH into $2 as unparseable concatenated JSON. Shape-filter the stream
+  # too — taking a bare `last` can hand back a trailing non-findings object, which
+  # short-circuits recovery and drops a review that was sitting right there. Order
+  # is not guaranteed, so prefer a populated review over an empty one.
+  jq -r '.text // empty' "$1" 2>/dev/null | jq -se '[.[] | select((.findings|type)=="array")] | ([.[] | select(.findings|length>0)] | last) // last | select(. != null)' > "$2" 2>/dev/null && return 0
+  # Empty-but-shaped structuredOutput is a legitimate "peer found nothing" only
+  # after .text had nothing better.
+  jq -e '.structuredOutput | select((.findings|type)=="array")' "$1" > "$2" 2>/dev/null && return 0
   # stream-json NDJSON: last type=result event (elevation-dispatch pattern).
   local event
   event="$(grep -a '"type":"result"' "$1" 2>/dev/null | tail -1 || true)"
@@ -734,12 +846,11 @@ attempt_route() {   # <provider> <route>
   : > "$PEERLOG"; : > "$PEERERR"; rm -f "$RAW_OUT" "$OUT"
   build_cmd "$route"
   case "$route" in
-    codex)                 note="$(route_model "$route") (effort xhigh)" ;;
-    claude|grok-cli)       note="$(route_model "$route") (effort high)" ;;
+    codex|claude|grok-cli) note="$(route_model "$route") (effort $(route_effort "$route"))" ;;
     grok-cursor|composer)  note="$(route_model "$route")" ;;
     cursor)                note="auto (serving model unverified)" ;;
   esac
-  log "peer run: provider=$provider route=$route model=$note lens=$REVIEWER_NAME read-only least-privilege (idle ${IDLE_SECS}s / hard ${HARD_SECS}s; grok-cli hard-only ${UNGUARDED_HARD_SECS}s)"
+  log "peer run: provider=$provider route=$route model=$note lens=$REVIEWER_NAME read-only least-privilege (idle ${IDLE_SECS}s / hard ${HARD_SECS}s; grok-cli hard-only ${UNGUARDED_HARD_SECS}s); full document content egresses to this provider via this route"
   case "$route" in
     codex)
       run_codex_cmd
@@ -775,10 +886,11 @@ run_provider() {   # <provider>
   # Per-peer empty workspace, kept SEPARATE from the shared fold-in dir (RUN_DIR).
   # The peer's cwd/workspace and its RAW_OUT live here, so a read-capable peer
   # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
-  # published <lens>-<provider>.json -- it receives no path handle to RUN_DIR.
+  # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself.
-  PEER_WORKDIR="$(mktemp -d "$LOCAL_SCRATCH/xmodel-doc-peer-XXXXXX")" || { log "could not create workspace-local peer workspace; skipping"; return 0; }
+  # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
+  # workspace-local allocation fails (preserves prior behavior over failing the pass).
+  PEER_WORKDIR="$(mktemp -d "$LOCAL_TMP/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -789,6 +901,7 @@ run_provider() {   # <provider>
   fi
   primary="$fixed"
   validate_model_override "$primary" || { log "model override '${CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$primary'; skipping"; rm -f "$OUT"; return 0; }
+  validate_effort_override "$primary" || { log "effort override '${CROSS_MODEL_EFFORT_OVERRIDE:-}' not compatible with route '$primary'; skipping"; rm -f "$OUT"; return 0; }
   # Track the route that actually produced the fold-in, so the artifact records
   # whether a grok return went out directly (grok-cli -> xAI) or through Cursor
   # (grok-cursor -> Cursor also received the full document). The <lens>-<provider>
@@ -811,7 +924,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "$LOCAL_SCRATCH/xmodel-doc-norm-XXXXXX")"
+    _norm="$(mktemp "$LOCAL_TMP/xmodel-doc-norm-XXXXXX")"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;
@@ -823,6 +936,7 @@ run_provider() {   # <provider>
          --arg target "$provider" --arg harness "$(route_harness "$ACTUAL_ROUTE")" \
          --arg family "$_target_family" --argjson independent "$_independent" \
          --arg mreq "$(route_model "$ACTUAL_ROUTE")" --arg mact "$MODEL_ACTUAL" \
+         --arg ereq "$(route_effort "$ACTUAL_ROUTE")" \
          'if (.findings|type)=="array"
           then { reviewer: $r,
                  cross_model_route: $route,
@@ -832,6 +946,7 @@ run_provider() {   # <provider>
                  independence_verified: $independent,
                  model_requested: $mreq,
                  model_actual: $mact,
+                 effort_requested: $ereq,
                  findings: [ .findings[] | if (.autofix_class? == "safe_auto") then .autofix_class = "gated_auto" else . end ],
                  residual_risks: (.residual_risks // []),
                  deferred_questions: (.deferred_questions // []) }

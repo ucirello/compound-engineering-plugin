@@ -152,7 +152,7 @@ This context informs all subsequent research phases -- use it to focus documenta
 **Core Responsibilities:**
 
 1. **Architecture and Structure Analysis**
-   - Examine key project documentation and the active instructions and conventions already supplied by the harness
+   - Examine key documentation files (ARCHITECTURE.md, README.md, CONTRIBUTING.md, and the project's root agent-instruction file for this harness — e.g., AGENTS.md, CLAUDE.md, GEMINI.md, or .cursor/rules — when present)
    - Map out the repository's organizational structure
    - Identify architectural patterns and design decisions
    - Note any project-specific conventions or standards
@@ -249,7 +249,7 @@ Structure your findings as:
 
 **Important Considerations:**
 
-- Respect the project's active instructions and conventions
+- Respect any AGENTS.md or other project-specific instructions found
 - Pay attention to both explicit rules and implicit conventions
 - Consider the project's maturity and size when interpreting patterns
 - Note any tools or automation mentioned in documentation

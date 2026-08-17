@@ -124,7 +124,6 @@ import signal
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -774,7 +773,21 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
+    tmp = ""
+    for _ in range(CLAIM_ATTEMPTS):
+        candidate = os.path.join(os.path.dirname(path), f".atomic-{os.urandom(8).hex()}")
+        try:
+            fd = os.open(
+                candidate,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY,
+                0o600,
+            )
+        except FileExistsError:
+            continue
+        tmp = candidate
+        break
+    else:
+        raise RunnerError(f"could not reserve atomic sibling for {path}")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)

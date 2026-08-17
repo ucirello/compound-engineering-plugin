@@ -35,7 +35,7 @@ Spawned when the orchestrator identifies relevant patterns in the diff. The orch
 | `api-contract` | `api-contract-reviewer` | An externally consumed boundary changes: route/request/response definitions, serializers, published event schemas, API versioning, or a public package signature with evidenced downstream callers. A new or changed exported symbol inside one module is insufficient by itself. |
 | `data-migration` | `data-migration-reviewer` | Migration files, schema dumps (`db/schema.rb`, `structure.sql`), backfill scripts, data transformations — **not** model/query-only changes without migration artifacts |
 | `reliability` | `reliability-reviewer` | Error handling, retry logic, circuit breakers, timeouts, background jobs, async handlers, health checks |
-| `adversarial` | `adversarial-reviewer` fallback | >=50 changed code lines; auth/payments; persistence writes or event publication; retry/partial-failure or concurrency/ordering semantics; external APIs; or a silent-pass verification mechanism. The lens runs through the independent cross-model peer when a sanctioned peer starts. Spawn this in-process persona only when the peer cannot start. A started peer and the fallback are mutually exclusive. |
+| `adversarial` | `adversarial-reviewer` fallback | >=50 changed code lines; auth/payments; persistence writes or event publication; retry/partial-failure or concurrency/ordering semantics; external APIs; or a silent-pass verification mechanism. The lens runs through the independent cross-model peer when a sanctioned peer starts. Spawn this in-process persona when the peer cannot start, when fold-in runs the did-not-run fallback, or when fold-in restores local after a failed same-route rate-limit retry. A started peer that produced a review artifact and the fallback are mutually exclusive. |
 | `previous-comments` | `previous-comments-reviewer` | **PR-only AND comment-gated.** Reviewing a PR that has existing review comments or review threads from prior review rounds. Skip entirely when no PR metadata was gathered in Stage 1, OR when Stage 1's `hasPriorComments` flag is false (no `reviews` and no `comments` on the PR). |
 
 ## Stack-Specific Conditional (2 personas)
@@ -47,7 +47,7 @@ These reviewers cover specialized runtime behavior. Structural and maintainabili
 | `julik-frontend-races` | `julik-frontend-races-reviewer` | Stimulus/Turbo controllers, DOM event wiring, timers, async UI flows, animations, or frontend state transitions with race potential |
 | `swift-ios` | `swift-ios-reviewer` | Swift files, SwiftUI views, UIKit controllers, `.entitlements`, `PrivacyInfo.xcprivacy`, `.xcdatamodeld`, `Package.swift`, `Package.resolved`, storyboards, XIBs, or semantic build-setting / target-membership / code-signing changes in `.pbxproj` |
 
-## Conditional Local Prompt Assets (migration-specific)
+## Migration Conditional Local Prompt Assets
 
 Use `deployment-verification-agent` when the migration-artifact gate applies **and** the change is risky (destructive DDL, backfills, NOT NULL without default, column renames/drops). Schema drift and migration safety live in the `data-migration` persona — not a separate typed agent.
 
@@ -62,5 +62,5 @@ Use `deployment-verification-agent` when the migration-artifact gate applies **a
 3. **For each cross-cutting conditional persona**, read the diff and decide whether its domain is relevant. This is a judgment call, not a keyword match.
 4. **For each stack-specific conditional persona**, use file types and changed patterns as a starting point, then decide whether the diff actually introduces meaningful work for that reviewer. Do not spawn language-specific reviewers just because one config or generated file happens to match the extension.
 5. **For `data-migration`**, spawn only when the diff includes migration or schema artifacts (`db/migrate/*`, `db/schema.rb`, `db/structure.sql`, Alembic/Flyway/Liquibase paths, or explicit backfill/data-transform scripts). Do **not** spawn for model-only or query-only changes without those files.
-6. **For conditional prompt assets**, use `deployment-verification-agent` when the migration-artifact gate applies and the change is risky (see above).
+6. **For migration conditional prompt assets**, use `deployment-verification-agent` when the migration-artifact gate applies and the change is risky (see above).
 7. **Announce the team** before spawning with a one-line justification per conditional reviewer selected.

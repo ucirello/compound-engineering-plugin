@@ -6,18 +6,18 @@ Loaded from Phase 0 Input Triage when the plan carries `execution: knowledge-wor
 
 Do **not** run any of the code-shipping machinery — it does not fit knowledge work:
 
-- No JJ workspace/change setup (Phase 1 Step 2).
+- No Jujutsu change/workspace setup (Phase 1 Step 2).
 - No task-list-from-implementation-units, no execution-strategy/subagent dispatch keyed on `Files:`.
 - No Test Discovery, no test-scenario completeness, no system-wide test check.
-- No incremental code changes, and none of `references/shipping-workflow.md` (no pull request, no CI).
+- No incremental code changes, and none of `references/shipping-workflow.md` (no PR, no CI).
 
 ## Execute the production plan
 
 1. **Read the plan fully.** It is a decision artifact describing *how* the deliverable gets made: which sources to read, how to mine each, how they combine, the shape of the deliverable, and any forks the user already confirmed. Honor those decisions.
 2. **Read the sources the plan names** — the actual inputs (PDFs, transcripts, docs, links). Treat user-named resources as authoritative; read them rather than working from memory. If a named source is missing, say so plainly rather than substituting.
 3. **Synthesize and produce the deliverable** following the plan's intended shape and the confirmed forks. This is the work the approach-plan deliberately deferred.
-4. **Save and report.** Write the deliverable to a durable, workspace-tracked location — default to a sensible `docs/` subpath (or a path the user named at the checkpoint) — and report its absolute path. Whether to record it in a described JJ change or leave it written is the user's call. If composing or recommending a JJ description, active project instructions and description syntax inferred at runtime from `jj log` always win. Use `<description-composed-from-runtime-conventions>` as the neutral placeholder. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Preserve every semantic content requirement stated by this site while adapting syntax to runtime conventions. Apply compatible Go guidance only for quality, clarity, and structure; do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
+4. **Save and report.** Write the deliverable to a durable, tracked location — default to a sensible `docs/` subpath (or a path the user named at the checkpoint) — and report its absolute path. Whether to describe and retain it as a Jujutsu change is the user's call; offer, do not force.
 
 ## Stay scoped to non-code deliverables
 
-The carve-out is for knowledge-work output. If producing the deliverable legitimately requires emitting code, route that sub-step through the normal code path so Test Discovery, review, and change-boundary hygiene apply. The deliverable itself stays non-code.
+The carve-out is for knowledge-work output. If producing the deliverable legitimately requires emitting code, route that sub-step through the normal code path so Test Discovery, review, and change hygiene apply. The deliverable itself stays non-code.

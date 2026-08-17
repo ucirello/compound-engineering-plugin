@@ -1,6 +1,6 @@
 # Pipeline-Mode Server Orchestration
 
-Read and follow this file only when invoked with `mode:pipeline` (LFG or another automated runner). It overrides visibility prompts, free-port selection, and dev-server startup. It does not change browser-driver selection. In pipeline mode you run unattended — never block on a question.
+Read and follow this file only when invoked with `mode:pipeline` by RocketClaw automation. It overrides visibility prompts, free-port selection, and dev-server startup. It does not change browser-driver selection. In pipeline mode you run unattended — never block on a question.
 
 ## 1. No visibility question
 
@@ -18,6 +18,17 @@ Run the whole thing as **one** command. Shell variables do not survive between s
 ```bash
 PORT=3000   # replace 3000 with the preferred port from step 4
 
+WORKSPACE_ROOT=$(jj workspace root) || exit 1
+mkdir -p "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-browser"
+RUN_DIR=""
+for ATTEMPT in 1 2 3 4 5 6 7 8; do
+  CANDIDATE="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-browser/run-$$-${RANDOM:-0}-$ATTEMPT"
+  if mkdir -m 700 "$CANDIDATE" 2>/dev/null; then RUN_DIR="$CANDIDATE"; break; fi
+done
+[ -n "$RUN_DIR" ] || exit 1
+SERVER_LOG="$RUN_DIR/dev-server-${PORT}.log"
+echo "Using browser-test scratch: $RUN_DIR"
+
 # scan upward to the first free port
 find_free_port() {
   local p=$1
@@ -28,10 +39,6 @@ find_free_port() {
 }
 PORT=$(find_free_port "$PORT")
 echo "Using dev server port: $PORT"
-WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd -P)
-mkdir -p "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-browser"
-RUN_DIR=$(mktemp -d "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-browser/run.XXXXXX")
-SERVER_LOG="$RUN_DIR/dev-server-${PORT}.log"
 
 # start in the background (the scan guarantees this port is free), then wait up to 30s
 echo "Starting dev server on port ${PORT}..."
@@ -53,4 +60,4 @@ if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
 fi
 ```
 
-The scan may land on a different port than the preferred one, and `$PORT` does not survive into later shell calls. Note the number this block echoes ("Using dev server port: N") and use that literal port in every subsequent selected-driver navigation — do not rely on `${PORT}` carrying over. Then return to the "Test Each Affected Page" step, navigate to `http://localhost:<N>`, inspect the rendered state, and test each route.
+The scan may land on a different port than the preferred one, and shell variables do not survive into later shell calls. Note the literal port and run directory this block resolves. Use that port in every subsequent selected-driver navigation and keep all transient pipeline artifacts under that run directory. Then return to the "Test Each Affected Page" step, navigate to `http://localhost:<N>`, inspect the rendered state, and test each route.

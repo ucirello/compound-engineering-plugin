@@ -127,9 +127,12 @@ required_fields:
                 description: "Additional scoring fields to log (not optimized against)"
         optional_children:
           model:
-            type: string
-            default: null
-            description: "Optional model identifier for judge evaluation. If null, use the runtime's default available judge model."
+            type: enum
+            values:
+              - haiku
+              - sonnet
+            default: haiku
+            description: "Model to use for judge evaluation. Haiku is cheaper and faster; Sonnet is more nuanced."
           sample_size:
             type: integer
             default: 10
@@ -194,7 +197,7 @@ required_fields:
       working_directory:
         type: string
         default: "."
-        description: "Working directory for the measurement command, relative to the repo root"
+        description: "Working directory for the measurement command, relative to the workspace root"
       stability:
         type: object
         default: { mode: "stable" }
@@ -234,7 +237,7 @@ required_fields:
         description: "Files and directories the agent MAY modify during experiments"
         items:
           type: string
-          description: "File path or directory (relative to repo root). Directories match all files within."
+          description: "File path or directory (relative to the workspace root). Directories match all files within."
         example:
           - "src/clustering/"
           - "src/preprocessing/"
@@ -269,13 +272,21 @@ optional_fields:
       backend:
         type: enum
         values:
-          - workspace  # JJ workspaces for isolation
+          - workspace # JJ workspaces for isolation (default)
+          - codex     # Codex sandboxes for isolation
         default: workspace
       max_concurrent:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for the workspace backend."
+        description: "Maximum experiments to run in parallel. Capped at 6 for the workspace backend. 8+ is valid only for the Codex backend."
+      codex_security:
+        type: enum
+        values:
+          - full-auto                                # --full-auto (workspace write)
+          - yolo                                     # --dangerously-bypass-approvals-and-sandbox
+        default: null
+        description: "Codex security posture. If null, user is asked once per session."
 
   parallel:
     type: object
@@ -374,7 +385,7 @@ validation_rules:
   - "scope.immutable must have at least one entry"
   - "Gate check operators must be one of: >=, <=, >, <, ==, !="
   - "execution.max_concurrent must be >= 1"
-  - "execution.backend must be 'workspace'"
+  - "execution.backend must be 'workspace' or 'codex'"
   - "execution.max_concurrent must not exceed 6 when execution.backend is 'workspace'"
   - "If parallel.exclusive_resources is non-empty, execution.mode should be 'serial'"
   - "If metric.judge.singleton_sample > 0, metric.judge.singleton_rubric must be present"

@@ -97,7 +97,7 @@ Strengthening [section names] — [brief reason for each, e.g., "decision ration
 
 For each selected section, choose the smallest useful agent set. Do **not** run every agent. Use at most **1-3 agents per section** and usually no more than **8 agents total**.
 
-The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed `Agent` names, or platform-level agent registration.
+The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed `Agent` names, or platform-level branded agent registration.
 
 **Deterministic Section-to-Agent Mapping:**
 

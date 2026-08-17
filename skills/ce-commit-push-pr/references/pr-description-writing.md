@@ -1,124 +1,94 @@
 # PR Description Writing
 
-## Core principle
+## Core Principle
 
-The diff is already visible on GitHub. Explain what it cannot show: what was impossible before and is now possible, what was broken and is now fixed, and what behavior or contract changed. Remove sentences a reviewer can reconstruct from the diff.
+The GitHub diff already shows file-level mechanics. Explain the outcome, prior limitation, reason for the approach, reviewer-relevant risk, and evidence that the diff cannot establish. Remove narration that merely repeats changed paths or operations.
 
-For user-facing defects, state the visible before and after before explaining mechanism. Mention technical cause only when it helps reviewers understand risk.
+Use short, direct sentences and one stable term per concept. Preserve technical terms, identifiers, protocols, and error text when they are the review target. Shorten framing rather than removing necessary content.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+## Project PR Contract
 
-Preserve every semantic content requirement stated by this workflow while adapting syntax to runtime conventions.
+Resolve title and body requirements from the project's active instructions and conventions already in context, standard PR-template locations, contribution guidance those templates reference, and accepted PRs visible at runtime. Required headings, fields, order, checklists, title rules, disclosure sections, and boilerplate are authoritative. Treat a template as a minimum unless the project requires exact/template-only content or forbids additions.
 
-Repository-local instructions and message conventions inferred from `git log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
+Project instructions and runtime repository evidence override this reference. This skill adds no promotional badge, creator statement, generated-by line, model statement, harness statement, sign-off, or other attribution of its own. Fill a project-required field when higher-priority project instructions require it; do not infer one from this skill.
 
----
-
-## Step Pre-A: Resolve the range and base
+## Pre-A: Resolve Range and Base
 
 Two modes:
 
-- **Current-stack mode** - describe the intended feature bookmark or explicit stack head against the default remote bookmark.
-- **PR mode** - describe the PR ref supplied by the caller.
+- **Current-bookmark mode:** Describe the intended feature bookmark against `trunk()`.
+- **PR mode:** Describe the explicit PR supplied by the caller.
 
-For PR mode, fetch metadata first:
+For PR mode, fetch metadata with `gh pr view <ref> --json baseRefName,headRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner,headRepository`. Stop if the PR is not open. Use its base and head identity rather than the current workspace state.
 
-```bash
-gh pr view <ref> --json baseRefName,headRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
-```
+For current-bookmark mode, resolve the base through `trunk()` and the feature head through its bookmark. If `trunk()` cannot resolve, ask after trying `gh repo view --json defaultBranchRef` against the explicit repository.
 
-If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>`, `headRefName` as `<bookmark>`, and `headRefOid` only to verify the fetched head.
-
-For current-stack mode, resolve `<base>` from caller input, the project's active instructions and conventions, or `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. Resolve `<head>` from the intended feature bookmark; in a description-only flow with no bookmark, select an explicit stack head from `jj log`. Ask rather than guessing when either side is ambiguous.
-
-Resolve `<base-remote>` and `<head-remote>` from project conventions, `jj git remote list`, and PR ownership. A fork may require different remotes. Fetch each required remote with JJ, avoiding duplicate calls when they are the same:
+Match the PR base and head repositories to Jujutsu Git remotes. Fetch through `jj git fetch --remote <remote>`. GitHub's PR comparison starts at the merge base, so require `exactly(fork_point(<base-revision>|<head-revision>),1)` to resolve one common ancestor and inspect the complete range with:
 
 ```bash
-jj git fetch --remote <base-remote>
-jj git fetch --remote <head-remote>
-jj bookmark list --all-remotes <base> <bookmark>
+jj log -r 'exactly(fork_point(<base-revision>|<head-revision>),1)..<head-revision>'
+jj diff --from 'exactly(fork_point(<base-revision>|<head-revision>),1)' --to '<head-revision>'
 ```
 
-Resolve `<head>` to the local feature bookmark or the appropriate `<bookmark>@<head-remote>`, verified against `headRefOid` in PR mode. Inspect the range, full descriptions, and merge-base diff:
+For same-repository PRs, `<head-revision>` may be the fetched head bookmark. For forks, fetch the head bookmark from its matched remote and verify its Git commit ID against `headRefOid`. If either revision is not locally reachable or the fork point is not exactly one change, use `gh pr diff <ref>` and `gh pr view <ref> --json commits`; disclose that fallback in the result. If the range has no changes, report that there is nothing to describe and stop.
 
-```bash
-jj log --no-graph -r '<base>@<base-remote>..<head>'
-jj log --no-graph -r '<base>@<base-remote>..<head>' -T 'description ++ "\n"'
-jj diff --from 'fork_point(<base>@<base-remote> | <head>)' --to '<head>'
-```
+## Step A: Scope and Size the Description
 
-If the range is empty, report "No changes to describe" and stop. If a fork head, commit ID, shallow import, or unrelated history cannot be resolved in JJ, use `gh pr diff <ref>` and `gh pr view <ref> --json commits`. Note this API fallback in the user-facing summary.
+Size content by reviewer decision cost, not changed lines or file types. Build an internal scope map from the complete change list and final base-to-head diff. Use change descriptions for range coverage and the final diff to merge overlap, discard intermediate repair work, and correct stale wording. Classify files by runtime purpose.
 
----
+The scope map identifies one umbrella outcome, each material outcome cluster, claims the diff cannot establish, and decisions, risks, or evidence that affect review. Derive it from the full range, never only the latest change, tracker title, bookmark name, or original request.
 
-## Step A: Size and organize the description
+For a PR inside a known series, also identify the program outcome, this PR's contribution, and known preceding or residual work. Use only context already available from the prompt, a plan in hand, the existing body, complete change descriptions, or known sibling work. Never invent a series or scan all open PRs solely to find one.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Use the shortest body that preserves reviewer-needed context, evidence, residual uncertainty, and project-required structure. A small high-risk change may need more explanation than a large mechanical one. Large changes require selectivity rather than a mechanism transcript. Use a table for measurements or dense comparable decisions when clearer than prose.
 
-Preserve every semantic content requirement stated by this workflow while adapting syntax to runtime conventions.
+For medium and large changes, make the body progressively scannable. The opening is one or two sentences carrying one idea: what is now different and the gap or failure it replaces. Put known program placement in a short block immediately after the opening rather than overloading it. Each later section must answer one remaining reviewer question. State deliberately deferred scope once. A reader who stops after the opening must still understand this PR's outcome.
 
-Repository-local instructions and message conventions inferred from `git log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Match detail to review needs and prefer the shortest description that preserves behavior, motivation, risk, and validation. Discount review corrections and mechanical cleanup. Simple changes may need only the outcome; observable defects need visible before and after; architectural changes need consequential decisions and reasons; performance claims need measured comparisons.
+## Step B: Compose the Title
 
-## Step B: Compose the title
+Derive title syntax at runtime from project instructions, PR templates, contribution guidance, and accepted recent PR titles. The title represents the umbrella outcome rather than one implementation detail. For a series, represent this PR's contribution without claiming the entire program is complete.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Do not supply a default prefix, type, scope, capitalization, mood, punctuation rule, or fixed length. Apply only repository-supported rules. Never add release-impact markers without explicit user confirmation.
 
-Preserve every semantic content requirement stated by this workflow while adapting syntax to runtime conventions.
+## Step B1: Resolve Related Work
 
-Repository-local instructions and PR-title conventions inferred from `git log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Communicate the outcome or corrected behavior. Use release-signaling syntax only when the user confirms it and the repository uses it for that purpose.
+Gather candidate work-item references from the prompt, caller handoff, bookmark name, complete change descriptions, existing PR body, PR template, plans already in hand, and visible URLs or IDs. Preserve existing references during a rewrite unless removal was requested.
 
-## Step B1: Resolve related work references
+Classify each candidate as closing, non-closing, or uncertain. A closing reference is allowed only when this PR fully resolves the item and the tracker/project closing syntax is known. A non-closing reference links partial, investigative, follow-up, or otherwise related work without triggering closure. An uncertain reference needs a question in interactive mode; in non-interactive mode, use a known neutral link form or omit it. Never invent closure.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Use only tracker syntax established by project instructions, accepted PRs, or official tracker documentation. Keep non-closing references distinct from prose that could imply closure accidentally. Preserve an existing related-work form when rewriting unless it conflicts with current project rules or the user requests a change.
 
-Preserve every semantic content requirement stated by this workflow while adapting syntax to runtime conventions.
+## Step B2: Judge New Concepts
 
-Repository-local instructions and reference conventions inferred from `git log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
+Skip this step when the caller's teaching gate is off. Otherwise identify at most two patterns, techniques, libraries, or domain ideas first introduced by this PR and plausibly unfamiliar to repository readers. Most PRs have none.
 
-Gather candidate references from the user prompt, caller handoff, bookmark name, full JJ descriptions, existing PR body, PR template, planning or debugging notes, and visible URLs or IDs. Preserve existing references when rewriting unless asked to remove them.
+Check candidates against the base revision, not the working copy. Use `jj file list -r <base-revision>` to identify relevant base files and `jj file show -r <base-revision> <path>` with the native content-search capability. When local base content is unavailable, judge conservatively from PR diff context.
 
-Classify each candidate:
+Teach only concepts that are both new and transferable. Exclude routine refactors, renames, dependency bumps, established patterns, and project-internal plumbing. Explain what each taught concept is, why it fits here, where this PR uses it, and when not to use it. Place teaching under a project-defined concept section when one exists; otherwise choose a descriptive heading consistent with accepted PRs. Choose prose, a small table, a short code block, or Mermaid according to the material; do not force a fixed mini-template.
 
-- **Closing reference** - the PR fully resolves the item and the tracker's closing syntax is known.
-- **Non-closing reference** - the work is related, partial, investigative, follow-up, or validation-only.
-- **Uncertain** - tracked work is evident but the exact reference or intent is missing. Ask; non-interactively, use a non-closing reference or omit it.
+Preserve existing concept-teaching content and explainer links on rewrite unless refresh was requested. Description-only and description-update modes never write repository files.
 
-Do not invent automation keywords. Keep non-closing IDs out of outcome prose and place them in a separate related sentence or section. Follow documented project or tracker syntax. For GitHub Issues, use a closing reference only when the PR targets the default bookmark and fully resolves the issue. Preserve mixed closing and non-closing intent explicitly.
+## Step C: Assemble the Body
 
-## Step B2: Judge new concepts
+Use the project's required headings and order. When no contract exists, include only material earned by reviewer needs: outcome framing, decisions or risk, related work, validation, known program placement, concept teaching, and supplied evidence. Choose structure from the content and accepted PRs rather than imposing a fixed body template or example.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Place the opening in the project-prescribed section. Without a prescribed structure, use a bare paragraph when there are no sections, or put the opening under a runtime-appropriate summary heading when sections are needed. Do not leave an orphaned opening above the first heading.
 
-Preserve every semantic content requirement stated by this workflow while adapting syntax to runtime conventions.
+If a plan already in hand contains session-settled decisions, preserve relevant provenance in the project-permitted location. Do not search for a plan solely to add provenance, and do not turn it into an outstanding-items ledger.
 
-Repository-local instructions and body conventions inferred from `git log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
+Preserve existing evidence sections unless refresh was requested. Distinguish demonstrated results from assumptions and limitations. Never label test output as a demo or screenshot. Use diagrams, tables, or navigation hints only when they reduce reviewer decision cost; never substitute a changed-file list for review guidance.
 
-Skip this step when the teaching gate is off. Gather at most two candidates from the diff: a newly used technique, dependency, pattern, or domain idea. Most PRs have none.
+## Step D: Pre-apply Coverage Audit
 
-Check each candidate against the base revision, never the working copy:
+Before returning the title and body, verify:
 
-```bash
-jj file search -r '<base>@<base-remote>' -p 'substring:<term>'
-```
-
-A concept is teachable only when it is new to this codebase in this PR and transferable beyond it. Do not teach routine local patterns, renames, dependency bumps, ordinary refactors, or internal plumbing. In API-fallback mode, judge from diff context and be conservative.
-
-When concepts qualify, compose `## New concepts` for at most two. Explain what each is, why it fits here, how this PR applies it, and when not to use it. Use Mermaid for relationships, a fenced snippet for mechanics, or a table for trade-offs only when that medium improves understanding. Preserve an existing concept section and explainer link verbatim unless asked to refresh them. Description-only and description-update modes never write repository files.
-
-## Step C: Assemble the body
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Preserve every semantic content requirement stated by this workflow while adapting syntax to runtime conventions.
-
-Repository-local instructions and body conventions inferred from `git log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Preserve the semantic requirements to communicate the outcome, related references, non-obvious validation, new concepts when present, and supplied evidence while adapting syntax to runtime conventions. Add no promotional footer, execution metadata, or standalone product decoration.
-
-Preserve existing demo and screenshot sections unless asked to refresh them. Never label test output as a demo or screenshot. Use diagrams or tables only when they communicate relationships, flow, state, sequence, trade-offs, or measurements faster than prose. Prose remains authoritative. Never prefix ordinary list items with `#`, which GitHub may interpret as issue references.
-
-## Step D: Validate
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Preserve every semantic content requirement stated by this workflow while adapting syntax to runtime conventions.
-
-Repository-local instructions and message conventions inferred from `git log` always win. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Validate the semantic requirements: the title communicates outcome, the body communicates outcome or visible before and after, diff narration is absent, references preserve their intended automation semantics, evidence and validation claims reflect work actually performed, and promotional or execution metadata is absent.
+- The title represents the umbrella outcome and follows runtime-derived repository title rules.
+- The opening carries one idea in one or two sentences and lets a reader understand the outcome without continuing.
+- Every material outcome is represented or intentionally omitted as supporting detail.
+- Claims not established by the diff are explained, while diff-visible mechanics are not narrated needlessly.
+- Known series context is accurate and absent series context was not invented.
+- Terms are stable and jargon is retained only where it carries the claim.
+- Evidence states an outcome and separates demonstrated facts from assumptions or limitations.
+- Closing and non-closing work-item references have the intended tracker effect.
+- Every non-required sentence or section changes reviewer understanding or confidence; remove it otherwise.
+- No skill-added promotional or attribution content remains.

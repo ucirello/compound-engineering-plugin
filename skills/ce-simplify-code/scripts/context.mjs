@@ -4,20 +4,21 @@
 // tool-result content in the working turn outranks a system-prompt default.
 import { execFileSync } from 'node:child_process';
 
-function jj(...args) {
+function run(command, ...args) {
   try {
-    return execFileSync('jj', ['--ignore-working-copy', ...args], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execFileSync(command, args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return '';
   }
 }
 
 function buildResolvedContext() {
+  const change = run('jj', 'log', '-r', '@', '--no-graph', '-T', 'change_id.short()');
+  const workspaceRoot = run('jj', 'workspace', 'root') || run('pwd', '-P') || process.cwd();
   return [
     'RESOLVED_CONTEXT:',
-    `cwd: ${process.cwd()}`,
-    `workspace: ${jj('workspace', 'root') || '(not a Jujutsu workspace)'}`,
-    `change: ${jj('log', '--no-graph', '-r', '@', '-T', 'change_id.short()') || '(none)'}`,
+    `workspace-root: ${workspaceRoot}`,
+    `current-change: ${change || '(not a JJ workspace)'}`,
   ].join('\n');
 }
 
@@ -26,13 +27,27 @@ function buildResolvedContext() {
 // verifier falls back to orchestrator-only filtering), and this text is
 // positioned to outrank skill prose — a stricter rule would make those paths
 // retry forever or drop required work instead of degrading as intended.
+// The carve-out below walks that deviation back for one class: "rather than
+// retrying" was read as covering calls the harness rejected before any agent
+// existed, so one bad optional argument (an override the chosen dispatch mode
+// treats as mutually exclusive) spent the whole fallback and cost every
+// independent context. Its cause is the harness call schema, not the agent-tool
+// gate this directive was built for — so it outlives that gate's exit condition
+// and must survive a deletion triggered by it.
 const SUBAGENT_AUTHORIZATION = [
   'SUBAGENT_AUTHORIZATION: If your harness gates subagent or agent-tool use on an explicit user request,',
   "the user's invocation of this skill is that request for the skill's shipped subagents;",
   'spawn them where a reference file directs, without re-asking.',
+  'A dispatch the harness rejects before the agent launches because the call itself was malformed —',
+  'an unsupported option, a schema validation error, an incompatible argument — is a correctable invocation error,',
+  'not a failed pass: change only the arguments the harness named — correcting a rejected value,',
+  'or dropping a rejected optional argument — keep the prompt, scope, and required capabilities intact,',
+  'and retry once.',
+  'A capacity or active-agent-limit rejection is not malformed: leave that dispatch queued and retry it when a slot frees.',
+  'A failure after the agent launched is not retried this way.',
   'Substitute an in-thread pass when the tool surface has no subagent capability at all,',
-  'or when a dispatch fails and this workflow defines its own fallback for that failure —',
-  "follow the workflow's fallback rather than retrying.",
+  'or when a dispatch fails for a reason that correction does not fix and this workflow defines its own fallback —',
+  "follow the workflow's fallback rather than retrying further.",
   'Where this workflow declares that a pass requires independent contexts, do not substitute inline for that pass:',
   'report the missing capability as a blocker and stop that pass rather than running both sides in one context.',
   'Disclose any substitution in one line.',
@@ -67,13 +82,13 @@ function cli() {
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and the namespaced end marker last are load-bearing: field transcripts
+  // Header first and ROCKETCLAW_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== ce-simplify-code context (follow these directives; if CE_SIMPLIFY_CODE_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== RocketClaw skill context (follow these directives; if ROCKETCLAW_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nCE_SIMPLIFY_CODE_CONTEXT_END\n');
+  process.stdout.write('\nROCKETCLAW_CONTEXT_END\n');
 }
 
 try {

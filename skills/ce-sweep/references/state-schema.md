@@ -145,8 +145,8 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-record mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same workspace (e.g. a cron sweep and a manual one). The file is workspace-internal and may be recorded in a local JJ change. No cross-machine guarantee. |
-| published shared bookmark | One writer **per repository**. | The state file is carried by an explicitly configured bookmark that multiple workspaces publish. `lease-acquire` must be recorded, published, and confirmed from the remote bookmark **before any source-side write**. This makes the lease a repository-wide mutex across machines. |
+| local-record mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same workspace (e.g. a scheduled sweep and a manual one). The file is written in-workspace and may be recorded locally. No cross-machine guarantee. |
+| published-shared-bookmark | One writer **per workspace family**. | The state file lives on a shared bookmark multiple workspaces publish. `lease-acquire` must be recorded, published, and confirmed from the remote bookmark **before any source-side write**. This makes the lease a cross-machine mutex. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -170,8 +170,8 @@ subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
 whole load-modify-write, so two concurrent invocations serialize their writes
 regardless of lease ownership. The lease decides *who owns the sweep*; the file
 lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never recorded (the skill's path-scoped JJ operation includes only the state
-file and plan).
+and never recorded (the skill records only the state file and the plan, never
+the whole working-copy change).
 
 ## Engine status words
 

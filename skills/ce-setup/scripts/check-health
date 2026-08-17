@@ -14,7 +14,7 @@ deps=(
   "gh|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q gh|https://cli.github.com|GitHub PR, issue, and review workflows"
   "jq|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q jq|https://jqlang.github.io/jq/|JSON inspection in shell-based workflows"
   "ast-grep|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q ast-grep|https://ast-grep.github.io|syntax-aware structural code search"
-  "ffmpeg|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q ffmpeg|https://ffmpeg.org/download.html|media chunking and screenshot extraction for feedback analysis"
+  "ffmpeg|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q ffmpeg|https://ffmpeg.org/download.html|media chunking and screenshot extraction for Riffrec analysis"
 )
 
 # =====================================================
@@ -33,9 +33,9 @@ done
 #  Helpers
 # =====================================================
 
-ok()      { echo "  🟢  $1"; }
-warn()    { echo "  🟡  $1"; }
-skip()    { echo "  ➖  $1"; }
+ok()      { echo "  OK    $1"; }
+warn()    { echo "  WARN  $1"; }
+skip()    { echo "  SKIP  $1"; }
 detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
@@ -86,24 +86,26 @@ resolve_real_best_effort() {
   printf '%s' "${base}${tail}"
 }
 
-# Resolve docs_root per Artifact Root Resolution: config.local.yaml wins over the
-# tracked config.yaml, first non-empty value; unset -> default root `docs`; a
-# configured value is validated and rejected (never silently defaulted) when it
-# is absolute, escapes the workspace via path or symlink, resolves to the workspace
-# root or inside .jj/, or names an existing non-directory. Sets docs_root_status
-# (default|configured|invalid), docs_root_value, docs_root_source, docs_root_error.
+# Resolve docs_root from tracked config.yaml only. A docs_root in
+# config.local.yaml is ignored. Unset -> default root `docs`. A configured
+# value is validated and rejected (never silently defaulted) when it is
+# absolute, escapes the workspace via path or symlink, resolves to the workspace
+# root or inside .jj/, or names an existing non-directory. Sets
+# docs_root_status (default|configured|invalid), docs_root_value,
+# docs_root_source, docs_root_error, and docs_root_local_ignored.
 resolve_docs_root() {
-  local workspace_root="$1"
-  local local_cfg="$workspace_root/.rocketclaw/config.local.yaml"
-  local tracked_cfg="$workspace_root/.rocketclaw/config.yaml"
-  local value="" source="" workspace_real real
+  local repo_root="$1"
+  local local_cfg="$repo_root/.rocketclaw/config.local.yaml"
+  local tracked_cfg="$repo_root/.rocketclaw/config.yaml"
+  local value="" source="" repo_real real local_docs probe
 
   docs_root_error=""
+  docs_root_local_ignored=""
   if [ -f "$local_cfg" ]; then
-    value=$(read_flat_config_value "$local_cfg" "docs_root")
-    [ -n "$value" ] && source="config.local.yaml"
+    local_docs=$(read_flat_config_value "$local_cfg" "docs_root")
+    [ -n "$local_docs" ] && docs_root_local_ignored="$local_docs"
   fi
-  if [ -z "$value" ] && [ -f "$tracked_cfg" ]; then
+  if [ -f "$tracked_cfg" ]; then
     value=$(read_flat_config_value "$tracked_cfg" "docs_root")
     [ -n "$value" ] && source="config.yaml"
   fi
@@ -120,19 +122,19 @@ resolve_docs_root() {
   # collapses `..` within the existing prefix (via cd/pwd -P); a `..` that
   # traverses a not-yet-created segment would otherwise survive literally and
   # escape the workspace, hit the workspace root, or reach .jj/ while still
-  # string-prefix matching. A legitimate workspace-relative artifact root never needs `..`.
+  # string-prefix matching. A legitimate workspace-relative root never needs `..`.
   case "/$value/" in
     */../*) docs_root_error="path traversal ('..') is not allowed; use a plain workspace-relative path"; return ;;
   esac
-  workspace_real="$(cd "$workspace_root" 2>/dev/null && pwd -P)" || { docs_root_error="could not resolve the workspace root"; return; }
-  real="$(resolve_real_best_effort "$workspace_root/$value")" || { docs_root_error="could not resolve the path"; return; }
+  repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P)" || { docs_root_error="could not resolve the workspace root"; return; }
+  real="$(resolve_real_best_effort "$repo_root/$value")" || { docs_root_error="could not resolve the path"; return; }
   case "$real/" in
-    "$workspace_real/"*) ;;
+    "$repo_real/"*) ;;
     *) docs_root_error="resolves outside the workspace ($real)"; return ;;
   esac
-  [ "$real" = "$workspace_real" ] && { docs_root_error="resolves to the workspace root itself"; return; }
+  [ "$real" = "$repo_real" ] && { docs_root_error="resolves to the workspace root itself"; return; }
   case "$real/" in
-    "$workspace_real/.jj/"*) docs_root_error="resolves inside .jj/"; return ;;
+    "$repo_real/.jj/"*) docs_root_error="resolves inside .jj/"; return ;;
   esac
   if [ -e "$real" ] && [ ! -d "$real" ]; then
     docs_root_error="names an existing non-directory"; return
@@ -161,6 +163,48 @@ has_flat_config_key() {
     $0 ~ "^" key "[[:space:]]*:" { found = 1 }
     END { exit(found ? 0 : 1) }
   ' "$config_file"
+}
+
+# First non-empty ordinary scalar across local then tracked. Empty/commented
+# local continues to tracked. Sets ordinary_value and ordinary_source.
+resolve_ordinary_scalar() {
+  local local_file="$1"
+  local tracked_file="$2"
+  local config_key="$3"
+  local value=""
+  ordinary_value=""
+  ordinary_source=""
+  if [ -f "$local_file" ]; then
+    value=$(read_flat_config_value "$local_file" "$config_key")
+    if [ -n "$value" ]; then
+      ordinary_value="$value"
+      ordinary_source="config.local.yaml"
+      return
+    fi
+  fi
+  if [ -f "$tracked_file" ]; then
+    value=$(read_flat_config_value "$tracked_file" "$config_key")
+    if [ -n "$value" ]; then
+      ordinary_value="$value"
+      ordinary_source="config.yaml"
+    fi
+  fi
+}
+
+# Present list/map key (including `[]`) wins that layer. Sets
+# structured_file, or empty when neither layer sets the key.
+resolve_structured_layer() {
+  local local_file="$1"
+  local tracked_file="$2"
+  local config_key="$3"
+  structured_file=""
+  if [ -f "$local_file" ] && has_flat_config_key "$local_file" "$config_key"; then
+    structured_file="$local_file"
+    return
+  fi
+  if [ -f "$tracked_file" ] && has_flat_config_key "$tracked_file" "$config_key"; then
+    structured_file="$tracked_file"
+  fi
 }
 
 # Read the narrow YAML sequence used by work_engine_preferences. The local
@@ -243,7 +287,37 @@ read_work_engine_preferences() {
 }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_workspace=$(jj workspace root >/dev/null 2>&1 && echo "yes" || echo "no")
+workspace_root=$(jj workspace root 2>/dev/null)
+if [ -n "$workspace_root" ]; then
+  in_workspace="yes"
+else
+  in_workspace="no"
+  workspace_root="$(pwd -P)"
+fi
+tmp_root="$workspace_root/.tmp/rocketclaw"
+
+# JJ snapshots non-ignored files before listing them. A local-only path that
+# appears in the working-copy tree is therefore not safely ignored.
+jj_tracks_path() {
+  local relative_path="$1"
+  [ -n "$(jj --repository "$workspace_root" file list "$relative_path" 2>/dev/null)" ]
+}
+
+tmp_ignore_rule_present() {
+  local ignore_file="$workspace_root/.gitignore"
+  [ -f "$ignore_file" ] || return 1
+  awk '
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (line == ".tmp" || line == ".tmp/" || line == "/.tmp" || line == "/.tmp/" ||
+          line == ".tmp/**" || line == "/.tmp/**" || line == ".tmp/rocketclaw/" ||
+          line == "/.tmp/rocketclaw/") found = 1
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$ignore_file"
+}
 
 # =====================================================
 #  Check optional capabilities
@@ -255,7 +329,7 @@ capability_missing=0
 results=()
 
 for entry in "${deps[@]}"; do
-  IFS='|' read -r name install_cmd url capability <<< "$entry"
+  IFS='|' read -r name install_cmd url capability < <(printf '%s\n' "$entry")
   capability_total=$((capability_total + 1))
   if command -v "$name" >/dev/null 2>&1; then
     capability_ok=$((capability_ok + 1))
@@ -271,7 +345,8 @@ done
 # =====================================================
 
 legacy_cfg="skip"
-workspace_cfg_ignore="skip"
+local_config_ignore="skip"
+tmp_ignore="skip"
 local_cfg="skip"
 example_cfg="skip"
 retired_keys=()
@@ -284,59 +359,72 @@ docs_root_status="skip"
 docs_root_value=""
 docs_root_source=""
 docs_root_error=""
+docs_root_local_ignored=""
+tracked_cfg="skip"
 project_issues=0
 
 if [ "$in_workspace" = "yes" ]; then
-  workspace_root=$(jj workspace root 2>/dev/null)
-  resolve_docs_root "$workspace_root"
+  repo_root="$workspace_root"
+  local_config_path="$repo_root/.rocketclaw/config.local.yaml"
+  tracked_config_path="$repo_root/.rocketclaw/config.yaml"
+  resolve_docs_root "$repo_root"
   [ "$docs_root_status" = "invalid" ] && project_issues=$((project_issues + 1))
   legacy_cfg="missing"
-  legacy_cfg_path=""
-  for candidate in "$workspace_root"/.[!.]*/*.local.md; do
-    [ -f "$candidate" ] || continue
-    if grep -Eq '^(review_agents|plan_review_agents):' "$candidate"; then
-      legacy_cfg="present"
-      legacy_cfg_path="$candidate"
-      for preserved in "$workspace_root"/.rocketclaw/legacy-config*.local.md; do
-        [ -f "$preserved" ] || continue
-        if cmp -s "$candidate" "$preserved"; then
-          legacy_cfg="preserved"
-          break
-        fi
-      done
-      break
-    fi
-  done
+  [ -f "$repo_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
-  if [ -e "$workspace_root/.rocketclaw/config.local.yaml" ]; then
+  if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    local_config_path="$workspace_root/.rocketclaw/config.local.yaml"
-    listed_cfg=$(jj -R "$workspace_root" file list ".rocketclaw/config.local.yaml" 2>/dev/null)
-    if [ $? -eq 0 ] && [ -z "$listed_cfg" ]; then
-      workspace_cfg_ignore="ok"
+    if jj_tracks_path ".rocketclaw/config.local.yaml"; then
+      local_config_ignore="missing"
     else
-      workspace_cfg_ignore="missing"
+      local_config_ignore="ok"
     fi
+  fi
 
-    work_engine_mode=$(read_flat_config_value "$local_config_path" "work_engine_mode")
-    work_engine_preferences_count=0
-    work_engine_preferences_detail=""
-    work_engine_preferences_error=""
-    retired_work_engine_keys=""
-    for retired_key in work_engine_target work_engine_model; do
-      if has_flat_config_key "$local_config_path" "$retired_key"; then
-        if [ -n "$retired_work_engine_keys" ]; then
-          retired_work_engine_keys="${retired_work_engine_keys}, ${retired_key}"
+  tmp_ignore="missing"
+  if tmp_ignore_rule_present; then
+    tmp_ignore="ok"
+  fi
+
+  tracked_cfg="missing"
+  [ -f "$tracked_config_path" ] && tracked_cfg="present"
+
+  resolve_ordinary_scalar "$local_config_path" "$tracked_config_path" "work_engine_mode"
+  work_engine_mode="$ordinary_value"
+  case "$work_engine_mode" in
+    ""|off|prefer|require) ;;
+    *)
+      if [ "$ordinary_source" = "config.local.yaml" ]; then
+        if [ -f "$tracked_config_path" ]; then
+          work_engine_mode=$(read_flat_config_value "$tracked_config_path" "work_engine_mode")
         else
-          retired_work_engine_keys="$retired_key"
+          work_engine_mode=""
         fi
       fi
-    done
-    if [ -n "$retired_work_engine_keys" ]; then
-      work_engine_migration_note="retired config key(s) ${retired_work_engine_keys} detected; migrate routing to work_engine_preferences entries with harness and optional model fields, then remove the retired keys"
-      project_issues=$((project_issues + 1))
+      ;;
+  esac
+
+  resolve_structured_layer "$local_config_path" "$tracked_config_path" "work_engine_preferences"
+  work_engine_preferences_count=0
+  work_engine_preferences_detail=""
+  work_engine_preferences_error=""
+  retired_work_engine_keys=""
+  for retired_key in work_engine_target work_engine_model; do
+    if { [ -f "$local_config_path" ] && has_flat_config_key "$local_config_path" "$retired_key"; } || \
+       { [ -f "$tracked_config_path" ] && has_flat_config_key "$tracked_config_path" "$retired_key"; }; then
+      if [ -n "$retired_work_engine_keys" ]; then
+        retired_work_engine_keys="${retired_work_engine_keys}, ${retired_key}"
+      else
+        retired_work_engine_keys="$retired_key"
+      fi
     fi
+  done
+  if [ -n "$retired_work_engine_keys" ]; then
+    work_engine_migration_note="retired config key(s) ${retired_work_engine_keys} detected; migrate routing to work_engine_preferences entries with harness and optional model fields, then remove the retired keys"
+    project_issues=$((project_issues + 1))
+  fi
+  if [ -n "$structured_file" ]; then
     while IFS=$'\t' read -r preference_kind preference_harness preference_model; do
       case "$preference_kind" in
         ITEM)
@@ -372,52 +460,52 @@ if [ "$in_workspace" = "yes" ]; then
           [ -z "$work_engine_preferences_error" ] && work_engine_preferences_error="$preference_harness"
           ;;
       esac
-    done < <(read_work_engine_preferences "$local_config_path")
-
-    case "$work_engine_mode" in
-      ""|off)
-        work_engine_cfg="native"
-        if [ -n "$work_engine_mode" ]; then
-          work_engine_detail="standing preference is off"
-        else
-          work_engine_detail="setting is commented or missing"
-        fi
-        if [ -n "$work_engine_preferences_error" ]; then
-          work_engine_preferences_note="invalid dormant work_engine_preferences: ${work_engine_preferences_error}"
-          work_engine_preferences_note_level="warn"
-          project_issues=$((project_issues + 1))
-        elif [ "$work_engine_preferences_count" -gt 0 ]; then
-          work_engine_preferences_note="ordered preferences ignored while standing mode is off"
-        fi
-        ;;
-      prefer|require)
-        if [ -n "$work_engine_preferences_error" ]; then
-          work_engine_cfg="unavailable"
-          work_engine_detail="$work_engine_preferences_error"
-          project_issues=$((project_issues + 1))
-        elif [ "$work_engine_preferences_count" -eq 0 ] && [ -n "$retired_work_engine_keys" ]; then
-          work_engine_cfg="unavailable"
-          work_engine_detail="$work_engine_mode cannot use retired scalar routing; migrate ${retired_work_engine_keys} to work_engine_preferences"
-        elif [ "$work_engine_preferences_count" -eq 0 ]; then
-          work_engine_cfg="unavailable"
-          work_engine_detail="$work_engine_mode requires work_engine_preferences"
-          project_issues=$((project_issues + 1))
-        else
-          work_engine_cfg="$work_engine_mode"
-          work_engine_detail="$work_engine_preferences_detail"
-        fi
-        ;;
-      *)
-        work_engine_cfg="invalid"
-        work_engine_detail="invalid mode '$work_engine_mode' ignored; native is the default"
-        project_issues=$((project_issues + 1))
-        ;;
-    esac
+    done < <(read_work_engine_preferences "$structured_file")
   fi
+
+  case "$work_engine_mode" in
+    ""|off)
+      work_engine_cfg="native"
+      if [ -n "$work_engine_mode" ]; then
+        work_engine_detail="standing preference is off"
+      else
+        work_engine_detail="setting is commented or missing"
+      fi
+      if [ -n "$work_engine_preferences_error" ]; then
+        work_engine_preferences_note="invalid dormant work_engine_preferences: ${work_engine_preferences_error}"
+        work_engine_preferences_note_level="warn"
+        project_issues=$((project_issues + 1))
+      elif [ "$work_engine_preferences_count" -gt 0 ]; then
+        work_engine_preferences_note="ordered preferences ignored while standing mode is off"
+      fi
+      ;;
+    prefer|require)
+      if [ -n "$work_engine_preferences_error" ]; then
+        work_engine_cfg="unavailable"
+        work_engine_detail="$work_engine_preferences_error"
+        project_issues=$((project_issues + 1))
+      elif [ "$work_engine_preferences_count" -eq 0 ] && [ -n "$retired_work_engine_keys" ]; then
+        work_engine_cfg="unavailable"
+        work_engine_detail="$work_engine_mode cannot use retired scalar routing; migrate ${retired_work_engine_keys} to work_engine_preferences"
+      elif [ "$work_engine_preferences_count" -eq 0 ]; then
+        work_engine_cfg="unavailable"
+        work_engine_detail="$work_engine_mode requires work_engine_preferences"
+        project_issues=$((project_issues + 1))
+      else
+        work_engine_cfg="$work_engine_mode"
+        work_engine_detail="$work_engine_preferences_detail"
+      fi
+      ;;
+    *)
+      work_engine_cfg="invalid"
+      work_engine_detail="invalid mode '$work_engine_mode' ignored; native is the default"
+      project_issues=$((project_issues + 1))
+      ;;
+  esac
 
   script_dir="$(cd "$(dirname "$0")" && pwd)"
   template="$script_dir/../references/config-template.yaml"
-  example="$workspace_root/.rocketclaw/config.local.example.yaml"
+  example="$repo_root/.rocketclaw/config.example.yaml"
   if [ ! -f "$example" ]; then
     example_cfg="missing"
   elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -426,16 +514,20 @@ if [ "$in_workspace" = "yes" ]; then
     example_cfg="ok"
   fi
 
-  # Retired keys set as ACTIVE (non-commented) in the user's local config. A
+  # Retired keys set as ACTIVE (non-commented) in either layer. A
   # commented `# plan_use_fable:` line does not match `^[[:space:]]*<key>:`.
-  local_cfg_file="$workspace_root/.rocketclaw/config.local.yaml"
-  if [ -f "$local_cfg_file" ]; then
+  for cfg_file in "$local_config_path" "$tracked_config_path"; do
+    [ -f "$cfg_file" ] || continue
     for key in plan_use_fable brainstorm_use_fable fable_nudge; do
-      if grep -Eq "^[[:space:]]*${key}[[:space:]]*:" "$local_cfg_file" 2>/dev/null; then
-        retired_keys+=("$key")
+      if grep -Eq "^[[:space:]]*${key}[[:space:]]*:" "$cfg_file" 2>/dev/null; then
+        already=""
+        for seen in "${retired_keys[@]}"; do
+          [ "$seen" = "$key" ] && already=1
+        done
+        [ -z "$already" ] && retired_keys+=("$key")
       fi
     done
-  fi
+  done
 fi
 
 # =====================================================
@@ -450,7 +542,7 @@ fi
 section "Optional capabilities  ${capability_ok}/${capability_total}"
 
 for result in "${results[@]}"; do
-  IFS='|' read -r name status install_cmd url capability <<< "$result"
+  IFS='|' read -r name status install_cmd url capability < <(printf '%s\n' "$result")
   if [ "$status" = "ok" ]; then
     ok "$name -- $capability"
   else
@@ -465,29 +557,38 @@ for result in "${results[@]}"; do
 done
 
 if [ "$in_workspace" = "yes" ]; then
-  section "Project config"
+  section "RocketClaw config"
 
   if [ "$legacy_cfg" = "present" ]; then
-    warn "Legacy Markdown config discovered"
-    detail "$legacy_cfg_path"
-    detail "Preserve its content under .rocketclaw before creating a blank local config"
+    warn "Obsolete rocketclaw.local.md exists"
     project_issues=$((project_issues + 1))
-  elif [ "$legacy_cfg" = "preserved" ]; then
-    ok "Legacy Markdown config is preserved under .rocketclaw"
   else
-    ok "No legacy Markdown config discovered"
+    ok "No obsolete rocketclaw.local.md"
+  fi
+
+  if [ "$tracked_cfg" = "present" ]; then
+    ok ".rocketclaw/config.yaml exists"
+  else
+    skip "No workspace config yet (.rocketclaw/config.yaml)"
   fi
 
   if [ "$local_cfg" = "present" ]; then
     ok ".rocketclaw/config.local.yaml exists"
-    if [ "$workspace_cfg_ignore" = "ok" ]; then
+    if [ "$local_config_ignore" = "ok" ]; then
       ok "Local config is ignored by JJ"
     else
-      warn "Local config is not safely ignored by JJ"
+      warn "Local config is tracked by JJ"
       project_issues=$((project_issues + 1))
     fi
   else
-    skip "No local config yet (.rocketclaw/config.local.yaml)"
+    skip "No local override yet (.rocketclaw/config.local.yaml)"
+  fi
+
+  if [ "$tmp_ignore" = "ok" ]; then
+    ok "RocketClaw temporary storage is ignored"
+  else
+    skip "RocketClaw temporary storage is not ignored"
+    detail "Temporary state belongs under .tmp/rocketclaw/"
   fi
 
   if [ "$docs_root_status" = "default" ]; then
@@ -496,11 +597,14 @@ if [ "$in_workspace" = "yes" ]; then
     ok "Artifact root: ${docs_root_value}/ (from ${docs_root_source})"
   elif [ "$docs_root_status" = "invalid" ]; then
     warn "Invalid docs_root '${docs_root_value}' in ${docs_root_source}: ${docs_root_error}"
-    detail "artifacts will not be written until docs_root is corrected or removed."
+    detail "RocketClaw artifacts will not be written until docs_root is corrected or removed."
+  fi
+  if [ -n "$docs_root_local_ignored" ]; then
+    skip "Local docs_root '${docs_root_local_ignored}' is ignored; set docs_root only in config.yaml"
   fi
 
   if [ "$work_engine_cfg" = "native" ]; then
-    ok "ce-work implementation engine: native (${work_engine_detail})"
+    ok "RocketClaw Work implementation engine: native (${work_engine_detail})"
     if [ -n "$work_engine_preferences_note" ]; then
       if [ "$work_engine_preferences_note_level" = "warn" ]; then
         warn "$work_engine_preferences_note"
@@ -509,20 +613,18 @@ if [ "$in_workspace" = "yes" ]; then
       fi
     fi
   elif [ "$work_engine_cfg" = "prefer" ] || [ "$work_engine_cfg" = "require" ]; then
-    ok "ce-work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
+    ok "RocketClaw Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "unavailable" ]; then
-    warn "ce-work implementation engine unavailable: ${work_engine_detail}"
+    warn "RocketClaw Work implementation engine unavailable: ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "invalid" ]; then
-    warn "ce-work implementation engine: ${work_engine_detail}"
-  elif [ "$work_engine_cfg" = "skip" ]; then
-    skip "ce-work implementation engine: native (no local config)"
+    warn "RocketClaw Work implementation engine: ${work_engine_detail}"
   fi
   [ -n "$work_engine_migration_note" ] && warn "$work_engine_migration_note"
 
   if [ "$example_cfg" = "ok" ]; then
     ok "Example config is current"
   elif [ "$example_cfg" = "missing" ]; then
-    warn "Example config missing (.rocketclaw/config.local.example.yaml)"
+    warn "Example config missing (.rocketclaw/config.example.yaml)"
     project_issues=$((project_issues + 1))
   elif [ "$example_cfg" = "outdated" ]; then
     warn "Example config outdated (new settings available)"
@@ -538,15 +640,17 @@ if [ "$in_workspace" = "yes" ]; then
     project_issues=$((project_issues + 1))
   done
 else
-  section "Project config"
+  section "RocketClaw config"
   skip "Not inside a JJ workspace"
 fi
 
+detail "Temporary storage root: $tmp_root"
+
 echo ""
 if [ "$project_issues" -eq 0 ]; then
-  echo " ✅  Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " RocketClaw config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
 else
-  echo " ⚠️   ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " ${project_issues} RocketClaw config issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
 fi
 
 if [ "$capability_missing" -gt 0 ]; then

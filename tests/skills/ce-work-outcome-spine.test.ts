@@ -88,7 +88,24 @@ describe("ce-work native characterization", () => {
     expect(dispatch).toContain("Do not send \"read the whole plan\"")
     expect(dispatch).toContain("**Do not commit.**")
     expect(dispatch).toContain("**orchestrator owns staging, committing, and the authoritative test runs**")
-    expect(dispatch).toContain("Review, test, and commit each unit in dependency order — the orchestrator owns commits")
+    expect(dispatch).toContain("Review, test, commit, and retire each unit in dependency order — the orchestrator owns commits")
+  })
+
+  test("uses a fresh single-use context for each dispatched native worker while preserving inline execution", async () => {
+    const skill = await readRepoFile("skills/ce-work/SKILL.md")
+    const dispatch = sliceSection(skill, "**Native dispatch (inline/subagent engines only)**", "### Phase 2: Execute")
+
+    expect(dispatch).toContain("**Fresh worker invariant (native subagent dispatch only):**")
+    expect(dispatch).toContain("When dispatching an implementation unit to a native subagent worker, create a new worker context")
+    expect(dispatch).toContain("never receive a different unit")
+    expect(dispatch).toContain("never retask it or retain idle implementation workers for reuse")
+    expect(dispatch).toContain("Inline execution creates no worker context or handle, so it has nothing to retire")
+    expect(dispatch).toMatch(/After each serial inline\/subagent unit:.*If the unit used a native subagent worker, retire its handle.*dispatch the next subagent unit in a new worker context/s)
+    expect(dispatch).toMatch(/After each serial inline\/subagent unit:.*closing\/releasing it only when the harness exposes that operation and assigns that lifecycle action to the caller/s)
+    expect(dispatch).toContain("An inline unit has no worker handle to retire; start the next unit directly")
+    expect(dispatch).toMatch(/After a parallel inline\/subagent batch.*create its canonical commit, then immediately retire that unit's worker before considering the next/s)
+    expect(dispatch).toMatch(/After a parallel inline\/subagent batch.*Invoke an explicit close\/release operation only when the harness exposes it and assigns that lifecycle action to the caller/s)
+    expect(dispatch).toContain("never infer manual cleanup commands from the provider name")
   })
 
   test("does not re-enter native dispatch after selecting cross-model execution", async () => {
@@ -126,6 +143,7 @@ describe("ce-work cross-model engine contract", () => {
     expect(engineGate).toContain("native execution remains the default")
     expect(engineGate).toContain("Route resolution is a mandatory pre-write gate")
     expect(engineGate).toContain(".compound-engineering/config.local.yaml")
+    expect(engineGate).toContain("config.yaml")
     expect(engineGate).toContain("Do not infer native execution merely because no typed carrier was supplied")
     expect(engines).toContain("still-active session")
     expect(engines).toContain("active instructions and conventions already in context")
@@ -185,6 +203,7 @@ describe("ce-work cross-model engine contract", () => {
     expect(triage).toContain("Every non-recovery code path must resolve its implementation engine before execution")
     expect(triage).toContain("carrierless Return-to-Caller Mode")
     expect(triage).toContain(".compound-engineering/config.local.yaml")
+    expect(triage).toContain("config.yaml")
     expect(triage).toContain("pre-controller discovery is read-only")
     expect(triage).toContain("Do not run baseline, test, build, format, install, or generation commands")
     expect(triage).toContain("prove the canonical Git snapshot is byte-for-byte unchanged")
@@ -240,6 +259,11 @@ describe("ce-work cross-model engine contract", () => {
     expect(worker).toContain("complete Git delta")
     expect(worker).toContain("disposable artifacts created by your own checks")
     expect(worker).toContain("every remaining changed path")
+    expect(worker).not.toContain("make intermediate commits")
+    expect(worker).toContain("`git add`")
+    expect(worker).toContain("`git commit`")
+    expect(worker).toContain("Leave the completed working tree uncommitted")
+    expect(worker).toContain("host snapshots the tree")
     for (const dispatchPolicy of ["recipient", "model", "harness", "intermediary", "retry", "route", "additional workers"]) {
       expect(worker.toLowerCase()).not.toContain(dispatchPolicy)
     }
@@ -284,6 +308,17 @@ describe("ce-work cross-model engine contract", () => {
     expect(engineGate).toContain("external cross-model controller")
     expect(protocol).toContain("isolated transport commit")
     expect(protocol).toContain("host-only canonical")
+    expect(protocol).not.toContain("An external worker may edit and commit only")
+    expect(protocol).not.toContain("unless that adapter's sandbox can write")
+    expect(protocol).toContain("`git add`")
+    expect(protocol).toContain("`git commit`")
+    expect(protocol).toContain("Git admin dir")
+    expect(protocol).toContain("workspace-write")
+    expect(protocol).toContain("--sandbox enabled")
+    expect(protocol).toContain("never required")
+    expect(protocol).toContain("Leave the completed working tree uncommitted")
+    expect(engineGate).toContain("An external cross-model worker also must not run `git add`")
+    expect(engineGate).toContain("Leave its working tree uncommitted")
     for (const forbiddenAuthority of ["canonical commit", "push", "PR", "shipping", "recipient-switch"]) {
       expect(protocol).toContain(forbiddenAuthority)
     }
@@ -362,7 +397,10 @@ describe("ce-work cross-model engine contract", () => {
     expect(serial).toContain("<controller-result-dir>/implementation-result.json")
     expect(serial).toContain("Do not pre-create the run directory")
     expect(serial).toContain("`git -C <canonical-checkout>`")
-    expect(serial).toContain("new verification artifacts")
+    expect(serial).toContain("Any change to tracked state")
+    expect(serial).toContain("`ignored_state`")
+    expect(serial).toContain("never copies, restores, or deletes ignored files")
+    expect(serial).not.toContain("exact-snapshot")
     expect(serial).toContain("authoritative command's exit status")
     expect(serial).toContain("never infer a pass from stdout")
     expect(serial).toContain("`run_id`, `unit_id`, and `attempt_id`")
@@ -410,7 +448,7 @@ describe("ce-work cross-model engine contract", () => {
     expect(serial).toContain("restore")
     expect(serial).toContain("before fallback, retry, or another unit")
     expect(serial).toContain("plan-wide Verification Contract gates")
-    expect(serial).toContain("restores verification-created canonical artifacts")
+    expect(serial).toContain("restores tracked state to the exact starting snapshot")
     expect(serial.indexOf("integration-acquire")).toBeLessThan(serial.indexOf("git cherry-pick --no-commit"))
     expect(serial.indexOf("mark-verified")).toBeLessThan(serial.indexOf("mark-committed"))
   })
@@ -510,7 +548,7 @@ describe("ce-work cross-model engine contract", () => {
     expect(evalPack).toContain("Change")
     expect(evalPack).toContain("Verify")
     expect(evalPack).toContain("Consider")
-    for (let fixture = 1; fixture <= 39; fixture += 1) {
+    for (let fixture = 1; fixture <= 40; fixture += 1) {
       expect(evalPack).toContain(`E${fixture} `)
     }
     for (const seam of [
@@ -545,6 +583,7 @@ describe("ce-work cross-model engine contract", () => {
       "sibling-clone recovery isolation",
       "plugin-bundled reference load",
       "incremental idle window",
+      "sandboxed worker no-commit",
     ]) {
       expect(evalPack).toContain(seam)
     }

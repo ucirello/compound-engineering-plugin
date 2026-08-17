@@ -142,3 +142,35 @@ describe("ce-compound YAML safety rule presence", () => {
     expect(replaceFlow).toMatch(/yaml-schema\.md/)
   })
 })
+
+describe("ce-compound-refresh named-guidance comparison", () => {
+  test("ce-compound-refresh compares a knowledge-track learning against guidance it names, and never edits that guidance", async () => {
+    // Narrow form of issue #1265: the check is bounded to guidance files the
+    // learning itself names (no search over the guidance layer), and the
+    // refresh only reports a wrong skill/runbook/instruction file.
+    const raw = await readFile(path.join(PLUGIN_ROOT, "ce-compound-refresh", "SKILL.md"), "utf8")
+    const section = (name: string) =>
+      raw.match(new RegExp(`##\\s+${name}\\b([\\s\\S]*?)(?=\\n##\\s+\\w|$)`))?.[1] ?? ""
+    const investigate = section("Investigate")
+    const classify = section("Classify")
+    expect(investigate).toMatch(/guidance file[^\n]*(names|links)/i)
+    // The blockquoted subagent prompt is what delegated investigations see; pin it on its own.
+    expect(investigate).toMatch(/^> [^\n]*guidance file[^\n]*(names|links)/im)
+    expect(classify).toMatch(/never edit[^\n]*(skill|runbook|instruction file)/i)
+  })
+})
+
+// Isolation forbids sharing a bundled script, so both skills ship
+// scripts/light-webserver.js. The helper has no product behavior — display-only
+// vs interactive is skill protocol and the HTML the agent writes — so the
+// copies must stay byte-identical.
+describe("light-webserver.js drift across ce-brainstorm and ce-prototype", () => {
+  test("scripts/light-webserver.js is identical across ce-brainstorm, ce-prototype", async () => {
+    const contents = await Promise.all(
+      ["ce-brainstorm", "ce-prototype"].map((skill) =>
+        readFile(path.join(PLUGIN_ROOT, skill, "scripts", "light-webserver.js"), "utf8"),
+      ),
+    )
+    expect(contents[1]).toBe(contents[0])
+  })
+})

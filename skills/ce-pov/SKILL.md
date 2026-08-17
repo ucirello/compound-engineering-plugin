@@ -6,7 +6,7 @@ argument-hint: "[adoption question, document, or supplied approaches] [compare/c
 
 # Form a Point of View
 
-Produce a decisive, project-grounded point of view in the subject's own shape: a **graded verdict** on an external-adoption question, a **holistic take** on a document, or a **position** on a supplied approach set. The user or calling skill is the next consumer and decides whether to act on the recommendation. This skill is done when it has delivered the POV with its required disclosure, or returned an explicit blocker. The intent is the moat: the POV must be earned against this project, never generic.
+Produce a decisive, project-grounded point of view in the subject's own shape: a **graded verdict** on an external-adoption question, a **holistic take** on a document, or a **position** on a supplied approach set. The user or calling skill is the next consumer and decides whether to act on the recommendation. This skill is done when it has delivered the POV with its evidence citations and required disclosure, or returned an explicit blocker. The intent is the moat: the POV must be earned against this project, never generic.
 
 The subject of this point of view — the thing to judge — is the input this skill was invoked with, present in the current prompt or conversation (whether the user asked directly or a calling skill passed it).
 
@@ -14,9 +14,11 @@ The subject of this point of view — the thing to judge — is the input this s
 
 **Note: The current year is 2026.** Use this when weighting source recency and dating any captured record.
 
+**Repository authority.** The project's active runtime instructions and conventions, then relevant descriptions visible in `jj log`, determine the current standard. Preserve behavior present in the latest release unless the user's request requires a behavior change. Use official `jj` commands for repository, history, diff, change, bookmark, and publication context; retain `gh` for GitHub operations. Treat `main@origin` only as a read-only comparison and history reference: never create, move, track, update, rebase onto, or push it.
+
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `ROCKETCLAW_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== RocketClaw skill context` header and ends with `ROCKETCLAW_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -45,9 +47,9 @@ When you must ask the user a question, use the platform's blocking question tool
 This skill scans prior decisions under `<root>/solutions/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it; pass the resolved path to any scout, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the artifact root `<root>` before composing any artifact path.**
+**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml`; first non-empty value wins (`<workspace-root>` = `jj workspace root`). Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -92,13 +94,14 @@ Use the project's active instructions already in context. Send scouts directly t
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; then :; else WORKSPACE_ROOT="$PWD"; fi;
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
+[ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$(pwd -P)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-pov";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
+SCRATCH_DIR="$SCRATCH_ROOT/$(openssl rand -hex 4)";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
@@ -153,6 +156,8 @@ The chat POV (the TL;DR) is the deliverable. Any implementation is outside this 
   Add `ce-compound` as a one-line prose nudge under the menu, **not** a slot, only when the POV is a durable decision that fits an existing capture type: "Want it in our decision history? say 'compound it.'" It is never the first thing offered.
 
 **On a pre-authorized handoff or later user selection:**
+
+If a downstream JJ change description is composed, edited, validated, or recommended, preserve the site's semantic requirement while deriving syntax from the project's active runtime instructions and descriptions visible in `jj log`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is guidance, not permission to run Git; inspect history with `jj log`. Runtime repository standards and history win over compatible Go guidance. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a description, and impose no fixed prefix, type, scope, message, subject, body, layout, template, decorative metadata, or example. Do not add creator, model, provider, tool, or runtime credit to the description.
 
 - **Computed next step** → after the four-part gate passes, invoke the owning skill via the platform's skill-invocation primitive, seeding it with the POV substance (the decision, conditions, requested edits or chosen approach, and verified facts). A stalemate, scope expansion, destructive action, or insufficient authority always returns to the user first.
 - **Full write-up** → read `references/report.md` and follow it (HTML by default; opened locally or published via Proof / an available HTML tool). Opt-in; the default stays chat-only.

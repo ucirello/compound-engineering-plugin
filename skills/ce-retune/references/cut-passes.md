@@ -12,9 +12,9 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides, each prompt carrying: the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and record the pass as its own JJ change.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and record the pass as its own JJ change under the description rule below.
 
-Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
+Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
 
 ## Ownership: one problem per agent, disjoint files
 
@@ -34,16 +34,20 @@ State the forbidden set in the prompt as paths, not as a rule to infer. An agent
 
 ## Isolation: separate JJ workspaces or disjoint paths in one workspace
 
-Disjoint paths in one workspace are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and one workspace keeps the diff and JJ change boundary readable.
+Disjoint paths in one workspace are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and one workspace keeps `jj diff` readable and the resulting change easy to describe.
 
-Pay for a separate JJ workspace when any of these is true:
+Pay for a separate JJ workspace per agent when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit — lockfiles, caches, generated output, a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on scratch and working-copy state.
-- Agents describe, split, squash, rebase, create changes, or move bookmarks; parallel mutation of one JJ workspace makes the change boundary ambiguous.
-- A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
+- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on workspace-local `.tmp` artifacts and working-copy snapshots.
+- Agents describe, abandon, rebase, or move bookmarks; concurrent repository operations must not target the same working-copy change.
+- A pass may need to be abandoned wholesale, and an isolated `jj abandon` is worth more than a shared change.
 
-Otherwise the isolation cost is real: N JJ workspaces to create, N results to reconcile, and conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+Otherwise the isolation cost is real: N workspaces and changes to create, N results to rebase or squash, and conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+
+## Record each pass
+
+Before every composition, edit, validation, or recommendation of a pass description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational command; inspect descriptions with `jj log`, using `main@origin` as the only prior reference. The project's active instructions and description syntax visible in runtime history win; apply compatible Go guidance only to quality, clarity, and structure. Preserve the requirement that the description identify the problem class and measured result. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a description, apply it with `jj describe -m <description-composed-from-runtime-conventions>`, and start the next pass with `jj new`. Do not add creator, model, provider, tool, or runtime metadata to the description.
 
 ## The shared-asset trap
 
@@ -93,17 +97,13 @@ Check each of these on every touched file:
 
 When a pass applies many exact replacements, do it under assertions rather than by hand: for each target, assert the string matches **exactly once** in its file, and abort before writing anything if any target matches zero times or more than once.
 
-Exactly-once is the load-bearing part. Zero matches means an earlier pass already rewrote the anchor; more than one means the anchor is ambiguous and the edit would land in the wrong place. Run every assertion before any write so a mismatch leaves nothing partially applied; re-derive the pass against current content instead of repairing afterward.
+Exactly-once is the load-bearing part. Zero matches means an earlier pass already rewrote the anchor; more than one means the anchor is ambiguous and the edit would land in the wrong place. In the engagement this caught an anchor a previous pass had already changed, and because the check ran before any write, nothing was partially applied — the pass was re-derived against current content instead of repaired afterward.
 
 Fail closed, all-or-nothing per file at minimum. A script that writes files 1 through 7 and dies on 8 leaves a state no one can review.
 
 ## Report the skips
 
-**Report what you deliberately did not cut, and why.** An agent that applied 100% of its proposals has almost certainly over-cut. A meaningful skip rate is the expected outcome, not underperformance.
-
-## Record the pass
-
-After measurement, inspect `jj status`, `jj diff`, and recent descriptions with `jj log`, preserve unrelated working-copy content, and invoke `ce-commit` through the active harness's callable skill mechanism so this pass becomes one JJ change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. The project's active instructions and change-description syntax inferred at runtime from `jj log` always win. Preserve the problem class and measured result while adapting syntax to runtime conventions. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a description field. Do not add creator, model, provider, tool, or runtime attribution to the JJ description.
+**Report what you deliberately did not cut, and why.** An agent that applied 100% of its proposals has almost certainly over-cut. A meaningful skip rate is the expected outcome, not underperformance: in the engagement's audit, 81 of 616 proposed cuts were defended and kept.
 
 ## The over-cut failure mode
 

@@ -8,21 +8,27 @@ disable-model-invocation: true
 
 ## Interaction Method
 
-Ask each question below using the platform's blocking question capability. Fall back to a numbered list in chat only when no blocking capability exists in the harness or the call errors. Never silently skip or auto-configure.
+Ask each question below using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to a numbered list in chat only when no blocking tool exists in the harness or the call errors. Never silently skip or auto-configure.
 
 `ce-setup` is a lightweight health check and workspace-local config helper. It does **not** bulk-install every optional dependency. Missing tools are reported as optional capabilities so the user can install only the workflows they use.
 
+Setup is complete when the health report reflects the current RocketClaw config and every approved repair has been rechecked. Preserve functional `ce-*` routing and provider preferences, but do not add creator, model, harness, provider, tool, or runtime attribution to generated messages; use plain-text status labels.
+
 ## Artifact Root Resolution
 
-Every RocketClaw skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other CE-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
+Every RocketClaw skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other RocketClaw-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
 
 <!-- ce-docs-root:start -->
-**Resolve the artifact root `<root>` before composing any artifact path.**
+**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml`; first non-empty value wins (`<workspace-root>` = `jj workspace root`). Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
+
+## Temporary Storage
+
+Resolve temporary storage from `jj workspace root` as `<workspace-root>/.tmp/rocketclaw/`. When no JJ workspace is available, use `<current-directory>/.tmp/rocketclaw/` as the local fallback. All RocketClaw temporary state stays under that root.
 
 ## Phase 1: Diagnose
 
@@ -52,93 +58,110 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 If the script is unavailable, perform the inline equivalent:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a JJ workspace, resolve the workspace root with `jj workspace root`.
-3. Look under workspace-local hidden tool directories for a legacy Markdown config whose YAML frontmatter contains `review_agents` or `plan_review_agents`. Do not assume or print a provider-specific legacy path when none is discovered.
-4. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether `jj file list .rocketclaw/config.local.yaml` omits it as ignored.
-5. Compare `.rocketclaw/config.local.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
+2. If inside a JJ workspace, resolve its root with `jj workspace root`.
+3. Check for obsolete `rocketclaw.local.md` at the workspace root.
+4. Check whether `.rocketclaw/config.yaml` exists.
+5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether JJ excludes it from tracked workspace files.
+6. Compare `.rocketclaw/config.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
-Display the diagnostic output to the user. Missing optional tools are not setup failures. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); surface that line so the operator can confirm where artifacts will be written.
+Display the diagnostic output to the user. Missing optional tools are not setup failures. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); surface that line so the operator can confirm where RocketClaw artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
 
 ### Step 3: Decide Whether Fixes Are Needed
 
-**User-runnable invocation rendering.** In setup summaries, default to `/ce-setup`; use `$ce-setup` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
+**User-runnable invocation rendering.** In setup summaries, default to `/ce-setup`; use `$ce-setup` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. On oh-my-pi (`omp`), use `/skill:ce-setup`. Render only the invocation as inline code and output one form only.
 
-Proceed to Phase 2 only if one or more workspace-local project issues exist:
+Always continue to Phase 2 after the health report when the current directory belongs to a JJ workspace, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
 
-- a legacy Markdown config was discovered and has not yet been preserved under `.rocketclaw`
+If the health report says `Not inside a JJ workspace`, skip Phase 2 and go to Phase 3. Workspace-local config cannot be created or refreshed without a workspace root.
+
+Also remediate these project issues when the report names them:
+
+- obsolete `rocketclaw.local.md`
 - `.rocketclaw/config.local.yaml` exists but is not safely ignored by JJ
-- `.rocketclaw/config.local.example.yaml` is missing or outdated
+- `.rocketclaw/config.example.yaml` is missing or outdated
 - the health report marks the `ce-work` skill implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`
-- the health report marks `docs_root` invalid (`Invalid docs_root ...`) — artifacts will not be written until it is fixed
-
-If no project issues exist, report:
-
-```text
-✅ RocketClaw setup complete
-
-Project config: ✅
-Optional capabilities: see diagnostic report above
-
-Run `<rendered invocation>` anytime to re-check.
-```
+- the health report marks `docs_root` invalid (`Invalid docs_root ...`) — RocketClaw artifacts will not be written until it is fixed
 
 If optional tools are missing, do not offer a bulk install. The diagnostic already printed the relevant install command or project URL. Say: "Install optional tools only for the workflows you use."
 
 ## Phase 2: Fix Workspace-Local Issues
 
-Resolve the workspace root with `jj workspace root`. All paths below are relative to the workspace root, not the current working directory.
+Resolve the workspace root with `jj workspace root`. All paths below are relative to that root, not the current working directory.
 
-### Step 4: Preserve Legacy Local Config
+### Step 4: Remove Obsolete Local Config
 
-If an unpreserved workspace-local Markdown config was discovered by its `review_agents` or `plan_review_agents` frontmatter, explain that review-agent selection is now automatic and current machine-local settings live in `.rocketclaw/config.local.yaml`. Treat an identical existing `.rocketclaw/legacy-config*.local.md` copy as already migrated.
+If `rocketclaw.local.md` exists at the workspace root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.rocketclaw/config.local.yaml` (the optional override). Team defaults live in `config.yaml`.
 
-Before creating a blank current config, offer to copy the discovered file byte-for-byte to `<workspace-root>/.rocketclaw/legacy-config.local.md`. Create `.rocketclaw` if needed. Never overwrite either file: if that destination already exists with different content, preserve both by choosing an unused numbered `legacy-config-<n>.local.md` destination. Report both source and destination paths, but do not delete, truncate, or rewrite the source. If the user declines or the copy fails, leave the discovered config untouched and record migration as skipped.
+Ask whether to delete it now. Delete only if the user approves.
 
 ### Step 5: Refresh Example Config
 
-Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.local.example.yaml`, creating the directory if needed. This file belongs in the working-copy changes and should always reflect the latest available settings.
+Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file is tracked in the workspace and should always reflect the latest available settings.
+
+If leftover `<workspace-root>/.rocketclaw/config.local.example.yaml` remains after the new example exists, treat it as stale generated example (not user config) and remove it with `trash` (never `rm`).
 
 If the bundled template cannot be located by the current platform, print the source template path that failed and tell the user the example config could not be refreshed automatically.
 
-### Step 6: Create Local Config If Wanted
+### Step 6: Create Workspace Config If Missing
 
-If `.rocketclaw/config.local.yaml` does not exist, first complete or explicitly skip Step 4 for any discovered legacy config, then ask:
+If `.rocketclaw/config.yaml` does not exist, ask — even when health is otherwise green:
 
 ```text
-Set up a local config file for this project?
-This saves optional RocketClaw preferences such as output formats and product pulse settings.
+Set up a RocketClaw config file for this workspace?
+This creates .rocketclaw/config.yaml with optional RocketClaw team defaults.
 Everything starts commented out -- you only enable what you need.
+It does not create config.local.yaml.
 
 1. Yes, create it
 2. No thanks
 ```
 
-If the user approves, copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.local.yaml`.
+If the user approves, copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.yaml`. Never overwrite an existing `config.yaml` or `config.local.yaml`.
 
-### Step 6a: Repair Invalid ce-work Preferences
+If `config.local.yaml` already exists, leave it. After creating (or if both files already exist), name ordinary local keys that would shadow the new team file. If local still has `docs_root`, say it is ignored and offer to move it into `config.yaml`.
 
-When the health report marks the ce-work implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit only those ce-work keys after the user approves the preview; preserve every unrelated local setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete.
+Do not create `config.local.yaml`.
+
+### Step 6a: Repair Invalid RocketClaw Work Preferences
+
+When the health report marks the RocketClaw Work implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit the layer that supplied the failing value. If the bad ordinary key is only in `config.yaml`, edit that file after preview. Do not hide a broken team value behind a new local override. Preserve every unrelated setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete.
 
 ### Step 6b: Repair Invalid `docs_root`
 
-When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the workspace, `..` traversal, workspace root, `.jj/`, or a non-directory component) and the consequence: artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` may live in the tracked `.rocketclaw/config.yaml` or the local `config.local.yaml`, resolved local-first. Offer to either correct the value to a valid workspace-relative directory the user names, or remove the bad `docs_root` key. Note the fallback precisely: removing it falls back to the **next layer** that sets `docs_root` (deleting a bad value in `config.local.yaml` yields to a `docs_root` still set in the tracked `config.yaml`), reaching the default `docs` only when no layer sets it -- so when both layers carry a value, fix or remove it in each layer that contributes a bad one. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
+When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the workspace, `..` traversal, workspace root, `.jj/`, or a non-directory component) and the consequence: RocketClaw artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the tracked value to a valid workspace-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
 
-### Step 7: Ensure Local Config Is Ignored by JJ
+### Step 7: Ensure Local Config Is Ignored
 
-If `.rocketclaw/config.local.yaml` exists and `jj file list .rocketclaw/config.local.yaml` returns it, offer to add this entry to `<workspace-root>/.rocketclaw/.gitignore`:
+If `.rocketclaw/config.local.yaml` exists and JJ treats it as tracked, offer to add this rule to the workspace-root `.gitignore`:
 
 ```text
-*.local.yaml
+.rocketclaw/*.local.yaml
 ```
 
-If the user approves, append the entry to `.rocketclaw/.gitignore`, creating that file if needed, then run `jj file untrack .rocketclaw/config.local.yaml`. Do not edit the workspace-root `.gitignore` or overwrite unrelated content.
+Append the entry only if the user approves. Preserve unrelated `.gitignore` rules.
+
+### Step 8: Offer To Ignore RocketClaw Temporary Storage
+
+Skills keep temporary state under `<workspace-root>/.tmp/rocketclaw/`. If the workspace `.gitignore` does not cover `.tmp/`, offer to add:
+
+```text
+.tmp/
+```
+
+Append the entry to the workspace-root `.gitignore` only if the user approves. Preserve unrelated ignore rules.
+
+Unlike Step 7 this does not wait for the path to exist. The skill about to write there offers the same entry at its first write, so a workspace that never uses temporary state never needs the line.
+
+### JJ Description Guidance
+
+When setup composes, edits, validates, or recommends a JJ change description, inspect the project's active instructions and description syntax in `jj log`; those repository-local standards take precedence. If a prior reference is needed, use only `main@origin`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Treat the sentence's `git log` wording as guidance only. Apply compatible Go guidance only to quality, clarity, and structure, preserve the site's semantic requirements, and do not impose a fixed prefix, type, scope, subject, body, layout, message, template, or example. Do not add creator, model, harness, provider, tool, or runtime attribution.
 
 ## Phase 3: Summary
 
 Display a brief summary:
 
 ```text
-✅ RocketClaw setup complete
+RocketClaw setup complete
 
 Fixed:     <workspace-local fixes applied, or none>
 Skipped:   <workspace-local fixes declined, or none>

@@ -1,45 +1,94 @@
-# Resolution Document Contract
+# Resolution Templates
 
-Select the track from `problem_type` using `references/schema.yaml`. This file
-defines semantic content, not fixed Markdown syntax. Preserve any compatible
-repository-local heading, ordering, and prose conventions; where none exist,
-use the smallest readable structure that covers the applicable requirements.
+Choose the template matching the problem_type track (see `references/schema.yaml`).
 
-## Shared Frontmatter
+---
 
-Populate the fields required by `references/schema.yaml` with evidence from the
-investigation. Add optional fields only when they improve retrieval or capture
-materially useful scope. Apply the array-scalar safety rules in
-`references/yaml-schema.md`; do not copy placeholder values or invent enums.
+## Bug Track Template
 
-## Bug Track
+Use for: `build_error`, `test_failure`, `runtime_error`, `performance_issue`, `database_issue`, `security_issue`, `ui_bug`, `integration_issue`, `logic_error`
 
-Use for defect and failure problem types declared in the schema. The body must
-let a future maintainer recover:
+<!-- YAML safety: array items (symptoms, applies_when, tags, related_components) starting with ` [ * & ! | > % @ ? or containing ": " must be wrapped in double quotes. See references/yaml-schema.md > "YAML Safety Rules". -->
 
-- the observed problem and user-visible impact
-- concrete symptoms or errors
-- attempted approaches when they explain a meaningful dead end
-- the verified solution, with code only when it materially aids reuse
-- the root cause and why the solution addresses it
-- prevention through a concrete practice, test, or guardrail
-- related durable references when they add context
+```markdown
+---
+title: [Clear problem title]
+date: [YYYY-MM-DD]
+category: [solutions subdirectory]
+module: [Module or area]
+problem_type: [schema enum]
+component: [corpus value, else schema suggested default]
+symptoms:
+  - [Observable symptom 1]
+root_cause: [corpus value, else schema suggested default]
+resolution_type: [schema enum]
+severity: [schema enum]
+tags: [keyword-one, keyword-two]
+---
 
-Choose labels and ordering that fit the repository while keeping the causal
-path from symptom through solution easy to follow.
+# [Clear problem title]
 
-## Knowledge Track
+## Problem
+[1-2 sentence description of the issue and user-visible impact]
 
-Use for guidance, convention, decision, workflow, and documentation problem
-types declared in the schema. The body must let a future maintainer recover:
+## Symptoms
+- [Observable symptom or error]
 
-- the situation, gap, or friction that prompted the guidance
-- the evidence-backed practice, pattern, or recommendation
-- why following or ignoring it matters
-- the conditions under which it applies
-- concrete usage or contrast only when it improves understanding
-- related durable references when they add context
+## What Didn't Work
+- [Attempted fix and why it failed]
 
-Choose labels and ordering that fit the repository. Do not force bug-oriented
-sections onto knowledge guidance, and do not add empty sections merely to
-resemble a template.
+## Solution
+[The fix that worked, including code snippets when useful]
+
+## Why This Works
+[Root cause explanation and why the fix addresses it]
+
+## Prevention
+- [Concrete practice, test, or guardrail]
+
+## Related Issues
+- [Related docs or issues, if any]
+```
+
+---
+
+## Knowledge Track Template
+
+Use for: `best_practice`, `documentation_gap`, `workflow_issue`, `developer_experience`
+
+<!-- YAML safety: array items (symptoms, applies_when, tags, related_components) starting with ` [ * & ! | > % @ ? or containing ": " must be wrapped in double quotes. See references/yaml-schema.md > "YAML Safety Rules". -->
+
+```markdown
+---
+title: [Clear, descriptive title]
+date: [YYYY-MM-DD]
+category: [solutions subdirectory]
+module: [Module or area]
+problem_type: [schema enum]
+component: [corpus value, else schema suggested default]
+severity: [schema enum]
+applies_when:
+  - [Condition where this applies]
+tags: [keyword-one, keyword-two]
+---
+
+# [Clear, descriptive title]
+
+## Context
+[What situation, gap, or friction prompted this guidance]
+
+## Guidance
+[The practice, pattern, or recommendation with code examples when useful]
+
+## Why This Matters
+[Rationale and impact of following or not following this guidance]
+
+## When to Apply
+- [Conditions or situations where this applies]
+
+## Examples
+[Concrete before/after or usage examples showing the practice in action]
+
+## Related
+- [Related docs or issues, if any]
+```

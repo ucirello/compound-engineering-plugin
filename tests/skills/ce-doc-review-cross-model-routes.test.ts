@@ -122,7 +122,8 @@ function sandbox(
     writeFileSync(f, stubBody)
     chmodSync(f, 0o755)
   }
-  return { bin, env: { ...process.env, PATH: bin } }
+  // Mask any real Codex.app bundle so discovery sees only what the test stages.
+  return { bin, env: { ...process.env, PATH: bin, CROSS_MODEL_CODEX_APP_DIRS: mkTempRoot("xmodel-nobundle-") } }
 }
 
 function makeDoc(body = "# doc\n"): string {
@@ -272,7 +273,7 @@ printf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[],"resid
     expect(cmd).toContain("--disable-slash-commands")
     expect(cmd).not.toContain("--bare")
     expect(cmd).toContain("--effort high")
-    expect(cmd).toContain("--model opus")
+    expect(cmd).toContain("--model claude-opus-5")
     expect(cmd).toContain("--output-format stream-json")
     expect(cmd).toContain("--verbose")
   })
@@ -280,11 +281,14 @@ printf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[],"resid
   test("grok CLI: deny Read + web/subagents off + dontAsk + effort high", () => {
     const cmd = emitAdapter("grok-cli")
     expect(cmd).toContain("--deny Read")
+    // Load-bearing with --deny Read: without --verbatim grok offloads a large
+    // prompt to a session file the peer is then forbidden to read back.
+    expect(cmd).toContain("--verbatim")
     expect(cmd).toContain("--disable-web-search")
     expect(cmd).toContain("--no-subagents")
     expect(cmd).toContain("--permission-mode dontAsk")
     expect(cmd).toContain("--effort high")
-    expect(cmd).toContain("--model grok-4.5")
+    expect(cmd).toContain("--model grok-4.6")
     expect(cmd).toContain("--json-schema")
     expect(cmd).toContain("--output-format json")
     expect(cmd).not.toContain("stream-json")
@@ -299,7 +303,7 @@ printf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[],"resid
       expect(cmd).toContain("--workspace")
       expect(cmd).toContain("--output-format stream-json")
     }
-    expect(emitAdapter("grok-cursor")).toContain("cursor-grok-4.5-high")
+    expect(emitAdapter("grok-cursor")).toContain("cursor-grok-4.6-high")
     expect(emitAdapter("cursor")).not.toContain("--model")
     expect(emitAdapter("composer")).toContain("composer-2.5-fast")
   })
@@ -345,6 +349,34 @@ describe("cross-model-doc-review provider selection (R7, R15, R16)", () => {
     expect(resolvePeers("claude", "codex,claude,grok,composer", all)).toBe("codex")
     expect(resolvePeers("codex", "codex,claude,grok,composer", all)).toBe("claude")
     expect(resolvePeers("composer", "codex,claude,grok,composer", all)).toBe("codex")
+  })
+
+  test("an app-bundled codex CLI off PATH is discovered (issue #1272)", () => {
+    const bundle = path.join(mkTempRoot("xmodel-bundle-"), "Codex.app", "Contents", "Resources")
+    mkdirSync(bundle, { recursive: true })
+    writeFileSync(path.join(bundle, "codex"), "#!/bin/sh\nexit 0\n")
+    chmodSync(path.join(bundle, "codex"), 0o755)
+    expect(resolvePeers("claude", "codex,claude,grok,composer", [], { CROSS_MODEL_CODEX_APP_DIRS: bundle })).toBe("codex")
+  })
+
+  test("reference states the unset-allowlist contract the script implements", () => {
+    // Regression: without this sentence, hosts read "verify against CROSS_MODEL_PEERS"
+    // + unset allowlist as a fail-closed gate and skipped the pass in non-interactive
+    // runs (ce-plan) claiming no user could sanction egress. Parity with ce-code-review.
+    const ref = readFileSync(
+      path.join(__dirname, "../../skills/ce-doc-review/references/cross-model-review.md"),
+      "utf8",
+    )
+    expect(ref).toContain("`CROSS_MODEL_PEERS` is an optional egress restriction, not a required approval")
+    expect(ref).toContain("when it is unset or empty, no recipient is filtered and the pass proceeds")
+    expect(ref).not.toMatch(/verify every (actual )?recipient against/)
+    const skill = readFileSync(path.join(__dirname, "../../skills/ce-doc-review/SKILL.md"), "utf8")
+    expect(skill).not.toMatch(/verify every (actual )?recipient against/)
+    expect(skill).toContain("unset means unfiltered, not unsanctioned")
+    const twin = readFileSync(path.join(__dirname, "../../skills/ce-code-review/references/cross-model-review.md"), "utf8")
+    expect(twin).toContain("`CROSS_MODEL_PEERS` is an optional egress restriction, not a required approval")
+    expect(twin).not.toMatch(/verify every (actual )?recipient against/)
+    expect(ref).not.toContain("fail-closed-by-default")
   })
 
   test("a front-loaded preference overrides the default order", () => {
@@ -542,6 +574,22 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
     expect(out.independence_verified).toBe(true)
   })
 
+  test("a trailing non-findings object in .text does not short-circuit recovery", () => {
+    // Taking a bare `last` off the .text stream hands back the trailing object,
+    // which normalization then drops — losing a review that was right there.
+    const grokStub =
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"text":"{\\"reviewer\\": \\"adversarial\\", \\"findings\\": [{\\"section\\": \\"X\\", \\"title\\": \\"real\\"}], \\"residual_risks\\": [], \\"deferred_questions\\": []}{\\"done\\": true}"}'\n`
+    const { env } = sandbox(["grok"], grokStub)
+    const doc = makeDoc()
+    const runDir = makeRunDir()
+    const r = run(["claude", "grok", "adversarial", doc, "plan", "none", runDir], runDir, env)
+    expect(r.files).toContain("adversarial-grok.json")
+    const out = JSON.parse(
+      readFileSync(path.join(runDir, "adversarial-grok.json"), "utf8"),
+    )
+    expect(out.findings[0].title).toBe("real")
+  }, 20_000)
+
   test("drops the return when findings is not an array", () => {
     const badStub =
       `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"structured_output":{"reviewer":"adversarial","findings":"oops"}}'\n`
@@ -573,10 +621,10 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
 
   test("records model_requested and the dated model_actual when the claude receipt matches (R7)", () => {
     // Real claude CLI envelope shape: modelUsage at the envelope top level, keyed
-    // by the full dated id that actually served the run. Requested alias "opus"
-    // expects a served id starting claude-opus-.
+    // by the full dated id that actually served the run. Requested id "claude-opus-5"
+    // expects a served id starting claude-opus-5 (undated or dated).
     const receiptStub =
-      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]},"modelUsage":{"claude-opus-4-8-20260115":{"inputTokens":10}}}'\n`
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]},"modelUsage":{"claude-opus-5-20260801":{"inputTokens":10}}}'\n`
     const { env } = sandbox(["claude"], receiptStub)
     const doc = makeDoc()
     const runDir = makeRunDir()
@@ -586,9 +634,26 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
       readFileSync(path.join(runDir, "adversarial-claude.json"), "utf8"),
     )
     expect(out.cross_model_route).toBe("claude")
-    expect(out.model_requested).toBe("opus")
-    expect(out.model_actual).toBe("claude-opus-4-8-20260115")
+    expect(out.model_requested).toBe("claude-opus-5")
+    expect(out.model_actual).toBe("claude-opus-5-20260801")
+    expect(out.effort_requested).toBe("high")
     expect(r.stderr).not.toContain("model mismatch")
+  })
+
+  test("a valid effort override is recorded as effort_requested and an invalid one skips the pass", () => {
+    const { env } = sandbox(["claude"], claudeStub)
+    const doc = makeDoc()
+    let dir = makeRunDir()
+    let r = run(["codex", "claude", "adversarial", doc, "plan", "none", dir], dir, { ...env, CROSS_MODEL_EFFORT_OVERRIDE: "xhigh" })
+    expect(r.files).toContain("adversarial-claude.json")
+    const out = JSON.parse(readFileSync(path.join(dir, "adversarial-claude.json"), "utf8"))
+    expect(out.effort_requested).toBe("xhigh")
+    expect(r.stderr).toContain("(effort xhigh)")
+
+    dir = makeRunDir()
+    r = run(["codex", "claude", "adversarial", doc, "plan", "none", dir], dir, { ...env, CROSS_MODEL_EFFORT_OVERRIDE: "minimal" })
+    expect(r.files).not.toContain("adversarial-claude.json")
+    expect(r.stderr).toContain("effort override 'minimal' not compatible with route 'claude'; skipping")
   })
 
   test("multi-key receipt: prefers the requested-family key over the alphabetically-first auxiliary key (R7)", () => {
@@ -597,7 +662,7 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
     // pick) would choose haiku; the prefix match must select the opus key and
     // raise no mismatch warning.
     const multiKeyStub =
-      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]},"modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":2},"claude-opus-4-8-20260115":{"inputTokens":10}}}'\n`
+      `#!/bin/sh\ncat >/dev/null\nprintf '%s' '{"structured_output":{"reviewer":"adversarial","findings":[{"section":"X","title":"t"}]},"modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":2},"claude-opus-5-20260801":{"inputTokens":10}}}'\n`
     const { env } = sandbox(["claude"], multiKeyStub)
     const doc = makeDoc()
     const runDir = makeRunDir()
@@ -606,8 +671,8 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
     const out = JSON.parse(
       readFileSync(path.join(runDir, "adversarial-claude.json"), "utf8"),
     )
-    expect(out.model_requested).toBe("opus")
-    expect(out.model_actual).toBe("claude-opus-4-8-20260115")
+    expect(out.model_requested).toBe("claude-opus-5")
+    expect(out.model_actual).toBe("claude-opus-5-20260801")
     expect(r.stderr).not.toContain("model mismatch")
   })
 
@@ -623,9 +688,9 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
     const out = JSON.parse(
       readFileSync(path.join(runDir, "adversarial-claude.json"), "utf8"),
     )
-    expect(out.model_requested).toBe("opus")
+    expect(out.model_requested).toBe("claude-opus-5")
     expect(out.model_actual).toBe("claude-haiku-4-5-20251001")
-    expect(r.stderr).toContain("WARNING: model mismatch - requested opus, backend served claude-haiku-4-5-20251001")
+    expect(r.stderr).toContain("WARNING: model mismatch - requested claude-opus-5, backend served claude-haiku-4-5-20251001")
   })
 
   test("records model_actual unverified with a parse warning when the claude envelope carries no receipt (R8)", () => {
@@ -639,7 +704,7 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
     const out = JSON.parse(
       readFileSync(path.join(runDir, "adversarial-claude.json"), "utf8"),
     )
-    expect(out.model_requested).toBe("opus")
+    expect(out.model_requested).toBe("claude-opus-5")
     expect(out.model_actual).toBe("unverified")
     expect(r.stderr).toContain("model receipt absent/unparseable on claude route; recording unverified")
   })
@@ -693,7 +758,7 @@ describe("cross-model-doc-review normalization (R18, KTD5)", () => {
       CROSS_MODEL_MODEL_OVERRIDE: "composer-next",
     }
     expect(emitAdapter("composer", override)).toContain("--model composer-next")
-    expect(emitAdapter("grok-cursor", override)).toContain("--model cursor-grok-4.5-high")
+    expect(emitAdapter("grok-cursor", override)).toContain("--model cursor-grok-4.6-high")
     expect(emitAdapter("cursor", override)).not.toContain("--model")
 
     const crossFamily = spawnSync("bash", [SCRIPT, "--emit-adapter", "composer"], {

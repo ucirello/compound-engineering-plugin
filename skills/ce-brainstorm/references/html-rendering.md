@@ -10,11 +10,10 @@ content rendered by different skills shares the same HTML principles.
 
 The HTML artifact is the *only* artifact the skill produces for that run —
 output mode is exclusive (markdown OR HTML, never both). Downstream
-consumers that read HTML today (`ce-work`, human readers) do so directly;
-the agent-consumability rules below make that work. `ce-doc-review` is
-*not* currently an HTML consumer — its mutation mechanics are markdown-only,
-so the ce-plan handoff gates the 5.3.8 doc-review pass to `OUTPUT_FORMAT=md`
-runs and skips it for HTML.
+consumers that read HTML today (`ce-doc-review`, `ce-work`, human readers) do
+so directly; the agent-consumability rules below make that work. `ce-doc-review`
+also applies fixes in the artifact's native format while preserving its
+existing structure.
 
 ## Hard invariants
 
@@ -45,10 +44,11 @@ These hold regardless of which skill produced the artifact.
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
 - **Source / composition signal.** A visible footer at the bottom of
-  the doc names the composition timestamp and, when one exists, the input source
-  (the user prompt context or the upstream brainstorm doc). Do not add an
-  author, agent, skill attribution, or byline. Example shape:
-  `<footer class="composition-signal">Composed 2026-05-17T14:23Z · Source: <code>docs/brainstorms/...-requirements.md</code></footer>`.
+  the doc names the composition timestamp and the source identifier
+  (the user prompt context, the upstream brainstorm doc when one
+  exists, or just the composing skill name when there's no external
+  source). Example shape:
+  `<footer class="composition-signal">Composed 2026-05-17T14:23Z by ce-plan from <code>docs/brainstorms/...-requirements.md</code></footer>`.
   Under exclusive output mode this signal is the artifact's own
   provenance — there's no markdown sibling to reference. Omitting it
   leaves readers unable to tell how stale the rendering is.
@@ -232,8 +232,7 @@ Resolve the repo's GitHub URL once at compose time:
 jj git remote list
 ```
 
-Select the `origin` URL from the output. Keep this `jj git` interoperability
-command because the value belongs to the backing remote.
+Select the `origin` URL from the output. Keep this `jj git` interoperability command because the value belongs to the backing remote.
 
 Apply linking to three reference shapes:
 
@@ -554,11 +553,10 @@ fine when the content suggests them.
 
 ## Agent-consumability rules
 
-Downstream agents that read HTML today (`ce-work`, a skill re-reading its
-own prior artifact on a resume run, future consumers) reason over the HTML
-as text — the way they reason over markdown, not via DOM extraction or a
-script-style parse. `ce-doc-review` is not a current HTML consumer (see
-opening note).
+Downstream agents that read HTML today (`ce-doc-review`, `ce-work`, a skill
+re-reading its own prior artifact on a resume run, future consumers) reason
+over the HTML as text — the way they reason over markdown, not via DOM
+extraction or a script-style parse.
 
 These rules are why such a consumer can locate one item (a single
 requirement, unit, idea, or other ID-bearing entry) and reason over it from
@@ -612,8 +610,7 @@ Before returning the artifact, scan it for common slips:
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
 - **Source / composition signal** is present as a visible footer at
-  the bottom of the doc (composition timestamp plus input source when one exists,
-  without an author or skill byline).
+  the bottom of the doc (composition timestamp + source identifier).
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

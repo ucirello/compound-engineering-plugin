@@ -1,6 +1,6 @@
 # Sweep First-Run Interview
 
-Loaded by `SKILL.md` when `ce-sweep` runs with `feedback_sources` unset after the ordinary-key cascade. Captures the setup that will be merged into `<repo-root>/.compound-engineering/config.local.yaml` (the optional local override; interviews write here). Subsequent runs re-read those keys through the ordinary-key cascade (local then `config.yaml`).
+Loaded by `SKILL.md` when `ce-sweep` runs with `feedback_sources` unset after the ordinary-key cascade. Captures the setup that will be merged into `<repo-root>/.rocketclaw/config.local.yaml` (the optional local override; interviews write here). Subsequent runs re-read those keys through the ordinary-key cascade (local then `config.yaml`).
 
 This interview is **interactive only**. The caller refuses first-run setup in non-interactive mode — a scheduled or piped run with no config aborts and tells the user to run `ce-sweep` interactively once. Do not attempt to infer sources, actions, or approvals without asking.
 
@@ -88,12 +88,12 @@ For email sources there are no source-side actions, so approval is moot — reco
 
 Ask where the sweep's state file lives:
 
-- **Committed to the repo** (recommended when multiple agents or machines share branches — one source of truth everyone reads and writes). Sets `sweep_state_path` to the committed default under the artifact root's `feedback-sweep/` — resolve `<root>` to its concrete value first (e.g. the default `docs`), so the persisted value is `<resolved-root>/feedback-sweep/state.yml`, never the literal `<root>` placeholder (per the persist rule below).
-- **Machine-local under `/tmp`** (solo setups; keeps sweep bookkeeping out of the repo, no commit noise). Resolve the path immediately with this shell block, substituting a sanitized repository slug:
+- **Committed to the repo** (recommended when multiple agents or machines share bookmarks — one source of truth everyone reads and writes). Sets `sweep_state_path` to the committed default under the artifact root's `feedback-sweep/` — resolve `<root>` to its concrete value first (e.g. the default `docs`), so the persisted value is `<resolved-root>/feedback-sweep/state.yml`, never the literal `<root>` placeholder (per the persist rule below).
+- **Machine-local under the workspace `.tmp`** (solo setups; keeps sweep bookkeeping out of committed history). Resolve the path immediately with this shell block, substituting a sanitized repository slug:
 
   ```bash
-  SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-  [ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+  WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+  SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
   if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
   (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
   if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -105,7 +105,7 @@ Ask where the sweep's state file lives:
 
   Persist the echoed absolute path as `sweep_state_path`; never persist a placeholder.
 
-Let the user override the path if they want a different location. If they pick machine-local, note that a fresh checkout or a teammate's machine will not see this state — it is per-machine by design.
+Let the user override the path if they want a different location. If they pick machine-local, note that another workspace or a teammate's machine will not see this state — it is per-machine and per-workspace by design.
 
 **Capture:** `sweep_state_path` (string).
 
@@ -119,14 +119,14 @@ Let the user override the path if they want a different location. If they pick m
 
 ---
 
-## 6. Shared branch (only if committed state)
+## 6. Shared bookmark (only if committed state)
 
-**Skip this section entirely if the user chose machine-local state in section 4** — the shared-branch topology only applies to committed state.
+**Skip this section entirely if the user chose machine-local state in section 4** — the shared-bookmark topology only applies to committed state.
 
-**Ask:** "Is this a multi-agent setup where several checkouts push the sweep state to a shared docs branch? Answer yes only if more than one machine or agent commits and pushes to the same branch. Default is no — a single checkout committing locally."
+**Ask:** "Is this a multi-agent setup where several Jujutsu workspaces publish the sweep state through one shared bookmark? Answer yes only if more than one machine or agent commits and pushes the same bookmark. Default is no — a single workspace committing locally."
 
-- **No** (default) -> `sweep_shared_branch: false`. The single-writer lease serializes overlapping sweeps within one checkout.
-- **Yes** -> `sweep_shared_branch: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep commits and pushes the lease acquisition on the shared branch and confirms its writer won, making the lease a repo-wide mutex across machines.
+- **No** (default) -> `sweep_shared_branch: false`. The single-writer lease serializes overlapping sweeps within one workspace.
+- **Yes** -> `sweep_shared_branch: true`. Explain: the lease becomes **push-gated** — before any source-side write, the sweep commits and pushes the lease acquisition through the shared bookmark and confirms its writer won, making the lease a repo-wide mutex across machines.
 
 **Capture:** `sweep_shared_branch` (`true` | `false`).
 
@@ -153,11 +153,11 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 
 ## 8. Write config
 
-Merge the captured settings into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `git rev-parse --show-toplevel`.
+Merge the captured settings into `<repo-root>/.rocketclaw/config.local.yaml`. Resolve the repo root with `jj workspace root`, using the current directory if no Jujutsu workspace is available.
 
-- If the directory or file does not exist, create `.compound-engineering/` and write the file.
+- If the directory or file does not exist, create `.rocketclaw/` and write the file.
 - If the file exists, merge the sweep keys into the existing YAML, **preserving every unrelated key untouched** (e.g. `pulse_*`, `plan_*`). Only add or update the sweep keys.
-- If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing.
+- If `.rocketclaw/config.local.yaml` is not already covered by the repository's ignore rules, offer to add the entry before writing.
 
 Write these keys (see "Config File Shape" below for the exact form):
 
@@ -185,7 +185,7 @@ Declining a schedule leaves on-demand use fully working.
 
 ## Config File Shape
 
-After the interview completes, merge these flat keys into `<repo-root>/.compound-engineering/config.local.yaml`, preserving any unrelated keys already present.
+After the interview completes, merge these flat keys into `<repo-root>/.rocketclaw/config.local.yaml`, preserving any unrelated keys already present.
 
 ~~~yaml
 # --- Sweep (ce-sweep) ---
@@ -194,10 +194,10 @@ feedback_sources:
   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
-sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # concrete path (<root> resolved before persisting); committed (multi-agent) or a /tmp path (solo)
+sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # concrete path (<root> resolved before persisting); committed (multi-agent) or a workspace .tmp path (solo)
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
-sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
+sweep_shared_branch: false                        # true: push-gated lease for shared-bookmark topology
 ~~~
 
 Notes:

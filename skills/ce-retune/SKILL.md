@@ -17,7 +17,7 @@ A corpus that degrades on a new model is a measurement problem before it is a wr
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CE_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -29,12 +29,14 @@ echo "no Node runtime; continue with the skill's normal behavior";
 fi
 ```
 
+Resolve the workspace root with `jj workspace root`; if that is unavailable, use the current directory. Put every temporary or per-run artifact under `<workspace-root>/.tmp/rocketclaw/ce-retune/<run-id>/`, where `<run-id>` is chosen dynamically for this invocation. Do not use an OS-global temporary directory or `TMPDIR`. Keep durable project artifacts in the project's normal tracked documentation location.
+
 ## Phase 0: the measurement gate — check this first
 
 This skill cannot run without a way to observe behavior. Check for all three, and name whichever is missing:
 
 1. **A run archive or a harness that produces one** — per-run logs carrying the tool-call trace, a terminal marker, token counts, and the final message.
-2. **A build selector** — the harness can point a run at a specific source checkout of the corpus (a `--plugin-dir`-style override, a configurable skills path, an env var), so two builds are comparable under one runner.
+2. **A build selector** — the harness can point a run at a specific source workspace of the corpus (a configurable corpus path or environment value), so two builds are comparable under one runner.
 3. **A repeatable task** the corpus actually executes end to end.
 
 If any is missing, **stop and say so**, naming what to build. Do not fall back to a static audit and present it as retuning: an audit can say what looks cuttable and can never say whether cutting helped, which is the error this skill exists to prevent. An audit-only pass is a legitimate thing to want; it is a different request.
@@ -52,7 +54,7 @@ It carries the outcome taxonomy, the fields to extract, and the two corrections 
 
 ## Phase 2: establish the noise floor before any claim
 
-Run the harness against **two identical copies** of the corpus, same commit on both sides. Whatever difference appears is noise, and it is the floor every later claim must clear.
+Run the harness against **two identical workspaces** of the corpus, based on the same revision on both sides. Whatever difference appears is noise, and it is the floor every later claim must clear.
 
 Read `references/noise-floor.md` for the protocol, the interleaving rule, and the power calculation that converts the observed variance into a required sample size.
 
@@ -62,7 +64,7 @@ Expect the floor to be wider than intuition suggests. If a corpus produces a lar
 
 ## Phase 3: audit the corpus, adversarially
 
-One agent per skill, each reading that skill's full directory, proposing cuts with a target and a reason. Then a second agent per skill whose job is the opposite: **defend the existing prose** using the project's own documented learnings, its tests, and git history.
+One agent per skill, each reading that skill's full directory, proposing cuts with a target and a reason. Then a second agent per skill whose job is the opposite: **defend the existing prose** using the project's own documented learnings, its tests, and Jujutsu history from `jj log`.
 
 Read `references/corpus-audit.md` for the dispatch shape, the finding schema, and the classes worth hunting.
 
@@ -102,7 +104,7 @@ Loop Phase 4 and 5 until the registered bar is cleared. Then stop; a bar cleared
 
 ## Phase 6: ship
 
-Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+Keep each pass in a separate Jujutsu change and give it its own description so `jj log` says which change was made and why, and so release tooling can classify intent. Runtime project instructions and the existing descriptions visible through `jj log` take precedence; apply compatible Go quality guidance without imposing fixed syntax or a stock message. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Keep the measurement artifacts.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.
 

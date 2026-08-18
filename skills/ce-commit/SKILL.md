@@ -1,13 +1,13 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communicating message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate message.
+description: Create a Jujutsu commit with a clear, value-communicating description. Use when the user asks to commit or save working-copy changes with a repo-appropriate description.
 ---
 
-# Git Commit
+# Commit
 
-Create well-crafted local commit(s) from the current working tree. No push, no PR — use `ce-commit-push-pr` for the full ship flow.
+Create well-crafted local commit(s) from the current Jujutsu working copy. No push, no PR — use `ce-commit-push-pr` for the full ship flow.
 
-**Done when:** each logical change is committed with an explicit file list and a message that states the outcome, and `git status` is clean of those changes. **Stop when:** the tree is clean (nothing to commit).
+**Done when:** each logical change is committed from an explicit file list with a description that states the outcome, its current-line bookmark points to the latest created commit, and `jj status` is clean of those changes. **Stop when:** the working-copy commit has no changes to commit.
 
 ## Context
 
@@ -15,45 +15,30 @@ Gather context with each command as its **own** shell tool call (program + args 
 
 | Command | Purpose | Non-zero / empty means |
 | --- | --- | --- |
-| `git status` | Working-tree state | Not a git repo — stop |
-| `git diff HEAD` | Uncommitted changes | Unborn repo / no commits yet |
-| `git branch --show-current` | Current branch | Empty = detached HEAD |
-| `git log --oneline -10` | Recent message style | Unborn repo — no history |
-| `git rev-parse --abbrev-ref origin/HEAD` | Remote default branch | No `origin/HEAD` / bare `HEAD` — try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, else `main` |
+| `jj workspace root` | Workspace root; place any temporary files under `<workspace-root>/.tmp`, or `<current-directory>/.tmp` if this fails | Not a Jujutsu workspace; use the current directory only for temporary paths, then stop the commit workflow |
+| `jj status` | Working-copy state | Not a Jujutsu repository — stop |
+| `jj diff` | Current change | Empty = no content changes |
+| `jj bookmark list -r 'heads(::@ & bookmarks())'` | Closest current-line local bookmark(s) | Empty = the working copy has no local bookmark on its line |
+| `jj log -r :: -n 10` | Recent description style and repository history | No usable local history |
+| `jj bookmark list --all-remotes` | Local and remote bookmark context | No usable bookmark context |
+| `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | GitHub default bookmark name | GitHub metadata unavailable; infer from active project conventions and remote bookmark context, or ask if still ambiguous |
 
-Treat this as a snapshot. Re-read branch and staged set immediately before committing if anything may have changed.
+Treat this as a snapshot. Re-read status, diff, and current-line bookmarks immediately before committing if anything may have changed.
 
-**Default branch name:** strip a leading `origin/` from `origin/HEAD` (so `origin/trunk` → `trunk`). Use that bare name for all “on the default branch?” checks — never compare against `origin/<name>`.
+Use the bare default bookmark name for current-line checks, without a remote suffix.
 
 ## Workflow
 
 0. **Gather** — run every Context command above (own shell call each), then continue.
 
-1. **Nothing to commit** — if `git status` shows no staged, modified, or untracked files, report that and stop. Do not use `git diff HEAD` alone as cleanliness (it misses untracked files).
+1. **Nothing to commit** — if `jj status` and `jj diff` show that the working-copy commit has no content changes, report that and stop.
 
-2. **Branch first** — if detached HEAD, or on the default branch (`main` / `master` / the bare default name above), create a feature branch from the change content (`git checkout -b <name>`), then re-read `git branch --show-current`. Do not ask — commit-only still must not leave work only on a detached HEAD or the default branch. If the derived name exists, pick a non-conflicting suffix.
+2. **Bookmark first** — if the working copy has no current-line local bookmark, or its closest current-line bookmark is the default bookmark, create a feature bookmark at `@` with `jj bookmark create <derived-name> -r @`, then re-read the current-line bookmarks. Do not ask — commit-only still must not leave work without a feature bookmark or only on the default bookmark's line. If the derived name exists, choose a non-conflicting suffix. Record the feature bookmark that must advance with the commits; if multiple current-line feature bookmarks make that choice ambiguous, ask before moving one.
 
-3. **Convention** — match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). When using conventional commits and `fix`/`feat` both fit, default to `fix:` (remedying broken or missing behavior); reserve `feat:` for new capabilities. User override wins.
+3. **Convention and description** — project instructions already in context and patterns observed in `jj log` take precedence; user overrides win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance: begin with a concise imperative summary that communicates the outcome, and add a body only when the motivation or trade-offs are not evident. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses. Do not hunt for a plan; omit the ID when the commit spans units, the unit is unclear, or no plan is in hand.
 
-4. **Logical commits** — if changed files clearly split into distinct concerns, make separate commits (file level only, 2–3 max, no `git add -p`). If ambiguous, one commit.
+4. **Logical commits** — if changed files clearly split into distinct concerns, make separate commits at file level only, 2–3 maximum, without interactive selection. If ambiguous, make one commit.
 
-5. **Message** — subject is imperative and names the outcome (what is now possible or fixed), not the file list. Body only when motivation or trade-offs are not obvious from the subject. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+5. **Commit named files** — commit each group with `jj commit -m <description> <path>...`. Honor `exclude:<paths>` when the invocation carries it: those files stay in the new working-copy commit no matter what else changed; say in the report that they were left out. Never omit the filesets: without path arguments, `jj commit` commits every change in the working-copy commit. After each commit, advance the recorded feature bookmark to the created commit with `jj bookmark move <bookmark> --to @-`, then verify its target before continuing.
 
-   - Bad: `Update checkout.rb` / `Add tests and fix stuff`
-   - Good: `Fix double-submit on checkout`
-   - Good: `Add per-subscription mute (U3)`
-
-6. **Stage and commit** — stage **named files only** (never `git add -A` or `git add .`). Honor `exclude:<paths>` when the invocation carries it: those files stay uncommitted no matter what else changed; say in the report that they were left out. Prefer one shell call per commit group:
-
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-type(scope): subject line here
-
-Optional body when the why is not obvious from the subject.
-EOF
-)" -- file1 file2 file3
-```
-
-The trailing path list on `git commit` is load-bearing: a bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would ride into the commit. Naming the paths commits exactly the group and leaves other index entries alone.
-
-7. **Confirm** — `git status`; report hash(es) and subject(s).
+6. **Confirm** — run `jj status`, inspect each created commit with `jj log -r <created-revisions>`, and verify the recorded feature bookmark targets the latest one. Report commit IDs, change IDs, and description summaries, plus any excluded or otherwise remaining working-copy changes.

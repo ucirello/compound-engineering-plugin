@@ -1,55 +1,42 @@
-# Branch creation from default branch
+# Feature bookmark creation from the default bookmark
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+Local `<base>` may contain unpublished changes or lag `<base>@<remote>`. Jujutsu exposes both states, but it cannot infer whether unpublished changes belong in the new PR. Ask when they exist.
 
 ## Decision flow
 
-### 1. Fetch fresh remote base
+### 1. Fetch the authoritative base
 
 ```bash
-git fetch --no-tags origin <base>
+jj git fetch --remote <remote> --branch <base>
 ```
 
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
+If fetch fails, use the fallback below.
 
-### 2. Check for unpushed local commits on `<base>`
+### 2. Check unpublished local base changes
 
 ```bash
-git log origin/<base>..HEAD --oneline
+jj log -r '<base>@<remote>..<base>'
 ```
 
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
+- Empty output: use `<base>@<remote>` as `<base-revision>`.
+- Non-empty output: show the changes and ask whether the feature should include them or leave them on the local default bookmark. Carrying them uses `<base>`; leaving them uses `<base>@<remote>`. Never choose silently.
 
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
+### 3. Root the work and create the feature bookmark
 
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
-
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
-
-### 3. Create the feature branch
+Preserve the working-copy change while rebasing it onto `<base-revision>`, then create the feature bookmark at `@`. If the default bookmark followed the rewritten change, move it back to `<base-revision>` with `--allow-backwards` only after confirming that this restores the default rather than discarding unrelated work.
 
 ```bash
-git checkout -b <branch-name> "$BASE_REF"
+jj rebase -s @ -o <base-revision>
+jj bookmark create <bookmark-name> -r @
+jj bookmark move <base> --to <base-revision> --allow-backwards
 ```
 
-If checkout fails because uncommitted changes would be overwritten, stash and retry:
-
-```bash
-git stash push -u -m "ce-commit-push-pr: pre-branch <branch-name>"
-git checkout -b <branch-name> "$BASE_REF"
-git stash pop
-```
-
-If `git stash pop` reports conflicts, surface the conflict output and the stash ref to the user — do not auto-resolve.
+Jujutsu needs no stash: the working-copy change is a revision and follows the rebase. Surface conflicts and stop; do not resolve them automatically.
 
 ## Fetch failure fallback
 
-If `git fetch` fails, branch from current local HEAD:
+Create the feature bookmark at `@` without rebasing, and report that base freshness was not verified. Skip the unpublished-base comparison because its answer is unreliable without a fresh remote bookmark.
 
 ```bash
-git checkout -b <branch-name>
+jj bookmark create <bookmark-name> -r @
 ```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.

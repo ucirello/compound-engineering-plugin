@@ -15,11 +15,11 @@ argument-hint: "[feature, focus area, or constraint] [output:md]"
 - `ce-brainstorm` answers: "What exactly should one chosen idea mean?" and writes a requirements-only unified plan under `<root>/plans/`.
 - `ce-plan` answers: "How should it be built?"
 
-This workflow produces a ranked ideation artifact — written to `<root>/ideation/` when present, else a CE temp path (see Phase 4). It does **not** produce requirements, plans, or code.
+This workflow produces a ranked ideation artifact — written to `<root>/ideation/` when present, else the workspace-local scratch path (see Phase 4). It does **not** produce requirements, plans, or code.
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CE_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `SKILL_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -53,13 +53,13 @@ If no argument is provided, proceed with open-ended ideation.
 
 ## Artifact Root
 
-This skill writes ideation artifacts under `<root>/ideation/` in repo mode and reads learnings under `<root>/solutions/`. Resolve `<root>` (per the block below) only when you compose such a path — the no-repo / elsewhere flow writes to a temp directory and never needs it, so do not resolve or create a root before mode classification. Pass the resolved path to any subagent when you do resolve it, not the config.
+This skill writes ideation artifacts under `<root>/ideation/` in repo mode and reads learnings under `<root>/solutions/`. Resolve `<root>` (per the block below) only when you compose such a path — the no-workspace / elsewhere flow writes to workspace-local scratch and never needs it, so do not resolve or create a root before mode classification. Pass the resolved path to any subagent when you do resolve it, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -96,14 +96,14 @@ Determine `OUTPUT_FORMAT` for the ideation artifact this run might persist. Outp
 Unlike `ce-plan` and `ce-brainstorm` (which default to `md`), ce-ideate defaults to **`html`** — ideation artifacts are read mainly by humans weighing candidate directions, and a rich self-contained HTML file makes the ideas easier to approach.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary YAML keys from the two workspace files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
-**Read config.** Resolve `<repo-root>` with `git rev-parse --show-toplevel`, then apply the ordinary-key rule above. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
+**Read config.** Resolve `<workspace-root>` with `jj workspace root`, then apply the ordinary-key rule above. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
 
 Resolution steps:
 
@@ -115,13 +115,13 @@ Resolution steps:
 4. **Default.** Otherwise `OUTPUT_FORMAT=html`.
 5. **Pipeline override.** When invoked from any pipeline or `disable-model-invocation` context, force `OUTPUT_FORMAT=md` regardless of steps 1-4 — automated downstream consumers parse markdown reliably and HTML in pipeline runs is unnecessary friction.
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including conventional commit prefixes like `feat:`, `fix:`, `chore:` that may appear inside a focus hint — pass through verbatim.
+**Token-parsing convention:** only recognized flag tokens are consumed and stripped. Other colon-delimited tokens in a focus hint pass through unchanged.
 
 **Defer loading the format-rendering reference.** The deliverable is written at Phase 4 (after generation), so `references/ideation-sections.md` and the format-rendering references (`markdown-rendering.md` / `html-rendering.md`) are only needed then — loading them at Phase 0.0 would carry them through the entire grounding and ideation dispatch for no benefit. Resolve `OUTPUT_FORMAT` now, but load the section contract and the matching rendering reference at write time (see `references/post-ideation-workflow.md` §4.1). The `output:` preference does NOT auto-propagate to `ce-brainstorm` on handoff — see §5.2 there.
 
 #### 0.1 Check for Recent Ideation Work
 
-Look in `<root>/ideation/` for ideation documents (`*.md` or `*.html`) created within the last 30 days. This is a repo-mode convenience: when there is no git repository or `<root>` fails to resolve, skip the scan and continue — do not fail the run before 0.3 classifies mode, since elsewhere and no-repo runs write to a temp area and never touch `<root>/ideation/`.
+Look in `<root>/ideation/` for ideation documents (`*.md` or `*.html`) created within the last 30 days. This is a workspace-mode convenience: when there is no Jujutsu workspace or `<root>` fails to resolve, skip the scan and continue — do not fail the run before 0.3 classifies mode, since elsewhere and no-workspace runs write to workspace-local scratch and never touch `<root>/ideation/`.
 
 A prior doc is relevant when its topic, path, or subsystem overlaps the requested focus, or the request is open-ended and one obvious recent open doc exists. Issue-grounded and non-issue ideations are distinct topics — never offer to resume across that line.
 
@@ -172,10 +172,10 @@ Routing:
 
 | Phase | Delta |
 |---|---|
-| 0.3 mode | **Deterministic — skip Decision 1/2.** CWD inside a git repo → repo-grounded; otherwise elsewhere-software. Never elsewhere-non-software: with no subject there is no naming/narrative/personal intent to infer. No ambiguity-confirmation question. |
-| 0.4 substance | Required, not optional, when routed to elsewhere-software: with no subject *and* no repo, Phase 1 has nothing to discover from. One ask; if the user still has no URL, description, or paste, end cleanly so they can re-invoke with material. |
+| 0.3 mode | **Deterministic — skip Decision 1/2.** CWD inside a Jujutsu workspace → repo-grounded; otherwise elsewhere-software. Never elsewhere-non-software: with no subject there is no naming/narrative/personal intent to infer. No ambiguity-confirmation question. |
+| 0.4 substance | Required, not optional, when routed to elsewhere-software: with no subject *and* no workspace, Phase 1 has nothing to discover from. One ask; if the user still has no URL, description, or paste, end cleanly so they can re-invoke with material. |
 | Model tiers | Whole ideation fleet moves to the ceiling tier — subject discovery is judgment-heavy and is the mode's whole value. |
-| 1 grounding | Go deeper, because Phase 2 discovers subjects from what Phase 1 returns. Repo: sample representative files per top-level area and surface recent PR/commit activity, bounded — representative, not exhaustive. Elsewhere: extract themes, recurring language, tensions, and omissions rather than restating the user's context; broaden web research to the domain's landscape. |
+| 1 grounding | Go deeper, because Phase 2 discovers subjects from what Phase 1 returns. Repo: sample representative files per top-level area and surface recent PR/change activity from GitHub and `jj log`, bounded — representative, not exhaustive. Current project instructions and current `jj log` history win over generic guidance. Elsewhere: extract themes, recurring language, tensions, and omissions rather than restating the user's context; broaden web research to the domain's landscape. |
 | 1.5 axes | Skipped — no settled subject to decompose. Note `Decomposition skipped — surprise-me mode`. |
 | 2 generation | Each frame picks its own subject (see `references/divergent-ideation.md`); cross-cutting synthesis carries the coverage role Phase 1.5 would have, so expect 5-8 combinations rather than 3-5. No axis-coverage recovery dispatch. |
 
@@ -183,7 +183,7 @@ The user can correct at any point by interrupting and re-invoking with a named s
 
 #### 0.3 Mode Classification
 
-Classify the **subject of ideation** (settled in 0.2) into one of three modes for dispatch routing. A user inside any repo can ideate about something unrelated to that repo; a user in `/tmp` can ideate about code they hold in their head.
+Classify the **subject of ideation** (settled in 0.2) into one of three modes for dispatch routing. A user inside any workspace can ideate about something unrelated to it; a user in an arbitrary directory can ideate about code they hold in their head.
 
 **Surprise-me short-circuit.** In surprise-me mode, skip the two decisions below and the ambiguity-confirmation step; apply the 0.2 table's `0.3 mode` row. State the chosen mode in one sentence and proceed to 0.4.
 
@@ -272,21 +272,18 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the effective user's private CE root — `/tmp/compound-engineering-<uid>` when it is usable, else the validated `$TMPDIR` fallback the block below selects — never `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Resolve the workspace root with `jj workspace root`, falling back to the current directory when unavailable. Scratch lives only under `<workspace-root>/.tmp/rocketclaw`, never in an OS-global temp directory or `.context/`. Run this to create the run directory and capture its absolute path:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
 SCRATCH_DIR="$SCRATCH_ROOT/ce-ideate/<run-id>";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
 
-Use the echoed absolute path as `<scratch-dir>` for every checkpoint write and cache read in this run. It is **not** deleted on completion — the V15 cache is reused across run-ids in a session, and in the no-repo case the deliverable itself is written here.
+Use the echoed absolute path as `<scratch-dir>` for every checkpoint write and cache read in this run. It is **not** deleted on completion — the V15 cache is reused across run-ids in a session, and in the no-workspace case the deliverable itself is written here.
 
 **Before either dispatch block, run the research-artifact routing test** from "User-Supplied Research Artifacts" below over any file the prompt or intake named. It has to fire here, ahead of both blocks, because each one has a way to swallow an evidence file it was never told to skip: the repo scan reads a named root-level `*.md` into `User-named references`, and elsewhere-mode synthesis reads "any rich-prompt material" — so a long survey or analytics export would be dispatched to synthesis *and* to a distiller, duplicating the file and polluting `Topic context`. Each file takes exactly one path.
 
@@ -300,7 +297,7 @@ Run grounding agents in parallel in the **foreground** (do not background — re
 
    > **Grounding scope:** use the supplied project context and go directly to current patterns bearing on the focus, pain points, leverage points, applicable workflow constraints, and in surprise-me mode representative files plus recent activity. If the focus cannot be scoped, use one targeted root or workspace probe.
    >
-   > Start with the files and areas named by the focus or caller context. Read the applicable current project instructions when operational rules affect the scan, whichever product docs exist at the repo root (`STRATEGY.md`, `PRODUCT.md`, `VISION.md`) when product alignment matters, and `CONCEPTS.md` when canonical vocabulary matters.
+   > Start with the files and areas named by the focus or caller context. Read the applicable current project instructions when operational rules affect the scan, whichever product docs exist at the workspace root (`STRATEGY.md`, `PRODUCT.md`, `VISION.md`) when product alignment matters, and `CONCEPTS.md` when canonical vocabulary matters.
    >
    > If the focus names a root-level `*.md` file, read it and include its relevant content under `User-named references`. When that file is listed on the research-artifacts line below, leave its full distillation to the research agent and include only a one-line gist here.
    >
@@ -411,7 +408,7 @@ The third row is there to widen the range, not to be copied: axes do not have to
 
 > Gather evidence about **{axis}** in this repo, scoped to {focus/subject}. Search first with the native file-search and content-search tools, then read targeted sections — budget ~20 reads, preferring ranges over whole files. Write an **evidence dossier** to `{scratch-dir}/evidence-{axis-slug}.md`: at most 150 lines of verbatim quotes and short code snippets, each with a `file:line` pointer, covering pain points, workarounds, TODO/FIXME markers, surprising patterns, and leverage points on this axis. Extraction only — quote what the repo says; do not interpret, theme, or propose ideas. If the axis has little footprint, write less rather than padding. Return only a gist: 3-5 lines summarizing what the dossier holds, plus its absolute path and entry count.
 
-Append the returned gists (with dossier paths) — **not** the dossier contents — to the consolidated grounding summary under `Evidence: <axis>`. Keeping their bulk out of the orchestrator's context is the point of the file handoff; Phase 2 agents read and cite from the paths. Skip scouts entirely when decomposition was skipped, in surprise-me mode, and in elsewhere modes (no repo to scout).
+Append the returned gists (with dossier paths) — **not** the dossier contents — to the consolidated grounding summary under `Evidence: <axis>`. Keeping their bulk out of the orchestrator's context is the point of the file handoff; Phase 2 agents read and cite from the paths. Skip scouts entirely when decomposition was skipped, in surprise-me mode, and in elsewhere modes (no workspace to scout).
 
 Append the axis list (or skip-reason) to the grounding summary under `Topic axes`. Phase 2 threads it into sub-agent prompts, Phase 3 scores axis spread from it, and the Phase 4 artifact records it.
 

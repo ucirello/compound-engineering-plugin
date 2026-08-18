@@ -44,20 +44,24 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", *args], capture_output=True, text=True, check=False
     )
 
 
-def valid_commit(ref: str | None) -> bool:
+def valid_revision(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj("log", "-r", ref, "--no-graph", "-T", 'commit_id ++ "\\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
-def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+def unique_common_ancestor(base: str, head: str) -> str | None:
+    result = jj(
+        "log", "-r", f"heads(::{base} & ::{head})", "--no-graph",
+        "-T", 'commit_id ++ "\\n"',
+    )
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -83,15 +87,15 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
+    """The workspace root, matching how docs_root is resolved everywhere else.
 
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
+    docs_root is workspace-relative (``<workspace-root>/<docs_root>``), so the corpus
+    check must resolve against the Jujutsu workspace root, not the current working
+    directory. ce-code-review can run from a subdirectory (``jj diff`` still
     works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
+    wrongly report the corpus absent. Fall back to cwd when Jujutsu can't answer.
     """
-    result = git("rev-parse", "--show-toplevel")
+    result = jj("workspace", "root")
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -103,7 +107,7 @@ def has_learnings_corpus(docs_root: str | None) -> bool:
     docs_root is the artifact root resolved by the calling skill (default
     ``docs``). Guard it the way the skill-prose rule does: normalize an
     unset/placeholder value to the default, and treat a value that is absolute
-    or escapes the repository as absent rather than probing an out-of-repo path.
+    or escapes the workspace as absent rather than probing an out-of-workspace path.
     """
     docs_root = normalize_docs_root(docs_root)
     if os.path.isabs(docs_root):
@@ -139,38 +143,42 @@ def main() -> int:
 
     learnings_corpus = has_learnings_corpus(args.docs_root)
 
-    if not valid_commit(args.base):
+    if not valid_revision(args.base):
         print(json.dumps(fail_closed("invalid base endpoint", learnings_corpus), sort_keys=True))
         return 0
-    if args.head is not None and not valid_commit(args.head):
+    if args.head is not None and not valid_revision(args.head):
         print(json.dumps(fail_closed("invalid head endpoint", learnings_corpus), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
+    diff_args = ["--from", args.base, "--to", "@"]
     if args.head:
-        merge_base = unique_merge_base(args.base, args.head)
-        if merge_base is None:
-            print(json.dumps(fail_closed("merge base unavailable or ambiguous", learnings_corpus), sort_keys=True))
+        common_ancestor = unique_common_ancestor(args.base, args.head)
+        if common_ancestor is None:
+            print(json.dumps(fail_closed("common ancestor unavailable or ambiguous", learnings_corpus), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_args = ["--from", common_ancestor, "--to", args.head]
 
-    names = git("diff", "--name-only", *diff_args)
-    numstat = git("diff", "--numstat", *diff_args)
-    if names.returncode != 0 or numstat.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", learnings_corpus), sort_keys=True))
+    names = jj("diff", *diff_args, "--name-only")
+    patch = jj("diff", *diff_args, "--git")
+    if names.returncode != 0 or patch.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
     executable_lines = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3 or Path(parts[2]).suffix.lower() not in CODE_EXTENSIONS:
+    current_file = None
+    for line in patch.stdout.splitlines():
+        if line.startswith("diff --git a/"):
+            match = re.match(r"diff --git a/(.*?) b/(.*)", line)
+            current_file = match.group(2) if match else None
             continue
-        try:
-            executable_lines += int(parts[0]) + int(parts[1])
-        except ValueError:
-            # Binary/unknown counts fail the lite gate through uncounted_files below.
-            pass
+        if (
+            current_file
+            and Path(current_file).suffix.lower() in CODE_EXTENSIONS
+            and (line.startswith("+") or line.startswith("-"))
+            and not line.startswith(("+++", "---"))
+        ):
+            executable_lines += 1
 
     uncounted = sum(
         1 for file in files if Path(file).suffix.lower() not in CODE_EXTENSIONS

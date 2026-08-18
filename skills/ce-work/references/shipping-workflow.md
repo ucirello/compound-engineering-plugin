@@ -13,7 +13,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    # Examples: bin/rails test, npm test, pytest, go test, etc.
 
    # Run linting (per the project's configured lint command / active instructions)
-   # Use linting-agent before pushing to origin
+   # Use linting-agent before publishing to origin
    ```
 
 2. **Simplify** (conditional — separate from code review)
@@ -36,7 +36,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
    **3a. Review (read-only).** Invoke `ce-code-review` through the host's normal skill-invocation mechanism with `mode:agent` (add `plan:<path>` when known; `base:<ref>` when the diff base is resolved). Pass **`depth:full`** when the plan, the task, or the user explicitly asked for a full / deep / thorough review — that is the one escalation signal `ce-code-review` cannot infer from the diff alone. Do not pass `mode:autofix`. Parse the JSON and retain the receipt only when `status` is `complete` (plus `artifact_path` / `run_id`).
 
-   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, dispatch fix subagents. Orchestrator merges, tests, commits. Then proceed to the Residual Work Gate.
+   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, dispatch fix subagents. Orchestrator integrates, tests, and finalizes Jujutsu changes. Then proceed to the Residual Work Gate.
 
    **If `ce-code-review` cannot run at all** — subagent dispatch unavailable, unauthenticated, hard-capped, or returns `status: failed`/`degraded`/`skipped` with no completed coverage even after its own sequential Fallback: in an **interactive** session, run the harness-native review if one exists (e.g. `/review`), fix inline, and note `Code review: harness-native fallback` with a one-line reason (that phrase is the gate satisfaction — not a silent mental review); in a **non-interactive** session (autonomous pipeline, or no native review available), skip the dedicated step, note `Code review: skipped (ce-code-review unavailable)`, and add an explicit manual diff scan to Final Validation. Never silently ship a non-mechanical change with no review of any kind.
 
@@ -84,7 +84,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 1. **Prepare Validation Context**
 
-   Do not try to launch a dedicated CE evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
+   Do not try to launch a dedicated evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
 
    Note whether the completed work has observable behavior (UI rendering, CLI output, API/library behavior with a runnable example, generated artifacts, or workflow output), and summarize any manual validation performed. If the user supplied evidence (URL, markdown embed, local artifact path), pass it to `ce-commit-push-pr` as PR-description context.
 
@@ -92,11 +92,11 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
    **Ship-handoff gate.** Before loading `ce-commit-push-pr` or `ce-commit`, confirm the Phase 3 code-review completion gate is satisfied (completed review receipt **or** exact skip / harness-native-fallback phrase). If neither is present, stop and run step 3 (or write the legitimate skip) — do not push "and review later." Pass the receipt summary (`status: complete` + `artifact_path`/`run_id`) or the skip phrase into the shipping summary and PR-description context the same way Known Residuals already travel.
 
-   **Do not publish what the user did not offer.** `ce-commit-push-pr` pushes the whole branch and its PR spans every commit on it. Check the pre-work scope Phase 1 Step 2 recorded: if the branch carries pre-existing commits that are not on the remote (or Step 2 could not tell), and those commits are not already in an open PR for this branch, load `ce-commit` instead — commit the work locally under any `exclude:` paths, say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first; a local commit is reversible and one word gets the rest. Otherwise:
+   **Do not publish what the user did not offer.** Publication uses `jj git push` for the selected bookmark, and the PR spans every published change on it. Check the pre-work scope Phase 1 Step 2 recorded: if the bookmark carries pre-existing unpublished changes (or Step 2 could not tell), and those changes are not already in an open PR for this bookmark, load `ce-commit` instead, finalize the work locally under any `exclude:` paths, say in one line what stayed local and why, and that you will publish and open the PR on request. Do not ask first; local Jujutsu operations are recoverable through `jj op log` and `jj undo`. Otherwise:
 
    **Project-defined shipping process wins.** If the project's active instructions already in your context name a process that owns the shipping handoff — committing, pushing, and opening the PR — such as a named skill or command (e.g. a `/create-pr` skill), a stacking tool, or documented steps, use that process instead of the default below. Conventions the default already honors (commit-message format, PR title style, PR template) are not a process and do not trigger this. Presence of a skill directory alone is not a directive; the instruction has to say so. Hand the process the same context this step would hand `ce-commit-push-pr` (plan summary, testing notes, evidence, review receipt, Known Residuals) — if it cannot take a piece, state that in the shipping summary. The `exclude:` paths are a constraint, not context: if the process cannot keep them out of the commit, do not run it — use the default below, which can. The ship-handoff gate and the publish rule above hold whichever process runs. Precedence: the user's stated preference for this run > the project-defined process > the default. Absent a project-defined process:
 
-   Load the `ce-commit-push-pr` skill with `branding:on` to handle committing, pushing, and PR creation. Pass `exclude:<paths>` naming every file from Phase 1 Step 2's pre-work scope that this run did not commit — untouched WIP and any leave-uncommitted files alike — so the skill's dirty-file scan leaves the user's work out of the shipping commit. This explicit signal records that the Compound Engineering workflow produced the work; the skill handles convention detection, branch safety, logical commit splitting, adaptive PR descriptions, and PR attribution. If the session already stated shipping topology — a PR stack, and any parent PR or branch to stack on — pass it on that invocation.
+   Load the `ce-commit-push-pr` skill to handle Jujutsu change finalization, `jj git push`, and PR creation. Pass `exclude:<paths>` naming every file from Phase 1 Step 2's pre-work scope that this run did not finalize, including untouched work and leave-open files, so the user's work stays out of published changes. If the session already stated shipping topology, including a PR stack and any parent PR or bookmark to stack on, pass it on that invocation. Runtime project instructions and history read via `jj log` win. Apply compatible Go quality guidance. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
    When providing context for the PR description, include:
    - The plan's summary and key decisions
@@ -128,13 +128,12 @@ Before creating PR, verify:
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
 - [ ] Validation/evidence context passed to `ce-commit-push-pr` when the change has observable behavior
-- [ ] Commit messages follow conventional format
+- [ ] Jujutsu descriptions follow the active project and observed history standards. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 - [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
 - [ ] Simplify: `ce-simplify-code` when the diff has >=30 substantive changed code lines (or skipped with reason)
 - [ ] Code review completion gate: completed receipt (`status: complete` + `artifact_path`/`run_id` or markdown Actionable/Coverage/Verdict) **or** exact phrase (`Code review: skipped (mechanical diff)` / `Code review: skipped (ce-code-review unavailable)` / `Code review: harness-native fallback`); residuals handled via the Residual Work Gate
 - [ ] Ship-handoff gate passed before `ce-commit-push-pr` / `ce-commit` (completed receipt or exact phrase in shipping context)
 - [ ] PR description includes summary, testing notes, and evidence when captured
-- [ ] `ce-commit-push-pr` received `branding:on` from the Compound Engineering workflow (or the project-defined shipping process ran with the same context)
 
 ## Code Review
 

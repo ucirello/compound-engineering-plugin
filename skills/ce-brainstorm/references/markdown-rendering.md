@@ -19,7 +19,7 @@ These hold regardless of which skill produced the artifact.
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
 - **Repo-relative paths for file references.** Always. Never absolute paths
-  — they break portability across machines, worktrees, teammates.
+  — they break portability across machines, Jujutsu workspaces, and teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
   semantic marker such as `<!-- ce-section: work-relationships -->`; it carries
@@ -208,8 +208,12 @@ Engineering process metadata stays out of the artifact:
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in commit messages, tool output, and agent
+This information belongs in JJ descriptions, tool output, and agent
 transcripts — not in the artifact a reader returns to weeks later.
+
+When recommending a JJ description, active project instructions and patterns read through `jj log` win; apply compatible Go guidance without imposing fixed syntax or a message template.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 ## Frontmatter shape
 
@@ -224,7 +228,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from git, not stored in the doc.
+  the work shipped is derived from `jj log`, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit

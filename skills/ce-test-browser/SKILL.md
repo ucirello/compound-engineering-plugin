@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current Jujutsu change, revision, bookmark, or PR.
+argument-hint: "[PR number, revision, bookmark, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a PR or Jujutsu revision using the best approved browser driver available in the active harness.
 
 ## Modes
 
@@ -27,7 +27,7 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 ### 1. Select the Browser Driver
 
-Apply the Browser Driver Policy above and record the selected driver. This also requires a git repository with changes to test.
+Apply the Browser Driver Policy above and record the selected driver. This also requires a Jujutsu workspace with changes to test.
 
 ### 2. Determine Test Scope
 
@@ -36,14 +36,16 @@ Apply the Browser Driver Policy above and record the selected driver. This also 
 gh pr view [number] --json files -q '.files[].path'
 ```
 
+For a Jujutsu scope, determine the integration-base revision from the project's active instructions and conventions already in your context and current history from `jj log`. Those sources win over assumptions about bookmark names or graph shape.
+
 **If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
+jj diff -r '<base-revision>..@' --name-only
 ```
 
-**If branch name provided:**
+**If revision or bookmark provided:**
 ```bash
-git diff --name-only main...[branch]
+jj diff -r '<base-revision>..<target-revision>' --name-only
 ```
 
 ### 3. Map Changed Files to Routes
@@ -195,7 +197,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [revision or bookmark]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -223,17 +225,17 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test current change (auto-detects port)
 /ce-test-browser
 
 # Test specific PR
-/ce-test-browser 847
+/ce-test-browser <pr-number>
 
-# Test specific branch
-/ce-test-browser feature/new-dashboard
+# Test specific revision or bookmark
+/ce-test-browser <revision-or-bookmark>
 
 # Test on a specific port
-/ce-test-browser --port 5000
+/ce-test-browser --port <port>
 ```
 
 ## Driver Reference

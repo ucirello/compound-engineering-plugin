@@ -1,25 +1,25 @@
-# Compound Engineering Feedback Format
+# Feedback Format
 
 Use this shape when converting Riffrec evidence into a durable brainstorm or planning input.
 
 ## Finding
 
 ```markdown
-### F1. <Short problem title>
+### <finding-id>. <problem-title>
 
-- **Severity:** P0/P1/P2/P3
-- **Observed:** <What happened, grounded in transcript/events/screenshots>
-- **Expected:** <What the user appeared to expect or what the product should do>
-- **Evidence:** <Moment IDs and screenshot links>
-- **Confidence:** High/Medium/Low, with reason
-- **Requirement candidates:** R1, R2
+- **Severity:** <severity>
+- **Observed:** <grounded-observation>
+- **Expected:** <expected-behavior>
+- **Evidence:** <evidence-references>
+- **Confidence:** <confidence-and-reason>
+- **Requirement candidates:** <requirement-ids>
 ```
 
 ## Requirements Kickoff
 
 ```markdown
 ---
-date: YYYY-MM-DD
+date: <date>
 topic: <topic>
 ---
 
@@ -33,36 +33,34 @@ topic: <topic>
 
 ## Actors
 
-- A1. User: <Role in the recorded workflow>
-- A2. Product surface: <System under test>
-- A3. Agent/assistant, if relevant: <Role in the workflow>
+- <actor-id>. <actor-name>: <role-in-recorded-workflow>
 
 ---
 
 ## Key Flows
 
-- F1. Recorded feedback triage
-  - **Trigger:** A Riffrec zip is available for review.
-  - **Actors:** A1, A2
-  - **Steps:** <3-7 product steps seen in the recording>
-  - **Outcome:** <What should be true after the fix>
-  - **Covered by:** R1, R2
+- <flow-id>. <flow-name>
+  - **Trigger:** <trigger>
+  - **Actors:** <actor-ids>
+  - **Steps:** <observed-product-steps>
+  - **Outcome:** <required-outcome>
+  - **Covered by:** <requirement-ids>
 
 ---
 
 ## Requirements
 
 **Observed product behavior**
-- R1. <Concrete product behavior requirement>
+- <requirement-id>. <product-behavior-requirement>
 
 **Feedback evidence and reviewability**
-- R2. <Requirement about making the issue observable or preventing recurrence>
+- <requirement-id>. <evidence-or-reviewability-requirement>
 
 ---
 
 ## Acceptance Examples
 
-- AE1. **Covers R1.** Given <state>, when <action>, <outcome>.
+- <example-id>. **Covers <requirement-ids>.** Given <state>, when <action>, <outcome>.
 
 ---
 
@@ -113,4 +111,4 @@ topic: <topic>
 - Prefer moment IDs and screenshot links over prose-only claims.
 - Mark visual interpretation as an inference when the screenshot does not prove intent.
 - Requirements should describe product behavior, not implementation details.
-- Do not include absolute local paths in CE docs; use repo-relative paths when possible.
+- Do not include absolute local paths in shared documents; use workspace-relative paths when possible.

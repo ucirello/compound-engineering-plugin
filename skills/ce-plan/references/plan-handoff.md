@@ -59,7 +59,7 @@ After all mutations in this run have settled (initial write, deepening synthesis
 **Question:** "Plan ready at `<absolute path to plan>`. What would you like to do next?"
 
 **Options:**
-1. **Start `ce-work`** - Build and ship the plan in this session — subagent-driven development with simplification, code review, and commits. Show only for `artifact_readiness: implementation-ready` plus `execution: code`; universal-planning, answer-seeking, approach-plan, and requirements-only artifacts keep their own handoff/checkpoint behavior.
+1. **Start `ce-work`** - Build and ship the plan in this session — subagent-driven development with simplification, code review, and Jujutsu changes. Show only for `artifact_readiness: implementation-ready` plus `execution: code`; universal-planning, answer-seeking, approach-plan, and requirements-only artifacts keep their own handoff/checkpoint behavior.
 2. **Run it as a `/goal`** - Choose this if you'd rather run the plan through your harness's autonomous goal mode instead of ce-work's build-and-ship flow. The alternative to option 1, not an add-on — pick one. Show only when (a) the artifact is `artifact_readiness: implementation-ready` plus `execution: code` AND (b) the host has goal capability at all — Codex `create_goal` in the available tool list, or a user-typed `/goal` in Claude Code; omit it where neither exists. Where the host can start a goal directly the session begins it immediately; where it cannot, it hands over a copyable `/goal` prompt. See the routing below.
 
 **Recommended marker:** `ce-work` (option 1) always carries *(recommended)* — render option 1 as **Start `ce-work`** *(recommended)* and leave option 2 unmarked. `ce-work` is the correctly-layered execution entry point: it owns engine selection and reaches goal or dynamic-workflow engines itself when a plan's shape warrants, so recommending it never forecloses goal mode. Goal mode (option 2) is the opt-in preference for users who'd rather drive the work through their harness's native goal loop. Exactly one option ever carries *(recommended)*.
@@ -85,7 +85,7 @@ Based on selection (the bare per-option routing is also stated inline in the SKI
   - **If only a user-typed `/goal` exists (Claude Code):** print that objective as a single copyable `/goal …` block and tell the user to paste it at the start of a message (a skill cannot issue `/goal` itself there). **Best-effort clipboard copy:** also put the exact prompt on the OS clipboard so the user only has to paste. **Never interpolate the prompt into the command** — the plan path and the prompt's own backticks/`$` would be evaluated or mangled by the shell. Hand it off as data: write it to a temp file via a **quoted-sentinel** here-doc (the quotes stop all expansion), then pipe that file to the first available tool:
 
     ```bash
-    PROMPT_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-goal-prompt.XXXXXX")
+    WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"; SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw"; mkdir -p "$SCRATCH_ROOT"; PROMPT_FILE=$(mktemp "$SCRATCH_ROOT/goal-prompt.XXXXXX")
     cat >> "$PROMPT_FILE" <<'__CE_GOAL_PROMPT_END__'
     <the exact /goal prompt goes here, verbatim>
     __CE_GOAL_PROMPT_END__

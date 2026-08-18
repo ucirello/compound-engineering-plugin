@@ -4,8 +4,7 @@ Verified against `gh stack version 0.1.0`. `gh stack <command> --help` is author
 disagrees with anything here, follow `--help` and say so in your report. (`gh stack help <command>`
 does not work; it prints top-level help.)
 
-Only the behavior that changes a decision in stack mode is listed. This file is self-contained on
-purpose: do not depend on the user having a separate `gh-stack` skill installed.
+Only behavior that changes a decision in stack mode is listed. `gh stack` operates on exported Git branches, so run `jj git export` before each manager operation and `jj git import` after any operation that can move or create branches or change the checkout. Git terms below describe that provider boundary, not the repository workflow.
 
 ## Classifying a parent
 
@@ -21,7 +20,7 @@ Branch on the exit code; status text goes to stderr and must not be parsed.
 
 | Exit | Meaning | What it means here |
 |---|---|---|
-| 0 | Success | Parent is in a stack, and `HEAD` has moved to it |
+| 0 | Success | Parent is in a stack; import the resulting checkout and branch state into Jujutsu |
 | 2 | Not in a stack | Parent is standalone; nothing was checked out or fetched |
 | 5 | Invalid arguments | Fix the invocation; see `--help` |
 | 6 | Disambiguation required | Branch is in several stacks — check out a non-shared branch |
@@ -33,17 +32,14 @@ gh stack view --json    # JSON on stdout: trunk, currentBranch,
                         #              pr { number, url, state } }
 ```
 
-`base` is the parent SHA the branch was last known to contain, not the parent's current tip;
+`base` is the parent Git commit ID the branch was last known to contain, not the parent's current tip;
 `needsRebase` is true when that tip is no longer an ancestor. There is no field naming the top of
 the stack and no documented branch ordering, so do not derive position from this payload — use
 `add`'s exit 5 instead.
 
 ## Resolving a PR head
 
-`gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head; `headRefName` alone
-does not, because a same-repo name can be absent or stale locally and can collide with an unrelated
-branch. Create a local branch at `headRefOid`, fetching `refs/pull/<n>/head` when that commit is not
-reachable — reachability leaves the commit with no branch to name.
+`gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head. Import the commit into Jujutsu, then create or verify a bookmark at `headRefOid`; fetch the PR ref through GitHub interoperability when the commit is unavailable locally.
 
 ## Building
 
@@ -51,8 +47,7 @@ reachable — reachability leaves the commit with no branch to name.
 gh stack init [--base "<trunk>"] "<branch>"...
 ```
 
-Processes branches bottom to top and checks out the **last** one. **Existing branches are adopted;
-missing ones are created** — the first from the trunk, each later one from the branch before it.
+Processes exported branches bottom to top and checks out the **last** one. Existing exported branches are adopted; missing ones are created. Import the result before further Jujutsu operations.
 There is no separate adopt mode: existence decides. `--base` selects a non-default trunk, so a
 parent branch can serve as the trunk without joining the stack.
 
@@ -60,11 +55,7 @@ parent branch can serve as the trunk without joining the stack.
 gh stack add "<branch>"
 ```
 
-Must run from the **top** branch of the stack (or the trunk while it is still empty); anywhere else
-exits **5**. Exit 5 here means "you are not on the top", and moving there with `gh stack top` is a
-decision, not a fix: it changes which layer the new branch is parented to. Whether that is correct
-belongs to the caller — when a specific parent was named, it is not. Without `-Am`, `add` does not
-touch the working tree, so staged and unstaged changes follow onto the new branch.
+Must run from the **top** exported branch of the stack (or the trunk while it is still empty); anywhere else exits **5**. Exit 5 means "you are not on the top", and moving there with `gh stack top` is a decision because it changes the parent. Without `-Am`, `add` does not alter file content. Import its branch topology before continuing.
 
 ```bash
 gh stack submit --auto [--open]
@@ -75,9 +66,7 @@ and also marks pre-existing drafts ready.
 
 ## Never
 
-- **`gh stack link`** — GitHub-only by design, creates no local tracking, so a later
-  `gh stack submit`, `gh stack view`, or `gh stack merge` will not see the layer. It exists for
-  branches managed by external tools (jj, Sapling, git-town).
+- **`gh stack link`** — creates no manager-local tracking, so later stack operations will not see the layer.
 - **`gh pr merge`** on a stack member — it cannot merge a stack. Landing uses `gh stack merge`.
 - **Bare `view` / `submit` / `init` / `add` / `checkout`** — each prompts or opens a TUI that
   blocks under a PTY. Always pass the arguments and flags shown above.

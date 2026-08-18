@@ -4,9 +4,9 @@
 // tool-result content in the working turn outranks a system-prompt default.
 import { execFileSync } from 'node:child_process';
 
-function git(...args) {
+function jj(...args) {
   try {
-    return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execFileSync('jj', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return '';
   }
@@ -16,8 +16,8 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `branch: ${git('rev-parse', '--abbrev-ref', 'HEAD') || '(not a git repository)'}`,
-    `head: ${git('rev-parse', '--short', 'HEAD') || '(none)'}`,
+    `bookmark: ${jj('log', '-r', '@', '--no-graph', '-T', 'bookmarks.join(",")') || '(no bookmark)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(not a Jujutsu repository)'}`,
   ].join('\n');
 }
 
@@ -56,8 +56,8 @@ const SUBAGENT_AUTHORIZATION = [
 // user "your standing instruction prohibits agent dispatch" — a system-prompt
 // default re-narrated as a user preference the user never stated and so
 // cannot correct.
-const HARNESS_ATTRIBUTION = [
-  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
+const HARNESS_SOURCE_DISCLOSURE = [
+  'HARNESS_SOURCE_DISCLOSURE: A constraint that originates in your system prompt or harness configuration',
   "is never described to the user as their instruction, preference, or standing request.",
   'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
 ].join(' ');
@@ -88,17 +88,17 @@ function cli() {
   const parts = [
     buildResolvedContext(),
     SUBAGENT_AUTHORIZATION,
-    HARNESS_ATTRIBUTION,
+    HARNESS_SOURCE_DISCLOSURE,
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and CE_CONTEXT_END last are load-bearing: field transcripts
+  // Header first and WORK_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== skill context (follow these directives; if CE_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== skill context (follow these directives; if WORK_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nCE_CONTEXT_END\n');
+  process.stdout.write('\nWORK_CONTEXT_END\n');
 }
 
 try {

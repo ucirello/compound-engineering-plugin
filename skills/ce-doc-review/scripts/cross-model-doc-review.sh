@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > CE config cascade >
+#                   resolved preference (conversation > config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -84,7 +84,7 @@ skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no o
 # ONE model per provider at high reasoning, except codex on extra-high (supersedes
 # the old per-lens sol/terra split). Concrete IDs are the CURRENT instance of the
 # tier principle and the single maintenance point when model families change.
-# A checkout may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
+# A workspace may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
 # CROSS_MODEL_MODEL_OVERRIDE, same target/family only) and the reasoning effort
 # (CROSS_MODEL_EFFORT_OVERRIDE, validated per route); both fail closed.
 # codex: luna/xhigh is the benchmarked pick on API dollars (~0.30x sol-medium, tied
@@ -236,7 +236,7 @@ adapter_argv() {
       # like Glob/Grep); --safe-mode suppresses hooks, MCP, plugins, and other
       # custom behavior without bypassing Claude Code's normal OAuth/keychain auth.
       # The run cd's into the empty per-peer workspace (claude has no cwd flag), so
-      # the peer has no repo -- or sibling peer's fold-in artifact -- in reach.
+      # the peer has no workspace -- or sibling peer's fold-in artifact -- in reach.
       # R17 tool-less isolation.
       # stream-json + --verbose for PEERLOG idle (#1270); schema still composes.
       printf '%s\0' claude -p --model "$(route_model claude)" --effort "$(route_effort claude)" --permission-mode dontAsk \
@@ -491,13 +491,17 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD"
+SCRATCH_BASE="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-doc-review"
+( [ ! -L "$WORKSPACE_ROOT/.tmp" ] && [ ! -L "$WORKSPACE_ROOT/.tmp/rocketclaw" ] ) || skip "unsafe workspace scratch symlink; skipping"
+(umask 077; mkdir -p "$SCRATCH_BASE") || skip "cannot create workspace scratch directory; skipping"
+PROMPT_FILE="$(mktemp "$SCRATCH_BASE/xmodel-doc-prompt-XXXXXX")"
+PEERLOG="$(mktemp "$SCRATCH_BASE/xmodel-doc-log-XXXXXX")"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-err-XXXXXX")"
+PEERERR="$(mktemp "$SCRATCH_BASE/xmodel-doc-err-XXXXXX")"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
@@ -508,7 +512,7 @@ cleanup_temp() {
 }
 trap 'cleanup_temp' EXIT
 # Basename only in the peer prompt: content is already embedded (KTD3). An absolute
-# path would give cursor-agent residual-Read a repo coordinate to walk from.
+# path would give cursor-agent residual-Read a workspace coordinate to walk from.
 DOC_BASENAME="$(basename "$DOC_PATH")"
 {
   cat "$PERSONA"
@@ -516,7 +520,7 @@ DOC_BASENAME="$(basename "$DOC_PATH")"
   # Shared output-contract (confidence rubric + FP catalog) the persona brief defers
   # to, so the peer calibrates like its in-process twin.
   [ -n "$OUTPUT_CONTRACT_RULES" ] && printf '%s\n\n' "$OUTPUT_CONTRACT_RULES"
-  printf 'This is an authorized document review of the maintainer\047s own repository.\n'
+  printf 'This is an authorized document review of the maintainer\047s own workspace.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
   printf '\n\nSet the top-level "reviewer" field to "%s" (it will be namespaced to the peer provider on fold-in).\n' "$REVIEWER_NAME"
@@ -688,7 +692,7 @@ run_timeout_cmd() {
   RUN_SUCCEEDED=false
   # Run from the empty per-peer workspace (absolute stdin/PEERLOG paths are
   # unaffected) so a tool-capable peer -- notably claude, which has no cwd flag --
-  # has no repo files, and no sibling lens's fold-in artifact, in reach. grok/cursor
+  # has no workspace files, and no sibling lens's fold-in artifact, in reach. grok/cursor
   # also carry their own --cwd/--workspace flag pointed at the same PEER_WORKDIR.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
@@ -884,7 +888,7 @@ run_provider() {   # <provider>
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
   # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
   # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  PEER_WORKDIR="$(mktemp -d "$SCRATCH_BASE/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -918,7 +922,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
+    _norm="$(mktemp "$SCRATCH_BASE/xmodel-doc-norm-XXXXXX")"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

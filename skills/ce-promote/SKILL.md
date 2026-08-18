@@ -18,11 +18,13 @@ It is **spiral-agnostic**: with nothing installed it drafts directly from the ed
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what's available and blocking on no single source:
 
 - **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **The diff** — identify the project's default bookmark from current context, then use `jj diff -r '<default-bookmark>..@' --stat`, skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent changes** — `jj log -r ::@ -n 15` for the arc of the change
 
-Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
+When these sources conflict, the project's active instructions and the history visible through `jj log` win.
+
+Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. State the outcome rather than the implementation. If you can't confidently tell what shipped, ask one short question rather than guessing.
 
 ## Phase 2 — Pick channels
 
@@ -48,7 +50,7 @@ spiral auth status --json 2>/dev/null
 
 Go straight to Path B when running non-interactively — there is no human to answer. Otherwise offer setup **once**: read `references/spiral-cli.md` and follow its Path 0 section for the opt-out check, the blocking question, the agent-run `spiral login --json` flow (the API key never passes through the agent, and the user never pastes one into chat), the install path, and how the opt-out is recorded. Skip to Path B only when *that* check finds a recorded opt-out — it is the authority on what counts as recorded, and a naive config scan misreads `ce-setup`'s commented template example as one, silently suppressing the offer.
 
-Two properties that section depends on: **any dismissal records the opt-out**, so a single first-run decline stops the offer for good in this repo, and a decline always proceeds to Path B rather than blocking. If a human is present but no blocking-question tool is available, fall back to a numbered list of the two options in chat and wait — do not skip the offer.
+Two properties that section depends on: **any dismissal records the opt-out**, so a single first-run decline stops the offer for good in this workspace, and a decline always proceeds to Path B rather than blocking. If a human is present but no blocking-question tool is available, fall back to a numbered list of the two options in chat and wait — do not skip the offer.
 
 ### Path A — Spiral ready (voice-matched)
 

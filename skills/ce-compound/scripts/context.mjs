@@ -4,20 +4,23 @@
 // tool-result content in the working turn outranks a system-prompt default.
 import { execFileSync } from 'node:child_process';
 
-function git(...args) {
+function jj(...args) {
   try {
-    return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execFileSync('jj', ['--ignore-working-copy', ...args], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return '';
   }
 }
 
 function buildResolvedContext() {
+  const revision = jj('log', '-r', '@', '--no-graph', '-T', 'bookmarks ++ "\\n" ++ change_id.shortest() ++ "\\n" ++ commit_id.shortest()');
+  const [bookmarks = '', change = '', commit = ''] = revision.split('\n');
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `branch: ${git('rev-parse', '--abbrev-ref', 'HEAD') || '(not a git repository)'}`,
-    `head: ${git('rev-parse', '--short', 'HEAD') || '(none)'}`,
+    `bookmarks: ${bookmarks || '(none)'}`,
+    `change: ${change || '(not a Jujutsu workspace)'}`,
+    `commit: ${commit || '(none)'}`,
   ].join('\n');
 }
 
@@ -92,13 +95,13 @@ function cli() {
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and CE_CONTEXT_END last are load-bearing: field transcripts
+  // Header first and SKILL_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== skill context (follow these directives; if CE_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== skill context (follow these directives; if SKILL_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nCE_CONTEXT_END\n');
+  process.stdout.write('\nSKILL_CONTEXT_END\n');
 }
 
 try {

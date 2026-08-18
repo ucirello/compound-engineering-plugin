@@ -84,13 +84,13 @@ def _restore_owned_verification(
             and before_paths == set(expected["changed_paths"])
         ):
             raise Operational("BLOCKED", "owned verification did not start from the expected transport application")
-        if git_text(repo, "rev-parse", "HEAD") != pre["head"]:
-            raise Operational("BLOCKED", "verification changed canonical HEAD; refusing automatic restoration")
+        if repo_info(repo)["head"] != pre["head"]:
+            raise Operational("BLOCKED", "verification changed the canonical change; refusing automatic restoration")
         verification_paths = after_paths - before_paths
     with locked_manifest(run_id, write=True) as doc:
         doc["units"][unit_id]["state"] = "restoring"
         event(doc, "restore-intent", unit_id, {"source": "controller-owned-verification"})
-    git(repo, "reset", "--hard", pre["head"])
+    jj(repo, "restore", "--from", pre["head"], "--into", "@")
     with locked_manifest(run_id) as doc:
         remove_introduced_paths(repo, doc["units"][unit_id])
     _remove_owned_new_paths(repo, verification_paths, pre["head"])
@@ -147,13 +147,13 @@ def _validate_accepted_run_head(repo: str, units: dict, current_head: str) -> No
     if current_head not in commits:
         raise Operational(
             "BLOCKED",
-            "canonical HEAD no longer matches the final controller-accepted unit commit",
+            "canonical change no longer matches the final controller-accepted unit change",
             {"accepted_heads": sorted(commits), "actual_head": current_head},
         )
     if any(git_text(repo, "merge-base", commit, current_head, check=False) != commit for commit in commits):
         raise Operational(
             "BLOCKED",
-            "canonical HEAD does not contain every controller-accepted unit",
+            "canonical change does not contain every controller-accepted unit",
             {"accepted_heads": sorted(commits), "actual_head": current_head},
         )
 
@@ -229,7 +229,7 @@ def _verify_run_locked(
     before = semantic_snapshot(repo)
     before_paths = status_paths(repo)
     if not before["status_empty"] or before_paths:
-        raise Operational("BLOCKED", "verify-run requires a clean canonical checkout")
+        raise Operational("BLOCKED", "verify-run requires a clean canonical workspace")
     _validate_accepted_run_head(repo, units, before["head"])
     accepted_units = accepted_unit_commit_snapshot(units)
     if accepted_units is None:
@@ -268,13 +268,13 @@ def _verify_run_locked(
     ignored_state = diff_ignored_state(before_ignored, inventory_ignored_state(repo))
     cleaned_paths: list[str] = []
     if after != before:
-        if after["branch_ref"] != before["branch_ref"] or after["head"] != before["head"]:
+        if after["bookmark_ref"] != before["bookmark_ref"] or after["head"] != before["head"]:
             with locked_manifest(args.run_id, write=True) as doc:
                 lock = doc.get("integration_lock") or {}
                 blocker = {
                     "at": now_iso(),
                     "unit_id": None,
-                    "reason": "plan-wide verification changed canonical branch or HEAD",
+                    "reason": "plan-wide verification changed the canonical bookmark or change",
                     "retain_integration_lock": True,
                     "integration_lock_nonce": lock.get("nonce"),
                 }
@@ -282,7 +282,7 @@ def _verify_run_locked(
                 event(doc, "run-verification-restore-blocked", None, {"verification_exit": verification_exit})
             raise Operational(
                 "BLOCKED",
-                "plan-wide verification changed canonical branch or HEAD; automatic restoration refused",
+                "plan-wide verification changed the canonical bookmark or change; automatic restoration refused",
                 {
                     "verification_exit": verification_exit,
                     "verification_log": verification_log,
@@ -293,7 +293,7 @@ def _verify_run_locked(
             )
         deletion_paths = after_paths - before_paths
         cleaned_paths = sorted(deletion_paths)
-        git(repo, "reset", "--hard", before["head"])
+        jj(repo, "restore", "--from", before["head"], "--into", "@")
         _remove_owned_new_paths(repo, deletion_paths, before["head"])
     restored = semantic_snapshot(repo)
     if restored != before:
@@ -447,8 +447,8 @@ def _integration_recovery_failure(args, original: Operational, failure: Operatio
 
 def cmd_integrate(args) -> tuple[str, dict]:
     command = _verification_command(args)
-    if not args.commit_message.strip() or len(args.commit_message.encode()) > 1024:
-        raise Operational("REFUSED", "commit message must be non-empty and at most 1024 bytes")
+    if not args.description.strip() or len(args.description.encode()) > 1024:
+        raise Operational("REFUSED", "description must be non-empty and at most 1024 bytes")
 
     token = None
     before = None
@@ -468,6 +468,7 @@ def cmd_integrate(args) -> tuple[str, dict]:
             repo = doc["repository"]["toplevel"]
             transport = doc["units"][args.unit_id]["transport"]["commit"]
         git(repo, "cherry-pick", "--no-commit", transport)
+        jj(repo, "git", "import", "--ignore-working-copy")
         cmd_mark_applied(_args(run_id=args.run_id, unit_id=args.unit_id, lock_token=token))
         with locked_manifest(args.run_id) as doc:
             unit = doc["units"][args.unit_id]
@@ -534,7 +535,7 @@ def cmd_integrate(args) -> tuple[str, dict]:
             ignored_state=ignored_state,
         ))
         test_fault("before-canonical-commit")
-        commit_index_tree(repo, args.commit_message)
+        finalize_jj_change(repo, args.description)
         committed_body = cmd_mark_committed(_args(run_id=args.run_id, unit_id=args.unit_id, lock_token=token))[1]
         committed = True
         canonical = committed_body["canonical_commit"]["commit"]

@@ -14,7 +14,7 @@ from unit_workspace_jobs import find_attempt, parse_diff_paths, scope_expansion_
 
 
 def integration_lock_path(doc: dict) -> str:
-    ident = doc["repository"]["identity_digest"] + "\0" + doc["branch"]["ref"]
+    ident = doc["repository"]["identity_digest"] + "\0" + doc["bookmark"]["ref"]
     # Anchor to the root this run actually lives under (run_dir searches both
     # candidate roots), never the current invocation's preferred creation root:
     # a fallback-root run must validate and release the lock it recorded.
@@ -31,7 +31,7 @@ def validated_lock_nonce(doc: dict, unit_id: str, lock: dict) -> str:
         "run_id": doc["run_id"],
         "unit_id": unit_id,
         "repository": doc["repository"]["identity_digest"],
-        "branch_ref": doc["branch"]["ref"],
+        "bookmark_ref": doc["bookmark"]["ref"],
     }
     if any(lock.get(k) != v for k, v in expected.items()):
         raise Operational("BLOCKED", "integration lock identity mismatch")
@@ -84,7 +84,7 @@ def cmd_integration_acquire(args) -> tuple[str, dict]:
             nonce = validated_lock_nonce(doc, args.unit_id, lock)
             resumed = True
         else:
-            payload = {"run_id": args.run_id, "unit_id": args.unit_id, "nonce": nonce, "repository": doc["repository"]["identity_digest"], "branch_ref": doc["branch"]["ref"], "created_at": now_iso()}
+            payload = {"run_id": args.run_id, "unit_id": args.unit_id, "nonce": nonce, "repository": doc["repository"]["identity_digest"], "bookmark_ref": doc["bookmark"]["ref"], "created_at": now_iso()}
             try:
                 create_private(path, (json.dumps(payload, sort_keys=True) + "\n").encode())
                 test_fault("integration-lock-after-create")
@@ -106,19 +106,21 @@ def cmd_integration_acquire(args) -> tuple[str, dict]:
 
 
 def semantic_snapshot(repo: str) -> dict:
-    head = git_text(repo, "rev-parse", "HEAD")
-    head_tree = git_text(repo, "rev-parse", "HEAD^{tree}")
-    index_tree = git_text(repo, "write-tree")
-    raw = git(repo, "status", "--porcelain=v2", "-z", "--untracked-files=all")
-    worktree_index = git(repo, "diff", "--name-only", "-z")
+    changed = jj(repo, "diff", "--name-only", "-r", "@")
+    canonical_rev = "@-" if not changed else "@"
+    head = jj_text(repo, "log", "-r", canonical_rev, "--no-graph", "-T", "commit_id")
+    head_tree = git_text(repo, "rev-parse", f"{head}^{{tree}}")
+    index_tree = head_tree
+    raw = changed
+    worktree_index = changed
     return {
         "head": head,
-        "branch_ref": git_text(repo, "symbolic-ref", "-q", "HEAD", check=False),
+        "bookmark_ref": repo_info(repo)["bookmark_ref"],
         "head_tree": head_tree,
         "index_tree": index_tree,
         "status_sha256": digest_bytes(raw),
         "status_empty": not bool(raw),
-        "worktree_index_empty": not bool(worktree_index),
+        "worktree_index_empty": True,
     }
 
 
@@ -390,11 +392,11 @@ def cmd_preflight(args) -> tuple[str, dict]:
             if any(head not in allowed and not dependency_advanced_head(doc, unit, head) for head in requested):
                 raise Operational("BLOCKED", "unrecorded same-wave HEAD allowance")
         if info["head"] not in allowed and not dependency_advanced_head(doc, unit, info["head"]):
-            raise Operational("BLOCKED", "canonical HEAD advanced outside the recorded wave")
+            raise Operational("BLOCKED", "canonical change advanced outside the recorded wave")
         validate_preflight_ancestry(doc, unit, requested | {info["head"]})
         snap = semantic_snapshot(info["toplevel"])
         if not snap["status_empty"] or snap["index_tree"] != snap["head_tree"]:
-            raise Operational("BLOCKED", "canonical checkout is not clean at preflight")
+            raise Operational("BLOCKED", "canonical workspace is not clean at preflight")
         expected = expected_apply_snapshot(info["toplevel"], snap["head"], unit)
         intent_revision = doc["revision"] + 1
     with locked_manifest(args.run_id, write=True) as doc:
@@ -416,7 +418,7 @@ def cmd_mark_applied(args) -> tuple[str, dict]:
         repo = validate_repo(doc)["toplevel"]
         snap = semantic_snapshot(repo)
         if snap["head"] != unit["integration"]["pre_fold"]["head"]:
-            raise Operational("BLOCKED", "canonical HEAD moved before apply was recorded")
+            raise Operational("BLOCKED", "canonical change moved before apply was recorded")
         if not matches_expected_apply(repo, unit, snap):
             raise Operational("BLOCKED", "canonical state does not match the expected transport application")
     test_fault("after-apply-observed")
@@ -572,7 +574,7 @@ def restore(run_id: str, unit_id: str, lock_token: str) -> bool:
         event(doc, "restore-intent", unit_id)
     if not already_exact:
         git(repo, "cherry-pick", "--abort", check=False)
-        git(repo, "reset", "--hard", pre["head"])
+        jj(repo, "restore", "--from", pre["head"], "--into", "@")
         test_fault("restore-after-reset")
         with locked_manifest(run_id) as doc:
             unit = doc["units"][unit_id]
@@ -612,7 +614,7 @@ def release_lock_is_owned(doc: dict, unit_id: str, lock_token: str, lock: dict) 
         "run_id": doc["run_id"],
         "unit_id": unit_id,
         "repository": doc["repository"]["identity_digest"],
-        "branch_ref": doc["branch"]["ref"],
+        "bookmark_ref": doc["bookmark"]["ref"],
     }
     if any(lock.get(key) != value for key, value in expected.items()):
         return False

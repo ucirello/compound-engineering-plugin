@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("checkpoint-plan")
     p.add_argument("--run-id", required=True)
+    p.add_argument(
+        "--description",
+        required=True,
+        help="Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Pass the resulting dynamic description.",
+    )
 
     p = sub.add_parser("prepare")
     p.add_argument("--run-id", required=True)
@@ -108,7 +113,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("integrate")
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
-    p.add_argument("--commit-message", required=True)
+    p.add_argument(
+        "--description",
+        required=True,
+        help="Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Pass the resulting dynamic description.",
+    )
     p.add_argument("--verification-summary", default="authoritative verification passed")
     p.add_argument("--allowed-head", action="append", default=[])
     p.add_argument("verification_command", nargs=argparse.REMAINDER)

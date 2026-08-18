@@ -2,18 +2,19 @@
 name: ce-polish
 description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, branch name, or blank for current branch]"
+argument-hint: "[PR number, bookmark name, or blank for current change]"
 ---
 
 # Polish
 
 Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
 
-## Phase 0: Get on the right branch
+## Phase 0: Get on the right change
 
-1. If a PR number or branch name was provided, check it out (probe for existing worktrees first).
-2. If blank, use the current branch.
-3. Verify the current branch is not main/master.
+1. If a PR number was provided, use `gh` to resolve its head bookmark while preserving the GitHub workflow. If a bookmark was provided, resolve it directly. Synchronize remote state with `jj git fetch` when needed.
+2. Before editing a resolved revision, inspect `jj workspace list` and use an existing workspace already editing it; otherwise edit the revision in the current workspace with `jj edit <revision>`.
+3. If blank, use the current working-copy change (`@`).
+4. Use the project's active instructions and `jj log` to identify the protected trunk bookmark, then verify that `@` is not its target. Stop and ask before polishing directly on trunk.
 
 ## Phase 1: Start the dev server
 
@@ -67,7 +68,7 @@ bash "$SKILL_DIR/scripts/resolve-port.sh" --type <type>
 
 ### 1.3 Start the server
 
-Start the dev server in the background, log output to a temp file. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
+Resolve the workspace root with `jj workspace root`, falling back to the current directory when unavailable. Start the dev server in the background and write its log to a unique run-specific file under `<workspace-root>/.tmp/rocketclaw/`, creating that directory if needed. Do not use OS-global temporary directories or `TMPDIR`. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
 
 ### 1.4 Open in browser
 
@@ -85,7 +86,7 @@ This is the core loop. The user browses the feature and tells you what to improv
 
 - When the user describes something to fix → make the change, the dev server hot-reloads
 - When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → commit the fixes and stop
+- When the user says they're done → inspect the completed change with `jj diff`, then finalize it with `jj commit` using a description derived from the actual change rather than a fixed message or template. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and history read through `jj log` are authoritative; apply compatible Go guidance by using a brief imperative subject without terminal punctuation and a body that explains what changed and why when useful. Stop after finalization.
 
 No checklist. No envelope. Just conversation.
 

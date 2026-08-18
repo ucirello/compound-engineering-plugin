@@ -9,6 +9,8 @@ disable-model-invocation: true
 
 Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures screenshots, logs, and verifies app behavior.
 
+Done means the requested build and simulator checks have run, evidence is stored under the workspace-local `.tmp`, and the user receives the tested scope, observed failures, human-verification outcomes, and overall result. Follow the project's active instructions and conventions already in context; when repository history is relevant, inspect it with `jj log`, and prefer those current instructions and observed conventions over generic guidance.
+
 ## Prerequisites
 
 - Xcode installed with command-line tools
@@ -26,20 +28,7 @@ MCP tool names vary by platform:
 - Claude Code: `mcp__xcodebuildmcp__list_simulators`
 - Other platforms: use the equivalent MCP tool call for the `XcodeBuildMCP` server's `list_simulators` method
 
-If the tool is not found or errors, inform the user they need to add the XcodeBuildMCP MCP server:
-
-```
-XcodeBuildMCP not installed
-
-Install via Homebrew:
-  brew tap getsentry/xcodebuildmcp && brew install xcodebuildmcp
-
-Or via npx (no global install needed):
-  npx -y xcodebuildmcp@latest mcp
-
-Then add "XcodeBuildMCP" as an MCP server in your agent configuration
-and restart your agent.
-```
+If the tool is unavailable or errors, report the observed failure and provide installation and agent-configuration guidance appropriate to the user's environment from the provider's current documentation.
 
 Do NOT proceed until XcodeBuildMCP is confirmed working.
 
@@ -49,9 +38,11 @@ Call XcodeBuildMCP's `discover_projs` tool to find available projects, then `lis
 
 If an argument was provided, use that scheme name. If "current", use the default/last-used scheme.
 
+Resolve the artifact root with `jj workspace root`; if the command does not return a workspace root, use the current directory. Store screenshots, captured logs, and other temporary test artifacts under `<workspace-root>/.tmp`, creating only the required directories there. Do not use an OS-global temporary directory or `TMPDIR`.
+
 ### 2. Boot Simulator
 
-Call `list_simulators` to find available simulators. Boot the preferred simulator (iPhone 15 Pro recommended) using `boot_simulator` with the simulator's UUID.
+Call `list_simulators` to find available simulators. Choose the simulator from the requested test target and project requirements, asking the user only when those inputs do not determine a safe choice, then call `boot_simulator` with its UUID.
 
 Wait for the simulator to be ready before proceeding.
 
@@ -78,7 +69,7 @@ Call `build_ios_sim_app` with the project path and scheme name.
 For each key screen in the app:
 
 **Take screenshot:**
-Call `take_screenshot` with the simulator UUID and a descriptive filename (e.g., `screen-home.png`).
+Call `take_screenshot` with the simulator UUID and a descriptive, collision-safe path under `<workspace-root>/.tmp` derived from the tested screen.
 
 **Review screenshot for:**
 - UI elements rendered correctly
@@ -100,28 +91,9 @@ Simulated taps (via XcodeBuildMCP or any simulator automation tool) do not trigg
 
 Pause for human input when testing touches flows that require device interaction.
 
-| Flow Type | What to Ask |
-|-----------|-------------|
-| Sign in with Apple | "Please complete Sign in with Apple on the simulator" |
-| Push notifications | "Send a test push and confirm it appears" |
-| In-app purchases | "Complete a sandbox purchase" |
-| Camera/Photos | "Grant permissions and verify camera works" |
-| Location | "Allow location access and verify map updates" |
-| SwiftUI Text links | "Please tap on [element description] manually — automated taps cannot trigger inline text links" |
+Ask for the smallest user action that crosses the human-only boundary, identifying the actual flow, simulator action, and observable success condition from the app under test. This includes authentication, external notification delivery, purchases, protected hardware or data access, location changes, and SwiftUI inline text links that automation cannot activate.
 
-Ask the user using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question:
-
-```
-Human Verification Needed
-
-This test requires [flow type]. Please:
-1. [Action to take on simulator]
-2. [What to verify]
-
-Did it work correctly?
-1. Yes - continue testing
-2. No - describe the issue
-```
+Ask the user using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes), not because a schema load is required. Never silently skip the question. Compose the prompt from the current flow and present neutral choices to continue after success or report what failed.
 
 ### 7. Handle Failures
 
@@ -132,56 +104,14 @@ When a test fails:
    - Capture console logs
    - Note reproduction steps
 
-2. **Ask the user how to proceed:**
+2. **Ask the user how to proceed:** report the actual failed screen or feature, observed behavior, and relevant evidence, then offer neutral choices to investigate and retest now or record the failure and continue the remaining scope.
 
-   ```
-   Test Failed: [screen/feature]
-
-   Issue: [description]
-   Logs: [relevant error messages]
-
-   How to proceed?
-   1. Fix now - debug, propose a fix, rebuild and retest
-   2. Skip - continue testing other screens
-   ```
-
-3. **If "Fix now":** investigate, propose a fix, rebuild and retest
-4. **If "Skip":** log as skipped, continue
+3. If the user chooses investigation, diagnose the evidence, propose an instruction-compatible fix, rebuild, and retest. Apply the quality conventions for the language and project involved; for any Go code in supporting tooling, preserve idiomatic formatting, error handling, tests, and package boundaries where compatible with the project's current conventions.
+4. If the user chooses to continue, record the failure as skipped and test the remaining scope.
 
 ### 8. Test Summary
 
-After all tests complete, present a summary:
-
-```markdown
-## Xcode Test Results
-
-**Project:** [project name]
-**Scheme:** [scheme name]
-**Simulator:** [simulator name]
-
-### Build: Success / Failed
-
-### Screens Tested: [count]
-
-| Screen | Status | Notes |
-|--------|--------|-------|
-| Launch | Pass | |
-| Home | Pass | |
-| Settings | Fail | Crash on tap |
-| Profile | Skip | Requires login |
-
-### Console Errors: [count]
-- [List any errors found]
-
-### Human Verifications: [count]
-- Sign in with Apple: Confirmed
-- Push notifications: Confirmed
-
-### Failures: [count]
-- Settings screen - crash on navigation
-
-### Result: [PASS / FAIL / PARTIAL]
-```
+After all tests complete, present a summary derived from the run. Include the project, scheme, simulator, build result, each tested screen and its status, console errors, human verifications, failures, artifact paths, and an overall pass, fail, or partial result. Omit empty sections rather than filling them with fixed examples.
 
 ### 9. Cleanup
 
@@ -197,7 +127,7 @@ After testing:
 /ce-test-xcode
 
 # Test specific scheme
-/ce-test-xcode MyApp-Debug
+/ce-test-xcode <scheme>
 
 # Test after making changes
 /ce-test-xcode current

@@ -1,6 +1,6 @@
-"""Metadata inventory of the canonical checkout's git-ignored entries.
+"""Metadata inventory of the canonical workspace's ignored entries.
 
-Verification runs in the canonical checkout; ignored state is never copied or
+Verification runs in the canonical workspace; ignored state is never copied or
 restored. Two inventories taken before and after verification diff into a
 disclosure of changed, removed, and created ignored paths.
 """

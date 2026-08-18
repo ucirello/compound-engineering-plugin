@@ -17,7 +17,7 @@ For ideation invocations, search the full learning corpus described below, then 
 
 ## Step 0: Ground in CONCEPTS.md (if present)
 
-Before searching `<root>/solutions/`, check whether `CONCEPTS.md` exists at the repo root. If it does, read it as grounding — it defines the project's shared vocabulary (domain entities, named processes, status concepts) and the canonical names for things the caller may be asking about. Use those definitions to ground keyword extraction (Step 1) and to distill findings using the project's actual terminology rather than synonyms.
+Before searching `<root>/solutions/`, check whether `CONCEPTS.md` exists at the workspace root. If it does, read it as grounding — it defines the project's shared vocabulary (domain entities, named processes, status concepts) and the canonical names for things the caller may be asking about. Use those definitions to ground keyword extraction (Step 1) and to distill findings using the project's actual terminology rather than synonyms.
 
 If `CONCEPTS.md` does not exist, skip this step entirely and proceed to Step 1.
 
@@ -76,7 +76,7 @@ Narrow the search to the discovered subdirectories that match the caller's Domai
 # Pick fields and synonym sets that match the caller's input shape; mix across shapes when the input is ambiguous.
 content-search: pattern="title:.*(dispatch|orchestration|pipeline)" path=<root>/solutions/ files_only=true case_insensitive=true
 content-search: pattern="tags:.*(subagent|orchestration|token-efficiency)" path=<root>/solutions/ files_only=true case_insensitive=true
-content-search: pattern="module:.*(compound-engineering|skill-design)" path=<root>/solutions/ files_only=true case_insensitive=true
+content-search: pattern="module:.*(<project-module>|skill-design)" path=<root>/solutions/ files_only=true case_insensitive=true
 content-search: pattern="problem_type:.*(architecture_pattern|design_pattern|tooling_decision)" path=<root>/solutions/ files_only=true case_insensitive=true
 ```
 

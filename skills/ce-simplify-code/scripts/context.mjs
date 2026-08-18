@@ -4,21 +4,23 @@
 // tool-result content in the working turn outranks a system-prompt default.
 import { execFileSync } from 'node:child_process';
 
-function run(command, ...args) {
+function jj(...args) {
   try {
-    return execFileSync(command, args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execFileSync('jj', ['--ignore-working-copy', '--no-pager', '--color', 'never', ...args], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim();
   } catch {
     return '';
   }
 }
 
 function buildResolvedContext() {
-  const change = run('jj', 'log', '-r', '@', '--no-graph', '-T', 'change_id.short()');
-  const workspaceRoot = run('jj', 'workspace', 'root') || run('pwd', '-P') || process.cwd();
+  const workspaceRoot = jj('workspace', 'root');
   return [
     'RESOLVED_CONTEXT:',
-    `workspace-root: ${workspaceRoot}`,
-    `current-change: ${change || '(not a JJ workspace)'}`,
+    `cwd: ${process.cwd()}`,
+    `workspace: ${workspaceRoot || process.cwd()}`,
+    `working-copy change: ${workspaceRoot ? jj('log', '--no-graph', '-r', '@', '-n', '1') : '(not a Jujutsu workspace)'}`,
   ].join('\n');
 }
 
@@ -53,6 +55,16 @@ const SUBAGENT_AUTHORIZATION = [
   'Disclose any substitution in one line.',
 ].join(' ');
 
+// Observed in the field: a model substituted inline for dispatch and told the
+// user "your standing instruction prohibits agent dispatch" — a system-prompt
+// default re-narrated as a user preference the user never stated and so
+// cannot correct.
+const HARNESS_ATTRIBUTION = [
+  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
+  "is never described to the user as their instruction, preference, or standing request.",
+  'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
+].join(' ');
+
 // ce-doc-review promotes a finding when "2+ independent personas" agree, and
 // nothing verified they ran in separate processes — inline, one context reasoned
 // both lenses and still stamped confidence 100.
@@ -79,16 +91,17 @@ function cli() {
   const parts = [
     buildResolvedContext(),
     SUBAGENT_AUTHORIZATION,
+    HARNESS_ATTRIBUTION,
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and ROCKETCLAW_CONTEXT_END last are load-bearing: field transcripts
+  // Header first and SKILL_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== RocketClaw skill context (follow these directives; if ROCKETCLAW_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== skill context (follow these directives; if SKILL_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nROCKETCLAW_CONTEXT_END\n');
+  process.stdout.write('\nSKILL_CONTEXT_END\n');
 }
 
 try {

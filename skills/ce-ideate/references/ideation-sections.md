@@ -185,5 +185,5 @@ mode: <repo-grounded | elsewhere-software | elsewhere-non-software>
 ## No process exhaust
 
 Keep engineering-process metadata out of the artifact — no "captured at
-Phase X" notes, no skill-pointer "next steps", and no generated credit
+Phase X" notes, no skill-pointer "next steps", no italic provenance
 lines. The reader wants the ideas and their basis.

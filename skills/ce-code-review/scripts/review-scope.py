@@ -53,12 +53,15 @@ def jj(*args: str) -> subprocess.CompletedProcess[str]:
 def valid_revision(ref: str | None) -> bool:
     if not ref:
         return False
-    result = jj("log", "-r", f"exactly({ref}, 1)", "--no-graph", "-T", "commit_id ++ '\\n'")
-    return result.returncode == 0 and bool(result.stdout.strip())
+    result = jj("log", "-r", ref, "--no-graph", "-T", 'commit_id ++ "\\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
-def unique_merge_base(base: str, head: str) -> str | None:
-    result = jj("log", "-r", f"exactly(fork_point({base} | {head}), 1)", "--no-graph", "-T", "commit_id ++ '\\n'")
+def unique_common_ancestor(base: str, head: str) -> str | None:
+    result = jj(
+        "log", "-r", f"heads(::{base} & ::{head})", "--no-graph",
+        "-T", 'commit_id ++ "\\n"',
+    )
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -84,13 +87,13 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
+    """The workspace root, matching how docs_root is resolved everywhere else.
 
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the JJ workspace root, not the current working
-    directory. ce-code-review can run from a subdirectory, where ``Path.cwd()``
-    would join docs_root under the subdir and wrongly report the corpus absent.
-    Fall back to cwd when JJ cannot answer.
+    docs_root is workspace-relative (``<workspace-root>/<docs_root>``), so the corpus
+    check must resolve against the Jujutsu workspace root, not the current working
+    directory. ce-code-review can run from a subdirectory (``jj diff`` still
+    works there), where ``Path.cwd()`` would join docs_root under the subdir and
+    wrongly report the corpus absent. Fall back to cwd when Jujutsu can't answer.
     """
     result = jj("workspace", "root")
     if result.returncode == 0 and result.stdout.strip():
@@ -104,7 +107,7 @@ def has_learnings_corpus(docs_root: str | None) -> bool:
     docs_root is the artifact root resolved by the calling skill (default
     ``docs``). Guard it the way the skill-prose rule does: normalize an
     unset/placeholder value to the default, and treat a value that is absolute
-    or escapes the repository as absent rather than probing an out-of-repo path.
+    or escapes the workspace as absent rather than probing an out-of-workspace path.
     """
     docs_root = normalize_docs_root(docs_root)
     if os.path.isabs(docs_root):
@@ -147,34 +150,35 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", learnings_corpus), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
+    diff_args = ["--from", args.base, "--to", "@"]
     if args.head:
-        merge_base = unique_merge_base(args.base, args.head)
-        if merge_base is None:
-            print(json.dumps(fail_closed("merge base unavailable or ambiguous", learnings_corpus), sort_keys=True))
+        common_ancestor = unique_common_ancestor(args.base, args.head)
+        if common_ancestor is None:
+            print(json.dumps(fail_closed("common ancestor unavailable or ambiguous", learnings_corpus), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_args = ["--from", common_ancestor, "--to", args.head]
 
-    diff_options = ["--from", diff_args[0]]
-    if len(diff_args) == 2:
-        diff_options += ["--to", diff_args[1]]
-    names = jj("diff", *diff_options, "--name-only")
-    patch = jj("diff", *diff_options, "--git")
+    names = jj("diff", *diff_args, "--name-only")
+    patch = jj("diff", *diff_args, "--git")
     if names.returncode != 0 or patch.returncode != 0:
         print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
     executable_lines = 0
-    current_file: str | None = None
+    current_file = None
     for line in patch.stdout.splitlines():
         if line.startswith("diff --git a/"):
-            current_file = line.split(" b/", 1)[-1]
-        elif current_file and Path(current_file).suffix.lower() in CODE_EXTENSIONS:
-            if (line.startswith("+") and not line.startswith("+++")) or (
-                line.startswith("-") and not line.startswith("---")
-            ):
-                executable_lines += 1
+            match = re.match(r"diff --git a/(.*?) b/(.*)", line)
+            current_file = match.group(2) if match else None
+            continue
+        if (
+            current_file
+            and Path(current_file).suffix.lower() in CODE_EXTENSIONS
+            and (line.startswith("+") or line.startswith("-"))
+            and not line.startswith(("+++", "---"))
+        ):
+            executable_lines += 1
 
     uncounted = sum(
         1 for file in files if Path(file).suffix.lower() not in CODE_EXTENSIONS

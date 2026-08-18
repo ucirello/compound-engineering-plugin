@@ -19,7 +19,7 @@ These hold regardless of which skill produced the artifact.
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
 - **Repo-relative paths for file references.** Always. Never absolute paths
-  — they break portability across machines, workspaces, teammates.
+  — they break portability across machines, Jujutsu workspaces, and teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
   semantic marker such as `<!-- ce-section: work-relationships -->`; it carries
@@ -115,8 +115,8 @@ are noisier in raw form and worse for diffs.
 How section types commonly render in markdown. These are patterns, not
 contracts — the agent picks the shape that fits the content.
 
-- **Goal Capsule** — bullets or a small table for objective, authority,
-  execution profile, stop conditions, and tail ownership.
+- **Goal Capsule** — bullets or a small table for objective, means (only
+  when an approach is fixed), authority, execution profile, stop conditions, and tail ownership.
 - **Product Contract** — H2 section containing Summary, Problem Frame,
   Requirements, and product-scope subsections. Put Requirements under
   `### Requirements` so review tools can distinguish Product Requirements
@@ -208,8 +208,12 @@ Engineering process metadata stays out of the artifact:
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in JJ change descriptions, tool output, and agent
+This information belongs in JJ descriptions, tool output, and agent
 transcripts — not in the artifact a reader returns to weeks later.
+
+When recommending a JJ description, active project instructions and patterns read through `jj log` win; apply compatible Go guidance without imposing fixed syntax or a message template.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 ## Frontmatter shape
 
@@ -224,7 +228,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from JJ, not stored in the doc.
+  the work shipped is derived from `jj log`, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit

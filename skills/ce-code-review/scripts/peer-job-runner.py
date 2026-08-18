@@ -58,8 +58,7 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (the JJ workspace's .tmp/rocketclaw/ce-peer-jobs,
-                             or local .tmp/rocketclaw/ce-peer-jobs when no workspace resolves)
+  CE_PEER_JOBS_ROOT         base dir (<workspace-root>/.tmp/rocketclaw)
   CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
@@ -77,7 +76,7 @@ Environment overrides (defaults in parentheses):
                             CE_PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
-the workspace-local .tmp. Every read of job state opens the file first (no-follow) and
+the current workspace's .tmp/rocketclaw. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -110,7 +109,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the workspace-local .tmp, with the same hardened ACL.
+  jobs root defaults under <workspace-root>\\.tmp\\rocketclaw.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -124,6 +123,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -140,18 +140,19 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-def _workspace_tmp_root() -> str:
+def _workspace_root() -> str:
     try:
         result = subprocess.run(
             ["jj", "workspace", "root"], capture_output=True, text=True, check=False
         )
-        root = result.stdout.strip() if result.returncode == 0 else ""
+        if result.returncode == 0 and result.stdout.strip():
+            return os.path.abspath(result.stdout.strip())
     except OSError:
-        root = ""
-    return os.path.join(root or os.curdir, ".tmp", "rocketclaw", "ce-peer-jobs")
+        pass
+    return os.path.abspath(os.getcwd())
 
 
-DEFAULT_ROOT = _workspace_tmp_root()
+DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -205,11 +206,12 @@ _RUNNER_HARD_GRACE = 30.0
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe; a pre-existing root must still pass ownership and
-    writability checks before it can hold job state.
+    Creation is the probe; a planted or non-writable path fails closed.
     """
     try:
-        os.makedirs(path, mode=0o700, exist_ok=True)
+        os.makedirs(path, mode=0o700)
+    except FileExistsError:
+        pass
     except OSError:
         return False
     try:
@@ -225,11 +227,11 @@ def jobs_root_base() -> str:
         return os.path.abspath(configured)
     if _private_root_usable(DEFAULT_ROOT):
         return os.path.abspath(DEFAULT_ROOT)
-    raise RunnerError("workspace .tmp cannot host a writable private jobs root")
+    raise RunnerError(f"workspace jobs root is unavailable: {DEFAULT_ROOT}")
 
 
 def candidate_jobs_root_bases() -> list:
-    """The configured root, or the workspace-local default used for creation."""
+    """The configured root, or the current workspace's namespaced temp root."""
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]
@@ -797,17 +799,7 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    fd = -1
-    tmp = ""
-    for _ in range(CLAIM_ATTEMPTS):
-        tmp = os.path.join(os.path.dirname(path), f".tmp-{os.urandom(8).hex()}")
-        try:
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
-            break
-        except FileExistsError:
-            continue
-    if fd < 0:
-        raise OSError(f"could not reserve an atomic write path beside {path}")
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -1782,7 +1774,8 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (see the detached-job portability notes)."
+            "a Windows Python 3 build (see "
+            "the native Windows detach contract)."
         )
 
 
@@ -1977,7 +1970,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace .tmp path unchecked.
+        # consumer must never read a predictable workspace-temp path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

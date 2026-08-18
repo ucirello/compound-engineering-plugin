@@ -1,97 +1,49 @@
 ---
 name: ce-worktree
-description: Set up an isolated Jujutsu workspace and working-copy change for new work or for work based on an existing change, bookmark, commit, or GitHub PR. Use when starting isolated work or isolating an existing revision; preserves an already suitable workspace.
+description: Set up isolated Jujutsu workspaces for fresh work or an existing bookmark, pull request, or revision. Use when starting isolated work or isolating an existing revision; detects existing isolation first.
 ---
 
-# Jujutsu Workspace Isolation
+# Workspace Isolation
 
-Ensure the requested work happens in its own Jujutsu workspace and working-copy change without disturbing another workspace. A workspace owns a working-copy change; bookmarks are named revision pointers, not checked-out branches, and no bookmark is active.
+Ensure the current work happens in an isolated Jujutsu workspace without disturbing the user's primary workspace. Many coding harnesses create an isolated workspace at session start, so the common case is that **isolation already exists**.
 
-**Done when:** the caller is operating in an already suitable or newly created workspace, its root and workspace name are reported, and `@` is the intended working-copy change with the requested parent. Report a blocker instead when that state cannot be established safely.
+**Done when:** the caller is working in an existing or newly created isolated workspace and its path, workspace name, working-copy change, and relevant bookmark or pull-request head have been reported, or a blocker has been reported instead.
 
-**Two modes, selected by caller intent:**
+**Order of operations: detect existing isolation -> prefer a Jujutsu-aware native workspace tool -> fall back to `jj workspace`.** Never create a workspace the harness cannot enter or manage.
 
-- **New work (default):** create an empty, unbookmarked working-copy change whose sole parent is `main@origin`.
-- **Existing work:** create an empty working-copy change on the requested change, bookmark, commit ID, or GitHub PR head. This gives the workspace an independent child to edit; do not make two workspaces edit the same change.
+**Two modes, set by the caller's need:**
 
-`ce-work` and `ce-code-review` may route here when isolation is requested. Preserve that routing and preserve all `gh`/GitHub behavior used to identify a PR.
+- **New work (default).** No revision named: create a fresh working-copy change on the project's trunk revision. This is what `ce-work` and `ce-code-review` use when the user picks workspace isolation.
+- **Isolate existing work.** The caller names a pull-request head, bookmark, tag, change ID, or commit ID: create the workspace with a fresh working-copy change whose parent is that revision. Jujutsu allows separate workspaces to use the same parent, so do not impose Git's one-branch-per-worktree restriction.
 
-## Command Discipline
+## Step 0: Detect existing isolation
 
-Run each command as its own shell tool call: one program and its arguments, with no shell operators, pipes, substitutions, redirects, or dependence on shell state from another call. Interpret non-zero status as state to resolve, not permission to switch version-control systems.
+Resolve the current root with `jj workspace root` and inspect `jj workspace list`, including each available root. Use the harness's workspace context to determine whether the current workspace is the isolation created for this task; the existence of another workspace alone does not make the current one isolated.
 
-| Command | Purpose | Failure or empty result |
-| --- | --- | --- |
-| `jj workspace root` | Confirm Jujutsu context and resolve the current workspace root | Not a Jujutsu workspace; report and stop |
-| `jj workspace list` | Inspect workspace names, roots, and working-copy changes | Workspace state is unavailable; report and stop |
-| `jj status` | Snapshot and inspect `@`, conflicts, and bookmark warnings | Repository or working-copy state is unavailable; report and stop |
-| `jj diff` | Determine whether the current working-copy change has content | Empty means `@` has no content |
-| `jj log -r "@ | parents(@)"` | Inspect the current change and its parentage | The current revision state is unresolved |
-| `jj bookmark list --all-remotes` | Resolve local and remote bookmark targets | No bookmarks are known |
-| `jj log -n 10` | Inspect actual repository message conventions before any description work | No message history is available; use active repository instructions and compatible Go guidance only |
+- If the current workspace is already the task's isolation, report its root, workspace name, `@` change ID, and bookmarks from `jj log`, then work in place. Creating a workspace from that workspace can put the caller in a path the harness does not manage.
+- In isolate-existing-work mode, first verify with `jj log` that the current working-copy change is already based on the requested revision. If it is not and the current change contains work, stop and report the conflict rather than switching away from that work. If it is empty, create a new working-copy change on the requested revision with `jj new <target-revision>` and continue in place.
+- If `jj workspace root` fails, no Jujutsu workspace has been established. Use the current directory only as the fallback root for `.tmp`; report the missing Jujutsu repository as a blocker unless a Jujutsu-aware native tool can establish the requested workspace.
 
-Treat the results as a snapshot. Re-run `jj status` and the relevant revision query immediately before creating a workspace because another workspace may update repository state concurrently.
+## Step 1: Prefer the harness's native workspace tool
 
-## Preserve Existing Isolation
+If the harness provides a Jujutsu-aware workspace primitive, use it when it can create the workspace under `<workspace-root>/.tmp/rocketclaw/workspaces/<workspace-name>` and expose the resulting path to the current session. Native tools own their placement, navigation, and cleanup contracts; use the same base or target revision rules as the fallback below. If the native primitive cannot satisfy the Jujutsu or path contract, continue only when the `jj workspace` result will be visible to the harness; otherwise report the incompatibility as a blocker.
 
-If the harness or caller already placed this session in a dedicated workspace, prefer it when its current change can safely represent the requested work. Do not infer suitability merely from the existence of `.jj/`: every Jujutsu workspace has one.
+## Step 2: Jujutsu fallback
 
-- For new work, preserve the current workspace only when `@` is empty, has exactly the requested parent, and contains no unrelated description, conflict, or bookmark placement.
-- For existing work, preserve it only when `@` is an empty child of the resolved target and has no unrelated description, conflict, or bookmark placement.
-- If `@` contains user work, has the wrong parent, or is shared with another task, leave it untouched and create a separate workspace.
+Only when there is no suitable native tool and Step 0 found no existing isolation:
 
-A bookmark may identify a parent used by several workspaces. Never reject isolation because a bookmark is visible from another workspace, and never move, create, track, or delete a bookmark merely to create isolation.
+1. Resolve `<workspace-root>` with `jj workspace root`; use the current directory only if that lookup fails. All temporary workspace state belongs under `<workspace-root>/.tmp`, with this workflow's workspaces under `<workspace-root>/.tmp/rocketclaw/workspaces/`. Do not use an OS-global temporary directory, `TMPDIR`, or a user-global cache.
+2. Before creating the destination, ensure `.tmp/` is ignored according to the project's active ignore conventions. If it is not ignored, add the minimal `.tmp/` ignore entry before creating the directory so Jujutsu does not snapshot workspace internals.
+3. Read the project's active instructions and inspect relevant history with `jj log`. Those sources decide the trunk revision, remote, workspace name, bookmark conventions, and description style. Choose meaningful values from the work rather than opaque generated values, and use neutral dynamic placeholders in commands.
+4. When composing or validating the initial Jujutsu change description, apply project conventions first and compatible Go guidance only to quality, clarity, and structure without imposing fixed syntax or content.
 
-## Resolve The Parent
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-### New Work
+5. Resolve the target revision:
+   - **New work:** use the trunk revision established by the active project instructions and `jj log`; `trunk()` is acceptable when the repository config resolves it correctly. Refresh its Git-backed remote bookmark with `jj git fetch --remote <remote-name> --branch <remote-branch>` when one exists. Fetch failure is non-fatal when the local revision is valid.
+   - **Existing local work:** resolve the supplied bookmark, tag, change ID, or commit ID with `jj log -r <target-revision>`. Stop rather than guessing if it is absent or ambiguous.
+   - **Pull request:** use `gh pr view <pull-request> --json <required-head-fields>` to identify the exact head commit, head branch, and head repository. Reuse a matching configured Jujutsu Git remote, or add a meaningfully named remote with `jj git remote add <remote-name> <head-repository-url>`, then import the head with `jj git fetch --remote <remote-name> --branch <head-branch>`. Verify the exact head commit with `jj log` and use that commit as the target. Preserve the remote and head-branch mapping in the handoff so later updates can move or create the corresponding bookmark and use `jj git push --remote <remote-name> --bookmark <bookmark-name>` without detaching or orphaning the work.
+6. Create the parent directory under `<workspace-root>/.tmp/rocketclaw/workspaces/`, then create one workspace with `jj workspace add --name <workspace-name> --revision <target-revision> --message <description> <workspace-root>/.tmp/rocketclaw/workspaces/<workspace-name>`. This creates a fresh working-copy change on the selected revision; do not edit an immutable target directly.
+7. Enter the new workspace through the harness-supported navigation mechanism. Confirm its root and working-copy change with `jj workspace root`, `jj workspace list`, `jj status`, and `jj log`, then report the path, workspace name, `@` change ID, parent revision, and any relevant bookmark or pull-request remote mapping.
 
-Refresh the relevant remote state with `jj git fetch --remote origin`. Fetch failure is non-fatal only when the recorded remote bookmark still resolves unambiguously and the user accepts that it may be stale. Resolve the parent with `jj log -r "main@origin" --no-graph`; it must identify exactly one non-root revision. Do not substitute another inferred or fixed reference, a local bookmark, or the current parent. If it does not resolve, report the blocker and ask for the intended parent rather than guessing.
-
-### Existing Change, Bookmark, Or Commit
-
-Resolve the caller's value directly with `jj log -r <requested-revision> --no-graph`. Accept a change ID, commit ID, local bookmark, or explicit remote bookmark when it resolves to exactly one revision. Preserve the caller's revision identity; do not create a local bookmark as an alias and do not attach workspace state to an existing bookmark.
-
-### GitHub PR
-
-Use `gh pr view <pr-ref> --json number,url,headRefName,headRefOid,headRepositoryOwner,headRepository,isCrossRepository,state` to identify the exact open PR head. Preserve normal `gh` authentication and repository discovery, adding `-R <owner>/<repository>` only when repository context is unavailable or ambiguous.
-
-Resolve `headRefOid` in Jujutsu first. If it is absent, fetch the PR's head bookmark from the remote that corresponds to `headRepositoryOwner` and `headRepository`, then resolve the fetched remote bookmark and confirm its commit ID equals `headRefOid`. Reuse a matching configured remote. Adding a remote changes repository configuration, so ask before doing so. Do not use a detached checkout, a branch, `FETCH_HEAD`, or an unverified same-named bookmark. A closed or unresolvable PR is a blocker unless the caller explicitly asks to use its last head revision.
-
-## Message Standard
-
-At every site that composes, edits, checks, validates, recommends, templates, or exemplifies a Jujutsu change description, repository instructions and actual history win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Do not impose a fixed type, scope, prefix, capitalization, mood, subject form, body layout, line limit, trailer, template, or example. Workspace creation normally leaves the new empty working-copy change undescribed. If caller intent or repository convention requires an early description, immediately before composing, editing, or validating it: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-## Create The Workspace
-
-Follow repository-local workspace naming conventions observed in `jj workspace list`. Derive a meaningful, collision-free name from the requested work only when those conventions make it unambiguous; otherwise ask. Do not impose a fixed namespace or naming syntax.
-
-Resolve the destination base from `jj workspace root` and use `<workspace-root>/.tmp/rocketclaw/ce-worktree/<workspace-name>`. If that root cannot host the destination, use the current project's local `.tmp/rocketclaw/ce-worktree/<workspace-name>` as the only fallback. Confirm the destination does not already contain user data; never overwrite or reuse an unverified path.
-
-Create the destination directory's parent with the native filesystem capability, then create the workspace and its independent empty change:
-
-```text
-jj workspace add --name <workspace-name> --revision <resolved-parent> <destination>
-```
-
-Do not pass `--message` by default, create or move a bookmark, run `jj edit`, or mutate the source workspace's change. Jujutsu snapshots working-copy content automatically; there is no staging or branch checkout step.
-
-If creation fails because the destination is nested beneath content that Jujutsu would track, because the sandbox denies the path, or because the workspace name/path conflicts, no isolation was created. Leave existing workspace state untouched and ask whether to choose another workspace-local path or stop and resolve the blocker. Do not silently continue in the source workspace.
-
-## Verify And Report
-
-Run each verification from the new workspace:
-
-| Command | Required result |
-| --- | --- |
-| `jj workspace root` | Exactly the resolved destination |
-| `jj status` | A clean, conflict-free working-copy change |
-| `jj diff` | Empty |
-| `jj log -r "@ | parents(@)"` | `@` is a distinct empty change with exactly the resolved parent |
-| `jj workspace list` | The chosen workspace name maps to the destination and current change |
-
-If any invariant fails, stop and report it; do not repair parentage, descriptions, bookmarks, or user content by guessing. On success, switch subsequent tool calls to the new workspace directory and report its root, workspace name, working-copy change ID, parent revision, and any bookmark or PR identity used only to resolve that parent.
-
-Workspace cleanup is separate user intent. When explicitly requested, verify the workspace name and root, preserve any non-empty change, run `jj workspace forget <workspace-name>`, and remove only the confirmed run-owned directory after Jujutsu no longer lists it.
+If workspace creation fails with a sandbox, permission, stale-workspace, revision, or remote-import error, the requested isolation does not exist. Do **not** proceed in the current workspace: report the command and failure, then ask whether to work in the current workspace or stop and resolve the blocker, using the harness's blocking-question capability. Only when no blocking capability exists or it errors, present the numbered options in chat and wait for the reply. Never infer consent or retry in an external/global temporary path.

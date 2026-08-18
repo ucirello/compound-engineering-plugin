@@ -8,8 +8,18 @@ import json
 import os
 import sys
 
-from unit_workspace_state import DESCRIPTION_STANDARD, Operational, TrustFailure, cmd_checkpoint_plan, cmd_init
+from unit_workspace_state import Operational, TrustFailure, cmd_checkpoint_plan, cmd_init
 from unit_workspace_jobs import cmd_authorize_dispatch, cmd_prepare, cmd_record_job, cmd_sync_job, cmd_terminalize
+from unit_workspace_integration import (
+    cmd_integration_acquire,
+    cmd_integration_release,
+    cmd_mark_applied,
+    cmd_mark_committed,
+    cmd_mark_verified,
+    cmd_preflight,
+    cmd_restore,
+    cmd_wave_advance,
+)
 from unit_workspace_lifecycle import cmd_claim_fallback, cmd_cleanup, cmd_complete_fallback, cmd_reap, cmd_resume, cmd_status
 from unit_workspace_transaction import cmd_integrate, cmd_verify_run
 
@@ -31,7 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("checkpoint-plan")
     p.add_argument("--run-id", required=True)
-    p.add_argument("--description", required=True, help=f"dynamic checkpoint description derived from local conventions. {DESCRIPTION_STANDARD}")
+    p.add_argument(
+        "--description",
+        required=True,
+        help="Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Pass the resulting dynamic description.",
+    )
 
     p = sub.add_parser("prepare")
     p.add_argument("--run-id", required=True)
@@ -67,17 +81,62 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--run-id", required=True)
         p.add_argument("--unit-id", required=True)
 
+    p = sub.add_parser("integration-acquire")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--unit-id", required=True)
+    p.add_argument("--resume", action="store_true")
+
+    p = sub.add_parser("preflight")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--unit-id", required=True)
+    p.add_argument("--lock-token", required=True)
+    p.add_argument("--allowed-head", action="append", default=[])
+
+    p = sub.add_parser("mark-applied")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--unit-id", required=True)
+    p.add_argument("--lock-token", required=True)
+
+    p = sub.add_parser("mark-verified")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--unit-id", required=True)
+    p.add_argument("--lock-token", required=True)
+    p.add_argument("--evidence-digest", required=True)
+    p.add_argument("--summary", default="authoritative verification passed")
+    p.add_argument("--ignored-state", default=None)
+
+    p = sub.add_parser("mark-committed")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--unit-id", required=True)
+    p.add_argument("--lock-token", required=True)
+
     p = sub.add_parser("integrate")
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
-    p.add_argument("--description", required=True, help=f"dynamic Jujutsu change description derived from local conventions. {DESCRIPTION_STANDARD}")
+    p.add_argument(
+        "--description",
+        required=True,
+        help="Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Pass the resulting dynamic description.",
+    )
     p.add_argument("--verification-summary", default="authoritative verification passed")
+    p.add_argument("--allowed-head", action="append", default=[])
     p.add_argument("verification_command", nargs=argparse.REMAINDER)
 
     p = sub.add_parser("verify-run")
     p.add_argument("--run-id", required=True)
     p.add_argument("--verification-summary", default="plan-wide authoritative verification passed")
     p.add_argument("verification_command", nargs=argparse.REMAINDER)
+
+    p = sub.add_parser("wave-advance")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--unit-id", required=True)
+    p.add_argument("--lock-token", required=True)
+    p.add_argument("--canonical-commit", required=True)
+
+    p = sub.add_parser("restore")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--unit-id", required=True)
+    p.add_argument("--lock-token", required=True)
 
     p = sub.add_parser("status")
     p.add_argument("--run-id", required=True)
@@ -97,7 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("complete-fallback")
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
-    p.add_argument("--accepted-change", required=True)
+    p.add_argument("--accepted-head", required=True)
     p.add_argument("--evidence-digest", required=True)
     p.add_argument("--summary", required=True)
 
@@ -108,6 +167,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--expect-transport")
     p.add_argument("--expect-job")
 
+    p = sub.add_parser("integration-release")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--unit-id", required=True)
+    p.add_argument("--lock-token", required=True)
     return parser
 
 
@@ -119,14 +182,22 @@ COMMANDS = {
     "record-job": cmd_record_job,
     "sync-job": cmd_sync_job,
     "terminalize": cmd_terminalize,
+    "integration-acquire": cmd_integration_acquire,
+    "preflight": cmd_preflight,
+    "mark-applied": cmd_mark_applied,
+    "mark-verified": cmd_mark_verified,
+    "mark-committed": cmd_mark_committed,
     "integrate": cmd_integrate,
     "verify-run": cmd_verify_run,
+    "wave-advance": cmd_wave_advance,
+    "restore": cmd_restore,
     "status": cmd_status,
     "resume": cmd_resume,
     "claim-fallback": cmd_claim_fallback,
     "complete-fallback": cmd_complete_fallback,
     "reap": cmd_reap,
     "cleanup": cmd_cleanup,
+    "integration-release": cmd_integration_release,
 }
 
 

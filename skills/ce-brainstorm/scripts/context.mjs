@@ -13,12 +13,13 @@ function jj(...args) {
 }
 
 function buildResolvedContext() {
+  const workspace = jj('workspace', 'root');
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace: ${jj('workspace', 'root') || '(not a JJ repository)'}`,
+    `workspace: ${workspace || '(not a Jujutsu workspace)'}`,
+    `bookmarks: ${jj('log', '-r', '@', '--no-graph', '-T', 'bookmarks') || '(none)'}`,
     `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(none)'}`,
-    `commit: ${jj('log', '-r', '@', '--no-graph', '-T', 'commit_id.short()') || '(none)'}`,
   ].join('\n');
 }
 

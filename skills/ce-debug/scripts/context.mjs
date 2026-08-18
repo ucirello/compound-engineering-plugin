@@ -13,12 +13,14 @@ function jj(...args) {
 }
 
 function buildResolvedContext() {
+  const workspace = jj('workspace', 'root');
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace_root: ${jj('workspace', 'root') || '(not a JJ workspace)'}`,
-    `bookmarks: ${jj('log', '-r', '@', '--no-graph', '-T', 'bookmarks.map(|b| b.name()).join(", ")') || '(none)'}`,
-    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.shortest(8)') || '(none)'}`,
+    `workspace: ${workspace || process.cwd()}`,
+    `bookmarks: ${jj('log', '-r', '@', '--no-graph', '-T', 'local_bookmarks') || '(none)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(not a Jujutsu repository)'}`,
+    `revision: ${jj('log', '-r', '@', '--no-graph', '-T', 'commit_id.short()') || '(none)'}`,
   ].join('\n');
 }
 
@@ -82,13 +84,13 @@ function cli() {
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and ROCKETCLAW_CONTEXT_END last are load-bearing: field transcripts
+  // Header first and CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== RocketClaw skill context (follow these directives; if ROCKETCLAW_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== skill context (follow these directives; if CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nROCKETCLAW_CONTEXT_END\n');
+  process.stdout.write('\nCONTEXT_END\n');
 }
 
 try {

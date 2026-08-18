@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #
-# read-launch-json.sh — read .rocketclaw/launch.json from the workspace
-# root and emit
+# read-launch-json.sh — read .claude/launch.json from the workspace root and emit
 # the selected configuration as JSON on stdout, or a sentinel on failure.
 #
 # Usage:
@@ -28,20 +27,23 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, workspace root unavailable).
+# genuine operational failures (missing `jq`, inaccessible workspace root).
 
 set -u
 
 REQUESTED_NAME="${1:-}"
 
-WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+if [ -z "$WORKSPACE_ROOT" ]; then
+  WORKSPACE_ROOT=$(pwd -P)
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
   exit 1
 fi
 
-LAUNCH_PATH="$WORKSPACE_ROOT/.rocketclaw/launch.json"
+LAUNCH_PATH="$WORKSPACE_ROOT/.claude/launch.json"
 
 if [ ! -f "$LAUNCH_PATH" ]; then
   echo "__NO_LAUNCH_JSON__"

@@ -1,16 +1,16 @@
-# RocketClaw ce-debug — pipeline mode (non-interactive)
+# Pipeline Mode (Non-Interactive)
 
-Loaded when `$rocketclaw:ce-debug` is invoked with `mode:pipeline` by an orchestrator (`$rocketclaw:ce-babysit-pr`, `$rocketclaw:lfg`). The skill runs to completion without ever asking the user and returns a structured result the caller composes. The investigation rigor is unchanged — only the interaction and the fix-authority boundary change.
+Loaded when `ce-debug` is invoked with `mode:pipeline` by an orchestrator (`ce-babysit-pr`, `lfg`). The skill runs to completion without ever asking the user and returns a structured result the caller composes. The investigation rigor is unchanged — only the interaction and the fix-authority boundary change.
 
 ## Authority: you act under the orchestrator's inherited scope
 
-Being invoked by an orchestrator is **not** itself authorization. You mutate under the **inherited** scope the orchestrator holds from the user: **actions** = fix / path-limited JJ commit / bookmark push on the current bookmark; **exclusions** = merge, `jj rebase`, non-fast-forward publication, approve a gated CI run. That envelope is fixed — you may *narrow* it (defer a fix, return `needs-human`) but never *broaden* it. If the only way to make CI green is an excluded action, defer as `needs-human` with a `decision_context`; do not perform it.
+Being invoked by an orchestrator is **not** itself authorization. You mutate under the **inherited** scope the orchestrator holds from the user: **actions** = fix / describe / `jj git push` on the current change and bookmark; **exclusions** = changing merge topology, rebasing, moving a bookmark backward, bypassing push safety, or approving a gated CI run. That envelope is fixed — you may *narrow* it (defer a fix, return `needs-human`) but never *broaden* it. If the only way to make CI green is an excluded action, that is out of envelope: **defer as `needs-human`** with a `decision_context`, do not perform it. This is a mutation-mechanism boundary and sits alongside the convergent/divergent *content* boundary below — a fix can be convergent in content yet still be out of envelope in mechanism.
 
 ## Non-interactive overrides (per phase)
 
 - **Phase 0 (triage):** If an issue fetch fails, do not ask the user to paste content — proceed with the input you have and note the gap in the return. Do not ask "what have you tried"; infer prior attempts from the input.
 - **Phase 2 (root cause + fix gate):** There is no "Fix it now / Diagnosis only" question. The caller invoked this skill to fix, so **fix by default — but only convergent fixes** (see the boundary below). A divergent fix is deferred, not applied.
-- **Phase 3 (workspace/bookmark):** Operate on the current JJ workspace and bookmark — the orchestrator owns that context; never prompt to create a bookmark or about pre-existing working-copy changes. Commit only the fix-owned files, move the orchestrator-selected bookmark to the resulting fix revision, verify its target, and publish only that bookmark with `jj git push --remote <remote> --bookmark <bookmark>`. At the description composition and edit site, use `<description-composed-from-runtime-conventions>` as the neutral placeholder. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's history wording is not an operational command; inspect history with `jj log`. Local instructions and runtime `jj log` history win over compatible Go guidance. The description must identify the repaired failure; do not impose a fixed prefix, type, scope, message, subject, body, layout, template, or example. Never weaken, skip, or mock a failing assertion to make it pass — repair the real issue or defer.
+- **Phase 3 (workspace/bookmark):** Operate on the current change and bookmark — the orchestrator owns that context; never prompt to create a bookmark, never prompt about pre-existing working-copy changes. Read the project's active instructions and `jj log` history before describing the change; those current sources win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use a neutral description derived from the actual fix, then push through `jj git push` without bypassing its safety checks. Never weaken, skip, or mock a failing assertion to make it pass — repair the real issue or defer.
 - **Phase 4 (handoff):** No prompt. Emit the structured return below. Skip the compound offer.
 - **Quality tail (simplify/review):** Skip in pipeline to bound cost and nesting depth; the orchestrator scopes review at its own level. Keep the Phase 3 tests.
 
@@ -18,7 +18,7 @@ Being invoked by an orchestrator is **not** itself authorization. You mutate und
 
 Apply a fix only when it **converges to intended behavior** — it repairs the real defect so the code meets its planned/tested intent (a genuine bug: null deref, off-by-one, a broken call, a regression against a test that encodes intended behavior).
 
-**Defer** (do not apply) any fix that would **diverge from intended behavior**: it would change a deliberate contract, API shape, default, or product/UX decision rather than repair a bug; or the "failure" is a test asserting a deliberate behavior that the fix would reverse; or making CI green would require a product/design call. This mirrors the `$rocketclaw:ce-resolve-pr-feedback` intent-conflict tripwire — evidence-gated and rare, never a reason to dodge a real fix. When genuinely unsure whether a failure is a bug or a deliberate-behavior conflict, prefer deferring with a crisp `decision_context` over guessing.
+**Defer** (do not apply) any fix that would **diverge from intended behavior**: it would change a deliberate contract, API shape, default, or product/UX decision rather than repair a bug; or the "failure" is a test asserting a deliberate behavior that the fix would reverse; or making CI green would require a product/design call. This mirrors the `ce-resolve-pr-feedback` intent-conflict tripwire — evidence-gated and rare, never a reason to dodge a real fix. When genuinely unsure whether a failure is a bug or a deliberate-behavior conflict, prefer deferring with a crisp `decision_context` over guessing.
 
 ### Emergent trade-offs (when the caller passes a `trajectory`)
 
@@ -26,7 +26,7 @@ Some divergence isn't visible in one pass — it emerges across rounds as **ping
 
 - **Progressive failure migration** — A fixed, B appears *once*, you fix B, done — is ordinary multi-step repair. **Keep fixing.** Do not park it.
 - **Oscillation** — the *same* check/invariant returns after a fix aimed at it, defects cycle, or each fix trades one failure for another — means A and B can't both hold without a larger change. That larger change is a **product/design decision**, so **defer**: apply nothing this round and return `needs-human`, with a `decision_context` that names the two failures in tension, why they can't be reconciled without a divergent change, the options, and your lean.
-- **Moving-target guard:** if the recurrence traces to an external cause (a base-line update, a dependency bump, flaky infrastructure) rather than your fixes fighting each other, it is *not* an emergent trade-off — keep fixing, and note the external cause. Recurrence is only meaningful when your own fixes are what oscillate.
+- **Moving-target guard:** if the recurrence traces to an external cause (a base-bookmark update, a dependency change, flaky infrastructure) rather than your fixes fighting each other, it is *not* an emergent trade-off — keep fixing, and note the external cause. Recurrence is only meaningful when your own fixes are what oscillate.
 
 To defer, name the invariant the fix would need to satisfy and why no bounded convergent change satisfies it. If unsure it's genuine oscillation vs one more real bug, prefer one more convergent attempt over a premature park.
 
@@ -35,7 +35,7 @@ To defer, name the invariant the fix would need to satisfy and why no bounded co
 Never write a PR-body section. Never block. Surface it so the human sees it after the run:
 
 - If it maps to an **open review thread**, leave that thread open (and attach the `decision_context` as a reply when a thread reply is in scope).
-- Otherwise, **return it in the `residuals` list** for the caller to place in its single run-report comment. For a bare `$rocketclaw:ce-debug` invocation with no orchestrator and no PR, file it as a ticket in the project's tracker (detected in Phase 1.4) with enough background to action it standalone; when no tracker is reachable, return it in the structured result and say plainly that nothing else recorded it.
+- Otherwise, **return it in the `residuals` list** for the caller to place in its single run-report comment. For a bare `ce-debug` invocation with no orchestrator and no PR, file it as a ticket in the project's tracker (detected in Phase 1.4) with enough background to action it standalone; when no tracker is reachable, return it in the structured result and say plainly that nothing else recorded it.
 
 `decision_context` uses the shape ce-debug already produces: what the failure is, what you found, why it needs a human decision, options + tradeoffs, and your lean.
 
@@ -49,12 +49,12 @@ The skill's final output in pipeline mode is machine-readable (the caller parses
   "summary": "<one line: what happened>",
   "root_cause": "<causal chain, brief>",
   "changed_files": ["..."],
-  "change_id": "<JJ change ID after push, when fixed-and-pushed>",
+  "head_sha": "<Jujutsu commit ID after push, when fixed-and-pushed>",
   "residuals": [ { "title": "...", "decision_context": "...", "thread": "<url|null>" } ]
 }
 ```
 
-- `fixed-and-pushed` — a convergent fix was applied, tests pass, committed as a path-limited JJ revision, and its bookmark was pushed.
+- `fixed-and-pushed` — a convergent fix was applied, tests pass, described and pushed.
 - `flaky-infra` — a flake or infrastructure failure, not a code defect (the caller may retry).
 - `needs-human` — the failure requires a divergent/product decision; nothing applied; see `residuals`.
 - `diagnosed-no-fix` — root cause found but no safe convergent fix available this run; see `residuals`.

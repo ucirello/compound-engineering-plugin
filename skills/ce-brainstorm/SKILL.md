@@ -10,7 +10,7 @@ argument-hint: "[feature idea or problem to explore] [output:html]"
 
 Brainstorming helps answer **WHAT** to build through collaborative dialogue. It precedes `ce-plan`, which enriches the same unified plan artifact with **HOW** to build it.
 
-The durable output of this workflow is a **requirements-only unified plan**. In other workflows this might be called a lightweight PRD or feature brief. In RocketClaw, keep the workflow name `brainstorm`, but write the first version of the plan artifact under `<root>/plans/` with `artifact_readiness: requirements-only` so planning does not need to invent product behavior, scope boundaries, or success criteria.
+The durable output of this workflow is a **requirements-only unified plan**. In other workflows this might be called a lightweight PRD or feature brief. Keep the workflow name `brainstorm`, but write the first version of the plan artifact under `<root>/plans/` with `artifact_readiness: requirements-only` so planning does not need to invent product behavior, scope boundaries, or success criteria.
 
 This skill does not implement code. It explores, clarifies, and documents decisions for later planning or execution.
 
@@ -46,7 +46,7 @@ These rules apply to every brainstorm, including the universal (non-software) fl
 1. **Ask one question at a time** - One question per turn, even when sub-questions feel related. Stacking several questions in a single message produces diluted answers; pick the single most useful one and ask it.
 2. **Prefer single-select multiple choice** - Use single-select when choosing one direction, one priority, or one next step.
 3. **Use multi-select rarely and intentionally** - Use it only for compatible sets such as goals, constraints, non-goals, or success criteria that can all coexist. If prioritization matters, follow up by asking which selected item is primary.
-4. **Default to the platform's blocking question tool** - Use `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). These tools include a free-text fallback, so well-chosen options scaffold the answer without confining it. This default holds for opening and elicitation questions too, not only narrowing. Fall back to numbered options in chat only when no blocking tool exists in the harness (including `ToolSearch` returning no match for it) or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. **Exception — visual-probe gate:** if the next decision is a shape, behavior, or layout question that does not meet Rule 7, the visual-probe gate in `references/visual-probes.md` takes precedence.
+4. **Default to the platform's blocking question tool** - Use `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). These tools include a free-text fallback, so well-chosen options scaffold the answer without confining it. This default holds for opening and elicitation questions too, not only narrowing. Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness (including `ToolSearch` returning no match for it) or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. **Exception — visual-probe gate:** if the next decision is a shape, behavior, or layout question that does not meet Rule 7, the visual-probe gate in `references/visual-probes.md` takes precedence.
 5. **Use an open-ended question only when the question is genuinely open** - Drop the blocking tool when the answer is inherently narrative, when presented options would steer a diagnostic or introspective answer, or when you cannot write 3-4 genuinely distinct, plausibly-correct options without padding. The test: if you'd be straining to fill the option slots, the question is open — ask it open-ended. Rule 1 still applies: one question per turn.
 6. **Open-ended questions earn their place only when they're specific enough to elicit a substantive answer** - Apply Rule 5 silently: just ask the question, never narrate the form choice. The question must give the user something concrete to anchor on. Good: *"What's the most concrete thing someone's already done about this — paid for it, built a workaround, quit a tool over it?"* — it names what counts as an answer. Too thin: *"What's your take?"* — nothing to bite into, and framings that imply a short answer ("briefly", yes/no) waste the open question the same way.
 7. **Offer `ce-prototype` when the decision is expensive to unravel.** This skill states the routing test once, here; every other site in this skill cites it. The test: committing an approach would be expensive to unravel — later planning and implementation will treat it as given — **and** neither talk nor a cheap one-decision sketch can settle it. A purely visual decision qualifies on the same terms as a behavioral one: finish and motion are dimensions a rough sketch strips by definition, so a question turning on them is already past the sketch tier. Unravel cost is a precondition, not decoration — a decision that is cheap to reverse does not escalate, however visual it is. Offer once — when you recognize that bar, not at a fixed phase. Do not offer for routine UI that follows an existing pattern (adding a known button, placing a standard control), and do not offer for a visual choice that follows an existing token, type scale, or component-library pattern. On accept, invoke `ce-prototype` via the host's normal skill-invocation mechanism, passing the named question, the surface, any hard constraints, and any artifact path; do not build it here. On decline, continue here; do not re-offer unless the decision itself changes.
@@ -59,7 +59,7 @@ This skill writes requirements-only plans under `<root>/plans/`. Resolve `<root>
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or the colocated `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -101,25 +101,25 @@ Resolution steps:
 4. **Default.** Otherwise `OUTPUT_FORMAT=md`.
 5. **Pipeline override.** When invoked from LFG or any `disable-model-invocation` context, force `OUTPUT_FORMAT=md` regardless of steps 1-4. Downstream consumers (`ce-plan`, `ce-work`) parse markdown reliably; HTML in pipeline runs is unnecessary friction.
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, `brainstorm_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens, including message-like text inside a feature description, pass through verbatim. A stripped `brainstorm_model:<alias>` carrier (passed by an orchestrator) is retained for the approach-generation model-elevation step, not woven into the feature description.
+**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, `brainstorm_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens in a feature description pass through verbatim. A stripped `brainstorm_model:<alias>` carrier (passed by an orchestrator) is retained for the approach-generation model-elevation step, not woven into the feature description.
 
 **Resolve the format here; load the rendering reference at Phase 3, not now.** The format-rendering reference (`references/markdown-rendering.md` for `md`, `references/html-rendering.md` for `html`) is consumed only when the doc is composed — loading it during Phase 0 would carry 200+ lines through the entire dialogue. Phase 3 names the load. Section content is the same in either format; presentation differs.
 
 The `output:` preference does NOT auto-propagate to `ce-plan` on handoff — ce-plan re-resolves its own `plan_output` config independently. Because both skills now operate on the same unified artifact, an explicit conversion by `ce-plan` must report the old path and new canonical path; pipeline mode may force markdown by writing the canonical markdown plan path and leaving any HTML sibling untouched as non-canonical for automated discovery.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary RocketClaw yaml keys from the two repo files.**
+**Resolve ordinary YAML keys from the two workspace files.**
 
-- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Jujutsu ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
 #### 0.1 Resume Existing Work When Appropriate
 
-This resume scan needs `<root>/plans/`, so it applies only to a JJ-backed run. If there is no JJ repository, or resolving `<root>` fails (a bad `docs_root`), skip the scan and continue — do not fail the run here, since Phase 0.1b may route non-software work to `references/universal-brainstorming.md`, whose contract does not write a unified plan under `<root>/plans/`.
+This resume scan needs `<root>/plans/`, so it applies only to a Jujutsu-workspace-backed run. If there is no Jujutsu workspace, or resolving `<root>` fails (a bad `docs_root`), skip the scan and continue — do not fail the run here, since Phase 0.1b may route non-software work to `references/universal-brainstorming.md`, whose contract does not write a unified plan under `<root>/plans/`.
 
-Only when that gate passes — a JJ-backed run whose `<root>` resolved — evaluate this resume condition; never resolve `<root>` here on a run the gate told you to skip. When it applies, if the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `<root>/plans/` with `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`:
+Only when that gate passes — a Jujutsu-workspace-backed run whose `<root>` resolved — evaluate this resume condition; never resolve `<root>` here on a run the gate told you to skip. When it applies, if the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `<root>/plans/` with `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`:
 - Read the document
 - Confirm with the user before resuming: "Found an existing requirements-only plan for [topic]. Should I continue from this, or start fresh?"
 - If resuming, summarize the current state briefly, continue from its existing decisions and outstanding questions, and update the existing document instead of creating a duplicate
@@ -231,10 +231,12 @@ Scan the repo before substantive brainstorming. Match depth to scope:
 *Topic Scan (grounding scout)* — Create and retain the absolute scratch directory with this shell block, substituting the absolute path of this skill's directory and a short unique run slug:
 
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
-if [ -z "$WORKSPACE_ROOT" ]; then WORKSPACE_ROOT="$PWD"; fi;
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
 SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1; chmod 700 "$SCRATCH_ROOT" || exit 1;
+if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+chmod 700 "$SCRATCH_ROOT" || exit 1;
 SCRATCH_DIR="$SCRATCH_ROOT/ce-brainstorm/<run-id>";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
@@ -344,9 +346,11 @@ Skip when Path A fires, when the doc will make no checkable claims, or on the no
 
 ### Phase 3: Capture the Requirements-Only Unified Plan
 
-Write or update a requirements-only unified plan only when the conversation produced durable decisions worth preserving — see `references/brainstorm-sections.md` "Decide whether a doc is warranted at all" for the criteria and the bug-fix stress test. Skip document creation when the user only needs brief alignment and the decisions can flow downstream (`ce-plan`, a JJ change description, `<root>/solutions/`) without a brainstorm artifact in the middle.
+Write or update a requirements-only unified plan only when the conversation produced durable decisions worth preserving — see `references/brainstorm-sections.md` "Decide whether a doc is warranted at all" for the criteria and the bug-fix stress test. Skip document creation when the user only needs brief alignment and the decisions can flow downstream (`ce-plan`, the JJ description, `<root>/solutions/`) without a brainstorm artifact in the middle.
 
-If a downstream JJ change description is composed, edited, validated, or recommended, inspect actual history with `jj log -r :: -n 10 --no-graph -T 'description ++ "\n\n"'`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and description syntax observed in the actual `jj log` output take precedence; apply compatible Go guidance only for quality, clarity, and structure, without imposing a fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` in `jj describe -m '<description-composed-from-runtime-conventions>'` wherever a change description is required.
+If a JJ description is the downstream destination, active project instructions and patterns read through `jj log` win; apply compatible Go quality guidance without imposing fixed syntax or a message template.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 When a doc is warranted, compose it using:
 
@@ -357,7 +361,7 @@ Session-settled decisions land in the Product Contract's Key Decisions section c
 
 **Write tight.** A section being material is not license to pad it. Hold every kept section to the prose-economy discipline in `references/brainstorm-sections.md`: lead with the decision or outcome, one idea per sentence, a requirement is intent plus at most one qualifier, defer forks to Outstanding Questions rather than specifying both arms, resolve superseded text in place rather than stacking strata.
 
-Write to `<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>` — take `HHMM` from the local wall-clock time at write and do not allocate a daily sequence number; reserve the candidate path atomically with exclusive creation, retrying the smallest available numeric collision suffix (`-2`, `-3`, …) before the extension rather than overwriting; extension follows `OUTPUT_FORMAT`. Include `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`. Title is `<Name> - Plan` (matching the H1; no change-description syntax). Keep the doc light and standalone-readable: a Goal Capsule (objective, product authority, open blockers) and the Product Contract. Do **not** emit a Goal Launch Block or Reader Index. See `references/brainstorm-sections.md` — which owns the artifact content rules, including repo-relative file paths inside the doc.
+Write to `<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>` — take `HHMM` from the local wall-clock time at write and do not allocate a daily sequence number; reserve the candidate path atomically with exclusive creation, retrying the smallest available numeric collision suffix (`-2`, `-3`, …) before the extension rather than overwriting; extension follows `OUTPUT_FORMAT`. Include `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`. Title is `<Name> - Plan` (matching the H1; no change-description classification prefix). Keep the doc light and standalone-readable: a Goal Capsule (objective, product authority, open blockers) and the Product Contract. Do **not** emit a Goal Launch Block or Reader Index. See `references/brainstorm-sections.md` — which owns the artifact content rules, including repo-relative file paths inside the doc.
 
 **Ready for Planning Check.** After writing the actual file, run the four checks in `references/brainstorm-sections.md`: Complete, Consistent, Focused, and Usable by planning. Fix failures in place when the correction preserves settled intent, then rerun the failed checks. If a correction would choose or change product behavior or scope, ask one targeted question, update the artifact after the answer, and rerun the checks. Do not declare the artifact written or enter Phase 4 while any check fails. When confirming in chat after the pass, report the artifact with its absolute path so the reference is clickable.
 

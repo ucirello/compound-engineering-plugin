@@ -9,8 +9,8 @@ area without silently extending the completed plan or current session.
 Start from the canonical plan path retained from LFG step 1. Locate a Product
 Contract section carrying the semantic role `work-relationships`:
 
-- Markdown: `<!-- ce-section: work-relationships -->`
-- HTML: `data-ce-section="work-relationships"`
+- Markdown: `<!-- section: work-relationships -->`
+- HTML: `data-section="work-relationships"`
 
 The visible heading is not part of this protocol. For an older unmarked plan,
 use a semantic fallback only when one Product Contract section clearly names

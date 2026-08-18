@@ -38,6 +38,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -251,31 +252,6 @@ def _replace_atomic(src, dst):
             time.sleep(_WIN_RETRY_SECONDS)
 
 
-def _write_json_atomic(path, value, indent=None):
-    """Write JSON through an exclusively reserved sibling, then replace atomically."""
-    parent = os.path.dirname(path)
-    for _ in range(16):
-        candidate = os.path.join(parent, f".atomic-{uuid.uuid4().hex}")
-        try:
-            fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            continue
-        try:
-            with os.fdopen(fd, "w") as f:
-                json.dump(value, f, indent=indent)
-                f.flush()
-                os.fsync(f.fileno())
-            _replace_atomic(candidate, path)
-            return
-        except BaseException:
-            try:
-                os.unlink(candidate)
-            except FileNotFoundError:
-                pass
-            raise
-    raise RuntimeError(f"could not reserve atomic sibling for {path}")
-
-
 class _WatchSuperseded(Exception):
     """Internal control flow: this watch lost ownership and must unwind immediately."""
 
@@ -378,10 +354,10 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     """Bind GitHub's mergeability observation to an independently probed current base ref.
 
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
-    PR's `baseRef.target.oid` and an independent exact-ref read through GitHub; a usable generated test merge must then
+    PR's `baseRef.target.oid` and an independent exact ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST exact-ref endpoint, so that response falls back to a separate
-    authenticated GitHub GraphQL exact-ref query.
+    sessions return 404 from the REST ref endpoint, so that response falls back to an independent
+    GraphQL ref read while preserving exact-ref matching and non-interactive failure behavior.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -418,18 +394,19 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     ])
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        qualified_ref = f"refs/heads/{ref}"
         query = """
 query($owner:String!,$repo:String!,$ref:String!){
   repository(owner:$owner,name:$repo){ ref(qualifiedName:$ref){ target{ oid } } }
 }"""
-        r = _run([
-            "gh", "api", "graphql", *_host_args(host),
-            "-f", f"owner={owner}", "-f", f"repo={name}",
-            "-f", f"ref={qualified_ref}", "-f", f"query={query}",
+        graphql_result = _run([
+            "gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}",
+            "-f", f"repo={name}", "-f", f"ref=refs/heads/{ref}", "-f", f"query={query}",
             "--jq", ".data.repository.ref.target.oid",
         ])
-        current_oid = (r.stdout or "").strip()
+        graphql_oid_read = (graphql_result.stdout or "").strip()
+        if graphql_result.returncode == 0 and _valid_oid(graphql_oid_read):
+            current_oid = graphql_oid_read
+            r = graphql_result
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -1194,7 +1171,8 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in the workspace-local .tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace-local `.tmp/rocketclaw` across script versions) — backfill
+    missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -1790,7 +1768,12 @@ def locked_state(state_dir, pr, repo, now):
         state.setdefault("invocation_backstop_seconds", DEFAULT_INVOCATION_BACKSTOP_SECONDS)
         box = {"state": state}
         yield box
-        _write_json_atomic(state_path, box["state"], indent=2)
+        tmp = tempfile.NamedTemporaryFile("w", dir=state_dir, delete=False)
+        json.dump(box["state"], tmp, indent=2)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+        tmp.close()
+        _replace_atomic(tmp.name, state_path)
 
 
 def _fetch_snapshot(args):
@@ -2065,7 +2048,12 @@ def _reserve_watch_candidate(args, generation):
     }
     with _state_lock(args.state_dir, exclusive=True):
         previous = _read_watch_candidate(args)
-        _write_json_atomic(_watch_candidate_path(args), candidate)
+        tmp = tempfile.NamedTemporaryFile("w", dir=args.state_dir, delete=False)
+        json.dump(candidate, tmp)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+        tmp.close()
+        _replace_atomic(tmp.name, _watch_candidate_path(args))
     return previous
 
 
@@ -2515,8 +2503,8 @@ WATCH_BOOTSTRAP_FLAGS = ("--state-dir", "--invocation-id", "--session-started-at
 WATCH_BOOTSTRAP_HINT = """\
 watch cannot start a babysit run: it only arms the change detector for an
 invocation that was already bootstrapped by a snapshot --start-invocation run
-(the ce-babysit-pr Step 2 bootstrap).
-To recover, invoke the ce-babysit-pr skill through your harness's callable
+(the skill's Step 2 bootstrap).
+To recover, invoke `ce-babysit-pr` through your harness's callable
 skill mechanism with this PR: its instructions own the bootstrap, arming,
 marks, and stop protocol. Do not drive pr-snapshot directly outside that skill.
 Never mint the bootstrap values yourself; they come from the skill's

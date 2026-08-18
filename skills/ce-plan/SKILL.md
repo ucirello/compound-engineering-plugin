@@ -16,7 +16,7 @@ This workflow produces a durable implementation plan. It does **not** implement 
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `ROCKETCLAW_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -38,7 +38,7 @@ Before any response that could end a software implementation-plan run, verify th
 
 ## Interaction Method
 
-When asking the user a question, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+When asking the user a question, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
 Ask one question at a time. Prefer a concise single-select choice when natural options exist.
 
@@ -50,7 +50,7 @@ The **feature description** is the input this skill was invoked with — what to
 
 If the input is present but unclear or underspecified, do not abandon — ask one or two clarifying questions, or proceed to Phase 0.4's planning bootstrap to establish enough context. The goal is always to help the user plan, never to exit the workflow.
 
-**IMPORTANT: All file references in the plan document must use workspace-relative paths (e.g., `src/models/user.rb`), never absolute paths (e.g., `/Users/name/Code/project/src/models/user.rb`). This applies everywhere — implementation unit file lists, pattern references, origin document links, and prose mentions. Absolute paths break portability across machines, workspaces, and teammates.**
+**IMPORTANT: All file references in the plan document must use workspace-relative paths (e.g., `src/models/user.rb`), never absolute paths (e.g., `<workspace-root>/src/models/user.rb`). This applies everywhere — implementation unit file lists, pattern references, origin document links, and prose mentions. Absolute paths break portability across machines, workspaces, and teammates.**
 
 ## Artifact Root
 
@@ -59,7 +59,7 @@ This skill writes plans under `<root>/plans/` and reads learnings under `<root>/
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`, with the current directory as fallback). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -101,7 +101,7 @@ After intake determines that `ce-plan` will perform a material multi-stage run, 
 
 Determine `OUTPUT_FORMAT` before any other phase fires. Output mode is **exclusive** — the plan is written as either markdown (`.md`) OR HTML (`.html`), never both. Precedence: in-prompt request > user-stated preference > config > default (`md`), with a hard pipeline-mode override.
 
-**Read config.** Resolve `<workspace-root>` by running `jj workspace root`, then apply the ordinary-key rule below. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
+**Read config.** Resolve `<workspace-root>` with `jj workspace root`, using the current directory when no Jujutsu workspace can be resolved, then apply the ordinary-key rule (block later in this phase). Read both files when they exist.
 
 Resolution steps:
 
@@ -113,7 +113,7 @@ Resolution steps:
 4. **Default.** Otherwise `OUTPUT_FORMAT=md`.
 5. **Pipeline override.** When invoked from LFG or any `disable-model-invocation` context, force `OUTPUT_FORMAT=md` regardless of steps 1-4. `ce-work` and other automated downstream consumers parse markdown reliably; HTML in pipeline runs is unnecessary friction.
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, the exact `confirm:auto`/`confirm:ask` forms, `plan_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including repository-defined title prefixes and any unrecognized `confirm:<value>` (e.g., a `confirm: delete-account modal` feature description) — pass through verbatim. A stripped `plan_model:<alias>` carrier (passed by an orchestrator such as LFG) is retained for the Phase 5.2 model-elevation step, not woven into the feature description.
+**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, the exact `confirm:auto`/`confirm:ask` forms, `plan_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including project-specific change-description prefixes and any unrecognized `confirm:<value>` — pass through verbatim. A stripped `plan_model:<alias>` carrier (passed by an orchestrator such as LFG) is retained for the Phase 5.2 model-elevation step, not woven into the feature description.
 
 **Load the format-rendering reference based on the resolved value.** Section content is the same in either format; presentation differs. Both references are paired with `references/plan-sections.md`, which describes what the plan contains regardless of format.
 
@@ -123,7 +123,7 @@ Resolution steps:
 <!-- ce-config-layers:start -->
 **Resolve ordinary yaml keys from the two workspace files.**
 
-- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`, with the current directory as fallback). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -139,12 +139,12 @@ Pipeline / `disable-model-invocation` runs already skip the chat confirmation (h
 
 #### 0.1 Resume Existing Plan Work When Appropriate
 
-This resume check needs `<root>/plans/`, so it only applies to a workspace-backed run. If there is no JJ workspace, or resolving `<root>` fails (a bad `docs_root`), do **not** fail the run here — skip resume discovery and continue to Phase 0.1a/0.1b, which route non-software and answer-seeking work that never touches `<root>/plans/`. When a plan path was given explicitly, use it directly without resolving `<root>`.
+This resume check needs `<root>/plans/`, so it only applies to a workspace-backed run. If there is no Jujutsu workspace, use the current directory as the workspace root. If resolving `<root>` fails because `docs_root` is invalid, do **not** fail the run here — skip resume discovery and continue to Phase 0.1a/0.1b, which route non-software and answer-seeking work that never touches `<root>/plans/`. When a plan path was given explicitly, use it directly without resolving `<root>`.
 
 If the user references an existing plan file or there is an obvious recent matching plan in `<root>/plans/`:
 - Read it
 - Confirm whether to update it in place or create a new plan
-- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from Jujutsu by `ce-work`, so there is no progress to preserve across edits
+- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from Jujutsu history by `ce-work`, so there is no progress to preserve across edits
 
 **A requirements-only unified plan is not a resume target.** A `<root>/plans/` file with `artifact_readiness: requirements-only` is an *enrichment input*, not an existing plan to resume — do **not** fire the update-or-create confirm for it. Fall through to Phase 0.2, which enriches it in place to `implementation-ready`. This matters most for the hands-off `ce-brainstorm` -> `lfg` flow: `lfg` hands `ce-plan` the requirements-only path in `disable-model-invocation` pipeline mode, where no user is present to answer a resume prompt. More generally, in pipeline mode the resume choice is made automatically (default to in-place update of the referenced plan) and never prompted.
 
@@ -262,7 +262,7 @@ The planning bootstrap should establish:
 
 Keep this bootstrap brief. It exists to preserve direct-entry convenience, not to replace a full brainstorm.
 
-**Exit condition:** Exit the bootstrap when each of these holds, OR the user explicitly wants to proceed: the problem frame is stated; the in-scope and out-of-scope boundaries that matter are known; success criteria or acceptance signals are known or recorded as assumptions. Recording an item as an assumption satisfies the boundaries and success-signal clauses — that is what makes the gate passable in headless mode and on a `SKIP_SCOPING_CONFIRM` run, where no synchronous user exists to answer. The problem-frame clause is the exception: it must be **stated**, because the hard floor contains `Problem Frame` unconditionally and an assumed frame would either leave a mandatory section empty or promote an unvalidated guess into product scope. When the prompt does not supply one, derive it from the request's own motivation rather than assuming it, or stop and ask; those assumptions route to `### Assumptions` at Phase 5.2 under the existing routing. A session-settled decision counts as already-established for every clause it covers — never re-ask it. This gate covers the bootstrap only; it adds no gate to Phase 2's planning questions or the brainstorm-sourced Phase 5.1.5 path.
+**Exit condition:** Exit the bootstrap when each of these holds, OR the user explicitly wants to proceed: the problem frame is stated; the in-scope and out-of-scope boundaries that matter are known; success criteria or acceptance signals are known or recorded as assumptions. Recording an item as an assumption satisfies the boundaries and success-signal clauses — that is what makes the gate passable in headless mode and on a `SKIP_SCOPING_CONFIRM` run, where no synchronous user exists to answer. The problem-frame clause is the exception: it must be **stated**, because the hard floor contains `Problem Frame` unconditionally and an assumed frame would either leave a mandatory section empty or promote an unvalidated guess into product scope. When the prompt does not supply one, or supplies only an approach with no outcome, derive the outcome from the request's own motivation rather than assuming it, or stop and ask — the approach becomes the Goal Capsule's Means, not its Objective; those assumptions route to `### Assumptions` at Phase 5.2 under the existing routing. A session-settled decision counts as already-established for every clause it covers — never re-ask it. This gate covers the bootstrap only; it adds no gate to Phase 2's planning questions or the brainstorm-sourced Phase 5.1.5 path.
 
 If the bootstrap uncovers major unresolved product questions:
 - Recommend `ce-brainstorm` again
@@ -506,15 +506,15 @@ Ask the user only when the answer materially affects architecture, scope, sequen
 
 #### 3.1 Title and File Naming
 
-- Draft a clear, searchable title that follows the repository's active instructions and naming conventions
-- Determine the plan type from the repository's active vocabulary; do not impose a fixed list
-- Build the filename following the repository's plan-file convention; when none exists, use `<root>/plans/YYYY-MM-DD-HHMM-<descriptive-name>-plan.md`
+- Draft a clear, searchable title that follows the project's current instructions and the change-description patterns visible in `jj log`.
+- Determine the plan type from the project's current classification convention; do not impose a fixed set of labels.
+- Build the filename following the repository convention: `<root>/plans/<local-timestamp>-<type>-<descriptive-name>-plan.md`
   - Create `<root>/plans/` if it does not exist
-  - Take `YYYY-MM-DD-HHMM` from the local wall-clock time at write, so the prefix matches the `date:` frontmatter and the day the user experienced; do not scan for or allocate a daily sequence number
+  - Take `<local-timestamp>` from the local wall-clock time at write, using the repository's established filename pattern; do not scan for or allocate a separate sequence number
   - Reserve the candidate path atomically with exclusive creation; if it already exists, append the smallest available numeric collision suffix (`-2`, `-3`, …) before the extension rather than overwriting it
   - Keep the descriptive name concise (3-5 words) and kebab-cased
-  - Dynamic fallback: `<local-date>-<local-time>-<repository-conventional-descriptive-name>-plan.md`
-  - Avoid: daily sequence numbers, vague names like "new-feature", and invalid characters (colons, spaces)
+  - Use neutral dynamic components derived from the plan's current title and type rather than fixed sample names or messages
+  - Avoid vague descriptive names and characters the target filesystem rejects
 
 #### 3.2 Stakeholder and Impact Awareness
 
@@ -563,7 +563,7 @@ The tree is a scope declaration showing the expected output shape. It is not a c
 
 #### 3.5 Define Each Implementation Unit
 
-Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as bulleted list items or prefix them with `- [ ]` / `- [x]` checkbox markers. List-based unit titles fragment in every standard renderer because the per-unit fields (`**Goal:**`, `**Files:**`, `**Approach:**`, etc.) are written flush-left, which terminates CommonMark list continuation and detaches the fields from the unit they describe. Headings render correctly everywhere, are the right semantic match for sections containing multi-block content, and give each unit an anchor link. The plan is a decision artifact; execution progress is derived from Jujutsu by `ce-work` rather than stored in the plan body.
+Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as bulleted list items or prefix them with `- [ ]` / `- [x]` checkbox markers. List-based unit titles fragment in every standard renderer because the per-unit fields (`**Goal:**`, `**Files:**`, `**Approach:**`, etc.) are written flush-left, which terminates CommonMark list continuation and detaches the fields from the unit they describe. Headings render correctly everywhere, are the right semantic match for sections containing multi-block content, and give each unit an anchor link. The plan is a decision artifact; execution progress is derived from Jujutsu history by `ce-work` rather than stored in the plan body.
 
 **Stability rule.** Once assigned, a U-ID is never renumbered. Reordering units leaves their IDs in place (e.g., U1, U3, U5 in their new order is correct; renumbering to U1, U2, U3 is not). Splitting a unit keeps the original U-ID on the original concept and assigns the next unused number to the new unit. Deletion leaves a gap; gaps are fine. This rule matters most during deepening (Phase 5.3), which is the most likely accidental-renumber vector.
 
@@ -663,7 +663,7 @@ Omit "include when material" sections that don't carry information for this spec
 #### 4.3 Planning Rules
 
 - **Horizontal rules (`---`) between top-level sections** in Standard and Deep plans, mirroring the `ce-brainstorm` requirements doc convention. Improves scannability of dense plans where many H2 sections sit close together. Omit for Lightweight plans where the whole doc fits on a single screen.
-- **All file paths must be workspace-relative** — never use absolute paths like `/Users/name/Code/project/src/file.ts`. Use `src/file.ts` instead. Absolute paths make plans non-portable across machines, workspaces, and teammates. When a plan targets a different workspace than the document's home, state the target workspace once at the top of the plan (e.g., `**Target workspace:** my-other-project`) and use workspace-relative paths throughout
+- **All file paths must be workspace-relative** — never use absolute paths like `<workspace-root>/src/file.ts`. Use `src/file.ts` instead. Absolute paths make plans non-portable across machines, workspaces, and teammates. When a plan targets a different repository than the document's home, state the target repository once at the top of the plan and use workspace-relative paths throughout
 - Prefer path plus class/component/pattern references over brittle line numbers
 - Do not include implementation code — no imports, exact method signatures, or framework-specific syntax
 - Pseudo-code sketches and DSL grammars are allowed in the High-Level Technical Design section and per-unit technical design fields when they communicate design direction. Frame them explicitly as directional guidance, not implementation specification
@@ -730,10 +730,10 @@ the artifact's native format while preserving its existing structure.
 Use the Write tool to save the complete plan to the resolved format's extension:
 
 ```text
-<root>/plans/<repository-conventional-plan-name>.<md|html>
+<root>/plans/<local-timestamp>-<type>-<descriptive-name>-plan.<md|html>
 ```
 
-Extension follows `OUTPUT_FORMAT` from Phase 0.0 — `.md` when markdown, `.html` when HTML. The filename prefix is the local wall-clock time at write, so ordering comes from the clock rather than a daily counter. Reserve the final path atomically; when creating a new artifact, an exact-path collision retries with the smallest available numeric suffix rather than overwriting. Explicit format conversion is not a new artifact and is exempt from that suffix: it keeps the existing basename, changes only the extension, and writes that exact sibling path, updating it in place when it already exists. A suffixed conversion output would break the same-basename staleness signal Phase 0.2 and `ce-work` discovery depend on.
+Extension follows `OUTPUT_FORMAT` from Phase 0.0 — `.md` when markdown, `.html` when HTML. The filename prefix follows the repository's current local-wall-clock naming convention, so ordering comes from the clock rather than a separate counter. Reserve the final path atomically; when creating a new artifact, an exact-path collision retries with the smallest available numeric suffix rather than overwriting. Explicit format conversion is not a new artifact and is exempt from that suffix: it keeps the existing basename, changes only the extension, and writes that exact sibling path, updating it in place when it already exists. A suffixed conversion output would break the same-basename staleness signal Phase 0.2 and `ce-work` discovery depend on.
 
 Compose the plan using the content from `references/plan-sections.md` and the format-specific principles from the rendering reference loaded at Phase 0.0 (`markdown-rendering.md` OR `html-rendering.md`).
 

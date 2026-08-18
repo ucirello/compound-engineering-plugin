@@ -4,15 +4,13 @@ description: Refresh the repo's captured learnings against the current codebase.
 argument-hint: "[optional: scope hint — directory, filename, module, or keyword] [mode:non-interactive] "
 ---
 
-# RocketClaw Learning Refresh
+# Refresh
 
-Audit the learnings under `<root>/solutions/` against the current codebase, apply the maintenance actions the evidence supports, and deliver a complete per-doc report plus recorded JJ changes. The report and the corrected document set are the deliverables; the store only compounds value if every doc in it can be trusted.
+Audit the learnings under `<root>/solutions/` against the current codebase, apply the maintenance actions the evidence supports, and deliver a complete per-doc report plus committed changes. The report and the corrected document set are the deliverables; the store only compounds value if every doc in it can be trusted.
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CE_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
-
-Keep any temporary refresh artifacts workspace-local. Resolve the workspace root with `jj workspace root`; use `<workspace-root>/.tmp/rocketclaw/ce-compound-refresh/<run-id>/`, or the current project's `.tmp/rocketclaw/ce-compound-refresh/<run-id>/` when no JJ workspace is available.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `SKILL_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -40,13 +38,13 @@ If the arguments contain `mode:non-interactive` (or its deprecated alias `mode:h
 
 ## Blocking questions
 
-Wherever this skill asks the user something, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options in chat only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. Ask one question at a time, prefer multiple choice, lead with the recommended option and a one-sentence rationale.
+Wherever this skill asks the user something, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. Ask one question at a time, prefer multiple choice, lead with the recommended option and a one-sentence rationale.
 
 ## CONCEPTS.md bootstrap requests
 
 If invoked specifically to create or bootstrap `CONCEPTS.md` ("create a CONCEPTS.md", "build the concept map"), the intent is ambiguous between two jobs — disambiguate with a blocking question:
 
-1. **Create CONCEPTS.md (build the concept map)** — skip the `<root>/solutions/` classification work. Read `references/concepts-vocabulary.md` and follow its **Seed goal** and **Scope of a seed** (repo-wide) rules: seed the project's core domain nouns from the declared domain model, write the preamble (see Vocabulary Capture), cluster per the organization rules, run the Discoverability Check, then record it via the Record flow — do not leave the bootstrap undescribed.
+1. **Create CONCEPTS.md (build the concept map)** — skip the `<root>/solutions/` classification work. Read `references/concepts-vocabulary.md` and follow its **Seed goal** and **Scope of a seed** (repo-wide) rules: seed the project's core domain nouns from the declared domain model, write the preamble (see Vocabulary Capture), cluster per the organization rules, run the Discoverability Check, then commit via the Commit flow — do not leave the bootstrap uncommitted.
 2. **Run a refresh cycle** — proceed normally; `CONCEPTS.md` is seeded (if absent) and reconciled during Vocabulary Capture.
 
 In non-interactive mode, default to the refresh cycle and note in the report that a standalone repo-wide bootstrap was not run.
@@ -55,13 +53,13 @@ In non-interactive mode, default to the refresh cycle and note in the report tha
 
 This skill reviews and refreshes learnings under `<root>/solutions/`. Resolve `<root>` when you first compose a `<root>/solutions/` path (per the block below); pass the resolved `<root>/solutions/` path to any subagent, not the config.
 
-<!-- ce-docs-root:start -->
-**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
+<!-- docs-root:start -->
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`, with the current directory as fallback when it is not a Jujutsu workspace). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+<!-- docs-root:end -->
 
 ## Scope
 
@@ -80,7 +78,7 @@ For a broad sweep (9+ docs), triage before deep investigation: read all frontmat
 
 ## Investigate
 
-For each learning in scope, read it and cross-reference its claims against the current codebase. Dimensions that go stale independently: referenced paths/classes/modules; the recommended solution itself (does it still match how the code works?); code snippets; cross-referenced docs — for a knowledge-track learning (`problem_type` in the knowledge track of `references/schema.yaml`), that includes whether a guidance file it names or links (a skill's `SKILL.md`, a runbook, a root instruction file) states a different order or rule for the same procedure; compare only guidance the learning names, never search the guidance layer for one; overlap with other in-scope docs (note pairs covering the same problem/files/solution and which appears broader or more current); and domain vocabulary (note project-specific terms and whether `CONCEPTS.md` defines them accurately — collect the signal, don't edit yet). If an injected memory block exists, same-domain notes are supplementary signals: they corroborate codebase evidence or prompt deeper investigation, never alone justify Replace or Delete, and in non-interactive mode memory-only drift means stale-mark. Match depth to specificity: a doc citing exact paths and snippets needs more verification than a general principle.
+For each learning in scope, read it and cross-reference its claims against the current codebase. Dimensions that go stale independently: referenced paths/classes/modules; the recommended solution itself (does it still match how the code works?); code snippets; cross-referenced docs — for a knowledge-track learning (`problem_type` in the knowledge track of `references/schema.yaml`), that includes whether a guidance file it names or links (a skill's `SKILL.md`, a runbook, a root instruction file) states a different order or rule for the same procedure; compare only guidance the learning names, never search the guidance layer for one; overlap with other in-scope docs (note pairs covering the same problem/files/solution and which appears broader or more current); and domain vocabulary (note project-specific terms and whether `CONCEPTS.md` defines them accurately — collect the signal, don't edit yet). On Claude Code only, also scan the injected auto-memory block for same-domain notes: memory-sourced signals are supplementary — they corroborate codebase evidence or prompt deeper investigation, never alone justify Replace or Delete, and in non-interactive mode memory-only drift means stale-mark. Match depth to specificity: a doc citing exact paths and snippets needs more verification than a general principle.
 
 After individual docs, evaluate the set: overlaps, supersession (an older narrow doc a newer doc subsumes), and outright contradictions — between docs, or between a learning and a guidance file it names — contradictions actively mislead and outrank individual staleness. Note category-shape problems (a directory whose docs span unrelated themes, a near-empty category) as report-only observations — never restructure directories or create categories.
 
@@ -88,7 +86,7 @@ After individual docs, evaluate the set: overlaps, supersession (an older narrow
 
 > Use dedicated file search and read tools (Glob, Grep, Read) for all investigation. Do NOT use shell commands (ls, find, cat, grep, test, bash) for file operations. This avoids permission prompts and is more reliable.
 >
-> If an injected memory block is present, scan it for notes related to the learning's problem domain. Report memory-sourced drift signals separately from codebase-sourced evidence, tagged with "(auto memory)" in the evidence section. If no such block is present, skip this check.
+> Also scan the "user's auto-memory" block injected into your system prompt (Claude Code only). Check for notes related to the learning's problem domain. Report any memory-sourced drift signals separately from codebase-sourced evidence, tagged with "(auto memory [claude])" in the evidence section. If the block is not present in your context, skip this check.
 >
 > If the learning is knowledge-track and names or links a guidance file (a skill's `SKILL.md`, a runbook, a root instruction file), read that file and, when it states a different order or a contradictory rule for the same procedure, return both conflicting quotes plus which side current code follows — or that code witnesses neither. Read only guidance the learning names; do not search for one, and do not edit it.
 
@@ -104,7 +102,7 @@ Assign each doc one outcome:
 | **Update** | Solution still correct; references drifted (paths, names, links, snippets, metadata, misfiling) | Fix in place |
 | **Consolidate** | Docs overlap heavily, both correct | Merge unique content into the canonical doc, delete the subsumed one |
 | **Replace** | Guidance is now misleading; a trustworthy successor can be written | Successor via subagent, then delete the old |
-| **Delete** | No longer useful, applicable, or distinct | Delete the file — JJ history provides recovery; there is no `_archived/` |
+| **Delete** | No longer useful, applicable, or distinct | Delete the file — Jujutsu history is the archive; there is no `_archived/` |
 
 Judgment rules that are easy to get wrong:
 
@@ -120,7 +118,7 @@ Judgment rules that are easy to get wrong:
 **Before any Delete**, two checks:
 
 1. **Is the problem domain still active?** Missing files prove the *implementation* is gone, not the problem. If the app still deals with what the doc addresses (e.g., the auth-token file is gone but sessions are still handled), that is Replace, not Delete. A doc that never referenced in-repo code (developer environment, onboarding, process) can never satisfy "implementation gone" and **never auto-deletes** — stale-mark (non-interactive) or ask (interactive) when its currency is in doubt.
-2. **Inbound links.** Search the repo's markdown (not source code) for the filename slug; read context around matches. **Decorative** citations (see-also pointers, principle already stated inline) permit Delete with mechanical cleanup in the same change. **Substantive** citations (the citing doc relies on the cited content) signal Replace — or Keep with narrowed scope. Mixed or unclear: stale-mark.
+2. **Inbound links.** Search the repo's markdown (not source code) for the filename slug; read context around matches. **Decorative** citations (see-also pointers, principle already stated inline) permit Delete with mechanical cleanup in the same commit. **Substantive** citations (the citing doc relies on the cited content) signal Replace — or Keep with narrowed scope. Mixed or unclear: stale-mark.
 
 **Auto-delete (no confirmation needed, either mode) only when all three hold:** the implementation once lived in this repo and is gone (or the doc is fully superseded or plainly redundant); the problem domain is gone — or, for a superseded/redundant doc, the surviving canonical doc itself already states the subsumed doc's guidance (topical overlap is not coverage: verify the specific content exists there before deleting); inbound citations are absent or unambiguously decorative. Any condition fails → Replace, Update, Consolidate, stale-mark, or ask.
 
@@ -157,8 +155,8 @@ If nothing qualified, record that explicitly in the report's `CONCEPTS.md` line 
 **Print the full report as markdown — it is the deliverable, not an internal summary.** After processing the scope:
 
 ```text
-RocketClaw Learning Refresh Summary
-===================================
+Refresh Summary
+===============
 Scanned: N learnings
 
 Kept: X
@@ -172,21 +170,17 @@ Marked stale: S
 CONCEPTS.md: <scanned, no qualifying terms | created with N entries (M seeded) | updated — N added, N refined, N reconciled, N scrubbed | repo-wide map created with N entries>
 ```
 
-Then, for EVERY file processed: path, classification, evidence found (tag memory-sourced findings "(auto memory)"), and the action taken or recommended; for Consolidate, which doc was canonical, what was merged, what was deleted. Group Keeps under a reviewed-without-edits section.
+Then, for EVERY file processed: path, classification, evidence found (tag memory-sourced findings "(auto memory [claude])"), and the action taken or recommended; for Consolidate, which doc was canonical, what was merged, what was deleted. Group Keeps under a reviewed-without-edits section.
 
 In non-interactive mode the report is the sole deliverable — self-contained, never abbreviated — and actions split into two sections. **Applied:** writes that succeeded, with the same per-file detail. **Recommended:** writes that failed (with enough context for a human to apply them), plus everything that never runs unattended — relocations that failed the four-condition gate (doc, target, failing condition), splits (doc, proposed fragment boundaries), category-shape observations, guidance files a learning names that contradict it, and the discoverability recommendation if any. If no writes succeed, the report is a maintenance plan. If `_archived/` exists, list its files and recommend disposition (restore, delete, or consolidate).
 
-## Record
+## Commit
 
-Skip if no files changed. Inspect `jj status`, the working-copy change and its parents, bookmarks on or nearest to `@`, configured remotes, remote bookmarks, and recent descriptions with `jj log`. Resolve publication intent and the writable remote from the project's active instructions and provider ownership; if either remains ambiguous, ask rather than guessing. If this is not a JJ workspace, report that recording is unavailable and do not fall back to another VCS.
+Skip if no files changed. Inspect `jj status`, the active bookmarks, and recent descriptions with `jj log`; the project's active instructions and the history visible through `jj log` win when conventions differ. Jujutsu has no staging area, so ensure the working-copy change contains only files this refresh modified; if unrelated changes share it, use `jj split` or move the refresh changes into a dedicated change before describing or committing it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go quality guidance, then set the description and finish the change with `jj commit`.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Non-interactive defaults: when the working-copy change is based on `trunk()` and no feature bookmark contains it, create a dynamically named bookmark describing the refreshed area, commit, push that bookmark with `jj git push`, and attempt a PR with `gh` (if PR creation fails, report the bookmark); when an existing feature bookmark contains the work, create a separate described change in that stack. Jujutsu failures -> put context-appropriate recommended commands in the report and continue.
 
-The project's active instructions and change-description conventions inferred at runtime from `jj log` win. Preserve the requirement that the description communicate the refresh outcomes while adapting its syntax to those conventions. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
-
-Non-interactive defaults: when `@` contains only refresh-owned paths, describe it, create or move a specific bookmark only when publication is appropriate, publish through the resolved remote with `jj git push`, and attempt the provider review request; use `gh` for GitHub. When unrelated paths also share `@`, leave the working-copy change untouched and report a JJ-native recommendation for isolating and describing only the refresh paths. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. JJ, remote, or provider failures are reported with the intended operation and relevant change ID, bookmark, and remote; do not emit a fixed command sequence.
-
-Interactive: ask (per Blocking questions), with the recommended option first. When `@` contains only refresh-owned paths, offer to describe it and, when publication is wanted, place a specific bookmark on it, publish through the resolved remote, and open or update the provider review request; use `gh` for GitHub. When unrelated paths share `@`, recommend leaving the working copy untouched unless the user explicitly chooses a project-compatible JJ operation to isolate the refresh paths. Always offer leaving the work undescribed. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Every option remains governed by the runtime-standard rule above.
+Interactive: ask (per Blocking questions), with the recommended option first. At `trunk()`: bookmark+commit+push+PR (recommended; propose a context-derived bookmark) / commit without publishing / don't commit. On an isolated feature change: commit in its existing stack (recommended) / create a separate bookmarked change / don't commit. When unrelated work shares the working-copy change: split out and commit only refresh changes / don't commit.
 
 ## Discoverability Check
 
@@ -201,8 +195,8 @@ After the report, check that the project's instruction files would lead an agent
    ```
 
 4. Interactive: show the proposed change and where it goes, explain why it matters (fresh sessions and plugin-less collaborators won't find the store otherwise), and get consent via a blocking question before editing. Non-interactive: emit a "Discoverability recommendation" line in the report instead of editing instruction files — non-interactive scope is doc maintenance, not project config.
-5. If `CONCEPTS.md` exists at the repo root, run the same check for it (e.g., a `CONCEPTS.md  # shared domain vocabulary — read when orienting to the codebase` line). Skip entirely when it doesn't exist — never nag for an artifact the project hasn't adopted.
-6. If this check edited an instruction file after the refresh change was recorded, keep it in that change when it has not been published. If publication already occurred, create a follow-up JJ change only when the project's workflow requires one, advance the same bookmark, and publish through the already resolved remote so the review request includes it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and change-description conventions inferred at runtime from `jj log` win. Preserve the requirement that the description communicate the discoverability addition while adapting its syntax to those conventions. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed prefix, type, scope, subject, body, layout, template, or example. If the user chose to leave the work undescribed, leave these edits in the working-copy change too.
+5. If `CONCEPTS.md` exists at the workspace root, run the same check for it (e.g., a `CONCEPTS.md  # shared domain vocabulary — read when orienting to the codebase` line). Skip entirely when it doesn't exist — never nag for an artifact the project hasn't adopted.
+6. If this check edited an instruction file after Commit already ran, squash it into the refresh change when that change has not been pushed, or create a follow-up change with a description derived from the actual edit when it has. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Move the bookmark to include the follow-up and push it with `jj git push` when an open PR must be updated. If the user chose "don't commit", leave the edits in the working-copy change alongside the rest.
 
 ## Relationship to ce-compound
 

@@ -1,7 +1,7 @@
 # Cross-Model POV Panel
 
 This protocol obtains independent peer POVs, reconciles material disagreement,
-and returns one ce-pov decision. ce-pov remains the decision-maker: peers are
+and returns one `ce-pov` decision. `ce-pov` remains the decision-maker: peers are
 cross-checks, never substitutes or votes. The panel is read-only and
 non-blocking; every branch ends in a panel POV, a solo POV with an availability
 note, or the ordinary POV contract's explicit grounding blocker.
@@ -47,7 +47,7 @@ harness `cursor` and family `unknown` unless an observable serving-family
 attestation lets you set `XHOST_FAMILY` to `codex`, `claude`, `grok`, or
 `composer`. Never infer serving family from the Cursor brand. Section 4 passes
 `XHOST_FAMILY` as the worker's first argument and `XHOST_HARNESS` as
-`ROCKETCLAW_CROSS_MODEL_HOST_HARNESS`; a provider name such as `anthropic`, `openai`, or
+`CROSS_MODEL_HOST_HARNESS`; a provider name such as `anthropic`, `openai`, or
 `xai` in either slot fail-closes the job with no artifact.
 
 `Cursor` and `Composer` are distinct targets:
@@ -101,17 +101,17 @@ after the summons is withheld per Section 4's round-1 sequencing. A user-supplie
 position is handled identically to a host-authored one — shipped as the subject,
 never capitulated to.
 
-## 2. Normalize scope and freeze repository identity
+## 2. Normalize scope and freeze workspace identity
 
 Normalize the allowed read scope once as:
 
-- one repository-relative workspace root; and
-- optional ordered include and exclude path patterns.
+- one Jujutsu workspace-relative read root; and
+- optional ordered include and exclude path patterns; `.tmp/**` is always excluded from peer reads.
 
 Pass that identical representation to every peer prompt and route adapter. The
-default is the JJ workspace root. A narrower user- or host-supplied scope is
+default is the workspace root from `jj workspace root`, with the current directory as the non-Jujutsu fallback. A narrower user- or host-supplied scope is
 binding and is never broadened. Peers launched on the same host inspect existing
-subject files and supporting evidence directly from this shared working copy;
+subject files and supporting evidence directly from this shared workspace;
 point them to those files instead of copying their contents into the payload.
 Pass material inline only when it exists solely in the conversation or is
 otherwise unavailable in the workspace.
@@ -123,10 +123,7 @@ never promise that secrets inside the readable scope are inaccessible. Peers may
 search and read within the declared scope but may not mutate the project or
 intentionally inspect outside it.
 
-Before initial dispatch, capture one **repository-scope identity** from the
-working-copy change and its scoped content: resolve the current change and commit
-IDs with `jj log -r @`, then digest the relevant `jj diff` output. Include it in
-every peer payload. Revalidate it before every reconcile
+Before initial dispatch, capture one **workspace-scope identity**: the current Jujutsu change and commit IDs plus a digest of `jj diff` inside the normalized scope, excluding `.tmp`. Include it in every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
 voices into the current project: disclose the change and either restart all
 voices on the new identity or return an incomplete panel result.
@@ -146,7 +143,7 @@ concrete model IDs, CLI flags, and availability are adapter defaults.
 For each peer:
 
 1. Probe current route and model capabilities without giving the process project
-   content or repository access.
+   content or workspace access.
 2. Try the declared preferred mapping first.
 3. If that default is observed unavailable, obsolete, or incompatible, choose
    only the closest compatible equivalent in the same requested target, model
@@ -183,9 +180,9 @@ or `oracle` invocation is the authority to proceed. A named peer that cannot run
 within these rules is reported, never silently replaced or dropped.
 
 The pre-dispatch update should say who will inspect the subject and that the
-review is read-only. Do not recite scope mechanics, promise that repository
+review is read-only. Do not recite scope mechanics, promise that workspace
 secrets are inaccessible, or describe probe results, CLI versions, model tiers,
-change IDs, repository identity, route health, job lifecycle, or scratch
+revision identifiers, workspace identity, route health, job lifecycle, or scratch
 paths. Mention a cooperative scope restriction only when it materially changes
 the user's choice. Refer to the codebase as "this project" or "the repository"
 unless the user supplied a recognizable name.
@@ -193,10 +190,10 @@ unless the user supplied a recognizable name.
 ## 4. Dispatch, wait, reap, and collect
 
 Prepare one complete canonical payload containing the framed question, subject
-shape, normalized read scope, repository-scope identity, mode, paths to subject
+shape, normalized read scope, workspace-scope identity, mode, paths to subject
 material already in the workspace, and required conversational material that is
-not available there. Let peers inspect and ground against the shared working
-copy. Do not duplicate readable files or add a host-curated architecture summary
+not available there. Let peers inspect and ground against the shared workspace.
+Do not duplicate readable files or add a host-curated architecture summary
 merely to brief the peer.
 
 For an initial `independent` round, exclude ce-pov's position and every other
@@ -231,9 +228,9 @@ partial-panel degradation rule.
 Use `scripts/cross-model-pov.sh` from this skill's directory to run one resolved
 fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Fill in the start command below rather than reconstructing the worker's
-arguments from its usage header. Pass the actual workspace root separately from
+arguments from its usage header. Pass the actual Jujutsu workspace root separately from
 any narrower read root, and pre-create the round output directory as private
-scratch under the run-owned `<workspace-root>/.tmp/rocketclaw/ce-pov/` path. For named peers, start one job per exact target;
+scratch under `<workspace-root>/.tmp/rocketclaw`. For named peers, start one job per exact target;
 for a selected panel, start one job per selected peer. Start all jobs before
 waiting.
 
@@ -241,12 +238,12 @@ waiting.
 self-bounds at 600s and the runner supervisor derives a floor of 1230s, so the
 runner window already sits outside the worker's cap and reaps nothing healthy.
 
-**Raising `ROCKETCLAW_CROSS_MODEL_HARD_SECS` widens the runner window automatically.** The
+**Raising `CROSS_MODEL_HARD_SECS` widens the runner window automatically.** The
 runner derives its supervisor hard cap from the ambient knob
-(`max(1230, knob + 30)`). Do not set a numeric `ROCKETCLAW_PEER_HARD_SECS` here — and
-clear any ambient one on the start prefix (`ROCKETCLAW_PEER_HARD_SECS=`) so a stale
+(`max(1230, knob + 30)`). Do not set a numeric `PEER_HARD_SECS` here — and
+clear any ambient one on the start prefix (`PEER_HARD_SECS=`) so a stale
 export cannot undercut the derivation. Do not re-export a *resolved*
-`ROCKETCLAW_CROSS_MODEL_HARD_SECS` onto the worker's command line: that converts a
+`CROSS_MODEL_HARD_SECS` onto the worker's command line: that converts a
 fallback into an override and strips the worker of its route-aware default
 (idle-guarded streaming routes share `HARD_SECS`; `grok-cli` alone keeps the
 lower `UNGUARDED_HARD_SECS` bound because its `--json-schema` path cannot stream).
@@ -275,7 +272,7 @@ tool's CWD is the user's project on every host, not the skill directory.
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-ROCKETCLAW_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env ROCKETCLAW_CROSS_MODEL_HOST_HARNESS="<host-harness>" ROCKETCLAW_CROSS_MODEL_WORKSPACE_ROOT="<workspace-root>" ROCKETCLAW_CROSS_MODEL_READ_ROOT="<read-root>" ROCKETCLAW_CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
+PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_WORKSPACE_ROOT="<workspace-root>" CROSS_MODEL_READ_ROOT="<read-root>" CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
 ```
 
 - `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or
@@ -288,10 +285,10 @@ ROCKETCLAW_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start -
   pre-created round output directory; `<scratch-dir>` is the Phase 1 scratch
   root, and `<run-id>` its basename.
 - `<read-root>` is Section 2's normalized read root and `<workspace-root>` the
-  actual JJ workspace root containing it.
-- Add `ROCKETCLAW_CROSS_MODEL_INCLUDE_PATHS` / `ROCKETCLAW_CROSS_MODEL_EXCLUDE_PATHS` only when
-  Section 2 resolved patterns, and `ROCKETCLAW_CROSS_MODEL_MODEL_OVERRIDE_TARGET` /
-  `ROCKETCLAW_CROSS_MODEL_MODEL_OVERRIDE` only for a Section 3 same-family substitution.
+  actual Jujutsu workspace root containing it, or the current-directory fallback.
+- Add `CROSS_MODEL_INCLUDE_PATHS` / `CROSS_MODEL_EXCLUDE_PATHS` only when
+  Section 2 resolved patterns, and `CROSS_MODEL_MODEL_OVERRIDE_TARGET` /
+  `CROSS_MODEL_MODEL_OVERRIDE` only for a Section 3 same-family substitution.
 
 Record every job id and the epoch after the final start. Poll all jobs in
 bounded slices (resolve `$PY` again in each tool call — shells do not persist):
@@ -305,7 +302,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 Job ids or job-directory paths are positional. `--skill`, `--run-id`, and
 `--label` are start-only; never pass them to `wait`. Do not add a separate shell
 sleep: `wait` itself provides the bounded polling delay. Use one aggregate
-deadline of `ROCKETCLAW_CROSS_MODEL_HARD_SECS` + 10 seconds (610s by default, since this
+deadline of `CROSS_MODEL_HARD_SECS` + 10 seconds (610s by default, since this
 skill's workers self-bound at 600s); never begin a wait that can cross it. Read
 the knob rather than hardcoding the result -- a hardcoded deadline silently reaps
 a healthy peer whenever a user raises the knob, wasting the peer's full spend.
@@ -365,7 +362,7 @@ default cap. Never reinterpret a smaller user limit as a suggestion.
 
 For each reconcile exchange:
 
-1. Revalidate repository-scope identity. Restart or return incomplete on change.
+1. Revalidate workspace-scope identity. Restart or return incomplete on change.
 2. Have ce-pov reconsider every current position and its evidence.
 3. Identify only disputed project claims that could change the decision. Verify
    them against the allowed scope and classify each as `verified`,
@@ -373,7 +370,7 @@ For each reconcile exchange:
 4. Build one common evidence delta. Send the identical complete delta to every
    surviving peer—never route-specific truncation—along with the full original
    subject and every surviving voice's current position and reasoning, capped at
-   five succinct source-cited evidence bullets per voice.
+   five succinct source-attributed evidence bullets per voice.
 5. Re-resolve every fixed route under Section 3, then dispatch a fresh stateless
    round. The same recipients need no question; an unexpected new recipient or
    intermediary does. A failed peer is dropped for later rounds; do not reuse its
@@ -442,7 +439,7 @@ for handoff; otherwise offer one logical next step and wait.
 ## 7. Skeptic mode and degradation
 
 When asked to challenge ce-pov rather than form an independent POV, set
-`mode: skeptic`. Fold a valid receipt-backed critique into ce-pov once, but do not
+`mode: skeptic`. Fold a valid attributed critique into ce-pov once, but do not
 put that voice into convergence. Disclose whether it changed the POV. A failed
 skeptic degrades like any unavailable peer.
 

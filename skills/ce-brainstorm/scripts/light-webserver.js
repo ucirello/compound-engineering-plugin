@@ -212,7 +212,7 @@ function wrapFragment(options, content) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Local web preview</title>
+  <title>Local visual probe</title>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; background: #f7f7f8; color: #1f2328; }
     header { padding: 10px 18px; border-bottom: 1px solid #d8dee4; background: #fff; color: #57606a; font-size: 13px; }
@@ -220,7 +220,7 @@ function wrapFragment(options, content) {
   </style>
 </head>
 <body>
-  <header>Local web preview - newest screen, reloads on change</header>
+  <header>Local visual probe - newest screen, reloads on change</header>
   <main>${content}</main>
   ${refreshScript(options)}
 </body>

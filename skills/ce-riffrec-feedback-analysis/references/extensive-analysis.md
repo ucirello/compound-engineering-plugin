@@ -1,6 +1,6 @@
 # Extensive analysis path
 
-Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full evidence artifact set that feeds `ce-brainstorm`.
+Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full compatible artifact set that feeds `ce-brainstorm`.
 
 ## Workflow
 
@@ -34,13 +34,13 @@ Use this path when the input is a longer recording (over ~60 seconds), contains 
    - **Inferences:** likely user intent, likely broken control, suspected missing state.
    - **Requirements:** product behavior needed to resolve the problem.
 
-7. When the current workspace contains the product source code, run a source-mapping pass before or during brainstorm. Use the transcript language, visible UI labels, screenshot paths, route names, and generated requirements to search the codebase for likely components, controllers, services, models, tests, and state stores. For larger sessions, split this mapping by product area and use sub-agents when available so independent areas can be inspected in parallel.
+7. When the current workspace contains the product source code, run a source-mapping pass before or during brainstorm. Use the transcript language, visible UI labels, screenshot paths, route names, generated requirements, the project's active instructions and conventions, and relevant history from `jj log` to search the codebase for likely components, controllers, services, models, tests, and state stores. Current project instructions and observed history win over generic guidance. For larger sessions, split this mapping by product area and use sub-agents when available so independent areas can be inspected in parallel.
 
 8. Add source mapping to the brainstorm material as suspected implementation surfaces, not as proven root cause unless the code clearly proves it. Include confidence levels and short evidence notes explaining why each file or component is relevant.
 
-9. Always continue into brainstorm. Once `analysis.md`, `problem-analysis.md`, `source-materials.md`, and `requirements-kickoff.md` exist, say "Analysis complete. Ready to brainstorm the findings." Then immediately load the `ce-brainstorm` skill with the generated `requirements-kickoff.md`, unless the user explicitly asked only to extract or analyze artifacts.
+9. Always continue into brainstorm. Once `analysis.md`, `problem-analysis.md`, `source-materials.md`, and `requirements-kickoff.md` exist, report that the analysis is complete and immediately load the `ce-brainstorm` skill with the generated `requirements-kickoff.md`, unless the user explicitly asked only to extract or analyze artifacts.
 
-10. In brainstorm, first ask the user to confirm the captured requirements: "Did this capture the requirements correctly, and what is missing, wrong, or grouped badly?" Do not move to planning until brainstorm has confirmed or corrected the requirements.
+10. In brainstorm, first ask the user to confirm the captured requirements and identify anything missing, incorrect, or grouped poorly. Do not move to planning until brainstorm has confirmed or corrected the requirements.
 
 ## Automatic handoff
 
@@ -66,6 +66,7 @@ When analyzing a feedback source:
 - Include concrete source-code mapping when possible: likely component/service/controller/model/test files, route or API endpoint names, relevant state variables, and confidence level. This mapping should make it obvious where a later implementation agent should start looking.
 - If only video is available, infer likely screens and components from visible UI labels, layout, URLs, route names, copied text, screenshots, and transcript references. Mark uncertain mappings explicitly instead of omitting them.
 - If only audio or notes are available, map from product terminology and workflow descriptions to likely code areas when the workspace is present, and label the mapping as transcript-derived.
+- For Go implementation surfaces, apply compatible Go quality guidance, including idiomatic design, formatting, focused tests, and error handling, while deferring to the project's active instructions and observed conventions.
 - Do not drop lower-priority items during analysis. Mark them as lower priority or secondary if needed, but keep them represented.
 - Separate capture from prioritization. Brainstorm may regroup, split, defer, or reject items later, but the first requirements pass should preserve the full signal.
 - If a feedback session contains many issues, create a comprehensive capture document and state that planning should split it into smaller plans.

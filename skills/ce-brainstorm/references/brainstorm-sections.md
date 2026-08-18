@@ -37,10 +37,14 @@ artifact contract:
 A requirements-only unified plan is kept **light and standalone-readable**. It
 includes:
 
-- `## Goal Capsule` with objective, product authority, and open blockers. When
-  the coherent-work gate split a broader request, the objective names the
-  current area and product authority says the surrounding areas are not active
-  scope.
+- `## Goal Capsule` with objective, product authority, and open blockers. The
+  objective is always the outcome — what is true for users or operators
+  afterwards, phrased so it would still read as the goal under a different
+  implementation. When the seed supplies an approach ("move X to Y"), that is
+  the **Means** (its own line) and the objective is the outcome it serves,
+  surfaced in the dialogue rather than assumed. When the coherent-work gate split a broader request, the objective
+  names the current area and product authority says the surrounding areas are
+  not active scope.
 - `## Product Contract` containing the brainstorm sections below.
 
 Do **not** emit a `## Goal Launch Block` or `## Reader Index`: the launch prompt
@@ -63,7 +67,7 @@ Skip document creation when **both** hold:
 - The user only needs brief alignment — no exploration produced novel scope,
   framing, or decisions worth preserving in IDed shape.
 - Any durable decisions made during the dialogue can flow naturally to
-  downstream artifacts (`ce-plan`, a JJ change description, `<root>/solutions/`)
+  downstream artifacts (`ce-plan`, the JJ description, `<root>/solutions/`)
   without a brainstorm doc as an intermediary.
 
 The trigger for creating a doc is when the dialogue surfaced enough
@@ -74,11 +78,9 @@ durable, IDed form — not just as conversational artifacts.
 **Stress test:** a brainstorm about a tiny bug fix where the user asks "fix
 this with a null check or with upstream validation?" and the agent confirms
 "upstream validation, here's why" doesn't need a brainstorm doc. The
-decision flows to `ce-plan` (or directly to a JJ change description, or to
+decision flows to `ce-plan` (or directly to the JJ description, or to
 `<root>/solutions/` if it's a pattern worth carrying) without a brainstorm
 artifact in the middle.
-
-When composing, editing, validating, or recommending that change description, inspect actual history with `jj log -r :: -n 10 --no-graph -T 'description ++ "\n\n"'`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and description syntax observed in the actual `jj log` output take precedence; apply compatible Go guidance only for quality, clarity, and structure, without imposing a fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` in `jj describe -m '<description-composed-from-runtime-conventions>'` wherever a change description is required.
 
 Conversely, a brainstorm about a multi-actor feature with contested scope
 and several behavioral conditions probably does need a doc — the planning
@@ -361,12 +363,12 @@ artifact.
 ### Required
 
 - **`title`** — the artifact's descriptive name with a ` - Plan` suffix
-  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
+  (e.g., `<descriptive name> - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML). It is a unified plan at every readiness state, so the title
-  stays stable when `ce-plan` enriches it. Do not put change-description
-  syntax in the title — the `type` field carries the artifact classification.
-- **`type`** — a short work classification derived from repository-local
-  instructions and current repository conventions; do not impose a fixed set.
+  stays stable when `ce-plan` enriches it. Do not put a change-description
+  classification in the title — the `type` field carries the project's current classification.
+- **`type`** — the repository's current change classification, inferred from
+  active project instructions and history rather than a fixed catalog.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
   Matches the calendar date in the filename
   (`<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>`), which adds the
@@ -385,8 +387,8 @@ artifact.
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No RocketClaw artifact carries mutable progress state; whether work shipped
-is derived from JJ, not stored in the doc. Do not introduce one.
+progress. No artifact carries mutable progress state; whether work shipped
+is derived from `jj log`, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 
@@ -409,7 +411,11 @@ Same shape as plan rules.
 - **Repo-relative paths.** Always. Never absolute paths.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to ce-plan, no italic provenance lines. Engineering process
-  metadata belongs in JJ change descriptions and tool output, not the artifact.
+  metadata belongs in JJ descriptions and tool output, not the artifact.
+
+When this workflow composes, edits, validates, or recommends a JJ description, active project instructions and description patterns read through `jj log` take precedence. Apply compatible Go guidance only to quality, clarity, and structure without imposing a fixed prefix, type, scope, subject, body, layout, template, example, or message. Preserve any issue-reference semantics required by the site or active project conventions.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 - **No implementation details by default.** Libraries, schemas, endpoints,
   file layouts, code structure stay out unless the brainstorm itself is
   inherently about a technical or architectural change and those details are

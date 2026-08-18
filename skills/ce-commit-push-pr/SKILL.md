@@ -1,161 +1,183 @@
 ---
 name: ce-commit-push-pr
-description: Describe Jujutsu changes, publish a bookmark, and open or update a GitHub PR. Use when asked to ship/open a PR, or for PR-description-only work such as writing, rewriting, or describing a PR body.
+description: Describe changes, push a bookmark, and open a PR. Use when asked to ship/open a PR, or for PR-description-only flows like writing, rewriting, or describing a PR body.
 argument-hint: "[PR ref] [mode:pipeline] [archive:on|off] [babysit:off|continuous|checkpoint]"
 ---
 
-# Jujutsu Change, Bookmark, Push, and PR
+# Jujutsu Change, Push, and PR
 
-**Asking the user:** Use the host's blocking question capability. Ask in chat only when no blocking capability is available or it errors. Never silently skip a required question.
-
-## Done
-
-The intended changes are described and published through Jujutsu, GitHub has the requested PR state without duplicate or unintended PRs, and each eligible ready PR is owned by `ce-babysit-pr`. Description-only and description-update modes are done when the requested title and body are returned or applied without changing repository state.
+**Asking the user:** When this skill says "ask the user", use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting the question on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
 
 ## Mode
 
-- **Description-only:** Write and print a PR title and body. Apply them only when the user asks. Pass a supplied PR URL or number to Step 4.
-- **Description update:** Refresh an existing PR without changing or pushing repository state. Compose in Step 4, then preview and apply through `gh pr edit` in Step 5. Only an exit-zero empty array from the existing-PR check proves there is no open PR; a non-zero result leaves PR state unknown and must be resolved.
-- **Full workflow:** Run Steps 1-5. When current user intent or a standing project preference requires multiple PRs, enter Stack mode instead of creating one PR.
+- **Description-only** — user wants *just* a description ("write/draft a PR description", "describe this PR", or pasted a PR URL/number alone). Run Step 4 only; print the result. Apply only if the user asks. If a PR ref was pasted, pass it to Step 4 so Pre-A resolves the right range.
+- **Description update** — user wants to refresh/rewrite an existing PR's description with no commit/push intent. Determine PR presence with the same rule used everywhere: only an exit-0 `[]` from the existing-PR check means "no open PR" (report and stop); a non-zero check is **unknown** (resolve `gh auth status` / connectivity first — never treat it as "no PR"). With an open PR, run Step 4 (PR mode using the existing PR's URL), then Step 5 to preview, confirm, and apply via `gh pr edit`.
+- **Full workflow** — otherwise. Run Steps 1-5 in order. When user intent or standing preference wants a **PR stack**, enter **Stack mode** (below) instead of ordinary single-PR create in Step 5; do not add `posture:` to this skill's argument-hint.
 
-**`mode:pipeline` modifier:** Run the selected mode without blocking questions. Keep an existing PR body unless rewriting was requested; description-update mode applies directly because that invocation supplies apply intent. Stop with a residual rather than guessing about unresolved base, publication identity, or topology choices. Pass stack posture to the babysit handoff when applicable.
+**`mode:pipeline` modifier** — set by orchestrated callers (e.g., `lfg`). Run the resolved mode non-interactively: suppress every blocking ask. Step 5's existing-PR rewrite question defaults to **not rewriting**; in description-update mode the preview ask is skipped and the rewrite applies directly (the update invocation itself is the apply intent); any other suppressed ask takes its conservative documented default (keep the current bookmark; if Pre-A cannot resolve a base, stop and report rather than guess). Pipeline stack mode uses only intent/scope already on the invocation — never ask; pass posture into the babysit handoff args when stacking.
 
-## Stack Mode
+## Stack mode (opt-in)
 
-Enter stack mode only when user intent or a standing preference requires multiple PRs. Preserve an explicit stack request rather than converting it to one PR with a custom base. Do not suggest stacks proactively. When only an artificial split of one logical change is possible and stack intent is not explicit in the current request, use the single-PR path.
+**Opt-in only.** Enter stack mode when user intent or standing preference wants a multi-PR stack. An explicit stack request is **required intent** — do not re-read it as a single PR with a custom `--base`. **Do not** proactively suggest PR stacks. When the user did **not** ask for one, **refuse** nonsense stacks (one logical change, artificial slices) and stay on the single-PR path.
 
-Load `references/stack-submit.md` before Step 3. Follow its Probe, Topology, and, when required, Retrospective construction sections there; Step 5 owns submission and post-submit metadata. `gh stack` is a soft dependency: required stack intent stops when unavailable, while soft intent reports the residual and uses one PR.
+When stack mode is active, load `references/stack-submit.md` **before Step 3**. At this point follow only its Probe, Topology, and, when needed, Retrospective construction sections; do not submit. When that reference constructs a retrospective stack, its layer-by-layer change flow replaces ordinary Step 3. Step 5 exclusively owns stack submission and the reference's post-submit metadata route for PRs created in this run. Soft-depend on `gh stack` CLI only. On missing/unavailable CLI: required stack intent → hard-stop with residual; soft intent → residual + ordinary single-PR create.
 
-After a successful ready submit, hand the bottom open non-draft PR to `ce-babysit-pr`. Use `posture:stack-ready` unless land or merge-when-green intent is explicit, in which case use `posture:stack-land`. Draft-only submission is a residual before babysitting unless the user explicitly requested draft watching.
+After successful submit with ready (non-draft) PRs, continue to the babysit handoff below using the **bottom open non-draft** PR. Derive babysit posture from ship intent: default `posture:stack-ready`; use `posture:stack-land` only when land/merge-when-green intent is explicit. Pass that posture on the `ce-babysit-pr` invocation (do not put `posture:` on this skill's argument-hint). Draft-only submit → hard residual before babysit when babysit is on.
 
 ## Context
 
-Run each command as its own shell tool call. Do not join commands with shell operators, pipes, substitutions, or redirects. Interpret each exit status directly. Quote paths and do not depend on shell state persisting between calls.
+Gather the repository context by running each command below as its **own** shell tool call — a single argv-style invocation (just the program and its arguments). Do **not** join them with shell operators, pipes, substitutions, or redirects. Read each exit status directly; unavailable PR metadata or an unbookmarked working-copy change is state to interpret, not a failure to suppress.
 
-| Command | Purpose | Non-zero exit or empty output |
+Run them in order — the existing-PR check needs the bookmark associated with the working-copy change:
+
+| Command | Purpose | Non-zero exit / empty output means |
 | --- | --- | --- |
-| `jj workspace root` | Workspace root | Not a Jujutsu workspace; description-only/update may use the current directory for the local `.tmp` fallback, but full workflow stops |
-| `jj status` | Working-copy change, bookmarks, and conflicts | Repository state unavailable |
-| `jj diff` | Current working-copy diff | Empty means the working-copy change has no content |
-| `jj bookmark list -r @` | Local bookmarks at the current change | Empty is normal: the work is not named yet |
-| `jj log -r 'trunk()..@' --limit 20` | Complete unpublished lineage | Empty means no work ahead of trunk; failure means `trunk()` is unresolved |
-| `jj log -r 'trunk()' --limit 1` | Candidate default remote change and bookmark identity | A root-only fallback or a change without a matching default remote bookmark is unresolved; resolve it from GitHub and Jujutsu remote state |
-| `jj log -r '::@' --limit 20 -T 'description ++ "\n\n"'` | Runtime message syntax and explanatory style | No described history is available; use project instructions and compatible Go guidance only |
-| `gh pr list --head <bookmark> --state open --json number,url,title,body,state,isDraft,headRefName,headRepositoryOwner` | Open PR for the bookmark exported as a Git head | Run only when one intended feature bookmark is known; exit zero with `[]` means none, non-zero means unknown |
+| `jj workspace root` | Workspace root | Not a Jujutsu workspace — use the current directory only for temporary paths; report and stop for repository operations |
+| `jj status` | Working-copy state | Fails outside a Jujutsu repository |
+| `jj diff` | Current change | Empty output = no content changes in `@` |
+| `jj bookmark list -r @ -T 'name ++ "\n"'` | Local bookmarks targeting `@` | Empty output = no bookmark; multiple lines = ambiguous (Step 1 handles either) |
+| `jj log -r ::@ -n 10` | Recent change-description / PR-title style | Empty history = no prior descriptions |
+| `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | Remote default branch | Resolve per Step 1 if unavailable |
+| `gh pr list --head <bookmark> --state open --json number,url,title,body,state,isDraft,headRefName,headRepositoryOwner` | Open PR for this bookmark (run only once `<bookmark>` is unambiguous) | Exit 0 with `[]` = no open PR. Non-zero = `gh` missing, unauthenticated, or offline — PR state is **unknown**, not "none"; never treat a non-zero check as "no PR"; re-check before creating (Step 5) |
 
-Use the bookmark name only for `gh pr list --head`. Never pass an owner-qualified value. Derive and pass `-R <base-owner>/<repo>` when repository auto-detection is unavailable or points to a fork. If more than one owner has the same head name, match `headRepositoryOwner` and `headRefName` to the remote this workflow can push; stop if ownership remains ambiguous.
+Substitute `<bookmark>` with the single local bookmark targeting `@`, and pass its **name only**. Two traps:
 
-Treat this context as a snapshot. Re-read the intended bookmark and PR state immediately before `jj git push` and `gh pr create`.
+- **No bookmark or multiple bookmarks at `@`:** skip the PR check entirely — an empty `--head` drops the filter and guessing can target an unrelated PR. Resolve one feature bookmark in Step 1.
+- **Fork checkout:** do **not** pass `<owner>:<bookmark>` — `gh pr list --head` does not accept that syntax and silently returns `[]` for it. Target the base repo through default-repo resolution or `-R <base-owner>/<repo>`.
+
+Everything gathered here is a snapshot taken before any action — treat it as a hint, not ground truth. Re-verify the bookmark, remote, and existing-PR state immediately before each consequential step.
+
+---
 
 ## Artifact Root
 
-When concept archival is enabled, write explainers under `<root>/explainers/`. Resolve `<root>` once before composing artifact paths.
+When PR concept-teaching archival is on, this skill writes an explainer under `<root>/explainers/`. Resolve `<root>` once before that write and use it everywhere a `<root>/` path appears below.
 
-Read `docs_root` only from `<workspace-root>/.rocketclaw/config.yaml`; do not read it from `config.local.yaml`. An unset value resolves to `docs`. Validate a configured value as a workspace-relative directory whose real, symlink-resolved path remains inside the workspace and is neither the workspace root nor under `.git/` or `.jj/`. An invalid value stops archival rather than falling back. Use only the resolved root for artifacts.
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-## Step 1: Resolve Bookmark and PR State
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 
-Use `trunk()` only when it resolves exactly one non-root change with a matching default remote bookmark. Jujutsu can fall back to `root()` when no default is configured, which is not proof of a GitHub base. Otherwise use `gh repo view --json defaultBranchRef` against the explicitly resolved GitHub repository, then match that name to Jujutsu remote bookmarks. If neither resolves one base, ask in interactive mode or return a residual in pipeline mode. Never guess a fixed default name or remote.
+## Step 1: Resolve branch and PR state
 
-Bookmark routing is determined by whether the intended work is ahead of `trunk()` and has one unambiguous publication identity:
+Use `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` for the remote default branch. If it fails, inspect remote bookmarks with `jj bookmark list --all-remotes`; if no unique default can be established, ask rather than guessing. For the existing-PR check, exit 0 with `[]` means no open PR for this bookmark; a non-zero exit means PR state is unknown and must be resolved before creation.
 
-- Work ahead of `trunk()` without a feature bookmark is normal. Derive a name from the complete change and create it in Step 3 without another confirmation.
-- Work identified only by the default bookmark must not publish that bookmark. Resolve safe feature-bookmark creation through `references/branch-creation.md`.
-- No work ahead of `trunk()` means there is no feature work to ship.
-- Multiple candidate bookmarks require selection by requested work, push remote, and PR identity; ask or stop when that identity remains ambiguous.
+Bookmark routing:
 
-For a non-empty PR query, match both head owner and head name to the push target. Step 5 uses the confirmed URL; Step 4 uses the existing body as preservation context.
+- **No bookmark at `@`** — derive a feature name from the change content, run `jj bookmark create <bookmark-name> -r @`, and use the unique resulting bookmark. Choose a non-conflicting suffix when safe; ask only when ambiguity remains.
+- **Multiple bookmarks at `@`** — resolve the intended GitHub head from user intent, tracked remote bookmarks, and open-PR metadata; stop and ask if it is not unique.
+- **On the default bookmark with work to do** — create a feature bookmark; pushing the default directly is unsupported. Continue at Step 3 for safe base handling.
+- **On the default bookmark with no work** — report no feature work and stop.
+- **Feature bookmark** — continue.
 
-## Step 2: Determine Conventions and Compose Change Descriptions
+If the PR check returned a non-empty array, do not blindly take index 0. Match `headRepositoryOwner` and `headRefName` to the bookmark's push target; stop if the owner cannot be confirmed uniquely. Step 5 uses the selected URL to route application, and Step 4 uses its body as rewrite context.
 
-At every site in this skill and its loaded references that composes, edits, checks, validates, recommends, templates, or exemplifies a JJ change description, the project's active instructions and message syntax inferred at runtime from the full-description `jj log` probe win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+## Step 2: Determine conventions
 
-Apply only compatible Go guidance for clarity: summarize the change and explain motivation or consequences when useful. Preserve issue references and reviewer-relevant context not evident from the diff. Do not add attribution or sign-offs. Do not impose a fixed prefix, type, scope, capitalization, mood, subject, body, layout, line limit, suffix, trailer, template, or example unless current project instructions or runtime history require it. Use `<message composed from the standards above>` in command forms.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-## Step 3: Describe, Bookmark, and Push
+Runtime project instructions and conventions already in context win, followed by history read with `jj log`; the quoted rule is quality guidance, not permission to run Git. Apply compatible Go guidance only to quality, clarity, and structure without imposing a fixed prefix, type, scope, subject, body, layout, footer, template, example, or message.
 
-If the stack reference constructed the layers, skip the ordinary path and continue to Step 4; Step 5 submits the stack.
+## Step 3: Commit and push
 
-If the work is based on the default bookmark or needs a feature bookmark, read `references/branch-creation.md` and follow its decision flow.
+If the stack reference constructed retrospective layers before this step, skip ordinary single-bookmark describe/push and continue to Step 4; `gh stack submit` in Step 5 pushes the stack.
 
-Inspect the complete lineage and current diff for coherent concerns. Keep one change when the work is one concern. When whole-file groups are independently coherent, use `jj split <files>` to separate them; do not force hunk-level partitioning without user direction. When the invocation carries `exclude:<paths>`, select only intended files into the publishable parent chain and leave excluded paths in an unbookmarked descendant working-copy change. Verify that no excluded path is in `trunk()..<feature-tip>` before moving the feature bookmark or pushing.
+If on the default bookmark, feature-bookmark creation needs to handle a stale local `<base>`, unpushed changes on local `<base>`, and working-copy changes relative to the fresh remote base. Read `references/branch-creation.md` and follow its decision flow before continuing.
 
-Before composing or checking every resulting description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate Jujutsu changes (2-3 max). Group at file level only; do not use interactive hunk selection. When ambiguous, one change is fine.
 
-Describe each resulting change with `jj describe -r <change> -m "<message composed from the standards above>"`. If another child is needed, create it with `jj new <parent>`. Stop and report conflicts rather than resolving them without direction.
-
-Create the feature bookmark at the final intended change, or set the confirmed feature bookmark there. Run only the applicable command:
+Commit each group by passing only its whole-file fileset to `jj commit`; Jujutsu has no staging area. **Honor `exclude:<paths>` when the invocation carries it:** never include those files, and report that they remain in the working-copy change. Preserve any Implementation Unit traceability required by active project conventions without prescribing message syntax.
 
 ```bash
-jj bookmark create <bookmark> -r <change>
-jj bookmark set <bookmark> -r <change>
+jj commit -m "<description derived from current standards>" <group-files>
 ```
 
-Immediately before publication, verify bookmark identity, target, conflicts, descriptions, private-change policy, and remote state. Fetch before pushing so JJ's remote-lease checks compare against current state:
+The fileset is load-bearing: a bare `jj commit` selects the entire working-copy change. Naming the group keeps every other path, including `exclude:` paths, in the new working-copy change.
+
+After the final `jj commit`, move the intended feature bookmark to the last completed change (`@-`). Immediately before pushing, confirm it is the intended bookmark and inspect its local and remote targets. Push only that bookmark:
 
 ```bash
-jj bookmark list <bookmark> --all-remotes
-jj git fetch --remote <remote>
+jj bookmark move <bookmark> --to @-
 jj git push --remote <remote> --bookmark <bookmark>
-jj new <bookmark>
 ```
 
-Push creates and automatically tracks a new remote bookmark. A rejected push is a stop for reconciliation, never permission to overwrite unseen remote work or bypass JJ's safety checks. Reconcile after fetching with the appropriate `jj rebase` operation, or ask when the destination is unclear. If all intended changes are already described, the bookmark targets the correct change, and that target is present on the remote, this step is a no-op. Create the fresh child only after a successful push and only when `@` is not already an empty child of the published bookmark.
+If the working-copy change is empty and the bookmark already matches its remote bookmark, this step is a no-op.
 
-## Step 4: Compose the PR Title and Body
+## Step 4: Compose the PR title and body
 
-Read `references/pr-description-writing.md` in full. It owns range resolution, value-first framing, sizing, scannability, program altitude, related-work preservation, concept teaching, project-required fields, and the pre-apply audit. Pass any known PR URL or number. In Stack mode, Step 5 follows the post-submit route in `references/stack-submit.md`.
+**You MUST read `references/pr-description-writing.md`** in full — it owns value-first framing, sizing, program altitude, related-work references (preserve existing `Related:` / `Fixes` on rewrite), and the pre-apply audit. The only input it needs from this skill is the PR ref, if one was identified by mode dispatch. If Step 1 found an existing PR, pass its URL to Step 4 when rewriting so PR mode fetches the existing body. In Stack mode, Step 5 follows the post-submit route in `references/stack-submit.md` instead of composing one default-base body here.
 
-Use available capture capabilities or user-supplied artifacts for evidence; never invent or upload evidence. Incorporate supplied evidence in a project-permitted location. If evidence was explicitly requested but not supplied, ask for it or explain how to return it. Changes with no material observable claim need no evidence section. Otherwise state what was exercised and any real limitation without presenting test output as a demo or screenshot.
+**Evidence decision** before composition. This skill does not own a capture workflow — use harness capture tools or user-supplied artifacts, never invent/upload evidence or launch another skill.
 
-Resolve ordinary configuration keys from `<workspace-root>/.rocketclaw/config.local.yaml`, then `<workspace-root>/.rocketclaw/config.yaml`; the first active, non-commented valid scalar wins. Empty or invalid scalars continue to the next layer and then the skill default. A present list or map, including an empty one, replaces that key. Missing files are skipped. This cascade does not apply to `docs_root`.
+1. **User supplied** (URL, markdown image/embed, local path) — incorporate as `## Demo`, `## Screenshots`, or `## Evidence`.
+2. **User asked for evidence but supplied none** — ask for the artifact or tell them to capture with the harness and return.
+3. **No material observable claim** (internal plumbing, type-only, pure refactor, inert docs) — skip without asking. Classify by runtime purpose, not extension (runtime agent instructions / config / product content / policy YAML is not auto-skippable as "docs").
+4. **Otherwise** (UI, CLI, API, workflow, ranking, deploy/config behavior) — concise validation note of what was exercised; if a real run was impossible (credentials, paid services, deploy-only, hardware, missing setup), say so. Do not block PR creation for missing visuals; test/manual notes are fine — never label test output "Demo" or "Screenshots."
 
-An active winning `pr_teaching_section: false` disables concept handling; missing or any other valid value enables it. `pr_teaching_archive` is enabled only by an active winning value of `true`, and `archive:on|off` overrides it for this run. Description-only and description-update modes never write archival files.
+**Concept teaching gate** before composition. Use the workspace root gathered in Context (resolving it with `jj workspace root` if needed) and apply the ordinary-key rule below.
 
-Continue through the reference and run its coverage audit before returning the title and body.
+**Resolve ordinary YAML keys from the two workspace files.**
 
-## Step 5: Apply and Report
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
+- **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
+- **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 
-**Description-only:** Print the title and body, then stop unless asked to apply.
+Only an **active (non-commented)** `pr_teaching_section:` key counts — lines starting with `#` are YAML comments; matching commented template keys would silently flip the gate. Off only when the winning active value is exactly `false`; missing key or any other value → default **on**. Same cascade resolves `pr_teaching_archive:` — on only when the winning active value is exactly `true`, else **off**; per-run `archive:on|off` overrides for this invocation.
 
-**New PR:** In Stack mode, use the reference's Submit section. Otherwise re-run the exact `gh pr list --head <bookmark>` check immediately before creation. Switch to the existing-PR path if a matching PR appeared. Resolve any non-zero result before creating. Apply with `gh pr create` and report the URL.
+- Gate **on** — judge novelty and compose per **Step B2** of the reference. When off, skip judgment, section, Step 5 trailer/offer, and archival entirely.
+- Gate **off** — compose without concept handling.
 
-**Existing PR:** In Stack mode, submit or synchronize through the reference. Otherwise report the URL and ask whether to rewrite the description. Pipeline mode keeps the body unless rewriting was requested.
+Then continue with the reference (Steps A–E, including Step B2 when the teaching gate is on). Step E must run before the body is returned.
 
-**Description update or confirmed rewrite:** Compare title and body with the existing PR. Make no API call when they are identical. Otherwise preview the proposed title, first two opening sentences, and body line count, then apply with `gh pr edit` only when the selected mode supplies apply intent or the user confirms.
+## Step 5: Apply and report
 
-**Explainer archival:** Run only in the full workflow when archival is enabled, concept-teaching content was composed, and body application is authorized. Resolve every path from the workspace root.
+**Description-only mode** — print the title and body. Stop unless the user asks to apply.
 
-1. Use the empty child created after the feature push when it is still based directly on the feature bookmark; otherwise start a dedicated child with `jj new <bookmark>`.
-2. Write one artifact per taught concept with the project's required artifact metadata and teaching content. A confirmed prior artifact for the same concept may be refreshed; do not overwrite any other pre-existing file without confirmation.
-3. Run `jj file track <path>` only for files created by this run. Never force ignored content. If ignore policy rejects a path, remove only the new file from this run, warn, and skip archival.
-4. Before composing, editing, or checking the archival change description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-5. Use `jj describe -m "<message composed from the standards above>"`, set the feature bookmark to the archival change, start a fresh `jj new <bookmark>`, and publish with `jj git push --remote <remote> --bookmark <bookmark>`.
-6. Generate each link with `gh browse -R <base-owner>/<repo> -n -b <bookmark> -- <path>` so GitHub Enterprise hosts work, then place it with the corresponding concept teaching before applying the PR body.
+**New PR** (full workflow, no existing PR from Step 1) — if **Stack mode** is active, follow the Submit section of `references/stack-submit.md` instead of `gh pr create`; then report the bottom open non-draft PR URL and continue to babysit handoff. Otherwise, immediately before creating, **always** re-run `gh pr list --head <bookmark> --state open --json number,url,isDraft,headRefName,headRepositoryOwner` (bookmark name only; target the base repo on a fork, per Context). Match the current push target by owner and head name, and resolve a non-zero check before creation. Apply per "Applying via gh" only after absence is confirmed.
 
-If archival description or publication fails, warn and continue without the link. Do not strand PR creation.
+**Existing PR** (full workflow, found in Step 1) — if **Stack mode** is active, still follow the Submit section of `references/stack-submit.md` so remaining stack layers submit / sync; then report the bottom open non-draft PR URL and continue to babysit handoff. Otherwise the new revisions are already on the PR from Step 3. Report the PR URL, then ask whether to rewrite the description.
 
-For concept handoffs, default to `/ce-explain <name>` and use `$ce-explain <name>` only on Codex or a host that explicitly documents dollar-prefixed skill invocation. Output one form. When a body applied by this run teaches concepts, report their names after the PR URL and, in an interactive full workflow, add one rendered invocation per concept. Print no concept trailer when no body was applied.
+- **No** — done.
+- **Yes** — run Step 4 if not already done, then preview and apply (see below).
 
-**Babysit handoff:** After creating a ready PR, submitting a ready stack, or publishing new changes to an existing open PR, completion requires `ce-babysit-pr` to own follow-on unless an explicit skip applies. Announce the handoff and invoke it with the PR URL without asking. For a stack, pass the bottom open non-draft PR, the derived posture, and stack-wide scope when pipeline mode requires it. Pipeline mode waits for the babysitter's structured stop result.
+**Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep them and do not call `gh pr edit`. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, do not apply. If confirmed, apply per "Applying via gh" and report the URL.
 
-Report successful ownership transfer so an outer caller does not start a duplicate babysitter. Do not auto-start in `mode:pipeline` unless this run completed a stack-mode submit; that exception passes stack-wide scope and waits for the structured stop result.
+**Explainer archival** — runs only in full workflow, with `pr_teaching_archive` on, a composed `## New concepts` section, and the apply confirmed. All paths resolve from the workspace root. With two concepts, write one file per concept and include both in one Jujutsu change:
 
-Do not substitute local polling or `gh pr checks --watch`. If `ce-babysit-pr` cannot load or start, report blocked. `babysit:off` skips; `babysit:continuous` and `babysit:checkpoint` force those modes. An active winning `auto_babysit: false` from the ordinary configuration cascade is a standing opt-out.
+1. Evaluate the workspace's effective ignore rules for each proposed `<root>/explainers/<date>-<concept-slug>.md` path before writing. If any path is ignored, warn and skip archival without force-tracking it.
+2. Write the file (create the directory if needed) with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. If the file already exists from a prior run, overwrite it.
+3. Commit only those files with `jj commit -m "<description derived from current standards>" <explainer-files>`, move the feature bookmark to `@-`, and push it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. If there is no content change, keep the existing link and continue.
+4. Splice a head-bookmark blob URL per doc into `## New concepts` with `gh browse -n -b <head-bookmark> -- <path>`; do not hardcode a host.
 
-Do not auto-start babysitting when this run did not publish a ready PR state that the current user can push: description-only/update mode, no PR change, non-GitHub hosting, a draft created or updated by this run, or an unpushable head bookmark. Fork PRs remain eligible when the head remote is pushable. Explicit draft-watch intent still invokes `ce-babysit-pr` with the requested watch mode.
+If the doc write, commit, or push fails, warn and continue to PR creation without the link — never strand the flow between commit and PR.
+
+**User-runnable invocation rendering.** For the output handoffs below, default to `/ce-explain <name>`. Use `$ce-explain <name>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
+
+**Concept trailer** — when a body applied by this run contains a `## New concepts` section, print one line after the PR URL in every mode: `New concepts: <name>[, <name>]`. In interactive full-workflow runs follow it with one line per taught concept telling the user to invoke `ce-explain <name>` using the rendering rule above. No trailer when this run applied no body — including a rewrite that was declined or pipeline-defaulted to no — or no PR exists.
+
+**Babysit handoff — default on; completion gate.** After reporting a newly-created PR URL, a successful **stack submit**, or new changes landing on an existing open PR (interactive full workflow **or** `mode:pipeline` when stack mode submitted this run), this run is **not done** until `ce-babysit-pr` owns follow-on for that PR — or an explicit skip below applies. Reporting the PR URL alone is not success. **Auto-hand off by default:** announce in one non-blocking line (e.g. "Babysitting toward merge-ready — pass `babysit:off` to skip"), then invoke `ce-babysit-pr` through the host's normal skill-invocation mechanism with the PR URL — never ask yes/no. After **stack submit**, hand off the **bottom open non-draft** PR and include the derived posture (`posture:stack-ready` by default; `posture:stack-land` when land intent was explicit) plus stack-wide scope for `mode:pipeline` when applicable. Announce that stack babysit ownership transferred so an outer orchestrator (e.g. `lfg` step 9) does not start a second bare babysit on the current bookmark. **Success** = `ce-babysit-pr` has started on that PR; in `mode:pipeline`, wait for its pipeline stop and return the structured result to the caller. Never start babysit mechanics yourself or substitute another watcher. If the handoff cannot start, stop and report blocked. **`babysit:off`** skips this run; **`babysit:continuous`** / **`babysit:checkpoint`** forces that mode; **`auto_babysit: false`** in `.rocketclaw` config is a standing opt-out.
+
+**Do not fire (auto-detected, no flag needed):** `mode:pipeline` **except** after stack submit, description-only / description-update, no PR changed this run, non-GitHub, a draft PR unless explicitly forced, or a head bookmark that cannot be pushed. Fork PRs remain drivable when the head bookmark is pushable.
+
+---
 
 ## Applying via gh
 
-Resolve the body-file root by running `jj workspace root` as its own command. On success, use `<workspace-root>/.tmp/rocketclaw/ce-commit-push-pr/`. If it fails in a description-only or description-update flow, use `.tmp/rocketclaw/ce-commit-push-pr/` under the current directory.
-
-Generate a fresh high-entropy `<run-id>`, reserve its private subdirectory with `mkdir` (retry with a new ID on collision), and write the composed body to `pr-body.md` there with the native file-writing capability. Pass that path through `--body-file`; never use stdin, a pipe, or command substitution for body transport.
+The body **must** be written under `<workspace-root>/.tmp/rocketclaw/` and passed via `--body-file <path>`. Resolve the root with `jj workspace root`; use the current directory only if that fails. Create the directory if absent. Never use OS-global temp, `$TMPDIR`, `--body-file -`, stdin pipes, heredoc-to-stdin, or command-substituted body text.
 
 ```bash
-mkdir -p "<resolved-body-directory>"
-mkdir -m 700 "<resolved-body-directory>/<run-id>"
-gh pr create -R <base-owner>/<repo> --head <head-owner>:<bookmark> --base <base> --title "<runtime-composed-title>" --body-file "<body-file>"
-gh pr edit <pr-ref> -R <base-owner>/<repo> --title "<runtime-composed-title>" --body-file "<body-file>"
+BODY_FILE="<workspace-root>/.tmp/rocketclaw/pr-body-<unique-run-id>.md"
+cat > "$BODY_FILE" <<'<neutral-sentinel>'
+<the composed body markdown goes here, verbatim>
+<neutral-sentinel>
 ```
 
-Use the runtime-composed title verbatim with appropriate shell quoting. Run only the applicable `gh` command. Remove the body file after the `gh` call succeeds or fails; leave the skill-owned directory in place.
+The quoted sentinel keeps `$VAR`, backticks, and any literal `EOF` inside the body from being expanded.
+
+For `<TITLE>`: substitute verbatim. If it contains `"`, `` ` ``, `$`, or `\`, escape them or switch to single quotes.
+
+```bash
+gh pr create --title "<TITLE>" --body-file "$BODY_FILE"   # new PR
+gh pr edit   --title "<TITLE>" --body-file "$BODY_FILE"   # existing PR
+```

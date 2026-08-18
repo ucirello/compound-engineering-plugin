@@ -16,13 +16,13 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite — grep a distinctive substring of the target text.
-3. JJ history — use `jj file annotate <target-path>` to identify the change that introduced the targeted line, then inspect that change and its description with `jj log` / `jj show`, plus the PR it belongs to. When the current line is insufficient, inspect the path's patches through `jj log -r '::main@origin' -p <target-path>`; `main@origin` is the only prior reference.
+3. Version history — use `jj log` over all relevant revisions and paths, inspect candidate patches with `jj show`, then read the introducing change's description and any GitHub PR it belongs to. Use `gh` or the available GitHub interface for PR metadata; use `jj git` interoperability only when the GitHub lookup requires exported Git state.
 
-Source 3 is unavailable in a corpus copy with no JJ history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a JJ workspace that has history, or record the whole audit's provenance basis as partial.
+Source 3 is unavailable in a corpus workspace with no history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a Jujutsu workspace that has history, or record the whole audit's provenance basis as partial.
 
 **Pipeline the waves.** Start a unit's defense as soon as its proposal set returns; do not wait for wave 1 to finish — the two waves share no state across units. It is 2N dispatches on N units, so plan the wave count against the host's concurrency cap (`references/workflow-shapes.md`).
 
-Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a JJ change description returns "no provenance found" for everything, which silently converts the audit into a demolition.
+Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a change description returns "no provenance found" for everything, which silently converts the audit into a demolition.
 
 ## Finding schema
 
@@ -54,7 +54,7 @@ Ordered by expected behavior change per finding, not by word count. The last ent
 | `step-machinery` | Would a different order, or skipping the ceremony, produce a different artifact? |
 | `capability-restatement` | Would the model do this if the line were deleted? |
 | `filler-rationale` | Does the rule survive intact if the sentence after it is removed? |
-| `vestigial-mode` | Grep the corpus for a caller that sets this mode, flag, or branch. Is there one? |
+| `vestigial-mode` | Search the corpus for a caller that sets this mode, flag, or path. Is there one? |
 | `mandatory-fanout` | Is this helper dispatch or self-verification pass conditional on anything, or does it fire every run regardless of need? |
 | `cross-unit-duplication` | Is this block near-identical elsewhere, and is factoring it out actually permitted? |
 | `oversized-reference` | Could this file's entire content be five lines? |
@@ -70,7 +70,7 @@ Exactly three, one per finding:
 
 - **`cut`** — a real search over all three sources found no provenance. The proposal stands.
 - **`reduce`** — the constraint is real and the prose states it at several times the length needed. The defender returns the minimal form that preserves the constraint.
-- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a JJ change that added it to fix a named bug. The ruling must carry the citation — path, test name, or change ID.
+- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a Jujutsu change that added it to fix a named bug. The ruling must carry the citation — path, test name, change ID, or commit ID.
 
 A defender returns one row per finding, in these fields, and nothing else:
 
@@ -79,7 +79,7 @@ A defender returns one row per finding, in these fields, and nothing else:
 | `id` | the proposer's finding id, unchanged; a ruling that cannot be joined back is discarded |
 | `ruling` | `cut` / `reduce` / `keep` |
 | `sources_searched` | which of the three, named; plus the query used, so an empty search is visible |
-| `citation` | required on `keep`: path, test name, or change ID. Empty is not a `keep` |
+| `citation` | required on `keep`: path, test name, change ID, or commit ID. Empty is not a `keep` |
 | `minimal_form` | required on `reduce`: the shortest text preserving the constraint |
 | `pinning_test` | test path and assertion if a grep of the target text hits the suite, else empty |
 

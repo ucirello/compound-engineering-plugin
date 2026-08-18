@@ -1,13 +1,13 @@
 # Dogfood Report — <target>
 
-> Diff-scoped browser QA of `<target>` vs `<resolved-base>` on <YYYY-MM-DD>.
+> Diff-scoped browser QA of `<target>` vs the trunk revision on <YYYY-MM-DD>.
 
 <!-- Use workspace-relative paths throughout this doc, never absolute paths, so it stays portable. -->
 <!-- This template is the source of truth for the report's sections; build the report to this shape rather than from memory. -->
 
 ## Diff Summary
 
-<What changed between the selected JJ target and its resolved base: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
+<What changed between the target and its dynamically resolved trunk revision: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
 
 ## Personas
 
@@ -33,7 +33,7 @@ flowchart TD
 | # | Flow | Journey / Scenario | Status | Issue | Fix | Change |
 |---|------|--------------------|--------|-------|-----|--------|
 | 1 |      |                    | Pass   | -     | -   | -      |
-| 2 |      |                    | Fixed  |       |     | abc123 |
+| 2 |      |                    | Fixed  |       |     | <change-id> |
 | 3 |      |                    | Blocked (needs human verify) | | | |
 
 Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human verify)`, `Blocked (human decision)`. Start every scenario at `Pending` so this table doubles as the resume checkpoint.
@@ -74,8 +74,8 @@ For each issue found and fixed:
 
 ## Learnings
 
-<Reusable lessons worth carrying forward — patterns, gotchas, product/UX insights. Feed substantial ones to `$rocketclaw:ce-compound`.>
+<Reusable lessons worth carrying forward — patterns, gotchas, product/UX insights. Feed substantial ones to `ce-compound`.>
 
 ## Final Status
 
-<Overall readiness verdict for the selected change. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run — a green matrix with a red suite is not "ready.">
+<Overall readiness verdict for the target. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run — a green matrix with a red suite is not "ready.">

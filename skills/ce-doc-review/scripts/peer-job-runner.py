@@ -58,10 +58,10 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  ROCKETCLAW_PEER_JOBS_ROOT base dir (<workspace-root>/.tmp/rocketclaw/ce-doc-review/peer-jobs;
-                            the current directory is the local fallback when
-                            `jj workspace root` is unavailable)
-  ROCKETCLAW_WORK_RUNS_ROOT parent ce-work dir containing all <run-id>/ dirs
+  ROCKETCLAW_PEER_JOBS_ROOT base dir (<workspace-root>/.tmp/rocketclaw;
+                             workspace root comes from `jj workspace root`, with
+                             the current directory as fallback)
+  ROCKETCLAW_WORK_RUNS_ROOT parent work dir containing all <run-id>/ dirs
   ROCKETCLAW_PEER_IDLE_SECS idle window, no out.log growth (240)
   ROCKETCLAW_PEER_HARD_SECS hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -75,10 +75,10 @@ Environment overrides (defaults in parentheses):
   ROCKETCLAW_PEER_BASH              Windows: absolute bash.exe for peer workers
                             (preferred over PATH / WSL System32 bash)
   CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
-                            ROCKETCLAW_PEER_BASH is unset (#1268)
+                             ROCKETCLAW_PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
-the workspace-local .tmp directory. Every read of job state opens the file first (no-follow) and
+the current workspace's .tmp/rocketclaw directory. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -111,8 +111,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the workspace-local .tmp directory with a hardened
-            ACL.
+  jobs root defaults under <workspace-root>\\.tmp\\rocketclaw, owner-private.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -143,25 +142,18 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-
-
 def _workspace_root() -> str:
-    """Resolve the JJ workspace root, falling back locally to the current directory."""
     try:
-        proc = subprocess.run(
-            ["jj", "workspace", "root"],
+        resolved = subprocess.run(
+            ["jj", "workspace", "root"], capture_output=True, text=True,
             check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
+        ).stdout.strip()
     except OSError:
-        return os.path.abspath(os.getcwd())
-    root = proc.stdout.strip()
-    return os.path.abspath(root or os.getcwd())
+        resolved = ""
+    return os.path.abspath(resolved or os.getcwd())
 
 
-DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw", "ce-doc-review", "peer-jobs")
+DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -187,9 +179,10 @@ exit codes:
   4  ownership check failed (job state or result not owned by the current
      user) — content is never emitted
 
-environment overrides: ROCKETCLAW_PEER_JOBS_ROOT, ROCKETCLAW_WORK_RUNS_ROOT, ROCKETCLAW_PEER_IDLE_SECS,
-ROCKETCLAW_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS, ROCKETCLAW_PEER_LOG_MAX_BYTES,
-ROCKETCLAW_PEER_RESULT_MAX_BYTES, ROCKETCLAW_PEER_POLL_SECS, ROCKETCLAW_PEER_GRACE_SECS (defaults in
+environment overrides: ROCKETCLAW_PEER_JOBS_ROOT, ROCKETCLAW_WORK_RUNS_ROOT,
+ROCKETCLAW_PEER_IDLE_SECS, ROCKETCLAW_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS,
+ROCKETCLAW_PEER_LOG_MAX_BYTES, ROCKETCLAW_PEER_RESULT_MAX_BYTES,
+ROCKETCLAW_PEER_POLL_SECS, ROCKETCLAW_PEER_GRACE_SECS (defaults in
 the module docstring).
 """
 
@@ -216,11 +209,14 @@ def jobs_root_base() -> str:
     configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
+    scratch_parent = os.path.dirname(DEFAULT_ROOT)
+    os.makedirs(scratch_parent, mode=0o700, exist_ok=True)
+    _check_owned_dir(scratch_parent)
     return os.path.abspath(DEFAULT_ROOT)
 
 
 def candidate_jobs_root_bases() -> list:
-    """The configured or workspace-local root where an existing job may live."""
+    """The configured root, or the workspace-local default root."""
     configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]
@@ -1754,7 +1750,7 @@ def _require_detach_support() -> None:
     POSIX, or the native Windows DETACHED_PROCESS path (#1243). Checked first,
     before jobs_root_base()/geteuid, so an unsupported host fails with this clear
     message instead of jobs_root_base()'s unrelated "effective user ID is
-    unavailable" error or a missing-member error mid-detach. Native Windows is now
+    unavailable" error or an AttributeError mid-detach. Native Windows is now
     supported; only a non-win32 Python missing fork/setsid (some embedded
     builds) is rejected here."""
     if IS_WINDOWS:
@@ -1763,7 +1759,7 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (see issue #1243)."
+            "a Windows Python 3 build."
         )
 
 
@@ -1958,7 +1954,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace-local path unchecked.
+        # consumer must never read a predictable scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

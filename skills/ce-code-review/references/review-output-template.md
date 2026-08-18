@@ -11,7 +11,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 ```markdown
 ## Code Review Results
 
-**Scope:** JJ fork point with the configured release line -> working-copy commit (14 files, 342 lines)
+**Scope:** common ancestor with the review base bookmark -> working copy (<file-count> files, <line-count> lines)
 **Intent:** Add order export endpoint with CSV and JSON format support
 **Mode:** markdown + explicit local apply
 
@@ -27,9 +27,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 | 7 | `orders_controller.rb:88` (+test) | Tightened export file perms `0644 -> 0600` (security-posture — verify in diff) | security |
 
 Validation: export tests 11 -> 13; suite 214 pass, lint clean.
-Committed: `<description derived from repository conventions and history>` (working-copy commit was empty before review).
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The repository's runtime conventions and visible JJ description history override compatible Go guidance; never copy a fixed description from this template.
+Jujutsu change: <dynamic change status and identifier>.
 
 ### Triage Groups
 
@@ -80,7 +78,7 @@ Based on https://go.dev/wiki/CommitMessage and on past commit messages that you 
 |---|------|-------|----------|
 | 1 | `orders_controller.rb:12` | Broad rescue masking failed permission check | correctness |
 
-Detail lines for Pre-existing and history-dependent P0/P1 findings may include the same concise change-ID provenance string the artifact `evidence` carries when that history was load-bearing — do not dump full-file annotation into the report.
+Detail lines for Pre-existing and history-dependent P0/P1 findings may include the same short provenance string the artifact `evidence` carries (e.g. `provenance: a1b2c3d Alice 2024-08-12 - harden rescue`) when that history was load-bearing — do not dump full-file blame into the report.
 
 ### Learnings & Past Solutions
 
@@ -147,7 +145,7 @@ This fails because of the **box-drawing `────` separators between items*
 - **Header includes** scope, intent, and reviewer team with per-conditional justifications
 - **Mode line** -- include `markdown report-only`, `markdown local-apply`, or `agent report-only`
 - **Triage Groups section (when groups exist)** -- pipe table `| Group | Findings | Context | Preferred Resolution | Why |` rendered after Applied and before the severity tables. The `Findings` cell lists stable `#`s (e.g. `#2, #3`); every referenced `#` must appear in a severity table below. Groups are a triage lens over the findings -- they never replace the severity tables, merge findings, or renumber them. Omit when `grouping:off` is active or no groups survived Stage 5b/5c pruning.
-- **Applied section (explicit local apply only)** -- when Stage 5c was authorized and applied fixes, list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by validation and JJ commit status. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The repository's runtime conventions and visible JJ description history override compatible Go guidance; derive the description dynamically, commit only when the pre-review `@` was empty, and otherwise leave the combined working-copy change uncommitted. A fix spanning multiple files is one row with one `#`. Flag green-but-unverifiable edits inline. Applied findings keep their stable `#` and appear only here. Omit when local apply was not authorized or nothing was applied.
+- **Applied section (explicit local apply only)** -- when Stage 5c was authorized and applied fixes, list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome and the dynamic Jujutsu change status. When an initially empty current change is described and finalized, report its identifier without prescribing fixed syntax. Current project instructions and history read with `jj log` win over generic guidance. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. When the current change was already non-empty, report that the fixes remain in it without altering its description. A fix spanning multiple files is **one row with one `#`** -- never duplicate the number across rows. Flag green-but-unverifiable edits (auth/contract/concurrency) inline in the `Fix` cell. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit when local apply was not authorized or nothing was applied
 - **Actionable Findings section** -- include when the actionable queue is non-empty (findings for the caller to handle)
 - **Pre-existing section** -- separate table, no confidence column (these are informational)
 - **Learnings & Past Solutions section** -- results from the `learnings-researcher` local prompt asset, with links to <root>/solutions/ files

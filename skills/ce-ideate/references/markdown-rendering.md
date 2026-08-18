@@ -19,10 +19,10 @@ These hold regardless of which skill produced the artifact.
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
 - **Repo-relative paths for file references.** Always. Never absolute paths
-  — they break portability across machines, workspaces, and teammates.
+  — they break portability across machines, workspaces, teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
-  semantic marker such as `<!-- rocketclaw-section: work-relationships -->`; it carries
+  semantic marker such as `<!-- section: work-relationships -->`; it carries
   section meaning for downstream agents and does not create layout. If a layout
   idea only works as HTML, defer it to the HTML rendering. Markdown stays
   markdown.
@@ -115,8 +115,8 @@ are noisier in raw form and worse for diffs.
 How section types commonly render in markdown. These are patterns, not
 contracts — the agent picks the shape that fits the content.
 
-- **Goal Capsule** — bullets or a small table for objective, authority,
-  execution profile, stop conditions, and tail ownership.
+- **Goal Capsule** — bullets or a small table for objective, means (only
+  when an approach is fixed), authority, execution profile, stop conditions, and tail ownership.
 - **Product Contract** — H2 section containing Summary, Problem Frame,
   Requirements, and product-scope subsections. Put Requirements under
   `### Requirements` so review tools can distinguish Product Requirements
@@ -204,11 +204,11 @@ Engineering process metadata stays out of the artifact:
 
 - No "captured at Phase X" notes
 - No `## Next Steps` pointing to the next skill
-- No italic process-credit lines ("*Brainstorm completed 2026-05-13*")
+- No italic provenance lines ("*Brainstorm completed 2026-05-13*")
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in change descriptions, tool output, and agent
+This information belongs in version-control metadata, tool output, and agent
 transcripts — not in the artifact a reader returns to weeks later.
 
 ## Frontmatter shape
@@ -224,7 +224,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from JJ history, not stored in the doc.
+  the work shipped is derived from `jj log`, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit
@@ -236,7 +236,7 @@ slips:
 - No HTML elements mixed in.
 - All file paths are repo-relative.
 - Horizontal rule separators between H2s (for Standard / Deep artifacts).
-- No process exhaust (Phase X notes, Next Steps pointers, process-credit
+- No process exhaust (Phase X notes, Next Steps pointers, provenance
   lines).
 - Tables only where 5+ uniform-shape items justify them.
 - Frontmatter has all the per-skill required fields with reasonable values.

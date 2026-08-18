@@ -1,52 +1,42 @@
-# Bookmark Creation from the Default Bookmark
+# Feature bookmark creation from the default bookmark
 
-The local default bookmark may differ from its remote bookmark because another workspace advanced it or because the user has local changes based on it. Resolve that state before naming and publishing the work.
+Local `<base>` may contain unpublished changes or lag `<base>@<remote>`. Jujutsu exposes both states, but it cannot infer whether unpublished changes belong in the new PR. Ask when they exist.
 
-## Decision Flow
+## Decision flow
 
-### 1. Fetch the Remote Base
+### 1. Fetch the authoritative base
 
 ```bash
-jj git fetch --remote <remote>
+jj git fetch --remote <remote> --branch <base>
 ```
 
-If fetch fails because the network, authentication, or remote is unavailable, use the fallback below.
+If fetch fails, use the fallback below.
 
-### 2. Check the Local Default Bookmark
-
-Run these separately:
+### 2. Check unpublished local base changes
 
 ```bash
-jj bookmark list <base> --all-remotes
 jj log -r '<base>@<remote>..<base>'
 ```
 
-- **No local-only changes:** Use `<base>@<remote>` as the destination for any required rebase.
-- **Local-only changes:** Show them and ask whether they belong in the feature work or must remain reachable only from the local default bookmark.
+- Empty output: use `<base>@<remote>` as `<base-revision>`.
+- Non-empty output: show the changes and ask whether the feature should include them or leave them on the local default bookmark. Carrying them uses `<base>`; leaving them uses `<base>@<remote>`. Never choose silently.
 
-If they belong in the feature work, preserve the current ancestry. If they must remain on the local default bookmark, rebase only the intended feature changes onto `<base>@<remote>`; do not rebase the local-only default-bookmark changes with them. Use the narrowest correct `jj rebase` selector after inspecting `jj help rebase`. Stop and surface conflicts instead of resolving them without direction.
+### 3. Root the work and create the feature bookmark
 
-Never move or delete the local default bookmark merely to make the remote and local names agree. A feature bookmark is the publication boundary.
-
-### 3. Create the Feature Bookmark
-
-Before composing, editing, checking, or recommending the change description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Finish and describe the intended change according to project instructions and runtime history, applying only compatible Go guidance and no fixed syntax. Use:
+Preserve the working-copy change while rebasing it onto `<base-revision>`, then create the feature bookmark at `@`. If the default bookmark followed the rewritten change, move it back to `<base-revision>` with `--allow-backwards` only after confirming that this restores the default rather than discarding unrelated work.
 
 ```bash
-jj describe -r <change> -m "<message composed from the standards above>"
-jj bookmark create <bookmark> -r <change>
+jj rebase -s @ -o <base-revision>
+jj bookmark create <bookmark-name> -r @
+jj bookmark move <base> --to <base-revision> --allow-backwards
 ```
 
-If the bookmark name already exists, inspect its target. Reuse it only when it identifies this work; otherwise choose a non-conflicting name or ask when the intended identity is ambiguous.
+Jujutsu needs no stash: the working-copy change is a revision and follows the rebase. Surface conflicts and stop; do not resolve them automatically.
 
-## Fetch Failure Fallback
+## Fetch failure fallback
 
-Create the feature bookmark at the intended local change without rebasing it:
+Create the feature bookmark at `@` without rebasing, and report that base freshness was not verified. Skip the unpublished-base comparison because its answer is unreliable without a fresh remote bookmark.
 
 ```bash
-jj bookmark create <bookmark> -r <change>
+jj bookmark create <bookmark-name> -r @
 ```
-
-Report that remote-base freshness was not verified. Do not claim the change is current with the default bookmark, and do not push until the remote can be checked.

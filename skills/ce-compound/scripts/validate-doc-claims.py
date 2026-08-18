@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against the Jujutsu repository.
+"""Validate cited claims in a solution doc against a Jujutsu workspace.
 
 Usage:
     python3 validate-doc-claims.py <doc-path>
@@ -14,15 +14,14 @@ validate-frontmatter.py (parser-safety) — this script checks the body's
 citations against the repository:
 
     1. Cited repo-relative paths (backticked, containing at least one '/')
-       exist in the working copy; tokens containing '../' resolve from the
-       doc's directory (those escaping the repo are skipped). Misses tracked
-       at @ or the upstream default bookmark still count as real paths and
-       are classified (deleted/uncommitted vs stale checkout). Tokens
+        exist in the working tree; tokens containing '../' resolve from the
+        doc's directory (those escaping the workspace are skipped). Misses tracked
+       in the parent revision or at `trunk()` still count as real paths and
+       are classified (deleted in the current change vs stale workspace). Tokens
        missing everywhere are flagged only when path-shaped; slash-delimited
-       identifiers (branch names, remote refs, provider/model IDs) are skipped.
-    2. Cited commit IDs (7-40 hex chars with at least one digit and one
-       a-f letter) resolve, classified by reachability from @ and the upstream
-       default bookmark.
+       identifiers (bookmark names and provider/model IDs) are skipped.
+    2. Cited Jujutsu change or commit IDs resolve to revisions, classified by
+       reachability from `@` and `trunk()`.
     3. Relative markdown link targets resolve from the doc's location.
     4. Dangling drafting scaffold: "Learning(s) N" numbering and
        unresolved {{...}} placeholder tokens. Inline code spans and fenced
@@ -36,7 +35,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever revisions exist locally. Run a best-effort `jj git fetch` first
+the local Jujutsu repository. Run a best-effort `jj git fetch` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -48,7 +47,8 @@ import sys
 PLACEHOLDER_CHARS = set("<>{}*$")
 PLACEHOLDER_SUBSTRINGS = ("path/to", "...", "…")
 
-COMMIT_ID_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+COMMIT_ID_RE = re.compile(r"\b[0-9a-f]{7,64}\b")
+CHANGE_ID_RE = re.compile(r"\b[k-z]{7,64}\b")
 BACKTICK_RE = re.compile(r"`([^`\n]+)`")
 MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
@@ -66,7 +66,7 @@ def usage_fail(msg: str) -> "NoReturn":
 def jj(args: list[str], cwd: str) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["jj", *args],
+            ["jj", "--no-pager", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -98,8 +98,6 @@ def is_path_candidate(token: str) -> bool:
         return False
     if "://" in token or token.startswith(("http", "#", "/", "~")):
         return False
-    if token.startswith(("origin/", "upstream/", "refs/")):
-        return False  # remote refs, not repo paths
     if PLACEHOLDER_CHARS & set(token):
         return False
     if any(sub in token for sub in PLACEHOLDER_SUBSTRINGS):
@@ -109,7 +107,7 @@ def is_path_candidate(token: str) -> bool:
 
 def is_path_shaped(token: str, base: str) -> bool:
     """Distinguish a path citation from a slash-delimited identifier
-    (branch name, provider/model ID) among tokens found nowhere in JJ."""
+    (bookmark name, provider/model ID) among tokens found nowhere in Jujutsu."""
     segments = token.split("/")
     if re.search(r"\.[A-Za-z0-9]{1,8}$", segments[-1]):
         return True
@@ -179,51 +177,44 @@ def main(argv: list[str]) -> int:
     infos: list[str] = []
     flags: list[str] = []
 
-    # --- Repo context -----------------------------------------------------
-    code, repo_root = jj(["workspace", "root"], doc_dir)
-    in_jj = code == 0 and bool(repo_root)
-    upstream: str | None = None
+    # --- Workspace context ------------------------------------------------
+    code, workspace_root = jj(["workspace", "root"], doc_dir)
+    in_jj = code == 0 and bool(workspace_root)
+    has_trunk = False
     if in_jj:
-        for candidate in ("main@origin", "master@origin"):
-            code, _ = jj(
-                ["log", "-r", candidate, "--no-graph", "-T", "commit_id"],
-                repo_root,
-            )
-            if code == 0:
-                upstream = candidate
-                break
-        if upstream:
+        code, count = jj(["log", "-r", "trunk()", "--count"], workspace_root)
+        has_trunk = code == 0 and count.isdigit() and int(count) > 0
+        if has_trunk:
             code, behind = jj(
-                ["log", "-r", f"@..{upstream}", "--no-graph", "-T", 'commit_id ++ "\\n"'],
-                repo_root,
+                ["log", "-r", "@..trunk()", "--count"], workspace_root
             )
-            behind_count = len(behind.splitlines()) if code == 0 and behind else 0
-            if behind_count:
+            if code == 0 and behind.isdigit() and int(behind) > 0:
                 infos.append(
-                    f"INFO: workspace is {behind_count} changes behind {upstream} — "
+                    f"INFO: workspace is {behind} revisions behind trunk() — "
                     "verify merge-state claims against remote truth (gh pr view), "
-                    "not this checkout"
+                    "not this workspace"
                 )
         else:
             infos.append(
-                "INFO: no upstream default bookmark found — "
-                "path/commit-ID classification limited to @"
+                "INFO: trunk() does not resolve — "
+                "path/revision classification is limited to the local graph"
             )
     else:
         infos.append(
-            "INFO: not a Jujutsu repository — path and commit-ID classification skipped "
+            "INFO: not a Jujutsu workspace — path and revision classification skipped "
             "(scaffold and link checks still apply)"
         )
 
-    def revision_has_path(revision: str | None, path: str) -> bool:
-        if not (in_jj and revision):
+    def revision_has_path(revision: str, path: str) -> bool:
+        if not in_jj:
             return False
-        return jj(["file", "show", "-r", revision, path], repo_root)[0] == 0
+        code, _ = jj(["file", "show", "-r", revision, path], workspace_root)
+        return code == 0
 
     # --- 1. Cited repo paths ----------------------------------------------
     checked_paths = 0
     seen_paths: set[str] = set()
-    base = repo_root if in_jj else os.getcwd()
+    base = workspace_root if in_jj else os.getcwd()
     for raw in BACKTICK_RE.findall(body):
         token = normalize_path(raw)
         if not is_path_candidate(token):
@@ -231,112 +222,106 @@ def main(argv: list[str]) -> int:
         check = token
         if token.startswith("../") or "/../" in token:
             # A `../` citation is doc-relative (matching how markdown links
-            # resolve), so map it to a repo-root path before checking.
+            # resolve), so map it to a workspace-root path before checking.
             if not in_jj:
                 continue
             resolved = os.path.realpath(os.path.join(doc_dir, token))
             check = os.path.relpath(resolved, os.path.realpath(base))
             if check.startswith(".."):
-                continue  # escapes the repo — not checkable as a repo path
+                continue  # escapes the workspace — not checkable as a workspace path
         if check in seen_paths:
             continue
         seen_paths.add(check)
         if os.path.exists(os.path.join(base, check)):
             checked_paths += 1
             continue
-        at_current = revision_has_path("@", check)
-        at_upstream = revision_has_path(upstream, check)
-        if not (at_current or at_upstream) and not is_path_shaped(
+        in_parent = revision_has_path("@-", check)
+        in_trunk = has_trunk and revision_has_path("trunk()", check)
+        if not (in_parent or in_trunk) and not is_path_shaped(
             check, base
         ):
-            continue  # branch name / provider ID, not a path citation
+            continue  # bookmark name / provider ID, not a path citation
         checked_paths += 1
         loc = loc_suffix(raw)
-        if at_current:
+        if in_parent:
             flags.append(
-                f"FLAG path `{token}`{loc} — present at @ but missing from "
-                "the working copy: removed since the last snapshot? Annotate as "
+                f"FLAG path `{token}`{loc} — present at @- but missing from "
+                "the workspace: deleted by the current change? Annotate as "
                 "historical (e.g. removed by this fix) or restore it."
             )
-        elif at_upstream:
+        elif in_trunk:
             flags.append(
-                f"FLAG path `{token}`{loc} — not in working copy but exists at "
-                f"{upstream}: stale checkout? Annotate or verify against upstream."
+                f"FLAG path `{token}`{loc} — not in the workspace but exists at "
+                "trunk(): stale workspace? Annotate or verify against trunk()."
             )
         else:
-            where = (
-                f"working copy or {upstream}" if upstream else "working copy"
-            )
+            where = "workspace or trunk()" if has_trunk else "workspace"
             flags.append(
                 f"FLAG path `{token}`{loc} — not found in {where}. Fix the "
                 "citation, or annotate it as historical (e.g. removed by this fix)."
             )
 
-    # --- 2. Cited commit IDs -----------------------------------------------
-    checked_ids = 0
-    seen_ids: set[str] = set()
+    # --- 2. Cited Jujutsu change or commit IDs -----------------------------
+    checked_revisions = 0
+    seen_revisions: set[str] = set()
     if in_jj:
-        for m in COMMIT_ID_RE.finditer(body):
-            commit_id = m.group(0)
-            if commit_id in seen_ids:
+        matches = sorted(
+            [*COMMIT_ID_RE.finditer(body), *CHANGE_ID_RE.finditer(body)],
+            key=lambda match: match.start(),
+        )
+        for m in matches:
+            revision_id = m.group(0)
+            if revision_id in seen_revisions:
                 continue
-            if not (
-                any(c.isdigit() for c in commit_id)
-                and any(c in "abcdef" for c in commit_id)
+            if COMMIT_ID_RE.fullmatch(revision_id) and not (
+                any(c.isdigit() for c in revision_id)
+                and any(c in "abcdef" for c in revision_id)
             ):
-                continue  # dates and decimal ids are not commit IDs
-            seen_ids.add(commit_id)
-            checked_ids += 1
-            loc = loc_suffix(commit_id)
-            code, _ = jj(
-                ["log", "-r", commit_id, "--no-graph", "-T", "commit_id"],
-                repo_root,
+                continue
+            seen_revisions.add(revision_id)
+            checked_revisions += 1
+            loc = loc_suffix(revision_id)
+            code, resolved = jj(
+                ["log", "-r", revision_id, "--count"], workspace_root
             )
-            if code != 0:
+            if code != 0 or not resolved.isdigit() or int(resolved) != 1:
                 flags.append(
-                    f"FLAG commit ID {commit_id}{loc} — does not resolve in this "
-                    "repository. Replace with the PR number, or drop it."
+                    f"FLAG revision {revision_id}{loc} — does not resolve in this "
+                    "Jujutsu repository. Replace with the PR number, or drop it."
                 )
                 continue
-            in_current = bool(
-                jj(
-                    ["log", "-r", f"{commit_id} & ::@", "--no-graph", "-T", "commit_id"],
-                    repo_root,
-                )[1]
+            code, current_count = jj(
+                ["log", "-r", f"{revision_id} & ::@", "--count"], workspace_root
             )
-            in_upstream = bool(
-                upstream
-                and jj(
-                    [
-                        "log",
-                        "-r",
-                        f"{commit_id} & ::{upstream}",
-                        "--no-graph",
-                        "-T",
-                        "commit_id",
-                    ],
-                    repo_root,
-                )[1]
-            )
-            if in_current and (in_upstream or upstream is None):
-                continue
-            if in_current:
-                flags.append(
-                    f"FLAG commit ID {commit_id}{loc} — reachable from @ but not "
-                    f"{upstream}: local-only change whose commit ID may be rewritten "
-                    "before merge. Prefer citing the PR number."
+            in_current = code == 0 and current_count.isdigit() and int(current_count) > 0
+            in_trunk_graph = False
+            if has_trunk:
+                code, trunk_count = jj(
+                    ["log", "-r", f"{revision_id} & ::trunk()", "--count"],
+                    workspace_root,
                 )
-            elif in_upstream:
+                in_trunk_graph = (
+                    code == 0 and trunk_count.isdigit() and int(trunk_count) > 0
+                )
+            if in_current and (in_trunk_graph or not has_trunk):
+                continue
+            if in_current and not in_trunk_graph:
                 flags.append(
-                    f"FLAG commit ID {commit_id}{loc} — not reachable from @ but reachable "
-                    f"from {upstream}: this checkout predates the merge. Add a "
+                    f"FLAG revision {revision_id}{loc} — reachable from @ but not "
+                    "trunk(): local-only revision whose landed commit ID may differ "
+                    "after history rewriting. Prefer citing the PR number."
+                )
+            elif in_trunk_graph:
+                flags.append(
+                    f"FLAG revision {revision_id}{loc} — not reachable from @ but "
+                    "reachable from trunk(): this workspace predates the merge. Add a "
                     "temporal qualifier or verify the claim via gh."
                 )
             else:
                 flags.append(
-                    f"FLAG commit ID {commit_id}{loc} — exists but unreachable from @"
-                    + (f" or {upstream}" if upstream else "")
-                    + ": likely a rewritten-away commit. Prefer citing the PR number."
+                    f"FLAG revision {revision_id}{loc} — exists but is unreachable "
+                    "from @ or trunk(): likely a rewritten-away revision. Prefer "
+                    "citing the PR number."
                 )
 
     # --- 3. Relative markdown links -----------------------------------------
@@ -376,7 +361,7 @@ def main(argv: list[str]) -> int:
     for flag in flags:
         print(flag)
     print(
-        f"checked {checked_paths} paths, {checked_ids} commit IDs, "
+        f"checked {checked_paths} paths, {checked_revisions} revision IDs, "
         f"{checked_links} links; {len(flags)} flags"
     )
     if flags:

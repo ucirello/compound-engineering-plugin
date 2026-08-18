@@ -1,40 +1,72 @@
-# `gh stack` Semantics This Skill Relies On
+# `gh stack` semantics this skill relies on
 
-Run `gh stack version` and the applicable `gh stack <command> --help` at runtime. Live help is authoritative because this extension changes independently. This file carries only decision-relevant semantics and does not require another skill.
+Verified against `gh stack version 0.1.0`. `gh stack <command> --help` is authoritative — if it
+disagrees with anything here, follow `--help` and say so in your report. (`gh stack help <command>`
+does not work; it prints top-level help.)
 
-`gh stack` operates on GitHub PRs and exported Git branch names. Jujutsu remains the owner of local changes, parentage, bookmarks, and Git transport. Stack mode therefore requires a colocated repository whose Jujutsu bookmarks are visible to the extension; stop when that condition is not proven.
+Only behavior that changes a decision in stack mode is listed. `gh stack` operates on exported Git branches, so run `jj git export` before each manager operation and `jj git import` after any operation that can move or create branches or change the checkout. Git terms below describe that provider boundary, not the repository workflow.
 
-## Classifying a Parent
+## Classifying a parent
 
 ```bash
 gh stack checkout "<parent-pr-number>"
 ```
 
-Resolve a parent by PR number whenever one exists because that can pull manager state from GitHub. A bare name can classify local manager state only. Branch on the exit code rather than parsing status text. Because checkout can move the colocated working copy, record the current Jujutsu change ID first and restore it with `jj edit <change>` after classification.
+Resolve a parent by **PR number** whenever one exists — that is what pulls a stack down from
+GitHub. A bare branch name resolves against **local** stacks only, so a branch-only parent can be
+classified locally and no further.
 
-The installed extension's live help and exit behavior decide success, standalone, invalid-argument, ambiguity, and repository-unavailable states. Any state that does not prove the named parent and topology is a residual, not permission to guess.
+Branch on the exit code; status text goes to stderr and must not be parsed.
 
-```bash
-gh stack view --json
-```
-
-Use its runtime JSON schema to identify trunk, current exported name, managed names, PR URLs, draft state, and rebase need. Do not infer undocumented ordering or fields. Verify topology against Jujutsu parentage before submission.
-
-## Resolving a PR Head
-
-`gh pr view "<n>" --json headRefName,headRefOid,headRepository,headRepositoryOwner,author` identifies the head. Match an existing Jujutsu Git remote to that repository, or add a distinct remote with `jj git remote add` when the head repository is not represented. Fetch the named head through `jj git fetch --remote <remote> --branch <headRefName>`, verify the fetched commit against `headRefOid`, and create a Jujutsu bookmark there only when no safe bookmark exists. Never move an existing bookmark that targets different work merely to make its name match GitHub.
-
-## Building and Submitting
-
-Inspect live help before using either command:
+| Exit | Meaning | What it means here |
+|---|---|---|
+| 0 | Success | Parent is in a stack; import the resulting checkout and branch state into Jujutsu |
+| 2 | Not in a stack | Parent is standalone; nothing was checked out or fetched |
+| 5 | Invalid arguments | Fix the invocation; see `--help` |
+| 6 | Disambiguation required | Branch is in several stacks — check out a non-shared branch |
+| 9 | Stacked PRs unavailable | Not enabled on this repository; tell the user and stop |
 
 ```bash
-gh stack init --base "<trunk>" "<bottom-bookmark>" "<next-bookmark>"
-gh stack submit --auto --open
+gh stack view --json    # JSON on stdout: trunk, currentBranch,
+                        # branches[] { name, head, base, isCurrent, isMerged, needsRebase,
+                        #              pr { number, url, state } }
 ```
 
-Pass the complete exported bookmark chain to `init` bottom-to-top. Existing exported names are adopted. Do not let the extension create missing names: construct and export the Jujutsu bookmark chain first. `--base` keeps an external parent as trunk rather than adopting it as a managed layer.
+`base` is the parent Git commit ID the branch was last known to contain, not the parent's current tip;
+`needsRebase` is true when that tip is no longer an ancestor. There is no field naming the top of
+the stack and no documented branch ordering, so do not derive position from this payload — use
+`add`'s exit 5 instead.
 
-Use `--auto` only when current help confirms it suppresses title prompts. Use `--open` only when current help confirms it creates ready PRs and the user authorized every affected draft to become ready. Otherwise preserve existing draft state.
+## Resolving a PR head
 
-Do not use `gh stack add` to construct Jujutsu changes, `gh stack link` as a substitute for local manager state, or `gh pr merge` to land a managed member. Stack landing remains `gh stack merge`, owned by `ce-babysit-pr` under `posture:stack-land` or by the user.
+`gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head. Import the commit into Jujutsu, then create or verify a bookmark at `headRefOid`; fetch the PR ref through GitHub interoperability when the commit is unavailable locally.
+
+## Building
+
+```bash
+gh stack init [--base "<trunk>"] "<branch>"...
+```
+
+Processes exported branches bottom to top and checks out the **last** one. Existing exported branches are adopted; missing ones are created. Import the result before further Jujutsu operations.
+There is no separate adopt mode: existence decides. `--base` selects a non-default trunk, so a
+parent branch can serve as the trunk without joining the stack.
+
+```bash
+gh stack add "<branch>"
+```
+
+Must run from the **top** exported branch of the stack (or the trunk while it is still empty); anywhere else exits **5**. Exit 5 means "you are not on the top", and moving there with `gh stack top` is a decision because it changes the parent. Without `-Am`, `add` does not alter file content. Import its branch topology before continuing.
+
+```bash
+gh stack submit --auto [--open]
+```
+
+`--auto` avoids a title prompt per new PR. `--open` creates PRs ready for review instead of drafts,
+and also marks pre-existing drafts ready.
+
+## Never
+
+- **`gh stack link`** — creates no manager-local tracking, so later stack operations will not see the layer.
+- **`gh pr merge`** on a stack member — it cannot merge a stack. Landing uses `gh stack merge`.
+- **Bare `view` / `submit` / `init` / `add` / `checkout`** — each prompts or opens a TUI that
+  blocks under a PTY. Always pass the arguments and flags shown above.

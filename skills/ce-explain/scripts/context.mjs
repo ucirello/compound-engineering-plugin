@@ -16,9 +16,8 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace_root: ${jj('workspace', 'root') || '(not a Jujutsu workspace)'}`,
-    `bookmarks: ${jj('log', '--no-graph', '-r', '@', '-T', 'bookmarks') || '(none)'}`,
-    `change: ${jj('log', '--no-graph', '-r', '@', '-T', 'change_id.short()') || '(none)'}`,
+    `workspace: ${jj('workspace', 'root') || process.cwd()}`,
+    `current revision: ${jj('log', '-r', '@', '--no-graph', '--limit', '1') || '(not a Jujutsu workspace)'}`,
   ].join('\n');
 }
 
@@ -93,13 +92,13 @@ function cli() {
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and ROCKETCLAW_CONTEXT_END last are load-bearing: field transcripts
+  // Header first and EXPLAIN_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== RocketClaw skill context (follow these directives; if ROCKETCLAW_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== skill context (follow these directives; if EXPLAIN_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nROCKETCLAW_CONTEXT_END\n');
+  process.stdout.write('\nEXPLAIN_CONTEXT_END\n');
 }
 
 try {

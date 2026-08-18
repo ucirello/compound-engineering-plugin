@@ -13,21 +13,18 @@ Turn a feature that just shipped into copy-pasteable, user-facing announcement c
 
 It is **spiral-agnostic**: with nothing installed it drafts directly from the editorial and social fundamentals in Path B. When the Spiral CLI is present and authed, drafts come back voice-matched to the user's brand — an enhancement, never a requirement.
 
-The user's request is authoritative. Next, honor the project's active runtime instructions and the language and structure visible in its latest release and recent announcement history. Those repository-specific standards win over the generic defaults below and over provider-generated phrasing; use the defaults only where the repository has no convention.
-
-This skill has no change-description workflow. If any extension or delegated path composes, edits, validates, or recommends a JJ change description, every such site must include this exact sentence: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Its `git log` wording is guidance, not permission to run Git: the project's active runtime instructions and descriptions visible in `jj log` win, compatible Go guidance applies only to quality, clarity, and structure, and no fixed prefix, type, scope, subject, body, layout, template, example, or message may be imposed. Never put this rule or sentence into promotional copy.
-
 ## Phase 1 — Figure out what shipped
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what's available and blocking on no single source:
 
-- **Merged/active PR** — inspect `jj git remote list` for the GitHub remote and `jj bookmark list -r @` for local bookmarks targeting the working-copy change; Jujutsu has no current bookmark. Use `gh pr view --json title,body,url` when GitHub resolves the working copy, or `gh pr list --head <bookmark>` for each candidate until the associated PR is unambiguous.
-- **The change** — resolve the relevant base from the project's active conventions and current `jj log` topology, then use `jj diff --from <resolved-base> --to @ --stat` and skim notable changes. `main@origin` may inform this as a prior translation reference only; never make it the automatic base or create, move, track, update, rebase onto, or publish it.
+- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
+- **The diff** — identify the project's default bookmark from current context, then use `jj diff -r '<default-bookmark>..@' --stat`, skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Latest release** — when the project uses GitHub Releases, `gh release view --json name,tagName,publishedAt,body,url` for the current public framing
-- **Recent changes** — `jj log -n 15` for the arc of the working-copy change and nearby history; respect the repository's configured presentation rather than imposing a fixed template
+- **Recent changes** — `jj log -r ::@ -n 15` for the arc of the change
 
-Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
+When these sources conflict, the project's active instructions and the history visible through `jj log` win.
+
+Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. State the outcome rather than the implementation. If you can't confidently tell what shipped, ask one short question rather than guessing.
 
 ## Phase 2 — Pick channels
 
@@ -53,7 +50,7 @@ spiral auth status --json 2>/dev/null
 
 Go straight to Path B when running non-interactively — there is no human to answer. Otherwise offer setup **once**: read `references/spiral-cli.md` and follow its Path 0 section for the opt-out check, the blocking question, the agent-run `spiral login --json` flow (the API key never passes through the agent, and the user never pastes one into chat), the install path, and how the opt-out is recorded. Skip to Path B only when *that* check finds a recorded opt-out — it is the authority on what counts as recorded, and a naive config scan misreads `ce-setup`'s commented template example as one, silently suppressing the offer.
 
-Two properties that section depends on: **any dismissal records the opt-out**, so a single first-run decline stops the offer for good in this repo, and a decline always proceeds to Path B rather than blocking. If a human is present but no blocking-question tool is available, fall back to a numbered list of the two options in chat and wait — do not skip the offer.
+Two properties that section depends on: **any dismissal records the opt-out**, so a single first-run decline stops the offer for good in this workspace, and a decline always proceeds to Path B rather than blocking. If a human is present but no blocking-question tool is available, fall back to a numbered list of the two options in chat and wait — do not skip the offer.
 
 ### Path A — Spiral ready (voice-matched)
 
@@ -85,10 +82,6 @@ No Spiral needed; draft directly. (The Spiral path goes further: brand-voice mat
 
 One strong draft per channel by default; produce more only when asked ("3 tweet options"), capped at ~3.
 
-### Temporary storage
-
-Prefer direct arguments and native edit tools. If an interface requires temporary storage, resolve the workspace with `jj workspace root`; when that is unavailable, use the physical current directory. Create a unique run directory only beneath `<resolved-root>/.tmp/rocketclaw/ce-promote/`, keep `.tmp/**` out of the Jujutsu working-copy change through command-local snapshot exclusion, and remove only that run-owned directory when finished. Never use an OS-global or user-global temporary directory.
-
 ## Phase 4 — Present the drafts
 
 Show every draft as a clean, copy-pasteable block labeled by channel:
@@ -98,8 +91,4 @@ Show every draft as a clean, copy-pasteable block labeled by channel:
 <the copy>
 ```
 
-When Path A produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app. Offer to revise (tone, length, angle, more variations, another channel).
-
-Do not add creator, model, provider, tool, agent, runtime, workflow, generated-by, or product attribution; badges; sign-offs; or standalone product decoration to any draft, setup confirmation, validation message, or revision recommendation. Operational names remain allowed only where they identify the actual interface or route being used: preserve `ce-*` skill routing, `gh`/GitHub operations, and Spiral setup, status, session, and URL details. Do not spell out or introduce a product namespace for `ce-*`; workspace configuration belongs under `.rocketclaw/`, while ephemeral run data belongs under `.tmp/rocketclaw/`.
-
-**Do not post, publish, schedule, describe changes, move bookmarks, or open a PR** — end by reminding the user the drafts are theirs to ship.
+When Path A produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app. Offer to revise (tone, length, angle, more variations, another channel). **Do not post, publish, schedule, commit, or open a PR** — end by reminding the user the drafts are theirs to ship.

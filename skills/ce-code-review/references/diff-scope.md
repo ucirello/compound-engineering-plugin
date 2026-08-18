@@ -7,18 +7,18 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working-copy change.** If `jj diff` is non-empty, review the working-copy commit against its parent(s).
-3. **Local stack vs release line.** Otherwise review the revisions in the single fork-point-to-`@` range, using the repository's configured `trunk()` revset rather than a hard-coded bookmark.
+2. **Working-copy change.** If `jj diff` is non-empty, review the current change.
+3. **Local revision stack vs base bookmark.** If the current change is empty, review `jj diff --from <base> --to @`, where `<base>` is the project's default bookmark resolved from current instructions, GitHub metadata, or tracked remote bookmarks.
 
-The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run JJ commands yourself unless remote scope mode requires it (below).
+The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run Jujutsu commands yourself unless remote scope requires it below.
 
-## Remote scope (`pr-remote` and `bookmark-remote`)
+## Remote scope (`pr-remote` and `branch-remote`)
 
-When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>`, the working-copy commit is **not** the reviewed revision. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark or PR under review.
+When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>branch-remote</pr-scope-mode>`, the working copy is **not** the reviewed head. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark or PR under review.
 
 Instead:
 
-- Prefer `jj file show -r <remote-head-revision> <path>` when `<pr-head-revision>` or `<bookmark-head-revision>` is provided in context.
+- Prefer `jj file show -r <remote-head-ref> <path>` when `<pr-head-ref>` or `<branch-head-ref>` is provided in context.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 
@@ -32,7 +32,7 @@ Recall depends on how you find related code. A diff-local read plus a text `grep
 
 No tool is complete: dynamic dispatch, reflection, dependency injection, string-keyed routes/config, generated code, and external consumers hide usages from all of them. This only bites a claim that rests on *exhaustive* coverage — "this symbol is unused," "nothing else calls this," "safe to change." For such a claim, when coverage is text-search-only or a hiding construct could apply, record the unresolved boundary in `residual_risks` (e.g. `callsite completeness: grep-only`) or step the finding down, rather than asserting absence or safety. A finding that does not turn on exhaustive coverage needs no such note.
 
-In `pr-remote` / `bookmark-remote` scope these tiers inspect the workspace, which is not the reviewed revision — apply the Remote scope rules above (`jj file show` at the reviewed revision) instead of local search.
+In `pr-remote` / `branch-remote` scope these tiers inspect the working copy, which is not the reviewed head — apply the Remote scope rules above (`jj file show -r` / `jj file search -r`) instead of local search.
 
 ## Finding Classification Tiers
 

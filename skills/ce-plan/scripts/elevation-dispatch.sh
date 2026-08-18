@@ -52,7 +52,7 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
   # via --add-dir. Adding the whole workspace scratch root instead would
-  # expose every other scratch file and credential to the elevated
+  # expose every other same-user scratch file and credential to the elevated
   # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
@@ -103,18 +103,14 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"
-[ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$(pwd -P)"
-PEERLOG_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-plan/elevation"
-mkdir -p "$PEERLOG_DIR"
-PEERLOG="$(mktemp "$PEERLOG_DIR/peer.XXXXXX")"
+PEERLOG="$(mktemp "$HANDOFF_DIR/elevation-peer-XXXXXX")"
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
-# Keep this inner cap >= the runner's ROCKETCLAW_PEER_HARD_SECS so it never reaps a
+# Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
 # healthy run before the outer supervisor's own raised backstop.
-IDLE_SECS="${ROCKETCLAW_ELEVATION_IDLE_SECS:-180}"
-HARD_SECS="${ROCKETCLAW_ELEVATION_HARD_SECS:-5400}"
-POLL_SECS="${ROCKETCLAW_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
+IDLE_SECS="${CE_ELEVATION_IDLE_SECS:-180}"
+HARD_SECS="${CE_ELEVATION_HARD_SECS:-5400}"
+POLL_SECS="${CE_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
 
 reap() {
   local pid="$1" grp
@@ -175,7 +171,7 @@ classify_receipt() {   # <requested> <served>
 }
 
 # --- liveness heartbeat -----------------------------------------------------
-# Emits one stderr line every ROCKETCLAW_CROSS_MODEL_HEARTBEAT_SECS so the OUTER
+# Emits one stderr line every CROSS_MODEL_HEARTBEAT_SECS so the OUTER
 # peer-job-runner idle window (out.log byte-growth) sees the supervising script
 # as alive during a long model call. It writes to stderr, NOT $PEERLOG, so it
 # never masks this worker's OWN $PEERLOG idle detection (run_codex_cmd below) —
@@ -183,7 +179,7 @@ classify_receipt() {   # <requested> <served>
 # byte-identical across all peer workers (kernel parity, tests/peer-job-runner-parity.test.ts).
 _HEARTBEAT_PID=""
 start_heartbeat() {
-  local every="${ROCKETCLAW_CROSS_MODEL_HEARTBEAT_SECS:-60}" parent_pid="$$"
+  local every="${CROSS_MODEL_HEARTBEAT_SECS:-60}" parent_pid="$$"
   # Floor to 1s: a non-numeric or 0 value would make `sleep` return instantly and
   # spin the loop, flooding out.log into the runner's byte cap.
   case "$every" in ''|*[!0-9]*) every=60 ;; esac; [ "$every" -lt 1 ] && every=1

@@ -7,8 +7,9 @@
 #   resolve-package-manager.sh [path]
 #
 # Arguments:
-#   path (optional) — directory to inspect. When omitted, defaults to the JJ
-#                     workspace root, or the current directory outside one.
+#   path (optional) — directory to inspect. When omitted, defaults to the
+#                     workspace root via `jj workspace root`, with the current
+#                     directory as fallback.
 #
 # Output contract (two lines on stdout):
 #   Line 1: package-manager binary token (`npm` | `pnpm` | `yarn` | `bun`)
@@ -32,23 +33,22 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          no positional arg and the current directory is unavailable
+#                          no usable workspace root or current directory
 
 set -u
 
 TARGET_PATH="${1:-}"
 
-# Resolve target directory: positional arg or JJ workspace root/local fallback.
+# Resolve target directory: positional arg or Jujutsu workspace root.
 if [ -n "$TARGET_PATH" ]; then
   if [ ! -d "$TARGET_PATH" ]; then
     echo "ERROR: path does not exist or is not a directory: $TARGET_PATH" >&2
     exit 1
   fi
 else
-  TARGET_PATH=$(jj workspace root 2>/dev/null || pwd)
+  TARGET_PATH=$(jj workspace root 2>/dev/null)
   if [ -z "$TARGET_PATH" ]; then
-    echo "ERROR: cannot resolve a workspace or local directory" >&2
-    exit 1
+    TARGET_PATH=$(pwd -P)
   fi
 fi
 

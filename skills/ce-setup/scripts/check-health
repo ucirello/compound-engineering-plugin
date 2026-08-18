@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RocketClaw environment health check.
+# Environment health check.
 # Reports optional tool capabilities and workspace-local config safety in one pass.
 
 set -o pipefail
@@ -33,13 +33,24 @@ done
 #  Helpers
 # =====================================================
 
-ok()      { echo "  OK    $1"; }
-warn()    { echo "  WARN  $1"; }
-skip()    { echo "  SKIP  $1"; }
+ok()      { echo "  OK: $1"; }
+warn()    { echo "  Warning: $1"; }
+skip()    { echo "  Note: $1"; }
 detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
-# Read one top-level scalar from the workspace's flat local-config convention. This is
+# Jujutsu uses Git ignore rules but does not expose a check-ignore command.
+# Resolve its backing Git store explicitly so this also works in a
+# non-colocated workspace.
+is_ignored() {
+  local workspace_root="$1"
+  local path="$2"
+  local git_root
+  git_root=$(jj -R "$workspace_root" git root 2>/dev/null) || return 1
+  git --git-dir="$git_root" --work-tree="$workspace_root" check-ignore -q "$path" 2>/dev/null
+}
+
+# Read one top-level scalar from the repo's flat local-config convention. This is
 # intentionally not a general YAML parser: comments and absent/empty keys are
 # ignored, surrounding quotes are removed, and values are never evaluated.
 read_flat_config_value() {
@@ -67,7 +78,7 @@ read_flat_config_value() {
 # Resolve the symlink-followed absolute path of $1 without relying on `realpath -m`
 # (absent on stock macOS/BSD). Resolves the existing prefix with `cd`/`pwd -P`,
 # then re-appends any not-yet-created tail — enough to catch a symlink in the
-# existing portion escaping the workspace, which is the only way a relative
+# existing portion escaping the repository, which is the only way a relative
 # value can escape.
 resolve_real_best_effort() {
   local target="$1" tail="" existing base
@@ -90,7 +101,7 @@ resolve_real_best_effort() {
 # config.local.yaml is ignored. Unset -> default root `docs`. A configured
 # value is validated and rejected (never silently defaulted) when it is
 # absolute, escapes the workspace via path or symlink, resolves to the workspace
-# root or inside .jj/, or names an existing non-directory. Sets
+# root or inside VCS metadata, or names an existing non-directory. Sets
 # docs_root_status (default|configured|invalid), docs_root_value,
 # docs_root_source, docs_root_error, and docs_root_local_ignored.
 resolve_docs_root() {
@@ -116,25 +127,25 @@ resolve_docs_root() {
 
   docs_root_value="$value"; docs_root_source="$source"; docs_root_status="invalid"
   case "$value" in
-    /*) docs_root_error="absolute paths are not allowed; use a workspace-relative path"; return ;;
+    /*) docs_root_error="absolute paths are not allowed; use a repo-relative path"; return ;;
   esac
   # Reject any `..` path component up front. resolve_real_best_effort only
   # collapses `..` within the existing prefix (via cd/pwd -P); a `..` that
   # traverses a not-yet-created segment would otherwise survive literally and
-  # escape the workspace, hit the workspace root, or reach .jj/ while still
-  # string-prefix matching. A legitimate workspace-relative root never needs `..`.
+  # escape the workspace, hit the workspace root, or reach VCS metadata while still string-prefix
+  # matching. A legitimate repo-relative artifact root never needs `..`.
   case "/$value/" in
-    */../*) docs_root_error="path traversal ('..') is not allowed; use a plain workspace-relative path"; return ;;
+    */../*) docs_root_error="path traversal ('..') is not allowed; use a plain repo-relative path"; return ;;
   esac
-  repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P)" || { docs_root_error="could not resolve the workspace root"; return; }
+  repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P)" || { docs_root_error="could not resolve the repository root"; return; }
   real="$(resolve_real_best_effort "$repo_root/$value")" || { docs_root_error="could not resolve the path"; return; }
   case "$real/" in
     "$repo_real/"*) ;;
-    *) docs_root_error="resolves outside the workspace ($real)"; return ;;
+    *) docs_root_error="resolves outside the repository ($real)"; return ;;
   esac
-  [ "$real" = "$repo_real" ] && { docs_root_error="resolves to the workspace root itself"; return; }
+  [ "$real" = "$repo_real" ] && { docs_root_error="resolves to the repository root itself"; return; }
   case "$real/" in
-    "$repo_real/.jj/"*) docs_root_error="resolves inside .jj/"; return ;;
+    "$repo_real/.jj/"*|"$repo_real/.git/"*) docs_root_error="resolves inside VCS metadata"; return ;;
   esac
   if [ -e "$real" ] && [ ! -d "$real" ]; then
     docs_root_error="names an existing non-directory"; return
@@ -287,37 +298,8 @@ read_work_engine_preferences() {
 }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-workspace_root=$(jj workspace root 2>/dev/null)
-if [ -n "$workspace_root" ]; then
-  in_workspace="yes"
-else
-  in_workspace="no"
-  workspace_root="$(pwd -P)"
-fi
-tmp_root="$workspace_root/.tmp/rocketclaw"
-
-# JJ snapshots non-ignored files before listing them. A local-only path that
-# appears in the working-copy tree is therefore not safely ignored.
-jj_tracks_path() {
-  local relative_path="$1"
-  [ -n "$(jj --repository "$workspace_root" file list "$relative_path" 2>/dev/null)" ]
-}
-
-tmp_ignore_rule_present() {
-  local ignore_file="$workspace_root/.gitignore"
-  [ -f "$ignore_file" ] || return 1
-  awk '
-    {
-      line = $0
-      sub(/^[[:space:]]+/, "", line)
-      sub(/[[:space:]]+$/, "", line)
-      if (line == ".tmp" || line == ".tmp/" || line == "/.tmp" || line == "/.tmp/" ||
-          line == ".tmp/**" || line == "/.tmp/**" || line == ".tmp/rocketclaw/" ||
-          line == "/.tmp/rocketclaw/") found = 1
-    }
-    END { exit(found ? 0 : 1) }
-  ' "$ignore_file"
-}
+repo_root=$(jj workspace root 2>/dev/null)
+in_repo=$([ -n "$repo_root" ] && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -341,12 +323,12 @@ for entry in "${deps[@]}"; do
 done
 
 # =====================================================
-#  Project checks (JJ workspace only)
+#  Project checks (repo only)
 # =====================================================
 
 legacy_cfg="skip"
-local_config_ignore="skip"
-tmp_ignore="skip"
+repo_cfg_gitignore="skip"
+scratch_gitignore="skip"
 local_cfg="skip"
 example_cfg="skip"
 retired_keys=()
@@ -363,8 +345,7 @@ docs_root_local_ignored=""
 tracked_cfg="skip"
 project_issues=0
 
-if [ "$in_workspace" = "yes" ]; then
-  repo_root="$workspace_root"
+if [ "$in_repo" = "yes" ]; then
   local_config_path="$repo_root/.rocketclaw/config.local.yaml"
   tracked_config_path="$repo_root/.rocketclaw/config.yaml"
   resolve_docs_root "$repo_root"
@@ -375,16 +356,18 @@ if [ "$in_workspace" = "yes" ]; then
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    if jj_tracks_path ".rocketclaw/config.local.yaml"; then
-      local_config_ignore="missing"
+    if is_ignored "$repo_root" .rocketclaw/config.local.yaml; then
+      repo_cfg_gitignore="ok"
     else
-      local_config_ignore="ok"
+      repo_cfg_gitignore="missing"
     fi
   fi
 
-  tmp_ignore="missing"
-  if tmp_ignore_rule_present; then
-    tmp_ignore="ok"
+  # Trailing slash is load-bearing: without it an existing directory-only rule
+  # is missed before the directory exists, and a configured repo reads as bare.
+  scratch_gitignore="missing"
+  if is_ignored "$repo_root" .context/; then
+    scratch_gitignore="ok"
   fi
 
   tracked_cfg="missing"
@@ -556,8 +539,8 @@ for result in "${results[@]}"; do
   fi
 done
 
-if [ "$in_workspace" = "yes" ]; then
-  section "RocketClaw config"
+if [ "$in_repo" = "yes" ]; then
+  section "Project config"
 
   if [ "$legacy_cfg" = "present" ]; then
     warn "Obsolete rocketclaw.local.md exists"
@@ -574,21 +557,21 @@ if [ "$in_workspace" = "yes" ]; then
 
   if [ "$local_cfg" = "present" ]; then
     ok ".rocketclaw/config.local.yaml exists"
-    if [ "$local_config_ignore" = "ok" ]; then
-      ok "Local config is ignored by JJ"
+    if [ "$repo_cfg_gitignore" = "ok" ]; then
+      ok "Local config is gitignored"
     else
-      warn "Local config is tracked by JJ"
+      warn "Local config is not safely gitignored"
       project_issues=$((project_issues + 1))
     fi
   else
     skip "No local override yet (.rocketclaw/config.local.yaml)"
   fi
 
-  if [ "$tmp_ignore" = "ok" ]; then
-    ok "RocketClaw temporary storage is ignored"
+  if [ "$scratch_gitignore" = "ok" ]; then
+    ok "Scratch space is ignored"
   else
-    skip "RocketClaw temporary storage is not ignored"
-    detail "Temporary state belongs under .tmp/rocketclaw/"
+    skip "Scratch space is not ignored"
+    detail "Skills that keep local scratch write it under .context/"
   fi
 
   if [ "$docs_root_status" = "default" ]; then
@@ -597,14 +580,14 @@ if [ "$in_workspace" = "yes" ]; then
     ok "Artifact root: ${docs_root_value}/ (from ${docs_root_source})"
   elif [ "$docs_root_status" = "invalid" ]; then
     warn "Invalid docs_root '${docs_root_value}' in ${docs_root_source}: ${docs_root_error}"
-    detail "RocketClaw artifacts will not be written until docs_root is corrected or removed."
+    detail "Artifacts will not be written until docs_root is corrected or removed."
   fi
   if [ -n "$docs_root_local_ignored" ]; then
     skip "Local docs_root '${docs_root_local_ignored}' is ignored; set docs_root only in config.yaml"
   fi
 
   if [ "$work_engine_cfg" = "native" ]; then
-    ok "RocketClaw Work implementation engine: native (${work_engine_detail})"
+    ok "ce-work implementation engine: native (${work_engine_detail})"
     if [ -n "$work_engine_preferences_note" ]; then
       if [ "$work_engine_preferences_note_level" = "warn" ]; then
         warn "$work_engine_preferences_note"
@@ -613,11 +596,11 @@ if [ "$in_workspace" = "yes" ]; then
       fi
     fi
   elif [ "$work_engine_cfg" = "prefer" ] || [ "$work_engine_cfg" = "require" ]; then
-    ok "RocketClaw Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
+    ok "ce-work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "unavailable" ]; then
-    warn "RocketClaw Work implementation engine unavailable: ${work_engine_detail}"
+    warn "ce-work implementation engine unavailable: ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "invalid" ]; then
-    warn "RocketClaw Work implementation engine: ${work_engine_detail}"
+    warn "ce-work implementation engine: ${work_engine_detail}"
   fi
   [ -n "$work_engine_migration_note" ] && warn "$work_engine_migration_note"
 
@@ -640,17 +623,15 @@ if [ "$in_workspace" = "yes" ]; then
     project_issues=$((project_issues + 1))
   done
 else
-  section "RocketClaw config"
-  skip "Not inside a JJ workspace"
+  section "Project config"
+  skip "Not inside a Jujutsu workspace"
 fi
-
-detail "Temporary storage root: $tmp_root"
 
 echo ""
 if [ "$project_issues" -eq 0 ]; then
-  echo " RocketClaw config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
 else
-  echo " ${project_issues} RocketClaw config issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
 fi
 
 if [ "$capability_missing" -gt 0 ]; then

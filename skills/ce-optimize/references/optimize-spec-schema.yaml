@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for Jujutsu bookmarks and workspace paths)"
     example: "improve-issue-clustering"
 
   description:
@@ -272,14 +272,14 @@ optional_fields:
       backend:
         type: enum
         values:
-          - workspace # JJ workspaces for isolation (default)
+          - workspace # Jujutsu workspaces for isolation (default)
           - codex     # Codex sandboxes for isolation
         default: workspace
       max_concurrent:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for the workspace backend. 8+ is valid only for the Codex backend."
+        description: "Maximum experiments to run in parallel. Capped at 6 for workspace backend. 8+ only valid for Codex backend."
       codex_security:
         type: enum
         values:
@@ -365,10 +365,10 @@ optional_fields:
         default: true
         description: "Stop when the primary metric reaches the target value (if set)"
 
-  max_runner_up_integrations_per_batch:
+  max_runner_up_merges_per_batch:
     type: integer
     default: 1
-    description: "Maximum number of file-disjoint runner-up experiments to attempt integrating per batch after keeping the best experiment"
+    description: "Maximum number of file-disjoint runner-up experiments to attempt combining per batch after keeping the best experiment"
 
 # ============================================================================
 # VALIDATION RULES
@@ -385,7 +385,6 @@ validation_rules:
   - "scope.immutable must have at least one entry"
   - "Gate check operators must be one of: >=, <=, >, <, ==, !="
   - "execution.max_concurrent must be >= 1"
-  - "execution.backend must be 'workspace' or 'codex'"
   - "execution.max_concurrent must not exceed 6 when execution.backend is 'workspace'"
   - "If parallel.exclusive_resources is non-empty, execution.mode should be 'serial'"
   - "If metric.judge.singleton_sample > 0, metric.judge.singleton_rubric must be present"

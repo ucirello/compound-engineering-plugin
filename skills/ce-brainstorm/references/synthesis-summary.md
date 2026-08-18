@@ -48,11 +48,13 @@ Each section answers a different question:
 
 Then the confirmation, which names **what actually happens next** so the user knows what is coming and can interrupt without ambiguity. When a doc is expected — the common case — that is the artifact write: *"Confirm and I'll write the requirements-only plan next, drawing on our dialogue and this synthesis. Or tell me what to change."*
 
-When a doc is already ruled out — the user declined one, or `brainstorm-sections.md`'s "Decide whether a doc is warranted at all" criteria plainly hold — name where the decisions actually go instead, which is whichever of that rule's alternatives *this run* established (`ce-plan`, the user's JJ change description, `<root>/solutions/`): *"Confirm and we're done here — the scope above carries straight into [the destination the dialogue established]. Or tell me what to change."* When the dialogue named none, drop the clause rather than picking one: *"Confirm and we're done here — no doc, as you asked. Or tell me what to change."*
+When a doc is already ruled out — the user declined one, or `brainstorm-sections.md`'s "Decide whether a doc is warranted at all" criteria plainly hold — name where the decisions actually go instead, which is whichever of that rule's alternatives *this run* established (`ce-plan`, the user's JJ description, `<root>/solutions/`): *"Confirm and we're done here — the scope above carries straight into [the destination the dialogue established]. Or tell me what to change."* When the dialogue named none, drop the clause rather than picking one: *"Confirm and we're done here — no doc, as you asked. Or tell me what to change."*
 
-Do not hardcode a destination. This phase writes no JJ change description and hands off at Phase 4, so asserting a downstream action the run will not take is the same overreach as promising the doc. Phase 3, not this phase, owns the doc-warranted decision, so promising the write here makes a user who already declined a doc decline it a second time.
+Do not hardcode a destination. This phase writes no JJ description and hands off at Phase 4, so asserting a downstream action the run will not take is the same overreach as promising the doc. Phase 3, not this phase, owns the doc-warranted decision, so promising the write here makes a user who already declined a doc decline it a second time.
 
-When composing, editing, validating, or recommending that change description, inspect actual history with `jj log -r :: -n 10 --no-graph -T 'description ++ "\n\n"'`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local instructions and description syntax observed in the actual `jj log` output take precedence; apply compatible Go guidance only for quality, clarity, and structure, without imposing a fixed prefix, type, scope, subject, body, layout, template, or example. Use `<description-composed-from-runtime-conventions>` in `jj describe -m '<description-composed-from-runtime-conventions>'` wherever a change description is required.
+If the selected destination is a JJ description, active project instructions and patterns read through `jj log` win; apply compatible Go quality guidance without imposing fixed syntax or a message template.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 ### Path A vs Path B: the gate that fires the confirmation question
 
@@ -247,7 +249,7 @@ When the soft-cut fires, use the platform's blocking question tool (`AskUserQues
 - `Proceed and write the requirements-only plan`
 - `Hold off — keep discussing before the doc`
 
-Fall back to a numbered list in chat only when no blocking tool exists or the call errors. Never silently skip.
+Fall back to a numbered list on the host's user-visible chat surface only when no blocking tool exists or the call errors. Never silently skip.
 
 ---
 

@@ -14,21 +14,13 @@ For planning invocations, do not emit review-style JSON. Convert migration analy
 
 ## Step 0: Schema drift or schema-artifact handling
 
-Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review base revision from caller context (`<review-base>` — common-ancestor revision or other explicit revset). **Never assume `main`.**
+Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review-base revision or revset from caller context (`<review-base>`). **Never assume a particular mainline bookmark.**
 
-```bash
-jj diff --from <review-base> --to @ --name-only db/migrate/
-```
+Use `jj diff` from the caller's review-base revision to the current change, restricted to `db/migrate/`, and inspect the changed filenames. Consult `jj diff --help` for the installed output-format option instead of assuming fixed syntax.
 
 Then diff each dump file that is actually in the provided diff (one or both may apply):
 
-```bash
-# When db/schema.rb is in the diff:
-jj diff --from <review-base> --to @ db/schema.rb
-
-# When db/structure.sql is in the diff:
-jj diff --from <review-base> --to @ db/structure.sql
-```
+For each dump file present in the change, use `jj diff --from <review-base> --to @ -- <dump-path>` with the applicable workspace-relative path.
 
 Cross-reference every change in each in-scope dump against migrations **in the provided diff**:
 
@@ -38,15 +30,7 @@ Cross-reference every change in each in-scope dump against migrations **in the p
 
 When drift is present, call it out as a blocking plan requirement on the affected dump path (`db/schema.rb` or `db/structure.sql`), list the concrete unrelated objects, and recommend this remediation:
 
-```bash
-# schema.rb:
-jj restore --from <review-base> db/schema.rb
-bin/rails db:migrate
-
-# structure.sql (regenerate after restoring and migrating):
-jj restore --from <review-base> db/structure.sql
-bin/rails db:migrate
-```
+Restore the affected dump path from `<review-base>` with `jj restore --from <review-base> <dump-path>`, then regenerate it with the repository's current migration workflow. Keep the exact dump path and verification commands dynamic from project instructions and the change under review.
 
 If neither dump file is in the diff, skip this step.
 

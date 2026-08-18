@@ -1,7 +1,19 @@
-"""Crash-recoverable Jujutsu workspace controller state and commands."""
+"""Private, crash-recoverable workspace controller for ce-work external units.
+
+The generic peer-job runner owns process supervision. This controller owns the
+repository-specific transaction: one private run manifest, sibling Jujutsu
+workspaces, complete-tree transport objects, canonical integration evidence,
+exact restoration, retention, and explicit cleanup. It never launches a model
+CLI and never finalizes a worker's output in the canonical workspace.
+
+Every successful command prints a status word and one compact JSON document.
+Trust failures print only ``UNREADABLE`` and an error on stderr.
+"""
 
 from __future__ import annotations
 
+import argparse
+import base64
 import contextlib
 import fcntl
 import hashlib
@@ -12,17 +24,57 @@ import secrets
 import shutil
 import stat
 import subprocess
+import sys
+import tempfile
 import time
 from pathlib import Path
 
-SCHEMA_VERSION = 2
-SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+SCHEMA_VERSION = 1
+_uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
+_EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
+
+
+def _workspace_root() -> str:
+    try:
+        proc = subprocess.run(
+            ["jj", "workspace", "root"], capture_output=True, text=True, check=False,
+        )
+        resolved = proc.stdout.strip()
+    except OSError:
+        resolved = ""
+    return os.path.abspath(resolved or os.getcwd())
+
+
+OWNER_SCRATCH_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw")
 MAX_JSON_BYTES = 2 * 1024 * 1024
 MAX_PACKET_BYTES = 200_000
+SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 O_DIRECTORY = getattr(os, "O_DIRECTORY", 0)
 TERMINAL_PROCESS = {"done", "failed", "timeout", "died-without-result"}
-DESCRIPTION_STANDARD = "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards."
+INTEGRATABLE_STATES = {"integration-pending", "integrated", "verified"}
+UNIT_STATES = {
+    "queued", "authoring", "authored", "integration-pending", "integrated",
+    "restoring", "verified", "committed", "preserved", "cleaned", "native-completed",
+}
+GIT_LOCAL_ENV_VARS = frozenset({
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_CONFIG",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_DIR",
+    "GIT_GRAFT_FILE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_SHALLOW_FILE",
+    "GIT_WORK_TREE",
+})
 
 
 class Operational(Exception):
@@ -41,8 +93,63 @@ def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def digest_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+def test_fault(point: str) -> None:
+    """Deterministic crash-window injection for the repository test suite."""
+    configured = {value.strip() for value in os.environ.get("CE_WORK_TEST_FAULT", "").split(",") if value.strip()}
+    if point in configured:
+        raise Operational("INTERRUPTED", f"injected test interruption at {point}")
+
+
+def _private_root_usable(path: str) -> bool:
+    """True when `path` is (or can now be) a directory we own and can write into.
+
+    The root is workspace-local and owner-private.
+    """
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        pass
+    except OSError:
+        return False
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    if not stat.S_ISDIR(st.st_mode):
+        return False
+    if _EFFECTIVE_UID is not None and st.st_uid != _EFFECTIVE_UID:
+        return False
+    return os.access(path, os.W_OK)
+
+
+def _fallback_scratch_root() -> str:
+    return OWNER_SCRATCH_ROOT
+
+
+def owner_scratch_root() -> str:
+    """The owner-private scratch root, in the same candidate order as the skills' shell preamble."""
+    if _private_root_usable(OWNER_SCRATCH_ROOT):
+        return OWNER_SCRATCH_ROOT
+    raise TrustFailure("workspace-local .tmp/rocketclaw root is unavailable")
+
+
+def runs_root() -> str:
+    configured = os.environ.get("CE_WORK_RUNS_ROOT")
+    if configured:
+        root = os.path.abspath(configured)
+        workspace_tmp = os.path.join(_workspace_root(), ".tmp")
+        if os.path.commonpath([workspace_tmp, root]) != workspace_tmp:
+            raise TrustFailure("CE_WORK_RUNS_ROOT must stay under <workspace-root>/.tmp")
+        return root
+    peer_root = os.environ.get("CE_PEER_JOBS_ROOT")
+    if peer_root:
+        root = os.path.abspath(peer_root)
+        workspace_tmp = os.path.join(_workspace_root(), ".tmp")
+        if os.path.commonpath([workspace_tmp, root]) != workspace_tmp:
+            raise TrustFailure("CE_PEER_JOBS_ROOT must stay under <workspace-root>/.tmp")
+        return os.path.join(root, "ce-work")
+    return os.path.join(owner_scratch_root(), "ce-work")
 
 
 def safe_id(value: str, label: str) -> str:
@@ -51,55 +158,120 @@ def safe_id(value: str, label: str) -> str:
     return value
 
 
-def jj(repo: str, *args: str, check: bool = True, input_data: bytes | None = None) -> bytes:
-    proc = subprocess.run(
-        ["jj", "--no-pager", "--config", 'snapshot.auto-track="~glob:.tmp/**"', "-R", repo, *args],
-        input=input_data,
-        capture_output=True,
-        check=False,
-        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-    )
-    if check and proc.returncode != 0:
-        reason = proc.stderr.decode("utf-8", "replace").strip()
-        raise Operational("BLOCKED", f"jj {' '.join(args)} failed: {reason}")
-    return proc.stdout
+def digest_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
-def jj_text(repo: str, *args: str, check: bool = True) -> str:
-    return jj(repo, *args, check=check).decode("utf-8", "surrogateescape").strip()
+def _valid_git_object_id(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        raw = bytes.fromhex(value)
+    except ValueError:
+        return False
+    return len(raw) in {20, 32} and raw.hex() == value
 
 
-def workspace_root(path: str) -> str:
-    root = jj_text(os.path.abspath(path), "--ignore-working-copy", "workspace", "root", check=False)
-    if not root:
-        raise Operational("REFUSED", "a Jujutsu workspace is required")
-    return os.path.realpath(root)
+def _native_completion_commit(unit: dict) -> str | None:
+    attempts = unit.get("attempts")
+    if not isinstance(attempts, list) or not attempts or not isinstance(attempts[-1], dict):
+        return None
+    fallback = attempts[-1].get("fallback")
+    if not isinstance(fallback, dict):
+        return None
+    claim = fallback.get("claimed")
+    completion = fallback.get("completed")
+    if not isinstance(claim, dict) or not isinstance(completion, dict) or completion.get("claim") != claim:
+        return None
+    claim_mode = claim.get("mode")
+    if claim_mode not in {"prefer", "require"}:
+        return None
+    if claim_mode == "require" and not (
+        claim.get("caller_mode") == "interactive" and claim.get("confirmed_native") is True
+    ):
+        return None
+    accepted_head = completion.get("accepted_head")
+    base = unit.get("workspace", {}).get("base")
+    snapshot = completion.get("snapshot")
+    wave = unit.get("wave", {})
+    changed_paths = completion.get("changed_paths")
+    if not (
+        _valid_git_object_id(accepted_head)
+        and _valid_git_object_id(base)
+        and completion.get("base") == base
+        and isinstance(completion.get("at"), str)
+        and bool(completion["at"])
+        and isinstance(completion.get("summary"), str)
+        and bool(completion["summary"])
+        and isinstance(completion.get("evidence_digest"), str)
+        and len(completion["evidence_digest"]) == 64
+        and _valid_git_object_id(completion["evidence_digest"])
+        and isinstance(snapshot, dict)
+        and snapshot.get("head") == accepted_head
+        and snapshot.get("status_empty") is True
+        and snapshot.get("worktree_index_empty") is True
+        and _valid_git_object_id(snapshot.get("head_tree"))
+        and snapshot.get("head_tree") == snapshot.get("index_tree")
+        and snapshot.get("status_sha256") == digest_bytes(b"")
+        and (
+            not wave.get("id")
+            or (
+                _valid_git_object_id(claim.get("canonical_head"))
+                and isinstance(changed_paths, list)
+                and all(isinstance(path, str) for path in changed_paths)
+            )
+        )
+    ):
+        return None
+    return accepted_head
 
 
-def scratch_root(root: str) -> str:
-    configured = os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT") or os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
-    base = os.path.realpath(os.path.join(root, ".tmp"))
-    candidate = os.path.realpath(configured) if configured else os.path.join(base, "ce-work")
-    if os.path.commonpath([base, candidate]) != base:
-        raise TrustFailure("run-root override must remain inside the workspace-root .tmp directory")
-    return candidate
+def unit_accepted_commit(unit: dict) -> str | None:
+    if unit.get("state") == "native-completed":
+        return _native_completion_commit(unit)
+    if unit.get("state") != "cleaned":
+        return None
+    integration = unit.get("integration")
+    if not isinstance(integration, dict):
+        return None
+    canonical = integration.get("canonical_commit")
+    if not (
+        isinstance(canonical, dict)
+        and all(_valid_git_object_id(canonical.get(field)) for field in ("commit", "parent", "tree"))
+        and isinstance(canonical.get("at"), str)
+        and bool(canonical["at"])
+    ):
+        return None
+    return canonical["commit"]
 
 
-def runs_root(repo: str | None = None) -> str:
-    if repo:
-        return scratch_root(workspace_root(repo))
-    configured = os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT")
-    root = jj_text(os.getcwd(), "--ignore-working-copy", "workspace", "root", check=False)
-    root = os.path.realpath(root or os.getcwd())
-    base = os.path.realpath(os.path.join(root, ".tmp"))
-    candidate = os.path.realpath(configured) if configured else os.path.join(base, "ce-work")
-    if os.path.commonpath([base, candidate]) != base:
-        raise TrustFailure("ROCKETCLAW_WORK_RUNS_ROOT must remain inside the workspace-root .tmp directory")
-    return candidate
+def unit_ready_for_run_verification(unit: object) -> bool:
+    return isinstance(unit, dict) and unit_accepted_commit(unit) is not None
+
+
+def accepted_unit_commit_snapshot(units: object) -> dict[str, str] | None:
+    if not isinstance(units, dict):
+        return None
+    snapshot: dict[str, str] = {}
+    for unit_id in sorted(units):
+        if not isinstance(unit_id, str) or not SAFE_ID.fullmatch(unit_id):
+            return None
+        unit = units[unit_id]
+        if not isinstance(unit, dict):
+            return None
+        commit = unit_accepted_commit(unit)
+        if commit is None:
+            return None
+        snapshot[unit_id] = commit
+    return snapshot
 
 
 def _mode(st: os.stat_result) -> int:
     return stat.S_IMODE(st.st_mode)
+
+
+def _euid() -> int | None:
+    return _EFFECTIVE_UID
 
 
 def validate_private_dir(path: str) -> None:
@@ -109,18 +281,76 @@ def validate_private_dir(path: str) -> None:
         raise TrustFailure(f"cannot safely open directory {path}: {exc}") from exc
     try:
         st = os.fstat(fd)
-        if not stat.S_ISDIR(st.st_mode) or _mode(st) != 0o700:
-            raise TrustFailure(f"directory must be a real owner-private 0700 directory: {path}")
-        if hasattr(os, "geteuid") and st.st_uid != os.geteuid():
-            raise TrustFailure(f"directory is not owned by the current user: {path}")
+        if not stat.S_ISDIR(st.st_mode):
+            raise TrustFailure(f"not a real directory: {path}")
+        if _euid() is not None and st.st_uid != _euid():
+            raise TrustFailure(f"directory is not owned by current user: {path}")
+        if _mode(st) != 0o700:
+            raise TrustFailure(f"directory mode is {_mode(st):04o}, expected 0700: {path}")
     finally:
         os.close(fd)
 
 
 def ensure_private_dir(path: str) -> None:
-    os.makedirs(path, mode=0o700, exist_ok=True)
-    os.chmod(path, 0o700)
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        pass
     validate_private_dir(path)
+
+
+def _owner_root_for_runs(root: str) -> str | None:
+    for candidate in (OWNER_SCRATCH_ROOT, _fallback_scratch_root()):
+        owner_root = os.path.abspath(candidate)
+        try:
+            if os.path.commonpath([owner_root, os.path.abspath(root)]) == owner_root:
+                return owner_root
+        except ValueError:  # different drives on Windows: not under this candidate
+            continue
+    return None
+
+
+def _ensure_owner_scratch_root(path: str) -> None:
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        pass
+    try:
+        fd = os.open(path, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+    except OSError as exc:
+        raise TrustFailure(f"cannot safely open owner scratch root {path}: {exc}") from exc
+    try:
+        current = os.fstat(fd)
+        if not stat.S_ISDIR(current.st_mode):
+            raise TrustFailure(f"owner scratch root is not a real directory: {path}")
+        if _euid() is not None and current.st_uid != _euid():
+            raise TrustFailure(f"owner scratch root is not owned by current user: {path}")
+        if _mode(current) != 0o700:
+            os.fchmod(fd, 0o700)
+            repaired = os.fstat(fd)
+            if repaired.st_uid != current.st_uid or _mode(repaired) != 0o700:
+                raise TrustFailure(f"could not repair owner scratch root mode to 0700: {path}")
+    finally:
+        os.close(fd)
+
+
+def ensure_root() -> str:
+    return ensure_runs_root(runs_root())
+
+
+def ensure_runs_root(root: str) -> str:
+    """Create or verify one runs root (the creation root, or the other candidate
+    root an existing run was found under) and its private lock directory."""
+    owner_root = _owner_root_for_runs(root)
+    if owner_root is not None:
+        _ensure_owner_scratch_root(owner_root)
+    parent = os.path.dirname(root)
+    # The configured root's ancestors are caller-controlled; the private root
+    # itself and everything below it are the durable confidentiality boundary.
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    ensure_private_dir(root)
+    ensure_private_dir(os.path.join(root, ".locks"))
+    return root
 
 
 def read_private(path: str, cap: int = MAX_JSON_BYTES) -> bytes:
@@ -130,11 +360,42 @@ def read_private(path: str, cap: int = MAX_JSON_BYTES) -> bytes:
         raise TrustFailure(f"cannot safely open state file {path}: {exc}") from exc
     try:
         st = os.fstat(fd)
-        if not stat.S_ISREG(st.st_mode) or _mode(st) != 0o600 or st.st_size > cap:
-            raise TrustFailure(f"invalid private state file: {path}")
-        if hasattr(os, "geteuid") and st.st_uid != os.geteuid():
-            raise TrustFailure(f"state file is not owned by the current user: {path}")
-        return os.read(fd, cap + 1)
+        if not stat.S_ISREG(st.st_mode):
+            raise TrustFailure(f"state is not a regular file: {path}")
+        if _euid() is not None and st.st_uid != _euid():
+            raise TrustFailure(f"state is not owned by current user: {path}")
+        if _mode(st) != 0o600:
+            raise TrustFailure(f"state mode is {_mode(st):04o}, expected 0600: {path}")
+        if st.st_size > cap:
+            raise TrustFailure(f"state exceeds {cap}-byte limit: {path}")
+        out = bytearray()
+        while len(out) <= cap:
+            part = os.read(fd, min(65536, cap + 1 - len(out)))
+            if not part:
+                break
+            out.extend(part)
+        if len(out) > cap:
+            raise TrustFailure(f"state grew beyond {cap}-byte limit: {path}")
+        return bytes(out)
+    finally:
+        os.close(fd)
+
+
+def stat_private_file(path: str) -> os.stat_result:
+    """Validate a private file by descriptor without consuming its content."""
+    try:
+        fd = os.open(path, os.O_RDONLY | O_NOFOLLOW)
+    except OSError as exc:
+        raise TrustFailure(f"cannot safely open state file {path}: {exc}") from exc
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise TrustFailure(f"state is not a regular file: {path}")
+        if _euid() is not None and st.st_uid != _euid():
+            raise TrustFailure(f"state is not owned by current user: {path}")
+        if _mode(st) != 0o600:
+            raise TrustFailure(f"state mode is {_mode(st):04o}, expected 0600: {path}")
+        return st
     finally:
         os.close(fd)
 
@@ -142,6 +403,8 @@ def read_private(path: str, cap: int = MAX_JSON_BYTES) -> bytes:
 def read_private_json(path: str) -> dict:
     try:
         value = json.loads(read_private(path))
+    except TrustFailure:
+        raise
     except (ValueError, UnicodeDecodeError) as exc:
         raise TrustFailure(f"malformed JSON state: {path}") from exc
     if not isinstance(value, dict):
@@ -150,7 +413,10 @@ def read_private_json(path: str) -> dict:
 
 
 def create_private(path: str, data: bytes) -> None:
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW, 0o600)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW, 0o600)
+    except OSError as exc:
+        raise Operational("BLOCKED", f"cannot exclusively create {path}: {exc}") from exc
     try:
         os.write(fd, data)
         os.fsync(fd)
@@ -163,725 +429,599 @@ def atomic_private_json(path: str, doc: dict) -> None:
     if len(data) > MAX_JSON_BYTES:
         raise Operational("BLOCKED", "manifest exceeds bounded state size")
     parent = os.path.dirname(path)
-    name = f".manifest-{secrets.token_hex(8)}"
-    temporary = os.path.join(parent, name)
-    create_private(temporary, data)
-    os.replace(temporary, path)
+    fd, tmp = tempfile.mkstemp(prefix=".manifest-", dir=parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb", closefd=True) as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+        dfd = os.open(parent, os.O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
-def run_dir(run_id: str, root: str | None = None) -> str:
-    return os.path.join(root or runs_root(), safe_id(run_id, "run id"))
+def candidate_runs_roots() -> list:
+    """Every root an existing run may live under."""
+    configured = os.environ.get("CE_WORK_RUNS_ROOT")
+    if configured:
+        return [runs_root()]
+    peer_root = os.environ.get("CE_PEER_JOBS_ROOT")
+    if peer_root:
+        return [runs_root()]
+    roots = [os.path.join(os.path.abspath(OWNER_SCRATCH_ROOT), "ce-work")]
+    fallback = os.path.join(os.path.abspath(_fallback_scratch_root()), "ce-work")
+    if fallback not in roots:
+        roots.append(fallback)
+    return roots
+
+
+def run_dir(run_id: str) -> str:
+    rid = safe_id(run_id, "run id")
+    for root in candidate_runs_roots():
+        existing = os.path.join(root, rid)
+        if os.path.isdir(existing) and not os.path.islink(existing):
+            return existing
+    return os.path.join(runs_root(), rid)
 
 
 @contextlib.contextmanager
 def locked_manifest(run_id: str, write: bool = False):
+    run_id = safe_id(run_id, "run id")
     rd = run_dir(run_id)
+    ensure_runs_root(os.path.dirname(rd))
     validate_private_dir(rd)
-    fd = os.open(os.path.join(rd, "manifest.lock"), os.O_RDWR | O_NOFOLLOW)
+    lock_path = os.path.join(rd, "manifest.lock")
     try:
+        fd = os.open(lock_path, os.O_RDWR | O_NOFOLLOW)
+    except OSError as exc:
+        raise TrustFailure(f"cannot safely open manifest lock: {exc}") from exc
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or (_euid() is not None and st.st_uid != _euid()) or _mode(st) != 0o600:
+            raise TrustFailure("manifest lock owner/type/mode validation failed")
         fcntl.flock(fd, fcntl.LOCK_EX if write else fcntl.LOCK_SH)
-        path = os.path.join(rd, "manifest.json")
-        doc = read_private_json(path)
+        doc = read_private_json(os.path.join(rd, "manifest.json"))
         if doc.get("schema_version") != SCHEMA_VERSION or doc.get("run_id") != run_id:
             raise TrustFailure("manifest schema or run identity mismatch")
-        before = json.dumps(doc, sort_keys=True)
+        before = json.dumps(doc, sort_keys=True, separators=(",", ":"))
         yield doc
-        if write and json.dumps(doc, sort_keys=True) != before:
+        after = json.dumps(doc, sort_keys=True, separators=(",", ":"))
+        if write and after != before:
             doc["revision"] = int(doc.get("revision", 0)) + 1
             doc["updated_at"] = now_iso()
-            atomic_private_json(path, doc)
+            atomic_private_json(os.path.join(rd, "manifest.json"), doc)
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def sanitized_git_environment(overrides: dict | None = None) -> dict[str, str]:
+    process_env = {key: value for key, value in os.environ.items() if key not in GIT_LOCAL_ENV_VARS}
+    process_env.update(overrides or {})
+    return process_env
+
+
+def jj(repo: str, *args: str, check: bool = True) -> bytes:
+    proc = subprocess.run(
+        ["jj", "-R", repo, *args], capture_output=True, check=False,
+    )
+    if check and proc.returncode != 0:
+        message = proc.stderr.decode("utf-8", "replace").strip()
+        raise Operational("BLOCKED", f"jj {' '.join(args)} failed: {message}")
+    return proc.stdout
+
+
+def jj_text(repo: str, *args: str, check: bool = True) -> str:
+    return jj(repo, *args, check=check).decode("utf-8", "surrogateescape").strip()
+
+
+def git(repo: str, *args: str, input_data: bytes | None = None, check: bool = True, env: dict | None = None) -> bytes:
+    """Underlying Git object interoperability for a Git-backed Jujutsu repo."""
+    proc = subprocess.run(
+        ["git", "-C", repo, *args], input=input_data, capture_output=True,
+        env=sanitized_git_environment(env), check=False,
+    )
+    if check and proc.returncode != 0:
+        message = proc.stderr.decode("utf-8", "replace").strip()
+        raise Operational("BLOCKED", f"git {' '.join(args)} failed: {message}")
+    return proc.stdout
+
+
+def git_text(repo: str, *args: str, check: bool = True) -> str:
+    return git(repo, *args, check=check).decode("utf-8", "surrogateescape").strip()
+
+
+def finalize_jj_change(repo: str, message: str, filesets: list[str] | None = None) -> str:
+    """Finalize the current Jujutsu change and return its Git commit id."""
+    if not message.strip() or "\0" in message:
+        raise Operational("REFUSED", "description must be non-empty and contain no NUL")
+    jj(repo, "commit", "-m", message.rstrip(), *(filesets or []))
+    jj(repo, "bookmark", "advance", "--to", "@-")
+    jj(repo, "git", "export", "--ignore-working-copy")
+    return jj_text(repo, "log", "-r", "@-", "--no-graph", "-T", "commit_id")
+
+
+def repo_info(repo: str) -> dict:
+    repo = os.path.realpath(repo)
+    top = os.path.realpath(jj_text(repo, "workspace", "root"))
+    if top != repo:
+        repo = top
+    git_dir = os.path.realpath(git_text(repo, "rev-parse", "--path-format=absolute", "--absolute-git-dir"))
+    common = os.path.realpath(jj_text(repo, "git", "root"))
+    st = os.stat(common)
+    roots = sorted(git_text(repo, "rev-list", "--max-parents=0", "HEAD").splitlines())
+    identity = digest_bytes((common + f"\0{st.st_dev}\0{st.st_ino}\0" + "\n".join(roots)).encode())
+    canonical_rev = "@-" if not jj(repo, "diff", "--name-only", "-r", "@") else "@"
+    head = jj_text(repo, "log", "-r", canonical_rev, "--no-graph", "-T", "commit_id")
+    bookmarks = jj_text(repo, "log", "-r", canonical_rev, "--no-graph", "-T", 'bookmarks.join("\\n")')
+    bookmark = f"bookmark:{bookmarks.splitlines()[0]}" if bookmarks else "bookmark:(unpublished)"
+    return {
+        "toplevel": repo,
+        "git_dir": git_dir,
+        "common_dir": common,
+        "common_dev": st.st_dev,
+        "common_ino": st.st_ino,
+        "identity_digest": identity,
+        "bookmark_ref": bookmark,
+        "head": head,
+        "head_tree": git_text(repo, "rev-parse", f"{head}^{{tree}}"),
+    }
+
+
+def validate_source(doc: dict) -> None:
+    source = doc.get("source")
+    if source is not None:
+        if not isinstance(source, dict):
+            raise TrustFailure("manifest source record is malformed")
+        kind = source.get("kind")
+        if kind == "prompt":
+            if source.get("storage") != "run" or source.get("path") != "source/bare-prompt.md":
+                raise TrustFailure("prompt source location is malformed")
+            if not isinstance(source.get("digest"), str) or not re.fullmatch(r"[0-9a-f]{64}", source["digest"]):
+                raise TrustFailure("prompt source digest is malformed")
+            data = read_private(os.path.join(run_dir(doc["run_id"]), source["path"]), MAX_PACKET_BYTES)
+            if digest_bytes(data) != source.get("digest"):
+                raise TrustFailure("prompt source digest does not match private content")
+        elif kind == "plan":
+            if source.get("storage") != "repository" or not isinstance(source.get("path"), str):
+                raise TrustFailure("plan source location is malformed")
+            if not isinstance(source.get("digest"), str) or not re.fullmatch(r"[0-9a-f]{64}", source["digest"]):
+                raise TrustFailure("plan source digest is malformed")
+        else:
+            raise TrustFailure("manifest source kind is invalid")
+
+
+def validate_repo(doc: dict) -> dict:
+    validate_source(doc)
+    recorded = doc["repository"]
+    current = repo_info(recorded["toplevel"])
+    for key in ("toplevel", "git_dir", "common_dir", "common_dev", "common_ino", "identity_digest"):
+        if current[key] != recorded[key]:
+            raise Operational("BLOCKED", f"canonical repository identity changed ({key})")
+    if current["bookmark_ref"] != doc["bookmark"]["ref"]:
+        raise Operational("BLOCKED", "canonical bookmark changed")
+    return current
+
+
+def resolve_plan(repo: str, plan: str) -> tuple[str, str]:
+    supplied = os.path.abspath(plan if os.path.isabs(plan) else os.path.join(repo, plan))
+    try:
+        st = os.lstat(supplied)
+    except OSError as exc:
+        raise Operational("REFUSED", f"selected plan is missing: {exc}") from exc
+    if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
+        raise Operational("REFUSED", "selected plan must be one regular non-symlink file")
+    # OS temp roots may themselves be compatibility symlinks (macOS /var ->
+    # /private/var). Reject a symlink at the selected file, then compare the
+    # resolved file against the already-resolved canonical repository.
+    absolute = os.path.realpath(supplied)
+    if os.path.commonpath([repo, absolute]) != repo:
+        raise Operational("REFUSED", "plan must be inside the canonical repository")
+    return absolute, os.path.relpath(absolute, repo)
+
+
+def parse_json_arg(raw: str, label: str) -> dict:
+    try:
+        value = json.loads(raw)
+    except ValueError as exc:
+        raise Operational("REFUSED", f"invalid {label} JSON") from exc
+    if not isinstance(value, dict):
+        raise Operational("REFUSED", f"{label} must be a JSON object")
+    return value
+
+
+ROUTE_CONTRACTS = {
+    "codex": {"target": "codex", "harness": "codex", "intermediaries": [], "default_model": "auto", "restriction_posture": "adapter-enforced"},
+    "claude": {"target": "claude", "harness": "claude", "intermediaries": [], "default_model": "auto", "restriction_posture": "cooperative"},
+    "grok-cli": {"target": "grok", "harness": "grok", "intermediaries": [], "default_model": "auto", "restriction_posture": "cooperative"},
+    "cursor": {"target": "cursor", "harness": "cursor-agent", "intermediaries": [], "default_model": "auto", "restriction_posture": "adapter-enforced"},
+    "composer": {"target": "composer", "harness": "cursor-agent", "intermediaries": ["cursor"], "default_model": "composer-2.5-fast", "restriction_posture": "adapter-enforced"},
+    "grok-cursor": {"target": "grok", "harness": "cursor-agent", "intermediaries": ["cursor"], "default_model": "cursor-grok-4.6-high", "restriction_posture": "adapter-enforced"},
+}
+
+
+def route_model_allowed(route: str, model: str) -> bool:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", model):
+        return False
+    lowered = model.lower()
+    if route == "codex":
+        return model == "auto" or bool(re.fullmatch(r"(?:gpt-[A-Za-z0-9._-]+|o[0-9][A-Za-z0-9._-]*)", model))
+    if route == "claude":
+        return model in {"auto", "fable", "opus", "sonnet", "haiku"} or bool(re.fullmatch(r"claude-[A-Za-z0-9._-]+", model))
+    if route == "grok-cli":
+        return model == "auto" or bool(re.fullmatch(r"grok-[A-Za-z0-9._-]+", model))
+    if route == "cursor":
+        reserved = lowered in {"composer", "grok"} or lowered.startswith(("composer-", "grok-", "cursor-grok-"))
+        return not reserved
+    if route == "composer":
+        return bool(re.fullmatch(r"composer-[A-Za-z0-9._-]+", model))
+    if route == "grok-cursor":
+        return bool(re.fullmatch(r"cursor-grok-[A-Za-z0-9._-]+", model))
+    return False
+
+
+def fixed_route_contract(binding: dict, egress: dict, word: str = "BLOCKED") -> dict:
+    if not isinstance(binding, dict) or not isinstance(egress, dict):
+        raise Operational(word, "run binding or egress sanction is malformed")
+    expected_binding_fields = {"mode", "target", "model", "source"}
+    if set(binding) != expected_binding_fields:
+        raise Operational(word, "binding must contain exactly mode, target, model, and source")
+    if binding.get("mode") not in {"prefer", "require"}:
+        raise Operational(word, "binding mode must be 'prefer' or 'require'")
+    source = binding.get("source")
+    if not isinstance(source, str) or not source or "\0" in source or len(source.encode()) > 256:
+        raise Operational(word, "binding source must be a non-empty string of at most 256 bytes")
+    route = egress.get("route")
+    contract = ROUTE_CONTRACTS.get(route)
+    if not contract:
+        allowed = ", ".join(ROUTE_CONTRACTS)
+        raise Operational(word, f"unsupported egress route {route!r}; expected one of: {allowed}")
+    if binding.get("target") != contract["target"]:
+        raise Operational(word, "binding target does not match the sanctioned fixed route")
+    intermediaries = egress.get("intermediaries")
+    if intermediaries != contract["intermediaries"]:
+        raise Operational(word, "egress intermediaries do not match the fixed route")
+    model = binding.get("model")
+    if model is not None and (not isinstance(model, str) or not model):
+        raise Operational(word, "binding model must be null or a non-empty string")
+    requested_model = model or contract["default_model"]
+    if not route_model_allowed(route, requested_model):
+        raise Operational(word, "binding model is not compatible with the sanctioned fixed route")
+    restrictions = egress.get("restrictions", [])
+    if not isinstance(restrictions, list) or not all(isinstance(item, str) for item in restrictions):
+        raise Operational(word, "egress restrictions must be a string list")
+    return contract
+
+
+def attempt_authorization(
+    doc: dict,
+    activity_posture: str,
+    unit_id: str,
+    attempt_id: str,
+    packet_digest: str,
+) -> dict:
+    binding = doc.get("binding")
+    egress = doc.get("egress")
+    contract = fixed_route_contract(binding, egress)
+    route = egress.get("route")
+    intermediaries = egress.get("intermediaries")
+    model = binding.get("model")
+    restrictions = egress.get("restrictions", [])
+    return {
+        "schema_version": 1,
+        "run_id": doc["run_id"],
+        "unit_id": unit_id,
+        "attempt_id": attempt_id,
+        "route": route,
+        "target": contract["target"],
+        "harness": contract["harness"],
+        "intermediaries": list(contract["intermediaries"]),
+        "model_requested": model or contract["default_model"],
+        "restriction_posture": contract["restriction_posture"],
+        "restrictions": list(restrictions),
+        "activity_posture": activity_posture,
+        "packet_digest": packet_digest,
+    }
+
+
+def read_external_packet(path: str, label: str = "unit packet") -> bytes:
+    supplied = os.path.abspath(path)
+    try:
+        fd = os.open(supplied, os.O_RDONLY | O_NOFOLLOW)
+    except OSError as exc:
+        raise Operational("REFUSED", f"cannot safely open {label}: {exc}") from exc
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise Operational("REFUSED", f"{label} must be one regular non-symlink file")
+        if st.st_size > MAX_PACKET_BYTES:
+            raise Operational("REFUSED", f"{label} exceeds {MAX_PACKET_BYTES}-byte limit")
+        data = bytearray()
+        while len(data) <= MAX_PACKET_BYTES:
+            part = os.read(fd, min(65536, MAX_PACKET_BYTES + 1 - len(data)))
+            if not part:
+                break
+            data.extend(part)
+        if len(data) > MAX_PACKET_BYTES:
+            raise Operational("REFUSED", f"{label} exceeds {MAX_PACKET_BYTES}-byte limit")
+        return bytes(data)
+    finally:
         os.close(fd)
 
 
 def event(doc: dict, kind: str, unit_id: str | None = None, detail: dict | None = None) -> None:
     row = {"at": now_iso(), "kind": kind}
-    if unit_id:
+    if unit_id is not None:
         row["unit_id"] = unit_id
     if detail:
         row["detail"] = detail
     doc.setdefault("events", []).append(row)
 
 
-def snapshot(repo: str, revision: str = "@") -> dict:
-    template = "change_id ++ \"\\n\" ++ commit_id ++ \"\\n\" ++ parents.map(|p| p.commit_id()).join(\" \" ) ++ \"\\n\" ++ empty ++ \"\\n\" ++ conflict"
-    rows = jj_text(repo, "log", "--no-graph", "-r", revision, "-T", template).splitlines()
-    if len(rows) < 5:
-        raise Operational("BLOCKED", "could not read the Jujutsu revision snapshot")
-    operation = jj_text(repo, "operation", "log", "--at-op=@", "--ignore-working-copy", "--no-graph", "-n", "1", "-T", "id")
-    names = [line for line in jj_text(repo, "diff", "-r", revision, "--name-only").splitlines() if line]
-    summary = jj_text(repo, "diff", "-r", revision, "--summary")
-    return {
-        "operation_id": operation,
-        "change_id": rows[0],
-        "commit_id": rows[1],
-        "parent_commit_ids": rows[2].split() if rows[2] else [],
-        "empty": rows[3] == "true",
-        "conflict": rows[4] == "true",
-        "changed_paths": sorted(names),
-        "delta_sha256": digest_bytes(summary.encode()),
-    }
-
-
-def repo_info(repo: str) -> dict:
-    root = workspace_root(repo)
-    repo_store = os.path.realpath(os.path.join(root, ".jj", "repo"))
-    st = os.stat(repo_store)
-    return {
-        "workspace_root": root,
-        "repo_store": repo_store,
-        "repo_dev": st.st_dev,
-        "repo_ino": st.st_ino,
-        "identity_digest": digest_bytes(f"{repo_store}\0{st.st_dev}\0{st.st_ino}".encode()),
-        "snapshot": snapshot(root),
-    }
-
-
-def validate_repo(doc: dict) -> dict:
-    current = repo_info(doc["repository"]["workspace_root"])
-    for key in ("workspace_root", "repo_store", "repo_dev", "repo_ino", "identity_digest"):
-        if current[key] != doc["repository"][key]:
-            raise Operational("BLOCKED", f"canonical Jujutsu repository identity changed ({key})")
-    return current
-
-
-def _read_external(path: str, label: str) -> bytes:
-    absolute = os.path.abspath(path)
-    fd = os.open(absolute, os.O_RDONLY | O_NOFOLLOW)
-    try:
-        st = os.fstat(fd)
-        if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_PACKET_BYTES:
-            raise Operational("REFUSED", f"{label} must be a bounded regular non-symlink file")
-        return os.read(fd, MAX_PACKET_BYTES + 1)
-    finally:
-        os.close(fd)
-
-
-def _json_arg(raw: str, label: str) -> dict:
-    try:
-        value = json.loads(raw)
-    except ValueError as exc:
-        raise Operational("REFUSED", f"invalid {label} JSON") from exc
-    if not isinstance(value, dict):
-        raise Operational("REFUSED", f"{label} must be an object")
-    return value
-
-
-def _validate_route(binding: dict, egress: dict) -> None:
-    if set(binding) != {"mode", "target", "model", "source"} or binding.get("mode") not in {"prefer", "require"}:
-        raise Operational("REFUSED", "binding must contain exactly a prefer/require mode, target, model, and source")
-    contracts = {
-        "codex": ("codex", []),
-        "claude": ("claude", []),
-        "grok-cli": ("grok", []),
-        "cursor": ("cursor", []),
-        "composer": ("composer", ["cursor"]),
-        "grok-cursor": ("grok", ["cursor"]),
-    }
-    route = egress.get("route")
-    if route not in contracts:
-        raise Operational("REFUSED", "egress route is unsupported")
-    target, intermediaries = contracts[route]
-    if binding.get("target") != target or egress.get("intermediaries") != intermediaries:
-        raise Operational("REFUSED", "binding target or intermediaries do not match the fixed route")
-    restrictions = egress.get("restrictions")
-    if not isinstance(restrictions, list) or any(not isinstance(item, str) for item in restrictions):
-        raise Operational("REFUSED", "egress restrictions must be a string list")
-    if binding.get("model") is not None and not isinstance(binding.get("model"), str):
-        raise Operational("REFUSED", "binding model must be null or a string")
-    if not isinstance(binding.get("source"), str) or not binding["source"]:
-        raise Operational("REFUSED", "binding source must be non-empty")
-
-
 def cmd_init(args) -> tuple[str, dict]:
+    ensure_root()
+    rid = safe_id(args.run_id, "run id")
     info = repo_info(args.repo)
-    root = scratch_root(info["workspace_root"])
-    ensure_private_dir(root)
-    rd = run_dir(args.run_id, root)
     if args.plan:
-        absolute = os.path.realpath(os.path.abspath(args.plan))
-        if os.path.commonpath([info["workspace_root"], absolute]) != info["workspace_root"]:
-            raise Operational("REFUSED", "plan must be inside the canonical workspace")
-        data = Path(absolute).read_bytes()
-        supplied = args.plan_digest
-        source = {"kind": "plan", "path": os.path.relpath(absolute, info["workspace_root"]), "digest": digest_bytes(data)}
+        if not args.plan_digest or args.prompt_digest:
+            raise Operational("REFUSED", "plan source requires only --plan-digest")
+        plan_abs, plan_rel = resolve_plan(info["toplevel"], args.plan)
+        source_bytes = Path(plan_abs).read_bytes()
+        source_kind = "plan"
+        supplied_digest = args.plan_digest
+        source_record = {
+            "kind": source_kind,
+            "storage": "repository",
+            "path": plan_rel,
+            "digest": digest_bytes(source_bytes),
+        }
     else:
-        data = _read_external(args.prompt_brief, "prompt brief")
-        supplied = args.prompt_digest
-        source = {"kind": "prompt", "path": "source/bare-prompt.md", "digest": digest_bytes(data)}
-    if source["digest"] != supplied:
-        raise Operational("REFUSED", "source digest does not match content")
-    binding = _json_arg(args.binding_json, "binding")
-    egress = _json_arg(args.egress_json, "egress")
-    _validate_route(binding, egress)
-    if os.path.exists(rd):
-        with locked_manifest(args.run_id) as existing:
+        if not args.prompt_digest or args.plan_digest:
+            raise Operational("REFUSED", "prompt source requires only --prompt-digest")
+        prompt_abs = os.path.realpath(os.path.abspath(args.prompt_brief))
+        if os.path.commonpath([info["toplevel"], prompt_abs]) == info["toplevel"]:
+            raise Operational("REFUSED", "prompt brief must be outside the canonical repository")
+        source_bytes = read_external_packet(args.prompt_brief, "prompt brief")
+        source_kind = "prompt"
+        supplied_digest = args.prompt_digest
+        source_record = {
+            "kind": source_kind,
+            "storage": "run",
+            "path": "source/bare-prompt.md",
+            "digest": digest_bytes(source_bytes),
+        }
+    actual_digest = source_record["digest"]
+    if actual_digest != supplied_digest:
+        raise Operational("REFUSED", f"selected {source_kind} digest does not match content")
+    binding = parse_json_arg(args.binding_json, "binding")
+    egress = parse_json_arg(args.egress_json, "egress")
+    fixed_route_contract(binding, egress, "REFUSED")
+    rd = run_dir(rid)
+    try:
+        os.mkdir(rd, 0o700)
+    except FileExistsError:
+        try:
+            existing = os.lstat(rd)
+        except OSError as exc:
+            raise TrustFailure(f"cannot safely inspect run directory {rd}: {exc}") from exc
+        if stat.S_ISDIR(existing.st_mode) and not os.path.lexists(os.path.join(rd, "manifest.json")):
+            raise Operational(
+                "BLOCKED",
+                "run directory exists without a controller manifest; choose a new run id or remove the directory after confirming no initialization is active",
+            )
+        validate_private_dir(rd)
+        with locked_manifest(rid) as existing:
             validate_repo(existing)
-            if existing.get("source") != source or existing.get("binding") != binding or existing.get("egress") != egress:
-                raise Operational("BLOCKED", "run id already belongs to a different source or fixed-route contract")
-            return "READY", {"run_id": args.run_id, "resumed": True, "source_kind": source["kind"], "source_digest": source["digest"], "recovery_path": rd}
-    ensure_private_dir(rd)
-    for child in ("units", "jobs", "packets", "source", ".locks"):
+            existing_source = existing.get("source")
+            if not isinstance(existing_source, dict):
+                plan = existing.get("plan")
+                existing_source = {
+                    "kind": "plan",
+                    "storage": "repository",
+                    "path": plan.get("path") if isinstance(plan, dict) else None,
+                    "digest": plan.get("digest") if isinstance(plan, dict) else None,
+                }
+            if (
+                existing["repository"]["identity_digest"] != info["identity_digest"]
+                or existing_source.get("kind") != source_kind
+                or existing_source.get("digest") != actual_digest
+            ):
+                raise Operational("BLOCKED", "run id already belongs to another repository or source")
+            if existing.get("binding") != binding or existing.get("egress") != egress:
+                raise Operational(
+                    "BLOCKED",
+                    "run id binding or egress sanction differs from the recorded fixed contract; resume with the recorded contract or choose a new run id",
+                )
+            return "READY", {
+                "run_id": rid,
+                "revision": existing["revision"],
+                "resumed": True,
+                "source_kind": source_kind,
+                "source_digest": actual_digest,
+                "recovery_path": rd,
+            }
+    validate_private_dir(rd)
+    for child in ("units", "jobs", "packets", "source"):
         ensure_private_dir(os.path.join(rd, child))
+    if source_kind == "prompt":
+        create_private(os.path.join(rd, source_record["path"]), source_bytes)
     create_private(os.path.join(rd, "manifest.lock"), b"")
-    if source["kind"] == "prompt":
-        create_private(os.path.join(rd, source["path"]), data)
     created = now_iso()
     doc = {
         "schema_version": SCHEMA_VERSION,
         "revision": 0,
-        "run_id": safe_id(args.run_id, "run id"),
+        "run_id": rid,
         "created_at": created,
         "updated_at": created,
-        "repository": {key: info[key] for key in ("workspace_root", "repo_store", "repo_dev", "repo_ino", "identity_digest")},
-        "initial_snapshot": info["snapshot"],
-        "source": source,
+        "repository": {k: info[k] for k in ("toplevel", "git_dir", "common_dir", "common_dev", "common_ino", "identity_digest")},
+        "bookmark": {"ref": info["bookmark_ref"], "initial_head": info["head"]},
+        "source": source_record,
+        "plan": {
+            "kind": source_kind,
+            "path": plan_rel if source_kind == "plan" else None,
+            "digest": actual_digest,
+            "checkpoint": None,
+        },
         "binding": binding,
         "egress": egress,
-        "plan_checkpoint": None,
         "integration_lock": None,
         "units": {},
+        "verification_attempts": [],
         "verifications": [],
         "blockers": [],
         "events": [{"at": created, "kind": "run-created"}],
     }
     create_private(os.path.join(rd, "manifest.json"), (json.dumps(doc, sort_keys=True, separators=(",", ":")) + "\n").encode())
-    return "READY", {"run_id": args.run_id, "resumed": False, "source_kind": source["kind"], "source_digest": source["digest"], "recovery_path": rd}
+    return "READY", {
+        "run_id": rid,
+        "revision": 0,
+        "resumed": False,
+        "source_kind": source_kind,
+        "source_digest": actual_digest,
+        "recovery_path": rd,
+    }
 
 
-def _validate_description(description: str) -> str:
-    value = description.strip()
-    if not value or "\0" in value or len(value.encode()) > 4096:
-        raise Operational("REFUSED", f"description must be non-empty and at most 4096 bytes. {DESCRIPTION_STANDARD}")
-    if value.lower().startswith(("wip", "partial", "todo")) or value.startswith("["):
-        raise Operational("REFUSED", f"replace the dynamic placeholder with a semantic description. {DESCRIPTION_STANDARD}")
-    return value
+def status_paths(repo: str) -> set[str]:
+    raw = jj(repo, "diff", "--name-only", "-r", "@")
+    return set(filter(None, raw.decode("utf-8", "surrogateescape").splitlines()))
+
+
+def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str, description: str) -> dict | None:
+    """Recover the controller's plan commit when its manifest receipt was interrupted."""
+    prior = doc.get("bookmark", {}).get("initial_head")
+    commit = info["head"]
+    if commit == prior:
+        return None
+    parents = jj_text(repo, "log", "-r", commit, "--no-graph", "-T", 'parents.map(|p| p.commit_id()).join(" ")').split()
+    lineage = [commit, *parents]
+    changed = set(filter(None, jj(repo, "diff", "--name-only", "-r", commit).decode("utf-8", "surrogateescape").splitlines()))
+    message = jj_text(repo, "log", "-r", commit, "--no-graph", "-T", "description")
+    plan_bytes = jj(repo, "file", "show", "-r", commit, plan_rel, check=False)
+    if (
+        not _valid_git_object_id(prior)
+        or lineage != [commit, prior]
+        or changed != {plan_rel}
+        or message != description
+        or digest_bytes(plan_bytes) != doc["plan"]["digest"]
+    ):
+        raise Operational(
+            "BLOCKED",
+            "canonical change advanced without a recorded matching plan checkpoint",
+            {"expected_prior_head": prior, "head": commit},
+        )
+    return {
+        "prior_head": prior,
+        "commit": commit,
+        "tree": info["head_tree"],
+        "path": plan_rel,
+        "digest": doc["plan"]["digest"],
+        "at": now_iso(),
+    }
 
 
 def cmd_checkpoint_plan(args) -> tuple[str, dict]:
+    description = args.description.strip()
+    if not description or "\0" in description:
+        raise Operational("REFUSED", "checkpoint description must be non-empty and contain no NUL")
     with locked_manifest(args.run_id, write=True) as doc:
         info = validate_repo(doc)
-        if doc["source"]["kind"] != "plan":
-            if not info["snapshot"]["empty"]:
-                raise Operational("BLOCKED", "prompt-backed execution requires an empty canonical working-copy change")
-            return "NOOP", {"checkpoint": None}
-        path = doc["source"]["path"]
-        snap = info["snapshot"]
-        if snap["empty"]:
-            return "NOOP", {"checkpoint": doc.get("plan_checkpoint")}
-        if snap["changed_paths"] != [path]:
-            raise Operational("BLOCKED", "canonical delta is not exactly the selected plan", {"changed_paths": snap["changed_paths"]})
-        description = args.description
-        _validate_description(description)
-        jj(info["workspace_root"], "describe", "-m", description)
-        checkpoint = snapshot(info["workspace_root"])
-        jj(info["workspace_root"], "new", "-m", "[describe implementation after verification]")
-        doc["plan_checkpoint"] = checkpoint
-        event(doc, "plan-checkpoint", detail={"change_id": checkpoint["change_id"], "commit_id": checkpoint["commit_id"]})
-        return "CHECKPOINTED", {"checkpoint": checkpoint, "description_rule": DESCRIPTION_STANDARD}
-
-
-def cmd_prepare(args) -> tuple[str, dict]:
-    packet = _read_external(args.packet, "unit packet")
-    packet_digest = digest_bytes(packet)
-    with locked_manifest(args.run_id, write=True) as doc:
-        info = validate_repo(doc)
-        base = jj_text(info["workspace_root"], "log", "--no-graph", "-r", args.base, "-T", "commit_id")
-        if info["snapshot"]["commit_id"] != base or not info["snapshot"]["empty"] or info["snapshot"]["conflict"]:
-            raise Operational("BLOCKED", "canonical working-copy change must be empty, conflict-free, and equal the requested base")
-        uid = safe_id(args.unit_id, "unit id")
-        unit_root = os.path.join(run_dir(args.run_id), "units", uid)
-        existing = doc["units"].get(uid)
-        prior_attempts = []
-        if existing:
-            if (
-                existing.get("attempt", {}).get("attempt_id") == args.attempt_id
-                and existing.get("workspace", {}).get("base") == base
-                and existing.get("packet", {}).get("digest") == packet_digest
-                and existing.get("dependencies") == list(args.dependency)
-                and existing.get("state") in {"queued", "authoring", "integration-pending"}
-            ):
-                authorization = existing.get("authorization", {})
-                return "PREPARED", {
-                    "unit_id": uid,
-                    "attempt_id": args.attempt_id,
-                    "workspace": existing["workspace"]["path"],
-                    "result_dir": existing["result_dir"],
-                    "packet_path": existing["packet"]["path"],
-                    "packet_digest": packet_digest,
-                    "authorization_path": authorization.get("path"),
-                    "authorization_digest": authorization.get("digest"),
-                    "adapter": os.path.realpath(os.path.join(os.path.dirname(__file__), "cross-model-work.sh")),
-                    "base": base,
-                    "resumed": True,
-                }
-            cleanup = existing.get("cleanup")
-            if existing.get("state") != "cleaned" or not isinstance(cleanup, dict) or cleanup.get("abandoned") is not True:
-                raise Operational("REFUSED", "a fresh attempt requires an explicitly abandoned and cleaned prior attempt")
-            if existing.get("dependencies") != list(args.dependency):
-                raise Operational("BLOCKED", "retry dependencies differ from the recorded unit")
-            prior_attempts = list(existing.get("prior_attempts", [])) + [{key: value for key, value in existing.items() if key != "prior_attempts"}]
-            if os.path.isdir(unit_root):
-                shutil.rmtree(unit_root)
-        ensure_private_dir(unit_root)
-        result = os.path.join(unit_root, "result")
-        ensure_private_dir(result)
-        packet_path = os.path.join(unit_root, "packet.md")
-        if not os.path.exists(packet_path):
-            create_private(packet_path, packet)
-        workspace = os.path.join(unit_root, "workspace")
-        route = doc.get("egress", {}).get("route")
-        contracts = {
-            "codex": ("codex", "codex", [], "adapter-enforced", "auto"),
-            "claude": ("claude", "claude", [], "cooperative", "auto"),
-            "grok-cli": ("grok", "grok", [], "cooperative", "auto"),
-            "cursor": ("cursor", "cursor-agent", [], "adapter-enforced", "auto"),
-            "composer": ("composer", "cursor-agent", ["cursor"], "adapter-enforced", "composer-2.5-fast"),
-            "grok-cursor": ("grok", "cursor-agent", ["cursor"], "adapter-enforced", "cursor-grok-4.6-high"),
-        }
-        if route not in contracts:
-            raise Operational("REFUSED", "egress route is unsupported")
-        target, harness, intermediaries, restriction_posture, default_model = contracts[route]
-        authorization = {
-            "schema_version": 1,
-            "run_id": args.run_id,
-            "unit_id": uid,
-            "attempt_id": args.attempt_id,
-            "route": route,
-            "target": target,
-            "harness": harness,
-            "intermediaries": intermediaries,
-            "model_requested": doc.get("binding", {}).get("model") or default_model,
-            "restriction_posture": restriction_posture,
-            "restrictions": doc.get("egress", {}).get("restrictions", []),
-            "activity_posture": args.activity_posture,
-            "packet_digest": packet_digest,
-        }
-        authorization_bytes = (json.dumps(authorization, sort_keys=True, separators=(",", ":")) + "\n").encode()
-        authorization_path = os.path.join(unit_root, "authorization.json")
-        if not os.path.exists(authorization_path):
-            create_private(authorization_path, authorization_bytes)
-        workspace_name = f"ce-work-{digest_bytes((args.run_id + ':' + uid).encode())[:20]}"
-        placeholder = f"[describe {uid} after verification]"
-        if not os.path.exists(workspace):
-            jj(info["workspace_root"], "workspace", "add", "--name", workspace_name, "-r", base, "-m", placeholder, workspace)
-            os.chmod(workspace, 0o700)
-        unit = {
-            "unit_id": uid,
-            "state": "queued",
-            "dependencies": list(args.dependency),
-            "wave": {"id": args.wave_id, "position": args.wave_position, "base": base},
-            "workspace": {"path": workspace, "name": workspace_name, "base": base},
-            "packet": {"path": packet_path, "digest": packet_digest},
-            "authorization": {"path": authorization_path, "digest": digest_bytes(authorization_bytes)},
-            "result_dir": result,
-            "attempt": {"attempt_id": safe_id(args.attempt_id, "attempt id"), "job_id": None, "process_state": "never-started"},
-            "transport": None,
-            "integration": None,
-            "cleanup": None,
-            "prior_attempts": prior_attempts,
-        }
-        doc["units"][uid] = unit
-        event(doc, "workspace-prepared", uid, {"workspace_name": workspace_name, "base": base})
-    return "PREPARED", {"unit_id": uid, "attempt_id": args.attempt_id, "workspace": workspace, "result_dir": result, "packet_path": packet_path, "packet_digest": packet_digest, "authorization_path": authorization_path, "authorization_digest": digest_bytes(authorization_bytes), "adapter": os.path.realpath(os.path.join(os.path.dirname(__file__), "cross-model-work.sh")), "base": base}
-
-
-def _unit(doc: dict, unit_id: str) -> dict:
-    unit = doc.get("units", {}).get(unit_id)
-    if not unit:
-        raise Operational("REFUSED", "unknown unit")
-    return unit
-
-
-def cmd_record_job(args) -> tuple[str, dict]:
-    with locked_manifest(args.run_id, write=True) as doc:
-        unit = _unit(doc, args.unit_id)
-        attempt = unit["attempt"]
-        if attempt["attempt_id"] != args.attempt_id:
-            raise Operational("BLOCKED", "attempt identity mismatch")
-        if attempt["job_id"] not in (None, args.job_id):
-            raise Operational("AMBIGUOUS", "attempt is already bound to another job")
-        attempt["job_id"] = safe_id(args.job_id, "job id")
-        attempt["process_state"] = "running"
-        unit["state"] = "authoring"
-        event(doc, "job-bound", args.unit_id, {"job_id": args.job_id})
-    return "AUTHORING", {"unit_id": args.unit_id, "job_id": args.job_id}
-
-
-def cmd_authorize_dispatch(args) -> tuple[str, dict]:
-    with locked_manifest(args.run_id, write=True) as doc:
-        unit = _unit(doc, args.unit_id)
-        attempt = unit["attempt"]
-        expected = {
-            "attempt_id": attempt["attempt_id"],
-            "workspace": unit["workspace"]["path"],
-            "packet": unit["packet"]["path"],
-            "packet_digest": unit["packet"]["digest"],
-            "authorization": unit["authorization"]["path"],
-            "authorization_digest": unit["authorization"]["digest"],
-            "result_dir": unit["result_dir"],
-        }
-        observed = {
-            "attempt_id": args.attempt_id,
-            "workspace": os.path.abspath(args.workspace),
-            "packet": os.path.abspath(args.packet),
-            "packet_digest": args.packet_digest,
-            "authorization": os.path.abspath(args.authorization),
-            "authorization_digest": args.authorization_digest,
-            "result_dir": os.path.abspath(args.result_dir),
-        }
-        if observed != expected:
-            raise Operational("BLOCKED", "dispatch does not match the exact controller-recorded authorization", {"expected": expected, "observed": observed})
-        authorization_bytes = read_private(expected["authorization"], MAX_JSON_BYTES)
-        if digest_bytes(authorization_bytes) != expected["authorization_digest"]:
-            raise Operational("BLOCKED", "authorization bytes no longer match the recorded digest")
-        packet_bytes = read_private(expected["packet"], MAX_PACKET_BYTES)
-        if digest_bytes(packet_bytes) != expected["packet_digest"]:
-            raise Operational("BLOCKED", "packet bytes no longer match the recorded digest")
-        job_id = safe_id(args.job_id, "job id")
-        attempt["job_id"] = job_id
-        attempt["process_state"] = "running"
-        unit["state"] = "authoring"
-        event(doc, "dispatch-authorized", args.unit_id, {"job_id": job_id})
-    return "AUTHORIZED", {"run_id": args.run_id, "unit_id": args.unit_id, "attempt_id": args.attempt_id, "job_id": args.job_id, "packet_digest": args.packet_digest}
-
-
-def _job_state(run_id: str, job_id: str) -> str:
-    directory = os.path.join(run_dir(run_id), "jobs", job_id)
-    status_path = os.path.join(directory, "status")
-    if os.path.exists(status_path):
-        return read_private(status_path, 256).decode().strip()
-    return "running" if os.path.exists(os.path.join(directory, "pid")) else "never-started"
-
-
-def cmd_sync_job(args) -> tuple[str, dict]:
-    with locked_manifest(args.run_id, write=True) as doc:
-        unit = _unit(doc, args.unit_id)
-        job_id = unit["attempt"].get("job_id")
-        state = _job_state(args.run_id, job_id) if job_id else "never-started"
-        unit["attempt"]["process_state"] = state
-        event(doc, "job-synced", args.unit_id, {"process_state": state})
-    return "SYNCED", {"unit_id": args.unit_id, "process_state": state}
-
-
-def cmd_terminalize(args) -> tuple[str, dict]:
-    cmd_sync_job(args)
-    with locked_manifest(args.run_id, write=True) as doc:
-        unit = _unit(doc, args.unit_id)
-        if unit["attempt"]["process_state"] != "done":
-            raise Operational("BLOCKED", "worker is not authoritatively done")
-        result_path = os.path.join(unit["result_dir"], "implementation-result.json")
-        result = read_private_json(result_path)
-        terminal_status = result.get("terminal_status")
-        if terminal_status not in {"completed", "blocked", "scope_expansion"}:
-            raise Operational("BLOCKED", "worker result has no host-resolvable terminal status")
-        if terminal_status != "completed":
-            unit["state"] = "authored"
-            unit["terminal_receipt"] = result
-            raise Operational("BLOCKED", "worker returned a host-resolvable blocker", {"terminal_status": terminal_status, "summary": result.get("summary", "")})
-        transport = snapshot(unit["workspace"]["path"])
-        if transport["conflict"]:
-            raise Operational("BLOCKED", "worker change contains unresolved conflicts")
-        reported = result.get("changed_files")
-        if not isinstance(reported, list) or any(not isinstance(path, str) for path in reported):
-            raise Operational("BLOCKED", "worker changed-files evidence is malformed")
-        unit["transport"] = transport
-        unit["terminal_receipt"] = result
-        unit["state"] = "integration-pending"
-        event(doc, "unit-terminalized", args.unit_id, {"change_id": transport["change_id"], "commit_id": transport["commit_id"]})
-    return "TERMINALIZED", {"unit_id": args.unit_id, "transport": transport}
-
-
-def _restore_operation(repo: str, operation_id: str) -> dict:
-    jj(repo, "operation", "restore", operation_id)
-    jj(repo, "workspace", "update-stale", check=False)
-    return snapshot(repo)
-
-
-def _run_verification(repo: str, command: list[str], log_path: str) -> int:
-    if command and command[0] == "--":
-        command = command[1:]
-    if not command:
-        raise Operational("REFUSED", "verification command is required")
-    fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "wb") as stream:
-        try:
-            proc = subprocess.run(command, cwd=repo, stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT, check=False, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
-            return proc.returncode
-        except OSError as exc:
-            stream.write(f"verification launch failed: {exc}\n".encode())
-            return 127
-
-
-def cmd_integrate(args) -> tuple[str, dict]:
-    from unit_workspace_ignored import diff_ignored_state, inventory_ignored_state
-
-    description = _validate_description(args.description)
-    with locked_manifest(args.run_id, write=True) as doc:
-        info = validate_repo(doc)
-        unit = _unit(doc, args.unit_id)
-        if unit["state"] != "integration-pending" or not unit.get("transport"):
-            raise Operational("REFUSED", "unit is not ready for integration")
-        if unit["transport"].get("parent_commit_ids") != [unit["workspace"]["base"]]:
-            raise Operational("BLOCKED", "terminalized worker change does not have the recorded base as its sole parent")
-        unresolved_dependencies = [
-            dependency
-            for dependency in unit.get("dependencies", [])
-            if doc.get("units", {}).get(dependency, {}).get("state") != "cleaned"
-        ]
-        if unresolved_dependencies:
-            raise Operational("BLOCKED", "unit dependencies do not have accepted canonical changes", {"dependencies": unresolved_dependencies})
-        wave_id = unit.get("wave", {}).get("id")
-        if wave_id:
-            members = [candidate for candidate in doc["units"].values() if candidate.get("wave", {}).get("id") == wave_id]
-            unterminated = [candidate["unit_id"] for candidate in members if candidate.get("state") not in {"integration-pending", "cleaned"}]
-            if unterminated:
-                raise Operational("BLOCKED", "every wave worker must terminalize before the first integration", {"units": unterminated})
-            earlier = [candidate["unit_id"] for candidate in members if candidate["wave"]["position"] < unit["wave"]["position"] and candidate.get("state") != "cleaned"]
-            if earlier:
-                raise Operational("BLOCKED", "earlier wave changes must be accepted before this integration", {"units": earlier})
-            paths_by_unit = {candidate["unit_id"]: set(candidate.get("transport", {}).get("changed_paths", [])) for candidate in members if candidate.get("transport")}
-            collisions = {
-                f"{left}:{right}": sorted(paths_by_unit[left] & paths_by_unit[right])
-                for index, left in enumerate(paths_by_unit)
-                for right in list(paths_by_unit)[index + 1:]
-                if paths_by_unit[left] & paths_by_unit[right]
-            }
-            if collisions:
-                raise Operational("BLOCKED", "wave changes have a changed-path collision", {"collisions": collisions})
-        if doc.get("integration_lock"):
-            raise Operational("BLOCKED", "another integration owns the canonical workspace")
-        before = info["snapshot"]
-        if not before["empty"] or before["conflict"]:
-            raise Operational("BLOCKED", "canonical working-copy change is not empty and conflict-free")
-        token = secrets.token_hex(24)
-        doc["integration_lock"] = {"unit_id": args.unit_id, "nonce": token, "operation_id": before["operation_id"]}
-        unit["integration"] = {"pre": before, "description_rule": DESCRIPTION_STANDARD}
-        event(doc, "integration-started", args.unit_id, {"operation_id": before["operation_id"]})
-    repo = info["workspace_root"]
-    accepted = False
+        repo = info["toplevel"]
+        plan = doc.get("plan")
+        if not isinstance(plan, dict) or plan.get("kind", "plan") != "plan" or not plan.get("path"):
+            dirty = status_paths(repo)
+            if dirty:
+                raise Operational("BLOCKED", "prompt-backed external execution requires a clean canonical workspace", {"dirty_paths": sorted(dirty)})
+            return "NOOP", {"checkpoint": None, "head": info["head"], "source_kind": "prompt"}
+        plan_rel = plan["path"]
+        plan_abs, _ = resolve_plan(repo, plan_rel)
+        if digest_bytes(Path(plan_abs).read_bytes()) != doc["plan"]["digest"]:
+            raise Operational("BLOCKED", "selected plan content no longer matches recorded digest")
+        dirty = status_paths(repo)
+        if not dirty:
+            checkpoint = doc["plan"].get("checkpoint")
+            if checkpoint is not None:
+                return "NOOP", {"checkpoint": checkpoint, "head": info["head"]}
+            checkpoint = reconcile_plan_checkpoint(repo, doc, info, plan_rel, description)
+            if checkpoint is None:
+                return "NOOP", {"checkpoint": None, "head": info["head"]}
+            doc["plan"]["checkpoint"] = checkpoint
+            event(doc, "plan-checkpoint", detail={"commit": checkpoint["commit"], "path": plan_rel})
+            return "CHECKPOINTED", {"checkpoint": checkpoint}
+        if dirty != {plan_rel}:
+            raise Operational("BLOCKED", "canonical changes are not exactly the selected plan", {"dirty_paths": sorted(dirty)})
+        prior = info["head"]
     try:
-        jj(repo, "squash", "--from", unit["transport"]["change_id"], "--into", "@", "--use-destination-message")
-        applied = snapshot(repo)
-        if applied["conflict"] or applied["changed_paths"] != unit["transport"]["changed_paths"]:
-            raise Operational("BLOCKED", "integrated delta differs from the terminalized worker change")
-        ignored_before = inventory_ignored_state(repo)
-        log_path = os.path.join(run_dir(args.run_id), "units", args.unit_id, f"verification-{secrets.token_hex(6)}.log")
-        verification_exit = _run_verification(repo, list(args.verification_command), log_path)
-        verified = snapshot(repo)
-        ignored_state = diff_ignored_state(ignored_before, inventory_ignored_state(repo))
-        if verification_exit != 0 or verified != applied:
-            raise Operational("BLOCKED", "authoritative verification failed or changed canonical Jujutsu state", {"verification_exit": verification_exit, "verification_log": log_path})
-        jj(repo, "describe", "-m", description)
-        canonical = snapshot(repo)
-        os.unlink(log_path)
-        with locked_manifest(args.run_id) as doc:
-            pending_units = [
-                candidate_id
-                for candidate_id, candidate in doc["units"].items()
-                if candidate_id != args.unit_id and candidate.get("state") == "integration-pending"
-            ]
-        if pending_units:
-            jj(repo, "new", "-m", f"[describe the next verified unit: {pending_units[0]}]")
-        with locked_manifest(args.run_id, write=True) as doc:
-            unit = _unit(doc, args.unit_id)
-            unit["state"] = "accepted"
-            unit["integration"].update({"applied": applied, "canonical": canonical, "verification_exit": 0, "verification_summary": args.verification_summary, "ignored_state": ignored_state})
-            doc["integration_lock"] = None
-            event(doc, "canonical-change-accepted", args.unit_id, {"change_id": canonical["change_id"], "commit_id": canonical["commit_id"]})
-        accepted = True
-        cmd_cleanup(type("Args", (), {"run_id": args.run_id, "unit_id": args.unit_id, "abandon": False, "expect_transport": None, "expect_job": None})())
-        return "UNIT_ACCEPTED", {"unit_id": args.unit_id, "canonical_change": canonical, "ignored_state": ignored_state, "description_rule": DESCRIPTION_STANDARD}
-    except Operational as exc:
-        if accepted:
-            with locked_manifest(args.run_id, write=True) as doc:
-                doc["blockers"].append({"at": now_iso(), "unit_id": args.unit_id, "reason": "canonical change accepted but workspace cleanup is incomplete"})
-                event(doc, "post-integration-cleanup-blocked", args.unit_id)
-            raise Operational("BLOCKED", "canonical change accepted but workspace cleanup is incomplete", {"canonical_change": canonical, "recovery_path": os.path.join(run_dir(args.run_id), "units", args.unit_id)}) from exc
-        restored = _restore_operation(repo, before["operation_id"])
-        if restored["change_id"] != before["change_id"] or restored["commit_id"] != before["commit_id"] or restored["delta_sha256"] != before["delta_sha256"]:
-            exc.detail["retain_integration_lock"] = True
-            raise Operational("BLOCKED", "exact Jujutsu operation restoration could not be proven", exc.detail) from exc
-        with locked_manifest(args.run_id, write=True) as doc:
-            doc["integration_lock"] = None
-            doc["blockers"].append({"at": now_iso(), "unit_id": args.unit_id, "reason": str(exc)})
-            event(doc, "integration-restored", args.unit_id, {"operation_id": before["operation_id"]})
+        commit = finalize_jj_change(repo, description, [plan_rel])
+    except Operational:
         raise
-
-
-def cmd_verify_run(args) -> tuple[str, dict]:
-    from unit_workspace_ignored import diff_ignored_state, inventory_ignored_state
-
-    with locked_manifest(args.run_id) as doc:
-        info = validate_repo(doc)
-        if any(unit.get("state") != "cleaned" for unit in doc["units"].values()):
-            raise Operational("REFUSED", "verify-run requires every unit to have an accepted and cleaned canonical change")
-        before = info["snapshot"]
-    ignored_before = inventory_ignored_state(info["workspace_root"])
-    log_path = os.path.join(run_dir(args.run_id), "jobs", f"run-verification-{secrets.token_hex(6)}.log")
-    exit_code = _run_verification(info["workspace_root"], list(args.verification_command), log_path)
-    after = snapshot(info["workspace_root"])
-    if after != before:
-        restored = _restore_operation(info["workspace_root"], before["operation_id"])
-        if restored["change_id"] != before["change_id"] or restored["commit_id"] != before["commit_id"]:
-            raise Operational("BLOCKED", "plan-wide verification changed state and exact operation restoration failed", {"verification_log": log_path})
-    ignored_state = diff_ignored_state(ignored_before, inventory_ignored_state(info["workspace_root"]))
-    receipt = {"at": now_iso(), "verification_exit": exit_code, "canonical_change": before, "summary": args.verification_summary, "log_sha256": digest_bytes(Path(log_path).read_bytes()), "ignored_state": ignored_state}
-    receipt["evidence_digest"] = digest_bytes(json.dumps(receipt, sort_keys=True).encode())
+    test_fault("checkpoint-plan-after-commit")
+    if status_paths(repo):
+        raise Operational("BLOCKED", "checkpoint finalized but canonical workspace is not clean")
+    cp = {"prior_head": prior, "commit": commit, "tree": git_text(repo, "rev-parse", f"{commit}^{{tree}}"), "path": plan_rel, "digest": doc["plan"]["digest"], "at": now_iso()}
     with locked_manifest(args.run_id, write=True) as doc:
-        doc["verifications"].append(receipt)
-        event(doc, "run-verification-passed" if exit_code == 0 else "run-verification-failed")
-    if exit_code:
-        raise Operational("BLOCKED", "plan-wide authoritative verification failed", {"verification_log": log_path, "verification_exit": exit_code})
-    os.unlink(log_path)
-    return "RUN_VERIFIED", receipt
-
-
-def cmd_status(args) -> tuple[str, dict]:
-    with locked_manifest(args.run_id) as doc:
         validate_repo(doc)
-        body = dict(doc)
-        body["recovery_path"] = run_dir(args.run_id)
-        if args.unit_id:
-            body = {"run_id": args.run_id, "unit": _unit(doc, args.unit_id), "verifications": doc["verifications"], "blockers": doc["blockers"]}
-    return "STATUS", body
+        doc["plan"]["checkpoint"] = cp
+        event(doc, "plan-checkpoint", detail={"commit": commit, "path": plan_rel})
+    return "CHECKPOINTED", {"checkpoint": cp}
 
 
-def cmd_resume(args) -> tuple[str, dict]:
-    run_id = args.run_id
-    if not run_id:
-        if not args.repo or not args.plan_digest or not re.fullmatch(r"[0-9a-f]{64}", args.plan_digest):
-            raise Operational("REFUSED", "resume requires --run-id or both --repo and a lowercase SHA-256 --plan-digest")
-        info = repo_info(args.repo)
-        root = scratch_root(info["workspace_root"])
-        candidates = []
-        if os.path.isdir(root):
-            for entry in os.scandir(root):
-                if entry.name == ".locks" or not entry.is_dir(follow_symlinks=False) or not SAFE_ID.fullmatch(entry.name):
-                    continue
-                manifest = os.path.join(entry.path, "manifest.json")
-                if not os.path.isfile(manifest):
-                    continue
-                doc = read_private_json(manifest)
-                if (
-                    doc.get("schema_version") == SCHEMA_VERSION
-                    and doc.get("repository", {}).get("identity_digest") == info["identity_digest"]
-                    and doc.get("source", {}).get("kind") == "plan"
-                    and doc.get("source", {}).get("digest") == args.plan_digest
-                    and (
-                        any(unit.get("state") != "cleaned" for unit in doc.get("units", {}).values())
-                        or not any(receipt.get("verification_exit") == 0 for receipt in doc.get("verifications", []))
-                    )
-                ):
-                    candidates.append(entry.name)
-        if not candidates:
-            raise Operational("NOT_FOUND", "no unfinished run matches the Jujutsu repository and plan digest", {"candidates": []})
-        if len(candidates) > 1:
-            raise Operational("AMBIGUOUS", "multiple unfinished runs match; pass --run-id", {"candidates": sorted(candidates)})
-        run_id = candidates[0]
-        os.environ["ROCKETCLAW_WORK_RUNS_ROOT"] = root
-    run_id = safe_id(run_id, "run id")
-    with locked_manifest(run_id) as doc:
-        validate_repo(doc)
-        lock = dict(doc["integration_lock"]) if isinstance(doc.get("integration_lock"), dict) else None
-        repo = doc["repository"]["workspace_root"]
-    actions = []
-    if lock:
-        restored = _restore_operation(repo, lock["operation_id"])
-        with locked_manifest(run_id, write=True) as doc:
-            unit = _unit(doc, lock["unit_id"])
-            expected = unit.get("integration", {}).get("pre")
-            if not expected or restored["change_id"] != expected["change_id"] or restored["commit_id"] != expected["commit_id"] or restored["delta_sha256"] != expected["delta_sha256"]:
-                raise Operational("BLOCKED", "interrupted integration could not restore its exact Jujutsu operation", {"retain_integration_lock": True})
-            doc["integration_lock"] = None
-            unit["state"] = "integration-pending"
-            event(doc, "integration-restored-by-resume", lock["unit_id"], {"operation_id": lock["operation_id"]})
-        actions.append({"unit_id": lock["unit_id"], "action": "integration-restored", "operation_id": lock["operation_id"]})
-    with locked_manifest(run_id) as doc:
-        validate_repo(doc)
-        pending = []
-        for unit_id, unit in doc["units"].items():
-            if unit["state"] == "authoring" and unit["attempt"].get("job_id"):
-                pending.append((unit_id, "observe"))
-            elif unit["state"] == "accepted":
-                pending.append((unit_id, "cleanup"))
-    for unit_id, action in pending:
-        if action == "observe":
-            state = cmd_sync_job(type("Args", (), {"run_id": run_id, "unit_id": unit_id})())[1]["process_state"]
-            actions.append({"unit_id": unit_id, "action": "observed", "process_state": state})
-            if state == "done":
-                terminal = cmd_terminalize(type("Args", (), {"run_id": run_id, "unit_id": unit_id})())[1]
-                actions.append({"unit_id": unit_id, "action": "terminalized", "transport": terminal["transport"]})
-        else:
-            cmd_cleanup(type("Args", (), {"run_id": run_id, "unit_id": unit_id, "abandon": False, "expect_transport": None, "expect_job": None})())
-            actions.append({"unit_id": unit_id, "action": "workspace-cleaned"})
-    return "RESUMED", {"run_id": run_id, "actions": actions, "redispatched": False}
+@contextlib.contextmanager
+def admin_lock(common_dir: str):
+    root = ensure_root()
+    key = digest_bytes(os.path.realpath(common_dir).encode())
+    path = os.path.join(root, ".locks", f"workspace-{key}.lock")
+    try:
+        create_private(path, b"")
+    except Operational:
+        pass
+    data = read_private(path, 64)
+    del data
+    fd = os.open(path, os.O_RDWR | O_NOFOLLOW)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
-def cmd_cleanup(args) -> tuple[str, dict]:
-    with locked_manifest(args.run_id, write=True) as doc:
-        unit = _unit(doc, args.unit_id)
-        if unit["state"] not in {"accepted", "cleaned"} and not args.abandon:
-            raise Operational("REFUSED", "workspace cleanup requires accepted integration or explicit abandonment")
-        if args.abandon and unit["state"] != "cleaned":
-            transport = unit.get("transport")
-            job_id = unit.get("attempt", {}).get("job_id")
-            process_state = unit.get("attempt", {}).get("process_state")
-            if transport:
-                expected = args.expect_transport
-                if expected not in {transport.get("change_id"), transport.get("commit_id")}:
-                    raise Operational("REFUSED", "abandonment requires the exact terminalized change or commit ID")
-            elif not job_id or args.expect_job != job_id or process_state not in TERMINAL_PROCESS:
-                raise Operational("REFUSED", "transport-free abandonment requires the exact terminal job ID")
-        workspace = unit["workspace"]
-        info = validate_repo(doc)
-        if unit["state"] != "cleaned":
-            jj(info["workspace_root"], "workspace", "forget", workspace["name"], check=False)
-            if os.path.isdir(workspace["path"]):
-                shutil.rmtree(workspace["path"])
-            unit["state"] = "cleaned"
-            unit["cleanup"] = {"at": now_iso(), "abandoned": bool(args.abandon)}
-            event(doc, "workspace-cleaned", args.unit_id, {"workspace_name": workspace["name"]})
-    return "CLEANED", {"unit_id": args.unit_id}
+def validate_workspace(doc: dict, unit: dict) -> dict:
+    repo = doc["repository"]["toplevel"]
+    workspace = unit["workspace"]["path"]
+    owned = os.path.join(run_dir(doc["run_id"]), "units", unit["unit_id"])
+    if os.path.commonpath([os.path.realpath(workspace), os.path.realpath(owned)]) != os.path.realpath(owned):
+        raise Operational("BLOCKED", "workspace escaped its owned unit directory")
+    validate_private_dir(workspace)
+    if os.path.realpath(jj_text(workspace, "workspace", "root")) != os.path.realpath(workspace):
+        raise Operational("BLOCKED", "workspace is not registered at the recorded path")
+    common = os.path.realpath(jj_text(workspace, "git", "root"))
+    if common != doc["repository"]["common_dir"]:
+        raise Operational("BLOCKED", "unit workspace belongs to another repository")
+    return {"workspace": workspace, "name": unit["workspace"].get("name")}
 
 
-def cmd_reap(args) -> tuple[str, dict]:
-    return cmd_sync_job(args)
-
-
-def cmd_claim_fallback(args) -> tuple[str, dict]:
-    with locked_manifest(args.run_id, write=True) as doc:
-        unit = _unit(doc, args.unit_id)
-        if unit["attempt"]["process_state"] not in TERMINAL_PROCESS - {"done"}:
-            raise Operational("REFUSED", "fallback requires authoritative failed or reaped state")
-        claim = unit.setdefault("fallback", {}).get("claim")
-        if claim:
-            return "FALLBACK_ALREADY_AUTHORIZED", {"unit_id": args.unit_id, "start_native": False, "claim": claim}
-        mode = doc.get("binding", {}).get("mode")
-        if mode == "require" and (args.caller_mode != "interactive" or not args.confirm_native):
-            raise Operational("CHOICE_REQUIRED", "required external route needs explicit interactive native-fallback confirmation")
-        claim = {"at": now_iso(), "mode": mode, "caller_mode": args.caller_mode, "confirmed_native": bool(args.confirm_native)}
-        unit["fallback"] = {"claim": claim, "completion": None}
-        event(doc, "native-fallback-authorized", args.unit_id)
-    return "FALLBACK_AUTHORIZED", {"unit_id": args.unit_id, "start_native": True, "claim": claim}
-
-
-def cmd_complete_fallback(args) -> tuple[str, dict]:
-    with locked_manifest(args.run_id, write=True) as doc:
-        info = validate_repo(doc)
-        unit = _unit(doc, args.unit_id)
-        fallback = unit.get("fallback")
-        if not fallback or not fallback.get("claim"):
-            raise Operational("REFUSED", "native fallback completion requires an authorized claim")
-        current = info["snapshot"]
-        accepted = args.accepted_change
-        if accepted not in {current["change_id"], current["commit_id"]}:
-            raise Operational("BLOCKED", "accepted fallback identity does not match the canonical Jujutsu change")
-        _validate_description(jj_text(info["workspace_root"], "log", "--no-graph", "-r", "@", "-T", "description"))
-        completion = {"at": now_iso(), "canonical_change": current, "evidence_digest": args.evidence_digest, "summary": args.summary, "description_rule": DESCRIPTION_STANDARD}
-        fallback["completion"] = completion
-        unit["state"] = "accepted"
-        event(doc, "native-fallback-completed", args.unit_id)
-    cmd_cleanup(type("Args", (), {"run_id": args.run_id, "unit_id": args.unit_id, "abandon": False, "expect_transport": None, "expect_job": None})())
-    return "FALLBACK_COMPLETED", {"unit_id": args.unit_id, "completion": completion}
+def validate_pristine_unit_base(doc: dict, unit: dict) -> dict:
+    row = validate_workspace(doc, unit)
+    workspace = unit["workspace"]["path"]
+    base = unit["workspace"]["base"]
+    parent = jj_text(workspace, "log", "-r", "@-", "--no-graph", "-T", "commit_id")
+    if parent != base:
+        raise Operational("BLOCKED", "unit workspace parent no longer equals the recorded base")
+    dirty = status_paths(workspace)
+    if dirty:
+        raise Operational(
+            "BLOCKED",
+            "unit workspace is dirty before dispatch authorization",
+            {"dirty_paths": sorted(dirty)},
+        )
+    return row

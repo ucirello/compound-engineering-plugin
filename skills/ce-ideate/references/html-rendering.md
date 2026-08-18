@@ -31,7 +31,7 @@ These hold regardless of which skill produced the artifact.
   HTML elements that downstream agents and humans read. No hidden
   machine-readable copy in any form: no `<script type="application/json">`
   frontmatter block, no `data-*` attribute mirror, and no
-  `<meta name="created">` / `<meta name="source">`
+  `<meta name="created">` / `<meta name="origin">`
   in `<head>` duplicating the same values that appear in the visible
   header. One representation for each value — drift across two copies is
   the failure this rule prevents.
@@ -100,7 +100,8 @@ these locations, first match wins:
 Read once at compose time. Absent → fall through to the fallback default.
 
 Workspace-root only — do not fall through to another workspace. Users
-who want HTML defaults can add DESIGN.md to the current workspace.
+working from a Jujutsu workspace who want HTML defaults can add DESIGN.md
+to that workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -216,25 +217,20 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time while preserving `main@origin` as the sole repository reference:
-
-```bash
-gh repo view --json url --jq .url
-```
+Resolve the repository's GitHub URL and default bookmark at compose time with `gh repo view --json url,defaultBranchRef`. If that is unavailable, inspect `jj git remote list` for the relevant Git remote and leave links as text unless both the canonical URL and target bookmark are established.
 
 Apply linking to three reference shapes:
 
-- **Repo-relative code/doc paths** (`services/foo.ts`,
-  `<root>/solutions/bar.md`) → the GitHub blob URL for `<path>` at `main@origin`.
-- **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
-  `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
+- **Repo-relative code/doc paths** → the canonical repository URL, resolved default bookmark, and path.
+- **Named GitHub PRs/issues** → the canonical repository URL and the referenced PR or issue number.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
   link only when the workspace URL is established in loaded context
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If `gh` cannot resolve a GitHub URL, leave entries
-as `<code>` text. If the external
+**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
+Bitbucket, internal host) and the equivalent main-tree URL pattern
+isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.
 
@@ -264,8 +260,8 @@ a browser. Keep the heading text visible and adjacent to the `id`; do not rely
 on a nav link alone to carry the section name.
 
 Optional sections with a contract-defined semantic role put that role on their
-  wrapping `<section>` with `data-rocketclaw-section`. For example, the broader-work
-  relationship section uses `data-rocketclaw-section="work-relationships"`. The role is
+  wrapping `<section>` with `data-section`. For example, the broader-work
+  relationship section uses `data-section="work-relationships"`. The role is
 stable even when the visible heading changes; it supplements, rather than
 replaces, readable heading text and any useful anchor.
 
@@ -297,7 +293,7 @@ chip) is being styled.
 Status chips, ID chips, and metric pills in the same row share one shape
 — same border-radius, border weight, and fill treatment. Differentiate
 categories only by the chip's overall fill/text color (applied to the
-  whole pill), never by an accent on one edge. A
+whole pill, like a soft-tint badge), never by an accent on one edge. A
 colored stripe or arc on a single side of a pill reads as broken and
 asymmetric — as if a border half-failed to render — so avoid it. The same
 holds for any element, not just chips: differentiate by a full tint, not
@@ -433,7 +429,7 @@ labeled arrow, each shape edge, and each text label:
 - **Avoid long curves that traverse the diagram** to connect a
   component on one side to one on the other. If A and D need a labeled
   connection across a multi-component layout, prefer reordering boxes
-  so A and D are adjacent, numbered step markers next to each
+  so A and D are adjacent, numbered step badges next to each
   participant that the caption ties together, or a short
   labeled-channel notation — rather than one curve crossing multiple
   unrelated elements.
@@ -590,7 +586,7 @@ Before returning the artifact, scan it for common slips:
 - **No hidden machine-readable metadata copy.** No
   `<script type="application/json">` frontmatter block, no `data-*`
   attributes mirroring visible values, **no `<meta name="created">` /
-  `<meta name="source">` etc. in `<head>`
+  `<meta name="origin">` etc. in `<head>`
   duplicating the visible header**. Metadata lives in visible text;
   one source of truth per value.
 - **All stable IDs** appear as both `id=""` and visible text.

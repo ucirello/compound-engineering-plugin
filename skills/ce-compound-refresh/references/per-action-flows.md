@@ -36,7 +36,7 @@ Relocate only when the misfiling is unambiguous: the doc's directory and its fro
 In non-interactive mode, apply the relocation only when all four conditions hold, mirroring the auto-delete pattern: (1) frontmatter and directory disagree per the category mapping, (2) content evidence clearly resolves the direction as directory-wrong, (3) the target category directory already exists, (4) every inbound citation is in-repo and mechanically rewritable. If any condition fails — including content that plausibly fits either category — record the relocation (doc, proposed target, which condition failed) under Recommended instead of moving.
 
 1. Confirm the target category directory exists.
-2. Move the file normally; Jujutsu snapshots the rename in the working-copy change and records its history without a staging command.
+2. Move the file directly; Jujutsu detects the rename from workspace content.
 3. Reconcile frontmatter category metadata with the new location.
 4. Rewrite inbound links across the repo's markdown, including catalog rows in README files.
 5. Re-check the moved doc's **outgoing** relative links — the move changed their resolution base, so a `../category/doc.md` that resolved before now dangles. Run the bundled claims validator (`scripts/validate-doc-claims.py`, invoked as in the Replace flow) on the moved doc, or inspect its relative links manually, and rewrite any that no longer resolve before completing the relocation.
@@ -109,7 +109,7 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
      Nested values, array items, and already-quoted values are out of scope here (array-item quoting is handled by the schema/YAML-safety step above). Then note in the completion output that the bundled script validator was unavailable on this platform and the checks were applied manually.
 
    The validator does not enforce schema rules and does not flag YAML reserved-indicator characters (those produce loud parser errors downstream rather than silent corruption — out of scope). Uses Python 3 stdlib only (no PyYAML or other deps).
-4. **Run the mechanical claims check on the successor doc.** The bundled `scripts/validate-doc-claims.py` flags cited workspace paths missing from the working copy but present in its parent or trunk, Git commit IDs that Jujutsu cannot resolve or that are unreachable, relative doc links that do not resolve, and dangling drafting scaffold ("Learning 3", unresolved `{{...}}` tokens):
+4. **Run the mechanical claims check on the successor doc.** The bundled `scripts/validate-doc-claims.py` flags cited workspace paths missing from the current change and trunk, Jujutsu change or commit IDs that do not resolve or are not ancestral, relative doc links that do not resolve, and dangling drafting scaffold ("Learning 3", unresolved `{{...}}` tokens):
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";

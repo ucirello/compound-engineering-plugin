@@ -16,7 +16,7 @@ This workflow produces a durable implementation plan. It does **not** implement 
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it, do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `SKILL_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -50,19 +50,20 @@ The **feature description** is the input this skill was invoked with — what to
 
 If the input is present but unclear or underspecified, do not abandon — ask one or two clarifying questions, or proceed to Phase 0.4's planning bootstrap to establish enough context. The goal is always to help the user plan, never to exit the workflow.
 
-**IMPORTANT: All file references in the plan document must use workspace-relative paths (e.g., `src/models/user.rb`), never absolute paths (e.g., `<workspace-root>/src/models/user.rb`). This applies everywhere — implementation unit file lists, pattern references, origin document links, and prose mentions. Absolute paths break portability across machines, workspaces, and teammates.**
+**IMPORTANT: All file references in the plan document must use workspace-relative paths (for example, `path/to/file.ext`), never machine-specific absolute paths. This applies everywhere. Absolute paths break portability across machines, workspaces, and teammates.**
 
 ## Artifact Root
 
-This skill writes plans under `<root>/plans/` and reads learnings under `<root>/solutions/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it; pass the resolved path to any subagent, not the config.
+This skill writes plans under `<root>/plans/` and reads learnings under `<root>/solutions/`. Resolve `<root>` when you first compose a `<root>/` path, never before you need it. A write or read under that namespace triggers resolution; only a run that touches no artifact path skips it. Pass the resolved path to any subagent, not the config.
 
-<!-- ce-docs-root:start -->
+<!-- artifact-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`, with the current directory as fallback). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Resolve** `<repo-root>` with `jj root`. If that fails, use the current directory only for a no-workspace flow that does not inspect repository state.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`.
+- **Validate** a set value as a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+<!-- artifact-root:end -->
 
 ## Core Principles
 
@@ -74,6 +75,7 @@ This skill writes plans under `<root>/plans/` and reads learnings under `<root>/
 6. **Keep the plan portable** - The plan should work as a living document, review artifact, or issue body without embedding tool-specific executor instructions.
 7. **Carry execution direction lightly when it matters** - If the request, origin document, or repo context clearly implies test-first proof, characterization coverage, smoke-first verification, or another non-default execution direction, reflect that in the plan as a lightweight natural-language signal. Do not encode it as a finite enum or turn the plan into step-by-step execution choreography.
 8. **Honor user-named resources** - When the user names a specific resource — a CLI, MCP server, URL, file, doc link, or prior artifact — treat it as authoritative input, not a suggestion. Discover it if unknown (`command -v`, fetch, read) before assuming it's unavailable. Use it in place of generic alternatives. If it fails or doesn't exist, say so explicitly rather than silently substituting.
+9. **Local standards win** - The project's active instructions, observed local history, and current code patterns override generic advice. Preserve compatibility with idiomatic Go quality and package structure when Go is in scope; do not impose fixed language syntax or canned examples on another stack.
 
 ## Plan Quality Bar
 
@@ -101,7 +103,7 @@ After intake determines that `ce-plan` will perform a material multi-stage run, 
 
 Determine `OUTPUT_FORMAT` before any other phase fires. Output mode is **exclusive** — the plan is written as either markdown (`.md`) OR HTML (`.html`), never both. Precedence: in-prompt request > user-stated preference > config > default (`md`), with a hard pipeline-mode override.
 
-**Read config.** Resolve `<workspace-root>` with `jj workspace root`, using the current directory when no Jujutsu workspace can be resolved, then apply the ordinary-key rule (block later in this phase). Read both files when they exist.
+**Read config.** Resolve `<repo-root>` with `jj root`, then apply the ordinary-key rule (block later in this phase). Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
 
 Resolution steps:
 
@@ -113,20 +115,20 @@ Resolution steps:
 4. **Default.** Otherwise `OUTPUT_FORMAT=md`.
 5. **Pipeline override.** When invoked from LFG or any `disable-model-invocation` context, force `OUTPUT_FORMAT=md` regardless of steps 1-4. `ce-work` and other automated downstream consumers parse markdown reliably; HTML in pipeline runs is unnecessary friction.
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, the exact `confirm:auto`/`confirm:ask` forms, `plan_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including project-specific change-description prefixes and any unrecognized `confirm:<value>` — pass through verbatim. A stripped `plan_model:<alias>` carrier (passed by an orchestrator such as LFG) is retained for the Phase 5.2 model-elevation step, not woven into the feature description.
+**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, the exact `confirm:auto`/`confirm:ask` forms, `plan_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including conventional commit prefixes like `feat:`, `fix:`, `chore:`, and any unrecognized `confirm:<value>` (e.g., a `confirm: delete-account modal` feature description) — pass through verbatim. A stripped `plan_model:<alias>` carrier (passed by an orchestrator such as LFG) is retained for the Phase 5.2 model-elevation step, not woven into the feature description.
 
 **Load the format-rendering reference based on the resolved value.** Section content is the same in either format; presentation differs. Both references are paired with `references/plan-sections.md`, which describes what the plan contains regardless of format.
 
 - When `OUTPUT_FORMAT=md`, read `references/markdown-rendering.md` for format principles.
 - When `OUTPUT_FORMAT=html`, read `references/html-rendering.md` for format principles.
 
-<!-- ce-config-layers:start -->
-**Resolve ordinary yaml keys from the two workspace files.**
+<!-- config-layers:start -->
+**Resolve ordinary YAML keys from the two workspace files.**
 
-- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`, with the current directory as fallback). Missing files are skipped. Ignore rules do not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml`. Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
-<!-- ce-config-layers:end -->
+<!-- config-layers:end -->
 
 **Resolve the scoping-confirmation setting.** Also before any gate fires, determine `SKIP_SCOPING_CONFIRM` (boolean, default `false`) — whether the pre-plan scoping-synthesis confirmation gates (Phase 0.7 solo, Phase 5.1.5 brainstorm-sourced) proceed without waiting for the user. This skips **only** that scoping confirmation; it never suppresses genuine blocking questions (Phase 0.4 routing, Phase 0.5 product blockers, Phase 2 architecture questions, source-doc disambiguation) or the Phase 5.4 post-generation menu. Precedence mirrors output mode:
 
@@ -139,16 +141,16 @@ Pipeline / `disable-model-invocation` runs already skip the chat confirmation (h
 
 #### 0.1 Resume Existing Plan Work When Appropriate
 
-This resume check needs `<root>/plans/`, so it only applies to a workspace-backed run. If there is no Jujutsu workspace, use the current directory as the workspace root. If resolving `<root>` fails because `docs_root` is invalid, do **not** fail the run here — skip resume discovery and continue to Phase 0.1a/0.1b, which route non-software and answer-seeking work that never touches `<root>/plans/`. When a plan path was given explicitly, use it directly without resolving `<root>`.
+This resume check needs `<root>/plans/`, so it only applies to a jj-workspace-backed run. If there is no jj workspace, or resolving `<root>` fails, do **not** fail the run here — skip resume discovery and continue to Phase 0.1a/0.1b. When a plan path was given explicitly, use it directly without resolving `<root>`.
 
 If the user references an existing plan file or there is an obvious recent matching plan in `<root>/plans/`:
 - Read it
 - Confirm whether to update it in place or create a new plan
-- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from Jujutsu history by `ce-work`, so there is no progress to preserve across edits
+- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from the current jj change by `ce-work`, so there is no progress to preserve across edits
 
-**A requirements-only unified plan is not a resume target.** A `<root>/plans/` file with `artifact_readiness: requirements-only` is an *enrichment input*, not an existing plan to resume — do **not** fire the update-or-create confirm for it. Fall through to Phase 0.2, which enriches it in place to `implementation-ready`. This matters most for the hands-off `ce-brainstorm` -> `lfg` flow: `lfg` hands `ce-plan` the requirements-only path in `disable-model-invocation` pipeline mode, where no user is present to answer a resume prompt. More generally, in pipeline mode the resume choice is made automatically (default to in-place update of the referenced plan) and never prompted.
+**A requirements-only unified plan is not a resume target.** A `<root>/plans/` file with `artifact_readiness: requirements-only` is an enrichment input, not an existing plan to resume. Fall through to Phase 0.2, which enriches it in place. In pipeline mode, update the referenced plan in place without prompting.
 
-**Deepen intent:** The word "deepen" (or "deepening") in reference to a plan is the primary trigger for the deepening fast path. When the user says "deepen the plan", "deepen my plan", "run a deepening pass", or similar, the target document is a **plan** in `<root>/plans/`, not a requirements document. Use any path, keyword, or context the user provides to identify the right plan. If a path is provided, verify it is actually a plan document. If the match is not obvious, confirm with the user before proceeding.
+**Deepen intent:** Clear intent to deepen a plan triggers the fast path. The target is a plan in `<root>/plans/`, not a requirements document. Use the supplied path, keyword, or context to identify it; verify an explicit path, and confirm when the match is ambiguous.
 
 Words like "strengthen", "confidence", "gaps", and "rigor" are NOT sufficient on their own to trigger deepening. These words appear in normal editing requests ("strengthen that section about the diagram", "there are gaps in the test scenarios") and should not cause a holistic deepening pass. Only treat them as deepening intent when the request clearly targets the plan as a whole and does not name a specific section or content area to change — and even then, prefer to confirm with the user before entering the deepening flow.
 
@@ -201,9 +203,9 @@ Otherwise, read `references/universal-planning.md` and follow that workflow inst
 
 Before asking planning questions, resolve the upstream product source in this order:
 
-1. **Explicit path from the user.** If it points to a unified plan with `artifact_contract: ce-unified-plan/v1` and `artifact_readiness: requirements-only`, this run enriches that same file in place. If it is already `artifact_readiness: implementation-ready`, treat it as a resume/deepening target. If it is a legacy `docs/brainstorms/*-requirements.{md,html}` file, use it as a legacy origin and write a new unified plan in `<root>/plans/`.
-2. **Recent requirements-only unified plans.** Search `<root>/plans/*.{md,html}` for visible/frontmatter metadata containing `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`. **Skip a superseded sibling:** if a requirements-only candidate has a same-basename file in the other format (`<basename>.md` / `<basename>.html`) that is already `implementation-ready`, a format conversion superseded it — the implementation-ready sibling is canonical; do not re-enrich the stale requirements-only copy.
-3. **Legacy requirements docs.** Search `docs/brainstorms/` for files matching `*-requirements.md` or `*-requirements.html`. These remain readable historical inputs; do not migrate or rewrite them.
+1. **Explicit path from the user.** If it points to a requirements-only unified plan, enrich that same file in place. If it is implementation-ready, treat it as a resume/deepening target. If it is a legacy `<root>/brainstorms/*-requirements.{md,html}` file, use it as a legacy origin and write a new unified plan in `<root>/plans/`.
+2. **Recent requirements-only unified plans.** Search `<root>/plans/*.{md,html}` for requirements-only unified plans sourced from `ce-brainstorm`. Skip a candidate when an implementation-ready same-basename sibling already supersedes it.
+3. **Legacy requirements docs.** Search `<root>/brainstorms/` for files matching `*-requirements.md` or `*-requirements.html`. These remain readable historical inputs; do not migrate or rewrite them.
 
 **Relevance criteria:** A Product Contract source is relevant if:
 - The topic semantically matches the feature description
@@ -273,11 +275,11 @@ If the bootstrap reveals that a different workflow would serve the user better:
 - **Bug-shaped prompt** (user describes broken behavior — "fix the bug where X", error message, regression, "doesn't work"). Surface `ce-debug` as a route-out option alongside continuing with `ce-plan` whenever the bug surface is reachable (in cwd OR named repo found at another local path). Stay in `ce-plan` silently when the named code can't be found anywhere local — paper-planning is the only useful output for unreachable surfaces.
 
   **When the bug is at another local path (not cwd):**
-  - Announce the target explicitly **before** any cross-repo investigation: which path will be read AND where plan outputs will land (default: target repo's `<root>/plans/`, not cwd's).
+  - Announce the target explicitly **before** any cross-workspace investigation: which path will be read and where plan outputs will land (default: the target workspace's `<root>/plans/`, not the current directory's).
   - Default: proceed from the target repo for both investigation and plan-write. The user can interrupt to redirect (switch context, paper-plan, abandon, etc.). No location menu — the announcement makes the cross-repo nature visible, and the user can speak up if they want something unusual.
   - **After** announcing and proceeding, fire the standard ce-debug routing menu (continue with `ce-plan` vs switch to `ce-debug`) — same shape as the in-cwd case. Cross-repo location and ce-debug skill routing are orthogonal decisions; do not merge them into a single question.
 
-  Reading code at another path is fine in principle — that's just file access. The harm to avoid is silent operation on the wrong repo, especially writing the plan doc somewhere it won't be discovered (a busyblock plan landing in `cli-printing-press/<root>/plans/` is a discoverability disaster). The announcement requirement makes the target visible; defaulting to the target repo for both investigation and outputs respects the user's stated intent (they named that repo); the orthogonal ce-debug menu keeps the skill-choice question clean.
+  Reading code at another path is fine. Avoid silent operation on the wrong workspace, especially writing the plan where it will not be discovered. Announce the target, then default investigation and output to that workspace while keeping skill routing as a separate decision.
 
   The accessibility classification is conservative and may under-suggest in monorepos, dependency bugs, or after renames. Users can always invoke `ce-debug` manually.
 
@@ -315,7 +317,7 @@ Surface call-outs to the user — the specific forks in scope or approach where 
 
 Fires **only in solo invocation** — when Phase 0.2 found no upstream Product Contract source (no requirements-only unified plan and no legacy `*-requirements` doc; `product_contract_source: ce-plan-bootstrap`) AND Phase 0.4 stayed in ce-plan (did not route to ce-debug, ce-work, or universal-planning) AND Phase 0.5 cleared (no unresolved blockers) AND not on Phase 0.1 fast paths (resume normal, deepen-intent). Each guard is an explicit conditional. Skip Phase 0.7 entirely when any guard fails — upstream-sourced invocations (unified-plan enrichment or legacy brainstorm) defer to Phase 5.1.5 instead.
 
-**Read `references/synthesis-summary.md` before composing the scoping synthesis.** It carries the affirmability test, keep-test criteria, detail test, summary shape budgets, the literal confirmation and auto-proceed templates, granularity rules, anti-patterns, revision-vs-confirmation discipline, doc-shape routing, soft-cut behavior, self-redirect support, the worked PII compression example, and full headless-mode routing — all required for a well-shaped synthesis.
+**Read `references/synthesis-summary.md` before composing the scoping synthesis.** It carries the affirmability, keep, detail, and compression tests; summary budgets; confirmation templates; routing; and headless behavior required for a well-shaped synthesis.
 
 **Required gate output — do not skip; silent proceeding is not allowed.** Compose an internal three-bucket scope draft (Stated / Inferred / Out of scope — internal thinking that feeds plan-body routing at Phase 5.2, not the chat output). Derive call-outs (specific forks where user input materially changes the plan), run the pre-emit scans, then emit the **solo-variant** synthesis and **wait for user confirmation before continuing to Phase 1.** The summary is a scope claim — what the plan will target, what it will not, at affirm-or-redirect level — never an enumeration of Implementation Units, file paths, or PR/sequencing shape (plan-write owns those, and they are not knowable yet). Emit the confirmation or auto-proceed template as specified in `references/synthesis-summary.md` (loaded above) rather than reconstructing it here.
 
@@ -334,8 +336,7 @@ Model tiering lives in this caller, not in prompt assets. Local prompt files hav
 Prepare a concise planning context summary (a paragraph or two) to pass as input to the research agents:
 - If an origin document exists, summarize the problem frame, requirements, and key decisions from that document
 - Otherwise use the feature description directly
-- Read whichever product docs exist at the repo root — `STRATEGY.md`, `PRODUCT.md`, `VISION.md` — and include the relevant pieces (purpose, positioning or approach, active tracks, and stated boundaries or non-goals; go by each section's meaning, since heading names vary by writer and version) in the summary so downstream research and planning decisions are anchored to product strategy
-- If `CONCEPTS.md` exists at repo root, read it — its definitions are the canonical names for domain entities, named processes, and status concepts. Plan with those terms rather than synonyms.
+- Use product strategy and glossary material already named by the project's active instructions or task context. Include relevant purpose, positioning, active tracks, boundaries, and canonical domain terms without probing fixed filenames.
 - Include session-settled decisions with their rejected alternatives, plus the standing line "If you find evidence a settled decision cannot work, report it — do not suppress it." Do not pass the decision's advocacy or rationale, and keep any adversarial or validation lens blind to settlement markers.
 
 Pass the project's active instructions and the planning context summary to `repo-research-analyst`, and send it directly to the requested current scopes. If the feature cannot be scoped from that context, allow one targeted root or workspace probe. Read an exact dependency or runtime version when the plan or an external-doc query materially depends on it.
@@ -405,8 +406,8 @@ Based on the origin document, user signals, and local findings, decide **whether
 
 Use technology facts already present in the project's active instructions, planning context, or task-specific repo research. Read any exact version fresh from the owning manifest when it materially affects an external-research decision:
 
-- If specific frameworks and versions were detected (e.g., Rails 7.2, Next.js 14, Go 1.22), pass those exact identifiers to the `framework-docs-researcher` local prompt so it fetches version-specific documentation
-- If the feature touches a technology layer the scan found well-established in the repo (e.g., existing Sidekiq jobs when planning a new background job), lean toward skipping external research -- local patterns are likely sufficient
+- Pass detected frameworks and exact versions to `framework-docs-researcher` when behavior depends on them.
+- If the feature touches a technology layer with strong direct local precedent, lean toward skipping external research; local patterns are likely sufficient.
 - If the feature touches a technology layer the scan found absent or thin (e.g., no existing proto files when planning a new gRPC service), lean toward external research -- there are no local patterns to follow
 - If the scan detected deployment infrastructure (Docker, K8s, serverless), note it in the planning context passed to downstream agents so they can account for deployment constraints
 - If the scan detected a monorepo and scoped to a specific service, pass that service's tech context to downstream research agents -- not the aggregate of all services. If the scan surfaced the workspace map without scoping, use the feature description to identify the relevant service before proceeding with research
@@ -506,15 +507,14 @@ Ask the user only when the answer materially affects architecture, scope, sequen
 
 #### 3.1 Title and File Naming
 
-- Draft a clear, searchable title that follows the project's current instructions and the change-description patterns visible in `jj log`.
-- Determine the plan type from the project's current classification convention; do not impose a fixed set of labels.
-- Build the filename following the repository convention: `<root>/plans/<local-timestamp>-<type>-<descriptive-name>-plan.md`
+- Draft a clear, searchable title that describes the outcome without a fixed prefix or canned wording.
+- Determine the plan type from the project's active conventions and observed local history; do not impose a closed enum.
+- Build the filename following the repository convention: `<root>/plans/YYYY-MM-DD-HHMM-<type>-<descriptive-name>-plan.md`
   - Create `<root>/plans/` if it does not exist
-  - Take `<local-timestamp>` from the local wall-clock time at write, using the repository's established filename pattern; do not scan for or allocate a separate sequence number
+  - Take `YYYY-MM-DD-HHMM` from the local wall-clock time at write, so the prefix matches the `date:` frontmatter and the day the user experienced; do not scan for or allocate a daily sequence number
   - Reserve the candidate path atomically with exclusive creation; if it already exists, append the smallest available numeric collision suffix (`-2`, `-3`, …) before the extension rather than overwriting it
   - Keep the descriptive name concise (3-5 words) and kebab-cased
-  - Use neutral dynamic components derived from the plan's current title and type rather than fixed sample names or messages
-  - Avoid vague descriptive names and characters the target filesystem rejects
+  - Avoid daily sequence numbers, vague names, and characters invalid for portable filenames.
 
 #### 3.2 Stakeholder and Impact Awareness
 
@@ -522,7 +522,7 @@ For **Standard** or **Deep** plans, briefly consider who is affected by this cha
 
 #### 3.3 Break Work into Implementation Units
 
-Break the work into logical implementation units. Each unit should represent one meaningful change that an implementer could typically land as an atomic Jujutsu change.
+Break the work into logical implementation units. Each unit should represent one meaningful change that an implementer could typically land as an atomic commit.
 
 Good units are:
 - Focused on one component, behavior, or integration seam
@@ -563,7 +563,7 @@ The tree is a scope declaration showing the expected output shape. It is not a c
 
 #### 3.5 Define Each Implementation Unit
 
-Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as bulleted list items or prefix them with `- [ ]` / `- [x]` checkbox markers. List-based unit titles fragment in every standard renderer because the per-unit fields (`**Goal:**`, `**Files:**`, `**Approach:**`, etc.) are written flush-left, which terminates CommonMark list continuation and detaches the fields from the unit they describe. Headings render correctly everywhere, are the right semantic match for sections containing multi-block content, and give each unit an anchor link. The plan is a decision artifact; execution progress is derived from Jujutsu history by `ce-work` rather than stored in the plan body.
+Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as list items or checkboxes. Headings preserve multi-block fields and stable anchors. The plan is a decision artifact; execution progress is derived from the current jj change by `ce-work`, not stored in the plan body.
 
 **Stability rule.** Once assigned, a U-ID is never renumbered. Reordering units leaves their IDs in place (e.g., U1, U3, U5 in their new order is correct; renumbering to U1, U2, U3 is not). Splitting a unit keeps the original U-ID on the original concept and assigns the next unused number to the new unit. Deletion leaves a gap; gaps are fine. This rule matters most during deepening (Phase 5.3), which is the most likely accidental-renumber vector.
 
@@ -571,7 +571,7 @@ For each unit, include:
 - **Goal** - what this unit accomplishes
 - **Requirements** - which requirements or success criteria it advances (cite R-IDs, and A/F/AE IDs when origin supplies them)
 - **Dependencies** - what must exist first (cite by U-ID, e.g., "U1, U3")
-- **Files** - workspace-relative file paths to create, modify, or test (never absolute paths)
+- **Files** - repo-relative file paths to create, modify, or test (never absolute paths)
 - **Approach** - key decisions, data flow, component boundaries, or integration notes. **Unit-local content only:** cite the governing R-IDs / KTD-IDs for any product or protocol rule rather than restating it. When the content enumerates sequenced steps or per-file changes, write it as a short ordered list under the field label, one step per item — a sentence chaining more than two semicolons is a list wearing a paragraph
 - **Execution note** - optional natural-language direction, only when the unit benefits from non-default sequencing or proof. Do not treat this as an enum; phrase the evidence the implementer should seek.
 - **Technical design** - optional pseudo-code or diagram when the unit's approach is non-obvious and prose alone would leave it ambiguous. Frame explicitly as directional guidance, not implementation specification
@@ -663,12 +663,12 @@ Omit "include when material" sections that don't carry information for this spec
 #### 4.3 Planning Rules
 
 - **Horizontal rules (`---`) between top-level sections** in Standard and Deep plans, mirroring the `ce-brainstorm` requirements doc convention. Improves scannability of dense plans where many H2 sections sit close together. Omit for Lightweight plans where the whole doc fits on a single screen.
-- **All file paths must be workspace-relative** — never use absolute paths like `<workspace-root>/src/file.ts`. Use `src/file.ts` instead. Absolute paths make plans non-portable across machines, workspaces, and teammates. When a plan targets a different repository than the document's home, state the target repository once at the top of the plan and use workspace-relative paths throughout
+- **All file paths must be workspace-relative.** Never use machine-specific absolute paths. When a plan targets a different workspace than the document's home, state the target once and use paths relative to it throughout.
 - Prefer path plus class/component/pattern references over brittle line numbers
 - Do not include implementation code — no imports, exact method signatures, or framework-specific syntax
 - Pseudo-code sketches and DSL grammars are allowed in the High-Level Technical Design section and per-unit technical design fields when they communicate design direction. Frame them explicitly as directional guidance, not implementation specification
 - Mermaid diagrams are encouraged when they clarify relationships or flows that prose alone would make hard to follow — ERDs for data model changes, sequence diagrams for multi-service interactions, state diagrams for lifecycle transitions, flowcharts for complex branching logic
-- Do not include Jujutsu commands, change descriptions, or exact test command recipes
+- Do not include jj commands, commit choreography, or exact test command recipes in the plan body
 - Do not expand implementation units into micro-step `RED/GREEN/REFACTOR` instructions
 - Do not pretend an execution-time question is settled just to make the plan look complete
 
@@ -708,9 +708,9 @@ If the plan originated from a requirements document, re-read that document and v
 
 Surface plan-time call-outs to the user before Phase 5.2 commits the plan to disk — the latest cheap moment to catch plan-time scope errors. The brainstorm already validated WHAT to build; this phase surfaces HOW the plan will execute on the forks that matter.
 
-Fires **whenever Phase 0.2 resolved an upstream Product Contract source** — a requirements-only unified plan (an explicit path, or a discovered `product_contract_source: ce-brainstorm` plan in `<root>/plans/`) **or** a legacy `*-requirements.{md,html}` brainstorm doc — AND not on Phase 0.1 fast paths (resume normal, deepen-intent). The new `ce-brainstorm` -> `ce-plan <unified-plan>` enrichment flow is brainstorm-sourced and MUST fire this gate, just like legacy flows. Skip Phase 5.1.5 only in solo invocation (no upstream source found; `product_contract_source: ce-plan-bootstrap`) — solo plans handled their synthesis in Phase 0.7.
+Fires whenever Phase 0.2 resolved an upstream Product Contract source from `<root>/plans/` or a legacy requirements document, except on Phase 0.1 fast paths. Skip it only for a solo invocation with no upstream source.
 
-**Read `references/synthesis-summary.md` before composing the scoping synthesis.** It carries the affirmability test, keep-test criteria, detail test, summary shape budgets, the literal confirmation and auto-proceed templates, granularity rules, anti-patterns, revision-vs-confirmation discipline, doc-body reading rules, doc-shape routing, soft-cut behavior, self-redirect support, the worked PII compression example, and full headless-mode routing — all required for a well-shaped synthesis.
+**Read `references/synthesis-summary.md` before composing the scoping synthesis.** It carries the affirmability, keep, detail, and compression tests; summary budgets; confirmation templates; routing; and headless behavior required for a well-shaped synthesis.
 
 **Required gate output — do not skip; silent proceeding is not allowed.** Compose an internal three-bucket scope draft (Stated / Inferred / Out of scope — internal thinking that feeds plan-body routing at Phase 5.2, not the chat output). Derive call-outs (specific forks where user input materially changes the plan), run the pre-emit scans, then emit the **brainstorm-sourced** synthesis and **wait for user confirmation before continuing to Phase 5.2.** Its summary is two parts — a 1-2 sentence restatement of the brainstorm's scope in the brainstorm's own vocabulary, then the plan-specific scoping decisions the brainstorm did not make (full-brainstorm coverage vs. narrowed subset; adjacent refactors in or out; test scope at scenario level) — each affirmable without reading code, and never an enumeration of Implementation Units, file paths, or PR/sequencing shape. Emit the confirmation or auto-proceed template as specified in `references/synthesis-summary.md` (loaded above) rather than reconstructing it here.
 
@@ -730,10 +730,10 @@ the artifact's native format while preserving its existing structure.
 Use the Write tool to save the complete plan to the resolved format's extension:
 
 ```text
-<root>/plans/<local-timestamp>-<type>-<descriptive-name>-plan.<md|html>
+<root>/plans/YYYY-MM-DD-HHMM-<type>-<descriptive-name>-plan.<md|html>
 ```
 
-Extension follows `OUTPUT_FORMAT` from Phase 0.0 — `.md` when markdown, `.html` when HTML. The filename prefix follows the repository's current local-wall-clock naming convention, so ordering comes from the clock rather than a separate counter. Reserve the final path atomically; when creating a new artifact, an exact-path collision retries with the smallest available numeric suffix rather than overwriting. Explicit format conversion is not a new artifact and is exempt from that suffix: it keeps the existing basename, changes only the extension, and writes that exact sibling path, updating it in place when it already exists. A suffixed conversion output would break the same-basename staleness signal Phase 0.2 and `ce-work` discovery depend on.
+Extension follows `OUTPUT_FORMAT` from Phase 0.0 — `.md` when markdown, `.html` when HTML. The filename prefix is the local wall-clock time at write, so ordering comes from the clock rather than a daily counter. Reserve the final path atomically; when creating a new artifact, an exact-path collision retries with the smallest available numeric suffix rather than overwriting. Explicit format conversion is not a new artifact and is exempt from that suffix: it keeps the existing basename, changes only the extension, and writes that exact sibling path, updating it in place when it already exists. A suffixed conversion output would break the same-basename staleness signal Phase 0.2 and `ce-work` discovery depend on.
 
 Compose the plan using the content from `references/plan-sections.md` and the format-specific principles from the rendering reference loaded at Phase 0.0 (`markdown-rendering.md` OR `html-rendering.md`).
 
@@ -760,7 +760,7 @@ Plan written to <absolute path to plan>
 
 **Pipeline mode:** If invoked from an automated workflow such as LFG or any `disable-model-invocation` context, skip interactive questions. Make the needed choices automatically and proceed to writing the plan. Pipeline mode forces `OUTPUT_FORMAT=md` at Phase 0.0. Exception: when research produced invalidating evidence (infeasible, wrong-thing, destructive) against any session-settled decision in play for the run — whether carried in the caller brief or already carried as a `session-settled:` label in the artifact being enriched (brainstorm Key Decisions or plan KTDs) — do not write the plan and do not resolve silently — return a blocked report to the caller containing the token `settled-decision-invalidated`, the decision, and the reason, parallel to the non-software pipeline stop in `references/universal-planning.md`, so the caller can stop.
 
-**CONCEPTS.md gap-fill (only if the file already exists):** If the plan body uses a domain term whose definition is missing from `CONCEPTS.md`, add the entry. **Domain entities, named processes, and status concepts with project-specific meaning only** — not file paths, class names, function signatures, or implementation decisions. `CONCEPTS.md` is a glossary, not a spec or catch-all. Follow the format set by existing entries. Apply silently. Skip entirely if `CONCEPTS.md` does not exist — creation is owned by ce-compound and ce-compound-refresh.
+**Glossary gap-fill:** Only when active context identifies an existing project glossary, add missing project-specific domain entities, named processes, or status concepts through that established surface. Do not add file paths, symbols, or implementation decisions, and do not probe or create a fixed glossary filename.
 
 #### 5.3 Confidence Check and Deepening
 
@@ -819,7 +819,7 @@ After document review and final checks, print a one-line summary of the non-inte
 
 **Options.** `Open in browser` renders only when `OUTPUT_FORMAT=html`. Exclusive output: the local plan file stays canonical.
 
-1. **Start `ce-work`** - Build and ship the plan in this session — subagent-driven development with simplification, code review, and Jujutsu changes. Implementation-ready code plans only.
+1. **Start `ce-work`** - Build and ship the plan in this session — subagent-driven development with simplification, code review, and commits. Implementation-ready code plans only.
 2. **Run it as a `/goal`** - Choose this if you'd rather run the plan through your harness's autonomous goal mode instead of ce-work's build-and-ship flow. The alternative to option 1, not an add-on — pick one. Implementation-ready code plans only, and only where the host has goal capability (Codex `create_goal` in the available tool list, or a user-typed `/goal` in Claude Code). Where it can start directly, it does; otherwise it hands over a copy-paste prompt.
 
 **Recommended marker:** `ce-work` (option 1) always carries *(recommended)* and option 2 stays unmarked. `ce-work` is the correctly-layered execution entry point — it owns engine selection and reaches goal or dynamic-workflow engines itself when a plan's shape warrants, so recommending it never forecloses goal mode. Exactly one option carries the marker.

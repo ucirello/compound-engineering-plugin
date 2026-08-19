@@ -76,15 +76,19 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Jujutsu Bisect for Regressions
+## Revision Bisection for Regressions
 
-When a bug is a regression ("it worked before"), use Jujutsu's revision bisection to find the first bad revision. Select the range from the known-good and known-bad revisions using current `jj log` history and the project's active instructions; those sources win over generic defaults.
+When a bug is a regression ("it worked before"), use jj to binary-search the revisions between a known-good revision and the current bad revision.
 
 ```bash
-jj bisect run --range <known-good-revision>..<known-bad-revision> -- <test-command> <test-arguments>
+jj log -r '<known-good-revision>::@'
+jj edit <middle-revision>
+# Run the reproducer, retain the half-range consistent with the result, and repeat.
+# Return to the original change when the first bad revision is identified.
+jj edit <original-change-id>
 ```
 
-The test command should exit 0 for good, 125 to skip a revision, and another non-zero status for bad. Jujutsu edits each candidate revision while the command runs and restores the original working-copy revision when the bisection completes.
+Record the original change ID before moving the working copy. Treat exit 0 from an automated reproducer as good and non-zero as bad, but do not automate revision movement unless the repository already provides a jj-compatible bisect helper. Never abandon the working copy on an investigated revision.
 
 ---
 

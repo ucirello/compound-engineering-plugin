@@ -1,77 +1,61 @@
-# Opt-in stack construction and submission
+# Opt-In Stack Construction and Submission
 
-Load this file only when stack mode is active. Soft-depend on `gh stack`; do not depend on another skill package. Before ordinary Step 3, run Probe, Topology, and any retrospective construction. Step 5 alone runs Submit and applies metadata.
-
-`gh stack` owns a GitHub/Git branch view of the stack. Keep Jujutsu authoritative: run `jj git export` before manager operations and `jj git import` after any operation that can create or move branches or change the checkout. Use Git branch names only at this interoperability boundary; use Jujutsu bookmarks and revisions everywhere else.
+Load this reference only when stack intent is active. Before ordinary Step 3, run Probe, Topology, and Retrospective Construction. Step 5 alone runs Submit and applies metadata.
 
 ## Probe
 
-```bash
-command -v gh
-jj git export
-gh stack view --json
-```
-
-If `gh` or `gh stack` is unavailable for the repository, explicit stack intent hard-stops with a residual. Soft intent leaves a residual and falls back to one PR.
+Run `gh stack view --json`. If `gh`, the extension, or repository support is unavailable, explicit stack intent is blocked; soft intent reports the residual and returns to one PR. Read `references/gh-stack-cli.md` before crossing between Jujutsu and manager state.
 
 ## Topology
 
-When the user names a parent PR or branch, classify it and root the layers there. Prefer the PR number because it can pull topology from GitHub; a bare branch name can classify only exported local state. `references/gh-stack-cli.md` owns exit meanings.
+When the user names a parent PR or bookmark, identify it by PR number where possible and root the stack there. Record the current Jujutsu change ID, bookmark, and tip before manager classification. After any `gh stack checkout`, run `jj git import` and restore the recorded work with `jj edit <change-id>` before construction; otherwise the parent can be mistaken for the work to partition.
 
-Classification can move the Git checkout. Record the current Jujutsu change ID and intended bookmark first, then import and restore the intended change with `jj edit <change-id>` before construction.
+- If the parent is managed, add only above that exact parent. Exit 5 from `gh stack add` means it is not the top and is a residual; do not reparent through `gh stack top`.
+- If the parent is standalone, obtain `headRefName` and `headRefOid` with `gh pr view`. Fetch the head through `jj git fetch` when a matching remote bookmark exists; otherwise import the pull ref through the colocated Git boundary and verify the resulting commit. Create or set a Jujutsu bookmark only after confirming it targets that exact commit. Never move a same-named bookmark whose ownership is uncertain.
+- If parent identity or topology remains unproven, stop rather than creating a second stack.
 
-- **Managed parent:** plan from the restored work change, export, classify the parent again, and run `gh stack add` there. Exit 5 means the named parent is not the top; stop rather than reparenting through `gh stack top`.
-- **Standalone parent:** resolve `headRefName`, `headRefOid`, and `author` with `gh pr view`. Import or fetch the object, then create or verify a Jujutsu bookmark exactly at that revision; never move a colliding bookmark whose identity is unproven. Export it and initialize with the parent as untouched trunk, or adopt it as the bottom layer only when the current user is its author.
-- **Unproven parent:** stop. Guessing can create a second stack.
+An explicit upstack bookmark starts from the authoritative parent tip: use the current local parent when it contains unpublished work, otherwise the freshly fetched remote bookmark. Create the child with `jj new <parent-tip>` and `jj bookmark create <child> -r @`. Do not use default-line bookmark creation for an upstack layer.
 
-Use the topology-specific `gh stack init` form rather than replacing an adopted parent with a generic base. A PR-derived name must match `[A-Za-z0-9._/-]+` before it reaches `gh`; stop on invalid input.
+Preserve an existing managed topology. Without one, use retrospective construction. A standing preference does not justify artificial slices when the request itself did not ask for a stack; an explicit stack request does.
 
-Preserve an existing managed topology. Without an existing topology, use retrospective construction. A standing preference alone does not justify artificial layers, but an explicit stack request is required intent and is not downgraded.
+## Retrospective Construction
 
-For a user-directed upstack layer, fetch the parent remote bookmark with `jj git fetch`, choose the authoritative parent revision, run `jj new <parent-revision>`, and create the new bookmark at `@`. Do not use default-bookmark creation logic for an upstack layer.
-
-## Retrospective construction
-
-Inspect the complete range from the resolved base through `@`, including existing revisions and current tracked or untracked content. Derive the smallest useful linear set of independently reviewable layers in dependency order. Use whole-file groups or existing revision boundaries; never force a hunk-level split.
-
-Proceed without asking when one safe topology is clear. Ask when alternatives materially change review boundaries. In `mode:pipeline`, return the proposal as a residual instead of guessing. Rewriting published revisions always requires explicit confirmation; pipeline mode stops instead.
-
-Choose the bottom parent from the authoritative remote bookmark, or the verified local parent resolved by Topology. Preserve the original change ID before rewriting. For each layer, create or reuse a Jujutsu revision on its immediate parent, commit only that layer's whole-file fileset, and put a bookmark at the completed revision. Files in `exclude:<paths>` belong to no layer and must remain in the working-copy change; stop if topology work cannot preserve them.
+Inspect the complete range from resolved base to the working change, including all committed Jujutsu changes and current tracked content. Build the smallest useful linear set of independently reviewable layers in dependency order. Prefer existing change boundaries or whole-file filesets. Hunk-level `jj split -i` and rewriting already-pushed changes require explicit confirmation; pipeline mode stops with the proposed partition instead.
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Runtime project instructions and history read with `jj log` win. Apply the Step 2 quality guidance to every layer description and use neutral descriptions derived from each layer's outcome. Preserve any already-known Implementation Unit traceability required by active project conventions without prescribing message syntax.
+The project's active instructions and observed repository history always win. Apply compatible Go clarity and structure guidance from the main skill to every layer description without imposing fixed syntax or examples. Append an already-known Implementation Unit ID in parentheses when one unambiguously belongs to that layer; do not search for a plan.
+
+For each planned layer, create a Jujutsu change on its immediate parent, select only its filesets, and describe it:
 
 ```bash
-jj new <bottom-parent>
-jj commit -m "<bottom-description>" <bottom-files>
-jj bookmark create <bottom-bookmark> -r @-
-jj new <bottom-bookmark>
-jj commit -m "<next-description>" <next-files>
-jj bookmark create <next-bookmark> -r @-
+jj new <parent-revision>
+jj commit -m "<description derived from local standards and history>" <fileset>...
+jj bookmark create <layer-bookmark> -r <described-tip>
+```
+
+Files in `exclude:<paths>` belong to no layer and must remain outside every selected fileset. If preserving them across the planned topology is not possible without clobbering content, stop. After every layer, verify its diff against its parent. Before manager adoption, verify the top contains the complete intended original change set and excluded content is absent.
+
+Export the completed bookmarks and adopt them bottom-to-top:
+
+```bash
 jj git export
-gh stack init --base "<base>" "<bottom-bookmark>" "<next-bookmark>"
+gh stack init --base "<base-bookmark>" "<bottom-bookmark>" "<next-bookmark>"
 jj git import
 ```
 
-For existing revision boundaries that already match the plan, create or reuse bookmarks at those revision tips and export them for bottom-to-top adoption. Reuse the original feature bookmark only when its unchanged target is a planned tip. Verify `gh stack view --json` order and confirm that the top Jujutsu revision contains the complete original change set before submit.
+Run `gh stack view --json` and verify manager order, bookmark targets, and top-layer completeness. A mismatch is a blocker.
 
 ## Submit
 
-Resolve `pr_teaching_archive` / `archive:on|off` first. If archival is on, stop before submit; stack archival has no manager-aware route.
+Resolve `pr_teaching_archive` and `archive:on|off` first. If archival is on, stop before submission; stack archival has no manager-safe route here.
 
-Inspect existing layers for drafts. If any existing draft was not explicitly authorized to open, submit without `--open` and treat remaining drafts as a residual before babysitting. Otherwise:
+Inspect existing stack PRs for drafts. Do not pass `--open` when it would ready a draft the user did not authorize. Submit with `gh stack submit --auto` in that state and report remaining drafts as a residual before default babysitting. Otherwise submit ready PRs:
 
 ```bash
-jj git export
 gh stack submit --auto --open
-jj git import
 ```
 
-`--auto` alone creates drafts. Draft-only outcomes do not satisfy stack shipping when babysitting is on.
+After submission, run `jj git import` and verify local state. Map each newly created PR to its explicit head bookmark and URL. Compose and apply each new PR body against its immediate parent with `gh pr edit <pr-url>`. Existing PR bodies remain unchanged unless this invocation requested a rewrite; pipeline mode defaults to no rewrite.
 
-Map every PR created in this run to its head bookmark and explicit URL. Pass each URL through ordinary PR-description composition and apply with `gh pr edit "<pr-url>"`. Existing stack PRs retain metadata unless rewrite intent is explicit; pipeline mode keeps the conservative no-rewrite default.
-
-## Forbidden on managed members
-
-Do not use `gh pr merge` on a stack member. Landing remains `gh stack merge`, owned by babysitting under `posture:stack-land` or by the user.
+Managed members land only through `gh stack merge`, owned by `ce-babysit-pr` under `posture:stack-land` or by the user.

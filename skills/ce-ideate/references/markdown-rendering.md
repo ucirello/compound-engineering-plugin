@@ -18,8 +18,8 @@ These hold regardless of which skill produced the artifact.
 - **ASCII identifiers in anchors.** Markdown headings auto-generate anchors
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
-- **Repo-relative paths for file references.** Always. Never absolute paths
-  — they break portability across machines, workspaces, teammates.
+- **Workspace-relative paths for file references.** Always. Never absolute paths
+  — they break portability across machines, workspaces, and teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
   semantic marker such as `<!-- section: work-relationships -->`; it carries
@@ -208,7 +208,7 @@ Engineering process metadata stays out of the artifact:
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in version-control metadata, tool output, and agent
+This information belongs in commit messages, tool output, and agent
 transcripts — not in the artifact a reader returns to weeks later.
 
 ## Frontmatter shape
@@ -224,7 +224,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from `jj log`, not stored in the doc.
+  the work shipped is derived from `jj` history, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit

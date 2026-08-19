@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# elevation-dispatch.sh — off-host model-elevation worker for ce-plan / ce-brainstorm.
+# elevation-dispatch.sh — off-host model-elevation worker for planning skills.
 #
 # Runs one reasoning-heavy step on a user-chosen model via the Claude CLI, as a
 # detached job supervised by peer-job-runner.py. Streams NDJSON so the idle
@@ -91,26 +91,29 @@ HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
 HANDOFF_DIR="$(cd "$HANDOFF_DIR" 2>/dev/null && pwd || printf '%s' "$HANDOFF_DIR")"
 
-# jq builds every result envelope; it is only an optional capability (ce-setup),
-# so preflight it here rather than spending the CLI call and failing to parse.
-# Exit 0 with a failure envelope, NOT nonzero: the runner classifies a nonzero
-# exit as `failed`, and its `result` command then refuses to emit the artifact,
-# so the recovery flow could never read this envelope. Exit 0 makes the job
-# `done`, the envelope's status:failed is read, and it degrades to inline.
-if ! command -v jq >/dev/null 2>&1; then
-  log "jq not found on PATH; cannot parse the elevated result — degrading to inline"
-  printf '{"status":"failed","requested_model":"%s","evidence":"jq unavailable on PATH"}' "$MODEL" > "$RESULT_PATH" 2>/dev/null || true
-  exit 0
-fi
-
-PEERLOG="$(mktemp "$HANDOFF_DIR/elevation-peer-XXXXXX")"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"
+if [ -L "$SCRATCH_ROOT" ]; then log "refusing symlink scratch root: $SCRATCH_ROOT"; exit 2; fi
+mkdir -p "$SCRATCH_ROOT" || { log "cannot create workspace scratch root: $SCRATCH_ROOT"; exit 2; }
+[ -O "$SCRATCH_ROOT" ] || { log "scratch root is not owned by this user: $SCRATCH_ROOT"; exit 2; }
+chmod 700 "$SCRATCH_ROOT" 2>/dev/null || true
+RESULT_DIR="${RESULT_PATH%/*}"
+[ "$RESULT_DIR" = "$RESULT_PATH" ] && RESULT_DIR="."
+RESULT_DIR="$(cd "$RESULT_DIR" 2>/dev/null && pwd || printf '%s' "$RESULT_DIR")"
+case "$HANDOFF_DIR/" in "$SCRATCH_ROOT/"*) ;; *) log "handoff directory must be under $SCRATCH_ROOT"; exit 2 ;; esac
+case "$RESULT_DIR/" in "$SCRATCH_ROOT/"*) ;; *) log "result directory must be under $SCRATCH_ROOT"; exit 2 ;; esac
+while :; do
+  PEERLOG="$SCRATCH_ROOT/elevation-peer-$(date +%s)-$RANDOM"
+  ( set -C; : > "$PEERLOG" ) 2>/dev/null && break
+done
+chmod 600 "$PEERLOG" 2>/dev/null || true
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
-# Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
+# Keep this inner cap >= the runner's RC_PEER_HARD_SECS so it never reaps a
 # healthy run before the outer supervisor's own raised backstop.
-IDLE_SECS="${CE_ELEVATION_IDLE_SECS:-180}"
-HARD_SECS="${CE_ELEVATION_HARD_SECS:-5400}"
-POLL_SECS="${CE_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
+IDLE_SECS="${RC_ELEVATION_IDLE_SECS:-180}"
+HARD_SECS="${RC_ELEVATION_HARD_SECS:-5400}"
+POLL_SECS="${RC_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
 
 reap() {
   local pid="$1" grp
@@ -138,10 +141,27 @@ on_term() {
 }
 trap 'on_term' TERM INT
 
+reserve_result_tmp() {
+  local candidate
+  while :; do
+    candidate="${RESULT_PATH}.tmp.$$.$RANDOM"
+    ( set -C; : > "$candidate" ) 2>/dev/null && { printf '%s' "$candidate"; return 0; }
+  done
+}
+
 write_result() {   # <json-string> -> atomic publish to RESULT_PATH
-  local tmp="${RESULT_PATH}.tmp.$$"
+  local tmp; tmp="$(reserve_result_tmp)" || return 1
   printf '%s' "$1" > "$tmp" && mv -f "$tmp" "$RESULT_PATH"
 }
+
+# jq builds every result envelope; preflight before spending the model call.
+# Publish a failure envelope with exit 0 so the runner can return it and the
+# orchestrator can degrade inline.
+if ! command -v jq >/dev/null 2>&1; then
+  log "jq not found on PATH; cannot parse the elevated result — degrading to inline"
+  write_result "$(printf '{\"status\":\"failed\",\"requested_model\":\"%s\",\"evidence\":\"jq unavailable on PATH\"}' "$MODEL")" || true
+  exit 0
+fi
 
 # Bounded stderr/stdout tail for a failed run. tail -c avoids the macOS bash
 # negative-slice bug that erased sub-300-char evidence in the review worker.
@@ -255,7 +275,7 @@ if [ "$RUN_SUCCEEDED" = true ] && [ "$HAS_OUTPUT" = "yes" ] \
   # Build the envelope by piping the event THROUGH jq, which reads .result
   # internally — never pass the plan text as an argv --arg, which would exceed
   # ARG_MAX for a large Deep plan.
-  tmp="${RESULT_PATH}.tmp.$$"
+  tmp="$(reserve_result_tmp)"
   if printf '%s' "$EVENT" | jq --arg m "$MODEL" --arg s "$SERVED" --arg r "$RECEIPT" \
        '{status:"ok", requested_model:$m, served_model:$s, receipt:$r, output:.result}' \
        > "$tmp" 2>/dev/null; then

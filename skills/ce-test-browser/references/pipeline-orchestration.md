@@ -1,6 +1,6 @@
 # Pipeline-Mode Server Orchestration
 
-Read and follow this file only when invoked with `mode:pipeline` (LFG or another automated runner). It overrides visibility prompts, free-port selection, and dev-server startup. It does not change browser-driver selection. In pipeline mode you run unattended — never block on a question.
+Read and follow this file only when invoked with `mode:pipeline` by an automated runner. It overrides visibility prompts, free-port selection, and dev-server startup. It does not change browser-driver selection. In pipeline mode you run unattended — never block on a question.
 
 ## 1. No visibility question
 
@@ -32,6 +32,16 @@ find_free_port() {
 PORT=$(find_free_port "$PORT")
 LOG_FILE="${LOG_DIR}/dev-server-${PORT}.log"
 echo "Using dev server port: $PORT"
+
+# keep logs inside the jj workspace, with local .tmp for a missing workspace root
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+if [ -n "$WORKSPACE_ROOT" ]; then
+  LOG_DIR="$WORKSPACE_ROOT/.tmp"
+else
+  LOG_DIR=".tmp"
+fi
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/dev-server-${PORT}.log"
 
 # start in the background (the scan guarantees this port is free), then wait up to 30s
 echo "Starting dev server on port ${PORT}..."

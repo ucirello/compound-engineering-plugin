@@ -212,7 +212,7 @@ After the config is written and shown to the user, make a scheduling offer befor
 
 **Handling the answer:**
 
-- **Yes (daily or weekly)** -> "I'll hand this to the `schedule` skill. Confirm the time/day and it'll set up the recurring job." Do not schedule inline - hand off to the `schedule` skill explicitly, which is the single source of truth for recurring tasks. On Claude Code, this uses the Routines feature.
+- **Yes (daily or weekly)** -> "I'll hand this to the `schedule` skill. Confirm the time/day and it'll set up the recurring job." Do not schedule inline - hand off to the `schedule` skill explicitly, which is the single source of truth for recurring tasks. Use the current harness's recurring-task capability.
 - **Not now** -> capture `schedule: manual` in the config. No nag.
 - **Later** -> capture `schedule: ask-again-after-3-runs` in the config. The SKILL.md Phase 3 logic re-surfaces the offer after 3 manual runs.
 
@@ -224,9 +224,9 @@ Skipping this entirely is fine - the skill does not require a schedule to functi
 
 ## Config File Shape
 
-After the interview completes, merge a `pulse_*` block into `<workspace-root>/.rocketclaw/config.local.yaml`. Resolve the workspace root with `jj workspace root`, using the current directory as fallback. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
+After the interview completes, merge a `pulse_*` block into `<repo-root>/.rocketclaw/config.local.yaml`. Resolve the repo root with `jj root`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
 
-If the file does not yet exist, create the directory and file. If `.rocketclaw/config.local.yaml` is not already covered by the workspace's ignore rules, offer to add the entry before writing.
+If the file does not yet exist, create the directory and file. If `.rocketclaw/config.local.yaml` is not already covered by the repo's ignore configuration, offer to add the entry before writing.
 
 The pulse block uses skill-prefixed flat keys so it can share the config file without owning unrelated settings:
 

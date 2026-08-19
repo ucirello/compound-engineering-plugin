@@ -4,8 +4,8 @@
 # Runs one pre-sanctioned different-model route in a read-only, least-privilege
 # process and writes its POV as JSON into the run dir.
 # Every peer receives the canonical POV persona, schema, and a caller-prepared
-# subject payload. The peer also receives the caller-declared workspace read
-# scope; private prompt/result scratch stays under the workspace's .tmp tree.
+# subject payload. The peer also receives the caller-declared repository read
+# scope; private prompt/result scratch stays under the workspace's `.tmp` tree.
 #
 # Independence is by PROVIDER, not CLI brand. A provider is reached by a ROUTE:
 # its dedicated CLI, or (for the fixed grok-cursor / composer routes) cursor-agent. All
@@ -28,9 +28,9 @@
 #                   returns no artifact; only the host may disclose and retry a
 #                   different recipient.
 #   <subject-payload> framed question plus any conversation-only subject material.
-#                     Point to workspace files instead of copying their contents;
-#                     the peer grounds itself from the shared Jujutsu workspace.
-#   <run-dir>         existing private dir under <workspace-root>/.tmp/rocketclaw; output ->
+#                     Point to repository files instead of copying their contents;
+#                     the peer grounds itself from the shared working copy.
+#   <run-dir>         existing private dir under the workspace's `.tmp` tree; output ->
 #                     <run-dir>/pov-<target>.json, where <target> is the resolved
 #                     <fixed-route> target (grok-cli/grok-cursor both collapse to
 #                     grok) -- NOT the <host-serving-family> key.
@@ -212,7 +212,7 @@ adapter_argv() {
         -o "$RAW_OUT" -m "$(route_model codex)" -c 'model_reasoning_effort="high"' -c 'hide_agent_reasoning=false'
       ;;
     claude)
-      # Keep project auto-discovery disabled while allowing only workspace reads
+      # Keep project auto-discovery disabled while allowing only repository reads
       # and bounded public web checks. Mutating tools, Bash, MCP, and subagents are
       # absent from the allowlist.
       # stream-json + --verbose for PEERLOG idle (#1270); schema still composes.
@@ -289,18 +289,18 @@ RUN_DIR="${4:-}"
 # --- validate inputs -------------------------------------------------------
 [ -n "$PAYLOAD_PATH" ] && [ -f "$PAYLOAD_PATH" ] || skip "subject payload '${PAYLOAD_PATH:-<empty>}' not readable on disk; skipping"
 READ_ROOT="${CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
-[ -d "$READ_ROOT" ] || skip "declared workspace/read root '$READ_ROOT' is not a directory"
-READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve workspace/read root '$READ_ROOT'"
-if [ -n "${CROSS_MODEL_WORKSPACE_ROOT:-}" ]; then
-  WORKSPACE_ROOT="$CROSS_MODEL_WORKSPACE_ROOT"
-elif command -v jj >/dev/null 2>&1 && _jj_root="$(jj -R "$READ_ROOT" workspace root 2>/dev/null)"; then
-  WORKSPACE_ROOT="$_jj_root"
+[ -d "$READ_ROOT" ] || skip "declared repository/read root '$READ_ROOT' is not a directory"
+READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve repository/read root '$READ_ROOT'"
+if [ -n "${CROSS_MODEL_REPO_ROOT:-}" ]; then
+  REPO_ROOT="$CROSS_MODEL_REPO_ROOT"
+elif command -v jj >/dev/null 2>&1 && _jj_root="$(jj --repository "$READ_ROOT" workspace root 2>/dev/null)"; then
+  REPO_ROOT="$_jj_root"
 else
-  WORKSPACE_ROOT="$(pwd -P)"
+  REPO_ROOT="$(pwd -P)"
 fi
-[ -d "$WORKSPACE_ROOT" ] || skip "declared workspace root '$WORKSPACE_ROOT' is not a directory"
-WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" && pwd -P)" || skip "cannot resolve workspace root '$WORKSPACE_ROOT'"
-case "$READ_ROOT/" in "$WORKSPACE_ROOT/"*) ;; *) skip "read root '$READ_ROOT' is outside workspace root '$WORKSPACE_ROOT'" ;; esac
+[ -d "$REPO_ROOT" ] || skip "declared repository root '$REPO_ROOT' is not a directory"
+REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)" || skip "cannot resolve repository root '$REPO_ROOT'"
+case "$READ_ROOT/" in "$REPO_ROOT/"*) ;; *) skip "read root '$READ_ROOT' is outside repository root '$REPO_ROOT'" ;; esac
 
 [ -n "$RUN_DIR" ] || skip "run-dir not given; skipping"
 if [ -d "$RUN_DIR" ]; then
@@ -312,14 +312,13 @@ else
   RUN_PARENT="$(cd "$RUN_PARENT" && pwd -P)" || skip "cannot resolve run-dir parent '$RUN_PARENT'"
   RUN_DIR_RESOLVED="$RUN_PARENT/$RUN_BASENAME"
 fi
-case "$RUN_DIR_RESOLVED/" in "$WORKSPACE_ROOT/.tmp/rocketclaw/"*) ;; *) skip "run-dir must be under '$WORKSPACE_ROOT/.tmp/rocketclaw'" ;; esac
+case "$RUN_DIR_RESOLVED/" in "$REPO_ROOT/.tmp/"*) ;; *) skip "run-dir must be under '$REPO_ROOT/.tmp'" ;; esac
 [ -d "$RUN_DIR_RESOLVED" ] || skip "run-dir '$RUN_DIR' must already exist"
 RUN_DIR="$RUN_DIR_RESOLVED"
 chmod 700 "$RUN_DIR" 2>/dev/null || skip "run-dir '$RUN_DIR' could not be made private"
 command -v jq >/dev/null 2>&1 || skip "jq not installed; skipping"
 INCLUDE_PATHS="${CROSS_MODEL_INCLUDE_PATHS:-}"
 EXCLUDE_PATHS="${CROSS_MODEL_EXCLUDE_PATHS:-}"
-EXCLUDE_PATHS="${EXCLUDE_PATHS:+$EXCLUDE_PATHS,}.tmp/**"
 
 case "$HOST_PROVIDER" in
   codex|claude|grok|composer|unknown) ;;
@@ -421,13 +420,13 @@ log "fixed cross-model POV route: target=$TARGET route=$FIXED_ROUTE (host $HOST_
 
 # --- compose the peer prompt from the canonical persona (single source) ----
 # The payload is prepared by ce-pov and embeds the framed question plus any
-# conversation-only subject material needed for this round. Workspace evidence
-# stays in the shared Jujutsu workspace for the peer to inspect directly.
-SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$WORKSPACE_ROOT/.tmp/rocketclaw}"
+# conversation-only subject material needed for this round. Repository evidence
+# stays in the shared working copy for the peer to inspect directly.
+SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$REPO_ROOT/.tmp/ce-pov}"
 [ -d "$SCRATCH_PARENT" ] || mkdir -p "$SCRATCH_PARENT" 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
 SCRATCH_PARENT="$(cd "$SCRATCH_PARENT" && pwd -P)" || skip "cannot resolve private scratch parent"
-case "$SCRATCH_PARENT/" in "$WORKSPACE_ROOT/.tmp/rocketclaw/"*) ;; *) skip "private scratch parent must be under '$WORKSPACE_ROOT/.tmp/rocketclaw'" ;; esac
-if ! PEER_WORKDIR="$(mktemp -d "$SCRATCH_PARENT/xmodel-pov-peer-XXXXXX")"; then
+case "$SCRATCH_PARENT/" in "$REPO_ROOT/.tmp/"*) ;; *) skip "private scratch parent must be under '$REPO_ROOT/.tmp'" ;; esac
+if ! PEER_WORKDIR="$(mktemp -d "$SCRATCH_PARENT/pov-peer-XXXXXX")"; then
   skip "provider $TARGET workspace isolation unavailable; skipping provider"
 fi
 chmod 700 "$PEER_WORKDIR" 2>/dev/null || { cleanup_private_scratch; skip "cannot make peer scratch private"; }
@@ -445,13 +444,13 @@ trap 'cleanup_private_scratch' EXIT
 {
   cat "$PERSONA"
   printf '\n\n---\n\n'
-  printf 'This is an authorized, read-only point-of-view cross-check on this project.\n'
+  printf 'This is an authorized, read-only point-of-view cross-check on the maintainer\047s own project.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
   printf '\n\nSet the top-level "voice" field to "peer" (it will be namespaced to the provider on fold-in).\n'
-  printf '\n<workspace-read-scope enforcement="cooperative-unless-adapter-supported">\n'
+  printf '\n<repository-read-scope enforcement="cooperative-unless-adapter-supported">\n'
   printf 'root: %s\nincludes: %s\nexcludes: %s\n' "$READ_ROOT" "${INCLUDE_PATHS:-<all>}" "${EXCLUDE_PATHS:-<none>}"
-  printf '</workspace-read-scope>\n'
+  printf '</repository-read-scope>\n'
   printf '\n<subject-payload>\n'
   cat "$PAYLOAD_PATH"
   printf '\n</subject-payload>\n'
@@ -606,8 +605,8 @@ run_codex_cmd() {   # CMD already built for the codex route; streams to PEERLOG,
 run_timeout_cmd() {
   # $1 = stdin file ("" -> /dev/null). $2 = hard cap secs. $3 = "idle" | "no-idle".
   RUN_SUCCEEDED=false
-  # Run from the declared read root. Private prompt/output paths are absolute and
-  # remain under the workspace's private .tmp tree; route adapters carry the same root.
+  # Run from the declared read root. Private prompt/output paths are absolute
+  # beneath the workspace's `.tmp` tree; route adapters carry the read root.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
   local idle_mode="${3:-idle}"
@@ -844,7 +843,7 @@ run_fixed_route() {
       rm -f "$RAW_OUT"
     else
       log "peer returned a non-final position (\"${position:0:120}\"); retrying once on the same route with a final-answer requirement (${remaining}s left)"
-      printf '\n\nYour previous response was not final. Inspect the subject and shared workspace now, then return a settled position and mark it final.\n' >> "$PROMPT_FILE"
+      printf '\n\nYour previous response set final to false. This response is the final one: inspect the subject and shared working copy now, then return the settled position with its evidence and final set to true.\n' >> "$PROMPT_FILE"
       HARD_SECS="$remaining"; UNGUARDED_HARD_SECS="$remaining"
       attempt_route "$provider" "$FIXED_ROUTE"
       if [ "$RUN_SUCCEEDED" = true ] && ! out_missing_or_invalid && ! out_final; then

@@ -18,11 +18,11 @@ These hold regardless of which skill produced the artifact.
 - **ASCII identifiers in anchors.** Markdown headings auto-generate anchors
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
-- **Workspace-relative paths for file references.** Always. Never absolute paths
-  — they break portability across machines, workspaces, teammates.
+- **Repo-relative paths for file references.** Always. Never absolute paths
+  — they break portability across machines, jj workspaces, and teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
-  semantic marker such as `<!-- ce-section: work-relationships -->`; it carries
+  semantic marker such as `<!-- artifact-section: work-relationships -->`; it carries
   section meaning for downstream agents and does not create layout. If a layout
   idea only works as HTML, defer it to the HTML rendering. Markdown stays
   markdown.
@@ -90,7 +90,7 @@ bullets — not deeper heading levels.
 
 ```markdown
 - F1. Anonymous capture
-  - **Trigger:** Agent enters Step 2a with no session.
+  - **Trigger:** `ai:assistant` enters the flow with no session.
   - **Actors:** A1, A2
   - **Steps:** Preflight detects cloak; agent launches; capture proceeds.
   - **Covered by:** R1, R2, R5
@@ -208,7 +208,7 @@ Engineering process metadata stays out of the artifact:
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in Jujutsu change descriptions, tool output, and agent
+This information belongs in commit messages, tool output, and agent
 transcripts — not in the artifact a reader returns to weeks later.
 
 ## Frontmatter shape
@@ -224,7 +224,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from Jujutsu history, not stored in the doc.
+  the work shipped is derived from jj history, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit
@@ -234,7 +234,7 @@ slips:
 
 - All stable IDs are plain-prefix format, not bolded.
 - No HTML elements mixed in.
-- All file paths are workspace-relative.
+- All file paths are repo-relative.
 - Horizontal rule separators between H2s (for Standard / Deep artifacts).
 - No process exhaust (Phase X notes, Next Steps pointers, provenance
   lines).

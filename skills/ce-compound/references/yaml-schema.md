@@ -1,6 +1,6 @@
 # YAML Frontmatter Schema
 
-`schema.yaml` in this directory is the canonical contract for `<root>/solutions/` frontmatter written by `ce-compound`.
+`schema.yaml` in this directory is the canonical contract for `<root>/solutions/` frontmatter written by this workflow.
 
 Use this file as the quick reference for:
 - required fields
@@ -124,5 +124,4 @@ Example — after (parses cleanly):
       - "`sudo dscacheutil -flushcache` does not restore in-container mDNS"
 
 This rule applies to all array-of-strings frontmatter fields. Scalar string
-fields like `description:` have their own quoting rules (see plugin
-`AGENTS.md` under "YAML Frontmatter").
+fields like `description:` follow the project's active YAML conventions.

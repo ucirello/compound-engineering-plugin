@@ -12,7 +12,7 @@ Review a requirements or plan document through multi-persona analysis: dispatch 
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `SKILL_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `DOC_REVIEW_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -45,15 +45,15 @@ Absent either token, run interactive, with the routing question, walk-through, a
 
 ## Artifact Root
 
-This skill reviews a document at a path it is handed, and in interactive mode with no path given, discovers the most recent plan under `<root>/plans/`. Resolve `<root>` (per the block below) **only in that no-path discovery branch** — a review of an explicitly named document reads that path directly and never resolves `<root>`, so a valid non-interactive or absolute-path review (e.g. `<absolute-path>/plan.md`, possibly outside any Jujutsu workspace) does not depend on a workspace root or configuration it does not need.
+This skill reviews a document at a path it is handed, and in interactive mode with no path given, discovers the most recent plan under `<root>/plans/`. Resolve `<root>` (per the block below) **only in that no-path discovery branch** — a review of an explicitly named document reads that path directly and never resolves `<root>`, so a valid non-interactive or absolute-path review, including one outside any workspace, does not depend on a workspace root or document-review config it does not need.
 
-<!-- ce-docs-root:start -->
+<!-- doc-review-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`, with the current directory as fallback when no Jujutsu workspace is available). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or the colocated `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.ce-doc-review/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+<!-- doc-review-docs-root:end -->
 
 ## Phase 1: Get and Analyze Document
 
@@ -61,10 +61,10 @@ This skill reviews a document at a path it is handed, and in interactive mode wi
 - **No path, interactive:** ask which document to review, or find the most recent under `<root>/plans/` with a file-search/glob tool.
 - **No path, non-interactive:** output "Review failed: non-interactive mode requires a document path. Expected arguments: mode:non-interactive <path>" and stop without dispatching reviewers.
 
-**Missing-document gate — verify before any dispatch.** Persona reviewers read from the filesystem and several run without Bash, so they cannot read content that exists only in another revision: a path absent from the current workspace wastes the entire persona team discovering they cannot proceed (issue #925). Confirm every resolved path is readable on disk before Phase 2. Location does not matter — an absolute path outside the workspace or a doc in another workspace reviews fine. If any path is unreadable, dispatch **no** personas:
+**Missing-document gate — verify before any dispatch.** Persona reviewers read from the filesystem and several run without Bash, so they cannot read files that exist only in another `jj` change or workspace. Confirm every resolved path is readable on disk before Phase 2. Location does not matter — an absolute path outside the current workspace or a document in another workspace reviews fine. If any path is unreadable, dispatch **no** personas:
 
-- **Interactive:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Open a workspace at a revision containing them, or provide corrected readable paths before retrying the review."
-- **Non-interactive:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; open a workspace at a revision containing them or provide corrected paths." and return without dispatching reviewers.
+- **Interactive:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Switch to the change containing them, use another jj workspace, or provide corrected readable paths before retrying the review."
+- **Non-interactive:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; switch to the change containing them or provide corrected paths." and return without dispatching reviewers.
 
 ### Classify Document Type
 
@@ -165,7 +165,7 @@ Round 1 — no prior decisions.
 
 ### Cross-Model Judgment Pass
 
-If any of the **conditional judgment trio** — `adversarial-document-reviewer`, `product-lens-reviewer`, `security-lens-reviewer` — was activated, load `references/cross-model-review.md` and follow it for the additive, non-blocking peer pass. Its workspace egress policy (`cross_model_review_mode`) is evaluated first and can skip the whole pass with a named reason. Attest the host as a harness plus serving family, resolve one target and one concrete route for the whole document, disclose that fixed route before content leaves the host (in non-interactive mode the invoking skill's request is the sanction and the worker's stderr audit line is the disclosure), and filter recipients only when `CROSS_MODEL_PEERS` is set (unset means unfiltered, not unsanctioned). `cursor` means Cursor default/Auto; `composer` means an explicit Composer-family model through Cursor. Try the declared mapping first; only after an observed incompatibility may a target-bound same-family model override adapt a stale default. Never silently change an explicit model or recipient, and never let a dispatched worker choose a recipient-changing fallback.
+If any of the **conditional judgment trio** — `adversarial-document-reviewer`, `product-lens-reviewer`, `security-lens-reviewer` — was activated, load `references/cross-model-review.md` and follow it for the additive, non-blocking peer pass. Its workspace egress policy (`cross_model_review_mode`) is evaluated first and can skip the whole pass with a named reason. Attest the host as a harness plus serving family, resolve one target and one concrete route for the whole document, disclose that fixed route before content leaves the host (in non-interactive mode the invoking skill's request is the sanction and the worker's stderr audit line is the disclosure), and filter recipients only when `CROSS_MODEL_PEERS` is set (unset means unfiltered, not unsanctioned). `cursor` means that route's default/Auto model; `composer` means an explicit same-family model through the `cursor-agent` intermediary. Try the declared mapping first; only after an observed incompatibility may a target-bound same-family model override adapt a stale default. Never silently change an explicit model or recipient, and never let a dispatched worker choose a recipient-changing fallback.
 
 Launch one detached runner job per activated trio lens plus one `whole-doc` sweep in the same wave as the in-process reviewers, using the exact invocation contract in the reference. Every trio peer receives its twin's same reviewer-specific slice; `whole-doc` receives the full document. All calls use the same sanctioned target/route. Poll, reap, attribute, and clean up through the runner; a failure or timeout stays non-blocking and is named in Coverage. Fold findings into ordinary synthesis, but agreement promotion requires the artifact's top-level `independence_verified: true` — false or absent independence is useful evidence, not different-model corroboration. Feasibility and the convergent lenses (coherence, scope-guardian) do **not** run cross-model.
 

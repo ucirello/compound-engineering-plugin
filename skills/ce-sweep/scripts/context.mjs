@@ -16,9 +16,9 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace: ${jj('workspace', 'root') || process.cwd()}`,
-    `working-copy change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(not a Jujutsu workspace)'}`,
-    `bookmarks: ${jj('bookmark', 'list', '-r', '@') || '(none)'}`,
+    `workspace_root: ${jj('root') || '(not a jj workspace)'}`,
+    `bookmarks: ${jj('--no-pager', 'bookmark', 'list', '-r', '@') || '(none)'}`,
+    `change: ${jj('--no-pager', 'log', '-r', '@', '--no-graph', '-T', 'change_id.short(12)') || '(none)'}`,
   ].join('\n');
 }
 

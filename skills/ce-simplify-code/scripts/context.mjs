@@ -6,21 +6,18 @@ import { execFileSync } from 'node:child_process';
 
 function jj(...args) {
   try {
-    return execFileSync('jj', ['--ignore-working-copy', '--no-pager', '--color', 'never', ...args], {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).toString().trim();
+    return execFileSync('jj', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return '';
   }
 }
 
 function buildResolvedContext() {
-  const workspaceRoot = jj('workspace', 'root');
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace: ${workspaceRoot || process.cwd()}`,
-    `working-copy change: ${workspaceRoot ? jj('log', '--no-graph', '-r', '@', '-n', '1') : '(not a Jujutsu workspace)'}`,
+    `workspace_root: ${jj('root') || '(not a jj workspace)'}`,
+    `change: ${jj('log', '--no-graph', '-r', '@', '-T', 'change_id.short()') || '(none)'}`,
   ].join('\n');
 }
 
@@ -95,13 +92,13 @@ function cli() {
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and SKILL_CONTEXT_END last are load-bearing: field transcripts
+  // Header first and CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== skill context (follow these directives; if SKILL_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== skill context (follow these directives; if CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nSKILL_CONTEXT_END\n');
+  process.stdout.write('\nCONTEXT_END\n');
 }
 
 try {

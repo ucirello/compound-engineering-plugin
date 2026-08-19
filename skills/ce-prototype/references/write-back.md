@@ -1,6 +1,6 @@
 # Product Contract write-back
 
-Load this only when the user applies decisions and this run has a directly related brainstorm or plan — the path passed on invoke, passed by the calling skill, or named in this session as the file this prototype is for. If this run's scratch `decisions.md` exists, use it as the continuity capsule: decisions, adjustments, rejections, and the prototype path. Do not copy the file elsewhere in the workspace. Do not paste the prototype into the plan.
+Load this only when the user applies decisions and this run has a directly related brainstorm or plan — the path passed on invoke, passed by the calling skill, or named in this session as the file this prototype is for. If this run's scratch `decisions.md` exists, use it as the continuity capsule: decisions, adjustments, rejections, and the prototype path. Do not copy the file into the workspace. Do not paste the prototype into the plan.
 
 Markdown and HTML artifacts both get written back. `ce-plan` already rewrites an `.html` plan in place on resume, and the HTML artifact carries a visible Product Contract, visible readiness metadata, and stable section anchors, so the edits below have somewhere to land in either format.
 

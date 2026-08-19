@@ -1,6 +1,6 @@
-"""Metadata inventory of the canonical workspace's ignored entries.
+"""Metadata inventory of the canonical jj workspace's ignored entries.
 
-Verification runs in the canonical workspace; ignored state is never copied or
+Verification runs in the canonical checkout; ignored state is never copied or
 restored. Two inventories taken before and after verification diff into a
 disclosure of changed, removed, and created ignored paths.
 """
@@ -10,12 +10,34 @@ from __future__ import annotations
 import os
 import stat
 
-from unit_workspace_state import Operational, git
+from unit_workspace_state import Operational, jj, jj_text
 
 
 def ignored_paths(repo: str) -> set[str]:
-    raw = git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--")
-    return set(filter(None, raw.decode("utf-8", "surrogateescape").split("\0")))
+    jj(repo, "util", "snapshot")
+    tracked = set(jj_text(repo, "file", "list", "-r", "@").splitlines())
+    ignored: set[str] = set()
+    for parent, directories, files in os.walk(repo, topdown=True, followlinks=False):
+        rel_parent = os.path.relpath(parent, repo)
+        directories[:] = [
+            name for name in directories
+            if name not in {".git", ".jj"}
+            and not (
+                rel_parent == ".tmp/rocketclaw"
+                and name in {"ce-work", "peer-jobs"}
+            )
+        ]
+        for name in files:
+            rel = os.path.relpath(os.path.join(parent, name), repo)
+            if rel not in tracked:
+                ignored.add(rel)
+        for name in directories:
+            path = os.path.join(parent, name)
+            if os.path.islink(path):
+                rel = os.path.relpath(path, repo)
+                if rel not in tracked:
+                    ignored.add(rel)
+    return ignored
 
 
 def artifact_path(repo: str, rel: str) -> str:

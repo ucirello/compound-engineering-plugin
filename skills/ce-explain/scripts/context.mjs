@@ -16,14 +16,14 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace: ${jj('workspace', 'root') || process.cwd()}`,
-    `current revision: ${jj('log', '-r', '@', '--no-graph', '--limit', '1') || '(not a Jujutsu workspace)'}`,
+    `workspace: ${jj('workspace', 'root') || '(not a jj workspace)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(none)'}`,
   ].join('\n');
 }
 
 // Substitution stays allowed on a failed dispatch, not only on an empty tool
-// surface: workflows here define their own degrade paths (ce-brainstorm's
-// verifier falls back to orchestrator-only filtering), and this text is
+// surface: workflows here define their own degrade paths (a verifier may fall
+// back to orchestrator-only filtering), and this text is
 // positioned to outrank skill prose — a stricter rule would make those paths
 // retry forever or drop required work instead of degrading as intended.
 // The carve-out below walks that deviation back for one class: "rather than
@@ -62,7 +62,7 @@ const HARNESS_ATTRIBUTION = [
   'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
 ].join(' ');
 
-// ce-doc-review promotes a finding when "2+ independent personas" agree, and
+// A review workflow may promote a finding when "2+ independent personas" agree, and
 // nothing verified they ran in separate processes — inline, one context reasoned
 // both lenses and still stamped confidence 100.
 const INDEPENDENCE_ACCOUNTING = [
@@ -92,13 +92,13 @@ function cli() {
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and EXPLAIN_CONTEXT_END last are load-bearing: field transcripts
+  // Header first and SKILL_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== skill context (follow these directives; if EXPLAIN_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== skill context (follow these directives; if SKILL_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nEXPLAIN_CONTEXT_END\n');
+  process.stdout.write('\nSKILL_CONTEXT_END\n');
 }
 
 try {

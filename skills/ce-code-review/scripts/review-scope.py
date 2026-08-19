@@ -57,11 +57,8 @@ def valid_revision(ref: str | None) -> bool:
     return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
-def unique_common_ancestor(base: str, head: str) -> str | None:
-    result = jj(
-        "log", "-r", f"heads(::{base} & ::{head})", "--no-graph",
-        "-T", 'commit_id ++ "\\n"',
-    )
+def unique_common_head(base: str, head: str) -> str | None:
+    result = jj("log", "-r", f"heads(::{base} & ::{head})", "--no-graph", "-T", 'commit_id ++ "\\n"')
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -86,16 +83,16 @@ def normalize_docs_root(docs_root: str | None) -> str:
     return docs_root
 
 
-def repo_root() -> Path:
+def workspace_root() -> Path:
     """The workspace root, matching how docs_root is resolved everywhere else.
 
     docs_root is workspace-relative (``<workspace-root>/<docs_root>``), so the corpus
-    check must resolve against the Jujutsu workspace root, not the current working
+    check must resolve against the jj workspace root, not the current working
     directory. ce-code-review can run from a subdirectory (``jj diff`` still
     works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when Jujutsu can't answer.
+    wrongly report the corpus absent. Fall back to cwd when jj cannot answer.
     """
-    result = jj("workspace", "root")
+    result = jj("root")
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -112,9 +109,9 @@ def has_learnings_corpus(docs_root: str | None) -> bool:
     docs_root = normalize_docs_root(docs_root)
     if os.path.isabs(docs_root):
         return False
-    repo = repo_root()
-    candidate = (repo / docs_root / "solutions").resolve()
-    if repo not in candidate.parents and candidate != repo:
+    workspace = workspace_root()
+    candidate = (workspace / docs_root / "solutions").resolve()
+    if workspace not in candidate.parents and candidate != workspace:
         return False
     return candidate.is_dir()
 
@@ -150,34 +147,33 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", learnings_corpus), sort_keys=True))
         return 0
 
-    diff_args = ["--from", args.base, "--to", "@"]
+    diff_args = ["--from", args.base]
     if args.head:
-        common_ancestor = unique_common_ancestor(args.base, args.head)
-        if common_ancestor is None:
-            print(json.dumps(fail_closed("common ancestor unavailable or ambiguous", learnings_corpus), sort_keys=True))
+        common_head = unique_common_head(args.base, args.head)
+        if common_head is None:
+            print(json.dumps(fail_closed("common head unavailable or ambiguous", learnings_corpus), sort_keys=True))
             return 0
-        diff_args = ["--from", common_ancestor, "--to", args.head]
+        diff_args = ["--from", common_head, "--to", args.head]
 
     names = jj("diff", *diff_args, "--name-only")
-    patch = jj("diff", *diff_args, "--git")
+    patch = jj("diff", *diff_args, "--color", "never")
     if names.returncode != 0 or patch.returncode != 0:
         print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
     executable_lines = 0
-    current_file = None
+    current_is_code = False
     for line in patch.stdout.splitlines():
-        if line.startswith("diff --git a/"):
-            match = re.match(r"diff --git a/(.*?) b/(.*)", line)
-            current_file = match.group(2) if match else None
-            continue
-        if (
-            current_file
-            and Path(current_file).suffix.lower() in CODE_EXTENSIONS
-            and (line.startswith("+") or line.startswith("-"))
-            and not line.startswith(("+++", "---"))
-        ):
+        file_header = re.match(r"^(?:Modified|Added|Removed) regular file (.+):$", line)
+        if file_header:
+            path = file_header.group(1)
+            current_is_code = Path(path).suffix.lower() in CODE_EXTENSIONS
+        elif current_is_code and re.match(r"^\s*(?:\d+\s+)?:|^\s+\d+:", line):
+            prefix = line.split(":", 1)[0]
+            if len(prefix.split()) == 1:
+                executable_lines += 1
+        elif current_is_code and line.startswith(("+", "-")):
             executable_lines += 1
 
     uncounted = sum(

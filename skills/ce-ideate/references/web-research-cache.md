@@ -18,7 +18,7 @@ Read this when checking the V15 cache before dispatching `web-researcher`, or wh
 ]
 ```
 
-Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` is `<workspace-root>/.tmp/rocketclaw/ce-ideate/<run-id>`, resolved once in SKILL.md Phase 1.
+Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` is `<workspace-root>/.tmp/rocketclaw/ideate/<run-id>` or the `$PWD`-local fallback resolved once in SKILL.md Phase 1.
 
 ## Reuse check
 
@@ -44,9 +44,9 @@ After a fresh dispatch, append the new result to the current run's cache file at
 
 The topic surface is the user-supplied content the web research is grounded on:
 - **Elsewhere modes (`elsewhere-software`, `elsewhere-non-software`):** the user's topic prompt plus any Phase 0.4 intake answers (the actual subject the agent is researching). The two sub-modes are keyed separately — a reclassification between software and non-software for the same topic hash must force a fresh dispatch, since the research domain differs.
-- **Repo mode:** the focus hint plus a stable repo discriminator. This keeps the cache key meaningful when focus is empty — two bare-prompt invocations in the same repo legitimately share research, while different workspaces remain distinct. Resolve the discriminator from the relevant remote reported by `jj git remote list`; if none exists, use `jj workspace root`, then the current directory when no Jujutsu workspace is available. Hash the selected value (first 8 hex chars of SHA-256 is sufficient).
+- **Repo mode:** the focus hint plus the absolute path returned by `jj workspace root`. This keeps the cache key meaningful when focus is empty while workspace-local storage already separates unrelated repositories. If no workspace root is available, use the current working directory's absolute path. Hash the discriminator; the first 8 hex characters of SHA-256 are sufficient.
 
-Normalize before hashing: lowercase, collapse whitespace. The repo discriminator hash is computed from the selected raw value; only the focus hint and topic text are normalized.
+Normalize before hashing: lowercase, collapse whitespace. (The repo discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
 
 ## Degradation
 

@@ -36,11 +36,7 @@ fi
 
 Write user-facing messages for the person deciding what to do. Lead with the decision, question, or recommendation. Keep internal workflow vocabulary and mechanics out of chat unless the user asks or a detail materially changes their choice; translate any user-relevant consequence into ordinary language. Refer to the codebase as "this project" or "the repository" unless the user supplied a recognizable name; never promote a directory, workspace, bookmark, or path into the project name.
 
-When the POV composes, edits, validates, or recommends Jujutsu descriptions or commit messages, apply this rule:
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Runtime project instructions and history read via `jj log` win. Apply compatible Go quality guidance without imposing fixed syntax, canned messages, or templates; use neutral dynamic placeholders where an example needs one.
+When the POV composes or recommends a commit message, the project's active instructions and observed history always win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go clarity and structure guidance without imposing fixed syntax or content.
 
 ## Interaction Method
 
@@ -48,15 +44,7 @@ When you must ask the user a question, use the platform's blocking question tool
 
 ## Artifact Root
 
-This skill scans prior decisions under `<root>/solutions/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-workspace flow -- skips it; pass the resolved path to any scout, not the config.
-
-<!-- docs-root:start -->
-**Resolve the artifact root `<root>` before composing any artifact path.**
-
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`, with the current directory as the non-Jujutsu fallback). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or an underlying `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
-- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- docs-root:end -->
+This skill scans prior decisions under `<root>/solutions/`, where `<root>` is `<workspace-root>/docs` and `<workspace-root>` is `jj workspace root`. Resolve it only when first needed. If the current directory is not a Jujutsu workspace, use the current directory as the local workspace root. Pass the resolved root to scouts.
 
 ## Model Tiers
 
@@ -91,22 +79,17 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ### Phase 1: Ground (dispatch scouts by default; bounded inline reads when facts are pre-located)
 
-Grounding searches code, Jujutsu history, the issue tracker, GitHub PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
+Grounding searches code, Jujutsu history, the issue tracker, PRs, and docs — noisy work that would flood this context and crowd out the verdict reasoning. Dispatch it to scout sub-agents that search in their own context and return only a dossier path plus a short gist; read a dossier on demand, never inline the raw search.
 
-Use the project's active instructions already in context. Send scouts directly to candidate-specific current evidence. If the candidate cannot be scoped from the frame and existing context, allow one targeted root or workspace probe. When the load-bearing facts are already located in the current context — a warm invocation or a Tier-1 subject often points straight at the file, symbol, or record — you may confirm them yourself with bounded reads of the authoritative source (code, `jj log`, tracker, docs) instead of dispatching scouts; unscoped or noisy grounding still dispatches. Runtime project instructions and the history visible through `jj log` take precedence over generic conventions. A conversation claim is a pointer to check, never self-verifying: an unverified assertion still requires the bounded read or a scout before it counts. The Tier-1 prior-decision scan (`<root>/solutions/`, ADRs, design docs) stays mandatory on either path.
+Use the project's active instructions already in context. Send scouts directly to candidate-specific current evidence. If the candidate cannot be scoped from the frame and existing context, allow one targeted root or workspace probe. When the load-bearing facts are already located in the current context — a warm invocation or a Tier-1 subject often points straight at the file, symbol, or record — you may confirm them yourself with bounded reads of the authoritative source (code, Jujutsu history, tracker, docs) instead of dispatching scouts; unscoped or noisy grounding still dispatches. A conversation claim is a pointer to check, never self-verifying: an unverified assertion still requires the bounded read or a scout before it counts. The Tier-1 prior-decision scan (`<root>/solutions/`, ADRs, design docs) stays mandatory on either path.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
+if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe workspace scratch symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" && pwd -P)" || exit 1;
-SCRATCH_ROOT="$(cd "$SCRATCH_ROOT" && pwd -P)" || exit 1;
-if [ "$SCRATCH_ROOT" != "$WORKSPACE_ROOT/.tmp/rocketclaw" ]; then echo "scratch root resolves outside the workspace .tmp tree: $SCRATCH_ROOT" >&2; exit 1; fi;
-if [ -L "$SCRATCH_ROOT" ] || { [ "$(id -u)" != "$(stat -f '%u' "$SCRATCH_ROOT" 2>/dev/null || stat -c '%u' "$SCRATCH_ROOT" 2>/dev/null)" ]; }; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
 SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
@@ -135,7 +118,7 @@ First form ce-pov's own independent POV under the active subject-shape contract 
 When a panel is named or summoned, or when a cold POV may qualify for a proactive offer, read
 `references/cross-model-panel.md` before resolving participation or deciding whether to offer.
 A summons is detected by reasoning over the invocation context — the user's wording or a calling skill's args — so a caller's paraphrase in one channel never cancels a summons still present in another; only a summons erased from every readable channel upstream is unrecoverable here.
-Invoking a named peer, an explicit cross-check, or `oracle` authorizes the panel protocol's normal read-only consultation against this project. Announce the selected peers before dispatch; ask only when a retry adds an unexpected recipient or intermediary, or an active instruction requires separate approval. Peers inspect the shared Jujutsu workspace directly and cannot edit it. The panel protocol preserves an unbiased initial round, bounds evidence-based reconciliation while honoring user-supplied pass limits, and attributes only receipt-supported independence.
+Invoking a named peer, an explicit cross-check, or `oracle` authorizes the panel protocol's normal read-only consultation against this project. Announce the selected peers before dispatch; ask only when a retry adds an unexpected recipient or intermediary, or an active instruction requires separate approval. Peers inspect the shared working copy directly and cannot edit it. The panel protocol preserves an unbiased initial round, bounds evidence-based reconciliation while honoring user-supplied pass limits, and attributes only receipt-supported independence.
 Resolve and finish the panel branch, including any fold-in or reconciliation, before composing the user-facing result. Any POV delivered after a summons states which peers ran, or that none did and the observed reason; if no panel runs after a summons, keep the verdict content unchanged but add that panel-status line rather than shipping a bare solo verdict. A POV with no summons keeps the solo result unchanged with no panel note.
 
 Only then emit the final contract for the active subject shape. For an external-adoption question, the existing grade vocabulary, schema fields, tier sizing, and output economy apply unchanged. A document take or approach-set position follows its own explicit contract. Every shape is a **compact chat block, not a research report**: lead with the grade, bottom line, or position named by its contract; keep each field terse; and never reprint scout dossiers or raw search output.

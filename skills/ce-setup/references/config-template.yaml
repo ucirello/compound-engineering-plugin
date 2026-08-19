@@ -1,24 +1,23 @@
 # Workspace config
-# Copy to .rocketclaw/config.yaml in your workspace root (team defaults).
+# Copy to .rocketclaw/config.yaml in your jj workspace root (team defaults).
 # Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
-# docs_root is repo layout -- set it only here; local docs_root is ignored.
+# docs_root is workspace layout -- set it only here; local docs_root is ignored.
 # All settings are optional. Invalid ordinary values continue to the next layer.
 # docs_root fails closed on an unusable value.
 
 # --- Artifact root ---
 # Relocate every skill-written artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
-# feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
+# feedback-sweep, personas) under one workspace-relative root. Unset -> `docs`,
 # byte-identical to today. A configured root becomes the sole location skills read
 # and write; they never fall back to reading `docs/`.
 #
-# Set this only in this tracked file so every Jujutsu workspace shares one
+# Set this only in this tracked file so every jj workspace shares one
 # artifact tree. A docs_root in config.local.yaml is ignored.
 #
-# The value must be a repo-relative directory whose real (symlink-resolved) path
-# stays inside the workspace, is not the workspace root itself, and is not under
-# `.jj/` or an underlying `.git/`.
+# The value must be a workspace-relative directory whose real (symlink-resolved) path
+# stays inside the jj workspace, is not the workspace root itself, and is not under `.jj/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
 # default -- setup stops with an error so a typo can't silently write artifacts into
 # the location you configured away from. `/ce-setup` reports the resolved root.
@@ -160,13 +159,13 @@
 # Feedback sources swept by /ce-sweep. Generic key: other skills may read this list.
 # Each entry: type (slack | github-issues | email), id (short name), target (channel ID /
 # owner/repo / mailbox), ack_action, closeout_action, sensitive (true withholds content
-# from tracked state/plan text), approved (standing approval for source-side writes).
+# from committed state/plan text), approved (standing approval for source-side writes).
 # feedback_sources:
 #   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # tracked (multi-agent) or <workspace-root>/.tmp/rocketclaw/feedback-sweep/state.yml (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # shared, or .tmp/rocketclaw/feedback-sweep/state.yml from the jj workspace root as the local fallback
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
-# sweep_shared_branch: false                        # true: `jj git push`-gated lease for shared-docs-bookmark topology
+# sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology

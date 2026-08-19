@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# detect-project-type.sh — inspect signature files at the workspace root (and, if
+# detect-project-type.sh — inspect signature files at the jj workspace root (and, if
 # no root match is found, probe shallow subdirectories) to emit a project-type
 # identifier on stdout.
 #
@@ -31,7 +31,7 @@
 #   signature files. Deeper nesting is ignored to avoid false positives.
 #
 #   Excluded directories (not real project roots):
-#     node_modules .jj .git vendor dist build coverage .next .nuxt
+#     node_modules .git .jj vendor dist build coverage .next .nuxt
 #     .svelte-kit .turbo tmp fixtures
 #
 # `multiple` vs `rails`: Rails apps commonly ship a Procfile.dev alongside
@@ -43,7 +43,8 @@ set -u
 
 WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$WORKSPACE_ROOT" ]; then
-  WORKSPACE_ROOT=$(pwd -P)
+  echo "ERROR: not in a jj workspace" >&2
+  exit 1
 fi
 
 cd "$WORKSPACE_ROOT" || { echo "ERROR: cannot cd to workspace root" >&2; exit 1; }
@@ -119,7 +120,7 @@ esac
 # Exclusion list: directories that ship framework configs as fixtures or build
 # output, not as real project roots.
 
-EXCLUDE_DIRS="node_modules .jj .git vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
+EXCLUDE_DIRS="node_modules .git .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp .tmp fixtures"
 EXCLUDE_ARGS=""
 for d in $EXCLUDE_DIRS; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS -path './$d' -prune -o -path '*/$d' -prune -o"

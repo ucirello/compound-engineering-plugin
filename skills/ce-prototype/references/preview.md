@@ -2,7 +2,7 @@
 
 Load this when serving a local web prototype. Feedback stays in chat.
 
-This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that.
+This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that. The file is a byte-identical copy of brainstorm's helper.
 
 Use the bundled helper when the current platform can run a bundled skill script. Invoke it via the `SKILL_DIR` anchor: set `SKILL_DIR` to the absolute path of the directory containing the `ce-prototype` `SKILL.md` you loaded (the Bash tool's cwd is the user's project, not the skill dir), and re-set it in the same command on each call since shell vars do not persist between Bash invocations. Do not resolve the helper from the user's project CWD.
 
@@ -12,15 +12,9 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
-RUN_KEEP="yes";
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
-if [ -z "$WORKSPACE_ROOT" ]; then WORKSPACE_ROOT="$(pwd -P)"; RUN_KEEP="no"; fi;
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-if [ "$RUN_KEEP" = yes ]; then
-ROOT="$WORKSPACE_ROOT/.context";
-else
-ROOT="$SCRATCH_ROOT";
-fi;
+LOCAL_ROOT="$PWD/.tmp";
+if [ -n "$WORKSPACE_ROOT" ]; then ROOT="$WORKSPACE_ROOT/.tmp"; else ROOT="$LOCAL_ROOT"; fi;
 while :; do
 BASE="$ROOT/ce-prototype";
 if [ -L "$ROOT" ]; then echo "unsafe root symlink: $ROOT" >&2;
@@ -32,8 +26,8 @@ elif ! (umask 077; mkdir -p "$BASE"); then echo "could not create $BASE" >&2;
 elif [ ! -O "$BASE" ]; then echo "base is not owned by the current user: $BASE" >&2;
 elif ! chmod 700 "$BASE"; then echo "could not restrict $BASE" >&2;
 else break; fi;
-if [ "$ROOT" = "$SCRATCH_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
-echo "falling back to $SCRATCH_ROOT" >&2; ROOT="$SCRATCH_ROOT";
+if [ "$ROOT" = "$LOCAL_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
+echo "falling back to $LOCAL_ROOT" >&2; ROOT="$LOCAL_ROOT";
 done;
 RUN_DIR="$BASE/$RUN_SLUG"; n=1;
 while ! (umask 077; mkdir "$RUN_DIR") 2>/dev/null; do
@@ -45,9 +39,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-Set `RUN_KEEP="no"` when the user asked that this run not be kept under `.context`; it sends the run to the workspace-local `.tmp/rocketclaw` root without touching the rest of the block. Set `RUN_KEEP="yes"` only after the durable `.context/` path has passed the ignore-rule check required by `SKILL.md`.
-
-Three things this block is careful about. The symlink and ownership checks run against both the **root** and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe durable path at either level falls back to workspace-local `.tmp/rocketclaw` rather than aborting — a hostile or misconfigured `.context` costs the run its durability, not the run itself, and only a workspace-local temporary root that also fails is fatal.
+The symlink and ownership checks run against both the **root** and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe jj-workspace path falls back to the current directory's local `.tmp`; failure there is fatal.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -93,7 +85,7 @@ The browser reloads only when the newest screen changes; it must not continually
 Write screens under:
 
 ```text
-<workspace-root>/.context/ce-prototype/<YYYY-MM-DD>-<run-slug>/
+<jj-workspace>/.tmp/ce-prototype/<YYYY-MM-DD>-<run-slug>/
   decisions.md               # run capsule for the next skill; not a plan
   01-<question-slug>/
     screens/
@@ -107,7 +99,7 @@ Write screens under:
     state/
 ```
 
-The fallback root takes the same shape under `<workspace-root>/.tmp/rocketclaw/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The fallback root takes the same shape under `<current-directory>/.tmp/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Launch mode by platform
 

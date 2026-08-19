@@ -43,6 +43,7 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
+- **Source / composition signal.** A visible footer at the bottom of the doc names the composition timestamp and source identifier (the user prompt context or upstream source document). Example shape: `<footer class="composition-signal">Composed 2026-05-17T14:23Z from <code>docs/brainstorms/...-requirements.md</code></footer>`. Under exclusive output mode this signal is the artifact's own provenance. Do not include creator, builder, composer, or author credit.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -62,14 +63,12 @@ These hold regardless of which skill produced the artifact.
 Honor user style preferences in this order (highest to lowest):
 
 1. **In-session conversation** — explicit direction the user gave this run.
-2. **Preferred stylesheet reference** named in loaded agent-instruction
-   context (typically `AGENTS.md` / `CLAUDE.md`, but scan loaded context;
-   don't enumerate locations). The reference may be a file path
+2. **Preferred stylesheet reference** named in the project's active instructions
+   already in context. The reference may be a file path
    (`docs/style.css`), a URL, a named library ("Tailwind"), or a style
    brand ("Stripe docs"). Agent-instruction files carry deliberate
-   agent-aware preferences, so this tier sits above DESIGN.md.
-3. **DESIGN.md** discovered on the filesystem (see "DESIGN.md discovery"
-   below).
+   agent-aware preferences, so this tier sits above the project design reference.
+3. **Project design reference** already identified by active context.
 4. **Fallback default** — the opinionated palette / typography choices the
    agent makes when no preference exists.
 
@@ -88,22 +87,11 @@ The single-file invariant is preserved either way. External
 offline fallback font stack); never link to an external stylesheet
 carrying layout, color, or typography rules the doc cannot read offline.
 
-### DESIGN.md discovery
+### Project design reference
 
-When tier 3 of the precedence stack applies, look for a DESIGN.md file in
-these locations, first match wins:
+When tier 3 applies, use the design reference supplied by active context or the user. Resolve the workspace with `jj root`; do not probe fixed filenames or fall through to another workspace. If no reference is available, use the fallback default.
 
-1. Workspace root (resolve via `jj workspace root`, with the current directory as fallback).
-2. `docs/DESIGN.md`.
-3. `.rocketclaw/DESIGN.md`.
-
-Read once at compose time. Absent → fall through to the fallback default.
-
-Workspace-root only — do not fall through to another workspace. Users
-working from a Jujutsu workspace who want HTML defaults can add DESIGN.md to
-that workspace.
-
-**DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
+**The project design reference is a partial override, not all-or-nothing.** Such references
 files vary widely: some are token tables, some are CSS variables, some are
 prose; most are authored for a *product or marketing surface*, not a
 long-form doc. The governing split: **take the brand's scale-independent
@@ -115,7 +103,7 @@ skip decoration.**
   and radius *character* (sharp vs rounded). These carry the brand and are
   safe at any size.
 - **Own it yourself (scale-dependent layout):** the **type size scale**
-  and **spacing magnitudes**. DESIGN.md values are almost always
+  and **spacing magnitudes**. Product design values are often
   product/marketing-scaled (display headings at 48-80px, airy ~96px
   section gaps); read them only as *hierarchy*, then set doc-appropriate
   values (body ~14-16px, headings ~1.2-1.6× body, comfortable paragraph
@@ -133,24 +121,24 @@ Specific cases:
   fallback stack. **Assume a bespoke brand face is proprietary and do not
   attempt to load it** — Airbnb Cereal, Coinbase Display/Sans, BMW Type,
   Waldenburg, Circular and the like will not render in a single file;
-  trying just produces a broken fallback. Use the DESIGN.md's own fallback
+  trying just produces a broken fallback. Use the design reference's own fallback
   chain, or a family-matched system stack (serif↔serif, sans↔sans,
   mono↔mono). Load a named face *only* when it is a known open webfont
   (Inter, Geist, Cal Sans, Roboto…); when unsure whether a face is open,
-  do not try. Honor the DESIGN.md's declared roles (`body` / `display` /
+  do not try. Honor the design reference's declared roles (`body` / `display` /
   `mono`) and never promote a display/decorative face into a body or
   small-text role. Net: reproduce the brand's serif-vs-sans structure and
   weight voice, not necessarily its exact faces.
-- **Typography-scale mismatch.** DESIGN.md typography tokens are usually
+- **Typography-scale mismatch.** Product typography tokens are usually
   sized for product UI — marketing pages, app screens, hero sections —
   with display headings at 48-80px. A long-form doc needs body at ~14-16px
   and headings at ~1.2-1.6× body. When the size scale looks
   product-scaled (the common case), use the **family**, **weight**, and
   **OpenType feature** assignments (these carry the design language) and
-  pick the agent's own size scale for the doc surface. Apply DESIGN.md
+  pick the agent's own size scale for the doc surface. Apply source
   sizes literally only when they are clearly doc-scaled — body 14-16px,
   headings under ~32px.
-- **Scope mismatch (product UI vs doc surface).** A DESIGN.md aimed at
+- **Scope mismatch (product UI vs doc surface).** A design reference aimed at
   product marketing or app UI may name button states, input borders, or
   hero backgrounds tied to *that* surface, not a generic doc. The page
   surface is the case to judge: a **reading canvas** — white, off-white,
@@ -159,10 +147,10 @@ Specific cases:
   (`--surface: #c0f0fb`) does not — extract the principle (the design
   language uses a tinted surface) rather than the literal value when the
   token is product-UI-scoped.
-- **Partial coverage.** When DESIGN.md defines some categories but not
+- **Partial coverage.** When the design reference defines some categories but not
   others (colors but no spacing scale, typography but no elevation), use
   it for what it covers and the fallback default for the rest. Do not
-  require DESIGN.md to be complete before honoring it.
+  require the design reference to be complete before honoring it.
 
 ## Format principles
 
@@ -174,7 +162,7 @@ artifact based on content.
 Long-form text is unreadable at full viewport width — past ~80 characters
 per line the eye loses the return sweep and scanning slows. As a
 fallback-default (precedence tier 4, overridden by in-session direction or
-DESIGN.md), center the document in a content container and hold prose to a
+the project design reference), center the document in a content container and hold prose to a
 comfortable measure.
 
 - **Page container.** A centered column with a max-width in the ~820-960px
@@ -189,7 +177,7 @@ comfortable measure.
   needs it — the measure constraint is for prose, not for everything.
 
 Express the constraint in `ch`/`rem` rather than a single hardcoded pixel
-value so it survives font-size and DESIGN.md overrides. DESIGN.md or an
+value so it survives font-size and project-design overrides. The design reference or an
 in-session instruction overrides these values; this is the fallback when no
 layout preference exists.
 
@@ -217,7 +205,7 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repository's GitHub URL once at compose time through Jujutsu's Git interoperability:
+Resolve repository remotes once at compose time and select the GitHub URL when present:
 
 ```bash
 jj git remote list
@@ -226,13 +214,13 @@ jj git remote list
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `<root>/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
+  `<root>/solutions/bar.md`) → the provider's canonical file URL for the detected default branch.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
   link only when the workspace URL is established in loaded context
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
-  session or in `AGENTS.md`); otherwise leave as text.
+  session or active project context); otherwise leave as text.
 
 **Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
 Bitbucket, internal host) and the equivalent main-tree URL pattern
@@ -266,8 +254,8 @@ a browser. Keep the heading text visible and adjacent to the `id`; do not rely
 on a nav link alone to carry the section name.
 
 Optional sections with a contract-defined semantic role put that role on their
-wrapping `<section>` with `data-ce-section`. For example, the broader-work
-relationship section uses `data-ce-section="work-relationships"`. The role is
+wrapping `<section>` with `data-section`. For example, the broader-work
+relationship section uses `data-section="work-relationships"`. The role is
 stable even when the visible heading changes; it supplements, rather than
 replaces, readable heading text and any useful anchor.
 
@@ -299,7 +287,7 @@ chip) is being styled.
 Status chips, ID chips, and metric pills in the same row share one shape
 — same border-radius, border weight, and fill treatment. Differentiate
 categories only by the chip's overall fill/text color (applied to the
-  whole pill with a soft tint), never by an accent on one edge. A
+whole pill, like a soft-tint marker), never by an accent on one edge. A
 colored stripe or arc on a single side of a pill reads as broken and
 asymmetric — as if a border half-failed to render — so avoid it. The same
 holds for any element, not just chips: differentiate by a full tint, not
@@ -472,7 +460,7 @@ with a UI/layout shape can carry a wireframe, whether or not the brainstorm
 as a whole is "a visual product" — a backend-heavy brainstorm with one
 screen change still earns a wireframe for that requirement. It still applies
 to brainstorm **requirements** output — the requirements-only unified plan
-`ce-brainstorm` writes (now under `<root>/plans/`), not an implementation-ready
+`ce-brainstorm` writes under `<root>/plans/`, not an implementation-ready
 plan (`ce-plan`'s enriched output) — and only to UI-shaped requirements — a
 non-visual requirement (API design, data model, agent workflow,
 infrastructure) takes a conceptual diagram instead, not a
@@ -598,6 +586,7 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
+- **Source / composition signal** is present as a visible footer at the bottom of the doc (composition timestamp + source identifier, without creator credit).
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

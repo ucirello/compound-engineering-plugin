@@ -4,19 +4,18 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Run the analyzer in workspace-local scratch so nothing pollutes durable workspace paths (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command because shell state does not persist between Bash calls). Resolve the workspace with `jj workspace root`; if that is unavailable, use the current directory:
+1. Run the analyzer in the jj workspace's `.tmp/rocketclaw/` namespace (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command — shell state does not persist between Bash calls). If `jj workspace root` does not identify a workspace, use the current directory as the local fallback:
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the ce-riffrec-feedback-analysis SKILL.md>";
-   WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD";
-   mkdir -p "$WORKSPACE_ROOT/.tmp/rocketclaw";
-   OUTPUT_DIR="$(mktemp -d "$WORKSPACE_ROOT/.tmp/rocketclaw/riffrec-quick-XXXXXX")";
+   JJ_ROOT="$(jj workspace root 2>/dev/null)";
+   OUTPUT_DIR="${JJ_ROOT:-$PWD}/.tmp/rocketclaw/riffrec-feedback/quick-$(date +%Y%m%d-%H%M%S)-$$";
    python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$OUTPUT_DIR"
    ```
 
-   Capture the printed output directory; later steps read from it.
+   Capture the printed output directory; later steps read from it. Keep this `.tmp/` namespace out of tracked changes.
 
-2. Read only `analysis.md` from the scratch output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
+2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 
 3. Pick at most one or two screenshots from `frames/` that directly show the reported issue. Prefer frames near a verbal complaint, a failed click, a console error, or a failed network request.
 
@@ -40,9 +39,9 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- Do not include `raw/` or `frames/` in a Jujutsu change intended for sharing. They remain only in workspace-local `.tmp/rocketclaw/` scratch and may be removed after the report is complete.
+- Do not include `raw/` or `frames/` in tracked changes. Remove the quick-path output directory after emitting the report unless the user asks to retain it.
 - No source-mapping pass across the codebase.
 
 ## Escalation
 
-If, while reading the transcript, the recording turns out to contain multiple distinct issues, requirements, or a workflow walkthrough, stop and tell the user that the recording requires the extensive path. Then load `references/extensive-analysis.md` and re-run the analyzer with a durable output directory.
+If, while reading the transcript, the recording turns out to contain multiple distinct issues, requirements, or a workflow walkthrough, stop and tell the user: "This recording has more than one issue — switching to the extensive path." Then load `references/extensive-analysis.md` and re-run the analyzer with a non-temp output directory.

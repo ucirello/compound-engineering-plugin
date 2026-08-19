@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 
 function jj(...args) {
   try {
-    return execFileSync('jj', ['--ignore-working-copy', ...args], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execFileSync('jj', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return '';
   }
@@ -16,8 +16,8 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `bookmarks: ${jj('log', '-r', '@', '--no-graph', '-T', 'bookmarks') || '(none)'}`,
-    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.shortest()') || '(not a Jujutsu workspace)'}`,
+    `workspace_root: ${jj('workspace', 'root') || '(not a jj workspace)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(none)'}`,
   ].join('\n');
 }
 
@@ -92,13 +92,13 @@ function cli() {
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Both sentinel lines are load-bearing: field transcripts
+  // Header first and DOC_REVIEW_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== skill context (follow these directives; if the ending sentinel is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== skill context (follow these directives; if DOC_REVIEW_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nSKILL_CONTEXT_END\n');
+  process.stdout.write('\nDOC_REVIEW_CONTEXT_END\n');
 }
 
 try {

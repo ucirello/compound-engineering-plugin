@@ -1,6 +1,6 @@
 # Extensive analysis path
 
-Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full compatible artifact set that feeds `ce-brainstorm`.
+Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full workflow-compatible artifact set that feeds `ce-brainstorm`.
 
 ## Workflow
 
@@ -11,7 +11,7 @@ Use this path when the input is a longer recording (over ~60 seconds), contains 
    python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input
    ```
 
-   Use `--output-dir <dir>` when the artifact should live somewhere specific. In a workspace with `docs/brainstorms/`, the default output goes under `docs/brainstorms/riffrec-feedback/` as an evidence/kickoff-artifact exception, not as the durable brainstorm output convention.
+   Use `--output-dir <dir>` when the artifact should live somewhere specific. In a repo with `docs/brainstorms/`, the default output goes under `docs/brainstorms/riffrec-feedback/` as an evidence/kickoff-artifact exception, not as the durable brainstorm output convention.
 
 2. Read the generated `analysis.md`, `problem-analysis.md`, `review-prompt.md`, and `requirements-kickoff.md`.
 
@@ -34,13 +34,13 @@ Use this path when the input is a longer recording (over ~60 seconds), contains 
    - **Inferences:** likely user intent, likely broken control, suspected missing state.
    - **Requirements:** product behavior needed to resolve the problem.
 
-7. When the current workspace contains the product source code, run a source-mapping pass before or during brainstorm. Use the transcript language, visible UI labels, screenshot paths, route names, generated requirements, the project's active instructions and conventions, and relevant history from `jj log` to search the codebase for likely components, controllers, services, models, tests, and state stores. Current project instructions and observed history win over generic guidance. For larger sessions, split this mapping by product area and use sub-agents when available so independent areas can be inspected in parallel.
+7. When the current workspace contains the product source code, run a source-mapping pass before or during brainstorm. Use the transcript language, visible UI labels, screenshot paths, route names, and generated requirements to search the codebase for likely components, controllers, services, models, tests, and state stores. For larger sessions, split this mapping by product area and use sub-agents when available so independent areas can be inspected in parallel.
 
 8. Add source mapping to the brainstorm material as suspected implementation surfaces, not as proven root cause unless the code clearly proves it. Include confidence levels and short evidence notes explaining why each file or component is relevant.
 
-9. Always continue into brainstorm. Once `analysis.md`, `problem-analysis.md`, `source-materials.md`, and `requirements-kickoff.md` exist, report that the analysis is complete and immediately load the `ce-brainstorm` skill with the generated `requirements-kickoff.md`, unless the user explicitly asked only to extract or analyze artifacts.
+9. Always continue into brainstorm. Once `analysis.md`, `problem-analysis.md`, `source-materials.md`, and `requirements-kickoff.md` exist, say "Analysis complete. Ready to brainstorm the findings." Then immediately load the `ce-brainstorm` skill with the generated `requirements-kickoff.md`, unless the user explicitly asked only to extract or analyze artifacts.
 
-10. In brainstorm, first ask the user to confirm the captured requirements and identify anything missing, incorrect, or grouped poorly. Do not move to planning until brainstorm has confirmed or corrected the requirements.
+10. In brainstorm, first ask the user to confirm the captured requirements: "Did this capture the requirements correctly, and what is missing, wrong, or grouped badly?" Do not move to planning until brainstorm has confirmed or corrected the requirements.
 
 ## Automatic handoff
 
@@ -65,8 +65,7 @@ When analyzing a feedback source:
 - Include concrete examples from the source material for each issue when possible: timestamp, transcript phrase, screenshot path, clicked UI element, email/thread ID, or observed state.
 - Include concrete source-code mapping when possible: likely component/service/controller/model/test files, route or API endpoint names, relevant state variables, and confidence level. This mapping should make it obvious where a later implementation agent should start looking.
 - If only video is available, infer likely screens and components from visible UI labels, layout, URLs, route names, copied text, screenshots, and transcript references. Mark uncertain mappings explicitly instead of omitting them.
-- If only audio or notes are available, map from product terminology and workflow descriptions to likely code areas when the workspace is present, and label the mapping as transcript-derived.
-- For Go implementation surfaces, apply compatible Go quality guidance, including idiomatic design, formatting, focused tests, and error handling, while deferring to the project's active instructions and observed conventions.
+- If only audio or notes are available, map from product terminology and workflow descriptions to likely code areas when the repo is present, and label the mapping as transcript-derived.
 - Do not drop lower-priority items during analysis. Mark them as lower priority or secondary if needed, but keep them represented.
 - Separate capture from prioritization. Brainstorm may regroup, split, defer, or reject items later, but the first requirements pass should preserve the full signal.
 - If a feedback session contains many issues, create a comprehensive capture document and state that planning should split it into smaller plans.
@@ -77,7 +76,7 @@ When analyzing a feedback source:
 When mapping feedback to source code, classify each mapping as one of:
 
 - **Likely buggy surface:** the code path exists and directly handles the observed behavior.
-- **Missing or incomplete surface:** the feedback names a behavior, but the workspace has no clear UI, route, controller action, or component implementing it yet.
+- **Missing or incomplete surface:** the feedback names a behavior, but the repo has no clear UI, route, controller action, or component implementing it yet.
 - **Indirect surface:** the code is adjacent to the behavior, but the exact interaction may happen through rendered email content, third-party UI, generated HTML, or another layer.
 - **Unknown:** no grounded source mapping found yet.
 
@@ -98,7 +97,7 @@ The analyzer writes:
 - `problem-analysis.md`: a categorized problem statement scaffold for visual, functional, requirement, and UX findings.
 - `review-prompt.md`: a filled prompt containing screenshot paths and transcript for a deeper visual analysis pass.
 - `source-materials.md`: a manifest linking the original source location, local-only raw files, transcript locations, chunks, local-only frames, and generated artifacts.
-- `requirements-kickoff.md`: a requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
+- `requirements-kickoff.md`: a workflow-friendly requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
 - `analysis.json`: structured session, event, transcript, moment, and artifact metadata.
 - `frames/`: extracted PNG screenshots for selected moments. Local-only by default.
 - `raw/`: extracted zip contents and copied source media. Local-only by default.

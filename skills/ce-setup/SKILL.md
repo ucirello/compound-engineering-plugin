@@ -1,6 +1,6 @@
 ---
 name: ce-setup
-description: "Check workspace health and workspace-local config."
+description: "Check environment health and workspace-local config."
 disable-model-invocation: true
 ---
 
@@ -19,14 +19,10 @@ Every skill that writes or reads an artifact directory (`solutions`, `plans`, `i
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`, with the current directory as fallback when no Jujutsu workspace exists). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or an underlying `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
-
-## Temporary Paths
-
-Resolve `<workspace-root>` with `jj workspace root`, falling back to the current directory when no Jujutsu workspace exists. Put all temporary files under `<workspace-root>/.tmp/`; when a skill-specific namespace is needed, use `<workspace-root>/.tmp/rocketclaw/`. Do not use `TMPDIR`, `/tmp`, or another global temporary location.
 
 ## Phase 1: Diagnose
 
@@ -38,7 +34,11 @@ If a version is found, pass it to the check script via `--version`. Otherwise om
 
 ### Step 2: Run the Health Check
 
-Before running the script, display a neutral status line saying that the environment check is starting; do not use product branding or a fixed message template.
+Before running the script, display:
+
+```text
+Checking your environment...
+```
 
 Run the bundled check script. Set `SKILL_DIR` to the absolute directory you loaded this `ce-setup` SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, so a bare `scripts/` path will not resolve:
 
@@ -52,10 +52,10 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 If the script is unavailable, perform the inline equivalent:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a Jujutsu workspace, resolve the workspace root with `jj workspace root`; otherwise use the current directory as the artifact and temporary-file root.
+2. If inside a jj workspace, resolve the workspace root with `jj root`.
 3. Check for obsolete `rocketclaw.local.md` at the workspace root.
 4. Check whether `.rocketclaw/config.yaml` exists.
-5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether it is safely covered by the workspace's `.gitignore` rules honored by Jujutsu.
+5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether a collision-proof sibling probe ending in `.local.yaml` is omitted by `jj -R <workspace-root> --config 'snapshot.auto-track=all()' file list <probe-path>`, which means workspace ignore rules cover it. Remove the probe and refresh the jj working-copy snapshot afterward.
 6. Compare `.rocketclaw/config.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
 Display the diagnostic output to the user. Missing optional tools are not setup failures. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); surface that line so the operator can confirm where artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
@@ -64,13 +64,13 @@ Display the diagnostic output to the user. Missing optional tools are not setup 
 
 **User-runnable invocation rendering.** In setup summaries, default to `/ce-setup`; use `$ce-setup` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. On oh-my-pi (`omp`), use `/skill:ce-setup`. Render only the invocation as inline code and output one form only.
 
-Report-gated repo-local remediations apply only to the checkout the health report diagnosed; if Phase 2 will write a different writable checkout, diagnose that checkout first, while session-level findings such as plugin version and optional tools remain from this session's Phase 1.
+Report-gated workspace-local remediations apply only to the workspace the health report diagnosed; if Phase 2 will write a different writable workspace, diagnose that workspace first, while session-level findings such as plugin version and optional tools remain from this session's Phase 1.
 
-After the health report, decide Phase 2 from writable-checkout availability:
+After the health report, decide Phase 2 from writable-workspace availability:
 
-- If this session has a writable Jujutsu workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
-- If this session has no writable workspace, but the user named a repository and the harness exposes a remote repository surface with a writable workspace, run Phase 2 on that surface instead and report the remote workspace-local fixes in Phase 3.
-- Otherwise skip Phase 2 and go to Phase 3, saying workspace-local writes were skipped because no writable workspace is available.
+- If this session has a writable jj workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
+- If this session has no writable workspace, but the user named a project and the harness exposes a remote work surface with a writable jj workspace, run Phase 2 on that surface instead and report the remote workspace-local fixes in Phase 3.
+- Otherwise skip Phase 2 and go to Phase 3, saying workspace-local writes were skipped because no writable jj workspace is available.
 
 Also remediate these project issues when the report names them:
 
@@ -84,7 +84,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 ## Phase 2: Fix Workspace-Local Issues
 
-Resolve the workspace root with `jj workspace root`. If that fails because there is no Jujutsu workspace, use the current directory only for non-repository paths such as `.tmp`; skip repository-local remediation. All repository paths below are relative to the workspace root, not the current working directory.
+Resolve the workspace root (`jj root`). All paths below are relative to the workspace root, not the current working directory.
 
 ### Step 4: Remove Obsolete Local Config
 
@@ -94,15 +94,25 @@ Ask whether to delete it now. Delete only if the user approves.
 
 ### Step 5: Refresh Example Config
 
-Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file is tracked in the repository and should always reflect the latest available settings.
+Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file belongs in version control and should always reflect the latest available settings.
 
 If leftover `<workspace-root>/.rocketclaw/config.local.example.yaml` remains after the new example exists, treat it as stale generated example (not user config) and remove it with `trash` (never `rm`).
 
 If the bundled template cannot be located by the current platform, print the source template path that failed and tell the user the example config could not be refreshed automatically.
 
-### Step 6: Create Repo Config If Missing
+### Step 6: Create Workspace Config If Missing
 
-If `.rocketclaw/config.yaml` does not exist, ask whether to create it, even when health is otherwise green. State dynamically that the file contains optional team defaults, starts with all settings disabled, and does not create `config.local.yaml`; offer create and decline choices without relying on fixed wording.
+If `.rocketclaw/config.yaml` does not exist, ask — even when health is otherwise green:
+
+```text
+Set up a workspace config file for this project?
+This creates .rocketclaw/config.yaml with optional team defaults.
+Everything starts commented out -- you only enable what you need.
+It does not create config.local.yaml.
+
+1. Yes, create it
+2. No thanks
+```
 
 If the user approves, copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.yaml`. Never overwrite an existing `config.yaml` or `config.local.yaml`.
 
@@ -116,22 +126,42 @@ When the health report marks the `ce-work` implementation engine unavailable or 
 
 ### Step 6b: Repair Invalid `docs_root`
 
-When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the workspace, `..` traversal, workspace root, VCS metadata, or a non-directory component) and the consequence: artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the tracked value to a valid workspace-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
+When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the workspace, `..` traversal, workspace root, `.jj/`, or a non-directory component) and the consequence: artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the tracked value to a valid workspace-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
 
-### Step 7: Ensure Local Config Is Gitignored
+### Step 7: Ensure Local Config Is Ignored
 
-If `.rocketclaw/config.local.yaml` exists and is not covered by `.gitignore`, offer to add the workspace-relative `.rocketclaw/*.local.yaml` rule.
+If `.rocketclaw/config.local.yaml` exists and is not covered by the workspace's ignore rules, offer to add:
+
+```text
+.rocketclaw/*.local.yaml
+```
 
 Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
 ### Step 8: Offer To Ignore Scratch Space
 
-Skills that keep local scratch write it under `<workspace-root>/.context/`. Check whether the trailing-slash `.context/` rule is covered by the workspace's `.gitignore` semantics so an existing directory-only rule counts before the directory exists, and when it is not covered, offer to add that workspace-relative rule.
+Skills that keep local scratch write it under `.context/`. Probe coverage from the jj workspace root with a file inside `.context/` whose name cannot collide, then use `jj -R <workspace-root> --config 'snapshot.auto-track=all()' file list <probe-path>`: omitted means workspace ignore rules cover it. Remove the probe and any probe-created empty directory, then refresh the jj working-copy snapshot. Treat a jj command error as not proven ignored. When the probe is listed, offer to add:
+
+```text
+.context/
+```
 
 Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
-Unlike Step 7 this does not wait for the path to exist. The skill about to write there offers the same entry at its first write, so a repository that never uses one of those skills never needs the line — adding it here only means that prompt never has to fire.
+Unlike Step 7 this does not wait for the path to exist. The skill about to write there offers the same entry at its first write, so a workspace that never uses one of those skills never needs the line — adding it here only means that prompt never has to fire.
+
+If the user asks for a commit message for setup changes, project-local instructions take precedence and no fixed message syntax is imposed. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 ## Phase 3: Summary
 
-Display a brief, unbranded summary generated from the run. Include the workspace-local fixes applied, declined fixes, optional capability state, and the rendered invocation for another check; do not use badges or a fixed message template.
+Display a brief summary:
+
+```text
+✅ Setup complete
+
+Fixed:     <workspace-local fixes applied, or none>
+Skipped:   <workspace-local fixes declined, or none>
+Optional:  <missing optional tools, or all available>
+
+Run `<rendered invocation>` anytime to re-check.
+```

@@ -33,24 +33,13 @@ done
 #  Helpers
 # =====================================================
 
-ok()      { echo "  OK: $1"; }
-warn()    { echo "  Warning: $1"; }
-skip()    { echo "  Note: $1"; }
+ok()      { echo "  🟢  $1"; }
+warn()    { echo "  🟡  $1"; }
+skip()    { echo "  ➖  $1"; }
 detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
-# Jujutsu uses Git ignore rules but does not expose a check-ignore command.
-# Resolve its backing Git store explicitly so this also works in a
-# non-colocated workspace.
-is_ignored() {
-  local workspace_root="$1"
-  local path="$2"
-  local git_root
-  git_root=$(jj -R "$workspace_root" git root 2>/dev/null) || return 1
-  git --git-dir="$git_root" --work-tree="$workspace_root" check-ignore -q "$path" 2>/dev/null
-}
-
-# Read one top-level scalar from the repo's flat local-config convention. This is
+# Read one top-level scalar from the workspace's flat local-config convention. This is
 # intentionally not a general YAML parser: comments and absent/empty keys are
 # ignored, surrounding quotes are removed, and values are never evaluated.
 read_flat_config_value() {
@@ -78,7 +67,7 @@ read_flat_config_value() {
 # Resolve the symlink-followed absolute path of $1 without relying on `realpath -m`
 # (absent on stock macOS/BSD). Resolves the existing prefix with `cd`/`pwd -P`,
 # then re-appends any not-yet-created tail — enough to catch a symlink in the
-# existing portion escaping the repository, which is the only way a relative
+# existing portion escaping the workspace, which is the only way a relative
 # value can escape.
 resolve_real_best_effort() {
   local target="$1" tail="" existing base
@@ -101,14 +90,14 @@ resolve_real_best_effort() {
 # config.local.yaml is ignored. Unset -> default root `docs`. A configured
 # value is validated and rejected (never silently defaulted) when it is
 # absolute, escapes the workspace via path or symlink, resolves to the workspace
-# root or inside VCS metadata, or names an existing non-directory. Sets
+# root or inside .jj/, or names an existing non-directory. Sets
 # docs_root_status (default|configured|invalid), docs_root_value,
 # docs_root_source, docs_root_error, and docs_root_local_ignored.
 resolve_docs_root() {
-  local repo_root="$1"
-  local local_cfg="$repo_root/.rocketclaw/config.local.yaml"
-  local tracked_cfg="$repo_root/.rocketclaw/config.yaml"
-  local value="" source="" repo_real real local_docs probe
+  local workspace_root="$1"
+  local local_cfg="$workspace_root/.rocketclaw/config.local.yaml"
+  local tracked_cfg="$workspace_root/.rocketclaw/config.yaml"
+  local value="" source="" workspace_real real local_docs probe
 
   docs_root_error=""
   docs_root_local_ignored=""
@@ -127,25 +116,25 @@ resolve_docs_root() {
 
   docs_root_value="$value"; docs_root_source="$source"; docs_root_status="invalid"
   case "$value" in
-    /*) docs_root_error="absolute paths are not allowed; use a repo-relative path"; return ;;
+    /*) docs_root_error="absolute paths are not allowed; use a workspace-relative path"; return ;;
   esac
   # Reject any `..` path component up front. resolve_real_best_effort only
   # collapses `..` within the existing prefix (via cd/pwd -P); a `..` that
   # traverses a not-yet-created segment would otherwise survive literally and
-  # escape the workspace, hit the workspace root, or reach VCS metadata while still string-prefix
-  # matching. A legitimate repo-relative artifact root never needs `..`.
+  # escape the workspace, hit the workspace root, or reach .jj/ while still
+  # string-prefix matching. A legitimate workspace-relative artifact root never needs `..`.
   case "/$value/" in
-    */../*) docs_root_error="path traversal ('..') is not allowed; use a plain repo-relative path"; return ;;
+    */../*) docs_root_error="path traversal ('..') is not allowed; use a plain workspace-relative path"; return ;;
   esac
-  repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P)" || { docs_root_error="could not resolve the repository root"; return; }
-  real="$(resolve_real_best_effort "$repo_root/$value")" || { docs_root_error="could not resolve the path"; return; }
+  workspace_real="$(cd "$workspace_root" 2>/dev/null && pwd -P)" || { docs_root_error="could not resolve the workspace root"; return; }
+  real="$(resolve_real_best_effort "$workspace_root/$value")" || { docs_root_error="could not resolve the path"; return; }
   case "$real/" in
-    "$repo_real/"*) ;;
-    *) docs_root_error="resolves outside the repository ($real)"; return ;;
+    "$workspace_real/"*) ;;
+    *) docs_root_error="resolves outside the workspace ($real)"; return ;;
   esac
-  [ "$real" = "$repo_real" ] && { docs_root_error="resolves to the repository root itself"; return; }
+  [ "$real" = "$workspace_real" ] && { docs_root_error="resolves to the workspace root itself"; return; }
   case "$real/" in
-    "$repo_real/.jj/"*|"$repo_real/.git/"*) docs_root_error="resolves inside VCS metadata"; return ;;
+    "$workspace_real/.jj/"*) docs_root_error="resolves inside .jj/"; return ;;
   esac
   if [ -e "$real" ] && [ ! -d "$real" ]; then
     docs_root_error="names an existing non-directory"; return
@@ -162,6 +151,33 @@ resolve_docs_root() {
     docs_root_error="an intermediate path component is not a directory"; return
   fi
   docs_root_status="configured"
+}
+
+# Check one ignore rule with a uniquely created probe. Forcing auto-track makes
+# an unignored probe visible regardless of user snapshot settings. Cleanup is
+# snapshotted before returning so the health check leaves no workspace content.
+jj_path_is_ignored() {
+  local workspace_root="$1"
+  local probe_relative="$2"
+  local probe_path="$workspace_root/$probe_relative"
+  local probe_dir command_status listed
+  local probe_dir_existed="yes"
+
+  probe_dir="$(dirname "$probe_path")"
+  [ -d "$probe_dir" ] || probe_dir_existed="no"
+  mkdir -p "$probe_dir" || return 1
+  if ! ( set -o noclobber; : > "$probe_path" ) 2>/dev/null; then
+    [ "$probe_dir_existed" = "yes" ] || rmdir "$probe_dir" 2>/dev/null
+    return 1
+  fi
+
+  listed=$(jj -R "$workspace_root" --config 'snapshot.auto-track=all()' file list "$probe_relative" 2>/dev/null)
+  command_status=$?
+  rm -f "$probe_path"
+  [ "$probe_dir_existed" = "yes" ] || rmdir "$probe_dir" 2>/dev/null
+  jj -R "$workspace_root" --config 'snapshot.auto-track=all()' status >/dev/null 2>&1
+
+  [ "$command_status" -eq 0 ] && [ -z "$listed" ]
 }
 
 # Report whether a retired top-level key is still present without interpreting
@@ -298,8 +314,7 @@ read_work_engine_preferences() {
 }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-repo_root=$(jj workspace root 2>/dev/null)
-in_repo=$([ -n "$repo_root" ] && echo "yes" || echo "no")
+in_workspace=$(jj root >/dev/null 2>&1 && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -323,12 +338,12 @@ for entry in "${deps[@]}"; do
 done
 
 # =====================================================
-#  Project checks (repo only)
+#  Workspace checks
 # =====================================================
 
 legacy_cfg="skip"
-repo_cfg_gitignore="skip"
-scratch_gitignore="skip"
+local_cfg_ignored="skip"
+scratch_ignored="skip"
 local_cfg="skip"
 example_cfg="skip"
 retired_keys=()
@@ -345,29 +360,30 @@ docs_root_local_ignored=""
 tracked_cfg="skip"
 project_issues=0
 
-if [ "$in_repo" = "yes" ]; then
-  local_config_path="$repo_root/.rocketclaw/config.local.yaml"
-  tracked_config_path="$repo_root/.rocketclaw/config.yaml"
-  resolve_docs_root "$repo_root"
+if [ "$in_workspace" = "yes" ]; then
+  workspace_root=$(jj root 2>/dev/null)
+  local_config_path="$workspace_root/.rocketclaw/config.local.yaml"
+  tracked_config_path="$workspace_root/.rocketclaw/config.yaml"
+  resolve_docs_root "$workspace_root"
   [ "$docs_root_status" = "invalid" ] && project_issues=$((project_issues + 1))
   legacy_cfg="missing"
-  [ -f "$repo_root/rocketclaw.local.md" ] && legacy_cfg="present"
+  [ -f "$workspace_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    if is_ignored "$repo_root" .rocketclaw/config.local.yaml; then
-      repo_cfg_gitignore="ok"
+    local_ignore_probe=".rocketclaw/.ignore-probe-$$-${RANDOM}.local.yaml"
+    if jj_path_is_ignored "$workspace_root" "$local_ignore_probe"; then
+      local_cfg_ignored="ok"
     else
-      repo_cfg_gitignore="missing"
+      local_cfg_ignored="missing"
     fi
   fi
 
-  # Trailing slash is load-bearing: without it an existing directory-only rule
-  # is missed before the directory exists, and a configured repo reads as bare.
-  scratch_gitignore="missing"
-  if is_ignored "$repo_root" .context/; then
-    scratch_gitignore="ok"
+  scratch_ignored="missing"
+  scratch_ignore_probe=".context/.rocketclaw-ignore-probe-$$-${RANDOM}"
+  if jj_path_is_ignored "$workspace_root" "$scratch_ignore_probe"; then
+    scratch_ignored="ok"
   fi
 
   tracked_cfg="missing"
@@ -488,7 +504,7 @@ if [ "$in_repo" = "yes" ]; then
 
   script_dir="$(cd "$(dirname "$0")" && pwd)"
   template="$script_dir/../references/config-template.yaml"
-  example="$repo_root/.rocketclaw/config.example.yaml"
+  example="$workspace_root/.rocketclaw/config.example.yaml"
   if [ ! -f "$example" ]; then
     example_cfg="missing"
   elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -539,8 +555,8 @@ for result in "${results[@]}"; do
   fi
 done
 
-if [ "$in_repo" = "yes" ]; then
-  section "Project config"
+if [ "$in_workspace" = "yes" ]; then
+  section "Workspace config"
 
   if [ "$legacy_cfg" = "present" ]; then
     warn "Obsolete rocketclaw.local.md exists"
@@ -557,17 +573,17 @@ if [ "$in_repo" = "yes" ]; then
 
   if [ "$local_cfg" = "present" ]; then
     ok ".rocketclaw/config.local.yaml exists"
-    if [ "$repo_cfg_gitignore" = "ok" ]; then
-      ok "Local config is gitignored"
+    if [ "$local_cfg_ignored" = "ok" ]; then
+      ok "Local config is ignored"
     else
-      warn "Local config is not safely gitignored"
+      warn "Local config is not safely ignored"
       project_issues=$((project_issues + 1))
     fi
   else
     skip "No local override yet (.rocketclaw/config.local.yaml)"
   fi
 
-  if [ "$scratch_gitignore" = "ok" ]; then
+  if [ "$scratch_ignored" = "ok" ]; then
     ok "Scratch space is ignored"
   else
     skip "Scratch space is not ignored"
@@ -623,15 +639,15 @@ if [ "$in_repo" = "yes" ]; then
     project_issues=$((project_issues + 1))
   done
 else
-  section "Project config"
-  skip "Not inside a Jujutsu workspace"
+  section "Workspace config"
+  skip "Not inside a jj workspace"
 fi
 
 echo ""
 if [ "$project_issues" -eq 0 ]; then
-  echo " Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " ✅  Workspace config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
 else
-  echo " ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " ⚠️   ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
 fi
 
 if [ "$capability_missing" -gt 0 ]; then

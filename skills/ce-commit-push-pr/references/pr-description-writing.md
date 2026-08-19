@@ -4,7 +4,7 @@
 
 The diff is already visible on GitHub. The description exists to explain what the diff cannot show: what was impossible before and is now possible, what was broken and is now fixed, what shape changed. Cut any sentence a reader could reconstruct from the diff itself.
 
-- Bad: "Adds `evidence-decider.ts`, modifies `ce-commit-push-pr/SKILL.md` to call it, and updates two test files."
+- Bad: "Adds a decision helper, modifies the caller, and updates two test files."
 - Good: "Evidence capture now decides automatically whether a change has observable behavior. CLI tools and libraries are now eligible alongside web UIs."
 
 If the lead describes moves/renames/adds rather than what's now possible or fixed, rewrite it — restating the diff is the failure mode this skill exists to prevent. For user-facing bugs, name the visible before/after first; mention the technical cause only if it helps assess risk.
@@ -20,11 +20,11 @@ Before composing, resolve PR-body requirements from the project's active instruc
 
 ---
 
-## Step Pre-A: Resolve the range and base
+## Step Pre-A: Resolve the Range and Base
 
 Two modes:
 
-- **Current-bookmark mode** (default) — describe the feature bookmark against the repository's default base.
+- **Current-bookmark mode** (default) — describe the selected head bookmark against the repository's default base.
 - **PR mode** — describe a specific PR when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
@@ -35,21 +35,22 @@ gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,
 
 If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-bookmark mode, resolve `<base>` with `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, then verify `<base>@<base-remote>` with `jj bookmark list --all-remotes`. If no unique base resolves, ask the user. `<head>` is the intended feature bookmark, or `@` before that bookmark exists.
+For current-bookmark mode, resolve `<base>` with `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`; if unavailable, use an unambiguous tracked remote bookmark or ask. `<head>` is the selected feature bookmark, or `@` before one exists.
 
-**Base remote:** use the Jujutsu remote matching the GitHub base repository. For fork PRs, compare GitHub metadata with `jj git remote list`. If no local remote matches, use the `gh` fallback rather than diffing against the wrong base.
+**Base remote:** use the remote matching the GitHub base repository. For fork PRs, inspect Jujutsu's configured Git remotes and match owner/repository. If none matches, use the `gh` fallback rather than diffing against the wrong base.
 
 ```bash
 jj git fetch --remote <base-remote> --branch <base>
-jj git import
-jj log -r '<base>@<base-remote>..<head>'
-jj log -r '<base>@<base-remote>..<head>' -T builtin_log_detailed
-jj diff -r '<base>@<base-remote>..<head>'
+jj log -r '<base>@<base-remote>..<head>' --no-graph
+jj log -r '<base>@<base-remote>..<head>' --no-graph -T description
+jj diff --from '<base>@<base-remote>' --to '<head>'
 ```
 
-If the revision list is empty, report that there are no changes to describe and stop.
+If the change list is empty, report "No changes to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when Jujutsu cannot reach the revisions. On hosts that expose only a pull ref, fetch it through the underlying Git interoperability and immediately run `jj git import`. Note in the summary when the API or interoperability fallback was used.
+**Fallback:** use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when Jujutsu cannot reach the refs, including fork, shallow-history, offline, or unrelated-history states. On GitHub Enterprise, prefer this API route over manipulating pull refs outside Jujutsu.
+
+Note in the user-facing summary when the API fallback was used.
 
 ---
 
@@ -57,9 +58,9 @@ If the revision list is empty, report that there are no changes to describe and 
 
 **Size by decision cost, not diff shape** — not changed-line count, file extension, or visual surface. A 5-line ranking or deploy change can carry more reviewer uncertainty than a 500-line mechanical rename.
 
-Build a compact internal **scope map** from the complete revision list and final range diff. Use short descriptions for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale descriptions; consult detailed descriptions only when needed. Derive the map from the full range, never from the latest revision, tracker title, bookmark name, or original request. Classify each changed file by runtime purpose, not extension, and surface claims the diff alone cannot establish.
+Build a compact internal **scope map** from the **complete Jujutsu description list and base-to-head diff**. Use first lines for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale descriptions; consult full descriptions only when a first line remains opaque or conflicts with the diff. Group into material outcome clusters (one is fine), name one umbrella outcome that covers them, and identify each cluster's **material claims** — what became possible, fixed, riskier, or which design decision the reviewer must assess. Derive this map from the full range, never from the latest change, tracker title, bookmark name, or original request. The map is internal: do not expand the body to enumerate clusters the umbrella already covers. **Classify each changed file by runtime purpose, not extension** (markdown/YAML may be inert docs or runtime agent instructions, config, product content, or deploy behavior). Surface claims the diff alone cannot establish; leave the rest implicit.
 
-**Program altitude (multi-PR / series).** After the PR-local map, check whether this PR sits inside a larger program. Use only signals already in hand: user context, a known plan, existing PR body, Jujutsu descriptions, or sibling/series language. Do not invent a series or run an open-PR scan solely for this step.
+**Program altitude (multi-PR / series).** After the PR-local map, check whether this PR sits inside a larger program (multi-PR project, stack, series, multi-unit plan). Use only signals already in hand: user prompt/conversation, a known plan path, existing PR body, change descriptions, or sibling/series language in context. Do **not** invent a series, and do **not** run a repo-wide open-PR scan solely for this step.
 
 When program context is present, extend the map with: (1) **Program outcome** — end-to-end delivery in one sentence; (2) **This PR's contribution** — the local umbrella; (3) **Neighbors** — prior work (**lead-in**) and/or residual work (**lead-out**), each only when known. The map's order is **program → lead-in (if any) → this contribution → lead-out (if any)**; in the body the opening states this contribution and a short block after it supplies the rest (Step C). Early PRs need lead-out; middle need both; late need lead-in (and say the arc completes when true). Omit prior or next when unknown — never invent either. Program placement the reviewer cannot get from this PR's diff alone is decision cost. When program context is absent, keep the single-PR umbrella only.
 
@@ -85,17 +86,15 @@ A project PR-body contract sets the structural floor; this table sizes the conte
 
 ---
 
-## Step B: Compose the title
+## Step B: Compose the Title
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Compose the PR title from the scope map's umbrella outcome. Runtime project instructions and conventions win, followed by history read with `jj log`; use the quoted rule as quality guidance rather than a fixed title template. Keep the title short, start its action in lowercase after any project-established scope, omit a trailing period, and do not add release-signaling syntax without explicit user confirmation.
+Derive the title from the scope map's umbrella outcome, not one cluster or mechanism. Match the project's active instructions and observed PR history; they decide capitalization, punctuation, prefixes, and any scope convention. Keep the title focused and under 72 characters where compatible. Do not impose a fixed title syntax or add release-signaling markers without explicit user confirmation.
 
 ---
 
 ## Step B1: Resolve related work references
 
-Before writing the body, gather candidate work-item references from the user prompt, caller handoff, bookmark name, full Jujutsu descriptions, existing PR body, PR template, plan/debug notes, and visible URLs or IDs in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
+Before writing the body, gather candidate work-item references from the user prompt, caller handoff, bookmark name, full change descriptions, existing PR body, PR template, plan/debug notes, and visible URLs or IDs in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
 
 This step owns **tracker** close-vs-link semantics. Sibling PR / series narrative belongs in Step A's program altitude, not here — a sibling PR number already in context may still appear as a non-closing related reference when useful.
 
@@ -130,7 +129,7 @@ Decide whether the change introduces a concept (pattern, technique, library, dom
 
 **Gather candidates from the Pre-A diff first** (first real use of a dependency, a technique the diff introduces, a domain idea the code now encodes). Most PRs surface none — stop; absence is the common case.
 
-**Check each candidate against the base ref, never the working tree** (the working tree contains this PR's own code):
+**Check each candidate against the base ref, never the working copy** (the working copy contains this PR's own code):
 
 ```bash
 jj file search -r '<base>@<base-remote>' --pattern '<term>'
@@ -173,4 +172,4 @@ Before returning the title and body, check against the scope map and material cl
 - When program context was present: does the lead place this PR on the arc (program + this contribution, with lead-in and/or lead-out when known)? When program context was absent: does the body invent a multi-PR series? If so, cut it.
 - Does any sentence use domain jargon that is not load-bearing for its claim? If so, rewrite in plain framing (keep jargon where it *is* the claim).
 - Is decision-changing evidence a stated result (not unexplained "tests passed"), with demonstrated results distinct from assumptions and mixed/negative outcomes?
-- Can any sentence or section of the *description* be cut without lowering reviewer confidence? If so, cut it, except for headings, fields, checklists, boilerplate the project's PR-body contract requires, and session-settled provenance when present.
+- Can any sentence or section of the *description* be cut without lowering reviewer confidence? If so, cut it, except for headings, fields, checklists, or boilerplate the project's PR-body contract requires. Retain the session-settled provenance sentence when Step C included one.

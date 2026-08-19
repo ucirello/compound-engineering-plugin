@@ -19,9 +19,9 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 
 ## Common rules
 
-- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not include `raw/` or `frames/` directories in a Jujutsu change intended for sharing unless the user explicitly asks and privacy is acceptable.
-- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may remain in a shareable Jujutsu change when they are needed for traceability and contain no sensitive data.
-- Use workspace-relative screenshot paths in any shared document so later agents can open the evidence without absolute local paths.
+- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not include `raw/` or `frames/` directories in tracked changes unless the user explicitly asks and privacy is acceptable.
+- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be included in tracked changes when they are needed for traceability and contain no sensitive data.
+- Use repo-relative screenshot paths in any tracked document so later agents can open the evidence without absolute local paths.
 
 ## Analyzer entrypoint
 
@@ -32,6 +32,6 @@ SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input
 ```
 
-Accepted inputs: a Riffrec `.zip`, an `.mp4` / `.mov` / `.webm` video, an `.m4a` / `.mp3` / `.wav` audio file, or a meeting-notes `.md`. Use `--output-dir <dir>` to control where artifacts land. In workspaces with `docs/brainstorms/`, the default remains `docs/brainstorms/riffrec-feedback/` as a documented evidence/kickoff-artifact exception; it is not the durable `ce-brainstorm` output convention. The quick path overrides the output dir to workspace-local `.tmp/rocketclaw/` scratch so generated files do not pollute durable workspace paths.
+Accepted inputs: a Riffrec `.zip`, an `.mp4` / `.mov` / `.webm` video, an `.m4a` / `.mp3` / `.wav` audio file, or a meeting-notes `.md`. Use `--output-dir <dir>` to control where artifacts land. In repos with `docs/brainstorms/`, the default remains `docs/brainstorms/riffrec-feedback/` as a documented evidence/kickoff-artifact exception; it is not the durable `ce-brainstorm` output convention. The quick path overrides the output dir to the jj workspace's local `.tmp/rocketclaw/` namespace so generated evidence stays untracked.
 
-The output format used by the extensive path is documented in `references/feedback-format.md`.
+The output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.

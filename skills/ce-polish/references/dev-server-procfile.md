@@ -1,10 +1,10 @@
 # Procfile / Overmind dev-server recipe (auto-detect fallback)
 
-Loaded when `detect-project-type.sh` returns `procfile` and there is no `.rocketclaw/launch.json` to consult. Rails apps with `bin/dev` take precedence over the bare Procfile path (see `dev-server-rails.md`).
+Loaded when `detect-project-type.sh` returns `procfile` and there is no `.claude/launch.json` to consult. Rails apps with `bin/dev` take precedence over the bare Procfile path (see `dev-server-rails.md`).
 
 ## Signature
 
-- `Procfile` or `Procfile.dev` exists at the workspace root
+- `Procfile` or `Procfile.dev` exists at the `jj` workspace root
 - `bin/dev` is **not** present (if it is, use the Rails recipe)
 
 ## Start command
@@ -54,6 +54,6 @@ Substitute `foreman` if `overmind` is unavailable on the user's machine — the 
 
 ## Common gotchas
 
-- **Socket files:** `overmind` writes a socket to `.overmind.sock` by default. Polish's kill-by-port logic reclaims the port but does not clean up the socket. If overmind is already running and polish restarts it, the new process may fail with "connection refused" until the stale socket is removed. The `OVERMIND_SOCKET` env var can redirect the socket to a per-run path if needed.
-- **Procfile vs Procfile.dev:** production and development Procfiles often differ. Always prefer `Procfile.dev` for polish.
-- **Multiple web processes:** some Procfiles split web traffic across multiple processes (API + frontend). Polish can only open one URL — users with multi-web setups should author `.rocketclaw/launch.json` explicitly to select which process is "the dev server" for polish.
+- **Socket files:** `overmind` writes a socket to `.overmind.sock` by default. The kill-by-port logic reclaims the port but does not clean up that socket. Set `OVERMIND_SOCKET` to a per-run path under `<jj workspace root>/.tmp/`, falling back to `$PWD/.tmp/` when the workspace root cannot be resolved; never redirect it to a global temporary directory.
+- **Procfile vs Procfile.dev:** production and development Procfiles often differ. Always prefer `Procfile.dev` for this workflow.
+- **Multiple web processes:** some Procfiles split web traffic across multiple processes (API + frontend). The workflow can open only one URL, so users with multi-web setups should author `.claude/launch.json` explicitly to select the dev server.

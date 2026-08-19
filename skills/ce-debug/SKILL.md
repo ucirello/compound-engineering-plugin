@@ -8,7 +8,7 @@ argument-hint: "[issue reference, error message, test path, or description of br
 
 Find the root cause of a failure, then — when the user chooses to — fix it with test-first discipline.
 
-**Done when:** the causal chain from trigger to symptom is stated with no gaps and file:line evidence, and either a verified fix has been handed off (PR, described Jujutsu change, or the user's chosen stop) or a diagnosis-only summary has been delivered. **Escalate rather than persist:** 2-3 hypotheses exhausted without confirmation, or 3 failed fix attempts, means diagnose *why* (Smart escalation) instead of trying again.
+**Done when:** the causal chain from trigger to symptom is stated with no gaps and file:line evidence, and either a verified fix has been handed off (PR, commit, or the user's chosen stop) or a diagnosis-only summary has been delivered. **Escalate rather than persist:** 2-3 hypotheses exhausted without confirmation, or 3 failed fix attempts, means diagnose *why* (Smart escalation) instead of trying again.
 
 The **bug description** is the input this skill was invoked with — the failure to diagnose, present in the current prompt or conversation, whether the user provided it directly or a calling skill passed it (e.g. `ce-babysit-pr` / `lfg` in `mode:pipeline`, which pass the failing jobs and log tails as the argument). It may be a description of the failure, a `mode:` token, or an issue reference (`#123`, `org/repo#123`, or an issue URL). The rest of this skill refers to it as `<bug_description>`; if nothing was provided, treat `<bug_description>` as blank.
 
@@ -45,27 +45,25 @@ Wherever this skill asks the user something, use the platform's blocking questio
 
 ## Artifact Root
 
-This skill may record learnings under `<root>/solutions/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it — a scratch-only or no-repo run that touches no `<root>/` path skips resolution entirely.
+This skill may record durable learnings under `<root>/solutions/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it — a scratch-only or no-repo run that touches no `<root>/` path skips resolution entirely.
 
-<!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`, with the current directory as fallback when no Jujutsu workspace exists). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or a colocated `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
-- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `.context`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repository and is neither the repository root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `.context`.
+- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `.context`.
 
-For any temporary or scratch artifact, resolve `<workspace-root>` the same way and use `<workspace-root>/.tmp/`; use `<workspace-root>/.tmp/rocketclaw/` when a namespaced location is needed. Do not use OS-global temp directories or `TMPDIR`.
+For scratch data, use `<repo-root>/.tmp`, where `<repo-root>` is `jj workspace root`. If no jj workspace root is available, use `.tmp` under the current working directory. Never use an OS-global temporary directory.
 
 ## Execution Flow
 
 | Phase | Name | Purpose |
 |-------|------|---------|
 | 0 | Triage | Parse input, fetch issue if referenced, reach a clear problem statement |
-| 1 | Investigate | Reproduce, verify the environment, trace the code path, check Jujutsu and tracker/PR history |
+| 1 | Investigate | Reproduce, verify the environment, trace the code path, check tracker/PR history |
 | 2 | Root Cause | Hypotheses with grounding observations and predictions, **causal chain gate**, fix-choice gate, smart escalation |
-| 3 | Fix | Only if the user chose to fix. Test-first, with workspace/change safety checks |
-| 4 | Handoff | Structured summary, quality tail, description/PR handoff |
+| 3 | Fix | Only if the user chose to fix. Test-first, with workspace safety checks |
+| 4 | Handoff | Structured summary, quality tail, commit/PR handoff |
 
 Beyond the trivial-bug fast-path in Phase 0, no phase skipping — complex bugs simply spend more time in each phase. No complexity tiers.
 
@@ -107,15 +105,13 @@ Confirm the bug exists and understand its behavior — run the test, trigger the
 
 #### 1.2 Verify environment sanity
 
-Before deep tracing, confirm the environment is what you think it is — each of these is a frequent false lead: correct working-copy revision/bookmark and no unintended changes; dependencies installed and current (stale `node_modules`/`vendor`); the expected interpreter/runtime version (`.tool-versions`, `.nvmrc`, `Gemfile`) actually active; required env vars present and non-empty; no stale build artifacts (`dist/`, `.next/`, binaries from an earlier revision); and, when the bug plausibly involves them, dependent local services (database, cache, queue) running at expected versions.
+Before deep tracing, confirm the environment is what you think it is — each of these is a frequent false lead: correct bookmark/change and no unintended working-copy changes; dependencies installed and current (stale `node_modules`/`vendor`); the expected interpreter/runtime version (`.tool-versions`, `.nvmrc`, `Gemfile`) actually active; required env vars present and non-empty; no stale build artifacts (`dist/`, `.next/`, binaries from an earlier change); and, when the bug plausibly involves them, dependent local services (database, cache, queue) running at expected versions.
 
-**A non-empty working-copy change is a suspect, not background.** When `jj status` shows changes, the single most common reason someone is debugging at all is that their own in-progress edit caused it. Name that as a hypothesis before tracing earlier revisions, and test it directly whenever the changed files could plausibly reach the failing behavior.
+**A working copy with changes is a suspect, not background.** When `jj status` shows in-progress work, the single most common reason someone is debugging at all is that the edit caused it. Name that as a hypothesis before tracing earlier revisions, and test it directly whenever the changed files could plausibly reach the failing behavior.
 
-Record the current change ID, create and edit a temporary empty change on the original change's parent with `jj new @-`, and rerun the reproduction there. Regardless of the reproduction's outcome, return with `jj edit <original-change-id>` and abandon only the temporary change this run created. Use the exact recorded change IDs rather than positional revsets for restoration and cleanup.
+Create a uniquely named temporary jj workspace under the resolved scratch root at revision `@-`, rerun the reproduction there, then forget only that workspace and remove only its directory, regardless of the reproduction outcome. The original workspace and its working-copy change remain untouched, so there is no save/restore operation that can consume concurrent user work. If `@-` is not the clean comparison point, identify the nearest revision before the in-progress work and use that revision instead. Both results are evidence: the failure vanishing identifies the in-progress edit as the cause, while persistence rules it out. Announce the isolated workspace before creating it, verify its revision before reproduction, and surface cleanup failures without modifying the original workspace.
 
-Jujutsu snapshots the original working-copy change before moving away, including files it tracks automatically. Announce the isolation before running it, verify the original change ID is current again afterward, and surface any conflict rather than resolving the user's work automatically. If the temporary change cannot be created or the original cannot be restored exactly, stop and report the operation IDs from `jj op log`; do not improvise destructive recovery. Both reproduction results are evidence: the failure vanishing identifies the user's own edit as the cause, while the failure persisting rules it out and leaves earlier code to trace.
-
-When isolation proves the WIP caused the bug, the correction belongs in *their* working-copy change: report that in the findings and run the Phase 2 gate as usual. Never describe the user's in-progress work as though it were the fix. Skip the experiment when the changed files clearly cannot reach the failing behavior, and never isolate WIP merely to simplify later routing — Phase 4 handles a non-empty pre-fix change on its own.
+When the isolated workspace proves the in-progress work caused the bug, the correction belongs in that work: report it in the findings and run the Phase 2 gate as usual. Never describe or publish the user's in-progress work as though it were the fix. Skip the experiment when the changed files clearly cannot reach the failing behavior, and never isolate work merely to simplify Phase 4 routing.
 
 #### 1.3 Trace the code path
 
@@ -123,19 +119,19 @@ Trace data flow **backward from the symptom to where valid state first became in
 
 As you trace:
 
-- Check recent changes in files you read with `jj log -n 10 <fileset>`; use the project's active instructions and the descriptions visible in current Jujutsu history to interpret conventions, and let those sources win over generic guidance.
-- If the bug looks like a regression ("it worked before"), use `jj bisect run` (see `references/investigation-techniques.md`).
+- Check recent changes in files you read: `jj log -r 'ancestors(@, 10)' -- [file]`.
+- If the bug looks like a regression ("it worked before"), use revision bisection with jj (see `references/investigation-techniques.md`).
 - Check whatever observability the project has — error trackers (Sentry, AppSignal, Datadog, BetterStack, Bugsnag), application logs, browser console, database state.
 
 #### 1.4 Check the tracker and PR history for prior work
 
-The project's institutional memory often already holds the bug, its cause, or a prior attempt at the fix. This is recorded *human* work, distinct from 1.3's live telemetry and Jujutsu history. Skip on the trivial fast-path; run for non-trivial bugs, with regression signals ("it worked before", a reopened or recurring symptom) as the strongest trigger.
+The project's institutional memory often already holds the bug, its cause, or a prior attempt at the fix. This is recorded *human* work, distinct from 1.3's live telemetry and revision history. Skip on the trivial fast-path; run for non-trivial bugs, with regression signals ("it worked before", a reopened or recurring symptom) as the strongest trigger.
 
-Find the tracker and code-review surface from workspace signals — `jj git remote list`, issue-key patterns in recent Jujutsu descriptions/bookmarks/PR titles (`ABC-123` -> Jira/Linear), and the tracker named in the project's active instructions and conventions already in your context. Do not assume a specific tool exists, and do not treat a missing CLI or MCP as proof the capability is absent; use whatever interface that tracker or forge exposes.
+Find the tracker and code-review surface from repository signals — jj remotes, issue-key patterns in recent change descriptions/bookmarks/PR titles (`ABC-123` -> Jira/Linear), and the tracker named in the project's active instructions and conventions already in your context. Do not assume a specific tool exists, and do not treat a missing CLI or MCP as proof the capability is absent; use whatever interface that tracker or forge exposes.
 
-Run a few targeted queries on the symptom, the error string, and the affected area — not an exhaustive sweep, and not a re-derivation of what 1.3's Jujutsu check already surfaced. Three finds change what you do next:
+Run a few targeted queries on the symptom, the error string, and the affected area — not an exhaustive sweep, and not a re-derivation of what 1.3's revision-history check already surfaced. Three finds change what you do next:
 
-- **An open ticket or PR for the same bug** — in-flight or unmerged work may be absent from local `jj log`, so this is the highest-value find. Surface the link before duplicating it.
+- **An open ticket or PR for the same bug** — in-flight or unmerged work can be absent from local `jj log`, so this is the highest-value find. Surface the link before duplicating it.
 - **A merged PR that already tried this same approach, yet the bug persists** — negative evidence that the fix you were about to write is known to fail. Invalidate that hypothesis before investing in it.
 - **The PR and issue behind a fixing revision `jj log` already found** — pivot to the thread for the *why*: intended behavior, the prior author's assumptions, and what let a regression come back. This feeds the root cause and Phase 3's post-mortem.
 
@@ -211,17 +207,19 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **Workspace and change check — before editing files:**
 
-- Check `jj status`. If the user's working-copy change already modifies files that need modification, confirm before editing — do not overwrite in-progress changes.
-- Resolve the default bookmark from the project's active instructions and current local/remote bookmark state; use names from those sources rather than assuming one. If the current line of work has no feature bookmark and is based directly on the default bookmark, create a feature bookmark at `@` with `jj bookmark create <derived-bookmark> -r @` and say which bookmark now identifies the work. Otherwise proceed on the existing bookmark/change stack.
-- **Record the pre-fix scope:** current change ID and commit ID, whether `jj diff --summary` is empty, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 uses both to keep simplify/review off unrelated change-stack work.
+- Check `jj status`. If the user has in-progress work in files that need modification, confirm before editing; do not overwrite it.
+- When the current clean change is on the repository's default bookmark, create a new jj change and feature bookmark without asking, derive the bookmark name from the bug, and report the new bookmark. If the working copy already contains unrelated work, do not rewrite or reparent it merely to manufacture isolation; preserve it and let Phase 4 take the local route.
+- **Record the pre-fix scope:** current change ID and commit ID, whether `jj status` is clean, the current local and remote bookmarks, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 uses both to keep simplify/review off unrelated work.
+
+When creating or describing the fix change, local repository conventions and visible history take precedence; apply compatible Go guidance only where they do not decide the wording. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 **Test-first:**
 
 1. Choose the regression test's home per the rule in Phase 1.1 — existing failing test, updated existing test, strengthened over-mocked test, or a new focused one.
 2. Verify that test fails for the right reason — the root cause, not unrelated setup.
-3. Implement the **minimal** fix: the root cause and nothing else. No drive-by refactors, formatting, or unrelated cleanup — those belong in separate changes. For Go code, follow compatible Go quality guidance, the project's active instructions, and established repository patterns; use the available Go formatting, analysis, and test tooling that applies to the changed scope without imposing conflicting generic conventions.
+3. Implement the **minimal** fix: the root cause and nothing else. No drive-by refactors, formatting, or unrelated cleanup — those belong in separate changes.
 4. Verify the test passes, then run the broader suite for regressions.
-5. Self-review the `jj diff` for the fix scope — read every changed line for style violations, missed edge cases, regressions in adjacent behavior, and missing coverage. The broader polish/review/PR tail belongs to Phase 4, after the debug summary.
+5. Self-review the diff — read every changed line for style violations, missed edge cases, regressions in adjacent behavior, and missing coverage. The broader polish/review/PR tail belongs to Phase 4, after the debug summary.
 
 **On a failed fix:** return to Phase 2 and *explicitly invalidate the current hypothesis* before forming a new one — state what evidence ruled it out, then form a new hypothesis with its own grounding observation and prediction. Do not retry variants of the same theory ("maybe it was the other branch", "let me also catch this case"); that is the rationalization spiral, not iteration. **3 failed attempts = smart escalation** (same table as Phase 2): if fixes keep failing, the root cause identification was likely wrong.
 
@@ -233,7 +231,7 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 ### Phase 4: Handoff
 
-**`mode:pipeline` — skip this entire interactive handoff.** No polish/review tail, no residual questions, no handoff preview, no learning-capture offer. Describe and push the convergent fix per `references/pipeline-mode.md`, then emit that reference's **structured return** as the final output. Divergent / needs-human items are deferred there (open thread or the caller's run-report comment — never a PR-body section). The rest of this section is the interactive path only.
+**`mode:pipeline` — skip this entire interactive handoff.** No polish/review tail, no residual questions, no handoff preview, no learning-capture offer. Finalize and push the convergent fix per `references/pipeline-mode.md`, then emit that reference's **structured return** as the final output. Divergent / needs-human items are deferred there (open thread or the caller's run-report comment — never a PR-body section). The rest of this section is the interactive path only.
 
 **Structured summary** — always write this first:
 
@@ -249,26 +247,28 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **If Phase 3 was skipped**, stop after the summary — the user already said they were taking it from here. Do not prompt.
 
-**If Phase 3 ran, read `references/post-fix-handoff.md` now and follow it before routing below.** It owns the quality tail this phase requires — the contextual-override checks, the skip-for-mechanical-fixes rule, the scoping rules that keep `ce-simplify-code` and `ce-code-review` off unrelated change-stack work, residual handling, the `## Post-Fix Quality` block, and the learning-capture criteria — and none of that appears in this body. The routing below names *which* action fires, never the scope rules that make it safe, so it cannot be improvised from: skipping the read ships an unreviewed fix, lets review reach into unrelated change-stack work, and strands accepted findings in the session.
+**If Phase 3 ran, read `references/post-fix-handoff.md` now and follow it before routing below.** It owns the quality tail this phase requires — the contextual-override checks, the skip-for-mechanical-fixes rule, the scoping rules that keep `ce-simplify-code` and `ce-code-review` off unrelated work, residual handling, the `## Post-Fix Quality` block, and the learning-capture criteria — and none of that appears in this body. The routing below names *which* action fires, never the scope rules that make it safe, so it cannot be improvised from: skipping the read ships an unreviewed fix, lets review reach into unrelated work, and strands accepted findings in the session.
 
 #### Routing
 
-**The goal: land the fix without carrying along anything the user did not offer up — not into a described change, not into a push, not into a PR.** Do not ask whether to open a PR; permission is not the gate. Two independent questions decide the handoff, and neither answer excuses skipping the other. Answer both from the pre-fix scope Phase 3 recorded, checked now rather than inferred from how the bookmark or change stack came to exist. **Fire the action itself** via the platform's skill-invocation primitive — never merely tell the user to type a command.
+**The goal: land the fix without carrying along anything the user did not offer up — not into a change, not into a push, not into a PR.** Do not ask whether to open a PR; permission is not the gate. Two independent questions decide the handoff, and neither answer excuses skipping the other. Answer both from the pre-fix scope Phase 3 recorded, checked now rather than inferred from how the bookmark came to exist. **Fire the action itself** via the platform's skill-invocation primitive — never merely tell the user to type a command.
 
-**1. What may go into the described change — the fix-owned files and nothing else.** This is a constraint on whichever skill describes the change in question 2, never an action of its own; it holds on every route, remote or not. Do not describe or split the change here — question 2 owns that operation.
+For every commit message or jj change description composed, edited, validated, or recommended in this handoff, local repository conventions and visible history take precedence; apply compatible Go guidance only where they do not decide the wording. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-- No fix-owned file carried pre-existing edits: those files are the description scope. Pass that scope to whichever skill handles it.
-- A fix-owned file already carried the user's pre-existing edits: the delegated `ce-commit` route groups at file level and does not split a file. Ask (per **Blocking questions**) *before* anything is described: include that file with their edits, leave the fix in the current working-copy change for them to handle, or stop. Only the first answer continues — the other two end the handoff here, so question 2 does not run and nothing is described; say what was left and why. This is the one handoff question that survives, because every option loses something the agent cannot choose on the user's behalf. Phase 3's confirmation covered *editing* the file, never including the user's edits in the described fix — do not reuse it to skip this question.
+**1. What may go into the finalized change — the fix-owned files and nothing else.** This is a constraint on whichever skill finalizes in question 2, never an action of its own; it holds on every route, remote or not. Do not finalize here; question 2 owns that action.
 
-**2. Who describes the change, and whether it ships.** Exactly one of these runs. Read the project's active instructions and current `jj log` history first; those current sources win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+- No fix-owned file carried pre-existing edits: those files are the finalization scope. Pass that scope to whichever skill finalizes the change.
+- A fix-owned file already carried the user's pre-existing edits: no handoff separates them (`ce-commit` groups at file level and never splits a file). Ask (per **Blocking questions**) *before* anything is finalized: include that file with their edits, leave the fix in the working copy for them to handle, or stop. Only the first answer continues; the other two end the handoff here. Say what was left and why.
 
-- **Ships** — the pre-fix working-copy change was empty, nothing in the bookmarked change stack is work the user has not already offered, and the selected `jj git` remote is **PR-capable**: somewhere `gh` can actually open a PR. Establish those however fits the workspace in front of you. Two facts make it less obvious than it looks:
-  - `ce-commit-push-pr` pushes the **bookmarked change stack**, and its PR spans every pushed revision on that bookmark rather than just your fix. The question is about the bookmark's stack, not only `jj diff -r @`. It also pushes before creating the PR, so a remote `gh` cannot open a PR against leaves the bookmark published and no PR to show for it.
-  - Already pushed is not already **offered**. Revisions in an open PR are under review, so they are offered and this run updates that PR rather than opening a second one. Revisions pushed for backup or to trigger CI with no PR are not, and a first PR would publish them. Compare local and remote bookmarks after `jj git fetch`, not against a stale local bookmark. How the bookmark came to exist proves nothing about the stack's scope.
+**2. Who finalizes, and whether it ships.** Exactly one of these runs.
 
-  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview below is not a substitute for it. Otherwise preview what will be described, under which bookmark, and whether a PR will be opened or updated, then **invoke the `ce-commit-push-pr` skill.** It handles the description and `jj git push` under question 1's scope, so do not describe the change before invoking it. The preview is a statement, not a question: state it and proceed so the user can interrupt. Surface the resulting PR URL.
-- **Stays local** — any of those fails. Invoke the `ce-commit` skill under question 1's scope, and push nothing. Say in one line what stayed local and why (unpublished work in the change stack, or no usable PR-capable remote), and that you will push and open the PR on request. Do not ask first — a local Jujutsu operation is reversible, and one word gets the rest.
-- **Not a Jujutsu workspace** — nothing is described or pushed. Stop after the summary and the quality block; there is nothing to hand off.
+- **Ships** — the pre-fix working copy was clean, nothing in the bookmark's unpublished ancestry is work the user has not already offered, and `origin` is **PR-capable**: somewhere `gh` can actually open a PR. Establish those however fits the repository in front of you. Two facts make it less obvious than it looks:
+  - `ce-commit-push-pr` pushes the **whole bookmark ancestry**, and its PR spans every revision on that bookmark rather than just the fix. It also pushes *before* creating the PR, so an incompatible remote leaves the bookmark published and no PR to show for it.
+  - Already pushed is not already **offered**. Revisions in an open PR are under review, so they are offered and this run updates that PR rather than opening a second one. Revisions pushed for backup or to trigger CI with no PR are not. Compare local bookmark ancestry against the tracked remote bookmark; local state can be ahead of the remote, and bookmark creation alone proves nothing about what it contains.
 
-**Contextual override** ("don't open PRs from skills", "keep the change local", "stop after the fix") — follow what the user said. **Stop here** without describing the change when that is what they asked for. A vague tonal cue is not an override.
-**After a PR is open** — apply the reference's learning-capture criteria. If the user accepts, invoke the `ce-compound` skill, then add the resulting learning doc to the same bookmarked change stack, describe it under the same standards, and push so the open PR picks it up. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview below is not a substitute for it. Otherwise preview what will be finalized, on what bookmark, and whether a PR will be opened or updated, then invoke the `ce-commit-push-pr` skill. It owns finalization under question 1's scope. The preview is a statement, not a question: state it and proceed so the user can interrupt. Surface the resulting PR URL.
+- **Stays local** — any of those fails. Invoke the `ce-commit` skill under question 1's scope, and push nothing. Say in one line what stayed local and why (unpublished work in the bookmark ancestry, or no usable `origin`), and that you will push and open the PR on request. Do not ask first; a local jj change is recoverable, and one word gets the rest.
+- **Not a jj repository** — nothing is finalized. Stop after the summary and the quality block; there is nothing to hand off.
+
+**Contextual override** ("don't open PRs from skills", "keep it local", "stop after the fix") — follow what the user said. **Stop here** without finalizing when that is what they asked for. A vague tonal cue is not an override.
+**After a PR is open** — apply the reference's learning-capture criteria. If the user accepts, invoke the `ce-compound` skill, then include the resulting learning document in the same bookmark and push so the open PR picks it up. Local repository conventions and visible history take precedence when composing or editing that change description; apply compatible Go guidance only where they do not decide the wording. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.

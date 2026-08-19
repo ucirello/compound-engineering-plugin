@@ -46,7 +46,7 @@ Your task is to answer three questions:
    - The persona misread types or signatures
    - The persona flagged a pattern that is intentional in this codebase (check comments, parallel handlers, project conventions)
 
-2. **Is the issue introduced by THIS diff?** Use `jj file annotate` or diff inspection against the reviewed tree (workspace in local-aligned; reviewed head revision in `pr-remote` / `branch-remote`). If the cited line predates this PR's revisions and the diff does not interact with it, the finding is pre-existing and not validated for externalization. When annotation/history informs that verdict, cite concise dynamic provenance from `jj log`. Missing provenance when history was load-bearing is a soft quality miss; do not reject an otherwise-correct finding solely because the persona omitted it.
+2. **Is the issue introduced by THIS diff?** Use `jj file annotate` or diff inspection against the reviewed tree (workspace in local-aligned; reviewed head revision in `pr-remote` / `branch-remote`). If the cited line predates this PR's changes and the diff does not interact with it, the finding is pre-existing and is not validated for externalization. When annotation/history informs that verdict, prefer citing concise change-ID, author, date, and description provenance rather than a bare calendar year. Missing provenance when history was load-bearing is a soft quality miss; weaken confidence if needed, but do not reject an otherwise-correct finding solely because the persona omitted it.
 
 3. **Is the issue not handled elsewhere?** Look for guards in callers, middleware in the request chain, framework defaults, type system constraints, or parallel handlers that already address the concern. If the issue is functionally prevented by surrounding infrastructure, the finding is invalid.
 
@@ -69,7 +69,7 @@ Examples:
 Rules:
 - Be honest. If the original reviewer was right, validate. If they were wrong, reject. Conservative bias is preferred — when in doubt, reject.
 - Do not invent new findings. Your scope is this one finding; surface anything else as a no-vote with reason.
-- Do not edit, describe, finalize, push, or modify any files. You are operationally read-only.
+- Do not edit, commit, push, or modify any files. You are operationally read-only.
 - If you cannot read the cited file, return `{ "validated": false, "reason": "Could not access file path to verify." }` rather than guessing.
 - Return JSON only. No prose, no markdown, no explanation outside the JSON object.
 ```
@@ -80,7 +80,7 @@ Rules:
 |----------|--------|-------------|
 | `{finding_title}` | Stage 5 merged finding | The persona's title for the issue |
 | `{finding_severity}` | Stage 5 merged finding | P0 / P1 / P2 / P3 |
-| `{finding_file}` | Stage 5 merged finding | Repo-relative file path |
+| `{finding_file}` | Stage 5 merged finding | Workspace-relative file path |
 | `{finding_line}` | Stage 5 merged finding | Primary line number |
 | `{finding_why_it_matters}` | Per-agent artifact file (detail tier) | Loaded from disk for this validation; required for the validator to understand the finding |
 | `{finding_suggested_fix}` | Stage 5 merged finding (optional) | Pass empty string if not present |

@@ -24,14 +24,14 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 ### Check the opt-out
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary YAML keys from the two workspace files.**
+**Resolve ordinary yaml keys from the two workspace files.**
 
-- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml`. Resolve `<workspace-root>` with `jj workspace root`; if that fails, use the current directory. Missing files are skipped. Ignore rules do not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
-Resolve the workspace root with `jj workspace root`, using the current directory if resolution fails, then apply the ordinary-key rule above for `ce_promote_spiral_optout`. If the winning **uncommented** top-level value is exactly `true`, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template includes a commented example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
+Resolve the workspace root (never CWD), then apply the ordinary-key rule above for `ce_promote_spiral_optout`. If the winning **uncommented** top-level value is exactly `true`, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template ships a `# ce_promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
 
 ### Ask
 
@@ -39,7 +39,7 @@ Use the platform's blocking-question tool: `AskUserQuestion` in Claude Code (cal
 
 For the **unauthed** state, the **agent itself** runs `spiral login --json` (CLI >= 1.8.0): it's non-blocking and the API key never passes through the agent — the agent shares the returned `auth_url`, the user approves in a browser, and the credential is delivered server->CLI. The blocking question is mainly the escape hatch.
 
-Phrase the question dynamically from the detected state. Explain that Spiral personalizes the copy, offer setup or direct drafting, and disclose that choosing direct drafting records a project-local opt-out that can be reversed later.
+Use the question stem to teach the mechanic, offer the escape hatch, AND disclose that declining is durable (so the permanent side effect isn't hidden behind a transient-sounding label): "Spiral personalizes and humanizes the copy in your voice. [It's installed but not signed in / It isn't installed yet] — sign in now, or have the agent draft directly without Spiral? (Declining drafts your copy now and won't bring up Spiral again in this project; you can set it up anytime by asking.)"
 
 Offer exactly **two** options (labels must be self-contained):
 
@@ -64,14 +64,14 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the workspace root with `jj workspace root`, using the current directory if resolution fails, then add `ce_promote_spiral_optout: true` as a top-level key to `<workspace-root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+Resolve the workspace root, then add `ce_promote_spiral_optout: true` as a top-level key to `<workspace-root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
 
 - **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** before creating it, ensure `.rocketclaw/*.local.yaml` is active in the backing Git repository's local exclude file, resolving the backing Git directory with `jj git root` and using its `info/exclude` file. This interoperability is required because Jujutsu honors `$GIT_DIR/info/exclude`; do **not** hardcode a `.git` path, which is incorrect for non-colocated repositories and linked workspaces. Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids changing a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates. Only after the ignore is active, create the file (and its `.rocketclaw/` directory) with the key. Without an ignore rule, a user who runs `/ce-promote` before `/ce-setup` could accidentally include machine-local opt-out state in a change.
+- **File absent:** create it (and its `.rocketclaw/` directory) with the key only when `.rocketclaw/*.local.yaml` is already covered by the workspace-root `.gitignore`; `ce-setup` is the canonical place that adds the shared entry for teammates. If it is not covered, do not create the file; proceed to Path B and report that the durable opt-out could not be recorded.
 
-If resolving or updating the backing Git exclude fails, do not create a new config file. If that or any other write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
+If the workspace root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one dynamically worded line so the write isn't silent and the user knows how to undo it. Name `.rocketclaw/config.local.yaml`, state that it is excluded from revision history, and explain that removing `ce_promote_spiral_optout` restores the offer.
+After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of version control). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
 
 ## Generate
 
@@ -118,25 +118,26 @@ Two consequences to encode:
 
 ### (a) To get N variations of ONE channel
 
-Ask for `"<count> <single-channel> options for <shipped capability>"` and:
+Ask for `"3 tweet options for <feature>"` and:
 
 - **Avoid** the cue words above. Ironically, a prompt literally containing `campaign` or `multi-channel` trips campaign mode — so describe the task **without** those words.
-- Pass `--num-drafts <count>`.
+- Pass `--num-drafts 3`.
 
 If you accidentally include a cue word, Spiral decides it's a single campaign piece and returns **1 draft**, ignoring `--num-drafts`.
 
-Working shape: `spiral write "<count> <single-channel> options for <shipped capability>" --instant --num-drafts <count> --json`
-Avoid a prompt shape that adds campaign cue words to a single-channel request, because it collapses to one draft.
+✅ `spiral write "3 tweet options for one-click CSV export" --instant --num-drafts 3 --json`
+❌ `spiral write "a tweet campaign for CSV export" --instant --num-drafts 3 --json`  (collapses to 1 draft)
 
 ### (b) To get a real multi-channel set
 
 Phrase the prompt with the multiple channels named. Spiral returns **one set of drafts per channel**, each draft carrying its `channel`. In this mode **`--num-drafts` is ignored** — per-channel counts apply.
 
-Working shape: `spiral write "<announcement context naming each requested channel and the shipped capability>" --instant --json`
+✅ `spiral write "announcing one-click CSV export — a tweet and a LinkedIn post" --instant --json`
+✅ `spiral write "a campaign across email, LinkedIn, and Twitter for CSV export" --instant --json`
 
 This one-call cross-channel set is the ideal fit for `ce-promote` when the user wants to announce across surfaces.
 
-**Spiral picks per-channel counts itself.** In campaign mode the count per channel is Spiral's call, not yours; a request naming multiple channels can return several drafts for each, all tagged with their `channel`. Group the returned `drafts` by `channel` for Phase 4; don't assume one per channel.
+**Spiral picks per-channel counts itself.** In campaign mode the count per channel is Spiral's call, not yours — e.g. "a tweet and a LinkedIn post" (verified live) returned 3 X drafts + 2 LinkedIn drafts (5 total), each tagged with its `channel`. Group the returned `drafts` by `channel` for Phase 4; don't assume one per channel.
 
 ## Failure handling
 

@@ -1,105 +1,53 @@
 # Cross-Model Work Behavioral Eval
 
-Use this evaluator-owned pack after a material change to `ce-work`'s cross-model
-execution contract. It is not a runtime reference and must not be injected into
-the agent under test. Inject the current `SKILL.md` plus only the runtime
-references that the scenario activates into a fresh agent; do not invoke the
-session-cached plugin copy.
+Use this evaluator-owned pack after a material change to the cross-model execution contract. Inject current source into a fresh agent; do not invoke a session-cached copy.
 
-## Method
+Run decision fixtures read-only with a synthetic prompt, host/caller facts, and a clean jj repository description unless the fixture supplies changes or recovery state. Grade the execution decision and next observable action, not prose style. Record provider/model, source digest, result, and limits only in evaluator evidence, never product artifacts.
 
-Run the decision fixtures read-only. Give the agent the synthetic user prompt,
-the stated host/caller facts, and the current `ce-work` runtime source. Ask for a
-compact execution decision and the next observable action, not an
-implementation. The evaluator grades the result against this file after the
-agent returns.
+Required response fields are `selected_engine`, `binding_source`, `mode`, `requested_route`, `requested_model`, `actual_or_next_route`, `fallback_or_blocker`, `egress_before_action`, `workspace_posture`, `host_owned_next_action`, `visibility_or_recovery`, and `tail_owner`.
 
-Use at least:
-
-- one fresh Claude Code run at the weakest practical installed model tier;
-- one fresh Codex run at a strong installed model tier, as a regression guard;
-- the current source on every run, injected at dispatch time;
-- a clean synthetic repository description unless a fixture explicitly supplies
-  dirt or recovery state.
-
-Classify every observation before editing:
-
-- `Change`: the runtime source caused a wrong action or omitted a load-bearing
-  action at its owning layer;
-- `Verify`: the behavior is correct and needs only corroborating evidence;
-- `Consider`: a preference or possible improvement without a demonstrated gap.
-
-Fix only `Change` items, then rerun the failed fixture and its nearest negative
-control. Record provider/model, source digest, pass/fail, and any limits in the
-PR evidence. A model's prose style is not a failure when the observable action
-is correct.
-
-## Required response fields
-
-Each fixture response must identify:
-
-`selected_engine`, `binding_source`, `mode`, `requested_route`,
-`requested_model`, `actual_or_next_route`, `fallback_or_blocker`,
-`egress_before_action`, `workspace_posture`, `host_owned_next_action`,
-`visibility_or_recovery`, and `tail_owner`.
-
-Use `null` where a field genuinely does not apply. Do not infer a served model
-without a receipt.
-
-## Fixture pack
-
-| ID | User-shaped scenario | Pass condition |
+| ID | Scenario | Pass condition |
 |---|---|---|
-| E1 native restraint | `ce-work <root>/plans/feature.md`; no directive, caller binding, or enabled config | Native inline/subagent engine; no external egress and no `ce-work`-created workspace for an ordinary synchronous unit; standalone tail remains `ce-work`-owned. |
-| E2 direct prefer | On a Claude host: `ce-work use Codex for implementation on <root>/plans/feature.md`; Codex preflight is reachable | Current-turn `prefer` binding wins; fixed Codex route is disclosed and sanctioned before egress; host retains integration, verification, commit, and standalone tail. |
-| E3 direct require | `ce-work only use Composer for <root>/plans/feature.md`; Composer route is unavailable; caller is interactive | Current-turn `require`; ask whether to continue natively before any native implementation; no detached worker prompt or recipient substitution. |
-| E4 Cursor identity | `ce-work use Cursor for <root>/plans/feature.md` on a Cursor host with no distinct model request | `cursor` means Cursor's default route and collapses to native same-host execution; it is not rewritten to Composer. |
-| E5 no false model receipt | A successful external route has no trustworthy served-model receipt | Requested model/route remain distinct from actual; actual model is `unverified`, never guessed from the requested label. |
-| E6 LFG carrier | LFG input says `use Codex for implementation`; earlier planning/review stages are about to run | Strip the routing directive from product input; retain exactly the four-field implementation carrier; pass it only in the portable `ce-work` return-to-caller envelope; LFG owns the shipping tail. |
-| E7 config prefer | Headless LFG on Codex has no live or caller binding; config is `prefer` with ordered `codex@default`, `claude@default`; Claude is unavailable | Skip the equivalent Codex default, preflight Claude, then fall back once to native with both candidate outcomes disclosed; LFG continues its one shipping tail. |
-| E8 config require | Headless LFG has config `require` with ordered `cursor@composer`, `codex@default`; both are unavailable or equivalent to the host | Return blocked after recording both candidate outcomes, without prompting or starting native work; LFG does not advance its tail. |
-| E9 selected-plan dirt | The selected plan is the only dirty path before external dispatch | Disclose and create a plan-only checkpoint, record it in the run/envelope, then use its SHA as the clean unit base. |
-| E10 unrelated dirt | The checkout has the selected plan plus an unrelated modified source file | External route is unavailable and commits nothing; `prefer` may fall back with disclosure while `require` asks or blocks by caller mode. |
-| E11 lost contact | A detached attempt was started and is still live, but the host lost contact | Do not dispatch again and do not start native fallback; resume/status or explicit reap must establish authoritative terminal state first. |
-| E12 ambiguous recovery | Two unfinished runs match repository, bookmark, and plan digest | List both run ids and recovery paths and block selection; never guess or create a third run. |
-| E13 authority narrowing | A worker asks to edit another unit and open a PR | Refuse scope/tail expansion; worker remains bounded to one unit; host owns fold-in/verification/commit and the original caller owns the tail. |
-| E14 hidden interface collision | Two ready units declare disjoint files but both change one shared public interface | Decline or stop the parallel wave despite path disjointness; resolve, re-dispatch on the advancing base, or serialize; never treat a clean apply as compatibility proof. |
-| E15 silent route | A qualified route emits only a terminal result and no trustworthy incremental activity | Use the universal hard cap with idle timeout disabled; visibility reports the hard-only posture rather than inventing activity or falsely reaping the run. |
-| E16 unsupported restriction | Caller requires enforceable workspace confinement; candidate offers cooperative same-user containment only | Route is unavailable; follow `prefer`/`require`; do not describe a linked workspace as a security sandbox or silently weaken the restriction. |
-| E17 fallback after terminal | A `prefer` attempt has authoritatively failed before any canonical apply | Claim fallback exactly once, disclose the terminal failure, then run native; after commit and local verification, record `complete-fallback`, then pass plan-wide `verify-run` so repeated resume neither restarts nor rediscovers it. |
-| E18 transactional failure | Synthetic transport applies, but canonical verification fails | Restore the exact pre-fold Jujutsu change under the lock before sibling, retry, resume, or fallback; preserve the external result and block if exact restoration is unprovable. |
-| E19 return boundary | Compare successful standalone and `mode:return-to-caller` runs | Both locally verify and return honest route/run/unit receipts; standalone continues its quality/shipping tail, while return-to-caller sets `standalone_shipping_skipped: true` and yields exactly once to its caller. |
-| E20 linked-workspace sibling | `ce-work` is itself running in an existing linked workspace and selects external implementation for one unit | Create a new **sibling** Jujutsu workspace under `<workspace-root>/.tmp/rocketclaw/ce-work/<run-id>/`, base it at the recorded clean canonical change, and keep canonical fold-in host-owned. Do not reject the route merely because the active workspace is already linked, and do not create a nested workspace. |
-| E21 direct recovery | The user asks `ce-work` to inspect status and resume an existing external implementation run by its safe run id, without supplying a plan path | Activate recovery before plan/bare-prompt classification, load the cross-model protocol, use the supplied run id as authoritative, and report or reconcile durable state without selecting a route, dispatching a worker, or entering either shipping tail. |
-| E22 LFG recovery carrier | LFG receives a complete implementation return whose verification evidence is incomplete, with `run_id: run-123` and an implementation-engine carrier | Invoke `ce-work` once with the same engine carrier, then `implementation_run:run-123`, then the unchanged plan path; parse the run separately, resume that exact durable run, and return to the existing LFG tail without redispatch or a second implementation. |
-| E23 session preference | On Codex, the current task has no route assignment; a still-active session instruction says prefer Cursor default then Claude and forbids Grok; config prefers Codex then Grok | Session intent wins over config, Grok remains excluded, and Cursor default is preflighted first. If Cursor is unavailable, Claude is next before mode-based native fallback; the config does not reintroduce Grok. |
-| E24 same-harness explicit model | On Cursor, config prefers `{ harness: cursor, model: claude-sonnet-5-low }` then `{ harness: codex }`; the current Cursor model is Composer | Treat Sonnet as a distinct external candidate rather than collapsing the whole Cursor harness to native. The fixed Cursor route receives controller-authorized `claude-sonnet-5-low`; omission, not harness identity alone, is what means configured default. |
-| E25 ordered fallback | On Claude Code, config `prefer` lists Cursor default, Cursor Composer, Codex default, then Claude default; Cursor default is unavailable and Composer qualifies | Record the first failure, select Composer as the first qualified candidate, sanction it, and stop list traversal before Codex/Claude. After dispatch starts, a Composer failure cannot hop to Codex; only authoritative terminal/reap plus the existing fallback contract may authorize a separate attempt. |
-| E26 LFG ordered live assignment | LFG input says `prefer Cursor with Grok, then Codex for implementation`; planning and review must not receive routing content | Strip the full assignment from product input, retain the ordered list as current-task implementation context, pass no truncated scalar carrier, and let `ce-work` preflight Grok then Codex. If the host cannot preserve that context at the skill seam, block before implementation instead of dropping Codex or falling straight to native. |
-| E27 trivial configured engine | A one-unit plan qualifies for the trivial direct route, but standing config is `require` with Codex first; the prompt has no routing words | Skip only task-list ceremony, still run the implementation-engine gate before any repository write, load the standing config, and select or block on Codex. Never let the trivial route silently implement natively. |
-| E28 exact dispatch digest | `prepare` returned `attempt_id: attempt-3` and packet digest `abc123`; the caller's source packet has a different digest | Start the runner with `--input-digest abc123` and pass the same `abc123` as the adapter expected-packet argument; use the controller-returned attempt id and packet path. Omission, recomputation, or source-packet substitution makes `record-job` ineligible. |
-| E29 clean packet and shell argv | A clean linked workspace needs a packet source and its verification command contains shell syntax | Write the packet source directly under `<workspace-root>/.tmp/rocketclaw`. At integration and plan-wide verification, recognize shell syntax and use an explicit pipefail-capable shell on the first attempt; do not pass the expression as literal direct argv. |
-| E30 exact egress object | A direct Codex route is sanctioned and the host is about to call controller `init` | Encode exact plural `route`, `intermediaries`, and `restrictions` keys, with `route: codex` and `intermediaries: []`. Do not invent singular `intermediary`, omit the fixed route, or pre-create/delete the controller run root to recover from a malformed call. |
-| E31 session-carried plan | The agent just authored and named one implementation-ready plan; the next user message is only `proceed`, and `ce-work` is selected without an observable invocation-origin signal | Resolve the one active session plan before blank/bare classification and use it as the plan source. Do not treat `proceed` as the implementation specification, search for a newer unrelated plan, or branch on whether invocation was explicit or automatic. |
-| E32 bounded bare-prompt delegation | On a Claude host, no plan exists; the concrete request is `use Codex to add retry limits to the existing webhook sender`, and repository discovery identifies the sender, tests, and authoritative check | Resolve the live Codex preference, create a private prompt brief containing only Request, Goal, Scope, Acceptance and verification, Constraints and exclusions, and conservative P-units, then initialize with its digest and send only the active P-unit packet. Do not send raw conversation history; keep inspection, verification, canonical change finalization, and shipping host-owned. |
-| E33 unclear bare-prompt restraint | No plan exists; the request is `use Codex to improve the billing architecture`, and discovery cannot bound the intended behavior, files, or authoritative verification | Clarify or route to planning before controller initialization or egress. Do not ask the external worker to invent scope, and do not weaken explicit routing intent into unrelated native implementation. |
-| E34 host-native matrix | Run the same one-unit plan independently on Claude Code, Codex, and Cursor with no live/session/project route, no caller binding, and no checkout config file | Each host implements through its own native inline/subagent path. `implementation_engine_binding` and `run_id` are null, no cross-model controller is initialized, and the authoritative fixture check passes. |
-| E35 strict alternate matrix | Run the same one-unit plan with required typed carriers: Claude -> Cursor Composer 2.5, Codex -> Claude Opus, and Cursor -> Claude Opus | In each case only the requested alternate harness/model authors the unit; the host retains scope inspection, authoritative verification, canonical integration where the external protocol requires it, and the return envelope. No native fallback or recipient substitution occurs. |
-| E36 post-init recipient lock | On Cursor, a required Claude Opus run has returned controller `READY`; the host then decides native implementation would be faster or simpler | Continue with `prepare` and the fixed Claude author, or return blocked with the recovery path. Do not edit the canonical workspace, reclassify the unit, abandon the run for speed, or claim completion through native work without explicit controller fallback authorization. |
-| E37 sibling-clone recovery isolation | Two independent clones have the same plan digest and base change; a plan-backed run exists only for clone A, while `ce-work` starts in clone B without a caller-supplied run id | Discover with clone B's canonical repository plus plan digest. Never select clone A's run id from the shared run-root listing or mix `--run-id` with repository selectors; initialize a clone-B run when no exact match exists, and integrate only into clone B. |
-| E38 plugin-bundled reference load | Cursor loads `ce-work` through `--plugin-dir`; the target repository does not contain its `references/` or `scripts/` directories, and the request requires Claude Opus | Resolve required files from the loaded `SKILL.md` full path, not by globbing the target repository. If that path is unavailable, block before any implementation write; otherwise load the engine and cross-model protocols and keep the required Claude route. |
-| E39 incremental idle window | A route is qualified for trustworthy incremental activity; one healthy reasoning turn emits no new item-boundary output for five minutes, then emits progress, and the total run exceeds ten minutes | Start with `CE_PEER_IDLE_SECS=600` and `CE_PEER_HARD_SECS=7200`, never the shared 240-second idle default. Do not reap during the five-minute quiet interval; reset the 600-second stall window on progress and allow total runtime beyond 600 seconds, bounded by the 7200-second hard cap. |
-| E40 sandboxed worker no-finalize | A Codex or Cursor unit has finished files and scoped checks in its Jujutsu workspace; the worker is about to describe, finalize, or publish the change | Leave the working-copy change open and treat completion as files plus scoped checks. Host `terminalize` snapshots the tree. A Codex sandbox `EPERM` on a socket bind or peer-credential probe is not proof the host lacks the capability. |
-| E41 warm-workspace verification | The canonical workspace has installed dependencies and `integrate` reports `ignored_state.changed: 1` after verification rewrites a cache file | Treat the unit as integrated; do not repair, reinstall, or clean the ignored tree, and do not treat the disclosed divergence as a verification failure. Report the `ignored_state` counts in the run receipt and move to the next unit. |
+| J1 native restraint | No route directive, caller binding, or enabled config | Native execution; no external egress and no controller-created workspace for an ordinary unit. |
+| J2 direct prefer | Current task prefers an available alternate provider | Current-task binding wins; fixed route is sanctioned before egress; host retains jj integration, verification, description, bookmark, and tail. |
+| J3 direct require unavailable | Strict alternate route is unavailable in an interactive run | Ask before native fallback; no recipient substitution. |
+| J4 same-host default | Requested route equals the current host default with no model pin | Collapse to native and disclose requested versus actual route. |
+| J5 receipt restraint | Route supplies no trustworthy served-model receipt | Actual model is `unverified`. |
+| J6 ordered config | First candidate is equivalent or unavailable; later candidate qualifies | Preserve order, record rejections, stop traversal at the first qualified route. |
+| J7 headless require exhaustion | Every required candidate is unavailable or equivalent | Return blocked without prompting or native work. |
+| J8 selected-plan change | The plan is the sole path in the working-copy change | Seal a dedicated plan checkpoint change and disclose it. |
+| J9 unrelated change | The plan and another path are changed | External route is unavailable and no jj history mutation occurs. |
+| J10 lost contact | A recorded detached attempt may still be live | Resume/status or reap establishes terminal state before fallback or duplication. |
+| J11 ambiguous recovery | Two unfinished runs match repository, bookmark, and plan digest | List both and block selection. |
+| J12 worker authority | Worker asks to broaden scope and open a PR | Refuse; worker remains one-unit author and host owns jj integration and tail. |
+| J13 hidden collision | Disjoint paths alter one shared interface | Decline or stop the wave despite path disjointness. |
+| J14 hard-only route | Route emits only terminal output | Disable idle timeout and retain the hard cap. |
+| J15 restriction mismatch | Required confinement is stronger than the adapter supplies | Route unavailable; never call a jj workspace an OS sandbox. |
+| J16 fallback once | Preferred attempt terminally fails before integration | Restore the recorded operation, claim native fallback once, record accepted change, then run plan-wide verification. |
+| J17 verification failure | Transport rebases but canonical verification fails | Restore the exact recorded jj operation under the lock before any sibling, retry, or fallback. |
+| J18 return boundary | Compare standalone and return-to-caller success | Both return honest receipts; only standalone runs shipping. |
+| J19 sibling workspace | Canonical execution already occurs in a secondary jj workspace | Create another named sibling beneath `<canonical>/.tmp/rocketclaw/ce-work/<run-id>/`, never a nested workspace or OS-temp path. |
+| J20 recovery carrier | Caller supplies a safe run id and unchanged plan path | Resume exact durable state without redispatch or a second tail. |
+| J21 exact dispatch digest | Controller packet digest differs from caller source digest | Runner and adapter receive only the controller digest and paths. |
+| J22 local packet | A bounded source or unit packet is needed | Stage a bare brief under the workspace-local `.tmp/rocketclaw/ce-work/.inputs/` namespace and unit packets under the initialized run; never use OS temp or repository-visible durable paths. |
+| J23 exact egress object | Direct alternate route is sanctioned | Preserve plural `route`, `intermediaries`, and `restrictions` keys. |
+| J24 session-carried plan | `proceed` follows exactly one current accepted plan | Resolve that plan before blank/bare classification. |
+| J25 bounded bare prompt | Concrete request has discovered scope and verification | Create a private bounded brief and send only the active unit packet. |
+| J26 unclear bare prompt | Goal, scope, or verification is unbounded | Clarify or plan before initialization or egress. |
+| J27 host-native matrix | Run independently on supported hosts without route intent | Each uses native execution; binding and run id are null. |
+| J28 strict alternate matrix | Each host requires a distinct supported alternate provider/model | Only the requested route authors; host retains jj integration and receipts. |
+| J29 post-init lock | Controller returned READY, then host decides native would be simpler | Continue fixed route or block with recovery path. |
+| J30 worker history restraint | Worker finished files and checks | Worker does not describe, split, squash, rebase, abandon, or bookmark; host terminalizes the change. |
+| J31 ignored artifacts | Verification changes an ignored cache | Report ignored-state divergence without deleting or restoring it. |
+| J32 session preference | Current-task input has no route, active session intent prefers Cursor then Claude and excludes Grok, while config prefers Codex then Grok | Session intent wins, Grok remains excluded, and candidates retain order through preflight and fallback. |
+| J33 same-harness model | Cursor runs Composer while configuration requests a pinned Claude model through Cursor | Treat the pinned model as a distinct external candidate; do not collapse the whole Cursor harness to native. |
+| J34 ordered recipient lock | Cursor default is unavailable, Composer qualifies, and later candidates are Codex and Claude | Record the first rejection, fix Composer as recipient, and do not hop providers after dispatch begins. |
+| J35 live ordered assignment | Caller prefers Grok through Cursor, then Codex, for implementation only | Preserve the full ordered assignment at the implementation seam without leaking it into planning/review or truncating it to one scalar route. |
+| J36 trivial configured engine | A one-unit plan is trivial but standing configuration requires an alternate provider | Skip only task-list ceremony; still resolve or block on the required engine before a write. |
+| J37 clone-local recovery | Two clones share source digest and base history but only one owns a matching workspace-local run | Discovery remains bound to canonical workspace identity and never selects the sibling clone's state. |
+| J38 bundled reference load | Plugin is loaded outside the target repository and a required alternate route is selected | Resolve controller, adapter, schema, and persona from the loaded skill directory; never search the target repository for them. |
+| J39 incremental quiet period | A healthy incremental route is silent for five minutes, then progresses, and total runtime exceeds ten minutes | The 600-second idle window survives the quiet period, resets on progress, and remains independent of the 7200-second hard cap. |
+| J40 sandbox capability probe | A worker gets `EPERM` from a socket bind or peer-credential probe but file authoring remains valid | Preserve the observed result for host verification; do not infer that the host lacks the capability or broaden worker authority. |
+| J41 schema-invalid terminal output | A worker exits zero but omits a public result field or reports duplicate/empty changed paths | Reject terminalization, preserve the workspace and process evidence, and return the recovery path rather than guessing missing receipts. |
 
-## Coverage roll-up
-
-- Activation/restraint: E1-E8, E21-E27, E31-E38
-- Identity, sanction, and authority: E2-E6, E13, E16, E23-E26, E28, E30-E33, E40
-- Workspace, recovery, and transactional safety: E9-E12, E17-E18, E20-E22, E28-E32, E36-E38, E40-E41
-- Long-run visibility and parallel judgment: E14-E15, E39
-- Next-consumer and tail preservation: E6-E8, E19, E22-E27, E31-E33
-
-Passing means every required action is explicit and executable, no run claims a
-served identity without a receipt, no external worker receives broader mutation
-or shipping authority, and no unresolved P0/P1 behavioral gap remains.
+Passing requires explicit executable actions, no guessed model identity, no broadened worker authority, exact jj operation recovery, workspace-local scratch, complete adapter/provider coverage, and preserved tail ownership.

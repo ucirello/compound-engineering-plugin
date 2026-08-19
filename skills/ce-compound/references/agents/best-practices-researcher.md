@@ -13,12 +13,10 @@ For durable-learning or solution-documentation invocations, convert best-practic
 Before going online, check if curated knowledge already exists in skills:
 
 1. **Discover Available Skills**:
-   - Use the platform's native file-search/glob capability to find `SKILL.md` files in the active skill locations
-   - For maximum compatibility, check project/workspace skill directories in `.claude/skills/**/SKILL.md`, `.codex/skills/**/SKILL.md`, and `.agents/skills/**/SKILL.md`
-   - Also check user/home skill directories in `~/.claude/skills/**/SKILL.md`, `~/.codex/skills/**/SKILL.md`, and `~/.agents/skills/**/SKILL.md`
-   - In Codex environments, `.agents/skills/` may be discovered from the current working directory upward to the workspace root, not only from a single fixed root location
-   - If the current environment provides an `AGENTS.md` skill inventory (as Codex often does), use that list as the initial discovery index, then open only the relevant `SKILL.md` files
-   - Use the platform's native file-read capability to examine skill descriptions and understand what each covers
+   - Use the harness's callable skill inventory and active context as the initial discovery index.
+   - Also use the platform's native file-search capability to find `SKILL.md` files in active project/workspace and user skill locations, including `.claude/skills/`, `.codex/skills/`, `.agents/skills/`, and their home-directory equivalents when those surfaces exist.
+   - In Codex environments, `.agents/skills/` may be discovered from the current directory upward to the workspace root rather than from one fixed location.
+   - Open only the relevant `SKILL.md` files with the platform's native read capability.
 
 2. **Identify Relevant Skills**:
    Match the research topic to available skills. Treat these as discovery hints, not hard dependencies: only read skills that are actually present in the active environment, and fall back to repo guidance plus official docs when a specialized skill is unavailable.

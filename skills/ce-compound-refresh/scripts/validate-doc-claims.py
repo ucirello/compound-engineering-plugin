@@ -13,16 +13,15 @@ Scope: mechanical grounding checks on a written doc's *body*. Complements
 validate-frontmatter.py (parser-safety) — this script checks the body's
 citations against the repository:
 
-    1. Cited repo-relative paths (backticked, containing at least one '/')
-       exist in the working copy; tokens containing '../' resolve from the
+    1. Cited workspace-relative paths (backticked, containing at least one '/')
+       exist in the workspace; tokens containing '../' resolve from the
        doc's directory (those escaping the workspace are skipped). Misses in
-       the parent or trunk revision still count as real paths and are classified
-       (deleted/current-change removal vs stale workspace). Tokens
-       missing everywhere are flagged only when path-shaped; slash-delimited
-       identifiers (bookmark names, revisions, provider/model IDs) are skipped.
-    2. Cited Git commit IDs (7-40 hex chars with at least one digit and one
-       a-f letter) resolve through Jujutsu, classified by reachability from
-       the current change and trunk revision.
+       the parent revision or trunk still count as real paths and are classified
+       (removed in the workspace vs stale checkout). Tokens missing everywhere
+       are flagged only when path-shaped; slash-delimited identifiers (bookmark
+       names, revision expressions, provider/model IDs) are skipped.
+    2. Cited Jujutsu change IDs and commit IDs resolve to revisions, classified
+       by ancestry from the current change and trunk.
     3. Relative markdown link targets resolve from the doc's location.
     4. Dangling drafting scaffold: "Learning(s) N" numbering and
        unresolved {{...}} placeholder tokens. Inline code spans and fenced
@@ -35,8 +34,8 @@ cite a path deleted by the very fix it documents. The calling agent
 decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
-The script never touches the network (no fetch); classification uses the local
-Jujutsu view. Run a best-effort `jj git fetch` first when freshness matters.
+The script never touches the network; classification uses local Jujutsu
+bookmarks. Run a best-effort `jj git fetch` first when freshness matters.
 Pure stdlib (no third-party deps).
 """
 import os
@@ -48,7 +47,8 @@ import sys
 PLACEHOLDER_CHARS = set("<>{}*$")
 PLACEHOLDER_SUBSTRINGS = ("path/to", "...", "…")
 
-SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
+COMMIT_ID_RE = re.compile(r"\b[0-9a-f]{7,64}\b")
+CHANGE_ID_RE = re.compile(r"[k-z]{7,64}")
 BACKTICK_RE = re.compile(r"`([^`\n]+)`")
 MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
@@ -98,8 +98,8 @@ def is_path_candidate(token: str) -> bool:
         return False
     if "://" in token or token.startswith(("http", "#", "/", "~")):
         return False
-    if token.startswith(("origin/", "upstream/", "refs/")):
-        return False  # remote bookmarks/revisions, not workspace paths
+    if token.startswith(("origin/", "upstream/", "bookmarks/")):
+        return False  # bookmark-like names, not workspace paths
     if PLACEHOLDER_CHARS & set(token):
         return False
     if any(sub in token for sub in PLACEHOLDER_SUBSTRINGS):
@@ -109,7 +109,7 @@ def is_path_candidate(token: str) -> bool:
 
 def is_path_shaped(token: str, base: str) -> bool:
     """Distinguish a path citation from a slash-delimited identifier
-    (bookmark name, provider/model ID) among tokens found nowhere in the workspace."""
+    (bookmark name, provider/model ID) among tokens found nowhere in Jujutsu."""
     segments = token.split("/")
     if re.search(r"\.[A-Za-z0-9]{1,8}$", segments[-1]):
         return True
@@ -180,7 +180,7 @@ def main(argv: list[str]) -> int:
     flags: list[str] = []
 
     # --- Workspace context ------------------------------------------------
-    code, workspace_root = jj(["workspace", "root"], doc_dir)
+    code, workspace_root = jj(["root"], doc_dir)
     in_jj = code == 0 and bool(workspace_root)
     trunk: str | None = None
     if in_jj:
@@ -191,22 +191,24 @@ def main(argv: list[str]) -> int:
         if code == 0 and trunk_id:
             trunk = "trunk()"
             code, behind = jj(
-                ["log", "-r", "@..trunk()", "--count"], workspace_root
+                ["log", "-r", "@..trunk()", "--no-graph", "-T", 'commit_id ++ "\\n"'],
+                workspace_root,
             )
-            if code == 0 and behind.isdigit() and int(behind) > 0:
+            if code == 0 and behind:
+                count = len(behind.splitlines())
                 infos.append(
-                    f"INFO: current change is behind trunk by {behind} revisions — "
+                    f"INFO: workspace is {count} changes behind trunk — "
                     "verify merge-state claims against remote truth (gh pr view), "
-                    "not this workspace"
+                    "not this checkout"
                 )
         else:
             infos.append(
-                "INFO: no trunk revision found — path/commit-ID classification "
-                "limited to the current change"
+                "INFO: no trunk revision found — "
+                "path/revision-ID classification limited to the current change"
             )
     else:
         infos.append(
-            "INFO: not a Jujutsu workspace — path and commit-ID classification skipped "
+            "INFO: not a Jujutsu workspace — path and revision-ID classification skipped "
             "(scaffold and link checks still apply)"
         )
 
@@ -250,70 +252,90 @@ def main(argv: list[str]) -> int:
         loc = loc_suffix(raw)
         if tracked_parent:
             flags.append(
-                f"FLAG path `{token}`{loc} — present in the parent but missing from "
-                "the working copy: deleted in the current change? Annotate as "
+                f"FLAG path `{token}`{loc} — present in the parent revision but missing from "
+                "the workspace: removed by the current change? Annotate as "
                 "historical (e.g. removed by this fix) or restore it."
             )
         elif tracked_trunk:
             flags.append(
-                f"FLAG path `{token}`{loc} — not in the working copy but exists at "
-                "trunk(): stale workspace? Annotate or verify against remote truth."
+                f"FLAG path `{token}`{loc} — not in the workspace but exists at "
+                "trunk: stale checkout? Annotate or verify against the remote bookmark."
             )
         else:
-            where = "working copy or trunk()" if trunk else "working copy"
+            where = "workspace or trunk" if trunk else "workspace"
             flags.append(
                 f"FLAG path `{token}`{loc} — not found in {where}. Fix the "
                 "citation, or annotate it as historical (e.g. removed by this fix)."
             )
 
-    # --- 2. Cited Git commit IDs -------------------------------------------
-    checked_shas = 0
-    seen_shas: set[str] = set()
+    # --- 2. Cited revision IDs ---------------------------------------------
+    checked_ids = 0
+    seen_ids: set[str] = set()
     if in_jj:
-        for m in SHA_RE.finditer(body):
-            sha = m.group(0)
-            if sha in seen_shas:
+        candidates = [(m.group(0), "commit") for m in COMMIT_ID_RE.finditer(body)]
+        candidates.extend(
+            (token, "change")
+            for token in BACKTICK_RE.findall(body)
+            if CHANGE_ID_RE.fullmatch(token)
+        )
+        for revision_id, id_kind in candidates:
+            if revision_id in seen_ids:
                 continue
-            if not (any(c.isdigit() for c in sha) and any(c in "abcdef" for c in sha)):
-                continue  # dates and decimal ids are not SHAs
-            seen_shas.add(sha)
-            checked_shas += 1
-            loc = loc_suffix(sha)
+            if id_kind == "commit" and not (
+                any(c.isdigit() for c in revision_id)
+                and any(c in "abcdef" for c in revision_id)
+            ):
+                continue  # dates and decimal ids are not commit IDs
+            seen_ids.add(revision_id)
+            checked_ids += 1
+            loc = loc_suffix(revision_id)
             code, _ = jj(
-                ["log", "-r", sha, "--no-graph", "-T", "commit_id"],
+                ["log", "-r", revision_id, "--no-graph", "-T", "commit_id"],
                 workspace_root,
             )
             if code != 0:
                 flags.append(
-                    f"FLAG commit ID {sha}{loc} — does not resolve through Jujutsu in this "
-                    "workspace. Replace with the PR number, or drop it."
+                    f"FLAG {id_kind} ID {revision_id}{loc} — does not resolve to a revision in this "
+                    "workspace. Replace with the PR number or stable change ID, or drop it."
                 )
                 continue
-            in_current = jj(
-                ["log", "-r", f"{sha} & ::@", "--count"], workspace_root
-            )[1] == "1"
-            in_trunk = trunk is not None and jj(
-                ["log", "-r", f"{sha} & ::trunk()", "--count"], workspace_root
-            )[1] == "1"
+            in_current = (
+                jj(
+                    ["log", "-r", f"{revision_id} & ::@", "--no-graph", "-T", "commit_id"],
+                    workspace_root,
+                )[1]
+                != ""
+            )
+            in_trunk = (
+                trunk is not None
+                and jj(
+                    ["log", "-r", f"{revision_id} & ::trunk()", "--no-graph", "-T", "commit_id"],
+                    workspace_root,
+                )[1]
+                != ""
+            )
             if in_current and (in_trunk or trunk is None):
                 continue
             if in_current and not in_trunk:
                 flags.append(
-                    f"FLAG commit ID {sha}{loc} — reachable from the current change but not "
-                    "trunk(): mutable change whose Git commit ID may be rewritten. "
-                    "Prefer citing the PR number."
+                    f"FLAG {id_kind} ID {revision_id}{loc} — ancestral to the current change but not trunk: "
+                    + (
+                        "the commit ID may be rewritten. Prefer citing the stable change ID or PR number."
+                        if id_kind == "commit"
+                        else "the change is local-only. Prefer citing the PR number when readers need remote evidence."
+                    )
                 )
             elif in_trunk:
                 flags.append(
-                    f"FLAG commit ID {sha}{loc} — not reachable from the current change but "
-                    "reachable from trunk(): this workspace predates the merge. Add a "
+                    f"FLAG {id_kind} ID {revision_id}{loc} — not ancestral to the current change but ancestral "
+                    "to trunk: this checkout predates or diverges from the merge. Add a "
                     "temporal qualifier or verify the claim via gh."
                 )
             else:
                 flags.append(
-                    f"FLAG commit ID {sha}{loc} — exists but is unreachable from the current change"
-                    + (" or trunk()" if trunk else "")
-                    + ": likely a rewritten-away commit. Prefer citing the PR number."
+                    f"FLAG {id_kind} ID {revision_id}{loc} — exists but is not ancestral to the current change"
+                    + (" or trunk" if trunk else "")
+                    + ": likely divergent. Prefer citing the PR number when readers need remote evidence."
                 )
 
     # --- 3. Relative markdown links -----------------------------------------
@@ -353,7 +375,7 @@ def main(argv: list[str]) -> int:
     for flag in flags:
         print(flag)
     print(
-        f"checked {checked_paths} paths, {checked_shas} SHAs, "
+        f"checked {checked_paths} paths, {checked_ids} revision IDs, "
         f"{checked_links} links; {len(flags)} flags"
     )
     if flags:

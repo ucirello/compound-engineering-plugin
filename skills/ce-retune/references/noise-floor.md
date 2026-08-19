@@ -4,33 +4,33 @@ Phase 2 protocol. Measure what changing nothing produces, then write down the ba
 
 ## What the A/A run buys
 
-Two builds of the corpus at the same revision, run under one harness on one task, produce a distribution rather than a result. That distribution is the floor: any later claim smaller than it is unsupported no matter how confidently it was reported. In the engagement this was the single most valuable measurement of the session — 12 runs across two identical builds gave workflow adherence 7 of 12 and output tokens from 21,872 to 155,682, a 7.12x spread on identical code. It retired every small-sample claim in flight, including an outside analyst's "2 of 8 improved to 5 of 8", which sits entirely inside the envelope of doing nothing.
+Two builds of the corpus at the same jj revision, run under one harness on one task, produce a distribution rather than a result. That distribution is the floor: any later claim smaller than it is unsupported no matter how confidently it was reported. In the engagement this was the single most valuable measurement of the session — 12 runs across two identical builds gave workflow adherence 7 of 12 and output tokens from 21,872 to 155,682, a 7.12x spread on identical code. It retired every small-sample claim in flight, including an outside analyst's "2 of 8 improved to 5 of 8", which sits entirely inside the envelope of doing nothing.
 
-The A/A also tests the instrument. Identical builds that differ significantly are not evidence about the corpus; they are a harness, provenance, or scoring bug. Chase that before continuing.
+The A/A also tests the instrument. Identical builds that differ significantly are not evidence about the corpus; they are a harness, source-identity, or scoring bug. Chase that before continuing.
 
 ## Setup
 
-Required capability: a harness that can point a run at a specific source workspace of the corpus (Phase 0's build selector) and writes a per-run artifact you can parse. Both arms must go through the *same* runner, task, and model configuration.
+Required capability: a harness that can point a run at a specific jj workspace or source tree of the corpus (Phase 0's build selector) and writes a per-run artifact you can parse. Both arms must go through the *same* runner, task, and model configuration.
 
-1. Materialize two Jujutsu workspaces from the same source revision under `<workspace-root>/.tmp/rocketclaw/ce-retune/<run-id>/<arm-name>/`. Resolve `<workspace-root>` with `jj workspace root`, falling back to the current directory, and choose `<run-id>` and distinct neutral `<arm-name>` values dynamically. Record the source change ID and commit ID for each arm.
+1. Materialize two jj workspaces of the corpus at the same revision. Record the revision for each arm.
 2. Hash both trees and assert equality before the first run (`find <dir> -type f | sort` then a checksum over the file list and contents). An accidental difference between arms gets read as noise and poisons the floor silently.
-3. Label the arms concretely by their dynamically chosen paths, not by intent. Nothing downstream should be able to guess an arm from a filename that also encodes a hypothesis.
-4. **Prove the selector is honored, in one run, before planning any.** Point a single run at one arm path, then open the finished artifact and confirm it names that path in the durable field below. Two failures both look like a normal run: a harness that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all counted runs unlabeled and unusable, and both are invisible until you try to score. If you want a positive control, put a harmless unique string in a **third**, dynamically named throwaway workspace under the same run directory and confirm it reaches that run's trace — never in either measured arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.
+3. Label the arms concretely by path, not by intent (`build-a`, `build-b`). Nothing downstream should be able to guess an arm from a filename that also encodes a hypothesis.
+4. **Prove the selector is honored, in one run, before planning any.** Point a single run at `build-a`, then open the finished artifact and confirm it names `build-a` in the durable field below. Two failures both look like a normal run: a harness that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all 12 runs unlabeled and unusable, and both are invisible until you try to score. If you want a positive control, put a harmless unique string in a **third**, throwaway jj workspace and confirm it reaches that run's trace — never in either arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.
 5. Plan 12 or more runs total, split evenly. Below about 10 the floor estimate is itself noise; the spread ratio in particular needs the tails.
 
 ## Interleave, never batch
 
-Alternate the dynamically named arms run by run — `<arm-one>`, `<arm-two>`, `<arm-one>`, `<arm-two>` — and alternate which arm goes first across pairs. Never batch all runs from either arm.
+Alternate arms run by run — A, B, A, B — and alternate which arm goes first across pairs (A/B, then B/A). Never run all of arm A and then all of arm B.
 
 Batching confounds the comparison with API load, rate-limit backoff, transient service degradation, and time of day. Those effects are large and they are indistinguishable after the fact from a real difference between builds: there is no post-hoc correction, because the confound and the effect are the same column. Interleaving costs nothing — the same number of runs, reordered — and it makes each pair a matched observation you can analyze paired if you want the extra power.
 
 If a run dies for an infrastructure reason, re-run *that arm's* slot rather than dropping the pair, and mark the row so the archive's broken-run taxonomy (`references/baseline-mining.md`) still classifies it correctly.
 
-## Provenance per row
+## Source identity per row
 
 Every scored row must carry which build produced it, **read from the artifact the harness wrote**, never inferred from run order, timestamp, or the order you launched things.
 
-The engagement's first scorer read the field the harness exposes for the source-workspace override *while a run is in flight*. On completion the harness folds that value into the run's metadata and clears the live field, so every finished row had an empty build column and the arms were unverifiable from the scored data. The runs were fine; the measurement was worthless until re-scored.
+The engagement's first scorer read the field the harness exposes for the source-tree override *while a run is in flight*. On completion the harness folds that value into the run's metadata and clears the live field, so every finished row had an empty build column and the arms were unverifiable from the scored data. The runs were fine; the measurement was worthless until re-scored.
 
 The rule that generalizes: **read the durable post-completion field first, fall back to the transient in-flight one.**
 
@@ -46,7 +46,7 @@ Minimum row schema:
 |---|---|
 | `run_id` | join key back to the raw trace |
 | `build` | arm, from the durable field |
-| `change_id`, `commit_id` | prove the arms were based on the same source revision |
+| `commit` | jj commit ID proving the arms were the same source |
 | `pair_index`, `position_in_pair` | recovers the interleave for paired analysis |
 | `adherence` | followed the workflow (separate from outcome) |
 | `outcome` | did the job |

@@ -6,21 +6,18 @@ import { execFileSync } from 'node:child_process';
 
 function jj(...args) {
   try {
-    return execFileSync('jj', ['--ignore-working-copy', ...args], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execFileSync('jj', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
   } catch {
     return '';
   }
 }
 
 function buildResolvedContext() {
-  const revision = jj('log', '-r', '@', '--no-graph', '-T', 'bookmarks ++ "\\n" ++ change_id.shortest() ++ "\\n" ++ commit_id.shortest()');
-  const [bookmarks = '', change = '', commit = ''] = revision.split('\n');
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `bookmarks: ${bookmarks || '(none)'}`,
-    `change: ${change || '(not a Jujutsu workspace)'}`,
-    `commit: ${commit || '(none)'}`,
+    `bookmarks: ${jj('log', '-r', '@', '--no-graph', '-T', 'bookmarks.join(",") ++ "\\n"') || '(none)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short() ++ "\\n"') || '(not a jj workspace)'}`,
   ].join('\n');
 }
 
@@ -59,8 +56,8 @@ const SUBAGENT_AUTHORIZATION = [
 // user "your standing instruction prohibits agent dispatch" — a system-prompt
 // default re-narrated as a user preference the user never stated and so
 // cannot correct.
-const HARNESS_ATTRIBUTION = [
-  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
+const HARNESS_ORIGIN = [
+  'HARNESS_ORIGIN: A constraint that originates in your system prompt or harness configuration',
   "is never described to the user as their instruction, preference, or standing request.",
   'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
 ].join(' ');
@@ -91,7 +88,7 @@ function cli() {
   const parts = [
     buildResolvedContext(),
     SUBAGENT_AUTHORIZATION,
-    HARNESS_ATTRIBUTION,
+    HARNESS_ORIGIN,
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];

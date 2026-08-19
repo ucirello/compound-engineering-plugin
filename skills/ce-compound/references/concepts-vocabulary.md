@@ -1,6 +1,6 @@
 # CONCEPTS.md vocabulary rules
 
-`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and the project's active instructions can cite without redefinition. It lives at the workspace root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
+`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and the project's instructions can cite without redefinition. It lives at the workspace root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
 
 ## How terms enter: accretion and seeding
 

@@ -97,7 +97,7 @@ Strengthening [section names] — [brief reason for each, e.g., "decision ration
 
 For each selected section, choose the smallest useful agent set. Do **not** run every agent. Use at most **1-3 agents per section** and usually no more than **8 agents total**.
 
-The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed `Agent` names, or platform-level agent registration.
+The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed names, or platform-level persona registration.
 
 **Deterministic Section-to-Agent Mapping:**
 
@@ -110,7 +110,7 @@ The names below are skill-local prompt asset file stems under `references/agents
 - `framework-docs-researcher` for official framework or library behavior
 - `best-practices-researcher` for current external patterns and industry guidance
 - `web-researcher` for landscape/prior-art gaps — competitor patterns, market signals, or an unsettled external option set (which library/provider/approach) that recommendations depend on
-- Add `jj-history-analyzer` only when historical rationale or prior art is materially missing
+- Add `git-history-analyzer` only when historical rationale or prior art is materially missing
 
 **Key Technical Decisions**
 - `architecture-strategist` for design integrity, boundaries, and architectural tradeoffs
@@ -174,11 +174,10 @@ Signals that justify artifact-backed mode:
 
 If artifact-backed mode is not clearly warranted, stay in direct mode.
 
-Artifact-backed mode uses a private per-run directory under the workspace-local `.tmp/rocketclaw/` tree. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Resolve the workspace root with `jj workspace root`; if that fails, use the current directory. Do not use `.context/`; the artifacts are per-run throwaway and are cleaned up when deepening ends (see 5.3.6b). Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
+Artifact-backed mode uses a private per-run directory under the jj workspace root's `.tmp`; when no workspace is available, use `.tmp` under the current directory. Create it once with mode `0700`, reject symlinks, reserve a collision-resistant name atomically, and pass its resolved absolute path to each subagent. Do not use the resolved artifact root for scratch.
 
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"; SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw"; mkdir -p "$SCRATCH_ROOT"; SCRATCH_DIR="$(mktemp -d "$SCRATCH_ROOT/plan-deepen-XXXXXX")"
-echo "$SCRATCH_DIR"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"; SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"; [ ! -L "$SCRATCH_ROOT" ] || exit 1; mkdir -p "$SCRATCH_ROOT"; [ -O "$SCRATCH_ROOT" ] || exit 1; chmod 700 "$SCRATCH_ROOT"; while :; do SCRATCH_DIR="$SCRATCH_ROOT/plan-deepen-$(date +%s)-$RANDOM"; mkdir -m 700 "$SCRATCH_DIR" 2>/dev/null && break; done; printf '%s\n' "$SCRATCH_DIR"
 ```
 
 Refer to the echoed absolute path as `<scratch-dir>` throughout the rest of this workflow.
@@ -223,7 +222,7 @@ Findings against `session-settled:`-labeled KTDs are presented like any other �
 
 After all agents have been reviewed, carry only the accepted findings forward to 5.3.7.
 
-If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. Leave `$SCRATCH_DIR` in the workspace-local scratch tree when preserving rejected agent artifacts for debugging.
+If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4. This interactive-mode-only skip does not apply in auto mode. Remove the workspace-local scratch directory after its artifacts are no longer needed; if preservation is required for debugging, report its path.
 
 If findings were accepted and the plan was modified, proceed through 5.3.7 and 5.3.8 as normal — document-review acts as a quality gate on the changes.
 
@@ -253,7 +252,7 @@ Allowed changes:
 
 Do **not**:
 - Add implementation code — no imports, exact method signatures, or framework-specific syntax. Pseudo-code sketches and DSL grammars are allowed
-- Add Jujutsu commands, change choreography, or exact test command recipes
+- Add jj commands, change-description choreography, or exact test command recipes
 - Add generic `Research Insights` subsections everywhere
 - Rewrite the entire plan from scratch
 - Invent new product requirements, scope changes, or success criteria without surfacing them explicitly

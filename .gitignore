@@ -9,4 +9,5 @@ todos/
 __pycache__/
 *.pyc
 
-.compound-engineering/*.local.yaml
+.rocketclaw/*.local.yaml
+.tmp/

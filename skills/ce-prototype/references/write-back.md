@@ -1,6 +1,6 @@
 # Product Contract write-back
 
-Load this only when the user applies decisions and this run has a directly related brainstorm or plan — the path passed on invoke, passed by the calling skill, or named in this session as the file this prototype is for. If this run's scratch `decisions.md` exists, use it as the continuity capsule: decisions, adjustments, rejections, and the prototype path. Do not copy the file into the repo. Do not paste the prototype into the plan.
+Load this only when the user applies decisions and this run has a directly related brainstorm or plan — the path passed on invoke, passed by the calling skill, or named in this session as the file this prototype is for. If this run's scratch `decisions.md` exists, use it as the continuity capsule: decisions, adjustments, rejections, and the prototype path. Do not copy the file into the workspace. Do not paste the prototype into the plan.
 
 Markdown and HTML artifacts both get written back. `ce-plan` already rewrites an `.html` plan in place on resume, and the HTML artifact carries a visible Product Contract, visible readiness metadata, and stable section anchors, so the edits below have somewhere to land in either format.
 
@@ -8,7 +8,7 @@ Markdown and HTML artifacts both get written back. `ce-plan` already rewrites an
 
 Where a branch below sends the run to a recap, that recap — the decisions, plus the prototype path when the run left one behind — is the run's complete result, not a degraded write-back. What fails closed is the write, not the run.
 
-- If there is no related path, or more than one file could be the target: do not write. Recap in chat. Recommend `ce-brainstorm` or `ce-plan`. Do not mint a plan or a third note. Do not search the repo for a matching plan. Do not write under `<root>/plans/` or any other artifact root.
+- If there is no related path, or more than one file could be the target: do not write. Recap in chat. Recommend `ce-brainstorm` or `ce-plan`. Do not mint a plan or a third note. Do not search the workspace for a matching plan. Do not write under `<root>/plans/` or any other artifact root.
 - If the file has no Product Contract section: do not invent a file or a section. Recap in chat. Recommend `ce-brainstorm` or `ce-plan`.
 - If the file is `requirements-only` and a same-basename sibling in the other format is `implementation-ready`, a format conversion superseded the one you were handed and `ce-work` executes the sibling instead. Do not write. Name the canonical file and let the user say which one they meant — decisions written into the superseded copy would never reach what gets built.
 

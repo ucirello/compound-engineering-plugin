@@ -2,9 +2,9 @@
 """
 Analyze a product feedback source.
 
-Supported sources: Riffrec zip, standalone video, standalone audio, and
+Supported sources: feedback export zip, standalone video, standalone audio, and
 meeting notes text/markdown. The script extracts transcript, high-signal
-video frames when available, and CE-friendly markdown artifacts.
+video frames when available, and neutral markdown artifacts.
 """
 
 from __future__ import annotations
@@ -54,17 +54,17 @@ NOTES_EXTENSIONS = {".txt", ".md", ".markdown", ".text"}
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analyze a product feedback source")
-    parser.add_argument("source_path", type=Path, help="Path to a Riffrec zip, video, audio, or meeting notes file")
+    parser.add_argument("source_path", type=Path, help="Path to a feedback export zip, video, audio, or meeting notes file")
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted evidence/kickoff artifacts. Defaults to docs/brainstorms/riffrec-feedback/<source-stem> when available; durable ce-brainstorm outputs live in the plans artifact directory.",
+        help="Directory for extracted evidence and kickoff artifacts. Defaults to docs/brainstorms/feedback-analysis/<source-stem> when available; durable ce-brainstorm outputs live in the plans artifact directory.",
     )
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
         "--model",
-        default=os.environ.get("RIFFREC_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe"),
-        help="OpenAI transcription model to use when OPENAI_API_KEY is set",
+        default=os.environ.get("TRANSCRIPTION_MODEL"),
+        help="Transcription model to use when the generic transcription API is configured",
     )
     parser.add_argument("--no-transcribe", action="store_true", help="Skip media transcription")
     parser.add_argument("--max-moments", type=int, default=12, help="Maximum screenshots to extract")
@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
 
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
-    return re.sub(r"-{2,}", "-", slug) or "riffrec-feedback"
+    return re.sub(r"-{2,}", "-", slug) or "feedback-analysis"
 
 
 def read_json(path: Path, default: Any) -> Any:
@@ -106,13 +106,13 @@ def default_output_dir(zip_path: Path) -> Path:
     cwd = Path.cwd()
     stem = slugify(zip_path.stem)
     if (cwd / "docs" / "brainstorms").is_dir():
-        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return cwd / "riffrec-feedback" / stem
+        return cwd / "docs" / "brainstorms" / "feedback-analysis" / stem
+    return cwd / "feedback-analysis" / stem
 
 
 def classify_source(source_path: Path) -> str:
     if zipfile.is_zipfile(source_path):
-        return "riffrec_zip"
+        return "feedback_export_zip"
     suffix = source_path.suffix.lower()
     if suffix in NOTES_EXTENSIONS:
         return "meeting_notes"
@@ -178,7 +178,7 @@ def prepare_source(source_path: Path, raw_dir: Path) -> dict[str, Any]:
     raw_dir.mkdir(parents=True, exist_ok=True)
     source_kind = classify_source(source_path)
 
-    if source_kind == "riffrec_zip":
+    if source_kind == "feedback_export_zip":
         safe_extract(source_path, raw_dir)
         session = read_json(raw_dir / "session.json", {})
         events_payload = read_json(raw_dir / "events.json", {})
@@ -301,12 +301,13 @@ def transcript_has_complaint(transcript: str) -> bool:
 def transcribe_media(media_path: Path | None, model: str) -> dict[str, Any]:
     if not media_path or not media_path.exists():
         return {"status": "missing", "text": ""}
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    api_key = os.environ.get("TRANSCRIPTION_API_KEY")
+    api_url = os.environ.get("TRANSCRIPTION_API_URL")
+    if not api_key or not api_url or not model:
         return {
             "status": "skipped",
             "text": "",
-            "reason": "OPENAI_API_KEY is not set. Re-run with the key available to transcribe the media file.",
+            "reason": "TRANSCRIPTION_API_KEY, TRANSCRIPTION_API_URL, and TRANSCRIPTION_MODEL must all be set to transcribe media.",
         }
     if not shutil.which("curl"):
         return {"status": "skipped", "text": "", "reason": "curl is not installed"}
@@ -314,7 +315,7 @@ def transcribe_media(media_path: Path | None, model: str) -> dict[str, Any]:
     command = [
         "curl",
         "-sS",
-        "https://api.openai.com/v1/audio/transcriptions",
+        api_url,
         "-H",
         f"Authorization: Bearer {api_key}",
         "-F",
@@ -680,7 +681,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use workspace-relative screenshot paths when moving evidence into a requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -1113,7 +1114,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

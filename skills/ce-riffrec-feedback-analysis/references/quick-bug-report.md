@@ -4,14 +4,16 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Run the analyzer to a temp directory so nothing pollutes the repo (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command — shell state does not persist between Bash calls):
+1. Run the analyzer in the jj workspace's `.tmp/rocketclaw/` namespace (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command — shell state does not persist between Bash calls). If `jj workspace root` does not identify a workspace, use the current directory as the local fallback:
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the ce-riffrec-feedback-analysis SKILL.md>";
-   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$(mktemp -d "${TMPDIR:-/tmp}/riffrec-quick-XXXXXX")"
+   JJ_ROOT="$(jj workspace root 2>/dev/null)";
+   OUTPUT_DIR="${JJ_ROOT:-$PWD}/.tmp/rocketclaw/riffrec-feedback/quick-$(date +%Y%m%d-%H%M%S)-$$";
+   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$OUTPUT_DIR"
    ```
 
-   Capture the printed output directory; later steps read from it.
+   Capture the printed output directory; later steps read from it. Keep this `.tmp/` namespace out of tracked changes.
 
 2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 
@@ -37,7 +39,7 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only in the temp dir and are discarded by the OS.
+- Do not include `raw/` or `frames/` in tracked changes. Remove the quick-path output directory after emitting the report unless the user asks to retain it.
 - No source-mapping pass across the codebase.
 
 ## Escalation

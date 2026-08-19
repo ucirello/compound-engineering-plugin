@@ -1,7 +1,7 @@
 # Peer point-of-view brief
 
 Form an independent, decisive point of view on the supplied subject, grounding
-yourself in evidence you inspect in the shared working tree. Do not require or
+yourself in evidence you inspect in the shared working copy. Do not require or
 infer a host-curated project summary. Match the subject's shape: use an adoption
 grade for an adoption question, a holistic assessment with a bottom line for a
 document, and a preferred option or an honest "either is viable" tradeoff for
@@ -11,7 +11,7 @@ Run your own external check when the available web-only capability can verify a
 load-bearing claim. Use public subject-level terms only. Never place repository-derived
 source fragments, private identifiers, file paths, credentials, or secrets in an
 external query. If external research is unavailable, continue from the supplied
-subject and shared working tree and set `external_check` to `unavailable`; do
+subject and shared working copy and set `external_check` to `unavailable`; do
 not invent a source or drop the POV. Every evidence item must carry a URL,
 `file:line`, or a named document section so another voice can check it.
 

@@ -275,17 +275,6 @@ def _run(cmd):
     return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
 
 
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
-
-
 def _run_checked(cmd, label):
     r = _run(cmd)
     if r.returncode != 0:
@@ -365,10 +354,10 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     """Bind GitHub's mergeability observation to an independently probed current base ref.
 
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
-    PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
+    PR's `baseRef.target.oid` and an exact GitHub-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST ref endpoint, so that response falls back to an exact GraphQL
+    ref lookup while preserving exact-ref matching and non-interactive failure behavior.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -406,29 +395,14 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
         exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+        query = """
+query($owner:String!,$repo:String!,$qualifiedName:String!){
+  repository(owner:$owner,name:$repo){ ref(qualifiedName:$qualifiedName){ target { oid } } }
+}"""
+        r = _run(["gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}",
+                  "-f", f"repo={name}", "-f", f"qualifiedName={exact_ref}",
+                  "-f", f"query={query}", "--jq", ".data.repository.ref.target.oid"])
+        current_oid = (r.stdout or "").strip()
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -1193,8 +1167,8 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
-    field never KeyErrors an old state, and a null/garbage value never crashes."""
+    state.json (persisted beneath the workspace's .tmp across script versions) — backfill missing
+    keys so a new field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
         tj = {}

@@ -110,7 +110,7 @@ Strong answers stay at 2-4 (not 8, not 1), connect clearly back to the approach,
 - **Too vague** ("improve the product") -> "Every track is 'improve the product.' What's the specific investment area that's different from the others?"
 - **One track only** -> "With one track, there's no real choice being made. What are the 2-3 things the product needs to be good at, and how are they different?"
 
-Recent commits or PRs show where attention has gone lately, so this is the one section where they help. Offer what they show as a question ("most recent work is in X - is that a track, a temporary push, or unrelated?"), and take the user's answer: a burst of work in one area does not make it a track.
+Recent changes visible in `jj log` or GitHub PRs show where attention has gone lately, so this is the one section where they help. Offer what they show as a question ("most recent work is in X - is that a track, a temporary push, or unrelated?"), and take the user's answer: a burst of work in one area does not make it a track.
 
 **Capture:** 2-4 tracks. For each: a name, a one-line purpose, and a short note on why this serves the approach.
 

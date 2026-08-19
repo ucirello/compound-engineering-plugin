@@ -1,6 +1,6 @@
 # Destination Sub-flows
 
-Per-destination mechanics for Phase 6. The menu itself and the one-line action per option live inline in SKILL.md — this file carries only the elaborate sub-flows. Detection is by capability: probe the current session's tools and context; a missing binary, env var, or unloaded MCP tool is not proof of absence when a connector could supply the capability. Local file is the always-present floor.
+Per-destination mechanics for Phase 6. The menu itself and the one-line action per option live inline in SKILL.md. Detection is by capability: probe the current session's tools and context; a missing binary, environment variable, or unloaded connector is not proof of absence when another interface could supply the capability. Local file is the always-present floor.
 
 ## Claude Artifact
 
@@ -10,7 +10,7 @@ Offered for HTML output when the session is Claude Code and its Artifact tool is
 
 This is the preferred HTML publisher when the Claude Artifact adapter is not selected. ht-ml.app accepts the complete standalone HTML document and works through ordinary HTTP, independent of the agent harness.
 
-Before publishing, the destination option itself must state: **the page is public and may be indexed, crawled, copied, or archived**. Whenever ht-ml.app is chosen without that warned option in front of the user — their initial request selected it and the menu was skipped, or they named it after the one-preferred-publisher rule kept it off a menu that *was* shown — state the same full warning in chat and ask for explicit confirmation after the warning before any publish; “this is public” is not the complete warning, and the initial request itself does not count as confirmation. Only a warned menu selection or explicit post-warning confirmation permits publishing. If confirmation cannot be obtained, do not publish; preserve the canonical `$RUN_DIR/explainer.html` and report its local path. Never publish headlessly or infer consent from the fact that an explainer was requested. If the content is sensitive, route to Local file instead.
+Before publishing, the destination option itself must state: **the page is public and may be indexed, crawled, copied, or archived**. Whenever a public destination is chosen without that warned option in front of the user, state the same full warning in chat and ask for explicit confirmation after the warning. The initial request itself does not count as confirmation. Only a warned menu selection or explicit post-warning confirmation permits publishing. If confirmation cannot be obtained, do not publish; preserve the canonical run-dir artifact and report its local path. Never publish headlessly or infer consent from the fact that an explainer was requested. If the content is sensitive, route to Local file instead.
 
 After the user selects the warned option or explicitly confirms after the warning:
 
@@ -24,10 +24,6 @@ After the user selects the warned option or explicitly confirms after the warnin
 2. Copy the artifact out of the run dir to that path (`cp "$RUN_DIR/explainer.html" <path>` — or `explainer.md` for a markdown run), creating parent directories if needed.
 3. Where the platform exposes a browser-opening primitive (`open` on macOS, `xdg-open` on Linux, `start` on Windows), offer to open it; otherwise print the absolute path.
 
-## Publish to Proof (markdown output only)
-
-Proof ingests markdown, so this option renders only when the run resolved `output:md`. Invoke the `ce-proof` skill via the platform's skill-invocation primitive when it is installed, passing the artifact path, a title (`Explainer: <subject>`), and identity `ai:compound-engineering` / `Compound Engineering`; surface the returned share URL. When the skill is not installed but the Proof web API is reachable, POST the markdown per that API. On failure: retry once after a short wait, then report plainly that the upload didn't succeed and why, and fall back to the local-file path. One-way publish; the run-dir file stays canonical.
-
 ## Send to Thinkroom
 
-Offered only when a Thinkroom capability is detected — a Thinkroom skill in the session's skill list, a reachable MCP tool, or a documented CLI that responds. Use whatever interface that capability exposes to create/share a document from the explainer content, following that interface's own contract for title and body format. Surface the returned document reference. When the send fails, report it and fall back to the local-file path. Never guess at a Thinkroom API shape when no capability is detectable — the option simply doesn't render.
+Offered only when a Thinkroom capability is detected: a Thinkroom skill in the session's skill list, a reachable MCP tool, or a documented CLI that responds. Use whatever interface that capability exposes to create or share a document from the explainer content, following that interface's own contract for title and body format. Surface the returned document reference. When the send fails, report it and fall back to the local-file path. Never guess at a Thinkroom API shape when no capability is detectable; the option simply does not render.

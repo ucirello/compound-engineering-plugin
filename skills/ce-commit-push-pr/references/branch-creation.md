@@ -1,55 +1,35 @@
-# Branch creation from default branch
+# Feature Bookmark Creation from the Default Line
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+The result is a feature bookmark rooted on a verified base while preserving the working-copy change and any local-only default-line work. A conflict or ambiguous ownership decision is surfaced, never erased.
 
-## Decision flow
+## Resolve the Base
 
-### 1. Fetch fresh remote base
-
-```bash
-git fetch --no-tags origin <base>
-```
-
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
-
-### 2. Check for unpushed local commits on `<base>`
+Fetch the selected remote and base bookmark:
 
 ```bash
-git log origin/<base>..HEAD --oneline
+jj git fetch --remote <remote> --branch <base>
 ```
 
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
+If fetch fails, create the feature bookmark at the current change, report that base freshness was not verified, and do not claim the change is rebased.
 
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
-
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
-
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
-
-### 3. Create the feature branch
+Compare local default-line work with the fetched remote bookmark:
 
 ```bash
-git checkout -b <branch-name> "$BASE_REF"
+jj log -r '<base>@<remote>..<base>'
 ```
 
-If checkout fails because uncommitted changes would be overwritten, stash and retry:
+- Empty means use `<base>@<remote>` as the destination.
+- Non-empty means show the revisions and ask whether the feature should include that local work or start from the fetched base. Use `<base>` for carry-forward or `<base>@<remote>` for a clean remote base. Never silently carry local-only default work into a PR.
+
+## Root the Change and Create the Bookmark
+
+Before using branch rebase, inspect the exact closure it would rewrite: `(<base-ref>..@)::`. It is safe only when every revision in that closure belongs to the intended feature line. Any revision targeted by an unrelated local bookmark, edited by another workspace, or otherwise outside that line makes `jj rebase -b @` unsafe. Stop, or first isolate the selected work onto a dedicated change/bookmark and recompute the closure; do not let branch rebase carry unrelated descendants.
+
+When the closure is proven safe, rebase the working-copy branch of changes onto the selected destination, preserving only its intended descendants:
 
 ```bash
-git stash push -u -m "ce-commit-push-pr: pre-branch <branch-name>"
-git checkout -b <branch-name> "$BASE_REF"
-git stash pop
+jj rebase -b @ -o <base-ref>
+jj bookmark create <feature-bookmark> -r @
 ```
 
-If `git stash pop` reports conflicts, surface the conflict output and the stash ref to the user — do not auto-resolve.
-
-## Fetch failure fallback
-
-If `git fetch` fails, branch from current local HEAD:
-
-```bash
-git checkout -b <branch-name>
-```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+If the bookmark already exists, choose a non-conflicting name unless identity is ambiguous. Jujutsu records conflicts in the rebased changes; if any appear, stop and report them without abandoning content or pushing. There is no stash/index transition: the working-copy change moves with the rebase.

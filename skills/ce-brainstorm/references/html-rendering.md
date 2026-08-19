@@ -43,15 +43,7 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
-- **Source / composition signal.** A visible footer at the bottom of
-  the doc names the composition timestamp and the source identifier
-  (the user prompt context, the upstream brainstorm doc when one
-  exists, or just the composing skill name when there's no external
-  source). Example shape:
-  `<footer class="composition-signal">Composed 2026-05-17T14:23Z by ce-plan from <code>docs/brainstorms/...-requirements.md</code></footer>`.
-  Under exclusive output mode this signal is the artifact's own
-  provenance — there's no markdown sibling to reference. Omitting it
-  leaves readers unable to tell how stale the rendering is.
+- **Source / composition signal.** A visible footer at the bottom of the doc names the composition timestamp and source identifier (the user prompt context or upstream source document). Example shape: `<footer class="composition-signal">Composed 2026-05-17T14:23Z from <code>docs/brainstorms/...-requirements.md</code></footer>`. Under exclusive output mode this signal is the artifact's own provenance. Do not include creator, builder, composer, or author credit.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -75,7 +67,7 @@ Honor user style preferences in this order (highest to lowest):
    context (typically `AGENTS.md` / `CLAUDE.md`, but scan loaded context;
    don't enumerate locations). The reference may be a file path
    (`docs/style.css`), a URL, a named library ("Tailwind"), or a style
-   brand ("Stripe docs"). Agent-instruction files carry deliberate
+   visual language ("Stripe docs"). Agent-instruction files carry deliberate
    agent-aware preferences, so this tier sits above DESIGN.md.
 3. **DESIGN.md** discovered on the filesystem (see "DESIGN.md discovery"
    below).
@@ -102,26 +94,25 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Worktree root (resolve via `git rev-parse --show-toplevel`).
+1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
-3. `.compound-engineering/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Worktree-root only — do not fall through to a main checkout. Users
-working from a worktree who want HTML defaults can add DESIGN.md to the
-worktree.
+Workspace-root only — do not fall through to another workspace. Users working
+from a Jujutsu workspace who want HTML defaults can add DESIGN.md there.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
 prose; most are authored for a *product or marketing surface*, not a
-long-form doc. The governing split: **take the brand's scale-independent
+long-form doc. The governing split: **take the design system's scale-independent
 identity literally, own the scale-dependent layout values yourself, and
 skip decoration.**
 
 - **Take literally (scale-independent identity):** the color palette
   (under the contrast rule), font *weight* and *style*, OpenType features,
-  and radius *character* (sharp vs rounded). These carry the brand and are
+  and radius *character* (sharp vs rounded). These carry the visual identity and are
   safe at any size.
 - **Own it yourself (scale-dependent layout):** the **type size scale**
   and **spacing magnitudes**. DESIGN.md values are almost always
@@ -129,17 +120,17 @@ skip decoration.**
   section gaps); read them only as *hierarchy*, then set doc-appropriate
   values (body ~14-16px, headings ~1.2-1.6× body, comfortable paragraph
   spacing).
-- **Skip decoration:** decorative or atmospheric brand voltage with no
+- **Skip decoration:** decorative or atmospheric visual styling with no
   content to attach to in a doc — gradient orbs, full-bleed hero
   photography, motion. Take the palette and feel; do not reproduce the
   decoration.
 
 Specific cases:
 
-- **Fonts: load only open webfonts; never attempt a proprietary brand
+- **Fonts: load only open webfonts; never attempt a proprietary house
   face.** A self-contained doc can only load an open webfont (Google Fonts
   or an open CDN) via the permitted webfont `<link>` plus an offline
-  fallback stack. **Assume a bespoke brand face is proprietary and do not
+  fallback stack. **Assume a bespoke house face is proprietary and do not
   attempt to load it** — Airbnb Cereal, Coinbase Display/Sans, BMW Type,
   Waldenburg, Circular and the like will not render in a single file;
   trying just produces a broken fallback. Use the DESIGN.md's own fallback
@@ -148,7 +139,7 @@ Specific cases:
   (Inter, Geist, Cal Sans, Roboto…); when unsure whether a face is open,
   do not try. Honor the DESIGN.md's declared roles (`body` / `display` /
   `mono`) and never promote a display/decorative face into a body or
-  small-text role. Net: reproduce the brand's serif-vs-sans structure and
+  small-text role. Net: reproduce the design's serif-vs-sans structure and
   weight voice, not necessarily its exact faces.
 - **Typography-scale mismatch.** DESIGN.md typography tokens are usually
   sized for product UI — marketing pages, app screens, hero sections —
@@ -226,10 +217,10 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time:
+Resolve the repository's GitHub URL once at compose time:
 
 ```bash
-git remote get-url origin
+gh repo view --json url --jq .url
 ```
 
 Apply linking to three reference shapes:
@@ -243,11 +234,10 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
-Bitbucket, internal host) and the equivalent main-tree URL pattern
-isn't obvious, leave entries as `<code>` text. If the external
-tracker workspace isn't established, leave as text. A broken or
-guessed link is worse than no link.
+**Do not invent URLs.** If `gh` cannot identify a GitHub repository and an
+equivalent main-tree URL pattern is not already established in context, leave
+entries as `<code>` text. If the external tracker workspace isn't established,
+leave as text. A broken or guessed link is worse than no link.
 
 **Scope: reference index only, not inline prose.** Inline `<code>`
 mentions of paths or PRs inside paragraph prose stay as code or text.
@@ -275,8 +265,8 @@ a browser. Keep the heading text visible and adjacent to the `id`; do not rely
 on a nav link alone to carry the section name.
 
 Optional sections with a contract-defined semantic role put that role on their
-wrapping `<section>` with `data-ce-section`. For example, the broader-work
-relationship section uses `data-ce-section="work-relationships"`. The role is
+wrapping `<section>` with `data-rocketclaw-section`. For example, the broader-work
+relationship section uses `data-rocketclaw-section="work-relationships"`. The role is
 stable even when the visible heading changes; it supplements, rather than
 replaces, readable heading text and any useful anchor.
 
@@ -607,8 +597,7 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
-- **Source / composition signal** is present as a visible footer at
-  the bottom of the doc (composition timestamp + source identifier).
+- **Source / composition signal** is present as a visible footer at the bottom of the doc (composition timestamp + source identifier, without creator credit).
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

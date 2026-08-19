@@ -1,59 +1,42 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communicating message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate message.
+description: Describe and commit jj changes with repository-appropriate messages. Use when the user asks to commit or save workspace changes locally.
 ---
 
-# Git Commit
+# Commit Changes
 
-Create well-crafted local commit(s) from the current working tree. No push, no PR — use `ce-commit-push-pr` for the full ship flow.
+Create well-described local jj changes from the current workspace. Do not push or open a PR; use `ce-commit-push-pr` for the full ship flow.
 
-**Done when:** each logical change is committed with an explicit file list and a message that states the outcome, and `git status` is clean of those changes. **Stop when:** the tree is clean (nothing to commit).
+**Done when:** each included logical change has its own description and commit, `jj status` shows those changes are no longer in the working-copy change, and excluded paths remain uncommitted. **Stop when:** there are no workspace changes to commit.
 
 ## Context
 
-Gather context with each command as its **own** shell tool call (program + args only). Do **not** join with `;`, `&&`, `||`, pipes, `$(...)`, or redirects — that syntax fails under Windows PowerShell. A non-zero exit is a normal state to interpret, not a failure to suppress.
+Run each command as its own shell tool call (program plus arguments only). Do not join commands with shell operators, substitutions, pipes, or redirects. Treat a non-zero exit as state to interpret.
 
 | Command | Purpose | Non-zero / empty means |
 | --- | --- | --- |
-| `git status` | Working-tree state | Not a git repo — stop |
-| `git diff HEAD` | Uncommitted changes | Unborn repo / no commits yet |
-| `git branch --show-current` | Current branch | Empty = detached HEAD |
-| `git log --oneline -10` | Recent message style | Unborn repo — no history |
-| `git rev-parse --abbrev-ref origin/HEAD` | Remote default branch | No `origin/HEAD` / bare `HEAD` — try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, else `main` |
+| `jj root` | Workspace root | Not a jj workspace; stop |
+| `jj status` | Working-copy change and conflicts | No workspace changes means stop |
+| `jj diff` | Content to group and describe | No diff means stop |
+| `jj log -r 'ancestors(@, 10)'` | Recent local description style | No useful local history |
+| `git log --oneline -10` | Repository message history | Unavailable history; use the jj history |
 
-Treat this as a snapshot. Re-read branch and staged set immediately before committing if anything may have changed.
+Treat this context as a snapshot. Re-read `jj status` immediately before each commit if the workspace may have changed.
 
-**Default branch name:** strip a leading `origin/` from `origin/HEAD` (so `origin/trunk` → `trunk`). Use that bare name for all “on the default branch?” checks — never compare against `origin/<name>`.
+If temporary files are needed, resolve the workspace with `jj workspace root` and store them under `<jj-workspace-root>/.tmp/ce-commit/`; if the root cannot be resolved, use `./.tmp/ce-commit/`. Do not use OS-global temporary storage.
 
-## Workflow
+## Compose And Commit
 
-0. **Gather** — run every Context command above (own shell call each), then continue.
+Repository-local instructions and repository history always win over all other message guidance. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go clarity and structure guidance so the description communicates the outcome and any material motivation, behavior, or trade-offs without imposing fixed syntax or content.
 
-1. **Nothing to commit** — if `git status` shows no staged, modified, or untracked files, report that and stop. Do not use `git diff HEAD` alone as cleanliness (it misses untracked files).
+Group clearly distinct concerns into separate changes at file level; if the split is ambiguous, keep one change. When a plan Implementation Unit ID is already in hand and one group maps to that unit, preserve the ID in the repository-appropriate location without searching for a plan; omit it when the group spans units or the mapping is unclear.
 
-2. **Branch first** — if detached HEAD, or on the default branch (`main` / `master` / the bare default name above), create a feature branch from the change content (`git checkout -b <name>`), then re-read `git branch --show-current`. Do not ask — commit-only still must not leave work only on a detached HEAD or the default branch. If the derived name exists, pick a non-conflicting suffix.
-
-3. **Convention** — match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). When using conventional commits and `fix`/`feat` both fit, default to `fix:` (remedying broken or missing behavior); reserve `feat:` for new capabilities. User override wins.
-
-4. **Logical commits** — if changed files clearly split into distinct concerns, make separate commits (file level only, 2–3 max, no `git add -p`). If ambiguous, one commit.
-
-5. **Message** — subject is imperative and names the outcome (what is now possible or fixed), not the file list. Body only when motivation or trade-offs are not obvious from the subject. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
-
-   - Bad: `Update checkout.rb` / `Add tests and fix stuff`
-   - Good: `Fix double-submit on checkout`
-   - Good: `Add per-subscription mute (U3)`
-
-6. **Stage and commit** — stage **named files only** (never `git add -A` or `git add .`). Honor `exclude:<paths>` when the invocation carries it: those files stay uncommitted no matter what else changed; say in the report that they were left out. Prefer one shell call per commit group:
+Honor `exclude:<paths>` throughout: excluded paths remain in the working-copy change and the final report names them. For each included group, pass its explicit paths to jj so unrelated or excluded workspace content cannot enter the commit:
 
 ```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-type(scope): subject line here
-
-Optional body when the why is not obvious from the subject.
-EOF
-)" -- file1 file2 file3
+jj commit --message "<repository-appropriate description>" -- <group-files...>
 ```
 
-The trailing path list on `git commit` is load-bearing: a bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would ride into the commit. Naming the paths commits exactly the group and leaves other index entries alone.
+This describes the current change, commits only the named files into it, and moves the remaining workspace changes into a new working-copy change on top. There is no staging step or index. If the command fails or the resulting split is not the intended file set, stop and report the state rather than committing a broader change.
 
-7. **Confirm** — `git status`; report hash(es) and subject(s).
+After every commit, run `jj status` and inspect the committed change with `jj log -r @-`. Report each change ID and description, plus any excluded or otherwise uncommitted paths.

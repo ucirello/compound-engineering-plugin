@@ -51,7 +51,7 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole OS temp root ($TMPDIR / /tmp) instead would
+  # via --add-dir. Adding the whole workspace scratch root instead would
   # expose every other same-user scratch file and credential to the elevated
   # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
@@ -85,7 +85,7 @@ RESULT_PATH="${3:?result-path required}"
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole OS temp root. Pure-bash dirname (no
+# to an absolute path), never the whole workspace scratch root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,14 +103,15 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/elevation-peer-XXXXXX")"
+PEERLOG="$HANDOFF_DIR/.rocketclaw-peer-$$-$RANDOM.log"
+(umask 077; set -C; : > "$PEERLOG") 2>/dev/null || { log "could not reserve peer log: $PEERLOG"; exit 2; }
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
-# Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
+# Keep this inner cap >= the runner's ROCKETCLAW_PEER_HARD_SECS so it never reaps a
 # healthy run before the outer supervisor's own raised backstop.
-IDLE_SECS="${CE_ELEVATION_IDLE_SECS:-180}"
-HARD_SECS="${CE_ELEVATION_HARD_SECS:-5400}"
-POLL_SECS="${CE_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
+IDLE_SECS="${ROCKETCLAW_ELEVATION_IDLE_SECS:-180}"
+HARD_SECS="${ROCKETCLAW_ELEVATION_HARD_SECS:-5400}"
+POLL_SECS="${ROCKETCLAW_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
 
 reap() {
   local pid="$1" grp
@@ -139,7 +140,7 @@ on_term() {
 trap 'on_term' TERM INT
 
 write_result() {   # <json-string> -> atomic publish to RESULT_PATH
-  local tmp="${RESULT_PATH}.tmp.$$"
+  local tmp="${RESULT_PATH}.rocketclaw-write.$$"
   printf '%s' "$1" > "$tmp" && mv -f "$tmp" "$RESULT_PATH"
 }
 
@@ -255,7 +256,7 @@ if [ "$RUN_SUCCEEDED" = true ] && [ "$HAS_OUTPUT" = "yes" ] \
   # Build the envelope by piping the event THROUGH jq, which reads .result
   # internally — never pass the plan text as an argv --arg, which would exceed
   # ARG_MAX for a large Deep plan.
-  tmp="${RESULT_PATH}.tmp.$$"
+  tmp="${RESULT_PATH}.rocketclaw-write.$$"
   if printf '%s' "$EVENT" | jq --arg m "$MODEL" --arg s "$SERVED" --arg r "$RECEIPT" \
        '{status:"ok", requested_model:$m, served_model:$s, receipt:$r, output:.result}' \
        > "$tmp" 2>/dev/null; then

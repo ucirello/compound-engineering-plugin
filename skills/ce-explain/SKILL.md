@@ -14,7 +14,7 @@ What to explain is the input this skill was invoked with, present in the current
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `CE_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `SKILL_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -30,13 +30,13 @@ fi
 
 **Default — the user personally.** Dense, technical, one voice, second person, free to assume the context they already carry.
 
-**On request — rendered for another reader.** When the user asks for a version someone else will read ("write this for my team", "this is going into the design review", "a share-out"), adapt voice and orientation, never depth: drop second person; name the subject in third person when the evidence supplies a name (recap mode's commit authors) or the user supplies one, and stay impersonal when neither does; add the minimum orientation a reader outside the user's head needs to follow it. Density, real code, and the honesty labels are unchanged. It stays the same document rendered for someone else — never softened into a status update, never a deck.
+**On request — rendered for another reader.** When the user asks for a version someone else will read ("write this for my team", "this is going into the design review", "a share-out"), adapt voice and orientation, never depth: drop second person; name the subject in third person when the evidence supplies a name (recap mode's change authors) or the user supplies one, and stay impersonal when neither does; add the minimum orientation a reader outside the user's head needs to follow it. Density, real code, and the honesty labels are unchanged. It stays the same document rendered for someone else — never softened into a status update, never a deck.
 
 The artifact is display-only in both renderings: no embedded quizzes, forms, or widgets — the doing happens in the session, where answers can be checked.
 
 ## Interaction Method
 
-When you must ask the user a question, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. In the fallback, stop and wait for the user's reply. Never silently skip the question. Ask one question at a time.
+When you must ask the user a question, use the platform's blocking question capability. Fall back to numbered options on the host's user-visible chat surface only when no blocking capability exists or its call errors. In the fallback, stop and wait for the user's reply. Never silently skip the question. Ask one question at a time.
 
 ## Model Tiers
 
@@ -49,15 +49,15 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ## Artifact Root
 
-This skill writes an explainer under `<root>/explainers/` only when it archives one to the repo, and may read learnings under `<root>/solutions/`. Resolve `<root>` (per the block below) only when you actually compose such a path — a scratch-only or external-concept explainer writes to its run directory and never needs it, so do not resolve or create a root at the start of every run. Pass the resolved path to any subagent when you do resolve it, not the config.
+This skill writes an explainer under `<root>/explainers/` only when it archives one to the workspace, and may read learnings under `<root>/solutions/`. Resolve `<root>` only when you actually compose such a path. A run-local or external-concept explainer writes to its run directory and never needs it, so do not resolve or create a root at the start of every run. Pass the resolved path to any subagent when you do resolve it, not the config.
 
-<!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+<!-- artifact-root:start -->
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
-- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml`, where `<workspace-root>` is `jj workspace root`. A set value resolves as `<workspace-root>/<docs_root>`; unset -> `<root>` is `<workspace-root>/.context`.
+- **Validate** a set value as workspace-relative: its real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.tmp/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `.context`.
+- **Use** `<root>` as the sole durable artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read another artifact root.
+<!-- artifact-root:end -->
 
 ## Execution Flow
 
@@ -74,22 +74,21 @@ Read `references/intake.md` now and classify the request into one of the four in
 Match grounding to the input shape. Create the run directory first — every run gets one, before any artifact exists:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
+if [ -z "$WORKSPACE_ROOT" ]; then WORKSPACE_ROOT="$(pwd -P)"; fi;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUN_DIR="$SCRATCH_ROOT/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
+RUN_DIR="$SCRATCH_ROOT/explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
 (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR";
 ```
 
-**Repo-touching inputs** (a concept with footprint in this repo, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or commits. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted root or workspace probe.
+**Repo-touching inputs** (a concept with footprint in this workspace, a diff, a recap): use the project's active instructions and canonical vocabulary already in context and go directly to the diff, call-sites, current source, or changes. If the topic cannot be scoped from the input and existing context, allow one targeted workspace probe.
 
-- **Diff mode:** resolve the change (the `diff:` ref, or the most recent substantial change when the request points at one implicitly) and gather its evidence — the diff itself, the files it touches, any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied. **Empty range** (the ref resolves to no commits — e.g. `main..HEAD` where the work is still uncommitted): do not silently explain something else. Say what the ref resolved to, name the nearest real candidate (the working tree, the last commit), and use it only after the user agrees — or, when they can't be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject doesn't exist in this repo at all ("the retry logic" where there is none): report that before explaining an adjacent thing.
-- **Recap mode:** dispatch a generic subagent directly, seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the repo root, and `$RUN_DIR`. Do not pre-scan, count, or characterize the window in the main conversation; the scout owns that evidence pass, and an early `git --all` summary can seed it with a false branch or activity model. **When the harness exposes no subagent primitive**, the degradation rule above applies: run the scout inline against its own prompt's sources and budgets, and still write `recap-evidence.md`. The no-pre-scan rule then means what it protects rather than where it runs — do the scout's evidence pass first and form no view of the window until it is done. It returns an evidence summary with commit shas and `file:line` pointers. **Empty window** (no git activity, no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
-- **External concepts** (no footprint in this repo): skip repo grounding entirely — do not force repo context into the output. Research with whatever web tools are reachable. When none are, you may explain from model knowledge, but the artifact must label that content **Unverified — from model knowledge, not checked against current sources** in its metadata header.
+- **Diff mode:** resolve the change (the `diff:` revision or revset, or the most recent substantial change when the request points at one implicitly) and gather its evidence with `jj diff`, `jj show`, and `jj log` — the diff itself, the files it touches, and any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied. **Empty selection** (the revision or revset resolves to no changes, including when work remains in `@` outside the requested selection): do not silently explain something else. Say what it resolved to, name the nearest real candidate (`@` or the preceding change), and use it only after the user agrees — or, when they cannot be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject does not exist in this workspace at all ("the retry logic" where there is none): report that before explaining an adjacent thing.
+- **Recap mode:** dispatch a generic subagent directly, seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the workspace root, and `$RUN_DIR`. Do not pre-scan, count, or characterize the window in the main conversation; the scout owns that evidence pass, and an early all-revisions summary can seed it with a false bookmark or activity model. **When the harness exposes no subagent primitive**, the degradation rule above applies: run the scout inline against its own prompt's sources and budgets, and still write `recap-evidence.md`. The no-pre-scan rule then means what it protects rather than where it runs — do the scout's evidence pass first and form no view of the window until it is done. It returns an evidence summary with change IDs and `file:line` pointers. **Empty window** (no change activity and no document changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
+- **External concepts** (no footprint in this workspace): skip workspace grounding entirely — do not force local context into the output. Research with whatever web tools are reachable. When none are, you may explain from model knowledge, but the artifact must label that content **Unverified — from model knowledge, not checked against current sources** in its metadata header.
 - **Idea mode:** the idea is a fixed given. Explain its implications, mechanics, and trade-offs for the user's understanding. Never scope it (`ce-brainstorm`'s job), never generate and rank alternatives (`ce-ideate`'s job).
 
 ### Phase 3: Check-in gate — before anything is revealed
@@ -108,16 +107,15 @@ Run this phase only when the recorded exact Phase 3 choice was **Quiz me**. For 
 
 ### Phase 6: Destination ask and close
 
-Detect destinations by capability — probe the agent's own toolset and session context, never a closed list, and never treat a missing binary, env var, or unloaded MCP tool as proof a destination is unavailable when a connector could supply it. Local file and Leave it are ungated and always offered. For default HTML runs, offer one preferred publisher: Claude Artifact when running in Claude Code with its Artifact tool present; otherwise ht-ml.app. Do not show both by default, but honor an explicit user request for either. Publishing always requires the user's destination choice; ht-ml.app is public and must never be selected headlessly. Offer only what is detected; absence hides an option silently. Ask for the destination once with the blocking question tool — that governs the menu itself, not the consent a chosen destination then requires; a publisher's warning-and-confirmation is a separate, required ask, not a second destination question. If the user names a publisher the one-preferred-publisher rule kept off the menu, honor it by the bypassed-menu path in `references/destinations.md` (full warning, then explicit confirmation), never as though the menu had warned them — it didn't. Count visible options against the platform's cap first (Claude Code's `AskUserQuestion` allows up to 4 explicit options; Codex's `request_user_input` only 2-3): when the visible set exceeds the cap, render a numbered list in chat with "Pick a number or describe what you want." and wait instead. Per-option routing:
+Detect destinations by capability — probe the agent's own toolset and session context, and never treat a missing binary, environment variable, or unloaded connector as proof a destination is unavailable when another interface could supply it. Local file and Leave it are ungated and always offered. For default HTML runs, offer one preferred publisher: Claude Artifact when running in Claude Code with its Artifact tool present; otherwise ht-ml.app. Do not show both by default, but honor an explicit user request for either. Publishing always requires the user's destination choice; ht-ml.app is public and must never be selected headlessly. Detect Thinkroom through a session skill, reachable MCP tool, or documented CLI that responds. Ask for the destination once with the blocking question capability. That choice governs the menu itself, not any separate consent the selected destination requires. If the visible set exceeds the question capability's option cap, render a numbered list in chat with "Pick a number or describe what you want." and wait instead. Per-option routing:
 
-- **Claude Artifact** (HTML only; preferred in Claude Code when its Artifact tool is present) — create an artifact from the canonical explainer per `references/destinations.md`, following the Artifact tool's current contract.
-- **Publish publicly to ht-ml.app** (HTML only; preferred when Claude Artifact is not the selected adapter) — label it Recommended and state in the option description that the page is public and may be indexed, crawled, copied, or archived. When an explicit publish request bypasses the menu, state that full warning in chat and obtain explicit confirmation after the warning before the call; the pre-warning request does not count as confirmation. If confirmation cannot be obtained, do not publish; preserve the canonical HTML and report its local `$RUN_DIR/explainer.html` path. On a warned menu selection or post-warning confirmation, read and follow the ht-ml.app sub-flow in `references/destinations.md`, passing the complete canonical HTML to the resolved publisher. Do not assume a particular skill exists or add a ce-explain-specific publisher.
+- **Claude Artifact** (HTML only; preferred in Claude Code when its Artifact tool is present) — create it from the canonical explainer per `references/destinations.md`, following the Artifact tool's current contract.
+- **Publish publicly to ht-ml.app** (HTML only; preferred when Claude Artifact is not the selected adapter) — label it Recommended and state in the option description that the page is public and may be indexed, crawled, copied, or archived. When an explicit publish request bypasses the menu, state that full warning in chat and obtain explicit confirmation after the warning before the call; the pre-warning request does not count as confirmation. If confirmation cannot be obtained, do not publish; preserve the canonical HTML and report its local `$RUN_DIR/explainer.html` path. On a warned menu selection or post-warning confirmation, follow the ht-ml.app sub-flow in `references/destinations.md`, passing the complete canonical HTML to the resolved publisher. Do not assume a particular skill exists or add a ce-explain-specific publisher.
 - **Local file** — copy the artifact out of `$RUN_DIR` to the path the user names, then where the platform exposes a browser-opening primitive (`open` on macOS, `xdg-open` on Linux, `start` on Windows) offer to open it; otherwise print the absolute path.
-- **Publish to Proof** (markdown output only) — publish per `references/destinations.md` and surface the returned share URL; on failure retry once, then report and move on.
-- **Send to Thinkroom** (offered only when a Thinkroom skill or CLI capability is detected) — send per `references/destinations.md`.
-- **Leave it** — report the `$RUN_DIR` path and state it is a temporary location that does not survive reboot; nothing else is written.
+- **Send to Thinkroom** — offered only when a Thinkroom skill, MCP tool, or documented CLI capability is detected; send per `references/destinations.md` and surface the returned reference.
+- **Leave it** — report the `$RUN_DIR` path and state that it remains in the workspace-local `.tmp` area until local cleanup removes it; nothing else is written.
 
-**Audience mismatch.** When the artifact was composed in the personal default and the user selects a destination that puts it in front of other people (ht-ml.app, Proof, Thinkroom — not Claude Artifact, which is private until the user shares it), offer once to re-render it for that audience per the compose-time reference before sending. Take their answer and proceed either way; never re-render unasked, and never block the send on it.
+**Audience mismatch.** When the artifact was composed in the personal default and the user selects a destination that puts it in front of other people, offer once to re-render it for that audience per the compose-time reference before sending. A private artifact does not trigger this offer because it stays private until the user shares it. Take their answer and proceed either way; never re-render unasked, and never block the send on it.
 
 **This offer comes first**, before any publish warning or confirmation the destination requires — consent must attach to the artifact actually being published, and the adapted rendering differs materially (it names a person where the personal one says "you"). Ask one question at a time: settle the rendering, then run the destination's own consent gate. When the destination needs no confirmation, this is the only ask.
 
@@ -125,7 +123,7 @@ Detect destinations by capability — probe the agent's own toolset and session 
 
 **Improvement observations.** When composing the explainer surfaced things that could be better, route them by type once the destination is settled — offer, don't auto-fire. "Settled" means the artifact was sent, or the user declined, or the run stopped at a consent gate they didn't answer; in that last case the run ends there and these offers are skipped, like the non-interactive case above. Never raise them while any of the asks above is still open — the destination question, the audience re-render offer, or a publisher's consent gate.
 
-**User-runnable invocation rendering.** Only the user-run handoff below uses printed invocation syntax. Default to `/ce-polish`; use `$ce-polish` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. On oh-my-pi (`omp`), use `/skill:ce-polish`. Render only the invocation as inline code and output one form only.
+**User-runnable invocation rendering.** Only the user-run handoff below uses printed invocation syntax. Use the active harness's documented user-invocation form for `ce-polish`. Render only the invocation as inline code and output one form only.
 
 - **New-capability ideas** — offer first; on acceptance invoke the `ce-ideate` skill via the platform's skill-invocation primitive, passing the observations as seed context. Do not merely tell the user to run it.
 - **Code-clarity findings** — offer first; on acceptance invoke the `ce-simplify-code` skill via the platform's skill-invocation primitive, passing the observations and the files they concern. Do not merely tell the user to run it.
@@ -134,7 +132,7 @@ Detect destinations by capability — probe the agent's own toolset and session 
 
 ## Boundaries
 
-- **Not a verdict.** "Should we adopt X?" is `ce-pov`. ce-explain teaches what X is and how it works.
-- **Not repo memory.** Documenting a solved problem for future work is `ce-compound`. ce-explain teaches the human, not the repo.
+- **Not a verdict.** "Should we adopt X?" is `ce-pov`. This skill teaches what X is and how it works.
+- **Not repo memory.** Documenting a solved problem for future work is `ce-compound`. This skill teaches the human, not the repo.
 - **Not ideation or scoping.** An idea input is explained as given — implications and trade-offs — never expanded into options or a requirements dialogue.
 - **The check-in is never headless.** It exists to exercise the human; automating the answers deletes the product.

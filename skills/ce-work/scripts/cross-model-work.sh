@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run one pre-sanctioned, write-capable implementation route in a controller-
-# supplied detached workspace. The adapter never creates worktrees, changes
+# supplied jj workspace. The adapter never creates workspaces, changes
 # recipients, integrates output, or retries through another route.
 #
 # Usage:
@@ -179,8 +179,14 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/ce-work-adapter-XXXXXX")" || exit 2
-chmod 700 "$SCRATCH"
+SCRATCH_PARENT="$RESULT_DIR"
+chmod 700 "$SCRATCH_PARENT" 2>/dev/null || exit 2
+SCRATCH=""
+for _attempt in 1 2 3 4 5 6 7 8; do
+  _candidate="$SCRATCH_PARENT/.adapter-$$-$RANDOM-$RANDOM"
+  if mkdir -m 700 "$_candidate" 2>/dev/null; then SCRATCH="$_candidate"; break; fi
+done
+[ -n "$SCRATCH" ] || { log "could not reserve workspace-local adapter scratch"; exit 2; }
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
 RAW_STDERR="$SCRATCH/stderr.log"
@@ -360,7 +366,7 @@ PACKET="$(cd "$(dirname "$PACKET")" && pwd -P)/$(basename "$PACKET")" || exit 2
 RESULT_DIR="$(cd "$RESULT_DIR" && pwd -P)" || exit 2
 case "$RESULT_DIR/" in "$WORKSPACE/"*) log "result dir must be outside the worker workspace"; exit 2 ;; esac
 case "$PACKET" in "$WORKSPACE"/*) log "unit packet must be outside the worker workspace"; exit 2 ;; esac
-git -C "$WORKSPACE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { log "workspace is not a Git worktree"; exit 2; }
+jj -R "$WORKSPACE" root >/dev/null 2>&1 || { log "workspace is not a jj workspace"; exit 2; }
 chmod 700 "$RESULT_DIR" 2>/dev/null || { log "result dir could not be made private"; exit 2; }
 RESULT_DIR_IDENTITY="$("$PY" - "$RESULT_DIR" <<'PY'
 import os, stat, sys
@@ -682,7 +688,7 @@ while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROU
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-[ -n "${TMPDIR:-}" ] && MIN_ENV+=("TMPDIR=$TMPDIR")
+MIN_ENV+=("TMPDIR=$SCRATCH")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")

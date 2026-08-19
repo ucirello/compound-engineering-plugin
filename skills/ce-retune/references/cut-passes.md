@@ -12,7 +12,7 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides, each prompt carrying: the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and record the pass as its own jj change.
 
 Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
 
@@ -32,18 +32,18 @@ Fan out by **unit** instead: one agent owns one skill directory and applies the 
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate jj workspaces or disjoint paths in one workspace
 
-Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
+Disjoint paths in one jj workspace are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and one workspace keeps the diff readable and the change trivial.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Pay for a separate jj workspace per agent when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit — lockfiles, caches, generated output, a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations; one git index shared by parallel agents corrupts staging.
+- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on scratch and working-copy state.
+- Agents describe, squash, rebase, or otherwise rewrite jj changes; parallel agents sharing one working copy can move or rewrite each other's work.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
-Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+Otherwise the isolation cost is real: N jj workspaces to create, N results to reconcile, and conflicts reintroduced on exactly the files the manifest was designed to keep apart.
 
 ## The shared-asset trap
 

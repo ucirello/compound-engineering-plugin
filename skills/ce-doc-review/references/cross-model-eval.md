@@ -23,7 +23,7 @@ as specified.
 Cases 11-14 cover the detached launch->wait lifecycle and model-identity
 receipts. Case 15 covers U8's fixed-route and bounded-adaptability contract.
 Run them with the fake-CLI harness pattern — stub peer CLIs placed first on
-PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
+PATH — and across both supported host families.
 
 1. **Activation gate — fires (R1, R2).** A document that activates at least one
    trio lens (e.g. a greenfield plan with a high-stakes domain activating
@@ -45,8 +45,8 @@ PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
 4. **Attest host identity; sanction one fixed route (R7, R15, R16).** Assert the
    orchestrator separates host harness from serving family, excludes an
    attestably same-family target, and resolves exactly one target plus concrete
-   route for the whole document before egress. Claude host → default target
-   `codex`; Codex host → default target `claude`; Cursor host with an unknown
+   route for the whole document before egress. A `claude` host → default target
+   `codex`; a `codex` host → default target `claude`; a `cursor` host with an unknown
    serving family → automatic pass skips. The worker receives
    `CROSS_MODEL_HOST_HARNESS` and `CROSS_MODEL_FIXED_ROUTE`; it never chooses a
    recipient from a candidate list after content is available.
@@ -58,8 +58,8 @@ PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
 6. **One model per target at the script-owned reasoning tier (R4; R5 superseded).** Assert every
    activated trio lens uses the same sanctioned target and fixed route. The
    script's mapping owns the concrete model and reasoning flags; prose does not
-   restate model IDs. `cursor` omits `--model` for Cursor default/Auto, while
-   `composer` requests an explicit Composer-family model through Cursor.
+   restate model IDs. `cursor` omits `--model` for its default/Auto route, while
+   `composer` requests an explicit same-family model through the `cursor` intermediary.
 
 7. **Fold-in + receipt-gated agreement promotion (R8, R9, R18).** Given a
    stubbed `<reviewer-name>-<provider>.json` return with

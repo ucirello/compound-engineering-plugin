@@ -255,8 +255,8 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # A machine-local state file can live under world-shared /tmp, and
-            # it is a correctness dependency (lease, cursors, closed status) as
+            # A checkout-local state file is a correctness dependency (lease,
+            # cursors, closed status) as
             # well as an injection sink (item bodies re-read into agent
             # context). Reject a file not owned by us so a co-tenant cannot
             # plant a forged lease/cursor or attacker-authored item text. Skip
@@ -544,7 +544,7 @@ def cmd_lease_release(args):
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
     # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
+    # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -565,7 +565,7 @@ def cmd_run_record(args):
 
 
 def cmd_import_legacy(args):
-    """Best-effort import of a Cora-style legacy state file. Liberal on input:
+    """Best-effort import of a legacy feedback state file. Liberal on input:
     map what matches the known shapes, skip what doesn't, never fail."""
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -610,7 +610,7 @@ def _read_legacy(path):
             raw = f.read()
     except (OSError, UnicodeDecodeError):
         return None
-    # Try JSON first (Cora persists JSON); fall back to our YAML subset.
+    # Try JSON first; fall back to our YAML subset.
     try:
         return json.loads(raw)
     except ValueError:

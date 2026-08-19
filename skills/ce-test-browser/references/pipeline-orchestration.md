@@ -1,6 +1,6 @@
 # Pipeline-Mode Server Orchestration
 
-Read and follow this file only when invoked with `mode:pipeline` (LFG or another automated runner). It overrides visibility prompts, free-port selection, and dev-server startup. It does not change browser-driver selection. In pipeline mode you run unattended — never block on a question.
+Read and follow this file only when invoked with `mode:pipeline` by an automated runner. It overrides visibility prompts, free-port selection, and dev-server startup. It does not change browser-driver selection. In pipeline mode you run unattended — never block on a question.
 
 ## 1. No visibility question
 
@@ -29,14 +29,24 @@ find_free_port() {
 PORT=$(find_free_port "$PORT")
 echo "Using dev server port: $PORT"
 
+# keep logs inside the jj workspace, with local .tmp for a missing workspace root
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+if [ -n "$WORKSPACE_ROOT" ]; then
+  LOG_DIR="$WORKSPACE_ROOT/.tmp"
+else
+  LOG_DIR=".tmp"
+fi
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/dev-server-${PORT}.log"
+
 # start in the background (the scan guarantees this port is free), then wait up to 30s
 echo "Starting dev server on port ${PORT}..."
 if [ -f "bin/dev" ]; then
-  PORT=${PORT} bin/dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} bin/dev > "$LOG_FILE" 2>&1 &
 elif [ -f "bin/rails" ]; then
-  bin/rails server -p ${PORT} > /tmp/dev-server-${PORT}.log 2>&1 &
+  bin/rails server -p ${PORT} > "$LOG_FILE" 2>&1 &
 elif [ -f "package.json" ]; then
-  PORT=${PORT} npm run dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} npm run dev > "$LOG_FILE" 2>&1 &
 fi
 for i in $(seq 1 30); do
   lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1 && break
@@ -44,7 +54,7 @@ for i in $(seq 1 30); do
 done
 if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server did not start in 30s. Last output:"
-  tail -20 /tmp/dev-server-${PORT}.log 2>/dev/null
+  tail -20 "$LOG_FILE" 2>/dev/null
   exit 1
 fi
 ```

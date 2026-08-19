@@ -156,7 +156,7 @@ After structuring the plan, ask the user how they want to receive it using the p
 1. **Save to disk** — Write the plan as a markdown file. Ask where:
    - `<root>/plans/` (only show if this directory exists)
    - Current working directory
-   - `/tmp`
+   - The jj workspace root's `.tmp/`, or local `.tmp/` when no workspace exists
    - A custom path
    - Use filename convention: `YYYY-MM-DD-HHMM-<descriptive-name>-plan.md`, taking `HHMM` from the local wall-clock time at write; reserve the path atomically and, on collision, retry with the smallest available numeric suffix before the extension rather than overwriting
    - Start the document with a `# Title` heading, followed by `Created: YYYY-MM-DD` on the next line. No YAML frontmatter.

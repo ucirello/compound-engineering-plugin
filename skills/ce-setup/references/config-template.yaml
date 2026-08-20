@@ -1,28 +1,30 @@
-# Compound Engineering -- repo config
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# RocketClaw -- workspace config
+# Copy to .rocketclaw/config.yaml in your Jujutsu workspace root (team defaults).
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
-# docs_root is repo layout -- set it only here; local docs_root is ignored.
+# docs_root is workspace layout -- set it only here; local docs_root is ignored.
 # All settings are optional. Invalid ordinary values continue to the next layer.
 # docs_root fails closed on an unusable value.
 
 # --- Artifact root ---
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every RocketClaw-written artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
-# feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location CE reads
-# and writes; CE never falls back to reading `docs/`.
+# feedback-sweep, personas) under one workspace-relative root. Unset -> `docs`,
+# byte-identical to today. A configured root becomes the sole location RocketClaw
+# reads and writes; RocketClaw never falls back to reading `docs/`.
 #
-# Set this only in this tracked file so every clone and worktree share one
+# Set this only in this tracked file so every Jujutsu workspace shares one
 # artifact tree. A docs_root in config.local.yaml is ignored.
 #
-# The value must be a repo-relative directory whose real (symlink-resolved) path
-# stays inside the repo, is not the repo root itself, and is not under `.git/`.
+# The value must be a workspace-relative directory whose real (symlink-resolved)
+# path stays inside the workspace, is not the workspace root itself, and is not
+# under `.jj/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- CE stops with an error so a typo can't silently write artifacts into
-# the location you configured away from. `/ce-setup` reports the resolved root.
+# default -- RocketClaw stops with an error so a typo can't silently write
+# artifacts into the location you configured away from. `/ce-setup` reports the
+# resolved root.
 
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # workspace-relative dir (default: docs)
 
 # --- Product pulse ---
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
@@ -107,7 +109,7 @@
 # automatically send review content (diffs, documents) to a second model
 # provider when their conditional cross-model pass activates. `off` skips that
 # pass before any route is chosen or process starts, leaves every local
-# reviewer in place, and reports "disabled by checkout config" instead of an
+# reviewer in place, and reports "disabled by workspace config" instead of an
 # availability failure. `auto` keeps the current behavior. A direct request in
 # conversation ("use codex as the independent reviewer this time") overrides
 # `off` for that run; a conversation prohibition overrides `auto`.
@@ -165,7 +167,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # shared, or .tmp/rocketclaw/feedback-sweep/state.yml for workspace-local state
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology

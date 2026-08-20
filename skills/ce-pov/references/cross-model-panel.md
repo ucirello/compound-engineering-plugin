@@ -111,7 +111,7 @@ Normalize the allowed read scope once as:
 Pass that identical representation to every peer prompt and route adapter. The
 default is the repository root. A narrower user- or host-supplied scope is
 binding and is never broadened. Peers launched on the same host inspect existing
-subject files and supporting evidence directly from this shared working tree;
+subject files and supporting evidence directly from this shared working copy;
 point them to those files instead of copying their contents into the payload.
 Pass material inline only when it exists solely in the conversation or is
 otherwise unavailable in the workspace.
@@ -123,9 +123,9 @@ never promise that secrets inside the readable scope are inaccessible. Peers may
 search and read within the declared scope but may not mutate the project or
 intentionally inspect outside it.
 
-Before initial dispatch, capture one **repository-scope identity**: the committed
-revision plus a digest of dirty and untracked content inside the normalized
-scope. Include it in every peer payload. Revalidate it before every reconcile
+Before initial dispatch, capture one **repository-scope identity**: the current
+Jujutsu change and commit IDs plus a digest of working-copy content inside the
+normalized scope. Include it in every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
 voices into the current project: disclose the change and either restart all
 voices on the new identity or return an incomplete panel result.
@@ -184,7 +184,7 @@ within these rules is reported, never silently replaced or dropped.
 The pre-dispatch update should say who will inspect the subject and that the
 review is read-only. Do not recite scope mechanics, promise that repository
 secrets are inaccessible, or describe probe results, CLI versions, model tiers,
-commit hashes, repository identity, route health, job lifecycle, or scratch
+change IDs, repository identity, route health, job lifecycle, or scratch
 paths. Mention a cooperative scope restriction only when it materially changes
 the user's choice. Refer to the codebase as "this project" or "the repository"
 unless the user supplied a recognizable name.
@@ -195,7 +195,7 @@ Prepare one complete canonical payload containing the framed question, subject
 shape, normalized read scope, repository-scope identity, mode, paths to subject
 material already in the workspace, and required conversational material that is
 not available there. Let peers inspect and ground against the shared working
-tree. Do not duplicate readable files or add a host-curated architecture summary
+copy. Do not duplicate readable files or add a host-curated architecture summary
 merely to brief the peer.
 
 For an initial `independent` round, exclude ce-pov's position and every other
@@ -232,7 +232,7 @@ fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Fill in the start command below rather than reconstructing the worker's
 arguments from its usage header. Pass the actual repository root separately from
 any narrower read root, and pre-create the round output directory as private
-scratch outside the repository. For named peers, start one job per exact target;
+scratch under `<workspace-root>/.tmp/pov/`. For named peers, start one job per exact target;
 for a selected panel, start one job per selected peer. Start all jobs before
 waiting.
 
@@ -242,8 +242,8 @@ runner window already sits outside the worker's cap and reaps nothing healthy.
 
 **Raising `CROSS_MODEL_HARD_SECS` widens the runner window automatically.** The
 runner derives its supervisor hard cap from the ambient knob
-(`max(1230, knob + 30)`). Do not set a numeric `CE_PEER_HARD_SECS` here — and
-clear any ambient one on the start prefix (`CE_PEER_HARD_SECS=`) so a stale
+(`max(1230, knob + 30)`). Do not set a numeric `POV_PEER_HARD_SECS` here — and
+clear any ambient one on the start prefix (`POV_PEER_HARD_SECS=`) so a stale
 export cannot undercut the derivation. Do not re-export a *resolved*
 `CROSS_MODEL_HARD_SECS` onto the worker's command line: that converts a
 fallback into an override and strips the worker of its route-aware default
@@ -274,7 +274,7 @@ tool's CWD is the user's project on every host, not the skill directory.
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-CE_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_REPO_ROOT="<repo-root>" CROSS_MODEL_READ_ROOT="<read-root>" CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
+POV_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_REPO_ROOT="<repo-root>" CROSS_MODEL_READ_ROOT="<read-root>" CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
 ```
 
 - `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or

@@ -4,14 +4,14 @@ Loaded when `ce-debug` is invoked with `mode:pipeline` by an orchestrator (`ce-b
 
 ## Authority: you act under the orchestrator's inherited scope
 
-Being invoked by an orchestrator is **not** itself authorization. You mutate under the **inherited** scope the orchestrator holds from the user: **actions** = fix / commit / push on the current branch; **exclusions** = merge, rebase, force-push, approve a gated CI run. That envelope is fixed — you may *narrow* it (defer a fix, return `needs-human`) but never *broaden* it. If the only way to make CI green is an excluded action (a rebase or force-push to untangle history, or approving a gated run), that is out of envelope: **defer as `needs-human`** with a `decision_context`, do not perform it. This is a mutation-mechanism boundary and sits alongside the convergent/divergent *content* boundary below — a fix can be convergent in content yet still out of envelope in mechanism.
+Being invoked by an orchestrator is **not** itself authorization. You mutate under the **inherited** scope the orchestrator holds from the user: **actions** = fix / describe / push on the current working-copy change and bookmark; **exclusions** = merge, rebase, push with bypassed safety checks, approve a gated CI run. That envelope is fixed — you may *narrow* it (defer a fix, return `needs-human`) but never *broaden* it. If the only way to make CI green is an excluded action (a rebase or bypassing push safety to untangle history, or approving a gated run), that is out of envelope: **defer as `needs-human`** with a `decision_context`, do not perform it. This is a mutation-mechanism boundary and sits alongside the convergent/divergent *content* boundary below — a fix can be convergent in content yet still out of envelope in mechanism.
 
 ## Non-interactive overrides (per phase)
 
 - **Phase 0 (triage):** If an issue fetch fails, do not ask the user to paste content — proceed with the input you have and note the gap in the return. Do not ask "what have you tried"; infer prior attempts from the input.
 - **Phase 2 (root cause + fix gate):** There is no "Fix it now / Diagnosis only" question. The caller invoked this skill to fix, so **fix by default — but only convergent fixes** (see the boundary below). A divergent fix is deferred, not applied.
-- **Phase 3 (workspace/branch):** Operate on the current branch — the orchestrator owns branch context; never prompt to create a branch, never prompt about uncommitted work. Commit the fix (`fix(ci): <summary>` for a CI failure, else `fix: <summary>`) and push. Never weaken, skip, or mock a failing assertion to make it pass — repair the real issue or defer.
-- **Phase 4 (handoff):** No prompt. Emit the structured return below. Skip the compound offer.
+- **Phase 3 (workspace/change):** Operate on the current working-copy change and bookmark stack — the orchestrator owns that context; never prompt to create a bookmark or about pre-existing work. Describe the fix and push the orchestrator-owned bookmark. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed syntax. Use a neutral `<change-description>` placeholder. Never weaken, skip, or mock a failing assertion to make it pass — repair the real issue or defer.
+- **Phase 4 (handoff):** No prompt. Emit the structured return below. Skip the learning-capture offer.
 - **Quality tail (simplify/review):** Skip in pipeline to bound cost and nesting depth; the orchestrator scopes review at its own level. Keep the Phase 3 tests.
 
 ## The fix-authority boundary: convergent vs divergent
@@ -22,11 +22,11 @@ Apply a fix only when it **converges to intended behavior** — it repairs the r
 
 ### Emergent trade-offs (when the caller passes a `trajectory`)
 
-Some divergence isn't visible in one pass — it emerges across rounds as **ping-pong**: your fix for A surfaces B, the fix for B brings A back. When the orchestrator seeds you with a `trajectory` (`recurring_checks`, `check_recur_max`, `heads_since_progress`), reason over it before fixing again — and hold the anti-cry-wolf line:
+Some divergence isn't visible in one pass — it emerges across rounds as **ping-pong**: your fix for A surfaces B, the fix for B brings A back. When the orchestrator seeds you with a `trajectory` (`recurring_checks`, `check_recur_max`, `revisions_since_progress`), reason over it before fixing again — and hold the anti-cry-wolf line:
 
 - **Progressive failure migration** — A fixed, B appears *once*, you fix B, done — is ordinary multi-step repair. **Keep fixing.** Do not park it.
 - **Oscillation** — the *same* check/invariant returns after a fix aimed at it, defects cycle, or each fix trades one failure for another — means A and B can't both hold without a larger change. That larger change is a **product/design decision**, so **defer**: apply nothing this round and return `needs-human`, with a `decision_context` that names the two failures in tension, why they can't be reconciled without a divergent change, the options, and your lean.
-- **Moving-target guard:** if the recurrence traces to an external cause (a base-branch merge, a dep bump, flaky infra) rather than your fixes fighting each other, it is *not* an emergent trade-off — keep fixing, and note the external cause. Recurrence is only meaningful when your own fixes are what oscillate.
+- **Moving-target guard:** if the recurrence traces to an external cause (a trunk-bookmark update, a dependency bump, flaky infrastructure) rather than your fixes fighting each other, it is *not* an emergent trade-off — keep fixing, and note the external cause. Recurrence is only meaningful when your own fixes are what oscillate.
 
 To defer, name the invariant the fix would need to satisfy and why no bounded convergent change satisfies it. If unsure it's genuine oscillation vs one more real bug, prefer one more convergent attempt over a premature park.
 
@@ -49,12 +49,13 @@ The skill's final output in pipeline mode is machine-readable (the caller parses
   "summary": "<one line: what happened>",
   "root_cause": "<causal chain, brief>",
   "changed_files": ["..."],
-  "head_sha": "<sha after push, when fixed-and-pushed>",
+  "change_id": "<jj change ID after push, when fixed-and-pushed>",
+  "commit_id": "<jj commit ID after push, when fixed-and-pushed>",
   "residuals": [ { "title": "...", "decision_context": "...", "thread": "<url|null>" } ]
 }
 ```
 
-- `fixed-and-pushed` — a convergent fix was applied, tests pass, committed and pushed.
+- `fixed-and-pushed` — a convergent fix was applied, tests pass, described and pushed.
 - `flaky-infra` — a flake or infrastructure failure, not a code defect (the caller may retry).
 - `needs-human` — the failure requires a divergent/product decision; nothing applied; see `residuals`.
 - `diagnosed-no-fix` — root cause found but no safe convergent fix available this run; see `residuals`.

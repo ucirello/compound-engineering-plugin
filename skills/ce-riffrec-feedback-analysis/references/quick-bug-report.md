@@ -4,11 +4,15 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Run the analyzer to a temp directory so nothing pollutes the repo (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command — shell state does not persist between Bash calls):
+1. Run the analyzer under the Jujutsu workspace's `.tmp/rocketclaw-riffrec-quick/` directory, falling back to the current directory's local `.tmp/rocketclaw-riffrec-quick/`, so nothing enters the durable artifact tree (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command because shell state does not persist between Bash calls):
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the ce-riffrec-feedback-analysis SKILL.md>";
-   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$(mktemp -d "${TMPDIR:-/tmp}/riffrec-quick-XXXXXX")"
+   JJ_ROOT="$(jj root 2>/dev/null)" || JJ_ROOT="$PWD";
+   TMP_ROOT="$JJ_ROOT/.tmp/rocketclaw-riffrec-quick";
+   mkdir -p "$TMP_ROOT";
+   attempt=0; while ! OUTPUT_DIR="$TMP_ROOT/run-$$-$attempt" || ! mkdir "$OUTPUT_DIR" 2>/dev/null; do attempt=$((attempt + 1)); [ "$attempt" -lt 128 ] || exit 1; done;
+   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$OUTPUT_DIR"
    ```
 
    Capture the printed output directory; later steps read from it.
@@ -37,9 +41,9 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only in the temp dir and are discarded by the OS.
+- Do not include `raw/` or `frames/` in the Jujutsu change; they live only in the workspace-local `.tmp/` tree and may be removed after the report is delivered.
 - No source-mapping pass across the codebase.
 
 ## Escalation
 
-If, while reading the transcript, the recording turns out to contain multiple distinct issues, requirements, or a workflow walkthrough, stop and tell the user: "This recording has more than one issue — switching to the extensive path." Then load `references/extensive-analysis.md` and re-run the analyzer with a non-temp output directory.
+If, while reading the transcript, the recording turns out to contain multiple distinct issues, requirements, or a workflow walkthrough, stop and tell the user: "This recording has more than one issue — switching to the extensive path." Then load `references/extensive-analysis.md` and re-run the analyzer with a durable output directory.

@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current change or a Jujutsu revision.
+argument-hint: "[revision, bookmark, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a Jujutsu change or revision using the best approved browser driver available in the active harness.
 
 ## Modes
 
@@ -27,23 +27,14 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 ### 1. Select the Browser Driver
 
-Apply the Browser Driver Policy above and record the selected driver. This also requires a git repository with changes to test.
+Apply the Browser Driver Policy above and record the selected driver. This also requires a Jujutsu workspace with changes to test.
 
 ### 2. Determine Test Scope
 
-**If PR number provided:**
-```bash
-gh pr view [number] --json files -q '.files[].path'
-```
+Use `@` as the target revision when the argument is `current` or empty; otherwise use the supplied revision or bookmark. Use the project's configured trunk revision as the base, falling back to `trunk()`, then list the files changed across that range:
 
-**If 'current' or empty:**
 ```bash
-git diff --name-only main...HEAD
-```
-
-**If branch name provided:**
-```bash
-git diff --name-only main...[branch]
+jj diff --from '<base-revision>' --to '<target-revision>' --name-only
 ```
 
 ### 3. Map Changed Files to Routes
@@ -195,7 +186,7 @@ After all tests complete, present a summary:
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** [base revision] to [target revision]
 **Server:** http://localhost:${PORT}
 
 ### Pages Tested: [count]
@@ -223,14 +214,14 @@ After all tests complete, present a summary:
 ## Quick Usage Examples
 
 ```bash
-# Test current branch changes (auto-detects port)
+# Test the current change (auto-detects port)
 /ce-test-browser
 
-# Test specific PR
-/ce-test-browser 847
+# Test a specific revision
+/ce-test-browser <revision>
 
-# Test specific branch
-/ce-test-browser feature/new-dashboard
+# Test a specific bookmark
+/ce-test-browser <bookmark>
 
 # Test on a specific port
 /ce-test-browser --port 5000

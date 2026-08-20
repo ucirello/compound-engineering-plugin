@@ -20,7 +20,7 @@ if [ -n "$3" ]; then
     REPO=$(echo "$3" | cut -d/ -f2)
 else
     # `|| true` is load-bearing: under `set -e`, a failed command substitution
-    # in an assignment aborts the script immediately. Run outside a git repo,
+    # in an assignment aborts the script immediately. Run outside the target workspace,
     # `gh repo view` exits 1, its stderr is swallowed by `2>/dev/null`, and the
     # script would die here with rc=1 and no output -- making the friendly error
     # below unreachable. Keep `|| true` so detection failure falls through to it.
@@ -29,7 +29,7 @@ else
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from inside the target git repository, or pass OWNER/REPO as the third argument (e.g., get-thread-for-comment $PR_NUMBER $COMMENT_NODE_ID EveryInc/cora)." >&2
+    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from inside the target jj workspace, or pass OWNER/REPO as the third argument." >&2
     exit 1
 fi
 
@@ -37,8 +37,61 @@ fi
 # more than one page of threads can still resolve a comment to its parent
 # thread. Per-thread comments are still capped at 100 -- threads exceeding
 # that depth are not paginated here.
-tmp_threads=$(mktemp "${TMPDIR:-/tmp}/ce-pr-threads.XXXXXX")
-trap 'rm -f "$tmp_threads"' EXIT
+if JJ_ROOT=$(jj root 2>/dev/null); then
+    TMP_ROOT="$JJ_ROOT/.tmp"
+else
+    TMP_ROOT="$PWD/.tmp"
+fi
+effective_uid=$(id -u)
+if [ -L "$TMP_ROOT" ]; then
+    echo "Error: local scratch root is a symlink: $TMP_ROOT" >&2
+    exit 1
+fi
+if [ ! -e "$TMP_ROOT" ]; then
+    if ! (umask 077 && mkdir -m 700 -- "$TMP_ROOT") 2>/dev/null; then
+        echo "Error: could not create local scratch root: $TMP_ROOT" >&2
+        exit 1
+    fi
+fi
+if [ -L "$TMP_ROOT" ] || [ ! -d "$TMP_ROOT" ]; then
+    echo "Error: local scratch root is not a real directory: $TMP_ROOT" >&2
+    exit 1
+fi
+tmp_owner=$(stat -f '%u' "$TMP_ROOT" 2>/dev/null || true)
+case "$tmp_owner" in
+''|*[!0-9]*)
+    tmp_owner=$(stat -c '%u' "$TMP_ROOT" 2>/dev/null) || {
+        echo "Error: could not verify local scratch ownership: $TMP_ROOT" >&2
+        exit 1
+    }
+    ;;
+esac
+if [ "$tmp_owner" != "$effective_uid" ]; then
+    echo "Error: local scratch root is not owned by the effective user: $TMP_ROOT" >&2
+    exit 1
+fi
+chmod 700 -- "$TMP_ROOT" || {
+    echo "Error: could not secure local scratch root: $TMP_ROOT" >&2
+    exit 1
+}
+TMP_ROOT=$(cd -P -- "$TMP_ROOT" && pwd) || {
+    echo "Error: could not resolve local scratch root: $TMP_ROOT" >&2
+    exit 1
+}
+attempt=0
+while :; do
+    run_dir="$TMP_ROOT/ce-pr-thread-$$-$attempt"
+    if (umask 077 && mkdir "$run_dir") 2>/dev/null; then break; fi
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 128 ] || { echo "Error: could not reserve local scratch" >&2; exit 1; }
+done
+tmp_threads="$run_dir/threads.json"
+cleanup() {
+    case "$run_dir" in
+        "$TMP_ROOT"/ce-pr-thread-*) rm -rf -- "$run_dir" ;;
+    esac
+}
+trap cleanup EXIT
 
 gh api graphql --paginate --slurp \
   -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" \

@@ -4,8 +4,7 @@
 # Runs one reasoning-heavy step on a user-chosen model via the Claude CLI, as a
 # detached job supervised by peer-job-runner.py. Streams NDJSON so the idle
 # window observes genuine progress, not just liveness — a buffered format would
-# make a healthy long run byte-identical to a wedged one. See
-# docs/solutions/skill-design/cli-output-buffering-for-progress-detection.md.
+# make a healthy long run byte-identical to a wedged one.
 #
 # Read-only posture (R7): the CLI is allowlisted to Read/Glob/Grep plus
 # WebSearch/WebFetch, so writes, shell, skills, and MCP are unavailable; the
@@ -51,9 +50,9 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole OS temp root ($TMPDIR / /tmp) instead would
-  # expose every other same-user scratch file and credential to the elevated
-  # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
+  # via --add-dir. Adding the whole local scratch root instead would expose
+  # unrelated files and credentials to the elevated model; the scoped dir does
+  # not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
   # --no-session-persistence: this is a one-shot background model call, so the
@@ -85,7 +84,7 @@ RESULT_PATH="${3:?result-path required}"
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole OS temp root. Pure-bash dirname (no
+# to an absolute path), never the whole local scratch root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,14 +102,15 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/elevation-peer-XXXXXX")"
+PEERLOG="$HANDOFF_DIR/.elevation-peer-$$"
+(umask 077; : > "$PEERLOG") || { log "cannot create peer log: $PEERLOG"; exit 2; }
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
-# Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
+# Keep this inner cap >= the runner's ROCKETCLAW_PEER_HARD_SECS so it never reaps a
 # healthy run before the outer supervisor's own raised backstop.
-IDLE_SECS="${CE_ELEVATION_IDLE_SECS:-180}"
-HARD_SECS="${CE_ELEVATION_HARD_SECS:-5400}"
-POLL_SECS="${CE_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
+IDLE_SECS="${ROCKETCLAW_ELEVATION_IDLE_SECS:-180}"
+HARD_SECS="${ROCKETCLAW_ELEVATION_HARD_SECS:-5400}"
+POLL_SECS="${ROCKETCLAW_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
 
 reap() {
   local pid="$1" grp

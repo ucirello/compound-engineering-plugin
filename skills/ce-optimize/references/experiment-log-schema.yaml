@@ -2,7 +2,7 @@
 # This is the canonical schema for the experiment log file that accumulates
 # across an optimization run.
 #
-# Location: .context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml
+# Location: .context/optimize/<spec-name>/experiment-log.yaml
 #
 # PERSISTENCE MODEL:
 # The experiment log on disk is the SINGLE SOURCE OF TRUTH. The agent's
@@ -41,6 +41,16 @@ structure:
     type: string
     format: "ISO 8601 timestamp"
     required: true
+
+  baseline_change_id:
+    type: string
+    required: true
+    description: "Jujutsu change ID whose content was measured as the original baseline"
+
+  optimization_change_id:
+    type: string
+    required: true
+    description: "Current empty orchestration change above the retained optimization stack"
 
   baseline:
     type: object
@@ -83,6 +93,9 @@ structure:
       iteration:
         type: integer
         description: "Iteration number of the best experiment (use 0 for the baseline snapshot before any experiment is kept)"
+      change_id:
+        type: string
+        description: "Jujutsu change ID whose content produced the current best metrics"
       metrics:
         type: object
         description: "All metric values from the current best state (seed with baseline metrics during CP-1)"
@@ -141,19 +154,19 @@ experiment_entry:
       type: enum
       values:
         - measured                # measurement finished and metrics were persisted, awaiting batch evaluation
-        - kept                    # primary metric improved, gates passed -> merged to optimization branch
+        - kept                    # primary metric improved, gates passed -> retained in the optimization stack
         - reverted                # primary metric did not improve or was worse -> changes discarded
         - degenerate              # degenerate gate failed -> immediately reverted, no judge evaluation
         - error                   # measurement command crashed, timed out, or produced malformed output
         - deferred_needs_approval # experiment needs an unapproved dependency -> set aside for batch approval
         - timeout                 # measurement command exceeded timeout_seconds
-        - runner_up_kept          # file-disjoint runner-up that was cherry-picked and re-measured successfully
-        - runner_up_reverted      # file-disjoint runner-up that was cherry-picked but combined measurement was not better
+        - runner_up_kept          # file-disjoint runner-up rebased onto the current best and re-measured successfully
+        - runner_up_reverted      # file-disjoint runner-up rebased onto the current best but not retained
       description: >
-        Load-bearing state: the loop branches on this value.
+        Load-bearing state: the loop selects its next action from this value.
         'measured' is the only non-terminal state and exists so CP-3 can persist
         raw metrics before batch-level comparison decides the final outcome.
-        'kept' and 'runner_up_kept' advance the optimization branch.
+        'kept' and 'runner_up_kept' advance the optimization stack.
         'deferred_needs_approval' items are re-presented at wrap-up.
         All other states are terminal for that experiment.
 
@@ -200,9 +213,9 @@ experiment_entry:
       type: string
       description: "What was learned from this experiment. The agent reads these to avoid re-trying similar approaches and to inform new hypothesis generation."
 
-    commit:
+    change_id:
       type: string
-      description: "Git commit SHA on the optimization branch (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "Jujutsu change ID in the optimization stack (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string
@@ -231,13 +244,13 @@ experiment_entry:
 #           -> persist raw metrics   -> outcome: measured
 #           -> judge evaluated (if type: judge)
 #             -> best in batch, improved  -> outcome: kept
-#             -> runner-up, file-disjoint -> cherry-pick + re-measure
+#             -> runner-up, file-disjoint -> rebase onto current best + re-measure
 #               -> combined better        -> outcome: runner_up_kept
 #               -> combined not better    -> outcome: runner_up_reverted
 #             -> not improved             -> outcome: reverted
 #       -> needs unapproved dep    -> outcome: deferred_needs_approval
 #
-# Only 'kept' and 'runner_up_kept' produce a commit on the optimization branch.
+# Only 'kept' and 'runner_up_kept' retain a change in the optimization stack.
 # Only 'deferred_needs_approval' items are re-presented at wrap-up for approval.
 
 # ============================================================================
@@ -245,7 +258,7 @@ experiment_entry:
 # ============================================================================
 #
 # Written after each batch to:
-#   .context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md
+#   .context/optimize/<spec-name>/strategy-digest.md
 #
 # Contains a compressed summary of:
 # - What hypothesis categories have been tried

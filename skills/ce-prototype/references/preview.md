@@ -12,9 +12,15 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
-LOCAL_ROOT="$PWD/.tmp";
-if [ -n "$WORKSPACE_ROOT" ]; then ROOT="$WORKSPACE_ROOT/.tmp"; else ROOT="$LOCAL_ROOT"; fi;
+RUN_KEEP="yes";
+WORKSPACE_ROOT="$(jj root 2>/dev/null)";
+LOCAL_ROOT="${WORKSPACE_ROOT:-$PWD}";
+FALLBACK_ROOT="$LOCAL_ROOT/.tmp/rocketclaw";
+if [ "$RUN_KEEP" = yes ] && [ -n "$WORKSPACE_ROOT" ] && [ ! -L "$WORKSPACE_ROOT/.context" ]; then
+ROOT="$WORKSPACE_ROOT/.context";
+else
+ROOT="$FALLBACK_ROOT";
+fi;
 while :; do
 BASE="$ROOT/ce-prototype";
 if [ -L "$ROOT" ]; then echo "unsafe root symlink: $ROOT" >&2;
@@ -26,8 +32,8 @@ elif ! (umask 077; mkdir -p "$BASE"); then echo "could not create $BASE" >&2;
 elif [ ! -O "$BASE" ]; then echo "base is not owned by the current user: $BASE" >&2;
 elif ! chmod 700 "$BASE"; then echo "could not restrict $BASE" >&2;
 else break; fi;
-if [ "$ROOT" = "$LOCAL_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
-echo "falling back to $LOCAL_ROOT" >&2; ROOT="$LOCAL_ROOT";
+if [ "$ROOT" = "$FALLBACK_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
+echo "falling back to $FALLBACK_ROOT" >&2; ROOT="$FALLBACK_ROOT";
 done;
 RUN_DIR="$BASE/$RUN_SLUG"; n=1;
 while ! (umask 077; mkdir "$RUN_DIR") 2>/dev/null; do
@@ -39,7 +45,9 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-The symlink and ownership checks run against both the **root** and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe jj-workspace path falls back to the current directory's local `.tmp`; failure there is fatal.
+Set `RUN_KEEP="no"` when the user asked that this run not be kept; it sends the run to the local `.tmp/rocketclaw` fallback without touching the rest of the block. Before running this block in a jj workspace, the caller has already confirmed that its selected `.context/` or `.tmp/` parent is ignored as required by `SKILL.md`.
+
+Three things this block is careful about. The symlink and ownership checks run against both the **root** and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe durable path at either level falls back to the workspace-local `.tmp/rocketclaw` rather than aborting; only a local fallback that also fails is fatal.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -85,7 +93,7 @@ The browser reloads only when the newest screen changes; it must not continually
 Write screens under:
 
 ```text
-<jj-workspace>/.tmp/ce-prototype/<YYYY-MM-DD>-<run-slug>/
+<jj-workspace>/.context/prototype/<YYYY-MM-DD>-<run-slug>/
   decisions.md               # run capsule for the next skill; not a plan
   01-<question-slug>/
     screens/
@@ -99,7 +107,7 @@ Write screens under:
     state/
 ```
 
-The fallback root takes the same shape under `<current-directory>/.tmp/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The fallback root takes the same shape under `<jj-workspace>/.tmp/rocketclaw/prototype/`, or `<current-working-directory>/.tmp/rocketclaw/prototype/` without a jj workspace. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Launch mode by platform
 

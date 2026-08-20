@@ -1,8 +1,8 @@
-# Dogfood Report — <branch>
+# Dogfood Report — <target>
 
-> Diff-scoped browser QA of `<branch>` vs `<base>` on <YYYY-MM-DD>.
+> Diff-scoped browser QA of `<target-revision>` vs `<base-revision>` on <YYYY-MM-DD>.
 
-<!-- Use workspace-relative paths throughout this doc, never absolute paths, so it stays portable. -->
+<!-- Use repo-relative paths throughout this doc, never absolute paths, so it stays portable. -->
 <!-- This template is the source of truth for the report's sections; build the report to this shape rather than from memory. -->
 
 ## Diff Summary
@@ -30,10 +30,10 @@ flowchart TD
 
 ## Test Matrix & Results
 
-| # | Flow | Journey / Scenario | Status | Issue | Fix | Commit |
+| # | Flow | Journey / Scenario | Status | Issue | Fix | Change ID |
 |---|------|--------------------|--------|-------|-----|--------|
 | 1 |      |                    | Pass   | -     | -   | -      |
-| 2 |      |                    | Fixed  |       |     | abc123 |
+| 2 |      |                    | Fixed  |       |     | <change-id> |
 | 3 |      |                    | Blocked (needs human verify) | | | |
 
 Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human verify)`, `Blocked (human decision)`. Start every scenario at `Pending` so this table doubles as the resume checkpoint.
@@ -42,17 +42,17 @@ Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human veri
 
 For each issue found and fixed:
 
-### <Short issue title> — `<commit>`
+### <Short issue title> — `<change-id>`
 - **Symptom:** <what the user saw / what failed in the browser>
 - **Root cause:** <why it happened>
-- **Fix:** <what changed, workspace-relative file paths>
+- **Fix:** <what changed, repo-relative file paths>
 - **Regression test:** <test added that fails before / passes after — or, for a pure copy/visual fix, the browser-replay/screenshot check used and why no automated test was meaningful>
 
 ## Paper Cuts (by persona)
 
 <Experiential friction found while walking each flow as each persona. A scenario can `Pass` functionally and still carry paper cuts. Note the persona, severity, and whether it was fixed (sharp ones, via the Phase 5 loop) or deferred. "None" if clean.>
 
-- **<Persona>** — <paper cut> — <severity> — <fixed `<commit>` / deferred>
+- **<Persona>** — <paper cut> — <severity> — <fixed `<change-id>` / deferred>
 
 ## Console Errors
 
@@ -70,7 +70,7 @@ For each issue found and fixed:
 - **What's broken:** <symptom / failing scenario>
 - **Why escalated:** <why it's not a safe autonomous fix — scope, risk, ambiguity, product trade-off>
 - **Options:** <option A (trade-offs) / option B (trade-offs)>
-- **Recommendation:** <the agent's suggested direction, for the human to confirm. If this recommends a commit message: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Project-local conventions take precedence; compatible Go guidance informs clarity and structure without imposing fixed prefix, scope, capitalization, punctuation, or subject-line syntax, and equivalent history is inspected with `jj log`.>
+- **Recommendation:** <the agent's suggested direction, for the human to confirm>
 
 ## Learnings
 

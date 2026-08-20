@@ -51,7 +51,7 @@ and Codex with fake peer CLIs first on PATH.
 7. **Detached lifecycle remains bounded.** The orchestrator starts the peer job
    in a short runner call, polls in bounded slices while other review work
    continues, reaps at the aggregate deadline, reads owned results and skip logs,
-   names non-`done` terminal states, and removes private scratch.
+   names non-`done` terminal states, and removes workspace-local private artifacts.
 
 8. **Mode-specific disclosure is honest.** Human-facing default mode announces
    the fixed route and egress before dispatch and calls it independent only when

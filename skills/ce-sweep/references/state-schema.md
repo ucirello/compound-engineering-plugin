@@ -80,8 +80,8 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 
 | field | meaning |
 | --- | --- |
-| `fix_ref` | Reference to the fix (PR/commit/issue link). |
-| `verified_merge_sha` | The merge commit SHA the fix landed on. |
+| `fix_ref` | Reference to the fix (PR/change/issue link). |
+| `verified_revision_id` | The revision id verified on the default bookmark. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
 `validate` scans every item and downgrades any `closed` item missing (or with a
@@ -145,8 +145,8 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-commit mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same jj workspace. The file may be committed locally, but no bookmark is pushed. |
-| pushed shared bookmark | One writer **per repository**. | The state file lives under the configured artifact root and multiple workspaces push one tracked bookmark. `lease-acquire` and each later lease-restamping mutation must be committed as a path-scoped jj change, pushed through that bookmark, fetched, and confirmed as the remote bookmark's exact target before the next source-side write. |
+| local-change mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same working copy (e.g. a scheduled sweep and a manual one). The file is written in-workspace and may be included in a local change. No cross-machine guarantee. |
+| published shared bookmark | One writer **per repository**. | The state file is published through a tracked bookmark shared by multiple workspaces. `lease-acquire` must be recorded, published, and confirmed after a fetch **before any source-side write**. This makes the lease a repository-wide mutex across machines. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -162,13 +162,16 @@ Records the outcome of a sweep run under `last_run`.
 | `writer` | `--writer` | The writer id that recorded the run. |
 | `counts` | `--counts` (JSON object) | Free-form tallies (per status, per source, etc.). |
 
-`run-record` is intentionally **lease-agnostic** so a local run that aborts on a
-`LOCKED` lease can record that outcome. Every mutating subcommand holds an OS
-advisory lock (`flock` on `<state>.lock`) across its load-modify-write, which
-serializes processes sharing one workspace. That lock does not cross machines:
-a shared-bookmark loser must leave the winning remote state untouched and report
-`aborted-locked` only in its summary. The `.lock` file is ephemeral and excluded
-from path-scoped jj commits.
+`run-record` is intentionally **lease-agnostic**: a run that aborted precisely
+because the lease was `LOCKED` (`outcome: aborted-locked`) must still be able to
+record that fact — but that write happens while the lease holder is mid-sweep.
+To keep it from clobbering the holder's concurrent upserts, every mutating
+subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
+whole load-modify-write, so two concurrent invocations serialize their writes
+regardless of lease ownership. The lease decides *who owns the sweep*; the file
+lock decides *who is writing the file right now*. The `.lock` file is ephemeral
+and never tracked (the skill's change-recording step names only the state file
+and plan filesets).
 
 ## Engine status words
 

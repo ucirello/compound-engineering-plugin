@@ -22,7 +22,7 @@ These hold regardless of which skill produced the artifact.
   — they break portability across machines, workspaces, teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
-  semantic marker such as `<!-- rocketclaw-section: work-relationships -->`; it carries
+  semantic marker such as `<!-- artifact-section: work-relationships -->`; it carries
   section meaning for downstream agents and does not create layout. If a layout
   idea only works as HTML, defer it to the HTML rendering. Markdown stays
   markdown.
@@ -204,14 +204,12 @@ Engineering process metadata stays out of the artifact:
 
 - No "captured at Phase X" notes
 - No `## Next Steps` pointing to the next skill
-- No tool or author credit lines
+- No italic provenance lines ("*Brainstorm completed 2026-05-13*")
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
 This information belongs in change descriptions, tool output, and agent
-transcripts — not in the artifact a reader returns to weeks later. When
-composing a change description, local syntax and messages visible in `jj log`
-win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go clarity and structure guidance without imposing fixed syntax or content.
+transcripts — not in the artifact a reader returns to weeks later.
 
 ## Frontmatter shape
 
@@ -226,7 +224,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from `jj log`, not stored in the doc.
+  the work shipped is derived from jj, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit
@@ -238,6 +236,7 @@ slips:
 - No HTML elements mixed in.
 - All file paths are repo-relative.
 - Horizontal rule separators between H2s (for Standard / Deep artifacts).
-- No process exhaust (Phase X notes, Next Steps pointers, or credit lines).
+- No process exhaust (Phase X notes, Next Steps pointers, provenance
+  lines).
 - Tables only where 5+ uniform-shape items justify them.
 - Frontmatter has all the per-skill required fields with reasonable values.

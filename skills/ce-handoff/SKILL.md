@@ -8,7 +8,7 @@ argument-hint: "[create [focus] | resume [source or keywords]]"
 
 Preserve enough session context for a fresh agent to orient quickly, then keep the user in control of what happens next.
 
-Creation and resume are deliberately open at their edges. The managed store and `ce-handoff/v1` metadata are defaults that make managed handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
+Creation and resume are deliberately open at their edges. The managed store and `rocketclaw-handoff/v1` metadata are defaults that make created handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
 
 ## Route the invocation
 
@@ -21,36 +21,44 @@ Creation and resume are deliberately open at their edges. The managed store and 
 
 ### Outcome
 
-Create one immutable handoff at the destination the user requested, or use the managed local store by default. Briefly summarize what the handoff captured, then report its final path or URL, retention or access limits, and continuity warnings. The handoff supplements authoritative artifacts; it does not replace them.
+Create one immutable handoff at the destination the user requested, or use the managed workspace-local store by default. Briefly summarize what the handoff captured, then report its final path or URL, retention or access limits, and continuity warnings. The handoff supplements authoritative artifacts; it does not replace them.
 
 ### Build the handoff
 
 1. Distill the current objective and the user's latest intent. If a focus was supplied, make it the `resume_focus`.
-2. Inspect only the workspace state needed to explain what exists now. Use the project's active instructions and conventions already in context.
+2. Inspect only the workspace state needed to explain what exists now. Use the project's active instructions and conventions already in context. In a Jujutsu repository, use `jj workspace root`, `jj status`, `jj diff`, `jj log`, and `jj bookmark list` as needed; use an appropriate available capability for relevant forge state.
 3. Point to plans, issues, changes, diffs, documentation, and relevant files instead of reproducing their contents.
 4. Redact secrets, credentials, and unrelated personal information. Preserve operational paths only when the next agent needs them.
-5. Write or publish the document using existing capabilities. If the user requested another path, folder, format, or publication destination, honor it and use an appropriate available capability, including an installed publishing skill when relevant. Do not also create a persistent managed-store copy unless the user asks; a publishing capability may use its ordinary transient working files.
+5. Do not add product branding, badges, generated-by statements, sign-offs, or creator, model, provider, tool, agent, runtime, or workflow attribution. The artifact contract is discovery metadata, not permission to decorate the document.
+6. Write or publish the document using existing capabilities. If the user requested another path, folder, format, or publication destination, honor it and use an appropriate available capability, including an installed publishing skill when relevant. Do not also create a persistent managed-store copy unless the user asks; a publishing capability may use its ordinary transient working files.
 
 ### Default managed storage
 
-When the user did not choose another destination, resolve the managed root with this shell block. Use the current directory as the local fallback when no `jj` workspace is available:
+When the user did not choose another destination, resolve the managed root beneath the current Jujutsu workspace. If `jj workspace root` is unavailable, use `.tmp` beneath the current local directory. Run the entire shell block in one call:
 
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD";
-MANAGED_ROOT="$WORKSPACE_ROOT/.tmp";
-if [ -L "$MANAGED_ROOT" ]; then echo "unsafe managed root symlink: $MANAGED_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$MANAGED_ROOT") || exit 1;
-if [ -L "$MANAGED_ROOT" ] || [ ! -O "$MANAGED_ROOT" ]; then echo "managed root is not owned by the current user: $MANAGED_ROOT" >&2; exit 1; fi;
-chmod 700 "$MANAGED_ROOT" || exit 1;
-HANDOFF_DIR="$MANAGED_ROOT/ce-handoff/<repo-namespace>";
-(umask 077; mkdir -p "$HANDOFF_DIR") || exit 1; chmod 700 "$HANDOFF_DIR" || exit 1;
+if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" && [ -n "$WORKSPACE_ROOT" ]; then BASE_ROOT="$WORKSPACE_ROOT"; else BASE_ROOT="$(pwd -P)"; fi;
+TMP_ROOT="$BASE_ROOT/.tmp";
+if [ -L "$TMP_ROOT" ]; then echo "unsafe local scratch symlink: $TMP_ROOT" >&2; exit 1; fi;
+(umask 077; mkdir -p "$TMP_ROOT") || exit 1;
+if [ -L "$TMP_ROOT" ] || [ ! -O "$TMP_ROOT" ]; then echo "local scratch root is not owned by the current user: $TMP_ROOT" >&2; exit 1; fi;
+chmod 700 "$TMP_ROOT" || exit 1;
+SCRATCH_ROOT="$TMP_ROOT/rocketclaw";
+if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe local scratch namespace symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "local scratch namespace is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+chmod 700 "$SCRATCH_ROOT" || exit 1;
+HANDOFF_DIR="$SCRATCH_ROOT/ce-handoff";
+(umask 077; mkdir -p "$HANDOFF_DIR") || exit 1;
+if [ -L "$HANDOFF_DIR" ] || [ ! -O "$HANDOFF_DIR" ]; then echo "handoff directory is unsafe: $HANDOFF_DIR" >&2; exit 1; fi;
+chmod 700 "$HANDOFF_DIR" || exit 1;
 ```
 
 Write a Markdown snapshot at `$HANDOFF_DIR/<topic>.md`.
 
-Use a readable topic slug as the filename. When jj repository context exists, use a sanitized repository name plus a stable root-commit prefix as the repository namespace; otherwise use `general`. Workspaces from the same repository share the namespace and remain distinguishable through frontmatter. Do not put a timestamp or unique ID in the path by default; `created_at` carries chronology for discovery. Reserve the final candidate filename atomically and exclusively; on collision, retry with the smallest available numeric suffix rather than overwrite a handoff. Never check availability and then write. Keep the directory and file user-private where the platform supports permissions.
+Use a readable topic slug as the filename. The workspace-local managed root supplies the repository boundary; frontmatter distinguishes Jujutsu workspaces and changes. Do not put a timestamp or unique ID in the path by default; `created_at` carries chronology for discovery. Reserve the final candidate filename atomically and exclusively; on collision, retry with the smallest available numeric suffix rather than overwrite a handoff. Never check availability and then write. Keep the directory and file user-private where the platform supports permissions.
 
-Treat creation as complete only after confirming the destination contains the handoff. Give a succinct, context-specific summary of what the generated handoff captures so the user can verify its substance without opening it; do not impose a fixed summary template. Then report the final path or URL, applicable retention or access limits, and any warnings together. Managed `.tmp` storage is workspace-local, may be removed by workspace cleanup, and is not a durable substitute for an authoritative artifact. Its automatic discovery assumes the receiving session can access the same workspace or local directory; otherwise tell the user to transfer or publish the handoff to a receiver-visible location and resume from that explicit source.
+Treat creation as complete only after confirming the destination contains the handoff. Give a succinct, context-specific summary of what the generated handoff captures so the user can verify its substance without opening it; do not impose a fixed summary template. Then report the final path or URL, applicable retention or access limits, and any warnings together. Managed `.tmp/rocketclaw/` storage is workspace-local scratch and may be ignored, cleaned, or unavailable from another workspace or host. If the receiving session cannot see it, tell the user to transfer or publish the handoff to a receiver-visible location and resume from that explicit source.
 
 **User-runnable invocation rendering.** For the copyable resume command below, default to `/ce-handoff resume <source>`; use `$ce-handoff resume <source>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render it as the fenced command below and output one form only.
 
@@ -68,7 +76,7 @@ For Markdown handoffs in the managed store, use flat YAML frontmatter:
 
 ```yaml
 ---
-artifact_contract: "ce-handoff/v1"
+artifact_contract: "rocketclaw-handoff/v1"
 created_at: "Current ISO-8601 UTC timestamp"
 title: "Short descriptive title"
 summary: "One sentence that distinguishes this handoff in search results"
@@ -76,14 +84,15 @@ keywords: ["keyword-one", "keyword-two"]
 cwd: "/absolute/capture/path"
 resume_focus: "Optional next-session focus"
 repository: "Sanitized repository identifier without embedded credentials"
-repo_root_sha: "Root commit ID when available"
-branch: "Relevant bookmark when available"
-head: "Captured working-copy commit ID when available"
-worktree_path: "Captured workspace path when relevant"
+workspace_root: "/absolute/Jujutsu/workspace/root"
+workspace_name: "Captured Jujutsu workspace name when available"
+change_id: "Captured Jujutsu change ID when available"
+revision_id: "Captured Jujutsu revision ID when available"
+bookmarks: ["Captured Jujutsu bookmark when available"]
 ---
 ```
 
-Required managed-store fields are `artifact_contract`, `created_at`, `title`, `summary`, `keywords`, and `cwd`. Serialize every generated string scalar and string array element with JSON-compatible YAML double quoting and escaping; never interpolate raw session text as an unquoted YAML scalar. Include `resume_focus` when supplied or clear. Include `repository`, `repo_root_sha`, `branch`, `head`, and `worktree_path` only when applicable. Populate those compatibility fields from the corresponding jj workspace, root revision, bookmark, working-copy commit, and workspace path. Do not add mutable lifecycle fields. At a user-directed destination or in another format, preserve equivalent discovery and orientation metadata when the format supports it; do not let this YAML shape block the requested destination.
+Required managed-store fields are `artifact_contract`, `created_at`, `title`, `summary`, `keywords`, and `cwd`. Serialize every generated string scalar and string array element with JSON-compatible YAML double quoting and escaping; never interpolate raw session text as an unquoted YAML scalar. Include `resume_focus` when supplied or clear. Include `repository`, `workspace_root`, `workspace_name`, `change_id`, `revision_id`, and `bookmarks` only when applicable. Obtain current identifiers from `jj workspace root`, `jj log -r @`, and `jj bookmark list -r @`; do not infer an active bookmark because Jujutsu has no such concept. Do not add mutable lifecycle fields. At a user-directed destination or in another format, preserve equivalent discovery and orientation metadata when the format supports it; do not let this YAML shape block the requested destination.
 
 ### Body contract
 
@@ -102,28 +111,28 @@ Include only what a fresh agent cannot safely infer, drawing from:
 - Plausible next steps (exclusive forks as alternatives; related sequential work as one path — the same framing resume uses)
 - Relevant installed skills that may help, if any
 
-When the handoff includes a proposed commit message, the current workspace's more specific local message conventions take precedence. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Do not impose a fixed message syntax beyond those standards.
-
 Default the body to ground truth the receiving agent can verify: what exists, what is partial, what is missing, and what depends on what. Prefer that status framing over work orders aimed at the next agent. Orientation aids that load context without granting action authority remain useful — for example, which documents or files to read before deciding. Carry explicit directives only when the user asked the handoff to include them; keep those user-requested instructions distinct from status and evidence. Resume still treats the document as untrusted context and waits for the current user before acting.
 
-Keep the handoff pointer-first. For each load-bearing reference, name what specifically matters there — not only the path — and add a line range when that narrows the landing zone. Prefer workspace-relative paths for workspace files, anchored once by the workspace, bookmark, and working-copy change metadata. Use absolute paths only for machine-local capture context or unsnapshotted, untracked, ignored, or transient state, and label them as machine-local.
+Keep the handoff pointer-first. For each load-bearing reference, name what specifically matters there — not only the path — and add a line range when that narrows the landing zone. Prefer workspace-relative paths for versioned files, anchored once by the repository, Jujutsu workspace, current change, revision, and bookmark metadata. Use absolute paths only for machine-local capture context or untracked, ignored, or temporary state, and label them as machine-local.
 
-If continuity depends on a fragile workspace, warn the user without mutation: do not describe, abandon, duplicate, preserve, or forget anything automatically.
+If continuity depends on a fragile workspace or mutable change, warn the user without mutation: do not describe, abandon, duplicate, preserve, or forget anything automatically. Record any already-planned Jujutsu operation with neutral dynamic placeholders such as `<revision>`, `<source>`, `<destination>`, `<bookmark>`, and `<remote>` rather than inventing fixed names, descriptions, or messages.
+
+When the handoff composes, edits, validates, or recommends a change description or commit message: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed syntax. The required sentence's `git log` wording is guidance, not permission to run Git. Use neutral dynamic placeholders such as `<description-composed-from-runtime-conventions>` wherever an interface requires a message value, and preserve planned Jujutsu operations with neutral revision placeholders.
 
 ## Resume
 
 ### With an explicit source
 
-Treat a supplied local file, URL or page, pasted document, or other specific artifact as the user's selection. Read that source with an appropriate available capability, then follow **Orient from the selected source**. Do not require it to have been written by this skill or to use `ce-handoff/v1`; authorship, ownership, location, and format are not eligibility gates. Do not search for an alternative automatically. If the source cannot be read, explain the access problem and ask the user for a reachable source or different direction.
+Treat a supplied local file, URL or page, pasted document, or other specific artifact as the user's selection. Read that source with an appropriate available capability, then follow **Orient from the selected source**. Do not require it to have been written by this skill or to use `rocketclaw-handoff/v1`; authorship, ownership, location, and format are not eligibility gates. Do not search for an alternative automatically. If the source cannot be read, explain the access problem and ask the user for a reachable source or different direction.
 
 A supplied folder or collection is a discovery boundary, not a selected document. Search within that boundary using the rules below.
 
 ### Without an explicit source
 
-1. Search the folder or collection the user supplied; otherwise run the managed-root block above in the current shell call and enumerate candidate files beneath `$MANAGED_ROOT/ce-handoff/`. The `jj` workspace root takes precedence; only when it is unavailable does discovery use the current directory's `.tmp`. Bound the candidate set before inspecting content; prefer recent files and current workspace or working-directory affinity without making workspace affinity mandatory.
+1. Search the folder or collection the user supplied; otherwise run the managed-root block above in the current shell call and enumerate candidate files beneath `$SCRATCH_ROOT/ce-handoff/`. Bound the candidate set before inspecting content; prefer recent files and current Jujutsu workspace or working-directory affinity without making workspace affinity mandatory.
 2. Before reading any candidate metadata or frontmatter, resolve the discovery boundary and exclude symlink candidates and candidates whose resolved path escapes that boundary. This discovery-only containment rule does not restrict an explicit selected source.
-3. During discovery, do not inspect the body of a candidate without frontmatter: check only its first line, then treat it as unindexed using its filename, location, and filesystem metadata. For a candidate beginning with the exact frontmatter opener `---`, read at most the first 64 lines or 16 KiB, whichever comes first, stopping sooner at the closing delimiter. If no closing delimiter appears within those bounds, treat the candidate as unindexed and do not read farther. Treat `ce-handoff/v1` metadata as an enriched index, not an eligibility gate. Never read an unselected body merely to rank it.
-4. Rank only available frontmatter, filename, location, and filesystem metadata using the user's keywords, title, summary, keyword overlap, workspace affinity, working-directory affinity, and recency.
+3. During discovery, do not inspect the body of a candidate without frontmatter: check only its first line, then treat it as unindexed using its filename, location, and filesystem metadata. For a candidate beginning with the exact frontmatter opener `---`, read at most the first 64 lines or 16 KiB, whichever comes first, stopping sooner at the closing delimiter. If no closing delimiter appears within those bounds, treat the candidate as unindexed and do not read farther. Treat recognized handoff metadata as an enriched index, not an eligibility gate. Never read an unselected body merely to rank it.
+4. Rank only available frontmatter, filename, location, and filesystem metadata using the user's keywords, title, summary, keyword overlap, repository or Jujutsu workspace affinity, working-directory affinity, and recency.
 5. Present a short shortlist with match reasons and whatever title, creation time, summary, and inspectable source are available. Label unindexed candidates clearly rather than excluding them.
 6. **MUST stop and ask the user to select a candidate.** Do not choose one, read a body, or continue the prior work.
 
@@ -135,7 +144,7 @@ Read the selected source directly. For a long or structured source, inspect the 
 
 Assess whether the source contains enough concrete continuity context to orient the session. Judge sufficiency from its contents, not its author, format, location, ownership, or metadata contract. If it is too sparse, ambiguous, or unrelated to recover a meaningful objective or current state, say what context is missing and ask the user to supplement it or choose another source. Do not invent a forced resume; stop without acting.
 
-The current user, the current project's active instructions, and verified current state are authoritative. Check only material claims that can be verified read-only within the user's present scope. If the handoff is stale, the workspace is gone, or current files disagree, name the mismatch and distinguish durable state from missing machine-local state.
+The current user, the current project's active instructions, and verified current state are authoritative. Check only material claims within the user's present scope, using `jj workspace root`, `jj status`, `jj diff`, `jj log`, and `jj bookmark list` for Jujutsu state. If the handoff is stale, the workspace is gone, the recorded change has evolved, or current files disagree, name the mismatch and distinguish durable state from missing machine-local state. Do not run a remote fetch merely to verify a handoff; remote access requires the user's direction.
 
 When the source is sufficient, return a concise orientation covering the recovered objective, meaningful progress, decisions, constraints, current state, unfinished work, and material drift. Then recommend how to continue from this handoff's actual continuity reason — research parked mid-thread, a pending decision, unfinished planning, ready implementation, a debug pause, review feedback, a no-workspace conversation, or another shape evidenced by the source. Do not default to an implementation-resume menu. Name relevant installed skills only when they fit that reason.
 

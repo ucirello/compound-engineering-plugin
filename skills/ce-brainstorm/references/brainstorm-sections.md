@@ -26,7 +26,7 @@ New `ce-brainstorm` outputs live under `<root>/plans/` and use the unified plan
 artifact contract:
 
 - **Path:** `<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>` (local wall-clock write time; no daily sequence number). Reserve the path atomically; on collision, retry with the smallest available numeric suffix before the extension rather than overwriting.
-- **`artifact_contract: rocketclaw-unified-plan/v1`**.
+- **`artifact_contract: unified-plan/v1`**.
 - **`artifact_readiness: requirements-only`**.
 - **`product_contract_source: brainstorm`**.
 - **`execution`** only when the brainstorm has enough signal to classify the
@@ -67,11 +67,8 @@ Skip document creation when **both** hold:
 - The user only needs brief alignment — no exploration produced novel scope,
   framing, or decisions worth preserving in IDed shape.
 - Any durable decisions made during the dialogue can flow naturally to
-  downstream artifacts (`ce-plan`, the change description, `<root>/solutions/`)
+  downstream artifacts (`ce-plan`, a change description, `<root>/solutions/`)
   without a brainstorm doc as an intermediary.
-
-When the destination is a change description, local syntax and messages visible
-in `jj log` take precedence over generic guidance. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go clarity and structure guidance without imposing fixed syntax or content.
 
 The trigger for creating a doc is when the dialogue surfaced enough
 structural decisions, scope boundaries, or acceptance criteria that
@@ -131,8 +128,8 @@ targets the connective tissue around precision, never the precision itself.
 **Resolve in place; don't stratify.** When a later decision answers a parked
 question or supersedes earlier text, rewrite or remove the original entry —
 don't append a separate "resolutions" layer that leaves the superseded text
-standing, and don't keep superseded prose as strikethrough. `jj log` holds the
-history. Stacked question/resolution strata double the reading surface
+standing, and don't keep superseded prose as strikethrough. Version control
+holds the history. Stacked question/resolution strata double the reading surface
 and hide which text is live.
 
 **One owner per rule; cite, don't restate.** A normative rule — a gate, cap,
@@ -160,8 +157,8 @@ the Phase 4 handoff:
    every Outstanding Question is classified as `Resolve Before Planning` or
    `Deferred to Planning`. When the coherent-work gate split a broader request,
    the `work-relationships` section is present and carries the marker for the
-   resolved output format: `<!-- rocketclaw-section: work-relationships -->` in Markdown
-   or `data-rocketclaw-section="work-relationships"` on its wrapping `<section>` in HTML.
+   resolved output format: `<!-- artifact-section: work-relationships -->` in Markdown
+   or `data-artifact-section="work-relationships"` on its wrapping `<section>` in HTML.
 2. **Consistent** — Goal Capsule, Requirements, Key Flows, Acceptance Examples,
    Scope Boundaries, and the `work-relationships` section do not contradict one
    another. Could a reader find a contradiction in each section in one pass? A
@@ -241,8 +238,8 @@ worse than omitting it.
   body of separately planned work and the relationship materially orients a
   cold reader. Give this section the semantic role `work-relationships`, which
   remains stable even if its visible heading is renamed: in Markdown, place
-  `<!-- rocketclaw-section: work-relationships -->` immediately before the heading; in
-  HTML, put `data-rocketclaw-section="work-relationships"` on the wrapping `<section>`.
+  `<!-- artifact-section: work-relationships -->` immediately before the heading; in
+  HTML, put `data-artifact-section="work-relationships"` on the wrapping `<section>`.
   The role identifies meaning, not wording, and is the downstream discovery
   contract. Lead with the one area this plan owns and state that the broader
   breakdown is the current understanding, not a committed roadmap. Then use a
@@ -365,13 +362,12 @@ artifact.
 
 ### Required
 
-- **`title`** — the artifact's descriptive name with a ` - Plan` suffix
-  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
-  `<h1>` (HTML). It is a unified plan at every readiness state, so the title
-  stays stable when `ce-plan` enriches it. Do not put change-description syntax
-  in the title; the `type` field carries a neutral work classification.
-- **`type`** — a short work classification consistent with local `jj log`
-  history. Local syntax wins; do not impose a fixed prefix vocabulary.
+- **`title`** — the artifact's descriptive name with a ` - Plan` suffix,
+  matching the H1 (markdown) or document `<h1>` (HTML). It is a unified plan
+  at every readiness state, so the title stays stable when `ce-plan` enriches
+  it. Keep the change classification out of the title; the `type` field carries
+  that.
+- **`type`** — the repository's local, history-aligned change classification.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
   Matches the calendar date in the filename
   (`<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>`), which adds the
@@ -380,18 +376,18 @@ artifact.
   `surface-scope-earlier`, `demo-reel-local-save`). Used in the filename and
   as the resume-detection key when `ce-brainstorm` scans for an existing
   artifact to continue.
-- **`artifact_contract`** — always `rocketclaw-unified-plan/v1` for new outputs.
+- **`artifact_contract`** — always `unified-plan/v1` for new outputs.
 - **`artifact_readiness`** — always `requirements-only` for new
   `ce-brainstorm` outputs. Do not use `active`, `in_progress`, `completed`,
   or `done`.
-- **`product_contract_source`** — always `brainstorm`.
+- **`product_contract_source`** — always `ce-brainstorm`.
 
 ### No status field
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No plan artifact carries mutable progress state; whether work shipped
-is derived from `jj log`, not stored in the doc. Do not introduce one.
+progress. No artifact carries mutable progress state; whether work shipped is
+derived from jj, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 
@@ -415,10 +411,6 @@ Same shape as plan rules.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to ce-plan, no italic provenance lines. Engineering process
   metadata belongs in change descriptions and tool output, not the artifact.
-  When composing a change description, local syntax and `jj log` history win.
-  Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-  Apply compatible Go clarity and structure guidance without imposing fixed
-  syntax or content.
 - **No implementation details by default.** Libraries, schemas, endpoints,
   file layouts, code structure stay out unless the brainstorm itself is
   inherently about a technical or architectural change and those details are

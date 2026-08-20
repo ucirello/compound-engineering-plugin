@@ -1,6 +1,6 @@
 # Test Matrix Taxonomy
 
-Use these dimensions to turn a jj target diff into an exhaustive browser test matrix. Not every dimension applies to every change — pick the ones the diff actually touches, but err toward coverage. The goal is to test **complete user journeys**, not isolated widgets.
+Use these dimensions to turn a jj target-vs-base diff into an exhaustive browser test matrix. Not every dimension applies to every change — pick the ones the diff actually touches, but err toward coverage. The goal is to test **complete user journeys**, not isolated widgets.
 
 ## 1. Journeys (the spine of the matrix)
 
@@ -33,7 +33,7 @@ The email test is the canonical example: "an email sends" is not a pass. Right r
 
 ### Persona paper cuts
 
-Walk each flow as each primary persona (from `STRATEGY.md` or `PRODUCT.md` "Users" — "Who it's for" in older strategy files — `VISION.md`, or a persona doc). A **paper cut** is small friction that passes functional tests but degrades the experience for that persona: confusing label, extra click, unexpected jump, slow-feeling step, missing feedback, copy that doesn't match how they think. Record the paper cut, which persona feels it, and severity. Functionally-passing scenarios can still carry paper cuts.
+Walk each flow as each primary persona (from STRATEGY.md or PRODUCT.md "Users" — "Who it's for" in older strategy files — VISION.md, or a persona doc). A **paper cut** is small friction that passes functional tests but degrades the experience for that persona: confusing label, extra click, unexpected jump, slow-feeling step, missing feedback, copy that doesn't match how they think. Record the paper cut, which persona feels it, and severity. Functionally-passing scenarios can still carry paper cuts.
 
 ## 4. Edge, error, and empty states
 

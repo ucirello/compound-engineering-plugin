@@ -4,7 +4,7 @@
 
 The diff is already visible on GitHub. The description exists to explain what the diff cannot show: what was impossible before and is now possible, what was broken and is now fixed, what shape changed. Cut any sentence a reader could reconstruct from the diff itself.
 
-- Bad: "Adds a decision helper, modifies the caller, and updates two test files."
+- Bad: "Adds `evidence-decider.ts`, modifies the shipping workflow to call it, and updates two test files."
 - Good: "Evidence capture now decides automatically whether a change has observable behavior. CLI tools and libraries are now eligible alongside web UIs."
 
 If the lead describes moves/renames/adds rather than what's now possible or fixed, rewrite it — restating the diff is the failure mode this skill exists to prevent. For user-facing bugs, name the visible before/after first; mention the technical cause only if it helps assess risk.
@@ -20,11 +20,11 @@ Before composing, resolve PR-body requirements from the project's active instruc
 
 ---
 
-## Step Pre-A: Resolve the Range and Base
+## Step Pre-A: Resolve the range and base
 
 Two modes:
 
-- **Current-bookmark mode** (default) — describe the selected head bookmark against the repository's default base.
+- **Current-bookmark mode** (default) — describe the current change series against the repository's default base.
 - **PR mode** — describe a specific PR when the caller passes a PR ref.
 
 For PR mode, fetch metadata first:
@@ -35,20 +35,20 @@ gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,
 
 If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-bookmark mode, resolve `<base>` with `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`; if unavailable, use an unambiguous tracked remote bookmark or ask. `<head>` is the selected feature bookmark, or `@` before one exists.
+For current-bookmark mode, resolve `<base>` with `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, then verify `<base>@<base-remote>` with `jj bookmark list --all-remotes`. If no unique base resolves, ask the user. `<head>` is the feature bookmark target, or `@` when no bookmark exists yet.
 
-**Base remote:** use the remote matching the GitHub base repository. For fork PRs, inspect Jujutsu's configured Git remotes and match owner/repository. If none matches, use the `gh` fallback rather than diffing against the wrong base.
+**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repository against `jj git remote list`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin`.
 
 ```bash
-jj git fetch --remote <base-remote> --branch <base>
-jj log -r '<base>@<base-remote>..<head>' --no-graph
-jj log -r '<base>@<base-remote>..<head>' --no-graph -T description
-jj diff --from '<base>@<base-remote>' --to '<head>'
+jj git fetch --remote <base-remote>
+jj log -r '<base>@<base-remote>..<head>'
+jj log -r '<base>@<base-remote>..<head>' -T builtin_log_detailed
+jj diff -r '<base>@<base-remote>..<head>'
 ```
 
 If the change list is empty, report "No changes to describe" and stop.
 
-**Fallback:** use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when Jujutsu cannot reach the refs, including fork, shallow-history, offline, or unrelated-history states. On GitHub Enterprise, prefer this API route over manipulating pull refs outside Jujutsu.
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when Jujutsu cannot reach the revisions, including a fork PR with no matching remote, a shallow clone, offline state, or unrelated histories.
 
 Note in the user-facing summary when the API fallback was used.
 
@@ -58,9 +58,9 @@ Note in the user-facing summary when the API fallback was used.
 
 **Size by decision cost, not diff shape** — not changed-line count, file extension, or visual surface. A 5-line ranking or deploy change can carry more reviewer uncertainty than a 500-line mechanical rename.
 
-Build a compact internal **scope map** from the **complete Jujutsu description list and base-to-head diff**. Use first lines for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale descriptions; consult full descriptions only when a first line remains opaque or conflicts with the diff. Group into material outcome clusters (one is fine), name one umbrella outcome that covers them, and identify each cluster's **material claims** — what became possible, fixed, riskier, or which design decision the reviewer must assess. Derive this map from the full range, never from the latest change, tracker title, bookmark name, or original request. The map is internal: do not expand the body to enumerate clusters the umbrella already covers. **Classify each changed file by runtime purpose, not extension** (markdown/YAML may be inert docs or runtime agent instructions, config, product content, or deploy behavior). Surface claims the diff alone cannot establish; leave the rest implicit.
+Build a compact internal **scope map** from the **complete change list and final range diff**. Use concise descriptions for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale descriptions; consult detailed descriptions only when a concise description remains opaque or conflicts with the diff. Group into material outcome clusters (one is fine), name one umbrella outcome that covers them, and identify each cluster's **material claims** — what became possible, fixed, riskier, or which design decision the reviewer must assess. Derive this map from the full range, never from the latest change, tracker title, bookmark name, or original request. The map is internal: do not expand the body to enumerate clusters the umbrella already covers. **Classify each changed file by runtime purpose, not extension** (markdown/YAML may be inert docs or runtime instructions, config, product content, or deploy behavior). Surface claims the diff alone cannot establish; leave the rest implicit.
 
-**Program altitude (multi-PR / series).** After the PR-local map, check whether this PR sits inside a larger program (multi-PR project, stack, series, multi-unit plan). Use only signals already in hand: user prompt/conversation, a known plan path, existing PR body, change descriptions, or sibling/series language in context. Do **not** invent a series, and do **not** run a repo-wide open-PR scan solely for this step.
+**Program altitude (multi-PR / series).** After the PR-local map, check whether this PR sits inside a larger program (multi-PR project, stack, series, multi-unit plan). Use only signals already in hand: user prompt/conversation, a known plan path, existing PR body, change descriptions, or sibling/series language in context. Do **not** invent a series, and do **not** run a repository-wide open-PR scan solely for this step.
 
 When program context is present, extend the map with: (1) **Program outcome** — end-to-end delivery in one sentence; (2) **This PR's contribution** — the local umbrella; (3) **Neighbors** — prior work (**lead-in**) and/or residual work (**lead-out**), each only when known. The map's order is **program → lead-in (if any) → this contribution → lead-out (if any)**; in the body the opening states this contribution and a short block after it supplies the rest (Step C). Early PRs need lead-out; middle need both; late need lead-in (and say the arc completes when true). Omit prior or next when unknown — never invent either. Program placement the reviewer cannot get from this PR's diff alone is decision cost. When program context is absent, keep the single-PR umbrella only.
 
@@ -70,7 +70,7 @@ When program context is present, extend the map with: (1) **Program outcome** �
 
 > Prefer the shortest description that still lets a reviewer decide — context (including program placement when present), evidence, and residual uncertainty they can't get from the diff, and nothing they can.
 
-Decision cost raises the content floor, not the length ceiling (high-uncertainty *small* diffs get a sharper lead, not an essay). Uncertainty moves a change at most one size row. Fold risk into the narrative unless the PR is already large. Include evidence only when it changes confidence in a material claim. Subtract fix-up commits when sizing. Large PRs need more selectivity, not more content.
+Decision cost raises the content floor, not the length ceiling (high-uncertainty *small* diffs get a sharper lead, not an essay). Uncertainty moves a change at most one size row. Fold risk into the narrative unless the PR is already large. Include evidence only when it changes confidence in a material claim. Subtract fix-up changes when sizing. Large PRs need more selectivity, not more content.
 
 | Change profile | Description approach |
 |---|---|
@@ -86,9 +86,9 @@ A project PR-body contract sets the structural floor; this table sizes the conte
 
 ---
 
-## Step B: Compose the Title
+## Step B: Compose the title
 
-Derive the title from the scope map's umbrella outcome, not one cluster or mechanism. Match the project's active instructions and observed PR history; they decide capitalization, punctuation, prefixes, and any scope convention. Keep the title focused and under 72 characters where compatible. Do not impose a fixed title syntax or add release-signaling markers without explicit user confirmation.
+Compose the title from the scope map's umbrella outcome, not one cluster or mechanism. Local project instructions, its PR template, and observed PR-title syntax always win. Use compatible Go-style clarity where those sources do not decide: make the outcome understandable without imposing a fixed prefix, type, scope, casing, punctuation, or subject template. With program context, the title may name this PR's contribution without restating the whole series, and it must not make another material outcome sound incidental.
 
 ---
 
@@ -129,10 +129,10 @@ Decide whether the change introduces a concept (pattern, technique, library, dom
 
 **Gather candidates from the Pre-A diff first** (first real use of a dependency, a technique the diff introduces, a domain idea the code now encodes). Most PRs surface none — stop; absence is the common case.
 
-**Check each candidate against the base ref, never the working copy** (the working copy contains this PR's own code):
+**Check each candidate against the base ref, never the working tree** (the working tree contains this PR's own code):
 
 ```bash
-jj file search -r '<base>@<base-remote>' --pattern '<term>'
+jj file search -r '<base>@<base-remote>' --pattern '<term>' --name-only
 ```
 
 One call per candidate (cap two). Empty output → absent from the base. Teachable only when new *and* transferable. Never teach: established patterns, ordinary refactors/renames/dep bumps, project-internal plumbing. When in doubt, omit. On the `gh`-fallback path, judge from diff context alone and lean conservative.
@@ -157,6 +157,12 @@ When the project PR-body contract supplies a heading or location for the opening
 **Evidence:** preserve existing `## Demo` / `## Screenshots` unless focus asks to refresh. Splice caller-passed capture as `## Demo`. Never label test output as "Demo" or "Screenshots." SKILL.md Step 4 owns whether to include validation notes vs skip.
 
 **Visual aids:** diagram or table when faster than prose (flows, trade-offs, a before/after comparison when observable behavior changed); a navigation hint (which file to start in, or the small load-bearing hunk a reviewer would otherwise miss) only when the reviewer would start in the wrong place — never a list of changed files, which the diff already shows; skip all of these for simple/rename/dep-bump. Content pattern decides, never size or file count. Prose wins on conflict. **GitHub:** never prefix list items with `#` (auto-links as issues); use `org/repo#123` or full URL for real refs.
+
+---
+
+## Step D: Preserve project-required metadata
+
+Include only metadata required by the project's PR-body contract. Do not add generated provenance, promotional marks, or tool identity. When rewriting, remove such generated material unless the project contract explicitly requires that exact field.
 
 ---
 

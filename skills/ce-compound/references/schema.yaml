@@ -1,5 +1,5 @@
 # Documentation schema for durable learnings
-# Treat this as the canonical frontmatter contract for compounded learnings.
+# Treat this as the canonical frontmatter contract for learning documents.
 #
 # The schema has two tracks based on problem_type:
 #   Bug track  — problem_type is a defect or failure (build_error, test_failure, etc.)

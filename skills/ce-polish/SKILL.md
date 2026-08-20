@@ -1,21 +1,23 @@
 ---
 name: ce-polish
-description: "Start the dev server, inspect the feature in a browser, and iterate on the user-visible result."
+description: "Start the dev server, inspect the feature in browser, and iterate on polish."
 disable-model-invocation: true
-argument-hint: "[PR number, bookmark/change, or blank for the current working copy]"
+argument-hint: "[PR number, bookmark/revision, or blank for current change]"
 ---
 
-# Browser Iteration
+# Polish
 
-Start the dev server, open the feature in a browser, and iterate with the user until the requested experience is accepted. Finish with the changes committed in the selected `jj` working copy, or report the blocker that prevents that result.
+Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
 
-## Phase 0: Select the working copy
+## Phase 0: Get on the right change
 
-If a PR number was provided, preserve the GitHub/`gh` workflow for resolving its head and select the corresponding `jj` change or bookmark. If a bookmark or change was provided, select it directly, reusing an existing `jj` workspace when one already owns that working copy. With no argument, use the current working-copy change. Do not iterate directly on the immutable trunk change; stop and ask for direction if the requested target cannot be selected safely.
+1. If a PR number, bookmark, or revision was provided, resolve it to a Jujutsu revision. Reuse an existing workspace already editing it; otherwise edit it in the current workspace.
+2. If blank, use the current change (`@`).
+3. Verify the current change is mutable and is not `trunk()`.
 
 ## Phase 1: Start the dev server
 
-The scripts below ship in this skill's `scripts/` directory. The shell tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve. Invoke each by the skill's own absolute path. Every runnable block sets `SKILL_DIR` inline because shell state does not persist between calls; replace the placeholder with the directory from which this `ce-polish` route was loaded.
+The scripts below ship in this skill's `scripts/` directory. The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each command must carry it); replace the `<absolute path …>` placeholder with the directory you loaded this `ce-polish` SKILL.md from before running.
 
 ### 1.1 Check for `.claude/launch.json`
 
@@ -26,7 +28,7 @@ bash "$SKILL_DIR/scripts/read-launch-json.sh"
 
 If it finds a configuration, use it — the user already told us how to start the project.
 
-### 1.2 Auto-detect when no launch configuration exists
+### 1.2 Auto-detect (when no launch.json)
 
 Identify the framework:
 
@@ -65,7 +67,7 @@ bash "$SKILL_DIR/scripts/resolve-port.sh" --type <type>
 
 ### 1.3 Start the server
 
-Start the dev server in the background. Put its log under `<jj workspace root>/.tmp/`; if the workspace root cannot be resolved, use `$PWD/.tmp/`. Create the selected local directory before use and do not write runtime files to a global temporary directory. Probe `http://localhost:<port>` for up to 30 seconds. If it does not come up, show the last 20 lines of the log and ask the user what to do.
+Start the dev server in the background. Store its log under `<jj-workspace-root>/.tmp/`; if `jj root` cannot resolve a workspace root, use `.tmp/` under the current project directory. Create the directory if needed and use a per-run unique log filename without an OS-global temporary location or API. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
 
 ### 1.4 Open in browser
 
@@ -79,13 +81,13 @@ Browse the feature and tell me what could be better.
 
 ## Phase 2: Iterate
 
-The user browses the feature and directs the improvements. Make each in-scope change and use the running server to verify it until the user accepts the result.
+This is the core loop. The user browses the feature and tells you what to improve. You fix it. Repeat until they're happy.
 
-- When the user describes something to fix, make the change and let the dev server reload it.
-- When the user asks to check something, use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it is installed, otherwise use whatever the host exposes.
-- When the user accepts the result, commit the fixes with `jj` and stop. Local project commit-message conventions take precedence. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Treat the Go guidance as guidance rather than fixed syntax, and do not impose a fixed message format when local conventions differ.
+- When the user describes something to fix → make the change, the dev server hot-reloads
+- When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
+- When the user says they're done → describe the current Jujutsu change and stop. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Validate the description against those standards, then apply it with `jj describe -m "<description>"`.
 
-Do not introduce a separate checklist or handoff artifact.
+No checklist. No envelope. Just conversation.
 
 ## References
 

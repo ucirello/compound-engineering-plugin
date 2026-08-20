@@ -8,7 +8,7 @@ format-specific references (`markdown-rendering.md`, `html-rendering.md`).
 
 A great plan enables three audiences to act:
 
-- **The implementing AI Assistant** (`ce-work` or a human implementer) starts from an informed
+- **The implementing agent** (`ce-work` or a human) starts from an informed
   baseline — load-bearing decisions are named, research breadcrumbs orient
   their own investigation, unit boundaries are clear. The plan gives the
   implementer a starting point, not a substitute for their own investigation.
@@ -28,7 +28,7 @@ readiness states, not a requirements doc plus a separate implementation doc.
 
 When the artifact is meant to be consumed by implementation agents, use:
 
-- **`artifact_contract: ce-unified-plan/v1`** — declares this contract.
+- **`artifact_contract: unified-plan/v1`** — declares this contract.
 - **`artifact_readiness`** — document completeness, not work progress. Valid
   values are:
   - `requirements-only` — Product Contract exists; planning sections are not
@@ -125,7 +125,7 @@ write the plan.
 
 **Skip implementation-ready plan creation only when ALL of these hold:**
 
-- The work is **atomic** — fits in one commit, no meaningful unit boundaries
+- The work is **atomic** — fits in one Jujutsu change, no meaningful unit boundaries
   to break out independently.
 - There are **no design choices that constrain implementation** — no
   Key Technical Decisions worth recording. If the work needs the implementer
@@ -157,8 +157,8 @@ vs. genuine skip cases:
   bump introduces breaking changes that warrant unit-by-unit migration).
 
 When skipping the plan doc, the work proceeds directly to `ce-work` or to
-implementation, and any decisions made along the way land in the commit
-message or `<root>/solutions/` if they're worth carrying forward.
+implementation, and any decisions made along the way land in the change
+description or `<root>/solutions/` if they're worth carrying forward.
 
 ## Implementation-ready hard floor
 
@@ -269,8 +269,6 @@ them fire.
   humans, agents, or systems meaningfully involved) that the units must
   honor. Skip for single-actor work and for plans whose change is internal
   to one component — most implementation plans skip this.
-  Represent a generic assistant actor with the stable identifier `ai:assistant`
-  and visible label `AI Assistant`; do not invent a branded persona name.
 
 - **Key Flows** — include when the work has multi-step behavior whose
   sequencing the units must preserve. Skip when the change is not
@@ -334,7 +332,7 @@ versa.
 The agent also picks per artifact:
 
 - Whether Problem Frame merges into Summary — legacy and non-unified plans
-  only. Any `ce-unified-plan/v1` artifact keeps both headings regardless of
+  only. Any `unified-plan/v1` artifact keeps both headings regardless of
   plan depth: the hard floor names them separately and downstream consumers
   anchor on them. (Scoped by artifact contract, not by depth — a `Lightweight`
   plan can still be implementation-ready.)
@@ -386,7 +384,7 @@ targets the connective tissue around precision, never the precision itself.
 **Resolve in place; don't stratify.** When deepening, a doc-review pass, or a
 later decision supersedes earlier text, rewrite or remove the original — don't
 leave it standing as strikethrough or stack a separate "resolutions" layer on
-top of it. Version control holds the history. Stacked strata double the reading
+top of it. Jujutsu holds the history. Stacked strata double the reading
 surface and hide which text is live.
 
 **One owner per rule; cite, don't restate.** A normative rule — a gate, cap,
@@ -429,20 +427,18 @@ plan.
 
 ### Required
 
-- **`title`** — the plan's descriptive name with a ` - Plan` suffix
-  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
+- **`title`** — the plan's descriptive name using the repository's plan-title convention, matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
-  across readiness states (it is a plan at every stage). Do not put a
-  conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
-  carries that classification.
-- **`type`** — the classification established by active project conventions and
-  observed local history. It carries the intent the eventual change description
-  should reflect without imposing a fixed enum.
+  across readiness states (it is a plan at every stage). Do not preselect
+  change-description syntax in the title; the `type` field carries intent.
+- **`type`** — repository-aligned intent classification inferred from active
+  instructions and observed history. Carries the intent the eventual change
+  description should reflect without fixing its syntax during planning.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from jj history, not stored in the doc. Do not
+whether a plan shipped is derived from Jujutsu, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -451,7 +447,7 @@ These fields are not required, but when set they have fixed names and
 semantics so downstream tooling can rely on them:
 
 - **`origin`** — repo-relative path to an upstream brainstorm requirements
-  doc under `<root>/brainstorms/`.
+  doc (e.g., `docs/brainstorms/2026-05-12-pagination-requirements.md`).
   Set when planning from an upstream brainstorm; carried for traceability
   and re-resolved when `ce-plan` re-deepens.
 - **`deepened`** — ISO 8601 date marking the first time the confidence
@@ -461,7 +457,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the jj-change/test/description/CI lifecycle); absent or `code` routes
+  skipping the bookmark/test/change/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.
@@ -488,10 +484,11 @@ These apply regardless of rendering format.
   KTD is added, split, or first cited by a unit. Untouched unnumbered KTDs
   in legacy plans stay as they are — readable by label, no mass renumbering.
 - **Repo-relative paths.** Always. Never absolute paths in plan content;
-  they break portability across machines, jj workspaces, and teammates.
+  they break portability across machines, workspaces, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
-  metadata belongs in commit messages and tool output, not the artifact.
+  metadata belongs in change descriptions and tool output, not the artifact.
+
 - **Session-settled annotations on KTDs.** A Key Technical Decision that
   records a decision settled in the invoking conversation carries an inline
   annotation on its entry:

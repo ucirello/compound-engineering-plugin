@@ -34,7 +34,7 @@ fi
 This skill cannot run without a way to observe behavior. Check for all three, and name whichever is missing:
 
 1. **A run archive or a harness that produces one** — per-run logs carrying the tool-call trace, a terminal marker, token counts, and the final message.
-2. **A build selector** — the harness can point a run at a specific source tree or jj workspace of the corpus (a source-directory override, a configurable corpus path, an env var), so two builds are comparable under one runner.
+2. **A build selector** — the harness can point a run at a specific source workspace of the corpus (a `--plugin-dir`-style override, a configurable skills path, an env var), so two builds are comparable under one runner.
 3. **A repeatable task** the corpus actually executes end to end.
 
 If any is missing, **stop and say so**, naming what to build. Do not fall back to a static audit and present it as retuning: an audit can say what looks cuttable and can never say whether cutting helped, which is the error this skill exists to prevent. An audit-only pass is a legitimate thing to want; it is a different request.
@@ -52,7 +52,7 @@ It carries the outcome taxonomy, the fields to extract, and the two corrections 
 
 ## Phase 2: establish the noise floor before any claim
 
-Run the harness against **two identical copies** of the corpus, same jj revision on both sides. Whatever difference appears is noise, and it is the floor every later claim must clear.
+Run the harness against **two identical copies** of the corpus, same change on both sides. Whatever difference appears is noise, and it is the floor every later claim must clear.
 
 Read `references/noise-floor.md` for the protocol, the interleaving rule, and the power calculation that converts the observed variance into a required sample size.
 
@@ -62,7 +62,7 @@ Expect the floor to be wider than intuition suggests. If a corpus produces a lar
 
 ## Phase 3: audit the corpus, adversarially
 
-One agent per skill, each reading that skill's full directory, proposing cuts with a target and a reason. Then a second agent per skill whose job is the opposite: **defend the existing prose** using the project's own documented learnings, its tests, and jj history.
+One agent per skill, each reading that skill's full directory, proposing cuts with a target and a reason. Then a second agent per skill whose job is the opposite: **defend the existing prose** using the project's own documented learnings, its tests, and Jujutsu history.
 
 Read `references/corpus-audit.md` for the dispatch shape, the finding schema, and the classes worth hunting.
 
@@ -102,7 +102,11 @@ Loop Phase 4 and 5 until the registered bar is cleared. Then stop; a bar cleared
 
 ## Phase 6: ship
 
-Record each pass as a separate jj change so the history says which change was made and why, and so release tooling can classify intent. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Keep the measurement artifacts.
+Keep each pass in a separate Jujutsu change with its own description so history says what changed and why, and so release tooling can classify intent. Describe the current pass before starting the next change; do not rewrite unrelated changes. Keep the measurement artifacts.
+
+At every change-description composition site, apply this instruction exactly: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed syntax. Examples use neutral Jujutsu placeholders such as `<change-id>` and `<description>` rather than repository-specific names.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.
 

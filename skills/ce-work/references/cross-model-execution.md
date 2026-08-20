@@ -1,62 +1,66 @@
 # Cross-Model Execution Contract
 
-Load this reference only after cross-model execution is selected or recovery is activated. The host drives the controller, detached runner, and fixed adapter. A worker response or process exit never substitutes for controller and jj evidence.
+Load only after selecting cross-model execution or activating recovery. The host drives the bundled controller, detached runner, and adapter. Worker output or process exit never substitutes for controller and Jujutsu evidence.
 
-## Fixed Route
+## Route And Authority
 
-Use only targets `codex`, `claude`, `grok`, `cursor`, and `composer`. Keep target, harness/intermediary route, requested model, actual model, and receipt status separate. Controller route tokens are exactly `codex`, `claude`, `grok-cli`, `cursor`, `composer`, and `grok-cursor`; preserve the adapter mappings in `execution-engines.md` and `scripts/cross-model-work.sh`.
+Resolve target, harness/intermediary, requested model, actual model, and receipt status independently. Fixed route tokens remain `codex`, `claude`, `grok-cli`, `cursor`, `composer`, and `grok-cursor`. A route may adapt to current local help only inside the sanctioned harness/model family while preserving every restriction. Once dispatch starts, it cannot switch recipient or intermediary.
 
-The adapter mapping is load-bearing: `codex` uses Codex directly, `claude` uses Claude directly, `grok-cli` uses Grok directly, `cursor` means the Cursor harness with its configured default model, `composer` means a Composer-family model through Cursor, and `grok-cursor` means a Grok-family model through Cursor. A model pinned within the current harness is a distinct candidate unless it is the current/default model. Never collapse Cursor to Composer, treat a Grok intermediary as native Grok, or infer served identity from the requested label.
+`prefer` may continue natively only after preflight proves all candidates unavailable or the controller authorizes one post-start fallback. `require` asks an interactive standalone caller before native fallback; headless/automatic callers return blocked.
 
-Preflight ordered preferences without egress. Skip an equivalent same-host default and candidates proven unavailable. The first qualified candidate becomes fixed. After dispatch starts, neither adapter nor worker may change recipient, provider, model family, or intermediary. A different recipient requires a separately sanctioned attempt after authoritative terminal state.
+Before egress, disclose and durably record the binding source, recipient and intermediaries, exposed repository/unit material, restrictions, and enforcement posture. A Jujutsu workspace isolates concurrent edits but is not an OS security boundary.
 
-For `prefer`, preflight failure falls back to native execution with requested-versus-actual disclosure. For `require`, an interactive standalone run asks whether to continue natively; automatic and headless callers return a blocker. A started attempt is not preflight failure.
+The worker receives one unit and one controller-owned Jujutsu workspace. It cannot broaden scope, finalize or rewrite changes, move bookmarks, publish, open a PR, schedule peers, or choose fallback. The host owns canonical composition, authoritative verification, change description, and the shipping tail.
 
-Before egress, record the binding source, fixed route and intermediaries, exposed repository/unit material, and each restriction's enforcement posture. A restriction the adapter cannot enforce makes the route unavailable. A jj workspace limits accidental concurrent mutation but is not an OS security sandbox.
+## Storage And Workspaces
 
-## Worker Boundary
+Resolve the canonical root with `jj workspace root`. Controller state lives at `<workspace-root>/.tmp/work-runs/<run-id>/`; bounded prompt and packet sources live at `<workspace-root>/.tmp/work-inputs/<run-id>/`. If no Jujutsu root exists, use `<cwd>/.tmp/` and block repository integration. Never use OS-global temporary storage or environment-selected temporary roots.
 
-The worker receives one unit, one controller-owned jj workspace, one fixed recipient, and inherited authority. It may edit and run scoped checks but may not describe, split, squash, rebase, abandon, or bookmark changes; push; open a PR; schedule peers; switch recipients; or broaden scope. The host alone inspects the complete workspace change, runs authoritative verification, integrates it into the canonical change graph, gives it a final description, advances the feature bookmark, and continues the owning tail.
+The controller creates each external unit as a sibling with `jj workspace add --name <owned-name> -r <recorded-base> <owned-path>`. It records workspace name, path, base change/snapshot IDs, and operation ID. Cleanup uses `jj workspace forget <owned-name>` followed by owner-checked removal of the controller-owned directory. An existing Jujutsu workspace remains eligible because siblings are not nested.
 
-Ordinary native isolation remains harness-owned. Only the controller may create sibling jj workspaces, each beneath `<canonical-workspace>/.tmp/rocketclaw/ce-work/<run-id>/`. Never create a nested workspace. If that root is unavailable, use `<canonical-workspace>/.tmp/ce-work/<run-id>/`; do not use an OS-level or user-level store.
+Keep `.tmp` outside automatic snapshots by supplying the controller's Jujutsu auto-track exclusion on every controller invocation. Do not add repository files solely to ignore controller state.
 
-## Source And Receipts
+## Bare-Prompt Source
 
-Receipts retain the resolved binding, requested and actual route/model, fallback reason, source kind/digest, run id, per-unit process/integration/verification/change/cleanup state, optional plan checkpoint change, blockers, and recovery path. Detached completion is authoring evidence only.
+For concrete bare prompts, create a bounded brief under `.tmp/work-inputs/<run-id>/` with Request, Goal, Scope, Acceptance and verification, Constraints and exclusions, and conservative units. Do not include raw conversation history or speculative scope. Compute its SHA-256 and initialize the controller with that source. If goal, scope, or verification cannot be grounded, clarify or plan before egress.
 
-Preserve the operational knobs rather than replacing them with provider-specific guesses: `CE_WORK_RUNS_ROOT`, `CE_PEER_JOBS_ROOT`, `CE_PEER_IDLE_SECS`, `CE_PEER_HARD_SECS`, `CROSS_MODEL_HARD_SECS`, `CE_PEER_LOG_MAX_BYTES`, `CE_PEER_RESULT_MAX_BYTES`, `CE_PEER_POLL_SECS`, `CE_PEER_GRACE_SECS`, `CE_PEER_BASH`, `CLAUDE_CODE_GIT_BASH_PATH`, `CE_WORK_MAX_PACKET_BYTES`, `CE_WORK_RAW_MAX_BYTES`, and the controller's fault-injection knob. Overrides for run/job roots remain constrained beneath the canonical jj workspace's `.tmp`; they change placement inside that namespace, not the namespace boundary.
+## Controller Protocol
 
-For bare-prompt work, stage the bounded brief in an owner-private file beneath `<canonical-workspace>/.tmp/rocketclaw/ce-work/.inputs/`, then initialize the run and use only the controller-owned `source/bare-prompt.md` copy and digest. Remove the staging file after initialization. Include Request, Goal, Scope, Acceptance and verification, Constraints and exclusions, and conservative Units. Never include raw conversation history, credentials, or speculative scope. If Goal, bounded Scope, or Acceptance cannot be populated, clarify or plan before initialization.
+Use separate host calls for state transitions until scope inspection. Runner waits are bounded and followed by controller synchronization. A nonzero controller, runner, Jujutsu, or verification result stops the current transition and enters status/recovery.
 
-## Host Transaction
+1. **Initialize.** Call `unit-workspace.py init` with the canonical workspace, binding, egress sanction, and plan or prompt digest. A selected plan may be checkpointed only when it is the sole canonical working-copy change. Unrelated canonical changes make the external route unavailable. Before supplying its neutral `--change-description` placeholder: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed syntax.
+2. **Prepare.** Write one bounded packet under `.tmp/work-inputs/<run-id>/`, then call `prepare` with the recorded base, dependencies, wave fields, and activity posture. Use only returned packet, digest, attempt id, workspace name/path, and authorization.
+3. **Dispatch.** Start `peer-job-runner.py` with skill `ce-work`, exact packet digest, returned adapter, and returned paths. Use `WORK_RUNS_ROOT`, `PEER_JOBS_ROOT`, `PEER_HARD_SECS`, and `PEER_IDLE_SECS`; controller and runner derive the same repository-local root. The runner exports `PEER_JOB_ID` and `PEER_PYTHON`.
+4. **Observe.** Poll runner status/wait and call controller `sync-job`. A live or unreachable attempt remains authoritative until terminal/reaped evidence exists.
+5. **Terminalize.** On authoritative completion, controller snapshots the unit workspace with `jj util snapshot`, records the workspace working-copy change and snapshot IDs as immutable transport evidence, and derives actual paths from `jj diff --summary -r <change>`. Inspect actual scope and semantic contention before integration.
+6. **Integrate.** Invoke the fail-stop `integrate` transaction with a dynamically composed `--change-description` and direct verification argv.
 
-Run one ready unit at a time from the canonical jj workspace. Resolve bundled scripts from this skill's directory. Use `jj -R <workspace>` for every repository operation. Invoke one state-changing controller transition per host tool call until scope inspection; then use the controller's fail-stop `integrate` transaction. A nonzero controller, runner, verification, or jj exit stops the sequence until status and recovery are reconciled.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-1. Resolve, preflight, sanction, and encode exact `route`, `intermediaries`, and `restrictions` fields.
-2. Initialize with `unit-workspace.py init`. The selected plan may be the sole working-copy change; `checkpoint-plan` seals that path into a dedicated described jj change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and observed history win; apply compatible Go clarity and structure without imposing a fixed form. Other pre-existing changes block the route. A prompt-backed run starts clean.
-3. Prepare one bounded unit packet directly under the returned run directory. Pass the recorded base change, dependencies, wave fields, and activity posture. Use only the returned attempt id, packet path, packet digest, authorization path, workspace, and adapter.
-4. Start `peer-job-runner.py` with `--no-sweep`, the exact packet digest, label equal to unit id, and result path `<result-dir>/implementation-result.json`. Invoke the returned adapter path directly as the first worker argv. Set the documented hard and idle windows. Before egress, the adapter must obtain `authorize-dispatch` using the runner-exported job id and exact returned paths.
-5. Observe with bounded runner status/wait calls and separate controller sync calls. Report route, elapsed time, activity posture, terminal state, and recovery path. Do not steer, duplicate, or infer failure from silence on a hard-only route.
-6. On authoritative `done`, call `terminalize`. It snapshots the worker workspace as a pinned transport change and records its change ID, commit ID, parent, operation ID, complete diff inventory, and digest. Inspect actual paths, file types, conflicts, and scope before integration.
-7. Compose the final change description before integration. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local instructions and observed history win; apply compatible Go clarity and structure. Do not impose fixed syntax, stock messages, or product-origin metadata.
-8. Invoke `unit-workspace.py integrate --run-id <run-id> --unit-id <unit-id> --change-description <description> --verification-summary <summary> [--allowed-change <recorded-change>] -- <verification-command-and-argv>`. Use direct argv unless the verification contract requires shell syntax, in which case invoke an explicit shell with pipe-failure handling.
-9. The transaction acquires the canonical lock, records the current operation and change snapshots, rebases the transport change onto the accepted canonical change, checks for conflicts and exact scope, runs authoritative verification, restores the recorded operation on failure, squashes the verified transport into a new canonical change, applies the final description, advances the feature bookmark, records receipts, forgets the worker workspace, and releases the lock.
-10. After all units are accepted, run plan-wide gates through `verify-run`. It records the canonical operation/change snapshot, runs the command, and restores the operation if tracked state changes. Ignored artifacts are inventoried and disclosed but never copied, restored, or deleted.
+The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed syntax. The command shape is neutral:
 
-For route-qualified incremental output, set `CE_PEER_IDLE_SECS=600` and `CE_PEER_HARD_SECS=7200`; progress resets the idle window. For hard-only or untrusted activity, set idle to `0` while retaining the hard cap. Keep command, exit status, output path/size, stderr or blocker, ignored-state counts, and retained-log status in short reports; do not replace these receipts with a generic success sentence.
+```text
+unit-workspace.py integrate --run-id <run-id> --unit-id <unit-id> --change-description <description> --verification-summary <summary> -- <verification-argv>
+```
+
+The transaction acquires the canonical lock, snapshots and validates `@`, records an operation checkpoint, restores the accepted transport tree into the canonical working-copy change, runs authoritative verification, proves the resulting change, runs `jj describe -m <description>`, records the finalized change/snapshot IDs, then runs `jj new` for the next unit. A wave advances later units by exact accepted change IDs. Cleanup and lock release follow only after durable receipts.
+
+Verification must not move bookmarks, change workspace identity, rewrite accepted ancestors, or alter the canonical working-copy change beyond expected verification artifacts. On failure, restore canonical content from the recorded pre-fold snapshot with `jj restore --from <pre-fold-snapshot> --into @`, restore the prior description, and prove exact IDs/content before release. If proof fails, retain lock, workspace, operation evidence, and recovery path.
+
+After all units are accepted, run `verify-run` for plan-wide gates. It starts from a clean current working-copy change, records before/after operation and change evidence, removes only verification-created paths under the owned delta, and blocks on graph or bookmark mutation. Untracked cache/assets remain disclosed but are not deleted or restored.
 
 ## Parallel Waves
 
-Use a wave only after the always-loaded safety check proves independence across dependencies, paths, interfaces, generated/config surfaces, runtime resources, and expected integration cost. Record one wave base. Create distinct jj workspaces with transport changes sharing that base. Terminalize and inspect every member before integrating any. Integrate sequentially in dependency order; rebase each transport change onto the advancing accepted change and stop on conflicts or semantic contention. Repeated collision, broad edits, or unprovable restoration disables further waves.
+Prepare every independent member from one recorded base and terminalize all before composition. Reject path collisions and semantic contention before canonical mutation. Compose sequentially in dependency order. After each accepted change, record wave advancement with its exact finalized change ID and revalidate every remaining transport against the advancing graph. Any conflict, scope expansion, failed verification, or unprovable restoration stops affected units and dependents.
 
 ## Recovery And Fallback
 
-Recovery by run id is authoritative and activates before ordinary input classification. Plan-backed discovery matches canonical workspace identity, bookmark, and plan digest; never select by listing a shared root. Multiple matches block selection. Completed runs are observation-only and reuse stored receipts.
+`resume --run-id <id>` is authoritative when supplied. Plan-backed discovery uses canonical workspace identity plus plan digest and must select exactly one unfinished run. Prompt-backed recovery requires the run id. Resume may reconcile recorded jobs, terminalize completed output, continue exact restoration, or finalize a described change whose IDs match evidence; it never redispatches or enters a shipping tail.
 
-Resume may adopt one matching runner job, monitor it, terminalize authoritative output, reconcile an accepted change, restore a recorded jj operation, or finish workspace cleanup. It must not redispatch, reapply, redescribe, or run either shipping tail.
+Cleanup is idempotent and owner-checked. Explicit abandonment requires the exact transport change ID or terminal job id. A corrected retry keeps the same run id and uses a fresh attempt id after exact restoration, cleanup, and lock release.
 
-Preserve all attempts under one scalar run id. A corrected retry gets a fresh attempt id only after the prior attempt is terminal, its transport is exactly abandoned or its integration operation is exactly restored, and the integration lock is released. Cleanup remains idempotent and guarded by the exact recorded transport change or terminal job when abandoning output.
+Post-start native fallback requires an atomic `claim-fallback`. After native completion, authoritative verification, and a dynamically described Jujutsu change, call `complete-fallback` with the accepted change ID, evidence digest, and summary. Then run `verify-run` before reporting completion.
 
-After authoritative failure and exact operation restoration, `claim-fallback` authorizes native fallback once. `require` still needs interactive confirmation. After native implementation is described, verified, and bookmarked, `complete-fallback` records its accepted change and evidence. Run `verify-run` before reporting completion.
+## Receipts And Tail
 
-Standalone use resumes quality and shipping. `mode:return-to-caller` returns implementation and local-verification receipts with `standalone_shipping_skipped: true`; workers inherit neither tail.
+Return binding, route/model identities, fallback reason, source kind/digest, run id, per-unit process/composition/verification/change/cleanup receipts, plan checkpoint change, blockers, and recovery path. Standalone use resumes `ce-work` quality/shipping. Return-to-caller sets `standalone_shipping_skipped: true` and yields exactly once.

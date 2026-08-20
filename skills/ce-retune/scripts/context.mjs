@@ -13,13 +13,11 @@ function jj(...args) {
 }
 
 function buildResolvedContext() {
-  const workspaceRoot = jj('root') || process.cwd();
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `jj_workspace_root: ${workspaceRoot}`,
-    `scratch_root: ${workspaceRoot}/.tmp/ce-retune`,
-    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.shortest()') || '(not a jj repository)'}`,
+    `workspace-root: ${jj('root') || '(not a jj repository)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.shortest()') || '(none)'}`,
   ].join('\n');
 }
 
@@ -58,8 +56,8 @@ const SUBAGENT_AUTHORIZATION = [
 // user "your standing instruction prohibits agent dispatch" — a system-prompt
 // default re-narrated as a user preference the user never stated and so
 // cannot correct.
-const HARNESS_SOURCE = [
-  'HARNESS_SOURCE: A constraint that originates in your system prompt or harness configuration',
+const HARNESS_ATTRIBUTION = [
+  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
   "is never described to the user as their instruction, preference, or standing request.",
   'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
 ].join(' ');
@@ -90,7 +88,7 @@ function cli() {
   const parts = [
     buildResolvedContext(),
     SUBAGENT_AUTHORIZATION,
-    HARNESS_SOURCE,
+    HARNESS_ATTRIBUTION,
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];

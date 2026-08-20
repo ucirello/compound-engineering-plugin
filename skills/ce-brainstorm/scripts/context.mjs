@@ -16,8 +16,8 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace_root: ${jj('workspace', 'root') || '(not a Jujutsu workspace)'}`,
-    `current_change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(none)'}`,
+    `bookmarks: ${jj('log', '-r', '@', '--no-graph', '-T', 'bookmarks.join(", ")') || '(none or not a jj repository)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.shortest(8)') || '(none)'}`,
   ].join('\n');
 }
 
@@ -56,6 +56,12 @@ const SUBAGENT_AUTHORIZATION = [
 // user "your standing instruction prohibits agent dispatch" — a system-prompt
 // default re-narrated as a user preference the user never stated and so
 // cannot correct.
+const HARNESS_ATTRIBUTION = [
+  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
+  "is never described to the user as their instruction, preference, or standing request.",
+  'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
+].join(' ');
+
 // ce-doc-review promotes a finding when "2+ independent personas" agree, and
 // nothing verified they ran in separate processes — inline, one context reasoned
 // both lenses and still stamped confidence 100.
@@ -82,6 +88,7 @@ function cli() {
   const parts = [
     buildResolvedContext(),
     SUBAGENT_AUTHORIZATION,
+    HARNESS_ATTRIBUTION,
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];

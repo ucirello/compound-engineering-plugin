@@ -16,9 +16,9 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite — grep a distinctive substring of the target text.
-3. Version history — use jj history and content-diff search to find the change that introduced the line, then read that change's description and any PR it belongs to.
+3. Version history — `jj log -r 'ancestors(@)' -p -- <path>` for the file's current lineage, locate the patch that introduced a distinctive target substring, then inspect that revision with `jj show <change-id>` and read its change description and linked review.
 
-Source 3 is unavailable in a corpus copy with no jj history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a jj workspace that has history, or record the whole audit's provenance basis as partial.
+Source 3 is unavailable in a corpus copy with no Jujutsu history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a Jujutsu workspace that has history, or record the whole audit's provenance basis as partial.
 
 **Pipeline the waves.** Start a unit's defense as soon as its proposal set returns; do not wait for wave 1 to finish — the two waves share no state across units. It is 2N dispatches on N units, so plan the wave count against the host's concurrency cap (`references/workflow-shapes.md`).
 
@@ -70,7 +70,7 @@ Exactly three, one per finding:
 
 - **`cut`** — a real search over all three sources found no provenance. The proposal stands.
 - **`reduce`** — the constraint is real and the prose states it at several times the length needed. The defender returns the minimal form that preserves the constraint.
-- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a jj change that added it to fix a named bug. The ruling must carry the citation — path, test name, or change id.
+- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a change that added it to fix a named bug. The ruling must carry the citation — path, test name, change ID, or commit ID.
 
 A defender returns one row per finding, in these fields, and nothing else:
 
@@ -79,7 +79,7 @@ A defender returns one row per finding, in these fields, and nothing else:
 | `id` | the proposer's finding id, unchanged; a ruling that cannot be joined back is discarded |
 | `ruling` | `cut` / `reduce` / `keep` |
 | `sources_searched` | which of the three, named; plus the query used, so an empty search is visible |
-| `citation` | required on `keep`: path, test name, or jj change id. Empty is not a `keep` |
+| `citation` | required on `keep`: path, test name, change ID, or commit ID. Empty is not a `keep` |
 | `minimal_form` | required on `reduce`: the shortest text preserving the constraint |
 | `pinning_test` | test path and assertion if a grep of the target text hits the suite, else empty |
 

@@ -24,14 +24,14 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 ### Check the opt-out
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary yaml keys from the two workspace files.**
+**Resolve ordinary project YAML keys from the two workspace files.**
 
 - **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
-Resolve the workspace root (never CWD), then apply the ordinary-key rule above for `ce_promote_spiral_optout`. If the winning **uncommented** top-level value is exactly `true`, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template ships a `# ce_promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
+Resolve the workspace root (never CWD), then apply the ordinary-key rule above for `promote_spiral_optout`. If the winning **uncommented** top-level value is exactly `true`, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template ships a `# promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
 
 ### Ask
 
@@ -46,7 +46,7 @@ Offer exactly **two** options (labels must be self-contained):
 - **Unauthed** state: `Sign in to Spiral` · `Draft directly without Spiral`
 - **Absent** state: `Install Spiral` · `Draft directly without Spiral`
 
-There is deliberately no separate "don't ask again" option: **dismissing is itself the opt-out.** A single first-run decline records the flag and the offer never recurs in this workspace. This is what keeps a per-ship skill from nagging — never make the user choose a special variant to stop being asked.
+There is deliberately no separate "don't ask again" option: **dismissing is itself the opt-out.** A single first-run decline records the flag and the offer never recurs in this repo. This is what keeps a per-ship skill from nagging — never make the user choose a special variant to stop being asked.
 
 ### Act on the choice
 
@@ -60,18 +60,18 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
   npx @every-env/spiral-cli@latest setup --pairing-code <code>
   ```
   The pairing code is single-use and expires in ~15 minutes, so the user must fetch a fresh one from the web app — do not hardcode it. Once installed, if still unauthed, follow the **Sign in to Spiral** flow above (`spiral login --json`). If the user can't or won't install, go to Path B.
-- **Draft directly without Spiral** — record the opt-out (below) so the offer never re-prompts in this workspace, then go to Path B. (A failed/abandoned **sign-in or install** attempt does NOT record the opt-out — only an explicit "draft directly" dismissal does — so a user whose auth didn't complete still gets one clean re-offer next run.)
+- **Draft directly without Spiral** — record the opt-out (below) so the offer never re-prompts in this repo, then go to Path B. (A failed/abandoned **sign-in or install** attempt does NOT record the opt-out — only an explicit "draft directly" dismissal does — so a user whose auth didn't complete still gets one clean re-offer next run.)
 
 ### Record the opt-out (best-effort)
 
-Resolve the workspace root, then add `ce_promote_spiral_optout: true` as a top-level key to `<workspace-root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+Resolve the workspace root, then add `promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
 
-- **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it (and its `.rocketclaw/` directory) with the key only when `.rocketclaw/*.local.yaml` is already covered by the workspace-root `.gitignore`; `ce-setup` is the canonical place that adds the shared entry for teammates. If it is not covered, do not create the file; proceed to Path B and report that the durable opt-out could not be recorded.
+- **File already exists:** ensure an **uncommented** `promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
+- **File absent:** create it (and its `.rocketclaw/` directory) with the key, AND make sure the machine-local config won't be tracked. Resolve the backing repository with `jj git root`, inspect its `info/exclude`, and append `.rocketclaw/*.local.yaml` when that rule is absent. This is correct for colocated and non-colocated Jujutsu workspaces; do **not** hardcode a workspace-relative backing-repository path. Use the local exclude, **not** a tracked `.gitignore`: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared ignore entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally track machine-local opt-out state.
 
-If the workspace root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
+If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of version control). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
+After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of version control). Want it back later? Just ask, or remove the `promote_spiral_optout` key." Keep it to a single line; don't belabor it.
 
 ## Generate
 

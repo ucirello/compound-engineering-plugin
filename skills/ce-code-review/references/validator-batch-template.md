@@ -19,7 +19,7 @@ Do not let one valid or invalid finding influence another. Do not invent new fin
 {scope_mode_and_remote_refs}
 </scope-context>
 
-For local-aligned scope, inspect the cited files, callers, guards, project contracts, and targeted history with read-only tools. For pr-remote or bookmark-remote scope, use the provided diff and reviewed head revision, never the unrelated workspace copy.
+For local-aligned scope, inspect the cited files, callers, guards, project contracts, and targeted Jujutsu history with read-only tools. For pr-remote or bookmark-remote scope, use the provided diff and reviewed revision, never the unrelated workspace copy.
 
 Return exactly one JSON object:
 {
@@ -32,5 +32,5 @@ Return exactly one JSON object:
   ]
 }
 
-Return one verdict for every input # exactly once. No prose outside JSON. Do not edit, describe, finalize, push, or mutate files.
+Return one verdict for every input # exactly once. No prose outside JSON. Do not edit files, describe revisions, move bookmarks, push, or mutate state.
 ```

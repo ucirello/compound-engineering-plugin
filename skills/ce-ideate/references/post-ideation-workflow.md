@@ -91,8 +91,8 @@ Offer four options (self-contained labels with the distinguishing word front-loa
 
 1. *(when `OUTPUT_FORMAT=html`)* **Open in browser** — open the saved HTML deliverable (re-open if it was already opened).
    *(when `OUTPUT_FORMAT=md`)* **Publish a shareable document** — use `ce-proof` to publish the saved markdown and get a shareable link; one-way, the local file stays canonical.
-2. **Brainstorm one idea with `ce-brainstorm`** — commit a chosen idea to a requirements-only unified plan under `<root>/plans/`; leaves ce-ideate. Asks which idea first.
-3. **Discuss or refine the ideas first** — stay here to think across the set before committing: adjust or interrogate one idea, compare several, or combine/merge them. Asks what you want to work on.
+2. **Brainstorm one idea with `ce-brainstorm`** — develop a chosen idea into a requirements-only unified plan under `<root>/plans/`; leaves ce-ideate. Asks which idea first.
+3. **Discuss or refine the ideas first** — stay here to think across the set before choosing: adjust or interrogate one idea, compare several, or combine/merge them. Asks what you want to work on.
 4. **Done — keep the file and stop.**
 
 **Adjacent nudge (prose, not a slot):** "Don't want it kept? Say 'discard' and the agent deletes the file." Handled via free text (see §5.5); it is create-only and never deletes a resumed or pre-existing doc.
@@ -115,14 +115,14 @@ If the user already named what they want to work on inline (e.g. "brainstorm the
 
    > `<title> — <description>. Basis: <basis/evidence>. Why it matters: <rationale>. Known tradeoffs: <downsides>.`
 
-   The basis/evidence directly feeds `ce-brainstorm`'s product-pressure-test, so it won't re-derive what we already know. Include the artifact path and selected idea title as source context without adding branding.
+   The basis/evidence directly feeds `ce-brainstorm`'s product-pressure-test, so it won't re-derive what we already know. Include the artifact path and selected idea title as neutral source context without adding branding or producer credit.
 3. **Load the `ce-brainstorm` skill** with that seed. The saved file is already the record — no extra write step. `OUTPUT_FORMAT` does **not** propagate: ce-brainstorm re-resolves its own `brainstorm_output` config independently. Asymmetric output (`ideation.html` plus a markdown unified plan) is expected; a user who wants HTML for both sets both keys in `.rocketclaw/config.local.yaml` or `.rocketclaw/config.yaml`, with the local value winning.
 
 **Repo mode only:** do **not** skip brainstorming and go straight to `ce-plan` — `ce-plan` wants a brainstorm-grounded Product Contract. In elsewhere modes, ideation is a legitimate terminal state; brainstorming is optional deeper development of one idea, not a required next rung on an implementation ladder that does not exist in these modes.
 
 ### 5.3 Discuss or Refine the Ideas First
 
-This stays in ce-ideate — no skill handoff. It is the "think across the set before committing" step, and it is a normal, expected outcome of ideation: seeing several strong candidates and wanting to deliberate is more common than instantly committing one. The orchestrator still holds the full grounding and generation context, so it can reason across every survivor — this is where that context pays off. The work here is either **single-idea** (sharpen or interrogate one) or **cross-idea** (compare, combine, or merge several); do not force the user to name a single idea before they can engage.
+This stays in ce-ideate — no skill handoff. It is the "think across the set before choosing" step, and it is a normal, expected outcome of ideation: seeing several strong candidates and wanting to deliberate is more common than instantly choosing one. The orchestrator still holds the full grounding and generation context, so it can reason across every survivor — this is where that context pays off. The work here is either **single-idea** (sharpen or interrogate one) or **cross-idea** (compare, combine, or merge several); do not force the user to name a single idea before they can engage.
 
 1. **Establish what the user wants to work on and how.** Infer from their phrasing when given; otherwise ask one open question ("What do you want to work on?") rather than assuming a single idea. The scope may be one idea, a subset, or the whole set.
 2. **Route by intent:**
@@ -137,8 +137,8 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a `jj` workspace:** offer to describe only the ideation-doc change (do not create or move bookmarks, and do not push; if the user declines, leave the working-copy change undescribed). Local project standards and descriptions visible in `jj log` always win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply only compatible Go guidance without imposing fixed syntax or examples.
-- **Workspace-local scratch or non-workspace file:** skip the commit offer.
+- **Inside a `jj` workspace:** offer to isolate only the ideation document in a change when needed and describe that change; do not create or move bookmarks, and do not push. Before composing, editing, validating, or recommending its description, inspect the project's active instructions and conventions already in context and descriptions visible in `jj log`; local syntax and history take precedence. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance without overriding those local standards. Resolve the operation and neutral placeholders such as `<revision>`, `<fileset>`, and `<description>` from current state plus `jj help describe`, `jj help commit`, and any project-owned aliases instead of prescribing fixed syntax or a fixed message. If the user declines, leave the working-copy change undescribed.
+- **Workspace-local `.tmp` or non-workspace file:** skip the change-description offer.
 
 Then narrate the path and end the session — do not return to the menu.
 
@@ -146,7 +146,7 @@ Then narrate the path and end the session — do not return to the menu.
 
 Only when the file was **created fresh this run**: delete it, confirm the deletion, and end. On a **resume** run (a pre-existing file was updated in place), do **not** delete — tell the user the existing doc at `<path>` remains and offer no destructive action. Discard is never a default; it fires only on an explicit request.
 
-Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the V15 web-research cache reused across run-ids by later ideation invocations in the same workspace, the Checkpoint A/B files, the evidence dossiers, and possibly the deliverable itself. It remains disposable `.tmp` content.
+Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the V15 web-research cache reused across run-ids by later ideation invocations in the same workspace (see `references/web-research-cache.md`), the Checkpoint A/B files, the evidence dossiers, and possibly the deliverable itself. It remains disposable workspace-local `.tmp` content.
 
 ## Quality Bar
 

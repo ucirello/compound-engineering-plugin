@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Environment health check.
+# RocketClaw environment health check.
 # Reports optional tool capabilities and workspace-local config safety in one pass.
 
 set -o pipefail
@@ -39,7 +39,7 @@ skip()    { echo "  ➖  $1"; }
 detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
-# Read one top-level scalar from the workspace's flat local-config convention. This is
+# Read one top-level scalar from the repo's flat local-config convention. This is
 # intentionally not a general YAML parser: comments and absent/empty keys are
 # ignored, surrounding quotes are removed, and values are never evaluated.
 read_flat_config_value() {
@@ -151,33 +151,6 @@ resolve_docs_root() {
     docs_root_error="an intermediate path component is not a directory"; return
   fi
   docs_root_status="configured"
-}
-
-# Check one ignore rule with a uniquely created probe. Forcing auto-track makes
-# an unignored probe visible regardless of user snapshot settings. Cleanup is
-# snapshotted before returning so the health check leaves no workspace content.
-jj_path_is_ignored() {
-  local workspace_root="$1"
-  local probe_relative="$2"
-  local probe_path="$workspace_root/$probe_relative"
-  local probe_dir command_status listed
-  local probe_dir_existed="yes"
-
-  probe_dir="$(dirname "$probe_path")"
-  [ -d "$probe_dir" ] || probe_dir_existed="no"
-  mkdir -p "$probe_dir" || return 1
-  if ! ( set -o noclobber; : > "$probe_path" ) 2>/dev/null; then
-    [ "$probe_dir_existed" = "yes" ] || rmdir "$probe_dir" 2>/dev/null
-    return 1
-  fi
-
-  listed=$(jj -R "$workspace_root" --config 'snapshot.auto-track=all()' file list "$probe_relative" 2>/dev/null)
-  command_status=$?
-  rm -f "$probe_path"
-  [ "$probe_dir_existed" = "yes" ] || rmdir "$probe_dir" 2>/dev/null
-  jj -R "$workspace_root" --config 'snapshot.auto-track=all()' status >/dev/null 2>&1
-
-  [ "$command_status" -eq 0 ] && [ -z "$listed" ]
 }
 
 # Report whether a retired top-level key is still present without interpreting
@@ -314,7 +287,7 @@ read_work_engine_preferences() {
 }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_workspace=$(jj root >/dev/null 2>&1 && echo "yes" || echo "no")
+in_workspace=$(jj --ignore-working-copy root >/dev/null 2>&1 && echo "yes" || echo "no")
 
 # =====================================================
 #  Check optional capabilities
@@ -338,11 +311,11 @@ for entry in "${deps[@]}"; do
 done
 
 # =====================================================
-#  Workspace checks
+#  Project checks (Jujutsu workspace only)
 # =====================================================
 
 legacy_cfg="skip"
-local_cfg_ignored="skip"
+local_config_ignored="skip"
 scratch_ignored="skip"
 local_cfg="skip"
 example_cfg="skip"
@@ -361,7 +334,7 @@ tracked_cfg="skip"
 project_issues=0
 
 if [ "$in_workspace" = "yes" ]; then
-  workspace_root=$(jj root 2>/dev/null)
+  workspace_root=$(jj --ignore-working-copy root 2>/dev/null)
   local_config_path="$workspace_root/.rocketclaw/config.local.yaml"
   tracked_config_path="$workspace_root/.rocketclaw/config.yaml"
   resolve_docs_root "$workspace_root"
@@ -372,17 +345,19 @@ if [ "$in_workspace" = "yes" ]; then
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    local_ignore_probe=".rocketclaw/.ignore-probe-$$-${RANDOM}.local.yaml"
-    if jj_path_is_ignored "$workspace_root" "$local_ignore_probe"; then
-      local_cfg_ignored="ok"
+    listed_local_config=$(jj --ignore-working-copy --repository "$workspace_root" --no-pager file list '.rocketclaw/config.local.yaml' 2>/dev/null)
+    if [ $? -ne 0 ]; then
+      local_config_ignored="unknown"
+    elif printf '%s\n' "$listed_local_config" | grep -Fqx '.rocketclaw/config.local.yaml'; then
+      local_config_ignored="missing"
     else
-      local_cfg_ignored="missing"
+      local_config_ignored="ok"
     fi
   fi
 
+  # Controllers and skills share the workspace-root .tmp directory.
   scratch_ignored="missing"
-  scratch_ignore_probe=".context/.rocketclaw-ignore-probe-$$-${RANDOM}"
-  if jj_path_is_ignored "$workspace_root" "$scratch_ignore_probe"; then
+  if [ -f "$workspace_root/.gitignore" ] && grep -Eq '^/?\.tmp/$' "$workspace_root/.gitignore" 2>/dev/null; then
     scratch_ignored="ok"
   fi
 
@@ -556,7 +531,7 @@ for result in "${results[@]}"; do
 done
 
 if [ "$in_workspace" = "yes" ]; then
-  section "Workspace config"
+  section "Project config"
 
   if [ "$legacy_cfg" = "present" ]; then
     warn "Obsolete rocketclaw.local.md exists"
@@ -573,8 +548,11 @@ if [ "$in_workspace" = "yes" ]; then
 
   if [ "$local_cfg" = "present" ]; then
     ok ".rocketclaw/config.local.yaml exists"
-    if [ "$local_cfg_ignored" = "ok" ]; then
+    if [ "$local_config_ignored" = "ok" ]; then
       ok "Local config is ignored"
+    elif [ "$local_config_ignored" = "unknown" ]; then
+      warn "Could not verify whether local config is ignored"
+      project_issues=$((project_issues + 1))
     else
       warn "Local config is not safely ignored"
       project_issues=$((project_issues + 1))
@@ -584,10 +562,10 @@ if [ "$in_workspace" = "yes" ]; then
   fi
 
   if [ "$scratch_ignored" = "ok" ]; then
-    ok "Scratch space is ignored"
+    ok "RocketClaw scratch space is ignored"
   else
-    skip "Scratch space is not ignored"
-    detail "Skills that keep local scratch write it under .context/"
+    skip "RocketClaw scratch space is not ignored"
+    detail "Add .tmp/ to .gitignore; skills and controllers keep local scratch there"
   fi
 
   if [ "$docs_root_status" = "default" ]; then
@@ -596,7 +574,7 @@ if [ "$in_workspace" = "yes" ]; then
     ok "Artifact root: ${docs_root_value}/ (from ${docs_root_source})"
   elif [ "$docs_root_status" = "invalid" ]; then
     warn "Invalid docs_root '${docs_root_value}' in ${docs_root_source}: ${docs_root_error}"
-    detail "Artifacts will not be written until docs_root is corrected or removed."
+    detail "RocketClaw artifacts will not be written until docs_root is corrected or removed."
   fi
   if [ -n "$docs_root_local_ignored" ]; then
     skip "Local docs_root '${docs_root_local_ignored}' is ignored; set docs_root only in config.yaml"
@@ -639,13 +617,13 @@ if [ "$in_workspace" = "yes" ]; then
     project_issues=$((project_issues + 1))
   done
 else
-  section "Workspace config"
-  skip "Not inside a jj workspace"
+  section "Project config"
+  skip "Not inside a Jujutsu workspace"
 fi
 
 echo ""
 if [ "$project_issues" -eq 0 ]; then
-  echo " ✅  Workspace config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " ✅  Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
 else
   echo " ⚠️   ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
 fi

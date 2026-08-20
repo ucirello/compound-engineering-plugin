@@ -76,19 +76,15 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Revision Bisection for Regressions
+## Jujutsu Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use jj to binary-search the revisions between a known-good revision and the current bad revision.
+When a bug is a regression ("it worked before"), use jj's native binary search to find the first bad revision:
 
 ```bash
-jj log -r '<known-good-revision>::@'
-jj edit <middle-revision>
-# Run the reproducer, retain the half-range consistent with the result, and repeat.
-# Return to the original change when the first bad revision is identified.
-jj edit <original-change-id>
+jj bisect run --range '<known-good-revision>..@' -- <test-command>
 ```
 
-Record the original change ID before moving the working copy. Treat exit 0 from an automated reproducer as good and non-zero as bad, but do not automate revision movement unless the repository already provides a jj-compatible bisect helper. Never abandon the working copy on an investigated revision.
+The test command exits 0 for good, 125 to skip a revision, and any other non-zero status for bad. `jj bisect run` restores the original working-copy revision when it completes; if interrupted, return with `jj edit <saved-change-id>` using the exact change ID recorded before starting.
 
 ---
 
@@ -124,7 +120,7 @@ A 5% reproduction rate confirms the bug exists but suggests timing or data sensi
 - Run the suite with randomized test order (most runners support a seed flag) — a different failing-test neighbor each run implies global state mutation
 - Bisect the preceding tests: run the failing test with just the first half of the earlier tests, then the second half, then narrow
 
-Common culprits once isolated: module-level state, mocks not torn down, temp files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
+Common culprits once isolated: module-level state, mocks not torn down, scratch files under `<workspace-root>/.tmp` (or local `./.tmp` fallback) not cleaned up, database rows not rolled back, environment variables mutated and not restored.
 
 ---
 

@@ -8,7 +8,7 @@ merge, the single-writer lease, and the closed-item evidence rule are enforced
 in exactly one place. See `references/state-schema.md` for the cross-agent
 contract this script implements.
 
-Design rules (shared with the repo's other state helpers):
+Design rules (shared with the workspace's other state helpers):
   - Pure Python 3 stdlib. No third-party dependencies.
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
@@ -41,7 +41,7 @@ import argparse
 import json
 import os
 import sys
-import tempfile
+import secrets
 from datetime import datetime, timezone
 
 try:
@@ -58,7 +58,7 @@ SCHEMA_VERSION = 1
 
 # A `closed` item MUST carry all three evidence fields; `validate` downgrades
 # any closed item missing any of them back to `fix_pending`.
-EVIDENCE_FIELDS = ("fix_ref", "verified_merge_sha", "verified_at")
+EVIDENCE_FIELDS = ("fix_ref", "verified_revision_id", "verified_at")
 
 DEFAULT_TTL_MINUTES = 60
 
@@ -86,7 +86,7 @@ _DOC_ORDER = ("schema_version", "lease", "sources", "items", "last_run")
 _LEASE_ORDER = ("writer", "timestamp", "ttl_minutes")
 _ITEM_ORDER = (
     "source", "status", "sensitive", "title", "url", "body", "quote",
-    "fix_ref", "verified_merge_sha", "verified_at",
+    "fix_ref", "verified_revision_id", "verified_at",
 )
 _LAST_RUN_ORDER = ("timestamp", "outcome", "writer", "counts")
 
@@ -255,8 +255,8 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # A checkout-local state file is a correctness dependency (lease,
-            # cursors, closed status) as
+            # A machine-local state file is still a correctness dependency
+            # (lease, cursors, closed status) as
             # well as an injection sink (item bodies re-read into agent
             # context). Reject a file not owned by us so a co-tenant cannot
             # plant a forged lease/cursor or attacker-authored item text. Skip
@@ -280,6 +280,11 @@ def load_state(path):
         return ("corrupt", None)
     data.setdefault("sources", {})
     data.setdefault("items", {})
+    for item in data["items"].values():
+        if isinstance(item, dict) and "verified_revision_id" not in item:
+            legacy_revision = item.pop("verified_merge_sha", None)
+            if legacy_revision:
+                item["verified_revision_id"] = legacy_revision
     return ("ok", data)
 
 
@@ -293,7 +298,17 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    tmp = ""
+    for _ in range(32):
+        candidate = os.path.join(d, ".sweep-write-{}.yml".format(secrets.token_hex(8)))
+        try:
+            fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            tmp = candidate
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise OSError("could not reserve an atomic state-write path")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
@@ -420,7 +435,7 @@ def _load_owned_state(args):
     return data, None
 
 
-def _commit_owned(args, data):
+def _persist_owned(args, data):
     """Shared tail for lease-gated mutations: re-stamp the lease, persist."""
     restamp_lease(data, args.writer, resolve_now(args))
     write_state(args.state, data)
@@ -458,7 +473,7 @@ def cmd_upsert_item(args):
             merged.pop(f, None)
 
     items[key] = merged
-    return _commit_owned(args, data)
+    return _persist_owned(args, data)
 
 
 def cmd_cursor_get(args):
@@ -487,7 +502,7 @@ def cmd_cursor_advance(args):
     if current is not None and _cursor_lt(str(args.to), str(current)):
         return emit("REFUSED")
     entry["cursor"] = args.to
-    return _commit_owned(args, data)
+    return _persist_owned(args, data)
 
 
 def _cursor_lt(a, b):
@@ -543,7 +558,7 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-commit mode there
+    # the lease yet must still record its outcome. In local-change mode there
     # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -565,7 +580,7 @@ def cmd_run_record(args):
 
 
 def cmd_import_legacy(args):
-    """Best-effort import of a legacy feedback state file. Liberal on input:
+    """Best-effort import of a Cora-style legacy state file. Liberal on input:
     map what matches the known shapes, skip what doesn't, never fail."""
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -610,7 +625,7 @@ def _read_legacy(path):
             raw = f.read()
     except (OSError, UnicodeDecodeError):
         return None
-    # Try JSON first; fall back to our YAML subset.
+    # Try JSON first (Cora persists JSON); fall back to our YAML subset.
     try:
         return json.loads(raw)
     except ValueError:
@@ -752,7 +767,7 @@ _HANDLERS = {
 # (run-record for an aborted-locked run, validate, import-legacy). Two
 # concurrent invocations (an overlapping cron and manual sweep) could otherwise
 # interleave load -> mutate -> write and lose an update — e.g. an aborted run's
-# stale-snapshot write clobbering the holder's just-committed upsert. An OS
+# stale-snapshot write clobbering the holder's just-persisted upsert. An OS
 # advisory lock held across each mutating RMW makes them mutually exclusive
 # regardless of lease ownership.
 _MUTATING = {

@@ -9,10 +9,10 @@ The orchestrator passes a `<standards-paths>` block listing the file paths of al
 If no `<standards-paths>` block is present (standalone usage), discover the paths yourself:
 
 1. Use the native file-search/glob tool to find all `CLAUDE.md` and `AGENTS.md` files in the repository.
-2. For each changed file, check its ancestor directories up to the workspace root for standards files. A root `AGENTS.md` applies to the whole workspace, while `skills/AGENTS.md` applies to all changes under `skills/`.
+2. For each changed file, check ancestor directories up to the workspace root for standards files. Root instructions govern the full workspace; nested instructions govern their subtree.
 3. Read each relevant standards file found.
 
-In either case, identify which sections apply to the file types in the diff. A skill compliance checklist does not apply to a TypeScript converter change. A change-description convention does not apply unless the reviewed scope includes descriptions. Match rules to the artifacts they govern. When evaluating or recommending a Jujutsu description, current project instructions and history read with `jj log` win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+In either case, identify which sections apply to the changed files. A change-description convention applies only when the change composes, edits, validates, or recommends a description. At such a site, require local-first `jj log` convention discovery, current syntax from `jj help`, compatible Go quality, no fixed message, and neutral revision placeholders. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 ## What you're hunting for
 
@@ -46,7 +46,7 @@ Use the anchored confidence rubric in the subagent template. Persona-specific gu
 
 ## What you don't flag
 
-- **Rules that don't apply to the changed artifact.** Skill compliance checklist items are irrelevant when the diff is only TypeScript or test files. Change-description conventions do not apply when no description is under review. Match rules to what they govern.
+- **Rules that do not govern the changed behavior.** Match each rule to its actual consumer; change-description conventions apply to description composition and validation sites, not by file extension alone.
 - **Violations that automated checks already catch.** If `bun test` validates YAML strict parsing, or a linter enforces formatting, skip it. Focus on semantic compliance that tools miss.
 - **Pre-existing violations in unchanged code.** If an existing SKILL.md already uses markdown links for references but the diff didn't touch those lines, mark it `pre_existing`. Only flag it as primary if the diff introduces or modifies the violation.
 - **Generic best practices not in any standards file.** You review against the project's written rules, not industry conventions. If the standards files don't mention it, you don't flag it.

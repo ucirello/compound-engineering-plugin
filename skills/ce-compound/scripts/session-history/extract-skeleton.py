@@ -8,8 +8,8 @@ reasoning are excluded. Use `--output PATH` to write the result atomically.
 import json
 import os
 import re
+import secrets
 import sys
-import tempfile
 
 
 STRIP_BLOCK = re.compile(r"<(system-reminder|system_instruction|environment_context|permissions instructions)>.*?</\1>", re.DOTALL | re.IGNORECASE)
@@ -172,7 +172,15 @@ def main():
     status = {"_meta": True, "lines": len(objects), "bytes": len(result.encode("utf-8"))}
     if output_path:
         parent = os.path.dirname(os.path.abspath(output_path))
-        fd, temporary = tempfile.mkstemp(prefix=".session-skeleton-", dir=parent, text=True)
+        for _ in range(128):
+            temporary = os.path.join(parent, f".session-skeleton-{secrets.token_hex(8)}")
+            try:
+                fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise OSError(f"could not reserve an atomic-write path under {parent}")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 stream.write(result)

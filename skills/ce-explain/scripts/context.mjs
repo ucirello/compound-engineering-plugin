@@ -16,14 +16,14 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace: ${jj('workspace', 'root') || '(not a jj workspace)'}`,
-    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(none)'}`,
+    `workspace root: ${jj('workspace', 'root') || '(not a jj workspace)'}`,
+    `working-copy change: ${jj('log', '--no-graph', '-r', '@', '-T', 'change_id.short()') || '(none)'}`,
   ].join('\n');
 }
 
 // Substitution stays allowed on a failed dispatch, not only on an empty tool
-// surface: workflows here define their own degrade paths (a verifier may fall
-// back to orchestrator-only filtering), and this text is
+// surface: workflows here define their own degrade paths (ce-brainstorm's
+// verifier falls back to orchestrator-only filtering), and this text is
 // positioned to outrank skill prose — a stricter rule would make those paths
 // retry forever or drop required work instead of degrading as intended.
 // The carve-out below walks that deviation back for one class: "rather than
@@ -62,7 +62,7 @@ const HARNESS_ATTRIBUTION = [
   'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
 ].join(' ');
 
-// A review workflow may promote a finding when "2+ independent personas" agree, and
+// ce-doc-review promotes a finding when "2+ independent personas" agree, and
 // nothing verified they ran in separate processes — inline, one context reasoned
 // both lenses and still stamped confidence 100.
 const INDEPENDENCE_ACCOUNTING = [

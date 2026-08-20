@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cross-model-doc-review.sh
 #
-# Runs ONE `ce-doc-review` judgment persona through ONE or more DIFFERENT model
+# Runs ONE ce-doc-review judgment persona through ONE or more DIFFERENT model
 # PROVIDERS than the host (the "peer(s)") in separate, read-only, least-privilege
 # processes, and writes each peer's findings as JSON into the run dir. Each peer
 # gets the same canonical persona brief the in-process reviewer uses
@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > document-review config >
+#                   resolved preference (conversation > RocketClaw config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -68,7 +68,7 @@
 set -uo pipefail
 
 # Survive SIGHUP when the orchestrator backgrounds this script and the parent
-# shell exits (common in hosted shell tools). Without this, a detached
+# shell exits (common on Cursor/Codex Bash tools). Without this, a detached
 # codex process group can still write raw `-o` JSON while this script dies
 # before normalize — leaving fold-in files with a bare `reviewer` field.
 trap '' HUP
@@ -117,7 +117,7 @@ route_effort() {   # <route> -> requested effort: the override where the route t
 # as a match; a longer sibling such as claude-opus-50-* does not; never
 # substring). Every other route records the literal
 # "unverified" — never a fallback to the requested value. Keep this block byte-identical across
-# The receipt logic is kept in one local block so all routes use one contract.
+# ce-code-review and ce-doc-review (kernel parity).
 expected_model_prefix() {   # <requested-alias-or-id> -> expected served-id family prefix
   case "$1" in
     fable)    printf 'claude-fable' ;;
@@ -234,9 +234,9 @@ adapter_argv() {
     claude)
       # --tools "" disables ALL built-in tools (allowlist deny-all, no denylist gap
       # like Glob/Grep); --safe-mode suppresses hooks, MCP, plugins, and other
-      # custom behavior without bypassing the host's normal OAuth/keychain auth.
+      # custom behavior without bypassing Claude Code's normal OAuth/keychain auth.
       # The run cd's into the empty per-peer workspace (claude has no cwd flag), so
-      # the peer has no workspace -- or sibling peer's fold-in artifact -- in reach.
+      # the peer receives no repo context or sibling peer artifact in its prompt.
       # R17 tool-less isolation.
       # stream-json + --verbose for PEERLOG idle (#1270); schema still composes.
       printf '%s\0' claude -p --model "$(route_model claude)" --effort "$(route_effort claude)" --permission-mode dontAsk \
@@ -334,13 +334,11 @@ RUN_DIR="${7:-}"
 : "${ORIGIN:=none}"
 [ -n "$RUN_DIR" ] || skip "run-dir not given; skipping"
 # Create the scratch run-dir rather than skipping when it doesn't exist yet:
-# This workflow has no pre-existing run-artifact directory, and
+# ce-doc-review (unlike ce-code-review) has no pre-existing run-artifact dir, and
 # the caller passes the fresh absolute run dir resolved by the skill.
 # Requiring it to pre-exist would silently no-op the whole pass (no fold-in files).
-[ ! -L "$RUN_DIR" ] || skip "run-dir '$RUN_DIR' is a symlink; skipping"
-(umask 077; mkdir -p "$RUN_DIR") 2>/dev/null
-[ -d "$RUN_DIR" ] && [ ! -L "$RUN_DIR" ] || skip "run-dir '$RUN_DIR' could not be created safely; skipping"
-chmod 700 "$RUN_DIR" 2>/dev/null || skip "run-dir '$RUN_DIR' could not be made private; skipping"
+mkdir -p "$RUN_DIR" 2>/dev/null
+[ -d "$RUN_DIR" ] || skip "run-dir '$RUN_DIR' could not be created; skipping"
 command -v jq >/dev/null 2>&1 || skip "jq not installed; skipping"
 
 # Validate the host identity tuple. An unknown serving family is allowed, but
@@ -410,7 +408,8 @@ out_missing_or_invalid() { [ ! -s "$RAW_OUT" ] || ! jq -e '(.findings|type)=="ar
 # grok (grok-via-cursor-agent). CROSS_MODEL_PEERS is an egress boundary (R19), not
 # just a model-provider filter, so the grok->cursor-agent transport is off-limits
 # under an allowlist that does not sanction Cursor. Cursor egress is sanctioned when
-# no allowlist is set, or when `cursor` or `composer` is allowlisted.
+# no allowlist is set, or when 'composer' (the Cursor-native provider) is allowlisted
+# -- either way the user has accepted that content may reach Cursor.
 cursor_egress_ok() { [ -z "$ALLOW" ] || in_csv cursor "$ALLOW" || in_csv composer "$ALLOW"; }
 
 # Soft size gate: peer prompt embeds the full document. Over-budget docs skip
@@ -486,58 +485,32 @@ if [ -n "${CROSS_MODEL_DRY_RUN:-}" ]; then
   exit 0
 fi
 
-# --- reserve workspace-local private paths ----------------------------------
-reserve_file() {   # <stem>
-  local stem="$1" candidate attempt=0
-  while [ "$attempt" -lt 32 ]; do
-    candidate="$RUN_DIR/.${stem}-$$-${attempt}"
-    if (umask 077; set -C; : > "$candidate") 2>/dev/null; then
-      printf '%s' "$candidate"
-      return 0
-    fi
-    attempt=$((attempt + 1))
-  done
-  return 1
-}
-
-reserve_dir() {   # <stem>
-  local stem="$1" candidate attempt=0
-  while [ "$attempt" -lt 32 ]; do
-    candidate="$RUN_DIR/.${stem}-$$-${attempt}"
-    if (umask 077; mkdir "$candidate") 2>/dev/null; then
-      chmod 700 "$candidate" 2>/dev/null || { rmdir "$candidate" 2>/dev/null; return 1; }
-      printf '%s' "$candidate"
-      return 0
-    fi
-    attempt=$((attempt + 1))
-  done
-  return 1
-}
-
 # --- compose the peer prompt from the canonical persona (single source) ----
 # The full findings schema is embedded so the peer knows every required field.
 # The document content is embedded directly inside the <review-context> block,
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(reserve_file xmodel-doc-prompt)" || skip "could not reserve private prompt file under $RUN_DIR; skipping"
-PEERLOG="$(reserve_file xmodel-doc-log)" || { rm -f "$PROMPT_FILE"; skip "could not reserve private log file under $RUN_DIR; skipping"; }
+LOCAL_TMP_PARENT="$RUN_DIR/.tmp"
+(umask 077; mkdir -p "$LOCAL_TMP_PARENT") || skip "cannot create local scratch parent; skipping"
+LOCAL_TMP="$LOCAL_TMP_PARENT/$REVIEWER_NAME-$$-${RANDOM:-0}"
+(umask 077; mkdir "$LOCAL_TMP") || skip "cannot claim local scratch directory; skipping"
+PROMPT_FILE="$LOCAL_TMP/prompt.md"
+PEERLOG="$LOCAL_TMP/peer.log"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(reserve_file xmodel-doc-err)" || { rm -f "$PROMPT_FILE" "$PEERLOG"; skip "could not reserve private error file under $RUN_DIR; skipping"; }
+PEERERR="$LOCAL_TMP/peer.err"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
 cleanup_temp() {
-  rm -f "$PROMPT_FILE" "$PEERLOG" "$PEERERR"
-  [ -n "$RAW_OUT" ] && rm -f "$RAW_OUT"
-  [ -n "$PEER_WORKDIR" ] && [ "$PEER_WORKDIR" != "${RUN_DIR:-}" ] && rm -rf "$PEER_WORKDIR"
+  [ -n "${LOCAL_TMP:-}" ] && [ "$LOCAL_TMP" != "${RUN_DIR:-}" ] && rm -rf "$LOCAL_TMP"
 }
 trap 'cleanup_temp' EXIT
 # Basename only in the peer prompt: content is already embedded (KTD3). An absolute
-# path would give a read-capable route a workspace coordinate to walk from.
+# path would give cursor-agent residual-Read a repo coordinate to walk from.
 DOC_BASENAME="$(basename "$DOC_PATH")"
 {
   cat "$PERSONA"
@@ -545,7 +518,7 @@ DOC_BASENAME="$(basename "$DOC_PATH")"
   # Shared output-contract (confidence rubric + FP catalog) the persona brief defers
   # to, so the peer calibrates like its in-process twin.
   [ -n "$OUTPUT_CONTRACT_RULES" ] && printf '%s\n\n' "$OUTPUT_CONTRACT_RULES"
-  printf 'This is an authorized document review of the maintainer\047s own workspace.\n'
+  printf 'This is an authorized document review of the maintainer\047s own repository.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
   printf '\n\nSet the top-level "reviewer" field to "%s" (it will be namespaced to the peer provider on fold-in).\n' "$REVIEWER_NAME"
@@ -561,12 +534,12 @@ DOC_BASENAME="$(basename "$DOC_PATH")"
 } > "$PROMPT_FILE"
 
 # --- run machinery: idle-timeout for streaming peers, hard-only for grok-cli --
-# Idle cap must exceed the peer's worst-case silent turn: `codex --json` is
+# Idle cap must exceed the peer's worst-case silent turn: Codex --json is
 # event-line (not token) output, so a slow xhigh reasoning turn (Luna p95 ~242s,
 # max ~419s) can go quiet past a low cap and be reaped before turn.completed.
 #
 # On idle-guarded routes the idle cap -- not the hard cap -- is the liveness
-# guard. The `claude` and `cursor-agent` routes stream (`stream-json`) so run_timeout_cmd polls
+# guard. Claude/cursor-agent stream (`stream-json`) so run_timeout_cmd polls
 # PEERLOG (#1270). grok-cli keeps --json-schema (buffered) and stays on
 # UNGUARDED_HARD_SECS hard-only. An explicit CROSS_MODEL_HARD_SECS still
 # overrides both defaults.
@@ -576,7 +549,7 @@ DOC_BASENAME="$(basename "$DOC_PATH")"
 # references/cross-model-review.md), so raising it here raises all three. A
 # smaller effective worker cap on an unguarded route keeps that nesting valid --
 # the inner window may be tighter, never wider. Keep this block in sync with
-# Keep this budget internally consistent with the runner supervisor.
+# ce-code-review's script (parity-tested in CI).
 IDLE_SECS="${CROSS_MODEL_IDLE_SECS:-480}"
 HARD_SECS="${CROSS_MODEL_HARD_SECS:-1200}"
 UNGUARDED_HARD_SECS="${CROSS_MODEL_HARD_SECS:-600}"
@@ -653,7 +626,7 @@ build_cmd() {
 # writer emits one stderr line every CROSS_MODEL_HEARTBEAT_SECS (default 60s) so
 # that liveness is visible; it is torn down as soon as the foreground wait returns,
 # so it adds no latency to a fast run. Keep this block byte-identical across
-# The runner watches these heartbeat lines as liveness evidence.
+# cross-model-adversarial-review.sh and cross-model-doc-review.sh (kernel parity).
 _HEARTBEAT_PID=""
 start_heartbeat() {
   local every="${CROSS_MODEL_HEARTBEAT_SECS:-60}" parent_pid="$$"
@@ -717,7 +690,7 @@ run_timeout_cmd() {
   RUN_SUCCEEDED=false
   # Run from the empty per-peer workspace (absolute stdin/PEERLOG paths are
   # unaffected) so a tool-capable peer -- notably claude, which has no cwd flag --
-  # has no workspace files, and no sibling lens's fold-in artifact, in reach. grok/cursor
+  # receives no repo files or sibling fold-in artifact in its prompt. grok/cursor
   # also carry their own --cwd/--workspace flag pointed at the same PEER_WORKDIR.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
@@ -908,17 +881,17 @@ run_provider() {   # <provider>
   OUT="$RUN_DIR/$REVIEWER_NAME-$provider.json"
   # Per-peer empty workspace, kept SEPARATE from the shared fold-in dir (RUN_DIR).
   # The peer's cwd/workspace and its RAW_OUT live here, so a read-capable peer
-  # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
-  # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
+  # (codex/cursor-agent) starts without a shared cwd or a direct path to another
+  # lens's published <lens>-<provider>.json.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself. Fail closed if an isolated
-  # directory cannot be reserved; sharing RUN_DIR would expose sibling returns.
-  PEER_WORKDIR="$(reserve_dir xmodel-doc-peer)" || { log "could not reserve isolated peer workspace under $RUN_DIR; skipping"; rm -f "$OUT"; return 0; }
+  # never written into RUN_DIR by the peer itself.
+  PEER_WORKDIR="$LOCAL_TMP/peer-workspace"
+  (umask 077; mkdir "$PEER_WORKDIR") || { log "could not create peer workspace; skipping"; rm -f "$OUT"; return 0; }
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
   if [ "$fixed" = "grok-cursor" ] && ! cursor_egress_ok; then
-    log "fixed route 'grok-cursor' requires cursor intermediary sanction; skipping"
+    log "fixed route 'grok-cursor' requires Cursor intermediary sanction; skipping"
     rm -f "$OUT"
     return 0
   fi
@@ -926,8 +899,8 @@ run_provider() {   # <provider>
   validate_model_override "$primary" || { log "model override '${CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$primary'; skipping"; rm -f "$OUT"; return 0; }
   validate_effort_override "$primary" || { log "effort override '${CROSS_MODEL_EFFORT_OVERRIDE:-}' not compatible with route '$primary'; skipping"; rm -f "$OUT"; return 0; }
   # Track the route that actually produced the fold-in, so the artifact records
-  # whether a grok return went out directly or through the cursor intermediary
-  # (which also receives the full document). The <lens>-<provider>
+  # whether a grok return went out directly (grok-cli -> xAI) or through Cursor
+  # (grok-cursor -> Cursor also received the full document). The <lens>-<provider>
   # filename alone cannot encode that intermediary.
   ACTUAL_ROUTE="$primary"
   attempt_route "$provider" "$primary"
@@ -947,7 +920,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(reserve_file xmodel-doc-norm)" || { log "could not reserve normalization file under $RUN_DIR; skipping"; rm -f "$OUT" "$RAW_OUT"; return 0; }
+    _norm="$LOCAL_TMP/normalized.json"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

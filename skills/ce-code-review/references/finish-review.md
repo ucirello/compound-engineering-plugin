@@ -64,24 +64,25 @@ Independent verification remains required for findings that lack cross-model cor
 - **Push back** — do not apply — when the reviewer is wrong; keep the finding and state the disagreement with reasoning.
 - **Skip with judgment** taste calls and conflicting suggestions, but surface what was skipped and why. Never silently drop.
 
-Severity, confidence, and cross-reviewer agreement tell you what to do first and what to flag loudly — they do not gate the decision. There is no deny-list: downside is controlled after the fact (revert + visible diff + the commit checkpoint), not by a precondition.
+Severity, confidence, and cross-reviewer agreement tell you what to do first and what to flag loudly; they do not gate the decision. Downside is controlled through Jujutsu operation history, a visible diff, and the pre-apply checkpoint.
 
 One exception: `settled_conflict`-stamped preference findings (Stage 5 step 2) stay report-only even when local apply is authorized — the bias-to-act rule does not apply to them. The user already chose against that alternative; reversing it is not this review's improvement to make.
 
-**Scope invariant.** Apply only when the working copy *is* what was reviewed — `local-aligned` or standalone. In `pr-remote` / `branch-remote` the working copy is not the reviewed head revision; do not apply — report instead.
+**Scope invariant.** Apply only when workspace files are what was reviewed: `local-aligned` or standalone. In `pr-remote` / `bookmark-remote`, report instead.
 
 **Verify, then keep.** After applying, run the affected tests and lint (targeted by default; broaden when fixes span files). If they fail, revert that fix and report it as a finding instead — an unverified fix is not finished. Never leave the tree red.
 
-**Review the autofix diff before finishing.** Before committing or reporting applied fixes, diff only the changes introduced during Stage 5c against the pre-apply checkpoint. Run one self-review pass over that diff:
+**Review the autofix diff before finishing.** Before describing or reporting applied fixes, diff only the Stage 5c changes against the pre-apply Jujutsu operation/change checkpoint. Run one self-review pass over that diff:
 - If the same helper, policy, or guard was added to multiple parallel surfaces, extract it or explain in the Applied section why duplication is intentional.
 - If an exported/shared function now accepts a broader input shape, update the nearby docs, types, or tests that define the contract so future callers understand it.
 - If a reviewer item is pure information (no defect, no code contract change, no test gap), classify it as advisory/non-actionable in Coverage or residual risks; do not patch it or describe it as a missed defect.
-If this self-review changes files, rerun the affected tests or lint for those follow-up edits before committing or reporting; the earlier validation only covers the original autofix diff.
+If this self-review changes files, rerun the affected tests or lint before describing or reporting; the earlier validation covers only the original autofix diff.
 
-**Describe and checkpoint when the pre-review working-copy change was empty.** Before applying, record whether `jj diff -r @` is empty. The permanence gate is publication, not a local change description; local jj changes remain private and reversible.
+**Describe an isolated revision only when `@` was empty before apply.** Record initial content with `jj diff -r @ --summary`. If empty, keep verified fixes in `@`, derive conventions local-first from visible `jj log` descriptions, resolve editing syntax from `jj help describe`, describe that revision, then start a new empty working-copy revision using current `jj help new` syntax. If `@` already contained content, leave fixes undescribed with the user's in-flight change. Do not rewrite unrelated revisions.
 
-- **Empty before the review:** after applying and verifying, describe the current change and run `jj new` to leave the workspace at a fresh checkpoint. At runtime, inspect nearby change descriptions with `jj log`; project-local conventions take precedence over general guidance. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go clarity and structure guidance, communicate material context or rationale without restating the diff, and do not impose fixed syntax or examples.
-- **Non-empty before the review:** apply but do **not** replace or finalize the existing description; the fixes interleave with the user's in-flight change. The Applied section lists what changed.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Apply compatible Go quality guidance after local conventions, with no fixed syntax or prescribed message. Use neutral placeholders such as `<revision>` and `<description>`.
 - **Never push, open a PR, or file tickets** — that's the outward-facing step the user owns.
 
 **Surface green-but-unverifiable edits.** When an applied fix touches auth/authz, a public or cross-service contract/schema, or concurrency/ordering, a passing test does not prove safety — flag it prominently in the Applied section so the diff reviewer's attention goes there.
@@ -113,7 +114,7 @@ Write human-readable findings in an ASD-STE100 Simplified Technical English (STE
 - **The Verdict and Actionable list are present, last, and self-sufficient.** This is satisfied by the closing, not the section skeleton: the Verdict is the final report section, immediately followed by the post-report prioritized Actionable recap (default mode — see *Emit actionable findings summary* below). The in-report `Actionable Findings` section keeps its skeleton position (5) as the detailed table; the recap is the self-sufficient last word the reader sees without scrolling. (If for some layout you cannot emit the recap, move the Actionable list itself to just after the Verdict.)
 
 1. **Header.** Scope, intent, mode, reviewer team with per-conditional justifications.
-2. **Applied (explicit local apply only).** When Stage 5c applied fixes, list them first — before the findings — in an Applied section (see review output template); each entry carries `#`, file, the fix, and reviewer (a multi-file fix is one row with one `#`), then a one-line validation outcome (e.g. "pin tests 4 -> 6; suite 94 pass, lint clean") and change status (described and checkpointed when the pre-review change was empty, or left in the existing change when it was not). Flag green-but-unverifiable edits (auth/contract/concurrency) prominently. Omit this section when local apply was not authorized or nothing was applied. Applied findings appear here, not in the severity tables.
+2. **Applied (explicit local apply only).** When Stage 5c applied fixes, list them first in an Applied section; each entry carries `#`, file, fix, and reviewer, followed by validation and revision-description status. Report whether an initially empty `@` was described using local conventions or whether changes stayed in the existing working-copy revision. Flag green-but-unverifiable edits prominently.
 2b. **Triage Groups.** When finalized `triage_groups` exist (post-validation, post-apply — Stage 5b step 5 / Stage 5c), render a `### Triage Groups` section before the findings as a compact table (`| Group | Findings | Context | Preferred Resolution | Why |`) — a table fits this content well. The `Findings` cell lists the stable `#`s it covers; the resolution names the order/dependency. **Mark whether each group is an apply-queue or a decision-gate** (so an automated fixer applies the mechanical groups and stops at the design calls). Every referenced `#` must appear in the findings below; groups supplement the findings, never replace them. Omit the section when `grouping:off` is active or no groups survived. In `mode:agent` this section is carried by the `triage_groups` JSON field instead.
 3. **Findings.** Grouped by severity (`### P0 -- Critical`, `### P1 -- High`, `### P2 -- Moderate`, `### P3 -- Low`), rendered per the per-finding direction above and consistent within the section. Surface the decision-vs-mechanical split where it helps the actor (flag the design calls). Omit empty severity levels. Finding numbers come from the stable assignment in Stage 5 -- never re-derive them per severity section or triage group.
 4. **Requirements Completeness.** Include only when a plan was found in Stage 2b. For each requirement (R1, R2, etc.) and implementation unit in the plan, report whether corresponding work appears in the diff. Use a simple checklist: met / not addressed / partially addressed. Routing depends on `plan_source`:
@@ -147,9 +148,9 @@ Minimum shape:
   "status": "complete",
   "verdict": "Ready to merge | Ready with fixes | Not ready",
   "scope": {
-    "base": "<common-base revision, pr:NNN marker, or base revision>",
-    "branch": "<primary bookmark on @, or empty>",
-    "head_sha": "<jj commit ID for @>",
+    "base": "<fork-point revision, pr:NNN marker, or explicit revision>",
+    "bookmarks": "<bookmarks pointing to @>",
+    "change_id": "<change ID for @>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },
@@ -190,5 +191,5 @@ Before delivering the review, verify:
 2. **No false positives from skimming.** For each finding, verify the surrounding code was actually read. Check that the "bug" isn't handled elsewhere in the same function, that the "unused import" isn't used in a type annotation, that the "missing null check" isn't guarded by the caller.
 3. **Severity is calibrated.** A style nit is never P0. A SQL injection is never P3. Re-check every severity assignment.
 4. **Line numbers are accurate.** Verify each cited line number against the file content. A finding pointing to the wrong line is worse than no finding.
-5. **Protected artifacts are respected.** Discard any finding that recommends deleting or excluding a workflow artifact via ignore rules, per the Protected Artifacts rule in SKILL.md: any file under a `plans/`, `solutions/`, or legacy `brainstorms/` directory whose immediate parent is the artifact root (a directory named `docs`, or the configured `docs_root` when resolved). Categories nest (`solutions/<category>/`); a `references/personas/` skill asset, parented by `references`, is not a protected artifact.
+5. **Protected artifacts are respected.** Discard any finding that recommends deleting or ignoring a pipeline artifact under `.context` or the configured artifact root, per SKILL.md.
 6. **Findings don't duplicate linter output.** Don't flag things the project's linter/formatter would catch (missing semicolons, wrong indentation). Focus on semantic issues.

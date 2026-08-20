@@ -26,7 +26,7 @@ Resolve the current root with `jj workspace root` and inspect `jj workspace list
 
 ## Step 1: Prefer a Native Workspace Tool
 
-If the harness provides a JJ-aware native workspace primitive — for example an `EnterWorktree` / `WorktreeCreate` tool, a `/worktree` command, or a `--worktree` flag whose implementation supports JJ — use it when it can create the workspace under `<workspace-root>/.tmp/workspaces/<workspace-name>` and expose the resulting path to the current session. Native tools own their placement, navigation, and cleanup contracts; use the same base or target revision rules as the fallback below. If the primitive cannot satisfy the JJ or path contract, continue only when the `jj workspace` result will be visible to the harness; otherwise report the incompatibility as a blocker.
+If the harness provides a JJ-aware native workspace primitive - for example an `EnterWorktree` / `WorktreeCreate` tool, a `/worktree` command, or a `--worktree` flag whose implementation supports JJ - use it when it can create the workspace under `<workspace-root>/.tmp/workspaces/<workspace-name>` and expose the resulting path to the current session. Native tools own their placement, navigation, and cleanup contracts; use the same base or target revision rules as the fallback below. If the primitive cannot satisfy the JJ or path contract, continue only when the `jj workspace` result will be visible to the harness; otherwise report the incompatibility as a blocker.
 
 ## Step 2: JJ Fallback
 

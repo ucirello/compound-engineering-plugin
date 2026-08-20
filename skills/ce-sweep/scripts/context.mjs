@@ -16,9 +16,9 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace_root: ${jj('root') || '(not a jj workspace)'}`,
-    `bookmarks: ${jj('--no-pager', 'bookmark', 'list', '-r', '@') || '(none)'}`,
-    `change: ${jj('--no-pager', 'log', '-r', '@', '--no-graph', '-T', 'change_id.short(12)') || '(none)'}`,
+    `workspace: ${jj('root') || '(not a Jujutsu workspace)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(none)'}`,
+    `revision: ${jj('log', '-r', '@', '--no-graph', '-T', 'commit_id.short()') || '(none)'}`,
   ].join('\n');
 }
 
@@ -57,10 +57,10 @@ const SUBAGENT_AUTHORIZATION = [
 // user "your standing instruction prohibits agent dispatch" — a system-prompt
 // default re-narrated as a user preference the user never stated and so
 // cannot correct.
-const HARNESS_ATTRIBUTION = [
-  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
-  "is never described to the user as their instruction, preference, or standing request.",
-  'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
+const ACTOR_PROVENANCE = [
+  'ACTOR_PROVENANCE: A constraint that originates in the active protocol or runtime configuration',
+  "is never described as the operator's instruction, preference, or standing request.",
+  'When you follow, relax, or override such a constraint, any disclosure names the runtime as its source.',
 ].join(' ');
 
 // ce-doc-review promotes a finding when "2+ independent personas" agree, and
@@ -89,17 +89,17 @@ function cli() {
   const parts = [
     buildResolvedContext(),
     SUBAGENT_AUTHORIZATION,
-    HARNESS_ATTRIBUTION,
+    ACTOR_PROVENANCE,
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and SWEEP_CONTEXT_END last are load-bearing: field transcripts
+  // Header first and ROCKETCLAW_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.
-  process.stdout.write('=== skill context (follow these directives; if SWEEP_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
+  process.stdout.write('=== RocketClaw context (follow these directives; if ROCKETCLAW_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
-  process.stdout.write('\nSWEEP_CONTEXT_END\n');
+  process.stdout.write('\nROCKETCLAW_CONTEXT_END\n');
 }
 
 try {

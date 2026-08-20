@@ -33,7 +33,7 @@ The orchestrator (this skill) also inherits the session model; it handles intent
 
 Use the run ID and absolute run dir already created at the Stage 3d routing boundary. Pass `{run_id}` and `{run_dir}` to every persona sub-agent so they can write their full analysis to `{run_dir}/{reviewer_name}.json`.
 
-**Large shared context — pass paths, not contents.** The diff and file list go to every reviewer and validator. When inlining them into each subagent prompt would be wasteful (many files / a big diff), write them once into the run dir (e.g. `full.diff`, `files.txt`) and pass those **paths** in the diff / changed-files slots instead of inline content — the subagent and validator templates instruct the child to Read a staged path. Inline a small diff directly.
+**Large shared context — pass paths, not contents.** The diff and file list go to every reviewer and validator. When inlining them would be wasteful, write them once into the run dir and pass those artifact paths. Inline a small diff directly.
 
 #### Spawning
 
@@ -42,7 +42,7 @@ Omit the `mode` parameter when dispatching sub-agents so the user's configured p
 **Model override at dispatch time — this is a correctness guarantee, not cosmetics.** Omitting the override on a top-tier parent session (e.g. Opus) silently runs that reviewer at the expensive tier — the regression this prevents. The tier is a deterministic function of the persona, so as you select reviewers in Stage 3, **record each reviewer's tier in an internal working list** — that list is your external memory (the role the old printed `[session model]`/`[mid-tier]` labels served) and it must exist and be honored even though it is no longer rendered in the user-facing announce:
 
 - **Session model** (no override; inherits the session model) — `correctness-reviewer`, `security-reviewer`, and `adversarial-reviewer` only.
-- **Mid-tier** — every other persona and local prompt asset: pass the platform's balanced mid-tier model. In Claude Code, that is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model — a working review on the parent model beats a broken dispatch on an unrecognized name.
+- **Mid-tier** — every other persona and local prompt asset: pass the platform's balanced mid-tier model. In Claude Code, that is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model.
 
 Apply this on **every** Agent / `spawn_agent` / subagent call. A missed override is a silent cost-and-quality regression, so treat the internal tier list as load-bearing — moving it out of the user-facing output removed the *display*, not the discipline.
 
@@ -60,14 +60,14 @@ For each selected reviewer, read the corresponding local prompt asset from `refe
 2. Shared diff-scope rules from `references/diff-scope.md`
 3. The JSON output contract from `references/findings-schema.json`
 4. PR metadata: title, body, and URL when reviewing a PR (empty string otherwise). Passed in a `<pr-context>` block so reviewers can verify code against stated intent
-5. Review context: intent summary, file list, diff, scope mode (`local-aligned` | `pr-remote` | `branch-remote`), and remote head ref (`PR_HEAD_REF` or `<branch-head-ref>`) when set
+5. Review context: intent summary, file list, diff, scope mode (`local-aligned` | `pr-remote` | `bookmark-remote`), and reviewed revision when set
 6. Run ID and reviewer name for the artifact file path
 7. **For selected `project-standards` only:** the non-empty standards file path list from Stage 3b, wrapped in a `<standards-paths>` block appended to the review context
-8. **For `data-migration` only:** the resolved review base ref from Stage 1 (`BASE:` marker), wrapped in `<review-base>` inside the review context so schema drift checks never assume `main`
+8. **For `data-migration` only:** the resolved review base and head revisions from Stage 1, wrapped in `<review-base>` and `<review-head>` so schema drift checks never assume `main`
 
 Persona sub-agents are **read-only** with respect to the project: they review and return structured JSON. They do not edit project files or propose refactors. The one permitted write is saving their full analysis to the resolved run-artifact path specified in the output contract.
 
-Read-only here means **non-mutating**, not "no shell access." Reviewer sub-agents may use non-mutating inspection commands when needed to gather evidence or verify scope, including `jj diff`, `jj file show`, `jj file annotate`, `jj log`, and `gh pr view`. When a finding's claim depends on line history (`pre_existing`, intent, introduced-by-this-diff, or P0/P1 confidence that depends on authorship/age), reviewers attach one concise provenance evidence line from targeted annotation/history on the cited line, additional to the quote-the-line gate and omitted when the finding is justified from the diff alone. In **`pr-remote`** or **`branch-remote`** scope, inspect changed files via `jj file show -r <remote-head-ref> <path>` or diff hunks; do not Read/Grep workspace paths for files in scope. They must not edit project files, change the working-copy revision, describe changes, push, create PRs, or otherwise mutate jj or workspace state.
+Read-only here means **non-mutating**, not "no shell access." Reviewers may use read-only `jj` / `gh` inspection, including `jj diff`, `jj file show`, `jj file annotate`, `jj log`, and `gh pr view`. A history-dependent finding carries one concise targeted provenance line in addition to quote-the-line evidence. In remote scope, inspect the reviewed revision or supplied hunks, never unrelated workspace files. Reviewers must not edit files, change `@`, describe revisions, move bookmarks, push, create PRs, or otherwise mutate state.
 
 Each persona sub-agent writes full JSON (all schema fields) to `{run_dir}/{reviewer_name}.json` and returns compact JSON with merge-tier fields only:
 
@@ -96,11 +96,11 @@ Each persona sub-agent writes full JSON (all schema fields) to `{run_dir}/{revie
 
 `first_evidence` is the **one** detail-tier field promoted into the compact return: the verbatim motivating line with `file:line` that the quote-the-line gate requires. It is **mandatory for every finding at anchor 75 or 100** (the gate is unenforceable without it in-band, since the rest of `evidence` lives only in the artifact). Omit it only for anchor-50 findings. Stage 5 drops/demotes any 75/100 finding missing it; Stage 5b uses it for the validator-skip check. Keep it to the single triggering line, not the full `evidence` array — the array stays in the artifact.
 
-The artifact file **must** carry the full detail-tier fields (`why_it_matters`, `evidence`); the compact *return* omits all detail-tier fields **except `first_evidence`**, but writing the compact shape to the artifact (a common reviewer slip) silently strips the detail Coverage and the keyed detail lines depend on. However review context is delivered — inlined, or staged to disk for a large diff — each reviewer still receives the full subagent-template output contract; staging context never licenses a thinner one. `suggested_fix` is optional in both tiers -- included in compact returns when present so callers can apply fixes after review. If the file write fails, the compact return still provides everything the merge needs.
+The artifact file **must** carry `why_it_matters` and `evidence`; the compact return omits them except for `first_evidence`. Inline and path-backed context use the same output contract. `suggested_fix` remains optional in both tiers. If artifact writing fails, the compact return still provides merge inputs.
 
-**Generic conditional local prompt assets** (`agent-native-reviewer`, `learnings-researcher`) are dispatched only when selected by Stage 3, through the same deterministic foreground batch dispatch as the structured personas. Read their prompt files from `references/personas/`, then give them the same review context bundle the personas receive: entry mode, any PR metadata gathered in Stage 1, intent summary, review base bookmark name when known, `BASE:` marker, file list, diff, and `UNTRACKED:` scope notes. Do not invoke them with a generic "review this" prompt. Their output is unstructured and synthesized separately in Stage 6.
+**Generic conditional local prompt assets** (`agent-native-reviewer`, `learnings-researcher`) are dispatched only when selected by Stage 3 through the same foreground batch. Give them entry mode, PR metadata, intent, review base revision, file list, and diff. Do not invoke them with a generic "review this" prompt. Their output is unstructured and synthesized separately in Stage 6.
 
-**Migration-specific local prompt assets** (`deployment-verification-agent` only) are dispatched as generic subagents through the same deterministic foreground batch dispatch when the migration-artifact gate applies. Read the prompt file from `references/personas/`, then pass the same review context bundle plus the applicability reason (for example, which migration files triggered the prompt asset). Its output is unstructured and must be preserved for Stage 6 synthesis just like the other selected local prompt assets. Schema drift is handled by the `data-migration` persona as structured findings — not here.
+**Migration conditional local prompt assets** (`deployment-verification-agent` only) are dispatched as generic subagents through the same foreground batch when the migration-artifact gate applies. Pass the same review context plus the applicability reason. Preserve its unstructured output for Stage 6 synthesis. Schema drift remains owned by `data-migration`.
 
 #### Cross-model adversarial pass
 

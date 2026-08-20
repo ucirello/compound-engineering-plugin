@@ -45,15 +45,15 @@ Absent either token, run interactive, with the routing question, walk-through, a
 
 ## Artifact Root
 
-This skill reviews a document at a path it is handed, and in interactive mode with no path given, discovers the most recent plan under `<root>/plans/`. Resolve `<root>` (per the block below) **only in that no-path discovery branch** — a review of an explicitly named document reads that path directly and never resolves `<root>`, so a valid non-interactive or absolute-path review, including one outside any workspace, does not depend on a workspace root or document-review config it does not need.
+This skill reviews a document at a path it is handed, and in interactive mode with no path given, discovers the most recent plan under `<root>/plans/`. Resolve `<root>` (per the block below) **only in that no-path discovery branch** — a review of an explicitly named document reads that path directly and never resolves `<root>`, so a valid non-interactive or absolute-path review (e.g. `/path/to/plan.md`, possibly outside any jj workspace) does not depend on a workspace root or RocketClaw config it does not need.
 
-<!-- doc-review-docs-root:start -->
+<!-- rocketclaw-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.ce-doc-review/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- doc-review-docs-root:end -->
+<!-- rocketclaw-docs-root:end -->
 
 ## Phase 1: Get and Analyze Document
 
@@ -61,16 +61,16 @@ This skill reviews a document at a path it is handed, and in interactive mode wi
 - **No path, interactive:** ask which document to review, or find the most recent under `<root>/plans/` with a file-search/glob tool.
 - **No path, non-interactive:** output "Review failed: non-interactive mode requires a document path. Expected arguments: mode:non-interactive <path>" and stop without dispatching reviewers.
 
-**Missing-document gate — verify before any dispatch.** Persona reviewers read from the filesystem and several run without Bash, so they cannot read files that exist only in another `jj` change or workspace. Confirm every resolved path is readable on disk before Phase 2. Location does not matter — an absolute path outside the current workspace or a document in another workspace reviews fine. If any path is unreadable, dispatch **no** personas:
+**Missing-document gate — verify before any dispatch.** Persona reviewers read from the filesystem and several run without Bash, so they cannot read revisions that are not materialized in a workspace: a path that exists only in another jj revision wastes the entire persona team discovering they cannot proceed (issue #925). Confirm every resolved path is readable on disk before Phase 2. Location does not matter — an absolute path outside the workspace or a doc in another workspace reviews fine. If any path is unreadable, dispatch **no** personas:
 
-- **Interactive:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Switch to the change containing them, use another jj workspace, or provide corrected readable paths before retrying the review."
-- **Non-interactive:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; switch to the change containing them or provide corrected paths." and return without dispatching reviewers.
+- **Interactive:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Materialize the revision in a jj workspace, or provide corrected readable paths before retrying the review."
+- **Non-interactive:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; materialize the revision in a jj workspace or provide corrected paths." and return without dispatching reviewers.
 
 ### Classify Document Type
 
 Classify by **content shape and metadata, not file path** — under the unified plan contract a requirements-only and an implementation-ready plan both live in `<root>/plans/`, so location no longer signals type. Reviewers operate differently per classification, so a misclassification produces noisy or under-scrutinized findings.
 
-First check the unified artifact contract (`artifact_contract: ce-unified-plan/v1`):
+First check the unified artifact contract (`artifact_contract: unified-plan/v1`):
 
 - `artifact_readiness: requirements-only` -> **`unified-requirements`**. Review the Product Contract only; the absence of Planning Contract, Implementation Units, Verification Contract, or Definition of Done is expected and must not be flagged.
 - `artifact_readiness: implementation-ready` -> **`unified-plan`**. Review Product Contract and Planning Contract with different lenses, then Implementation Units/Verification/DoD for execution completeness.
@@ -80,7 +80,7 @@ First check the unified artifact contract (`artifact_contract: ce-unified-plan/v
 Otherwise decide between the two legacy types on these signals:
 
 - **`requirements`** (what-to-build): frontmatter like `actors:`, `flows:`, `acceptance_examples:`, or brainstorm-shaped `status:`; headings such as `Acceptance Examples`, `Actors`, `Key Flows`, `User Flows`, `Outstanding Questions`, `Resolve Before Planning`; `R1`/`A1`/`F1`/`AE1` identifiers; framing on user/business problem, behavior, scope boundaries, success criteria; no implementation units, per-unit file lists, or unit-attached test scenarios.
-- **`plan`** (how-to-build): frontmatter like `type: feat|fix|refactor`, `origin: docs/brainstorms/...`, or `product_contract_source: ce-brainstorm|ce-plan-bootstrap|legacy-requirements`; headings such as `Implementation Units`, `Output Structure`, `Key Technical Decisions`, `Risks & Dependencies`, `System-Wide Impact`; `U1`/`U2` unit identifiers; per-unit `Goal`/`Files`/`Approach`/`Test scenarios`/`Verification` fields; workspace-relative paths to create/modify/test; framing on technical decisions, sequencing, implementer-facing detail.
+- **`plan`** (how-to-build): frontmatter like `type: feat|fix|refactor`, `origin: docs/brainstorms/...`, or `product_contract_source: brainstorm|plan-bootstrap|legacy-requirements`; headings such as `Implementation Units`, `Output Structure`, `Key Technical Decisions`, `Risks & Dependencies`, `System-Wide Impact`; `U1`/`U2` unit identifiers; per-unit `Goal`/`Files`/`Approach`/`Test scenarios`/`Verification` fields; repo-relative paths to create/modify/test; framing on technical decisions, sequencing, implementer-facing detail.
 
 **Tie-breaker:** treat the dominant content shape as authoritative; if shape is genuinely ambiguous, default to `requirements` (the conservative choice — it activates fewer plan-specific feasibility checks). Path location never disambiguates; a legacy `origin: docs/brainstorms/...` field still reads as a `plan` signal.
 
@@ -106,11 +106,11 @@ Activate a conditional persona when the document shows its signals:
 - A **requirements document** with 2+ challengeable claims (problem framing, solution selection, prioritization, predicted outcomes) — premise scrutiny is core to the brainstorm phase
 - A **high-stakes domain** — auth, payments, billing, data migrations, privacy/compliance, external integrations, cryptography — regardless of doc type or size
 - A **new abstraction, framework, or significant architectural pattern**, regardless of doc type
-- A **plan with no validated upstream Product Contract signal** (no legacy `origin:` requirements doc and no `product_contract_source: ce-brainstorm` or `legacy-requirements`) — the premise wasn't validated upstream
+- A **plan with no validated upstream Product Contract signal** (no legacy `origin:` requirements doc and no `product_contract_source: brainstorm` or `legacy-requirements`) — the premise wasn't validated upstream
 - A **plan that explicitly extends scope** beyond its origin requirements doc (new actors, new flows, deferred-then-restored features)
 - An **explicit alternatives section** or unresolved tradeoffs — adversarial helps stress-test the chosen direction
 
-Do NOT activate adversarial on a routine plan that derives from a validated upstream Product Contract, stays in scope, and introduces no high-stakes domain or new abstraction. Validated provenance includes legacy `origin: docs/brainstorms/...`, `product_contract_source: ce-brainstorm`, and `product_contract_source: legacy-requirements`; a direct `product_contract_source: ce-plan-bootstrap` plan is greenfield and does not suppress premise-level techniques by itself. A well-structured plan with stated rationale is the plan doing its job, not adversarial signal — activating on that alone re-litigates settled questions.
+Do NOT activate adversarial on a routine plan that derives from a validated upstream Product Contract, stays in scope, and introduces no high-stakes domain or new abstraction. Validated provenance includes legacy `origin: docs/brainstorms/...`, `product_contract_source: brainstorm`, and `product_contract_source: legacy-requirements`; a direct `product_contract_source: plan-bootstrap` plan is greenfield and does not suppress premise-level techniques by itself. A well-structured plan with stated rationale is the plan doing its job, not adversarial signal — activating on that alone re-litigates settled questions.
 
 ## Phase 2: Announce and Dispatch Personas
 
@@ -165,7 +165,7 @@ Round 1 — no prior decisions.
 
 ### Cross-Model Judgment Pass
 
-If any of the **conditional judgment trio** — `adversarial-document-reviewer`, `product-lens-reviewer`, `security-lens-reviewer` — was activated, load `references/cross-model-review.md` and follow it for the additive, non-blocking peer pass. Its workspace egress policy (`cross_model_review_mode`) is evaluated first and can skip the whole pass with a named reason. Attest the host as a harness plus serving family, resolve one target and one concrete route for the whole document, disclose that fixed route before content leaves the host (in non-interactive mode the invoking skill's request is the sanction and the worker's stderr audit line is the disclosure), and filter recipients only when `CROSS_MODEL_PEERS` is set (unset means unfiltered, not unsanctioned). `cursor` means that route's default/Auto model; `composer` means an explicit same-family model through the `cursor-agent` intermediary. Try the declared mapping first; only after an observed incompatibility may a target-bound same-family model override adapt a stale default. Never silently change an explicit model or recipient, and never let a dispatched worker choose a recipient-changing fallback.
+If any of the **conditional judgment trio** — `adversarial-document-reviewer`, `product-lens-reviewer`, `security-lens-reviewer` — was activated, load `references/cross-model-review.md` and follow it for the additive, non-blocking peer pass. Its workspace egress policy (`cross_model_review_mode`) is evaluated first and can skip the whole pass with a named reason. Attest the host as a harness plus serving family, resolve one target and one concrete route for the whole document, disclose that fixed route before content leaves the host (in non-interactive mode the invoking skill's request is the sanction and the worker's stderr audit line is the disclosure), and filter recipients only when `CROSS_MODEL_PEERS` is set (unset means unfiltered, not unsanctioned). `cursor` means Cursor default/Auto; `composer` means an explicit Composer-family model through Cursor. Try the declared mapping first; only after an observed incompatibility may a target-bound same-family model override adapt a stale default. Never silently change an explicit model or recipient, and never let a dispatched worker choose a recipient-changing fallback.
 
 Launch one detached runner job per activated trio lens plus one `whole-doc` sweep in the same wave as the in-process reviewers, using the exact invocation contract in the reference. Every trio peer receives its twin's same reviewer-specific slice; `whole-doc` receives the full document. All calls use the same sanctioned target/route. Poll, reap, attribute, and clean up through the runner; a failure or timeout stays non-blocking and is named in Coverage. Fold findings into ordinary synthesis, but agreement promotion requires the artifact's top-level `independence_verified: true` — false or absent independence is useful evidence, not different-model corroboration. Feasibility and the convergent lenses (coherence, scope-guardian) do **not** run cross-model.
 

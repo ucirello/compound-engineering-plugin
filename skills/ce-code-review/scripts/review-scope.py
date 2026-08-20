@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compute fail-closed, deterministic scope signals for ce-code-review."""
+"""Compute fail-closed, deterministic Jujutsu scope signals for ce-code-review."""
 
 from __future__ import annotations
 
@@ -53,19 +53,22 @@ def jj(*args: str) -> subprocess.CompletedProcess[str]:
 def valid_revision(ref: str | None) -> bool:
     if not ref:
         return False
-    result = jj("log", "-r", ref, "--no-graph", "-T", 'commit_id ++ "\\n"')
+    result = jj("log", "-r", f"exactly({ref},1)", "--no-graph", "-T", 'commit_id ++ "\\n"')
     return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
-def unique_common_head(base: str, head: str) -> str | None:
-    result = jj("log", "-r", f"heads(::{base} & ::{head})", "--no-graph", "-T", 'commit_id ++ "\\n"')
+def unique_fork_point(base: str, head: str) -> str | None:
+    result = jj(
+        "log", "-r", f"fork_point(exactly({base},1)|exactly({head},1))",
+        "--no-graph", "-T", 'commit_id ++ "\\n"',
+    )
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
     return candidates[0]
 
 
-DEFAULT_DOCS_ROOT = "docs"
+DEFAULT_DOCS_ROOT = ".context"
 
 
 def normalize_docs_root(docs_root: str | None) -> str:
@@ -74,7 +77,7 @@ def normalize_docs_root(docs_root: str | None) -> str:
     The calling skill substitutes a resolved path for the ``<root>`` placeholder
     before invoking this script. If that substitution is missing — the value is
     empty, or still contains angle brackets (a literal ``<root>``) — treat it as
-    unset and use the default ``docs``, which is exactly the block's unset
+    unset and use the default ``.context``, which is exactly the block's unset
     behavior. This keeps the common default-config case correct even when the
     caller forgets to substitute.
     """
@@ -87,12 +90,12 @@ def workspace_root() -> Path:
     """The workspace root, matching how docs_root is resolved everywhere else.
 
     docs_root is workspace-relative (``<workspace-root>/<docs_root>``), so the corpus
-    check must resolve against the jj workspace root, not the current working
+    check must resolve against the Jujutsu workspace root, not the current working
     directory. ce-code-review can run from a subdirectory (``jj diff`` still
     works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when jj cannot answer.
+    wrongly report the corpus absent. Fall back to cwd when Jujutsu cannot answer.
     """
-    result = jj("root")
+    result = jj("workspace", "root")
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -102,16 +105,16 @@ def has_learnings_corpus(docs_root: str | None) -> bool:
     """Whether a `<docs_root>/solutions` learnings corpus exists.
 
     docs_root is the artifact root resolved by the calling skill (default
-    ``docs``). Guard it the way the skill-prose rule does: normalize an
+    ``.context``). Guard it the way the skill-prose rule does: normalize an
     unset/placeholder value to the default, and treat a value that is absolute
-    or escapes the workspace as absent rather than probing an out-of-workspace path.
+    or escapes the repository as absent rather than probing an out-of-repo path.
     """
     docs_root = normalize_docs_root(docs_root)
     if os.path.isabs(docs_root):
         return False
-    workspace = workspace_root()
-    candidate = (workspace / docs_root / "solutions").resolve()
-    if workspace not in candidate.parents and candidate != workspace:
+    repo = workspace_root()
+    candidate = (repo / docs_root / "solutions").resolve()
+    if repo not in candidate.parents and candidate != repo:
         return False
     return candidate.is_dir()
 
@@ -135,7 +138,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
     parser.add_argument("--head")
-    parser.add_argument("--docs-root", default="docs")
+    parser.add_argument("--docs-root", default=".context")
     args = parser.parse_args()
 
     learnings_corpus = has_learnings_corpus(args.docs_root)
@@ -147,16 +150,18 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", learnings_corpus), sort_keys=True))
         return 0
 
-    diff_args = ["--from", args.base]
+    diff_args = [args.base]
     if args.head:
-        common_head = unique_common_head(args.base, args.head)
-        if common_head is None:
-            print(json.dumps(fail_closed("common head unavailable or ambiguous", learnings_corpus), sort_keys=True))
+        fork_point = unique_fork_point(args.base, args.head)
+        if fork_point is None:
+            print(json.dumps(fail_closed("fork point unavailable or ambiguous", learnings_corpus), sort_keys=True))
             return 0
-        diff_args = ["--from", common_head, "--to", args.head]
+        diff_args = ["--from", fork_point, "--to", args.head]
+    else:
+        diff_args = ["--from", args.base, "--to", "@"]
 
-    names = jj("diff", *diff_args, "--name-only")
-    patch = jj("diff", *diff_args, "--color", "never")
+    names = jj("diff", "--name-only", *diff_args)
+    patch = jj("diff", "--git", *diff_args)
     if names.returncode != 0 or patch.returncode != 0:
         print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
         return 0
@@ -165,15 +170,15 @@ def main() -> int:
     executable_lines = 0
     current_is_code = False
     for line in patch.stdout.splitlines():
-        file_header = re.match(r"^(?:Modified|Added|Removed) regular file (.+):$", line)
-        if file_header:
-            path = file_header.group(1)
-            current_is_code = Path(path).suffix.lower() in CODE_EXTENSIONS
-        elif current_is_code and re.match(r"^\s*(?:\d+\s+)?:|^\s+\d+:", line):
-            prefix = line.split(":", 1)[0]
-            if len(prefix.split()) == 1:
-                executable_lines += 1
-        elif current_is_code and line.startswith(("+", "-")):
+        if line.startswith("diff --git "):
+            current_is_code = any(
+                line.endswith(f" b/{file}") and Path(file).suffix.lower() in CODE_EXTENSIONS
+                for file in files
+            )
+        elif current_is_code and (
+            (line.startswith("+") and not line.startswith("+++"))
+            or (line.startswith("-") and not line.startswith("---"))
+        ):
             executable_lines += 1
 
     uncounted = sum(

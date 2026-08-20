@@ -38,7 +38,7 @@ Call XcodeBuildMCP's `discover_projs` tool to find available projects, then `lis
 
 If an argument was provided, use that scheme name. If "current", use the default/last-used scheme.
 
-Resolve the artifact root with `jj workspace root`; if the command does not return a workspace root, use the current directory. Store screenshots, captured logs, and other temporary test artifacts under `<workspace-root>/.tmp`, creating only the required directories there. Do not use an OS-global temporary directory or `TMPDIR`.
+Resolve the artifact root with `jj workspace root`; if the command does not return a workspace root, use the current directory. Store screenshots, captured logs, and other temporary test artifacts under `<workspace-root>/.tmp`, creating only the required directories there. Do not use OS-global temporary storage.
 
 ### 2. Boot Simulator
 
@@ -135,4 +135,4 @@ After testing:
 
 ## Integration with ce-code-review
 
-When reviewing PRs that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.
+When reviewing changes that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.

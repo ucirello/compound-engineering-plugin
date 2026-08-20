@@ -25,7 +25,7 @@ Never hand-draw box-drawing/ASCII diagrams — mermaid or prose. Diagrams comple
 
 ## Voice — personal by default, adapted on request
 
-Default: the user personally. Second person, and no orientation they already have. In a shared workspace this still means naming *other* contributors in third person — second person is reserved for the user, and a personal recap of team work uses both.
+Default: the user personally. Second person, and no orientation they already have. In a shared repo this still means naming *other* contributors in third person — second person is reserved for the user, and a personal recap of team work uses both.
 
 When intake resolved another reader, render for that reader instead. What changes:
 
@@ -38,5 +38,5 @@ When intake resolved another reader, render for that reader instead. What change
 
 - Lead each section with the point, then the mechanism, then the caveat.
 - Dense is good; long is not — one sitting's read.
-- **When the evidence exceeds one sitting** (a busy recap window is routinely 50+ changes), select rather than truncate: lead with the few threads that changed how the project works, carry the rest as a compact roll-up, and say plainly what you set aside so the reader knows the timeline is not the whole history. Never silently drop the tail.
+- **When the evidence exceeds one sitting** (a busy recap window is routinely 50+ changes), select rather than truncate: lead with the few threads that changed how the project works, carry the rest as a compact roll-up, and say plainly what you set aside so the reader knows the timeline isn't the whole log. Never silently drop the tail.
 - Real code from the grounding evidence where it exists; language-tagged fences always.

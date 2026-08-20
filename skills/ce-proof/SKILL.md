@@ -14,14 +14,18 @@ Proof is a collaborative document editor for humans and agents. This skill uses 
 
 On Claude Code, each new `curl` pattern prompts for permission; suggest (do not silently add) the allowlist rule `"Bash(curl * https://www.proofeditor.ai/*)"` under `permissions.allow` if the user wants a quieter session.
 
-## Identity and Attribution
+## Write Identity
 
-Every write to a Proof doc must be attributed. Two fields carry the agent's identity:
+Every write to a Proof doc must carry the active agent identity. Resolve it from the caller or current harness and keep it stable for the document session:
 
-- **Machine ID (`by` on every op, `X-Agent-Id` header):** `ai:assistant` — stable, lowercase-hyphenated, machine-parseable. Appears in marks, events, and the API response.
-- **Display name (`name` on `POST /presence`):** `AI Assistant` — human-readable, shown in Proof's presence chips and comment-author badges.
+- **Machine ID (`by` on every op, `X-Agent-Id` header):** a lowercase, hyphenated, machine-parseable identifier.
+- **Display name (`name` on `POST /presence`):** the corresponding human-readable agent name.
 
-Set the display name once per doc session by posting to presence with the `X-Agent-Id` header; Proof binds the name to that agent ID for the session. These values are the defaults for any caller of this skill; a caller may pass a different `identity` pair if a distinct sub-agent should own the doc. Do not use ad-hoc variants — identity stays uniform unless a caller explicitly overrides it.
+Set the display name once per doc session by posting to presence with the `X-Agent-Id` header; Proof binds the name to that agent ID for the session. An explicit caller-supplied identity wins over the harness identity. Do not invent branded or ad-hoc variants during a session.
+
+## Jujutsu Conventions
+
+Use Jujutsu for version-control operations.
 
 ## Publish Mode
 
@@ -35,7 +39,7 @@ to Proof; return the local browser/open path instead. When publishing a unified
 plan, label the title by readiness when available, e.g. `Plan: <title>
 (requirements-only)` or `Plan: <title> (implementation-ready)`.
 
-Do not silently replace repo-tracked project docs with Proof links. Do not put secrets, credentials, API keys, private tokens, or sensitive personal data in Proof unless the user explicitly approves.
+Do not silently replace versioned project docs with Proof links. Do not put secrets, credentials, API keys, private tokens, or sensitive personal data in Proof unless the user explicitly approves.
 
 ## Credentials
 
@@ -44,7 +48,7 @@ Document creation returns two credentials with different jobs:
 - `accessToken` — everyday bearer for read, edit, presence, and events. Use this for all non-owner agent API calls.
 - `ownerSecret` — owner authority only (delete and other owner-level ops). Never use it as the everyday bearer.
 
-Store them separately for the session (shell vars or equivalent non-repo memory). Never write `ownerSecret` or `accessToken` into repo-tracked files, jj change descriptions, or durable project logs. Never expose `ownerSecret` in user-facing UI copy.
+Store them separately for the session (shell vars or equivalent memory outside the workspace). Never write `ownerSecret` or `accessToken` into versioned files, Jujutsu change descriptions, or durable project logs. Never expose `ownerSecret` in user-facing UI copy.
 
 Always hand humans the tokenized link (`tokenUrl`), never a bare `/d/<slug>` alone — the editor token doubles as claim capability for ownerless docs.
 
@@ -104,7 +108,7 @@ curl -sS -H "Accept: text/markdown" "https://www.proofeditor.ai/d/{slug}?token=<
 
 curl -sS "https://www.proofeditor.ai/api/agent/{slug}/v3/document" \
   -H "Authorization: Bearer <token>" \
-  -H "X-Agent-Id: ai:assistant"
+  -H "X-Agent-Id: <agent-id>"
 # -> { ok, revision, title, markdown, comments[], suggestions[], mutationReady? }
 ```
 
@@ -122,10 +126,10 @@ Send `{ by, baseRevision?, operations: [...] }` to `POST /api/agent/{slug}/v3/ed
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/{slug}/v3/edit" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
-  -H "X-Agent-Id: ai:assistant" \
+  -H "X-Agent-Id: <agent-id>" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "by":"ai:assistant",
+    "by":"<agent-id>",
     "operations":[
       {"op":"replace","find":"old visible text","with":"new text"},
       {"op":"comment","on":"text to anchor on","body":"Is this still accurate?"}
@@ -186,8 +190,8 @@ After every successful edit: confirm `ok:true`, confirm the intended text/commen
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/{slug}/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
-  -H "X-Agent-Id: ai:assistant" \
-  -d '{"name":"AI Assistant","status":"reading","summary":"Joining the doc"}'
+  -H "X-Agent-Id: <agent-id>" \
+  -d '{"name":"<agent-display-name>","status":"reading","summary":"Joining the doc"}'
 ```
 
 Common statuses: `reading`, `thinking`, `acting`, `waiting`, `completed`, `error`.
@@ -227,20 +231,21 @@ If a mutation keeps failing after a fresh read and one safe retry, call `POST ht
 When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 1. Extract the slug and token
-2. Bind presence with the default identity
+2. Bind presence with the resolved agent identity
 3. Read via `v3/document`
 4. Edit with `v3/edit` (narrow content ops; review ops for comments/suggestions)
 
 ```bash
 TOKEN="xxx"
 SLUG="abc123"
-AGENT="ai:assistant"
+AGENT="<agent-id>"
+AGENT_NAME="<agent-display-name>"
 
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
-  -d '{"name":"AI Assistant","status":"reading","summary":"Reviewing doc"}'
+  -d "$(jq -n --arg name "$AGENT_NAME" '{name:$name,status:"reading",summary:"Reviewing doc"}')"
 
 DOC=$(curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
@@ -253,8 +258,8 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d "$(jq -n --argjson rev "${REVISION:-null}" '{
-    by:"ai:assistant",
+  -d "$(jq -n --arg by "$AGENT" --argjson rev "${REVISION:-null}" '{
+    by:$by,
     baseRevision: (if $rev == null then null else $rev end),
     operations:[{op:"comment",on:"text to comment on",body:"Your comment here"}]
   } | if .baseRevision == null then del(.baseRevision) else . end')"
@@ -265,7 +270,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:assistant","operations":[{"op":"replace","find":"old","with":"new"}]}'
+  -d "$(jq -n --arg by "$AGENT" '{by:$by,operations:[{op:"replace",find:"old",with:"new"}]}')"
 
 # Tracked suggestion
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
@@ -273,7 +278,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:assistant","operations":[{"op":"suggest","kind":"replace","find":"old","with":"new"}]}'
+  -d "$(jq -n --arg by "$AGENT" '{by:$by,operations:[{op:"suggest",kind:"replace",find:"old",with:"new"}]}')"
 ```
 
 ## Workflow: Create and Share a New Document
@@ -283,6 +288,8 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
 ```bash
 SRC="path/to/plan.md"
 TITLE="Plan: Foo"
+AGENT="<agent-id>"
+AGENT_NAME="<agent-display-name>"
 
 RESPONSE=$(jq -n --arg title "$TITLE" --rawfile md "$SRC" '{title:$title, markdown:$md}' \
   | curl -sS -X POST https://www.proofeditor.ai/share/markdown \
@@ -293,13 +300,13 @@ SLUG=$(echo "$RESPONSE" | jq -r '.slug')
 TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken')
 OWNER_SECRET=$(echo "$RESPONSE" | jq -r '.ownerSecret')   # required for owner delete while unclaimed
 
-# Keep OWNER_SECRET in session memory only — never write it into the repo tree.
+# Keep OWNER_SECRET in session memory only — never write it into the workspace tree.
 
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:assistant" \
-  -d '{"name":"AI Assistant","status":"reading","summary":"Uploaded doc"}'
+  -H "X-Agent-Id: $AGENT" \
+  -d "$(jq -n --arg name "$AGENT_NAME" '{name:$name,status:"reading",summary:"Uploaded doc"}')"
 
 echo "$URL"
 ```
@@ -324,17 +331,22 @@ Sync the current Proof doc state to a local markdown file. Used for:
 Canonical read for this workflow: `GET /api/agent/$SLUG/v3/document`.
 
 ```bash
-SLUG=<slug>
-TOKEN=<accessToken>
-LOCAL=<absolute-path>
+SLUG="<slug>"
+TOKEN="<access-token>"
+LOCAL="<absolute-path>"
+AGENT="<agent-id>"
 
-WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd)
-TMP_ROOT="$WORKSPACE_ROOT/.tmp/ce-proof"
-mkdir -p "$TMP_ROOT"
-STATE_TMP=$(mktemp "$TMP_ROOT/state.XXXXXX")
+JJ_ROOT=$(jj root 2>/dev/null)
+if [ -n "$JJ_ROOT" ]; then
+  STATE_DIR="$JJ_ROOT/.tmp/proof"
+else
+  STATE_DIR="$(dirname "$LOCAL")/.tmp/proof"
+fi
+mkdir -p "$STATE_DIR"
+STATE_TMP="$STATE_DIR/state.$$"
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"
+  -H "X-Agent-Id: $AGENT" > "$STATE_TMP"
 REVISION=$(jq -r '.revision // empty' "$STATE_TMP")
 
 TMP="${LOCAL}.proof-sync.$$"
@@ -350,7 +362,7 @@ rm "$STATE_TMP"
 
 - Use `v3/document` as source of truth before editing
 - Prefer narrow `replace` / `insert` / `delete` before `suggest` or `set_document`
-- Always include `by: "ai:assistant"` on writes and `X-Agent-Id: ai:assistant` in headers
+- Always include the resolved agent ID in `by` on writes and `X-Agent-Id` headers
 - Use `accessToken` for everyday calls; reserve `ownerSecret` for owner delete
-- Never record share tokens or owner secrets in tracked project files or jj change descriptions
+- Never include share tokens or owner secrets in versioned workspace state or Jujutsu change descriptions
 - On `TARGET_AMBIGUOUS` / retryable errors, re-resolve against `error.current` — do not double-apply comments blindly

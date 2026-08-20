@@ -49,7 +49,7 @@ Treat those bands as the shape to look for, not as thresholds to import. Find yo
 **The two booleans the spine requires, derived independently:**
 
 ```
-task_done       = the run's expected deliverable exists (artifact on disk, jj change, PR, file changed)
+task_done       = the run's expected deliverable exists (artifact on disk, described change, review, file changed)
 process_followed = every required phase appears in phase_trace, in spine order
 ```
 

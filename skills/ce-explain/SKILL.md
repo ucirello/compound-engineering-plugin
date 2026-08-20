@@ -1,7 +1,7 @@
 ---
 name: ce-explain
 description: "Create a durable, visual teaching artifact — plus an optional check-in (predict-then-reveal for diffs, corrected exercises) that makes it stick — for something worth learning: a concept, a diff, an idea, or a window of your own recent work. Use when the user wants to be taught, wants a deep explainer, wants to understand a substantial change, or wants a work recap built for retention. Not for ordinary Q&A, brief 'why?' follow-ups, operational diagnosis, status updates, or a concise trade-off answer that belongs inline in chat. For learning, not repo docs or verdicts."
-argument-hint: "[a concept, a diff ref, an idea, or 'what happened this week?'] — or invoke bare to be asked"
+argument-hint: "[a concept, a jj revset, an idea, or 'what happened this week?'] — or invoke bare to be asked"
 ---
 
 # Explain It To Me
@@ -36,7 +36,7 @@ The artifact is display-only in both renderings: no embedded quizzes, forms, or 
 
 ## Interaction Method
 
-When you must ask the user a question, use the platform's blocking question capability. Fall back to numbered options on the host's user-visible chat surface only when no blocking capability exists or its call errors. In the fallback, stop and wait for the user's reply. Never silently skip the question. Ask one question at a time.
+When you must ask the user a question, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. In the fallback, stop and wait for the user's reply. Never silently skip the question. Ask one question at a time.
 
 ## Model Tiers
 
@@ -49,15 +49,15 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 ## Artifact Root
 
-This skill writes an explainer under `<root>/explainers/` only when it archives one to the workspace, and may read learnings under `<root>/solutions/`. Resolve `<root>` only when you actually compose such a path. A run-local or external-concept explainer writes to its run directory and never needs it, so do not resolve or create a root at the start of every run. Pass the resolved path to any subagent when you do resolve it, not the config.
+This skill writes an explainer under `<root>/explainers/` only when it archives one to the repo, and may read learnings under `<root>/solutions/`. Resolve `<root>` (per the block below) only when you actually compose such a path — a scratch-only or external-concept explainer writes to its run directory and never needs it, so do not resolve or create a root at the start of every run. Pass the resolved path to any subagent when you do resolve it, not the config.
 
-<!-- artifact-root:start -->
-**Resolve the artifact root `<root>` before composing any artifact path.**
+<!-- ce-docs-root:start -->
+**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml`, where `<workspace-root>` is `jj workspace root`. A set value resolves as `<workspace-root>/<docs_root>`; unset -> `<root>` is `<workspace-root>/.context`.
-- **Validate** a set value as workspace-relative: its real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.tmp/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `.context`.
-- **Use** `<root>` as the sole durable artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read another artifact root.
-<!-- artifact-root:end -->
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
+<!-- ce-docs-root:end -->
 
 ## Execution Flow
 
@@ -74,21 +74,21 @@ Read `references/intake.md` now and classify the request into one of the four in
 Match grounding to the input shape. Create the run directory first — every run gets one, before any artifact exists:
 
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
-if [ -z "$WORKSPACE_ROOT" ]; then WORKSPACE_ROOT="$(pwd -P)"; fi;
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
+if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; then SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"; else SCRATCH_ROOT=".tmp"; fi;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-RUN_DIR="$SCRATCH_ROOT/explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
+if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+chmod 700 "$SCRATCH_ROOT" || exit 1;
+RUN_DIR="$SCRATCH_ROOT/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
 (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR";
 ```
 
-**Repo-touching inputs** (a concept with footprint in this workspace, a diff, a recap): use the project's active instructions and canonical vocabulary already in context and go directly to the diff, call-sites, current source, or changes. If the topic cannot be scoped from the input and existing context, allow one targeted workspace probe.
+**Repo-touching inputs** (a concept with footprint in this repo, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or changes. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted root or workspace probe. Ground every VCS operation in the current official Jujutsu documentation at `https://docs.jj-vcs.dev/latest/` and the installed CLI's `jj help <command>` or `jj help -k <keyword>`; local help wins when they differ. Use revsets, change IDs, bookmarks, and templates according to that help rather than translating fixed Git syntax.
 
-- **Diff mode:** resolve the change (the `diff:` revision or revset, or the most recent substantial change when the request points at one implicitly) and gather its evidence with `jj diff`, `jj show`, and `jj log` — the diff itself, the files it touches, and any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied. **Empty selection** (the revision or revset resolves to no changes, including when work remains in `@` outside the requested selection): do not silently explain something else. Say what it resolved to, name the nearest real candidate (`@` or the preceding change), and use it only after the user agrees — or, when they cannot be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject does not exist in this workspace at all ("the retry logic" where there is none): report that before explaining an adjacent thing.
-- **Recap mode:** dispatch a generic subagent directly, seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the workspace root, and `$RUN_DIR`. Do not pre-scan, count, or characterize the window in the main conversation; the scout owns that evidence pass, and an early all-revisions summary can seed it with a false bookmark or activity model. **When the harness exposes no subagent primitive**, the degradation rule above applies: run the scout inline against its own prompt's sources and budgets, and still write `recap-evidence.md`. The no-pre-scan rule then means what it protects rather than where it runs — do the scout's evidence pass first and form no view of the window until it is done. It returns an evidence summary with change IDs and `file:line` pointers. **Empty window** (no change activity and no document changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
-- **External concepts** (no footprint in this workspace): skip workspace grounding entirely — do not force local context into the output. Research with whatever web tools are reachable. When none are, you may explain from model knowledge, but the artifact must label that content **Unverified — from model knowledge, not checked against current sources** in its metadata header.
+- **Diff mode:** resolve the change (the `diff:` revset, or the most recent substantial change when the request points at one implicitly) and gather its evidence with `jj diff` or `jj show` as current help directs — the diff itself, the files it touches, any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied. **Empty selection** (the revset resolves to no revisions): do not silently explain something else. Say what the revset resolved to, name the nearest real candidate (the working-copy change or the previous revision), and use it only after the user agrees — or, when they can't be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject doesn't exist in this repo at all ("the retry logic" where there is none): report that before explaining an adjacent thing.
+- **Recap mode:** dispatch a generic subagent directly, seeded with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the workspace root, and `$RUN_DIR`. Do not pre-scan, count, or characterize the window in the main conversation; the scout owns that evidence pass, and an early all-revisions summary can seed it with a false line-of-work or activity model. **When the harness exposes no subagent primitive**, the degradation rule above applies: run the scout inline against its own prompt's sources and budgets, and still write `recap-evidence.md`. The no-pre-scan rule then means what it protects rather than where it runs — do the scout's evidence pass first and form no view of the window until it is done. It returns an evidence summary with change IDs and `file:line` pointers. **Empty window** (no Jujutsu activity, no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
+- **External concepts** (no footprint in this repo): skip repo grounding entirely — do not force repo context into the output. Research with whatever web tools are reachable. When none are, you may explain from model knowledge, but the artifact must label that content **Unverified — from model knowledge, not checked against current sources** in its metadata header.
 - **Idea mode:** the idea is a fixed given. Explain its implications, mechanics, and trade-offs for the user's understanding. Never scope it (`ce-brainstorm`'s job), never generate and rank alternatives (`ce-ideate`'s job).
 
 ### Phase 3: Check-in gate — before anything is revealed
@@ -107,15 +107,16 @@ Run this phase only when the recorded exact Phase 3 choice was **Quiz me**. For 
 
 ### Phase 6: Destination ask and close
 
-Detect destinations by capability — probe the agent's own toolset and session context, and never treat a missing binary, environment variable, or unloaded connector as proof a destination is unavailable when another interface could supply it. Local file and Leave it are ungated and always offered. For default HTML runs, offer one preferred publisher: Claude Artifact when running in Claude Code with its Artifact tool present; otherwise ht-ml.app. Do not show both by default, but honor an explicit user request for either. Publishing always requires the user's destination choice; ht-ml.app is public and must never be selected headlessly. Detect Thinkroom through a session skill, reachable MCP tool, or documented CLI that responds. Ask for the destination once with the blocking question capability. That choice governs the menu itself, not any separate consent the selected destination requires. If the visible set exceeds the question capability's option cap, render a numbered list in chat with "Pick a number or describe what you want." and wait instead. Per-option routing:
+Detect destinations by capability — probe the agent's own toolset and session context, never a closed list, and never treat a missing binary, env var, or unloaded MCP tool as proof a destination is unavailable when a connector could supply it. Local file and Leave it are ungated and always offered. For default HTML runs, offer one preferred publisher: Claude Artifact when running in Claude Code with its Artifact tool present; otherwise ht-ml.app. Do not show both by default, but honor an explicit user request for either. Publishing always requires the user's destination choice; ht-ml.app is public and must never be selected headlessly. Offer only what is detected; absence hides an option silently. Ask for the destination once with the blocking question tool — that governs the menu itself, not the consent a chosen destination then requires; a publisher's warning-and-confirmation is a separate, required ask, not a second destination question. If the user names a publisher the one-preferred-publisher rule kept off the menu, honor it by the bypassed-menu path in `references/destinations.md` (full warning, then explicit confirmation), never as though the menu had warned them — it didn't. Count visible options against the platform's cap first (Claude Code's `AskUserQuestion` allows up to 4 explicit options; Codex's `request_user_input` only 2-3): when the visible set exceeds the cap, render a numbered list in chat with "Pick a number or describe what you want." and wait instead. Per-option routing:
 
-- **Claude Artifact** (HTML only; preferred in Claude Code when its Artifact tool is present) — create it from the canonical explainer per `references/destinations.md`, following the Artifact tool's current contract.
-- **Publish publicly to ht-ml.app** (HTML only; preferred when Claude Artifact is not the selected adapter) — label it Recommended and state in the option description that the page is public and may be indexed, crawled, copied, or archived. When an explicit publish request bypasses the menu, state that full warning in chat and obtain explicit confirmation after the warning before the call; the pre-warning request does not count as confirmation. If confirmation cannot be obtained, do not publish; preserve the canonical HTML and report its local `$RUN_DIR/explainer.html` path. On a warned menu selection or post-warning confirmation, follow the ht-ml.app sub-flow in `references/destinations.md`, passing the complete canonical HTML to the resolved publisher. Do not assume a particular skill exists or add a ce-explain-specific publisher.
+- **Claude Artifact** (HTML only; preferred in Claude Code when its Artifact tool is present) — create an artifact from the canonical explainer per `references/destinations.md`, following the Artifact tool's current contract.
+- **Publish publicly to ht-ml.app** (HTML only; preferred when Claude Artifact is not the selected adapter) — label it Recommended and state in the option description that the page is public and may be indexed, crawled, copied, or archived. When an explicit publish request bypasses the menu, state that full warning in chat and obtain explicit confirmation after the warning before the call; the pre-warning request does not count as confirmation. If confirmation cannot be obtained, do not publish; preserve the canonical HTML and report its local `$RUN_DIR/explainer.html` path. On a warned menu selection or post-warning confirmation, read and follow the ht-ml.app sub-flow in `references/destinations.md`, passing the complete canonical HTML to the resolved publisher. Do not assume a particular skill exists or add a ce-explain-specific publisher.
 - **Local file** — copy the artifact out of `$RUN_DIR` to the path the user names, then where the platform exposes a browser-opening primitive (`open` on macOS, `xdg-open` on Linux, `start` on Windows) offer to open it; otherwise print the absolute path.
-- **Send to Thinkroom** — offered only when a Thinkroom skill, MCP tool, or documented CLI capability is detected; send per `references/destinations.md` and surface the returned reference.
-- **Leave it** — report the `$RUN_DIR` path and state that it remains in the workspace-local `.tmp` area until local cleanup removes it; nothing else is written.
+- **Publish to Proof** (markdown output only) — publish per `references/destinations.md` and surface the returned share URL; on failure retry once, then report and move on.
+- **Send to Thinkroom** (offered only when a Thinkroom skill or CLI capability is detected) — send per `references/destinations.md`.
+- **Leave it** — report the `$RUN_DIR` path and state it is workspace-local scratch under `.tmp` until removed; nothing else is written.
 
-**Audience mismatch.** When the artifact was composed in the personal default and the user selects a destination that puts it in front of other people, offer once to re-render it for that audience per the compose-time reference before sending. A private artifact does not trigger this offer because it stays private until the user shares it. Take their answer and proceed either way; never re-render unasked, and never block the send on it.
+**Audience mismatch.** When the artifact was composed in the personal default and the user selects a destination that puts it in front of other people (ht-ml.app, Proof, Thinkroom — not Claude Artifact, which is private until the user shares it), offer once to re-render it for that audience per the compose-time reference before sending. Take their answer and proceed either way; never re-render unasked, and never block the send on it.
 
 **This offer comes first**, before any publish warning or confirmation the destination requires — consent must attach to the artifact actually being published, and the adapted rendering differs materially (it names a person where the personal one says "you"). Ask one question at a time: settle the rendering, then run the destination's own consent gate. When the destination needs no confirmation, this is the only ask.
 
@@ -123,7 +124,7 @@ Detect destinations by capability — probe the agent's own toolset and session 
 
 **Improvement observations.** When composing the explainer surfaced things that could be better, route them by type once the destination is settled — offer, don't auto-fire. "Settled" means the artifact was sent, or the user declined, or the run stopped at a consent gate they didn't answer; in that last case the run ends there and these offers are skipped, like the non-interactive case above. Never raise them while any of the asks above is still open — the destination question, the audience re-render offer, or a publisher's consent gate.
 
-**User-runnable invocation rendering.** Only the user-run handoff below uses printed invocation syntax. Use the active harness's documented user-invocation form for `ce-polish`. Render only the invocation as inline code and output one form only.
+**User-runnable invocation rendering.** Only the user-run handoff below uses printed invocation syntax. Default to `/ce-polish`; use `$ce-polish` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. On oh-my-pi (`omp`), use `/skill:ce-polish`. Render only the invocation as inline code and output one form only.
 
 - **New-capability ideas** — offer first; on acceptance invoke the `ce-ideate` skill via the platform's skill-invocation primitive, passing the observations as seed context. Do not merely tell the user to run it.
 - **Code-clarity findings** — offer first; on acceptance invoke the `ce-simplify-code` skill via the platform's skill-invocation primitive, passing the observations and the files they concern. Do not merely tell the user to run it.
@@ -132,7 +133,7 @@ Detect destinations by capability — probe the agent's own toolset and session 
 
 ## Boundaries
 
-- **Not a verdict.** "Should we adopt X?" is `ce-pov`. This skill teaches what X is and how it works.
-- **Not repo memory.** Documenting a solved problem for future work is `ce-compound`. This skill teaches the human, not the repo.
+- **Not a verdict.** "Should we adopt X?" is `ce-pov`. ce-explain teaches what X is and how it works.
+- **Not repo memory.** Documenting a solved problem for future work is `ce-compound`. ce-explain teaches the human, not the repo.
 - **Not ideation or scoping.** An idea input is explained as given — implications and trade-offs — never expanded into options or a requirements dialogue.
 - **The check-in is never headless.** It exists to exercise the human; automating the answers deletes the product.

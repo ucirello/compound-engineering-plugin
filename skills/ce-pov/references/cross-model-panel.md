@@ -125,8 +125,7 @@ intentionally inspect outside it.
 
 Before initial dispatch, capture one **repository-scope identity**: the current
 Jujutsu change and commit IDs plus a digest of working-copy content inside the
-normalized scope. Include it in every peer payload. Revalidate it before every
-reconcile
+normalized scope. Include it in every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
 voices into the current project: disclose the change and either restart all
 voices on the new identity or return an incomplete panel result.
@@ -233,8 +232,7 @@ fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Fill in the start command below rather than reconstructing the worker's
 arguments from its usage header. Pass the actual repository root separately from
 any narrower read root, and pre-create the round output directory as private
-scratch under `<workspace-root>/.tmp/ce-pov/`. For named peers, start one job per
-exact target;
+scratch under `<workspace-root>/.tmp/pov/`. For named peers, start one job per exact target;
 for a selected panel, start one job per selected peer. Start all jobs before
 waiting.
 

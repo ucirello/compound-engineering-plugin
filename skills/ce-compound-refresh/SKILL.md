@@ -6,11 +6,11 @@ argument-hint: "[optional: scope hint — directory, filename, module, or keywor
 
 # Learning Refresh
 
-Audit the learnings under `<root>/solutions/` against the current codebase, apply the maintenance actions the evidence supports, and deliver a complete per-doc report plus described changes. The report and the corrected document set are the deliverables; the store only gains value if every doc in it can be trusted.
+Audit the learnings under `.context/solutions/` against the current codebase, apply the maintenance actions the evidence supports, and deliver a complete per-doc report plus a described Jujutsu change. The report and the corrected document set are the deliverables; the store only gains value if every doc in it can be trusted.
 
 ## Setup
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `SKILL_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
+Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `ROCKETCLAW_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -40,41 +40,33 @@ If the arguments contain `mode:non-interactive` (or its deprecated alias `mode:h
 
 Wherever this skill asks the user something, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. Ask one question at a time, prefer multiple choice, lead with the recommended option and a one-sentence rationale.
 
-## CONCEPTS.md bootstrap requests
+## `.context/CONCEPTS.md` bootstrap requests
 
-If invoked specifically to create or bootstrap `CONCEPTS.md` ("create a CONCEPTS.md", "build the concept map"), the intent is ambiguous between two jobs — disambiguate with a blocking question:
+If invoked specifically to create or bootstrap `.context/CONCEPTS.md` (including the shorthand "create a CONCEPTS.md" or "build the concept map"), the intent is ambiguous between two jobs — disambiguate with a blocking question:
 
-1. **Create CONCEPTS.md (build the concept map)** — skip the `<root>/solutions/` classification work. Read `references/concepts-vocabulary.md` and follow its **Seed goal** and **Scope of a seed** (repo-wide) rules: seed the project's core domain nouns from the declared domain model, write the preamble (see Vocabulary Capture), cluster per the organization rules, run the Discoverability Check, then describe the change via the Change flow — do not leave the bootstrap undescribed.
-2. **Run a refresh cycle** — proceed normally; `CONCEPTS.md` is seeded (if absent) and reconciled during Vocabulary Capture.
+1. **Create `.context/CONCEPTS.md` (build the concept map)** — skip the `.context/solutions/` classification work. Read `references/concepts-vocabulary.md` and follow its **Seed goal** and **Scope of a seed** (repo-wide) rules: seed the project's core domain nouns from the declared domain model, write the preamble (see Vocabulary Capture), cluster per the organization rules, run the Discoverability Check, then describe the change via the Change flow — do not leave the bootstrap undescribed.
+2. **Run a refresh cycle** — proceed normally; `.context/CONCEPTS.md` is seeded (if absent) and reconciled during Vocabulary Capture.
 
 In non-interactive mode, default to the refresh cycle and note in the report that a standalone repo-wide bootstrap was not run.
 
-## Artifact Root
+## Repository Paths
 
-This skill reviews and refreshes learnings under `<root>/solutions/`. Resolve `<root>` when you first compose a `<root>/solutions/` path (per the block below); pass the resolved `<root>/solutions/` path to any subagent, not the config.
+This skill reviews and refreshes learnings under `<jj-root>/.context/solutions/`. Resolve `<jj-root>` with `jj root`; if the command fails, stop because the version-control and artifact boundaries cannot be established. Pass the resolved path to subagents.
 
-<!-- docs-root:start -->
-**Resolve the artifact root `<root>` before composing any artifact path.**
+Repository-local configuration belongs under `<jj-root>/.rocketclaw/`; this skill reads only `<jj-root>/.rocketclaw/config.yaml` when configuration is needed. Durable artifacts map directly to `<jj-root>/.context/`; do not redirect them through a legacy configurable docs root.
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.local.yaml`, then `<workspace-root>/.rocketclaw/config.yaml`; the first non-empty value wins (`<workspace-root>` = `jj root`). Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
-- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- docs-root:end -->
-
-## Temporary files
-
-Put every temporary or scratch artifact under `<workspace-root>/.tmp/`, where `<workspace-root>` is `jj workspace root`. If no Jujutsu workspace can be resolved, use `.tmp/` under the current directory. Never use OS-global temporary storage.
+All temporary or scratch output must stay under `<jj-root>/.tmp/rocketclaw/refresh/`. When `jj root` is unavailable during preflight only, use `<current-working-directory>/.tmp/rocketclaw/refresh/` long enough to report the blocker. Never use an OS-global temporary directory.
 
 ## Scope
 
-Find all `.md` files under `<root>/solutions/`, excluding `README.md` files and anything under `_archived/` (if `_archived/` exists, flag it in the report as legacy to clean up). READMEs are excluded as review *candidates* only: whenever an action deletes, renames, moves, consolidates, or replaces a doc a catalog README lists, update that README's rows mechanically as part of the action's cleanup.
+Find all `.md` files under `.context/solutions/`, excluding `README.md` files and anything under `_archived/` (if `_archived/` exists, flag it in the report as legacy to clean up). READMEs are excluded as review *candidates* only: whenever an action deletes, renames, moves, consolidates, or replaces a doc a catalog README lists, update that README's rows mechanically as part of the action's cleanup.
 
 If a scope argument was provided, narrow with the first strategy that produces results: subdirectory name → frontmatter (`module`/`component`/`tags`) → filename → content keyword. No matches: ask the user to clarify (interactive) or report the miss and exit (non-interactive).
 
 If the store is empty, report:
 
 ```text
-No candidate docs found in <root>/solutions/.
+No candidate docs found in .context/solutions/.
 Run `ce-compound` after solving problems to start building your knowledge base.
 ```
 
@@ -82,7 +74,7 @@ For a broad sweep (9+ docs), triage before deep investigation: read all frontmat
 
 ## Investigate
 
-For each learning in scope, read it and cross-reference its claims against the current codebase. Dimensions that go stale independently: referenced paths/classes/modules; the recommended solution itself (does it still match how the code works?); code snippets; cross-referenced docs — for a knowledge-track learning (`problem_type` in the knowledge track of `references/schema.yaml`), that includes whether a guidance file it names or links (a skill's `SKILL.md`, a runbook, a root instruction file) states a different order or rule for the same procedure; compare only guidance the learning names, never search the guidance layer for one; overlap with other in-scope docs (note pairs covering the same problem/files/solution and which appears broader or more current); and domain vocabulary (note project-specific terms and whether `CONCEPTS.md` defines them accurately — collect the signal, don't edit yet). On Claude Code only, also scan the injected auto-memory block for same-domain notes: memory-sourced signals are supplementary — they corroborate codebase evidence or prompt deeper investigation, never alone justify Replace or Delete, and in non-interactive mode memory-only drift means stale-mark. Match depth to specificity: a doc citing exact paths and snippets needs more verification than a general principle.
+For each learning in scope, read it and cross-reference its claims against the current codebase. Dimensions that go stale independently: referenced paths/classes/modules; the recommended solution itself (does it still match how the code works?); code snippets; cross-referenced docs — for a knowledge-track learning (`problem_type` in the knowledge track of `references/schema.yaml`), that includes whether a guidance file it names or links (a skill's `SKILL.md`, a runbook, a root instruction file) states a different order or rule for the same procedure; compare only guidance the learning names, never search the guidance layer for one; overlap with other in-scope docs (note pairs covering the same problem/files/solution and which appears broader or more current); and domain vocabulary (note project-specific terms and whether `.context/CONCEPTS.md` defines them accurately — collect the signal, don't edit yet). On Claude Code only, also scan the injected auto-memory block for same-domain notes: memory-sourced signals are supplementary — they corroborate codebase evidence or prompt deeper investigation, never alone justify Replace or Delete, and in non-interactive mode memory-only drift means stale-mark. Match depth to specificity: a doc citing exact paths and snippets needs more verification than a general principle.
 
 After individual docs, evaluate the set: overlaps, supersession (an older narrow doc a newer doc subsumes), and outright contradictions — between docs, or between a learning and a guidance file it names — contradictions actively mislead and outrank individual staleness. Note category-shape problems (a directory whose docs span unrelated themes, a near-empty category) as report-only observations — never restructure directories or create categories.
 
@@ -126,7 +118,7 @@ Judgment rules that are easy to get wrong:
 
 **Auto-delete (no confirmation needed, either mode) only when all three hold:** the implementation once lived in this repo and is gone (or the doc is fully superseded or plainly redundant); the problem domain is gone — or, for a superseded/redundant doc, the surviving canonical doc itself already states the subsumed doc's guidance (topical overlap is not coverage: verify the specific content exists there before deleting); inbound citations are absent or unambiguously decorative. Any condition fails → Replace, Update, Consolidate, stale-mark, or ask.
 
-**Pattern docs** (`<root>/solutions/patterns/`) get the same five outcomes evaluated as *derived* guidance: does the generalized rule still hold given the refreshed learnings beneath it? A pattern with no supporting learnings is itself a stale signal. Base any pattern Replace on the refreshed learning set, not fresh invention.
+**Pattern docs** (`.context/solutions/patterns/`) get the same five outcomes evaluated as *derived* guidance: does the generalized rule still hold given the refreshed learnings beneath it? A pattern with no supporting learnings is itself a stale signal. Base any pattern Replace on the refreshed learning set, not fresh invention.
 
 ## Decide (interactive mode only)
 
@@ -138,21 +130,21 @@ Read `references/per-action-flows.md` and follow the section matching each doc's
 
 ## Vocabulary Capture
 
-After the per-doc actions execute, reconcile the domain terms flagged during investigation with `CONCEPTS.md`.
+After the per-doc actions execute, reconcile the domain terms flagged during investigation with `.context/CONCEPTS.md`.
 
 **First, read `references/concepts-vocabulary.md` — unconditionally.** Its qualifying criteria are non-obvious; a "nothing qualifies" judgment without reading it is a shortcut, not a result.
 
 1. **Aggregate** qualifying terms across the learnings in scope; when one term surfaced with different shades of precision, union the shades into one entry.
-2. **If `CONCEPTS.md` exists:** add missing terms, refine entries where the corpus surfaced new precision, then reconcile the in-scope core nouns — re-derive the area's core domain nouns per the reference's **Seed goal** and backfill any central-but-missing ones. Bounded to the area in scope; never a repo-wide sweep.
+2. **If `.context/CONCEPTS.md` exists:** add missing terms, refine entries where the corpus surfaced new precision, then reconcile the in-scope core nouns — re-derive the area's core domain nouns per the reference's **Seed goal** and backfill any central-but-missing ones. Bounded to the area in scope; never a repo-wide sweep.
 3. **If it doesn't exist** and at least one term qualified: bootstrap it — seed the in-scope area's core domain nouns per the Seed goal alongside the surfaced terms, holding the bar conservatively for borderline terms at creation. Start the file with this preamble under a `# Concepts` heading:
 
-   > Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
+   > Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as learnings are captured and refreshed; direct edits are fine. Glossary only, not a spec or catch-all.
 
    1-4 terms → flat headings; more → cluster by domain relationship per the reference.
 4. **Scrub violations** in existing entries per the reference's criteria (implementation specifics, config values that drift, status/owner/date metadata, duplicates, undefined project-specific siblings). The full sweep is appropriate here because refresh is an audit.
-5. Do not expand beyond the area in scope (the explicit repo-wide bootstrap path is the exception), and do not retroactively inject `(see CONCEPTS.md)` pointers into learnings.
+5. Do not expand beyond the area in scope (the explicit repo-wide bootstrap path is the exception), and do not retroactively inject `(see .context/CONCEPTS.md)` pointers into learnings.
 
-If nothing qualified, record that explicitly in the report's `CONCEPTS.md` line (e.g., "scanned, no qualifying terms") — the visible scan record is the audit signal that the reference was consulted. Apply vocabulary edits silently in every mode — no user prompt.
+If nothing qualified, record that explicitly in the report's `.context/CONCEPTS.md` line (e.g., "scanned, no qualifying terms") — the visible scan record is the audit signal that the reference was consulted. Apply vocabulary edits silently in every mode — no user prompt.
 
 ## Report
 
@@ -171,36 +163,36 @@ Deleted: W
 Skipped: V
 Marked stale: S
 
-CONCEPTS.md: <scanned, no qualifying terms | created with N entries (M seeded) | updated — N added, N refined, N reconciled, N scrubbed | repo-wide map created with N entries>
+.context/CONCEPTS.md: <scanned, no qualifying terms | created with N entries (M seeded) | updated — N added, N refined, N reconciled, N scrubbed | repo-wide map created with N entries>
 ```
 
 Then, for EVERY file processed: path, classification, evidence found (tag memory-sourced findings "(auto memory [claude])"), and the action taken or recommended; for Consolidate, which doc was canonical, what was merged, what was deleted. Group Keeps under a reviewed-without-edits section.
 
 In non-interactive mode the report is the sole deliverable — self-contained, never abbreviated — and actions split into two sections. **Applied:** writes that succeeded, with the same per-file detail. **Recommended:** writes that failed (with enough context for a human to apply them), plus everything that never runs unattended — relocations that failed the four-condition gate (doc, target, failing condition), splits (doc, proposed fragment boundaries), category-shape observations, guidance files a learning names that contradict it, and the discoverability recommendation if any. If no writes succeed, the report is a maintenance plan. If `_archived/` exists, list its files and recommend disposition (restore, delete, or consolidate).
 
-## Change
+## Describe And Publish
 
-Skip if no files changed. Check the current bookmark, whether the workspace has unrelated changes, and recent description style. Keep this refresh isolated in its own Jujutsu change; do not absorb unrelated paths. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local conventions and visible history win; apply compatible Go guidance only where it does not conflict, and preserve the summary semantics without imposing fixed punctuation or prefix syntax.
+Skip if no files changed. Use `jj status`, `jj diff --summary -r @`, `jj bookmark list -r @`, and `jj log -r :: -n 10` to identify the working-copy change, unrelated modifications, current bookmarks, and local description style. Keep only this refresh's files in the described change: when `@` also contains unrelated modifications, extract the refresh paths with `jj split <refresh-paths> -m '<description>'`; otherwise describe `@` with `jj describe -m '<description>'`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.
 
-Non-interactive defaults: when the current change is on the default remote bookmark, create a bookmark named for what was refreshed, describe the change, and attempt a PR (if PR creation fails, report the bookmark name); on another bookmark, use a separate described change there. On Jujutsu failures, put the recommended commands in the report and continue.
+Non-interactive defaults: when `@` is based directly on `trunk()` and no feature bookmark identifies the work, choose a neutral `<bookmark>` from the refresh scope, run `jj bookmark set <bookmark> -r <described-revision>`, then `jj git push --bookmark <bookmark>` and attempt a PR through the available forge provider; if PR creation fails, report the bookmark. When an existing feature bookmark identifies the work, update it directly with `jj bookmark set <bookmark> -r <described-revision>` before `jj git push --bookmark <bookmark>`. Jujutsu or provider failures go in the report with neutral command placeholders and do not stop doc maintenance.
 
-Interactive: ask (per Blocking questions), with the recommended option first. On the default remote bookmark: bookmark+describe+PR (recommended; specific bookmark name) / describe directly on the current change / leave undescribed. On another bookmark: describe an isolated change there (recommended) / create a separate bookmark / leave undescribed. If the workspace contains unrelated changes: split this refresh into its own change / leave undescribed.
+Interactive: ask (per Blocking questions), with the recommended option first. At `trunk()`: create or update a feature bookmark and open a PR (recommended) / update the existing trunk bookmark directly / leave the change described without a bookmark update. On a feature change: update its bookmark (recommended) / create a separate bookmark / leave the change described without a bookmark update. When unrelated modifications share `@`, split only the refresh paths before any ref update.
 
 ## Discoverability Check
 
-After the report, check that the project's instruction files would lead an agent to discover `<root>/solutions/` before working in a documented area. Runs every time — the store only retains value when agents can find it.
+After the report, check that the project's instruction files would lead an agent to discover `.context/solutions/` before working in a documented area. Runs every time — the store only gains value when agents can find it.
 
 1. Find the root instruction files (AGENTS.md, CLAUDE.md, or both); the substantive file is the target — ignore a shim that just `@`-includes the other. Neither exists: skip this check.
 2. Assess semantically (not by string match) whether a reader would learn: the store exists, enough structure to search it (categories, frontmatter fields like `module`, `tags`, `problem_type`), and when it's relevant. If the spirit is met, done.
-3. If not, draft the smallest addition that communicates those three things, matching the file's style — prefer one line in an existing related section (a directory listing, architecture tree, conventions block) over a new headed section. Keep the tone informational, not imperative ("relevant when implementing or debugging in documented areas", not "always search before implementing" — imperatives cause redundant reads when a workflow already searches). Substitute the resolved concrete root for `<root>` in what you write — readers without this plugin cannot resolve the placeholder. Calibration example for a directory listing:
+3. If not, draft the smallest addition that communicates those three things, matching the file's style — prefer one line in an existing related section (a directory listing, architecture tree, conventions block) over a new headed section. Keep the tone informational, not imperative ("relevant when implementing or debugging in documented areas", not "always search before implementing" — imperatives cause redundant reads when a workflow already searches). Calibration example for a directory listing:
 
    ```
-   <root>/solutions/  # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
+   .context/solutions/  # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
    ```
 
 4. Interactive: show the proposed change and where it goes, explain why it matters (fresh sessions and plugin-less collaborators won't find the store otherwise), and get consent via a blocking question before editing. Non-interactive: emit a "Discoverability recommendation" line in the report instead of editing instruction files — non-interactive scope is doc maintenance, not project config.
-5. If `CONCEPTS.md` exists at the repo root, run the same check for it (e.g., a `CONCEPTS.md  # shared domain vocabulary — read when orienting to the codebase` line). Skip entirely when it doesn't exist — never nag for an artifact the project hasn't adopted.
-6. If this check edited an instruction file after the Change flow already ran, include it in the same unpushed change or create and describe a focused follow-up change, then push its bookmark if an open PR must include it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local conventions and visible history win; apply compatible Go guidance only where it does not conflict, and preserve the summary semantics without imposing fixed punctuation or prefix syntax. If the user chose "leave undescribed", leave the edits in an isolated undescribed change.
+5. If `.context/CONCEPTS.md` exists, run the same check for it (e.g., a `.context/CONCEPTS.md  # shared domain vocabulary — read when orienting to the codebase` line). Skip entirely when it doesn't exist — never nag for an artifact the project hasn't adopted.
+6. If this check edited an instruction file after the change was already described, include it in the same described revision when that revision is still local; otherwise create a new Jujutsu change with `jj new <published-revision>`, include the edit, and describe it with `jj describe -m '<description>'`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed syntax. Use a neutral description placeholder. Update the existing bookmark directly with `jj bookmark set <bookmark> -r @` and push it so an open PR includes the revision. If the user chose not to update refs, leave the described change local.
 
 ## Relationship to ce-compound
 

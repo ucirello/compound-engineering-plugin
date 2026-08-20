@@ -7,18 +7,18 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working-copy change.** If `jj diff -r @` is non-empty, review it.
-3. **Unpublished changes vs base bookmark.** If the working-copy change is empty, review `jj diff --from <base> --to @`, where `<base>` is the default bookmark.
+2. **Working-copy change.** If `jj diff -r @` is non-empty, review the working-copy revision.
+3. **Local revisions vs trunk.** If the working-copy revision is empty, review `jj diff --from 'fork_point(@|trunk())' --to @`.
 
-The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run jj commands yourself unless PR scope mode requires it below.
+The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run Jujutsu commands yourself unless remote scope requires it below.
 
-## Remote scope (`pr-remote` and `branch-remote`)
+## Remote scope (`pr-remote` and `bookmark-remote`)
 
-When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>branch-remote</pr-scope-mode>`, the working copy is **not** the reviewed head revision. Do **not** use Read/Grep on workspace paths for files in the changed-file list — they may not match the bookmark or PR under review.
+When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>`, the workspace files are **not** the reviewed revision. Do **not** use Read/Grep on workspace paths for files in the changed-file list.
 
 Instead:
 
-- Prefer `jj file show -r <remote-head-ref> <path>` when `<pr-head-ref>` or `<branch-head-ref>` is provided in context.
+- Prefer `jj file show -r <remote-revision> <path>` when `<pr-head-ref>` or `<bookmark-head-ref>` is provided in context.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 
@@ -32,7 +32,7 @@ Recall depends on how you find related code. A diff-local read plus a text `grep
 
 No tool is complete: dynamic dispatch, reflection, dependency injection, string-keyed routes/config, generated code, and external consumers hide usages from all of them. This only bites a claim that rests on *exhaustive* coverage — "this symbol is unused," "nothing else calls this," "safe to change." For such a claim, when coverage is text-search-only or a hiding construct could apply, record the unresolved boundary in `residual_risks` (e.g. `callsite completeness: grep-only`) or step the finding down, rather than asserting absence or safety. A finding that does not turn on exhaustive coverage needs no such note.
 
-In `pr-remote` / `branch-remote` scope these tiers inspect the working copy, which is not the reviewed head revision — apply the Remote scope rules above (`jj file show -r <remote-head-ref>` and revision-scoped `jj file list`) instead of local search.
+In `pr-remote` / `bookmark-remote` scope these tiers inspect workspace files, which are not the reviewed revision. Apply the Remote scope rules above and use `jj file show` plus revision-scoped `jj file search` when available.
 
 ## Finding Classification Tiers
 
@@ -48,6 +48,6 @@ Unchanged code within the same function, method, or block as a changed line. If 
 
 ### Pre-existing (unrelated to this diff)
 
-Issues in unchanged code that the diff didn't touch and doesn't interact with. Mark these as `"pre_existing": true` in your output. They're reported separately and don't count toward the review verdict. When history is what makes the pre-existing call, attach one concise provenance evidence line from targeted blame/log (see the load-bearing line provenance rule in `subagent-template.md`).
+Issues in unchanged code that the diff didn't touch and doesn't interact with. Mark these as `"pre_existing": true` in your output. They're reported separately and don't count toward the review verdict. When history is what makes the pre-existing call, attach one concise provenance evidence line from targeted `jj file annotate` / `jj log` (see the load-bearing line provenance rule in `subagent-template.md`).
 
 **The rule:** If you'd flag the same issue on an identical diff that didn't include the surrounding file, it's pre-existing. If the diff makes the issue *newly relevant* (e.g., a new caller hits an existing buggy function), it's secondary.

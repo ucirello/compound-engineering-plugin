@@ -19,7 +19,7 @@ These hold regardless of which skill produced the artifact.
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
 - **Workspace-relative paths for file references.** Always. Never absolute paths
-  — they break portability across machines, workspaces, and teammates.
+  — they break portability across machines, workspaces, teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
   semantic marker such as `<!-- section: work-relationships -->`; it carries
@@ -204,11 +204,11 @@ Engineering process metadata stays out of the artifact:
 
 - No "captured at Phase X" notes
 - No `## Next Steps` pointing to the next skill
-- No italic provenance lines ("*Brainstorm completed 2026-05-13*")
+- No italic process-credit lines ("*Brainstorm completed 2026-05-13*")
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in commit messages, tool output, and agent
+This information belongs in change descriptions, tool output, and agent
 transcripts — not in the artifact a reader returns to weeks later.
 
 ## Frontmatter shape
@@ -234,9 +234,9 @@ slips:
 
 - All stable IDs are plain-prefix format, not bolded.
 - No HTML elements mixed in.
-- All file paths are repo-relative.
+- All file paths are workspace-relative.
 - Horizontal rule separators between H2s (for Standard / Deep artifacts).
-- No process exhaust (Phase X notes, Next Steps pointers, provenance
+- No process exhaust (Phase X notes, Next Steps pointers, process-credit
   lines).
 - Tables only where 5+ uniform-shape items justify them.
 - Frontmatter has all the per-skill required fields with reasonable values.

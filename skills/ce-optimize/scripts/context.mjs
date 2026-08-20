@@ -16,8 +16,8 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace: ${jj('workspace', 'root') || '(not a jj workspace)'}`,
-    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(none)'}`,
+    `workspace: ${jj('workspace', 'root') || '(not a Jujutsu workspace)'}`,
+    `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.shortest()') || '(none)'}`,
   ].join('\n');
 }
 
@@ -92,7 +92,7 @@ function cli() {
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Both sentinels are load-bearing: field transcripts
+  // Header first and SKILL_CONTEXT_END last are load-bearing: field transcripts
   // show models piping this output through `head`/`tail`, which silently drops
   // directives. No single-ended cut preserves both lines, so the Setup prose
   // can detect truncation and order a verbatim rerun.

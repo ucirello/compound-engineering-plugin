@@ -58,7 +58,7 @@ Allowed:
 
 Avoid:
 
-- polished visual identity
+- polished branding
 - final colors or typography
 - component-library precision
 - pixel-perfect layout
@@ -76,11 +76,12 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; [ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$PWD";
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+REPO_ROOT="$(jj root 2>/dev/null)" || REPO_ROOT="$PWD";
+SCRATCH_ROOT="$REPO_ROOT/.tmp/rocketclaw";
+if [ -L "$SCRATCH_ROOT" ] || ! (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null; then SCRATCH_ROOT="$PWD/.tmp/rocketclaw"; fi;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || { [ -e "$SCRATCH_ROOT" ] && [ ! -O "$SCRATCH_ROOT" ]; }; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" start --root "$PROBE_DIR"
@@ -90,11 +91,12 @@ Append `--foreground` to that `start` command for foreground mode. Status and st
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; [ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$PWD";
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+REPO_ROOT="$(jj root 2>/dev/null)" || REPO_ROOT="$PWD";
+SCRATCH_ROOT="$REPO_ROOT/.tmp/rocketclaw";
+if [ -L "$SCRATCH_ROOT" ] || ! (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null; then SCRATCH_ROOT="$PWD/.tmp/rocketclaw"; fi;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || { [ -e "$SCRATCH_ROOT" ] && [ ! -O "$SCRATCH_ROOT" ]; }; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" status --root "$PROBE_DIR"
@@ -151,7 +153,9 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use workspace-local scratch because visual probes are disposable:
+Use the jj workspace's `.tmp/rocketclaw` directory by default, with the current
+directory's `.tmp/rocketclaw` as the no-workspace or unwritable-root fallback,
+because visual probes are disposable scratch:
 
 ```text
 <scratch-root>/ce-brainstorm-visual/<run-id>/
@@ -161,4 +165,4 @@ Use workspace-local scratch because visual probes are disposable:
     display-info.json
 ```
 
-Use `.context/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `<root>/plans/`.
+Use `.context/brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `<root>/plans/`.

@@ -4,8 +4,7 @@
 # Runs one reasoning-heavy step on a user-chosen model via the Claude CLI, as a
 # detached job supervised by peer-job-runner.py. Streams NDJSON so the idle
 # window observes genuine progress, not just liveness — a buffered format would
-# make a healthy long run byte-identical to a wedged one. See
-# docs/solutions/skill-design/cli-output-buffering-for-progress-detection.md.
+# make a healthy long run byte-identical to a wedged one.
 #
 # Read-only posture (R7): the CLI is allowlisted to Read/Glob/Grep plus
 # WebSearch/WebFetch, so writes, shell, skills, and MCP are unavailable; the
@@ -51,9 +50,9 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole workspace scratch root instead would
-  # expose every other same-user scratch file and credential to the elevated
-  # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
+  # via --add-dir. Adding the whole local scratch root instead would expose
+  # unrelated files and credentials to the elevated model; the scoped dir does
+  # not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
   # --no-session-persistence: this is a one-shot background model call, so the
@@ -85,7 +84,7 @@ RESULT_PATH="${3:?result-path required}"
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole workspace scratch root. Pure-bash dirname (no
+# to an absolute path), never the whole local scratch root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,8 +102,8 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$HANDOFF_DIR/.rocketclaw-peer-$$-$RANDOM.log"
-(umask 077; set -C; : > "$PEERLOG") 2>/dev/null || { log "could not reserve peer log: $PEERLOG"; exit 2; }
+PEERLOG="$HANDOFF_DIR/.elevation-peer-$$"
+(umask 077; : > "$PEERLOG") || { log "cannot create peer log: $PEERLOG"; exit 2; }
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's ROCKETCLAW_PEER_HARD_SECS so it never reaps a
@@ -140,7 +139,7 @@ on_term() {
 trap 'on_term' TERM INT
 
 write_result() {   # <json-string> -> atomic publish to RESULT_PATH
-  local tmp="${RESULT_PATH}.rocketclaw-write.$$"
+  local tmp="${RESULT_PATH}.tmp.$$"
   printf '%s' "$1" > "$tmp" && mv -f "$tmp" "$RESULT_PATH"
 }
 
@@ -256,7 +255,7 @@ if [ "$RUN_SUCCEEDED" = true ] && [ "$HAS_OUTPUT" = "yes" ] \
   # Build the envelope by piping the event THROUGH jq, which reads .result
   # internally — never pass the plan text as an argv --arg, which would exceed
   # ARG_MAX for a large Deep plan.
-  tmp="${RESULT_PATH}.rocketclaw-write.$$"
+  tmp="${RESULT_PATH}.tmp.$$"
   if printf '%s' "$EVENT" | jq --arg m "$MODEL" --arg s "$SERVED" --arg r "$RECEIPT" \
        '{status:"ok", requested_model:$m, served_model:$s, receipt:$r, output:.result}' \
        > "$tmp" 2>/dev/null; then

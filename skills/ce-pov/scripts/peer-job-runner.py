@@ -59,7 +59,7 @@ supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
   POV_PEER_JOBS_ROOT        base dir (<jj-workspace-root>/.tmp, or
-                             <current-directory>/.tmp outside a Jujutsu workspace)
+                            <current-directory>/.tmp outside a Jujutsu workspace)
   POV_WORK_RUNS_ROOT        parent work-run dir containing all <run-id>/ dirs
   POV_PEER_IDLE_SECS        idle window, no out.log growth (240)
   POV_PEER_HARD_SECS        hard cap on worker wall clock
@@ -72,7 +72,7 @@ Environment overrides (defaults in parentheses):
   POV_PEER_POLL_SECS        supervisor poll interval (2)
   POV_PEER_GRACE_SECS       TERM-to-KILL grace during reap (5)
   POV_PEER_BASH             Windows: absolute bash.exe for peer workers
-                             (preferred over PATH / WSL System32 bash)
+                            (preferred over PATH / WSL System32 bash)
 
 Security posture: the job root is a predictable, owner-private directory under
 the workspace-local `.tmp` tree. Every read of job state opens the file first (no-follow) and
@@ -119,10 +119,10 @@ import os
 import re
 import shutil
 import signal
+import secrets
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -802,7 +802,16 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
+    parent = os.path.dirname(path)
+    for _ in range(128):
+        tmp = os.path.join(parent, f".swap-{secrets.token_hex(8)}")
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise OSError(f"could not reserve an atomic-write path under {parent}")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)

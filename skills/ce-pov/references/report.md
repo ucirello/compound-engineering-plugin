@@ -16,7 +16,7 @@ The verdict, expanded — lead with the decision, then the evidence the TL;DR om
 ## Format and economy
 
 - **HTML by default** — a single self-contained file (a verdict is a thing people share). Use markdown when the user asks, or when the write-up will feed `ce-brainstorm`/`ce-plan`.
-- Write transient output under `<workspace-root>/.tmp/ce-pov/`, where `<workspace-root>` is `jj workspace root` or the current directory when no Jujutsu workspace exists. Write under `docs/` only when the user wants it kept; announce the absolute path. Do **not** introduce another mandated `docs/` location.
+- Write transient output under `<workspace-root>/.tmp/pov/`, where `<workspace-root>` is `jj workspace root` or the current directory when no Jujutsu workspace exists. Write under `docs/` only when the user wants it kept; announce the absolute path. Do **not** introduce another mandated `docs/` location.
 - Lead with the verdict, and **cite** evidence rather than pasting dossiers wholesale — the report is a tighter case for a human, not a research dump.
 
 ## Sharing

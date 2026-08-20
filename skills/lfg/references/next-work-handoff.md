@@ -9,8 +9,8 @@ area without silently extending the completed plan or current session.
 Start from the canonical plan path retained from LFG step 1. Locate a Product
 Contract section carrying the semantic role `work-relationships`:
 
-- Markdown: `<!-- section: work-relationships -->`
-- HTML: `data-section="work-relationships"`
+- Markdown: `<!-- rocketclaw-section: work-relationships -->`
+- HTML: `data-rocketclaw-section="work-relationships"`
 
 The visible heading is not part of this protocol. For an older unmarked plan,
 use a semantic fallback only when one Product Contract section clearly names
@@ -81,7 +81,7 @@ rank candidates. Include:
 - **Relationship to completed work:** the explicit depends-on, enables, shares,
   or independent relationship.
 - **Actual delivery state:** what finished and what remains in the current tail,
-  such as implemented, changes recorded, PR open, CI decided, or not merged.
+  such as implemented, PR open, CI decided, or not merged.
 - **Carry-forward decisions:** only prior decisions that constrain the next
   area.
 - **Assumptions to revalidate:** provisional relationships or facts that the

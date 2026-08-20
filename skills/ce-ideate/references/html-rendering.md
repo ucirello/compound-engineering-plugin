@@ -43,7 +43,12 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
-- **Source / composition signal.** A visible footer at the bottom of the doc names the composition timestamp and source identifier (the user prompt context or upstream source document). Example shape: `<footer class="composition-signal">Composed 2026-05-17T14:23Z from <code>docs/brainstorms/...-requirements.md</code></footer>`. Under exclusive output mode this signal is the artifact's own provenance. Do not include creator, builder, composer, or author credit.
+- **Source / composition signal.** A visible footer at the bottom of the
+  doc names the composition timestamp and source identifier (the user prompt
+  context or upstream source document). Example shape:
+  `<footer class="composition-signal">Composed 2026-05-17T14:23Z from <code>docs/plans/...-requirements.md</code></footer>`.
+  Under exclusive output mode this signal is the artifact's own source record.
+  Do not include creator, builder, composer, author, skill, or provider credit.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -63,12 +68,13 @@ These hold regardless of which skill produced the artifact.
 Honor user style preferences in this order (highest to lowest):
 
 1. **In-session conversation** — explicit direction the user gave this run.
-2. **Preferred stylesheet reference** named in the project's active
-   instructions and conventions already in context. The reference may be a file path
+2. **Preferred stylesheet reference** named in loaded agent-instruction
+   context (typically `AGENTS.md` / `CLAUDE.md`, but scan loaded context;
+   don't enumerate locations). The reference may be a file path
    (`docs/style.css`), a URL, a named library ("Tailwind"), or a style
    brand ("Stripe docs"). Agent-instruction files carry deliberate
-   agent-aware preferences, so this tier sits above project design guidance.
-3. **Project design guidance** discovered on the filesystem (see "Design guidance discovery"
+   agent-aware preferences, so this tier sits above DESIGN.md.
+3. **DESIGN.md** discovered on the filesystem (see "DESIGN.md discovery"
    below).
 4. **Fallback default** — the opinionated palette / typography choices the
    agent makes when no preference exists.
@@ -88,11 +94,22 @@ The single-file invariant is preserved either way. External
 offline fallback font stack); never link to an external stylesheet
 carrying layout, color, or typography rules the doc cannot read offline.
 
-### Design guidance discovery
+### DESIGN.md discovery
 
-When tier 3 of the precedence stack applies, discover workspace-local design guidance by purpose, starting at `jj workspace root` and then its documentation area. Read the first applicable source once at compose time; do not fall through to another workspace or checkout. If none exists, use the fallback default.
+When tier 3 of the precedence stack applies, look for a DESIGN.md file in
+these locations, first match wins:
 
-**Project design guidance is a partial override, not all-or-nothing.** Such guidance varies widely: some sources are token tables, some are CSS variables, some are
+1. Workspace root (resolve via `jj workspace root`).
+2. `docs/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
+
+Read once at compose time. Absent → fall through to the fallback default.
+
+Workspace-root only — do not fall through to another workspace. Users
+who want HTML defaults can add DESIGN.md to the current workspace.
+
+**DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
+files vary widely: some are token tables, some are CSS variables, some are
 prose; most are authored for a *product or marketing surface*, not a
 long-form doc. The governing split: **take the brand's scale-independent
 identity literally, own the scale-dependent layout values yourself, and
@@ -103,7 +120,7 @@ skip decoration.**
   and radius *character* (sharp vs rounded). These carry the brand and are
   safe at any size.
 - **Own it yourself (scale-dependent layout):** the **type size scale**
-  and **spacing magnitudes**. Project design values are almost always
+  and **spacing magnitudes**. DESIGN.md values are almost always
   product/marketing-scaled (display headings at 48-80px, airy ~96px
   section gaps); read them only as *hierarchy*, then set doc-appropriate
   values (body ~14-16px, headings ~1.2-1.6× body, comfortable paragraph
@@ -121,24 +138,24 @@ Specific cases:
   fallback stack. **Assume a bespoke brand face is proprietary and do not
   attempt to load it** — Airbnb Cereal, Coinbase Display/Sans, BMW Type,
   Waldenburg, Circular and the like will not render in a single file;
-  trying just produces a broken fallback. Use the project's own fallback
+  trying just produces a broken fallback. Use the DESIGN.md's own fallback
   chain, or a family-matched system stack (serif↔serif, sans↔sans,
   mono↔mono). Load a named face *only* when it is a known open webfont
   (Inter, Geist, Cal Sans, Roboto…); when unsure whether a face is open,
-  do not try. Honor the project's declared roles (`body` / `display` /
+  do not try. Honor the DESIGN.md's declared roles (`body` / `display` /
   `mono`) and never promote a display/decorative face into a body or
   small-text role. Net: reproduce the brand's serif-vs-sans structure and
   weight voice, not necessarily its exact faces.
-- **Typography-scale mismatch.** Project typography tokens are usually
+- **Typography-scale mismatch.** DESIGN.md typography tokens are usually
   sized for product UI — marketing pages, app screens, hero sections —
   with display headings at 48-80px. A long-form doc needs body at ~14-16px
   and headings at ~1.2-1.6× body. When the size scale looks
   product-scaled (the common case), use the **family**, **weight**, and
   **OpenType feature** assignments (these carry the design language) and
-  pick the agent's own size scale for the doc surface. Apply project-supplied
+  pick the agent's own size scale for the doc surface. Apply DESIGN.md
   sizes literally only when they are clearly doc-scaled — body 14-16px,
   headings under ~32px.
-- **Scope mismatch (product UI vs doc surface).** Design guidance aimed at
+- **Scope mismatch (product UI vs doc surface).** A DESIGN.md aimed at
   product marketing or app UI may name button states, input borders, or
   hero backgrounds tied to *that* surface, not a generic doc. The page
   surface is the case to judge: a **reading canvas** — white, off-white,
@@ -147,10 +164,10 @@ Specific cases:
   (`--surface: #c0f0fb`) does not — extract the principle (the design
   language uses a tinted surface) rather than the literal value when the
   token is product-UI-scoped.
-- **Partial coverage.** When project guidance defines some categories but not
+- **Partial coverage.** When DESIGN.md defines some categories but not
   others (colors but no spacing scale, typography but no elevation), use
   it for what it covers and the fallback default for the rest. Do not
-  require it to be complete before honoring it.
+  require DESIGN.md to be complete before honoring it.
 
 ## Format principles
 
@@ -162,7 +179,7 @@ artifact based on content.
 Long-form text is unreadable at full viewport width — past ~80 characters
 per line the eye loses the return sweep and scanning slows. As a
 fallback-default (precedence tier 4, overridden by in-session direction or
-project design guidance), center the document in a content container and hold prose to a
+DESIGN.md), center the document in a content container and hold prose to a
 comfortable measure.
 
 - **Page container.** A centered column with a max-width in the ~820-960px
@@ -177,7 +194,7 @@ comfortable measure.
   needs it — the measure constraint is for prose, not for everything.
 
 Express the constraint in `ch`/`rem` rather than a single hardcoded pixel
-value so it survives font-size and project-design overrides. Project guidance or an
+value so it survives font-size and DESIGN.md overrides. DESIGN.md or an
 in-session instruction overrides these values; this is the fallback when no
 layout preference exists.
 
@@ -205,26 +222,25 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time:
+Resolve the workspace's GitHub URL once at compose time through the reachable GitHub interface:
 
 ```bash
-jj git remote list
+gh repo view --json url --jq .url
 ```
 
 Apply linking to three reference shapes:
 
-- **Repo-relative code/doc paths** (`services/foo.ts`,
-  `<root>/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
+- **Workspace-relative code/doc paths** (`services/foo.ts`,
+  `<root>/solutions/bar.md`) → the repository's canonical blob URL for `<path>` at the current mainline revision.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
   link only when the workspace URL is established in loaded context
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
-  session or active project context); otherwise leave as text.
+  session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
-Bitbucket, internal host) and the equivalent main-tree URL pattern
-isn't obvious, leave entries as `<code>` text. If the external
+**Do not invent URLs.** If the reachable repository interface cannot resolve a
+canonical URL, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.
 
@@ -586,7 +602,8 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
-- **Source / composition signal** is present as a visible footer at the bottom of the doc (composition timestamp + source identifier, without creator credit).
+- **Source / composition signal** is present as a visible footer at the bottom
+  of the doc (composition timestamp + source identifier, without producer credit).
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

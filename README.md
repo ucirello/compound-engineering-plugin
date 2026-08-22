@@ -27,7 +27,15 @@ Or search for "compound engineering" in the plugin marketplace.
 
 ### Grok Bot
 
-Install Compound Engineering on the Cursor account that Grok Bot uses: in Cursor Agent chat run `/add-plugin compound-engineering`, or search for "compound engineering" in the Cursor plugin marketplace. Grok Bot reads skills from that account plugin cache; do not run Cursor IDE or Claude Code plugin commands on the Grok Bot host.
+Grok Bot is its own app, but it uses your Cursor account and plugin library. There is no separate Grok Bot login. Install Compound Engineering once on that account and Grok Bot agents can load it.
+
+In Cursor Agent chat:
+
+```text
+/add-plugin compound-engineering
+```
+
+Or search for "compound engineering" in the Cursor plugin marketplace. Do not run `/add-plugin` in the Grok Bot chat, and do not clone this repository onto the Grok Bot computer.
 
 ### Codex App
 
@@ -484,7 +492,7 @@ Refresh the marketplace from the **Plugins** panel (remove and re-add the `Every
 
 **Grok Bot**
 
-Refresh or reinstall Compound Engineering on the Cursor account so Grok Bot's account plugin cache picks up the new snapshot. Do not clone this repository onto the Grok Bot computer for normal updates.
+Reinstall or refresh Compound Engineering on that Cursor account (`/add-plugin compound-engineering` in Cursor Agent chat, or marketplace search). Grok Bot then loads the new snapshot from the shared plugin library. Do not clone this repository onto the Grok Bot computer for a normal update.
 
 If you configured a host with a direct path or sparse path under `plugins/compound-engineering`, edit or reinstall that source so it points at the repository root with no sparse path.
 

@@ -10,6 +10,8 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
+Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be kept; it sends the run to the workspace-local `.tmp/rocketclaw` fallback without touching the rest of the block. Before running the block in a jj workspace, confirm that its selected `.context/` or `.tmp/` parent is ignored as required by `SKILL.md`.
+
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
@@ -44,8 +46,6 @@ done;
 chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
-
-Set `RUN_KEEP="no"` when the user asked that this run not be kept; it sends the run to the local `.tmp/rocketclaw` fallback without touching the rest of the block. Before running this block in a jj workspace, the caller has already confirmed that its selected `.context/` or `.tmp/` parent is ignored as required by `SKILL.md`.
 
 Three things this block is careful about. The symlink and ownership checks run against both the **root** and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe durable path at either level falls back to the workspace-local `.tmp/rocketclaw` rather than aborting; only a local fallback that also fails is fatal.
 

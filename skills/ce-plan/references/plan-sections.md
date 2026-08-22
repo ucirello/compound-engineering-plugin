@@ -43,7 +43,7 @@ When the artifact is meant to be consumed by implementation agents, use:
     do not hold readiness back — mark each open question as blocking or deferred
     so this distinction is explicit.
 - **`product_contract_source`** — where the Product Contract came from:
-  `ce-brainstorm`, `ce-plan-bootstrap`, `legacy-requirements`, or another
+  `brainstorm`, `plan-bootstrap`, `legacy-requirements`, or another
   explicit source string when a repo has a specialized producer.
 - **`execution`** — `code` for implementation plans, `knowledge-work` for
   non-code deliverables. Absence remains legacy-compatible and means `code`

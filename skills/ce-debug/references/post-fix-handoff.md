@@ -51,7 +51,7 @@ SKILL.md's Phase 4 **Routing** block owns the bare per-case actions — which sk
 
 ## Learning-capture criteria (after a PR is open)
 
-Most bugs are localized mechanical fixes where the only "lesson" is the bug itself, and recording those clutters `<root>/solutions/` without adding value.
+Most bugs are localized mechanical fixes where the only lesson is the bug itself, and recording those clutters `.context/solutions/` without adding value.
 
 - **Skip silently** when the fix is mechanical with no generalizable insight. Default to this when in doubt.
 - **Offer neutrally** when the lesson fits in one sentence — "X.foo() returns T | undefined when Y, not just T", or "the diagnostic path was non-obvious and worth recording." If you cannot articulate the lesson, skip rather than offer.

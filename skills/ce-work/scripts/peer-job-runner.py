@@ -58,7 +58,7 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  PEER_JOBS_ROOT            base dir (Jujutsu workspace root .tmp)
+  PEER_JOBS_ROOT            base dir (Jujutsu workspace root .tmp/rocketclaw)
   WORK_RUNS_ROOT            parent work-run directory containing all <run-id>/ dirs
   PEER_IDLE_SECS            idle window, no out.log growth (240)
   PEER_HARD_SECS            hard cap on worker wall clock
@@ -76,7 +76,7 @@ Environment overrides (defaults in parentheses):
                             PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
-the current workspace's `.tmp`. Every read of job state opens the file first (no-follow) and
+the current workspace's `.tmp/rocketclaw`. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -109,7 +109,8 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the current directory's `.tmp`, owner-private.
+  jobs root defaults under the current Jujutsu workspace's `.tmp/rocketclaw`,
+  or the current directory's `.tmp/rocketclaw` outside Jujutsu.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -139,7 +140,20 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-DEFAULT_ROOT = os.path.join(os.getcwd(), ".tmp")
+
+
+def _workspace_root() -> str:
+    try:
+        proc = subprocess.run(
+            ["jj", "--no-pager", "workspace", "root"],
+            cwd=os.getcwd(), capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return os.getcwd()
+    return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else os.getcwd()
+
+
+DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -217,7 +231,7 @@ def jobs_root_base() -> str:
 
 
 def candidate_jobs_root_bases() -> list:
-    """The configured root or current workspace-local `.tmp` root."""
+    """The configured root or current workspace-local `.tmp/rocketclaw` root."""
     configured = os.environ.get("PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]

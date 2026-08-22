@@ -27,18 +27,19 @@ def build_parser():
             p.add_argument("--authorization", required=True); p.add_argument("--authorization-digest", required=True); p.add_argument("--workspace", required=True); p.add_argument("--packet", required=True); p.add_argument("--packet-digest", required=True); p.add_argument("--result-dir", required=True)
     for name in ("sync-job", "terminalize", "reap"):
         p = sub.add_parser(name); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True)
-    p = sub.add_parser("composition-acquire"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--resume", action="store_true")
-    for name in ("preflight", "mark-composed", "mark-described", "restore", "composition-release"):
+    for name in ("composition-acquire", "integration-acquire"):
+        p = sub.add_parser(name); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--resume", action="store_true")
+    for name in ("mark-composed", "mark-applied", "mark-described", "mark-committed", "restore", "composition-release", "integration-release"):
         p = sub.add_parser(name); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--lock-token", required=True)
-        if name == "preflight": p.add_argument("--allowed-change", action="append", default=[])
-    p = sub.add_parser("mark-verified"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--lock-token", required=True); p.add_argument("--evidence-digest", required=True); p.add_argument("--summary", default="authoritative verification passed"); p.add_argument("--untracked-state")
-    p = sub.add_parser("integrate"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--change-description", required=True); p.add_argument("--verification-summary", default="authoritative verification passed"); p.add_argument("--allowed-change", action="append", default=[]); p.add_argument("verification_command", nargs=argparse.REMAINDER)
+    p = sub.add_parser("preflight"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--lock-token", required=True); p.add_argument("--allowed-change", "--allowed-head", dest="allowed_change", action="append", default=[])
+    p = sub.add_parser("mark-verified"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--lock-token", required=True); p.add_argument("--evidence-digest", required=True); p.add_argument("--summary", default="authoritative verification passed"); p.add_argument("--untracked-state", "--ignored-state", dest="untracked_state")
+    p = sub.add_parser("integrate"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); descriptions = p.add_mutually_exclusive_group(required=True); descriptions.add_argument("--change-description"); descriptions.add_argument("--commit-message"); p.add_argument("--verification-summary", default="authoritative verification passed"); p.add_argument("--allowed-change", "--allowed-head", dest="allowed_change", action="append", default=[]); p.add_argument("verification_command", nargs=argparse.REMAINDER)
     p = sub.add_parser("verify-run"); p.add_argument("--run-id", required=True); p.add_argument("--verification-summary", default="plan-wide authoritative verification passed"); p.add_argument("verification_command", nargs=argparse.REMAINDER)
-    p = sub.add_parser("wave-advance"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--lock-token", required=True); p.add_argument("--canonical-change", required=True)
+    p = sub.add_parser("wave-advance"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--lock-token", required=True); p.add_argument("--canonical-change", "--canonical-commit", dest="canonical_change", required=True)
     p = sub.add_parser("status"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id")
     p = sub.add_parser("resume"); p.add_argument("--run-id"); p.add_argument("--repo"); p.add_argument("--plan-digest")
     p = sub.add_parser("claim-fallback"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--caller-mode", choices=("interactive", "headless"), required=True); p.add_argument("--confirm-native", action="store_true")
-    p = sub.add_parser("complete-fallback"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--accepted-change", required=True); p.add_argument("--evidence-digest", required=True); p.add_argument("--summary", required=True)
+    p = sub.add_parser("complete-fallback"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--accepted-change", "--accepted-head", dest="accepted_change", required=True); p.add_argument("--evidence-digest", required=True); p.add_argument("--summary", required=True)
     p = sub.add_parser("cleanup"); p.add_argument("--run-id", required=True); p.add_argument("--unit-id", required=True); p.add_argument("--abandon", action="store_true"); p.add_argument("--expect-transport"); p.add_argument("--expect-job")
     return parser
 
@@ -54,14 +55,31 @@ COMMANDS = {
     "restore": cmd_restore, "status": cmd_status, "resume": cmd_resume,
     "claim-fallback": cmd_claim_fallback, "complete-fallback": cmd_complete_fallback,
     "reap": cmd_reap, "cleanup": cmd_cleanup, "composition-release": cmd_composition_release,
+    "integration-acquire": cmd_composition_acquire, "mark-applied": cmd_mark_composed,
+    "mark-committed": cmd_mark_described, "integration-release": cmd_composition_release,
 }
 
 
 def main(argv):
     os.umask(0o077)
     args = build_parser().parse_args(argv)
+    if args.command == "integrate" and getattr(args, "commit_message", None) is not None:
+        args.change_description = args.commit_message
     try:
         word, body = COMMANDS[args.command](args)
+        if args.command == "mark-applied":
+            word = "APPLIED"
+        elif args.command == "mark-committed":
+            word = "COMMITTED"
+        elif args.command == "integrate" and getattr(args, "commit_message", None) is not None:
+            word = "UNIT_COMMITTED"
+        if "canonical_change" in body:
+            body.setdefault("canonical_commit", body["canonical_change"])
+        if "untracked_state" in body:
+            body.setdefault("ignored_state", body["untracked_state"])
+        completion = body.get("completion")
+        if isinstance(completion, dict) and "accepted_change_id" in completion:
+            completion.setdefault("accepted_head", completion["accepted_change_id"])
         print(word); print(json.dumps(body, sort_keys=True, separators=(",", ":")))
         return 0
     except TrustFailure as exc:

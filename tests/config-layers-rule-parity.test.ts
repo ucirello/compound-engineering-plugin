@@ -8,13 +8,17 @@ const FIXTURE = path.join(REPO_ROOT, "tests", "fixtures", "ce-config-layers-rule
 // Ordinary-key cascade is byte-duplicated into every independent reader
 // (skills cannot import siblings). Canonical text lives once in the fixture.
 const CONSUMERS = [
-  "skills/ce-plan/SKILL.md",
+  "skills/ce-plan/references/output-mode.md",
   "skills/ce-brainstorm/SKILL.md",
   "skills/ce-ideate/SKILL.md",
   "skills/ce-product-pulse/SKILL.md",
   "skills/ce-sweep/SKILL.md",
-  "skills/ce-commit-push-pr/SKILL.md",
-  "skills/ce-work/SKILL.md",
+  // ce-commit-push-pr resolves the ordinary keys at Step 4, in the reference
+  // the body mandates before composition.
+  "skills/ce-commit-push-pr/references/compose.md",
+  // ce-work resolves the ordinary engine keys inside the reference its route-resolution
+  // gate mandates before any implementation write.
+  "skills/ce-work/references/execution-engines.md",
   "skills/ce-promote/references/spiral-cli.md",
   "skills/ce-code-review/references/cross-model-review.md",
   "skills/ce-doc-review/references/cross-model-review.md",

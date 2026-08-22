@@ -1,5 +1,7 @@
 ### Stage 5: Merge findings
 
+Read `references/action-class-rubric.md` before routing any finding: it owns the severity scale and the action-routing rules synthesis applies, including that synthesis owns the final route.
+
 Convert multiple reviewer compact JSON returns into one deduplicated, confidence-gated finding set. Use `scripts/findings-mechanics.py` from this skill's directory for schema/value validation, exact-fingerprint deduplication, conservative route merging, quote/confidence gates, deterministic sorting, and stable numbering. These are mechanics, not model judgment.
 
 Write the compact reviewer returns as a JSON array, then run the command below exactly. Do not inspect the helper source or run its `--help`; its contract is this reference and its JSON output.
@@ -17,6 +19,8 @@ Before the first helper run, load every available per-reviewer artifact and buil
 Inspect the helper's `findings`, `pre_existing_findings`, and `suppressed_findings` for semantic duplicates that use different wording or nearby anchors, for the direct-dependency exception, and for settlement conflicts below. Merge only when candidates describe the same defect and fix path. If semantic reconciliation, direct-dependency reclassification, or settlement stamping changed the set, serialize every reconciled candidate from all three partitions as one valid synthetic reviewer return and run the helper again to restore deterministic gates, partitions, sort order, and numbering. Never ask the helper to decide semantic equivalence or settlement conflicts. When reconciling a semantic duplicate, carry its original source-map keys alongside the candidate in working memory so detail hydration does not depend on the rewritten title. The helper's deterministic `suppressed_findings` partition is not primary review output; after settlement reconciliation, inspect it for the soft-bucket route below, then discard the remainder while preserving `suppressed_by_confidence` counts.
 
 Then apply only the judgment the helper cannot own:
+
+**Scoped standards authority.** The local `project-standards` review and synthesis are the sole owners of scoped-rule coverage; the external adversarial peer is corroborative. A peer candidate enters the final report only when it is compatible with every applicable scoped rule established locally; reject it otherwise. A replacement candidate requires independent local evidence.
 
 1. **Semantic reconciliation.** Merge differently worded findings only when they describe the same defect and fix path. Keep disagreements visible. Union the mechanics-produced `reviewers` and `independent_reviewers` lists from the merged candidates; never add an identity to `independent_reviewers` merely because it appears in `reviewers`. A pre-existing gap stays primary only when the new change directly depends on it for correctness; mark that reconciled candidate `pre_existing: false` before the final helper pass. Nearby cleanup remains pre-existing.
 2. **Settled decisions.** Inspect both surviving `findings` and `suppressed_findings`. If a finding merely prefers an alternative to a `session-settled:` KTD, stamp `settled_conflict`, route it advisory/human, and include it in the synthetic rerun so the helper preserves it in the primary report. Never apply it. Do not demote a real defect or evidence that the settled approach cannot work. Honor inferred-plan settlements only when the match is unambiguous.
@@ -78,11 +82,11 @@ One exception: `settled_conflict`-stamped preference findings (Stage 5 step 2) s
 - If a reviewer item is pure information (no defect, no code contract change, no test gap), classify it as advisory/non-actionable in Coverage or residual risks; do not patch it or describe it as a missed defect.
 If this self-review changes files, rerun the affected tests or lint before describing or reporting; the earlier validation covers only the original autofix diff.
 
-**Describe an isolated revision only when `@` was empty before apply.** Record initial content with `jj diff -r @ --summary`. If empty, keep verified fixes in `@`, derive conventions local-first from visible `jj log` descriptions, resolve editing syntax from `jj help describe`, describe that revision, then start a new empty working-copy revision using current `jj help new` syntax. If `@` already contained content, leave fixes undescribed with the user's in-flight change. Do not rewrite unrelated revisions.
+**Describe an isolated revision only when `@` was empty before apply.** Record initial content with `jj diff -r @ --summary`. If empty, keep verified fixes in `@`, derive conventions from the project's active instructions and description syntax visible in `jj log`, resolve editing syntax from `jj help describe`, describe that revision, then start a new empty working-copy revision using current `jj help new` syntax. If `@` already contained content, leave fixes undescribed with the user's in-flight change. Do not rewrite unrelated revisions.
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Apply compatible Go quality guidance after local conventions, with no fixed syntax or prescribed message. Use neutral placeholders such as `<revision>` and `<description>`.
+The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Use neutral placeholders such as `<revision>` and `<description-composed-from-runtime-conventions>`.
 - **Never push, open a PR, or file tickets** — that's the outward-facing step the user owns.
 
 **Surface green-but-unverifiable edits.** When an applied fix touches auth/authz, a public or cross-service contract/schema, or concurrency/ordering, a passing test does not prove safety — flag it prominently in the Applied section so the diff reviewer's attention goes there.
@@ -93,9 +97,9 @@ Apply compatible Go quality guidance after local conventions, with no fixed synt
 
 Assemble the final report. **Default:** human-readable markdown. **`mode:agent`:** skip markdown and emit JSON (see ### JSON output format) — the structured fields are how a downstream agent consumes the review. Put `---` before the verdict in markdown mode.
 
-**Report completion gate:** do not finish until stable `#` identifiers appear on every primary finding and the report contains `### Actionable Findings`, `### Coverage`, and `### Verdict` (or their exact JSON fields in `mode:agent`). Coverage must name the cross-model outcome and validator shortcut/batch outcome. The Actionable section must include every `downstream-resolver` finding; never silently replace it with a count.
+**Report completion gate:** do not finish until stable `#` identifiers appear on every primary finding, the report contains `### Actionable Findings`, `### Coverage`, and `### Verdict` (or their exact JSON fields in `mode:agent`), and the run artifacts named at the end of this reference are on disk — `report.md` in default mode, `review.json` in `mode:agent`, and `metadata.json` in both. Coverage must name the cross-model outcome and validator shortcut/batch outcome. The Actionable section must include every `downstream-resolver` finding; never silently replace it with a count.
 
-**Before writing, load `references/review-output-template.md` and mirror its section skeleton** — that file is the canonical skeleton for *which sections appear and in what order*; its example shows one good rendering, not the only permitted layout. The direction below is the always-loaded fallback so it survives a long session even if the template was not reloaded.
+**Before writing, load `references/review-output-template.md` and mirror its section skeleton** — that file is the canonical skeleton for *which sections appear and in what order*; its example shows one good rendering, not the only permitted layout. The direction below is the in-place fallback, so it still governs if the template was not reloaded in a long session.
 
 **Presentation direction — optimize for the reader's next action (goal + considerations, not a fixed layout).** The report is *acted on*: by a human deciding what to fix and whether to merge, or by a downstream agent applying fixes. Shape it so that action is fast and well-founded.
 
@@ -191,5 +195,66 @@ Before delivering the review, verify:
 2. **No false positives from skimming.** For each finding, verify the surrounding code was actually read. Check that the "bug" isn't handled elsewhere in the same function, that the "unused import" isn't used in a type annotation, that the "missing null check" isn't guarded by the caller.
 3. **Severity is calibrated.** A style nit is never P0. A SQL injection is never P3. Re-check every severity assignment.
 4. **Line numbers are accurate.** Verify each cited line number against the file content. A finding pointing to the wrong line is worse than no finding.
-5. **Protected artifacts are respected.** Discard any finding that recommends deleting or ignoring a pipeline artifact under `.context` or the configured artifact root, per SKILL.md.
+5. **Protected artifacts are respected.** Discard any finding that recommends deleting or ignoring a pipeline artifact under `.context` or the configured artifact root, per the Protected Artifacts rule at the end of this reference. Categories may nest; a skill asset under `references/personas/` is not protected by this rule.
 6. **Findings don't duplicate linter output.** Don't flag things the project's linter/formatter would catch (missing semicolons, wrong indentation). Focus on semantic issues.
+
+## Protected Artifacts
+
+Pipeline artifacts must never be flagged for deletion, removal, or ignore rules by any reviewer. A protected artifact is any file **under** a `plans/`, `solutions/`, or legacy `brainstorms/` directory whose immediate parent is `.context` or the configured artifact root:
+
+- `plans/` under the artifact root -- unified plan artifacts produced through `ce-brainstorm` or `ce-plan`
+- `solutions/` under the artifact root -- solution documents produced during the workflow
+- the legacy `brainstorms/` -- requirements documents created by older ce-brainstorm versions
+
+Matching by immediate parent covers nested category files while leaving same-named directories elsewhere as ordinary code. A run that never resolved a configured root still protects `.context`; discard cleanup or removal findings against protected artifacts during synthesis.
+
+## After Review
+
+After Stage 6, stop. Never push, open PRs, or file tickets from this skill. Bare and `mode:agent` reviews mutate nothing. When local apply was explicitly authorized, Stage 5c may already have applied and described verified fixes on an initially empty working-copy revision. Otherwise the caller or user decides what to apply from the report and artifacts.
+
+### Emit actionable findings summary (default mode only)
+
+After Stage 6 **in default mode**, emit a compact **Actionable Findings** summary for callers:
+
+- List each actionable finding (`gated_auto` or `manual` with `downstream-resolver`) with stable `#`, severity, file:line, title, `autofix_class`, whether `suggested_fix` is present, and `confidence`.
+- Include the resolved run-artifact path when one was written.
+- When the actionable queue is empty, state `Actionable findings: none.` explicitly.
+
+In `mode:agent` do **not** emit this markdown summary — the actionable findings are carried solely by the `actionable_findings` field of the JSON object. Emit nothing after the JSON object, so the response stays a single parseable JSON value.
+
+Do not run post-review triage (no per-finding walk-through, bulk ticket filing, or routing questions). The report and summary are the complete handoff.
+
+### Mode-specific completion
+
+| Mode | After Stage 6 + actionable summary |
+|------|-----------------------------------|
+| **Default** | Markdown tables + Actionable Findings summary. |
+| **`mode:agent`** | JSON object + `review.json` in run artifact dir. |
+
+Do not offer push/PR/create-branch next steps from this skill.
+
+#### Run artifacts
+
+Always write run artifacts under the resolved `<run-dir>`:
+
+- synthesized findings
+- actionable findings list
+- advisory outputs
+- per-agent `{reviewer_name}.json` from Stage 4
+- `adversarial-review-constraints.md` when the cross-model route starts — the host-vetted project review criteria, separate from review data
+- `adversarial-review-brief.md` when the cross-model route starts — the orchestrator's compact semantic divisions, never a copied diff
+- `report.md` — the rendered markdown report exactly as presented to the user (default mode only), so format and numbering stay auditable after the run
+
+`metadata.json` minimum fields:
+
+```json
+{
+  "run_id": "<run-id>",
+  "bookmarks": "<jj bookmarks on @ at dispatch time>",
+  "change_id": "<jj change ID for @ at dispatch time>",
+  "verdict": "<Ready to merge | Ready with fixes | Not ready>",
+  "completed_at": "<ISO 8601 UTC timestamp>"
+}
+```
+
+Capture `bookmarks` and `change_id` at dispatch time (no in-skill fixes will land afterward).

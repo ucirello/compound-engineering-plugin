@@ -183,7 +183,7 @@ Changed files: {file_list}
 Diff:
 {diff}
 
-(For a large path-backed review, `{file_list}` and `{diff}` may be **file paths** rather than inline content. Read those artifacts before reviewing.)
+(The `Changed files:` and `Diff:` values above are either inline content or, for a large path-backed review, a single artifact path each. Inline content is authoritative: review it as given. A lone artifact path is not the content; read that file to get the full list or diff before reviewing.)
 </review-context>
 ```
 

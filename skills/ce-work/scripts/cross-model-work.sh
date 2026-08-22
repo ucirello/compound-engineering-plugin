@@ -179,39 +179,35 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-"$PY" - "$WORKSPACE/.tmp" <<'PY'
+"$PY" - "$WORKSPACE/.tmp" "$WORKSPACE/.tmp/rocketclaw" <<'PY'
 import os, stat, sys
 
-path = sys.argv[1]
-try:
-    os.mkdir(path, 0o700)
-except FileExistsError:
-    pass
-before = os.lstat(path)
-if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
-    raise OSError(f"{path}: workspace-local .tmp is not a real directory")
 flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-fd = os.open(path, flags)
-try:
-    opened = os.fstat(fd)
-    current = os.lstat(path)
-    if (
-        stat.S_ISLNK(current.st_mode)
-        or not stat.S_ISDIR(opened.st_mode)
-        or (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino)
-    ):
-        raise OSError(f"{path}: workspace-local .tmp is not a real directory")
-    if hasattr(os, "fchmod"):
-        os.fchmod(fd, 0o700)
-    else:
-        os.chmod(path, 0o700)
-finally:
-    os.close(fd)
+for path in sys.argv[1:]:
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        pass
+    before = os.lstat(path)
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
+        raise OSError(f"{path}: workspace-local scratch component is not a real directory")
+    fd = os.open(path, flags)
+    try:
+        opened = os.fstat(fd)
+        current = os.lstat(path)
+        if stat.S_ISLNK(current.st_mode) or not stat.S_ISDIR(opened.st_mode) or (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino):
+            raise OSError(f"{path}: workspace-local scratch component is not a real directory")
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o700)
+        else:
+            os.chmod(path, 0o700)
+    finally:
+        os.close(fd)
 PY
-[ "$?" -eq 0 ] || { log "workspace-local .tmp is unavailable or symlinked"; exit 2; }
+[ "$?" -eq 0 ] || { log "workspace-local .tmp/rocketclaw is unavailable or symlinked"; exit 2; }
 SCRATCH=""
 for _claim in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
-  _candidate="$WORKSPACE/.tmp/adapter-$$-${RANDOM:-0}-$_claim"
+  _candidate="$WORKSPACE/.tmp/rocketclaw/adapter-$$-${RANDOM:-0}-$_claim"
   if mkdir "$_candidate" 2>/dev/null; then SCRATCH="$_candidate"; break; fi
 done
 [ -n "$SCRATCH" ] || { log "could not reserve workspace-local adapter directory"; exit 2; }

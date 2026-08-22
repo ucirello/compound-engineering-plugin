@@ -27,15 +27,36 @@ def cmd_status(args) -> tuple[str, dict]:
 
 
 def _discover(repo: str, plan_digest: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{64}", plan_digest):
+        raise Operational("REFUSED", "plan digest must be a lowercase SHA-256 hex value")
     root = runs_root(repo)
     if not os.path.isdir(root):
         raise Operational("NOT_FOUND", "no repository-local work runs exist")
+    info = repo_info(repo)
     matches = []
-    for entry in os.scandir(root):
-        if entry.name == ".locks" or not entry.is_dir(follow_symlinks=False): continue
+    for entry in sorted(os.scandir(root), key=lambda row: row.path):
+        if entry.name == ".locks":
+            continue
+        if not entry.is_dir(follow_symlinks=False):
+            raise TrustFailure(f"unexpected non-directory entry in run root: {entry.path}")
+        if not SAFE_ID.fullmatch(entry.name) or not entry.name.strip("."):
+            raise TrustFailure(f"unsafe run entry name: {entry.path}")
+        validate_private_dir(entry.path)
         doc = read_private_json(os.path.join(entry.path, "manifest.json"))
-        if doc.get("repository", {}).get("identity_digest") == repo_info(repo)["identity_digest"] and doc.get("source", {}).get("kind") == "plan" and doc.get("source", {}).get("digest") == plan_digest:
-            if any(unit.get("state") not in {"cleaned", "native-completed"} for unit in doc.get("units", {}).values()) or not doc.get("verifications"):
+        if doc.get("schema_version") != SCHEMA_VERSION or doc.get("run_id") != entry.name:
+            raise TrustFailure(f"manifest schema or run identity mismatch: {entry.path}")
+        units = doc.get("units")
+        if not isinstance(units, dict):
+            raise TrustFailure(f"manifest units are malformed: {entry.path}")
+        for unit_id, unit in units.items():
+            if not isinstance(unit_id, str) or not SAFE_ID.fullmatch(unit_id) or not isinstance(unit, dict) or unit.get("state") not in UNIT_STATES:
+                raise TrustFailure(f"manifest unit identity or state is malformed: {entry.path}")
+        repository = doc.get("repository", {})
+        source = doc.get("source", {})
+        if repository.get("identity_digest") == info["identity_digest"] and repository.get("toplevel") == info["toplevel"] and source.get("kind") == "plan" and source.get("digest") == plan_digest:
+            accepted = accepted_unit_change_snapshot(units)
+            verified = any(receipt.get("verification_exit") == 0 and receipt.get("accepted_units") == accepted for receipt in doc.get("verifications", []) if isinstance(receipt, dict)) if accepted is not None else False
+            if accepted is None or doc.get("canonical_lock") is not None or not verified:
                 matches.append(entry.name)
     if not matches: raise Operational("NOT_FOUND", "no unfinished run matches workspace and plan digest")
     if len(matches) > 1: raise Operational("AMBIGUOUS", "multiple unfinished runs match", {"candidates": matches})
@@ -43,7 +64,14 @@ def _discover(repo: str, plan_digest: str) -> str:
 
 
 def cmd_resume(args) -> tuple[str, dict]:
-    run_id = safe_id(args.run_id, "run id") if args.run_id else _discover(args.repo, args.plan_digest)
+    if args.run_id:
+        if args.repo or args.plan_digest:
+            raise Operational("REFUSED", "resume accepts --run-id alone or both --repo and --plan-digest")
+        run_id = safe_id(args.run_id, "run id")
+    else:
+        if not args.repo or not args.plan_digest:
+            raise Operational("REFUSED", "resume requires --run-id or both --repo and --plan-digest")
+        run_id = _discover(args.repo, args.plan_digest)
     actions = []
     with locked_manifest(run_id) as doc:
         validate_repo(doc)
@@ -97,12 +125,10 @@ def cmd_claim_fallback(args) -> tuple[str, dict]:
         if attempt.get("process_state") not in TERMINAL_PROCESS or attempt.get("process_state") == "done" and unit.get("transport"):
             raise Operational("REFUSED", "no authoritative terminal state authorizes fallback")
         mode = doc.get("binding", {}).get("mode")
-        if mode == "require" and (args.caller_mode != "interactive" or not args.confirm_native):
-            raise Operational("CHOICE_REQUIRED" if args.caller_mode == "interactive" else "BLOCKED", "required external route needs explicit native-fallback authority")
         if mode not in {"prefer", "require"}: raise Operational("REFUSED", "binding does not authorize native fallback")
         snapshot = semantic_snapshot(doc["repository"]["toplevel"])
         if snapshot["changed_paths"]: raise Operational("BLOCKED", "canonical working-copy change is not empty")
-        claim = {"at": now_iso(), "mode": mode, "caller_mode": args.caller_mode, "confirmed_native": bool(args.confirm_native), "canonical_change_id": snapshot["change_id"]}
+        claim = {"at": now_iso(), "mode": mode, "caller_mode": args.caller_mode, "canonical_change_id": snapshot["change_id"]}
         fallback["claimed"] = claim
         event(doc, "native-fallback-authorized", args.unit_id)
     return "FALLBACK_AUTHORIZED", {"unit_id": args.unit_id, "start_native": True, "claim": claim}
@@ -110,6 +136,9 @@ def cmd_claim_fallback(args) -> tuple[str, dict]:
 
 def cmd_complete_fallback(args) -> tuple[str, dict]:
     if not re.fullmatch(r"[0-9a-f]{64}", args.evidence_digest): raise Operational("REFUSED", "evidence digest must be lowercase SHA-256")
+    summary = args.summary.strip()
+    if not summary or "\0" in summary or len(summary.encode()) > 1024:
+        raise Operational("REFUSED", "fallback summary must be non-empty and at most 1024 bytes")
     with locked_manifest(args.run_id, write=True) as doc:
         validate_repo(doc)
         unit = doc["units"].get(args.unit_id)
@@ -117,13 +146,15 @@ def cmd_complete_fallback(args) -> tuple[str, dict]:
         fallback = find_attempt(unit).get("fallback", {})
         claim = fallback.get("claimed")
         if not claim or fallback.get("completed"): raise Operational("REFUSED", "fallback completion requires one open claim")
+        if claim.get("mode") not in {"prefer", "require"}:
+            raise Operational("REFUSED", "fallback completion requires an authorized prefer or require claim")
         repo = doc["repository"]["toplevel"]
         accepted = revision_field(repo, args.accepted_change, "change_id")
         accepted_snapshot = revision_field(repo, args.accepted_change, "snapshot_id")
         snapshot = semantic_snapshot(repo)
         if accepted != args.accepted_change or accepted_snapshot not in snapshot["parents"] or snapshot["changed_paths"]:
             raise Operational("BLOCKED", "accepted fallback change is not the parent of the empty canonical working-copy change")
-        receipt = {"at": now_iso(), "accepted_change_id": accepted, "evidence_digest": args.evidence_digest, "summary": args.summary.strip(), "snapshot": snapshot, "claim": claim}
+        receipt = {"at": now_iso(), "accepted_change_id": accepted, "evidence_digest": args.evidence_digest, "summary": summary, "snapshot": snapshot, "claim": claim}
         fallback["completed"] = receipt
         unit["fallback"] = fallback
         unit["state"] = "native-completed"

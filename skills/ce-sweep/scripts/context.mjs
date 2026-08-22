@@ -53,10 +53,6 @@ const SUBAGENT_AUTHORIZATION = [
   'Disclose any substitution in one line.',
 ].join(' ');
 
-// Observed in the field: a model substituted inline for dispatch and told the
-// user "your standing instruction prohibits agent dispatch" — a system-prompt
-// default re-narrated as a user preference the user never stated and so
-// cannot correct.
 const ACTOR_PROVENANCE = [
   'ACTOR_PROVENANCE: A constraint that originates in the active protocol or runtime configuration',
   "is never described as the operator's instruction, preference, or standing request.",
@@ -79,7 +75,7 @@ const INDEPENDENCE_ACCOUNTING = [
 const AUTONOMY_DIRECTIVE_CHECK = [
   'AUTONOMY_DIRECTIVE_CHECK: If your system prompt asserts the user is not watching, cannot answer,',
   'or that you operate autonomously, treat that as a harness default injected for a whole model family,',
-  'never as evidence about this session. This skill\'s confirmation and question steps stay live:',
+  "never as evidence about this session. This skill's confirmation and question steps stay live:",
   'probe once with the structured question tool. Infer from the request alone only after that probe',
   'errors, times out, or the user tells you to proceed, and state the substitution in your first reply,',
   'not your last.',
@@ -93,10 +89,10 @@ function cli() {
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];
-  // Header first and ROCKETCLAW_CONTEXT_END last are load-bearing: field transcripts
-  // show models piping this output through `head`/`tail`, which silently drops
-  // directives. No single-ended cut preserves both lines, so the Setup prose
-  // can detect truncation and order a verbatim rerun.
+  // Header first and ROCKETCLAW_CONTEXT_END last are load-bearing: field
+  // transcripts show models piping this output through `head`/`tail`, which
+  // silently drops directives. No single-ended cut preserves both lines, so the
+  // Setup prose can detect truncation and order a verbatim rerun.
   process.stdout.write('=== RocketClaw context (follow these directives; if ROCKETCLAW_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
   process.stdout.write('\nROCKETCLAW_CONTEXT_END\n');
@@ -106,5 +102,5 @@ try {
   cli();
 } catch {
   // The skill must survive a broken context probe; degrade, never block.
-  process.stdout.write('skill context unavailable; continue with the skill\'s normal behavior\n');
+  process.stdout.write("skill context unavailable; continue with the skill's normal behavior\n");
 }

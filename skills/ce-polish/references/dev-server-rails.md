@@ -1,6 +1,6 @@
 # Rails dev-server recipe (auto-detect fallback)
 
-Loaded when `detect-project-type.sh` returns `rails` and there is no `.claude/launch.json` to consult.
+Loaded when `detect-project-type.sh` returns `rails` and the startup tuple still lacks a command.
 
 ## Signature
 
@@ -23,9 +23,9 @@ Default: `3000`. Overrides follow the cascade in `references/dev-server-detectio
 3. `.env` / `.env.development` `PORT=<n>`
 4. a dev-server port explicitly stated in the project's active instructions in context (not grepped from instruction files)
 
-## Stub generation for `.claude/launch.json`
+## Stub generation for `.rocketclaw/launch.json`
 
-When the user accepts "Save this as `.claude/launch.json`?", emit the Rails stub from `launch-json-schema.md`:
+When the user accepts "Save this as `.rocketclaw/launch.json`?", emit the Rails stub from `launch-json-schema.md`:
 
 ```json
 {
@@ -47,4 +47,4 @@ If the cascade resolved a non-3000 port, substitute it in the stub's `port` fiel
 
 - **Bundler path:** some machines require `bundle exec bin/dev`. If `bin/dev` fails with a load-path error, fall back to `bundle exec bin/dev`.
 - **Foreman vs overmind:** `Procfile` vs `Procfile.dev` often both exist. Rails' `bin/dev` resolves to `Procfile.dev`; if the project uses `overmind` explicitly, prefer `overmind start -f Procfile.dev` (see `dev-server-procfile.md`).
-- **SSL dev server:** `rails s --ssl` serves over `https://`, but the reachability probe, browser handoff, and printed URL use `http://localhost:<port>`, and `.claude/launch.json` has no scheme or URL field. The probe therefore fails against an HTTPS-only server. That failure is non-fatal: show the log, ask what to do, and open `https://localhost:<port>` to continue when directed. Setting `port` explicitly in `.claude/launch.json` still targets the right port.
+- **SSL dev server:** `rails s --ssl` serves over `https://`. Treat server output or a user correction as evidence that replaces the default HTTP candidate, then verify that HTTPS URL against the selected instance before handoff. The launch configuration needs no URL field; an explicit `port` still helps identify the intended endpoint without locking its scheme.

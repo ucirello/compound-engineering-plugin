@@ -12,7 +12,7 @@ If no `<standards-paths>` block is present (standalone usage), discover the path
 2. For each changed file, check ancestor directories up to the workspace root for standards files. Root instructions govern the full workspace; nested instructions govern their subtree.
 3. Read each relevant standards file found.
 
-In either case, identify which sections apply to the changed files. A change-description convention applies only when the change composes, edits, validates, or recommends a description. At such a site, require local-first `jj log` convention discovery, current syntax from `jj help`, compatible Go quality, no fixed message, and neutral revision placeholders. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+In either case, identify which sections apply to the changed files. A change-description convention applies only when the change composes, edits, validates, or recommends a description. At such a site, require the project's active instructions and description syntax observed at runtime in `jj log` to win, resolve current syntax from `jj help`, and use neutral revision and description placeholders. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content.
 
 ## What you're hunting for
 

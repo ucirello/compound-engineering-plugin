@@ -4,18 +4,7 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Run the analyzer under the Jujutsu workspace's `.tmp/rocketclaw-riffrec-quick/` directory, falling back to the current directory's local `.tmp/rocketclaw-riffrec-quick/`, so nothing enters the durable artifact tree (`SKILL_DIR` is the directory containing the `ce-riffrec-feedback-analysis` SKILL.md; set it in the same command because shell state does not persist between Bash calls):
-
-   ```bash
-   SKILL_DIR="<absolute path of the directory containing the ce-riffrec-feedback-analysis SKILL.md>";
-   JJ_ROOT="$(jj root 2>/dev/null)" || JJ_ROOT="$PWD";
-   TMP_ROOT="$JJ_ROOT/.tmp/rocketclaw-riffrec-quick";
-   mkdir -p "$TMP_ROOT";
-   attempt=0; while ! OUTPUT_DIR="$TMP_ROOT/run-$$-$attempt" || ! mkdir "$OUTPUT_DIR" 2>/dev/null; do attempt=$((attempt + 1)); [ "$attempt" -lt 128 ] || exit 1; done;
-   python "$SKILL_DIR/scripts/analyze_riffrec_zip.py" /path/to/input --output-dir "$OUTPUT_DIR"
-   ```
-
-   Capture the printed output directory; later steps read from it.
+1. Create `OUTPUT_DIR` under the Jujutsu workspace's `.tmp/rocketclaw-riffrec-quick/` directory, falling back to the current directory's local `.tmp/rocketclaw-riffrec-quick/`. Reserve a unique run directory with `mkdir`, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
 
 2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 

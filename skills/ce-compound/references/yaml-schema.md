@@ -1,6 +1,6 @@
 # YAML Frontmatter Schema
 
-`schema.yaml` in this directory is the canonical contract for `<root>/solutions/` frontmatter written by this workflow.
+`schema.yaml` in this directory is the canonical contract for `.context/solutions/` frontmatter written by this workflow.
 
 Use this file as the quick reference for:
 - required fields
@@ -13,7 +13,7 @@ Use this file as the quick reference for:
 
 `component` and `root_cause` are open vocabulary, and the category directories are a default layout, not a fixed one. Repos that already hold learnings usually have their own self-consistent values and directory names, and their retrieval (agent instructions, greps, tooling) is keyed on those. A doc written to this file's defaults instead of the repo's vocabulary is a doc the repo cannot find, which defeats the point of writing it.
 
-So, before classifying: when `<root>/solutions/` already contains docs, sample their frontmatter (`component`, `root_cause`, `problem_type`, `tags`) and directory names for this area. For `component`, use the value the corpus's existing docs use for this area (the component/directory grouping this change belongs to). For `root_cause`, match by the cause itself rather than the area: use the value existing docs use for this same underlying cause, wherever in the corpus those docs live — an area's typical root_cause does not carry over to a doc whose verified cause is different. For either field, when the corpus has more than one spelling for the same area (component) or the same cause (root_cause), use the spelling the most docs use (tie: the most recently dated doc); use the schema's suggested default only when no existing doc covers the area (component) or names the cause (root_cause). Reuse corpus values as spelled — do not coin a near-synonym of a value the corpus already uses. Directory choice is a separate condition: file the doc in the existing directory that covers this area; use the Category Mapping below only when no existing directory covers it. `problem_type`, `severity`, and `resolution_type` remain closed enums (`problem_type` drives track selection).
+Before classifying, sample `.context/solutions/` frontmatter and directory names. Match `component` by area and `root_cause` by the verified cause, using the corpus's dominant spelling. Use schema suggestions only when the corpus has no match. File into the existing directory for the area; use Category Mapping only when none exists. Closed enums remain schema-controlled.
 
 ## Tracks
 
@@ -67,25 +67,25 @@ Docs created before the track system may have `symptoms`/`root_cause`/`resolutio
 
 ## Category Mapping
 
-Default layout for a repo with no existing learnings. When `<root>/solutions/` already has an established directory taxonomy, place the doc in the existing directory that covers this area (the corpus-first rule above) rather than creating a new directory from this table that nothing else uses.
+Default layout when `.context/solutions/` has no established taxonomy. Existing corpus directories win.
 
-- `build_error` -> `<root>/solutions/build-errors/`
-- `test_failure` -> `<root>/solutions/test-failures/`
-- `runtime_error` -> `<root>/solutions/runtime-errors/`
-- `performance_issue` -> `<root>/solutions/performance-issues/`
-- `database_issue` -> `<root>/solutions/database-issues/`
-- `security_issue` -> `<root>/solutions/security-issues/`
-- `ui_bug` -> `<root>/solutions/ui-bugs/`
-- `integration_issue` -> `<root>/solutions/integration-issues/`
-- `logic_error` -> `<root>/solutions/logic-errors/`
-- `developer_experience` -> `<root>/solutions/developer-experience/`
-- `workflow_issue` -> `<root>/solutions/workflow-issues/`
-- `best_practice` -> `<root>/solutions/best-practices/`
-- `documentation_gap` -> `<root>/solutions/documentation-gaps/`
-- `architecture_pattern` -> `<root>/solutions/architecture-patterns/`
-- `design_pattern` -> `<root>/solutions/design-patterns/`
-- `tooling_decision` -> `<root>/solutions/tooling-decisions/`
-- `convention` -> `<root>/solutions/conventions/`
+- `build_error` -> `.context/solutions/build-errors/`
+- `test_failure` -> `.context/solutions/test-failures/`
+- `runtime_error` -> `.context/solutions/runtime-errors/`
+- `performance_issue` -> `.context/solutions/performance-issues/`
+- `database_issue` -> `.context/solutions/database-issues/`
+- `security_issue` -> `.context/solutions/security-issues/`
+- `ui_bug` -> `.context/solutions/ui-bugs/`
+- `integration_issue` -> `.context/solutions/integration-issues/`
+- `logic_error` -> `.context/solutions/logic-errors/`
+- `developer_experience` -> `.context/solutions/developer-experience/`
+- `workflow_issue` -> `.context/solutions/workflow-issues/`
+- `best_practice` -> `.context/solutions/best-practices/`
+- `documentation_gap` -> `.context/solutions/documentation-gaps/`
+- `architecture_pattern` -> `.context/solutions/architecture-patterns/`
+- `design_pattern` -> `.context/solutions/design-patterns/`
+- `tooling_decision` -> `.context/solutions/tooling-decisions/`
+- `convention` -> `.context/solutions/conventions/`
 
 ## Validation Rules
 

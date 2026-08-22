@@ -7,13 +7,22 @@ argument-hint: "[PR number, bookmark/revision, or blank for current change] [--p
 
 # Dogfood
 
-Act as a QA engineer who dogfoods the **active jj change or selected revision** end-to-end: understand every change, test every change in a real browser as a user would, and fix what's broken — autonomously — until the target is genuinely ready.
+Act as a QA engineer who dogfoods the **active jj change or selected revision** end-to-end, autonomously, until the target is genuinely ready.
 
-This is **diff-scoped**, not whole-app exploration. You test what *this target* introduced or modified versus its base revision.
+**Outcome:** every user-visible change the target introduced has been driven in a real browser along its whole journey, judged for correctness and for how it feels to the product's personas, with small breakages fixed, regression-tested, and finalized as described jj changes. **Done:** every matrix scenario is `Pass`, `Fixed`, `Skipped`, or in a terminal `Blocked` state; the project's automated suite has been run once and its result recorded; and the report at `<root>/dogfood-reports/<YYYY-MM-DD>-<target-slug>-dogfood.md` is finalized against its template. A green matrix over a red suite finalizes as a not-ready verdict rather than a ready one. Chasing that suite green is not this run's job.
 
-## Use `agent-browser` Only For Browser Automation
+This is **diff-scoped**, not whole-app exploration. Test what the target introduced or modified versus its base revision.
 
-This workflow drives the browser exclusively through the `agent-browser` CLI. Do not use Chrome MCP tools (`mcp__claude-in-chrome__*`), any browser MCP integration, or other built-in browser-control tools. If the platform offers multiple ways to control a browser, always choose `agent-browser`. Use the direct binary, never `npx agent-browser` (the direct binary uses the fast Rust client).
+**Read `references/phases.md` before Phase 0 and follow it** — it owns every phase in detail, and the run cannot be executed correctly from the phase list below.
+
+## Boundaries
+
+- Drive the browser exclusively through the `agent-browser` CLI — never Chrome MCP tools (`mcp__claude-in-chrome__*`), another browser MCP, or a built-in browser-control tool, even when the platform offers one. Use the direct binary, never `npx agent-browser`.
+- Never dogfood `trunk()` on a bookmark/revision or blank target: there is no diff. A PR target always has a declared base, so it remains diffable even when its head bookmark has a trunk-like name.
+- A numeric target stays a PR identity through isolation and revision resolution; never collapse it to an ambiguous head bookmark.
+- Never move the primary workspace out from under the user. This skill decides only whether to offer isolation — no for a blank/current-change target, yes for a PR or another revision — and `ce-worktree` owns the workspace mechanics and verdict. On a declined offer, create or edit a working-copy change at the target only after confirming if moving the current working copy would disturb active work.
+- Screenshots and other transient artifacts go under the current jj workspace's `.tmp/dogfood/<run-id>/`, with `.tmp/dogfood/<run-id>/` under the current directory as the fallback. Use a collision-resistant run ID, clean it when no longer needed, and copy an artifact elsewhere only to embed it in the report.
+- Auto-fix only what is small, well-understood, and low-risk. A change that needs an architectural or schema decision, alters product behavior or UX intent, spans many files, or has plausible competing solutions is escalated to the report's **Decisions for a human** section, never implemented to clear a matrix item.
 
 ## Prerequisites
 
@@ -30,158 +39,24 @@ This workflow drives the browser exclusively through the `agent-browser` CLI. Do
 
 ## Artifact Root
 
-This skill writes dogfood reports under `<root>/dogfood-reports/` and personas under `<root>/personas/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a workspace-temporary or no-repo flow -- skips it.
+Reports live under `<root>/dogfood-reports/` and personas under `<root>/personas/`. Resolve `<root>` the first time you compose any `<root>/` path, whether reading or writing, and never before. A run that composes none skips it.
 
-<!-- ce-docs-root:start -->
+<!-- rocketclaw-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** the project's configured `docs_root` from its active instructions and conventions already in your context (`<repo-root>` = `jj root`). Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+<!-- rocketclaw-docs-root:end -->
 
-## Reusing Existing Skills
+## Delegation
 
-`ce-dogfood` is an orchestrator. Prefer delegating to the existing routed skills over re-deriving their behavior:
+`ce-dogfood` is an orchestrator: prefer an existing routed skill over re-deriving its behavior. Isolate a PR or selected revision with `ce-worktree`; take a non-obvious root cause to `ce-debug`; describe each logical jj fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
 
-| When | Skill | Why |
-|------|-------|-----|
-| Phase 0 isolation | `ce-worktree` | Run the dogfood in an isolated jj workspace so the primary workspace stays clean. |
-| A failure's root cause is non-obvious | `ce-debug` | Systematic root-cause analysis instead of guess-and-check. |
-| Describing each fix | `ce-commit` | Consistent, well-scoped jj change descriptions. |
-| A bug reveals a reusable lesson | `ce-compound` | Capture the learning so the team compounds knowledge. |
+## Phase order
 
-## Workflow
+Scope -> analyze the diff -> map the flows -> derive the matrix -> serve -> execute -> fix loop -> report. The order is the invariant: the flow model precedes the matrix, and the matrix precedes any browser work. Each phase's conditions are in `references/phases.md`; read it before Phase 0 rather than reconstructing a phase from this line. Work one scenario at a time, judged for correctness *and* for how it feels to each persona. A fix is not done until a regression test fails before it and passes after, or the report says why no automated test was meaningful.
 
-```
-0. Scope        Pick the target revision, get onto it (offer a workspace), never edit the trunk
-1. Analyze      Diff target vs base, understand every change
-2. Map+Matrix   Map user flows as Mermaid flowcharts, then derive the test matrix as a task list
-3. Serve        Detect port, start dev server, open agent-browser
-4. Execute      Work the matrix one item at a time with agent-browser
-5. Fix loop     On failure: fix -> add regression test -> describe change -> continue
-6. Report       Write durable doc to <root>/dogfood-reports/ (flows, matrix, fixes, learnings, verdict)
-```
+**Checkpoint, not a final write.** Create the report from `references/dogfood-report-template.md` as soon as the matrix exists, with every scenario at `Pending`, and update it after each scenario is judged and each fix change is finalized. `<target-slug>` is the selected bookmark, revision label, or short change ID lowercased, with every run of non-alphanumeric characters collapsed to one `-`. Find a prior run by globbing `<root>/dogfood-reports/*-<target-slug>-dogfood.md`. The task list is session-scoped, but the report on disk is what a later run or teammate resumes from, so an interrupted run must leave a template-shaped checkpoint rather than a bare matrix.
 
-### Phase 0: Scope and Get on the Right Revision
-
-Parse the arguments you were invoked with: a PR number, a jj bookmark/revision, or blank (use the current change `@`). Strip `--port PORT` if present.
-
-1. **Identify the target without moving the working copy.** Preserve a PR number as PR identity and use its base/head metadata to resolve the corresponding jj remote bookmarks after `jj git fetch`; do not reduce a fork PR to an ambiguous bare bookmark. A bookmark/revision target resolves through jj revset syntax. A blank target is `@`. Record the resolved target revision, display label, and base revision; for non-PR targets the base is `trunk()`.
-2. **Refuse a non-PR target that resolves to `trunk()`.** There is no target diff to dogfood. A PR remains diffable against its declared base even when its head bookmark has a trunk-like name.
-3. **Decide isolation by what you're testing; let `ce-worktree` own workspace mechanics.** Do not re-derive workspace detection or creation here. For a blank target, dogfood the current workspace in place because the current jj change is already the target. For a PR or another revision, offer isolation with the platform's blocking question tool. On **yes**, invoke `ce-worktree` with the resolved jj target revision and act on its verdict. On **no**, create or edit a jj working-copy change at the target only after confirming if moving the current working copy would disturb active work; never mutate the primary workspace silently.
-4. **Resume if a prior run exists.** Look for an existing report at `<root>/dogfood-reports/*-<target-slug>-dogfood.md` (see the target-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, re-hydrate the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
-
-### Resumability (stop and return at any point)
-
-This workflow is designed to be interrupted and resumed. Two pieces of state make that safe:
-
-- **The task list** (the harness's task tool — `TaskCreate`/`TaskUpdate` on Claude Code, `update_plan` on Codex, or the equivalent elsewhere) is the live to-do — one task per matrix scenario. Mark each `in_progress` when you start it and `completed` only when it genuinely passes.
-- **The report doc** at `<root>/dogfood-reports/<YYYY-MM-DD>-<target-slug>-dogfood.md` is the durable checkpoint that survives across sessions. `<target-slug>` is the selected bookmark, revision label, or short change ID lowercased with every run of non-alphanumeric characters collapsed to a single `-` (e.g. `feature/Foo_Bar` -> `feature-foo-bar`). **Create it as soon as the matrix exists (end of Phase 2) by instantiating `references/dogfood-report-template.md`** (read that template now if you haven't) so the checkpoint carries the template-owned section shape from the start — then fill in every scenario at `Pending`, and **update it incrementally** — after each scenario is judged and after each fix change is finalized — not only at the end. An interrupted run must leave a template-shaped checkpoint, not a bare matrix.
-
-Because tasks are session-scoped but the report doc is on disk, the report is the source of truth for resuming. Always keep the two in sync so a later run (or a teammate) can pick up exactly where this one stopped.
-
-### Phase 1: Analyze Changes
-
-Use the resolved base and target revisions from Phase 0, then read the complete jj diff. `trunk()` supplies the configured trunk for non-PR targets; a PR uses its declared base remote bookmark.
-
-```bash
-jj diff --from '<base-revision>' --to '<target-revision>' --name-only
-jj diff --from '<base-revision>' --to '<target-revision>'
-```
-
-Build a mental model of every change: new features, modified behavior, new routes/views/components, touched data flows. Note anything that produces user-visible behavior — that is what the matrix must cover.
-
-**Ground in the product's personas and vision.** Look for persona and vision context so flows can be judged from real users' eyes, not just "does it work." Check, in order: `STRATEGY.md` (its "Users" section — "Who it's for" in older files — names the primary persona and their job-to-be-done), `PRODUCT.md` (its "Users" section), `VISION.md`, and any persona docs (e.g. `<root>/personas/`, `PERSONAS.md`). Capture the 1-3 primary personas and what each cares about. If none exist, infer a reasonable primary persona from the product and the diff, and say so in the report.
-
-### Phase 2: Map the Flows, Then Build the Matrix
-
-Do not jump straight to a flat list of pages. First **understand the user flows the diff touches**, then derive the matrix from them. A matrix built without a flow model tests pages in isolation and misses the journey — the email that "sends" but lands in the wrong thread.
-
-#### 2a. Map the user flows (required)
-
-For every user-visible change, trace the **complete journey** end to end and draw it. Map each flow as a **Mermaid `flowchart`** so the journey is explicit and reviewable before any testing happens — entry point, each user action, branch points (success / validation error / empty / permission-denied), side effects (emails, jobs, notifications), and the true end state.
-
-> Email example: it's not enough that "an email sends." Does it go to the *right* recipient? When the user clicks through, does the app land on and scroll to the *right* message? Does the content make sense? Does the whole flow align with the product's vision and UX? The flowchart must carry the click-through and its destination, not stop at "email sent."
-
-```mermaid
-flowchart TD
-    A[User opens /threads] --> B[Clicks 'Reply']
-    B --> C{Form valid?}
-    C -->|No| D[Inline validation error shown]
-    C -->|Yes| E[Reply saved]
-    E --> F[Notification email sent to thread participants]
-    E --> G[UI scrolls to new reply, focus on it]
-    F --> H[Recipient clicks email link]
-    H --> I{Lands on correct thread + scrolls to the reply?}
-```
-
-Produce one flowchart per distinct journey, scaled to the diff: a one-route or copy-only change gets a single small flowchart, a multi-step feature gets several. Cover the happy path **and** the branch points (error, empty, boundary, permission). Mapping the flows before the matrix is never skipped — these diagrams ARE the understanding; they become the spine of the matrix and belong in the final report.
-
-#### 2b. Derive the matrix from the flows
-
-Walk each flowchart and turn every node and branch into one or more test scenarios. Read `references/test-matrix-taxonomy.md` for the full set of dimensions (journeys, functional checks, experiential checks, edge/error/empty states, accessibility, responsiveness). Cover both **functional** ("does it work?") and **experiential** ("does it feel right and align with the product?").
-
-Map changed files to concrete routes (views -> their pages, components -> pages rendering them, layouts -> all pages, stylesheets -> visual regression on key pages) and attach those routes to the flows that exercise them.
-
-**Load the matrix as a task list** (the harness's task tool, as above), one task per scenario, so progress is tracked and nothing is skipped. Order tasks by flow, following the flowcharts, not by file.
-
-### Phase 3: Detect Port and Start the Dev Server
-
-Determine the port (priority: explicit `--port` > a port explicitly stated in your in-context project instructions > `package.json` dev script > `.env*` `PORT=` > default `3000`). If a server is already listening on it, reuse it. Otherwise start the project's dev command (`bin/dev`, `rails server`, `npm run dev`, etc.) in the background and poll the port until it accepts connections before opening the browser. This skill is hands-off, so start the server automatically without asking — do not block on a confirmation.
-
-```bash
-agent-browser open "http://localhost:${PORT}"
-agent-browser snapshot -i
-```
-
-### Phase 4: Execute the Matrix
-
-Work the task list **one item at a time**. For each scenario, mark the task `in_progress`, then:
-
-1. **Document** what you're testing (the journey and the expected outcome).
-2. **Drive it** with agent-browser — navigate, snapshot for interactive refs, click, fill, submit, follow the journey to its real end state:
-
-   ```bash
-   agent-browser open "http://localhost:${PORT}/<route>"
-   agent-browser snapshot -i
-   agent-browser click @e1
-   agent-browser fill @e2 "value"
-   agent-browser screenshot "<workspace-root>/.tmp/dogfood/<run-id>/<scenario>.png"
-   agent-browser errors      # check console/page errors
-   ```
-
-   Write transient screenshots under `$(jj workspace root)/.tmp/dogfood/<run-id>/`. If the jj workspace root cannot be resolved or that directory cannot be created, use the current directory's `.tmp/dogfood/<run-id>/` instead. Keep run IDs collision-resistant, clean the run directory when it is no longer needed, and only copy a screenshot into the report's location if you intend to embed it in the final report.
-
-3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product?
-4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity.
-5. **Record** pass/fail plus any paper cuts, with specifics. Mark the task `completed` only when it genuinely passes. Paper cuts do not block a `Pass`, but a **sharp** paper cut (one severe enough to fix now) is routed into the Phase 5 fix loop just like a failure — apply the same auto-fix-vs-escalate judgment to it. Log the rest in the report.
-
-**External-interaction flows** (OAuth, real email delivery, payments, SMS) can't be fully driven headlessly — pause, ask the user to verify that leg, and mark the scenario `Blocked (needs human verify)` until they confirm. Then continue.
-
-### Phase 5: Fix Loop (Autonomous)
-
-When a scenario fails — or a passing scenario carries a sharp paper cut worth fixing now — **fix it and prove it**, but first decide whether the fix is yours to make autonomously or a human's to decide.
-
-**Judge the size of the fix before touching code.** Auto-fix when the change is small, well-understood, and low-risk: a clear bug with an obvious correct fix, contained to a few files, no schema/architecture/product trade-off. **Do not auto-fix** when the change is large or ambiguous — it requires an architectural or schema decision, changes product behavior or UX intent, spans many files, has plausible competing solutions, or you're not confident the "right" answer is unambiguous. Forcing a big judgment call autonomously is worse than escalating it.
-
-**For autonomous fixes:**
-
-1. Investigate the root cause. If it's non-obvious, use `ce-debug`.
-2. Apply the fix in the code.
-3. **Add an automated regression test** that fails before the fix and passes after, so the bug can't return. This is the default for behavioral and code bugs. When an automated test is genuinely impractical — a pure copy, spacing, or visual fix with no behavioral assertion to make — substitute a documented browser-replay or screenshot check and **state in the report why no automated test was meaningful**. Do not invent a hollow test just to satisfy the step.
-4. Finalize one logical jj change per fix and give it a clear description using `ce-commit` with the jj provider.
-5. Re-run the failing scenario in the browser to confirm it now passes; then continue the matrix.
-6. If the bug carried a reusable lesson, capture it with `ce-compound`.
-
-**For changes too big to make autonomously:** do not implement. Record it in the report's **Decisions for a human** section with: what's broken, why it's not a safe autonomous fix, the options you see (with trade-offs), and your recommendation. Mark the scenario `Blocked (human decision)` in the matrix, then continue with the rest. Never make a large, irreversible, or product-altering change just to clear a matrix item.
-
-Keep iterating until every task is `completed` or in a terminal `Blocked` state — `Blocked (human decision)` (escalated here) or `Blocked (needs human verify)` (set in Phase 4 for external-interaction legs). Both are terminal for the loop: they wait on a person, so do not re-queue them. Re-test anything a fix might have affected (watch for regressions in adjacent journeys).
-
-**Before declaring the target ready, run the project's automated test suite once** (the new regression tests plus everything that already exists). Discover the test command from the project's active instructions and conventions already in your context — do not assume a specific runner. Record the result in the report; a green matrix with a red suite is not "ready."
-
-### Phase 6: Write the Report Artifact
-
-The report doc was created at the end of Phase 2 and updated incrementally throughout (see Resumability). When the matrix is green (or every remaining item is explicitly blocked), **finalize** it at `<root>/dogfood-reports/<YYYY-MM-DD>-<target-slug>-dogfood.md` in the repo under test, then surface a short summary in chat with the file path.
-
-**Finalize against `references/dogfood-report-template.md`** — the same template the Phase 2 checkpoint was instantiated from, which owns the required sections and what each must carry. Confirm every template-owned section is present and complete; do not reconstruct the section list from memory, as that drifts from the template. Carry forward the cross-phase obligations this skill produced: the Mermaid flowcharts from Phase 2a, a matrix row per scenario with its jj change ID, each fix's root cause and the regression test added (or why none was meaningful), paper cuts attributed by persona, learnings worth feeding to `ce-compound`, and a final readiness verdict that records the Phase 5 automated-suite result.
+**Terminal states.** `Blocked (needs human verify)` and `Blocked (human decision)` both wait on a person, and each ends that scenario, not the run: continue the rest of the matrix, and never silently re-queue a blocked scenario, on this run or on resume. The phase that sets the state owns how the person is reached.

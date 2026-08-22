@@ -1,111 +1,21 @@
 ---
 name: ce-polish
-description: "Start the dev server, inspect the feature in browser, and iterate on polish."
+description: "Polish a working feature through user-directed live browser feedback. Use when a functional feature needs focused UX refinement before shipping."
 disable-model-invocation: true
 argument-hint: "[PR number, bookmark/revision, or blank for current change]"
 ---
 
 # Polish
 
-Start the dev server, open the feature in a browser, and iterate. You use the feature, say what feels off, and fixes happen.
+Put a working feature in front of the user and turn their live observations into focused UX fixes on the running page.
 
-## Phase 0: Get on the right change
+**Done:** the user ends the polish loop, every requested fix is reflected in the live feature or reported as blocked, and the in-scope changes are saved in the current Jujutsu change. A server or workspace blocker also ends the run when it is reported with the evidence needed to resume.
 
-1. If a PR number, bookmark, or revision was provided, resolve it to a Jujutsu revision. Reuse an existing workspace already editing it; otherwise edit it in the current workspace.
-2. If blank, use the current change (`@`).
-3. Verify the current change is mutable and is not `trunk()`.
+**Boundaries:** the user drives what to inspect and change; do not invent an autonomous checklist or expand into general QA. Never work on `trunk()`. This workflow may edit and describe the requested polish change, but it never pushes or opens a PR.
 
-## Phase 1: Start the dev server
+## Run
 
-The scripts below ship in this skill's `scripts/` directory. The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each command must carry it); replace the `<absolute path …>` placeholder with the directory you loaded this `ce-polish` SKILL.md from before running.
-
-### 1.1 Check for `.claude/launch.json`
-
-```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/read-launch-json.sh"
-```
-
-If it finds a configuration, use it — the user already told us how to start the project.
-
-### 1.2 Auto-detect (when no launch.json)
-
-Identify the framework:
-
-```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/detect-project-type.sh"
-```
-
-Route by type to the matching recipe reference for start command and port defaults:
-
-| Type | Recipe |
-|------|--------|
-| `rails` | `references/dev-server-rails.md` |
-| `next` | `references/dev-server-next.md` |
-| `vite` | `references/dev-server-vite.md` |
-| `nuxt` | `references/dev-server-nuxt.md` |
-| `astro` | `references/dev-server-astro.md` |
-| `remix` | `references/dev-server-remix.md` |
-| `sveltekit` | `references/dev-server-sveltekit.md` |
-| `procfile` | `references/dev-server-procfile.md` |
-| `unknown` | Ask the user how to start the project |
-
-For framework types that need a package manager, run the resolver and substitute the result into the start command:
-
-```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/resolve-package-manager.sh"
-```
-
-Resolve the port:
-
-```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/resolve-port.sh" --type <type>
-```
-
-### 1.3 Start the server
-
-Start the dev server in the background. Store its log under `<jj-workspace-root>/.tmp/`; if `jj root` cannot resolve a workspace root, use `.tmp/` under the current project directory. Create the directory if needed and use a per-run unique log filename without an OS-global temporary location or API. Probe `http://localhost:<port>` for up to 30 seconds. If it doesn't come up, show the last 20 lines of the log and ask the user what to do.
-
-### 1.4 Open in browser
-
-Load `references/ide-detection.md` for the env-var probe table. Open the browser using the IDE's mechanism (Claude Code → `open`, Cursor → Cursor browser, VS Code → Simple Browser).
-
-Tell the user:
-```
-Dev server running on http://localhost:<port>
-Browse the feature and tell me what could be better.
-```
-
-## Phase 2: Iterate
-
-This is the core loop. The user browses the feature and tells you what to improve. You fix it. Repeat until they're happy.
-
-- When the user describes something to fix → make the change, the dev server hot-reloads
-- When the user asks to check something → use a browser-automation capability to screenshot or inspect the page; prefer `agent-browser` if it's installed, otherwise use whatever the host exposes
-- When the user says they're done → describe the current Jujutsu change and stop. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Validate the description against those standards, then apply it with `jj describe -m "<description>"`.
-
-No checklist. No envelope. Just conversation.
-
-## References
-
-Reference files (loaded on demand):
-- `references/launch-json-schema.md` — launch.json schema + per-framework stubs
-- `references/ide-detection.md` — host IDE detection and browser-handoff
-- `references/dev-server-detection.md` — port resolution documentation
-- `references/dev-server-rails.md` — Rails dev-server defaults
-- `references/dev-server-next.md` — Next.js dev-server defaults
-- `references/dev-server-vite.md` — Vite dev-server defaults
-- `references/dev-server-nuxt.md` — Nuxt dev-server defaults
-- `references/dev-server-astro.md` — Astro dev-server defaults
-- `references/dev-server-remix.md` — Remix dev-server defaults
-- `references/dev-server-sveltekit.md` — SvelteKit dev-server defaults
-- `references/dev-server-procfile.md` — Procfile-based dev-server defaults
-
-Scripts (invoked via `bash "$SKILL_DIR/scripts/<name>"` — see Phase 1 for `SKILL_DIR`):
-- `scripts/read-launch-json.sh` — launch.json reader
-- `scripts/detect-project-type.sh` — project-type classifier
-- `scripts/resolve-package-manager.sh` — lockfile-based package-manager resolver
-- `scripts/resolve-port.sh` — port resolution cascade
+1. **Get the live page ready.** Read `references/run.md` before resolving the requested revision or starting anything. It owns existing-workspace safety, dev-server discovery, the bundled-script calls, reachability, and the browser handoff.
+2. **Wait for observations.** Tell the user where the server is running and ask what could be better. Do not start a review pass while they browse.
+3. **Iterate.** For each requested change, inspect only as needed, edit the in-scope surface, and let hot reload update the page. When the user asks you to inspect the result, use a browser capability available in the active harness; if none exists, ask them to describe what they see.
+4. **Close locally.** When the user says they are done, describe the current Jujutsu change and stop. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Validate the description against those standards, then apply it with `jj describe -m "<description>"`. Report the current change, the still-running server URL, and any residual blocker.

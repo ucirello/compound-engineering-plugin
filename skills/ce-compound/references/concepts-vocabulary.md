@@ -1,6 +1,6 @@
-# CONCEPTS.md vocabulary rules
+# `.context/CONCEPTS.md` vocabulary rules
 
-`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and the project's instructions can cite without redefinition. It lives at the workspace root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
+`.context/CONCEPTS.md` defines words with project-specific meaning, providing vocabulary that `.context/solutions/` and project instructions can cite without redefinition. Terms enter through accretion and seeding, and the file is created when either path first produces a qualifying entry.
 
 ## How terms enter: accretion and seeding
 
@@ -16,7 +16,7 @@ Define the core domain nouns the area's **declared domain model** exposes that m
 ### Scope of a seed
 
 - A **scoped run** — a learning capture, or a refresh narrowed to an area — seeds only that area's core nouns, and defines only terms it actually investigated against code. It does not reach for repo-wide nouns it never touched.
-- A **repo-wide bootstrap** — an explicit "create CONCEPTS.md" request — seeds the whole project's declared domain model. This is the only path that produces a coherent "what is this project" glossary; a scoped run cannot, and should not pretend to.
+- A **repo-wide bootstrap** - an explicit request to create `.context/CONCEPTS.md` - seeds the whole declared domain model. A scoped run must not pretend to provide that map.
 
 ## Be opinionated
 
@@ -32,7 +32,7 @@ Each entry teaches its concept to a reader with no access to anything else — n
 - Links to PRs, issues, channels, or roadmap milestones
 - Version-specific claims ("currently uses X; migrating to Y")
 
-Cross-references between entries within `CONCEPTS.md` are fine — they resolve internally. General programming vocabulary (caches, queues, jobs, sessions) and everyday domain English need no redefinition either. But if an entry leans on another *project-specific* term to make sense, that term must be defined here too — an undefined project-specific sibling is itself a candidate to add.
+Cross-references within `.context/CONCEPTS.md` are valid. If an entry depends on another project-specific term, define that term too.
 
 ## What earns a slot
 

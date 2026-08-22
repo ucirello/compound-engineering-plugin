@@ -1,6 +1,6 @@
-# `.claude/launch.json` schema
+# `.rocketclaw/launch.json` schema
 
-Polish reads `.claude/launch.json` at the Jujutsu workspace root to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format — chosen because Claude Code, Cursor, and VS Code all understand it and because users often already have one for editor integration.
+Polish reads `.rocketclaw/launch.json` at the Jujutsu workspace root to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format.
 
 ## Top-level shape
 
@@ -27,13 +27,13 @@ Polish reads `.claude/launch.json` at the Jujutsu workspace root to resolve the 
 | `name` | yes (when multiple configurations) | Used to disambiguate when the array has more than one entry. Polish asks the user to pick by `name`. |
 | `runtimeExecutable` | yes | The binary polish spawns (e.g., `bin/dev`, `npm`, `overmind`, `bun`). |
 | `runtimeArgs` | no | Array of arguments passed to `runtimeExecutable`. Default: empty array. |
-| `port` | yes | The port the dev server will listen on. Polish probes `http://localhost:<port>` for reachability and uses it for the IDE browser handoff. |
+| `port` | no | The dev-server port. A numeric value completes the tuple's port fact; when the command, working directory, and environment are also usable, no project detection or resolver runs. When omitted, polish resolves only the missing port from the selected project type. The port seeds `http://localhost:<port>` as the default endpoint candidate; server evidence or a user correction may replace that candidate, so the schema does not lock the URL scheme. |
 | `cwd` | no | Jujutsu-workspace-relative working directory for the dev server. Default: workspace root. Useful for monorepos (`apps/web`, `packages/frontend`). |
 | `env` | no | Additional environment variables for the dev-server process. Default: inherit polish's environment. |
 
 ## Stub template (written on first run when user accepts)
 
-When polish auto-detects a project type and the user confirms "Save this as `.claude/launch.json`?", polish writes a minimal stub derived from the detected type. These templates intentionally hard-code common defaults — users can edit them later.
+When auto-detection completes a missing tuple fact and the user confirms "Save this as `.rocketclaw/launch.json`?", polish writes the completed tuple. Preserve facts from a selected configuration and add only what was resolved; use the recipe templates below when auto-detection supplied the command. These templates intentionally hard-code common defaults — users can edit them later.
 
 ### Rails stub
 
@@ -169,9 +169,9 @@ Polish does not use `type`, `request`, `console`, `stopOnEntry`, or any of the o
 
 ## Cross-IDE notes
 
-`.claude/launch.json` is not yet a fully unified standard across Claude Code, Cursor, VS Code, and Codex. Polish leads with `.claude/launch.json` because:
-- Claude Code, Cursor, and VS Code can all read it as a launch config
+`.rocketclaw/launch.json` is the project-local launch contract used by polish because:
+- It preserves the requested command, working directory, environment, and port as one tuple
 - It sits at a clean Jujutsu-workspace-root trust boundary (user-authored, not auto-detected)
-- Users who prefer `.vscode/launch.json` can symlink or mirror the two files manually
+- Users who prefer `.vscode/launch.json` can mirror the two files manually
 
 If a cross-IDE standard emerges (e.g., `.workspace/launch.json`), the stub writer and reader can swap paths without touching the rest of the skill.

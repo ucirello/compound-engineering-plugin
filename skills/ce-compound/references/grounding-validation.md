@@ -33,14 +33,14 @@ After any body edit from this step or Step 2, re-run the script until it reports
 
 ## Step 2: Semantic validator subagent (Full and non-interactive; skipped in lightweight)
 
-Dispatch **one generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run (Phase 2.4's entries are claims too — a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary). Use the same mid-tier model class as other reviewer subagents when the platform exposes one. Build its prompt from this template:
+Dispatch **one generic read-only subagent** covering the written learning plus any `.context/CONCEPTS.md` entries edited this run. Use the same mid-tier model class as other reviewer subagents when available.
 
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
 Grep, Glob, jj (non-mutating), and gh when available.
 
-Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
+Inputs: the doc content below, the .context/CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.
 
 Check every factual claim in three categories:

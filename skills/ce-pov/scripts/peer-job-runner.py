@@ -73,6 +73,8 @@ Environment overrides (defaults in parentheses):
   POV_PEER_GRACE_SECS       TERM-to-KILL grace during reap (5)
   POV_PEER_BASH             Windows: absolute bash.exe for peer workers
                             (preferred over PATH / WSL System32 bash)
+  CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
+                            POV_PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
 the workspace-local `.tmp` tree. Every read of job state opens the file first (no-follow) and
@@ -1361,12 +1363,12 @@ def _rewrite_windows_env_bash_argv(argv):
 def _resolve_windows_posix_shell() -> str:
     """Absolute path to a non-WSL POSIX shell for native Windows peer workers.
 
-    Order: POV_PEER_BASH, well-known Git Bash
+    Order: POV_PEER_BASH, CLAUDE_CODE_GIT_BASH_PATH, well-known Git Bash
     installs, then every PATH bash/sh excluding System32 WSL. Fail closed when
     nothing usable remains — never select System32\\bash.exe (#1268).
     """
     candidates = []
-    for key in ("POV_PEER_BASH",):
+    for key in ("POV_PEER_BASH", "CLAUDE_CODE_GIT_BASH_PATH"):
         val = (os.environ.get(key) or "").strip()
         if val:
             candidates.append(val)
@@ -1388,8 +1390,8 @@ def _resolve_windows_posix_shell() -> str:
 
     raise RunnerError(
         "no usable Git Bash (or other non-WSL POSIX shell) for native Windows "
-        "peer workers; install Git for Windows or set POV_PEER_BASH to an "
-        "absolute bash.exe path "
+        "peer workers; install Git for Windows or set POV_PEER_BASH / "
+        "CLAUDE_CODE_GIT_BASH_PATH to an absolute bash.exe path "
         "(System32\\bash.exe / WSL is not used)"
     )
 
@@ -1786,7 +1788,7 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build."
+            "a Windows Python 3 build (see issue #1243)."
         )
 
 

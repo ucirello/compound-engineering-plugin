@@ -249,6 +249,8 @@ adapter_argv() {
 
 # The host may replace a stale concrete model only within the fixed route's
 # target family. Values are passed as one argv token; they never enter eval.
+# A codex id may carry the serving provider's own namespace (openai.gpt-...)
+# when the CLI routes through a non-default model_provider.
 apply_model_override() {
   local route="$1" override="${CROSS_MODEL_MODEL_OVERRIDE:-}" override_target="${CROSS_MODEL_MODEL_OVERRIDE_TARGET:-}" target
   [ -n "$override" ] || { [ -z "$override_target" ]; return; }
@@ -256,7 +258,7 @@ apply_model_override() {
   [ "$override_target" = "$target" ] || return 1
   [ "$target" != "cursor" ] || return 1
   case "$route:$override" in
-    codex:gpt-*|codex:o[0-9]* ) ;;
+    codex:gpt-*|codex:o[0-9]*|codex:*[./]gpt-*|codex:*[./]o[0-9]* ) ;;
     claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-* ) ;;
     grok-cli:grok-* ) ;;
     grok-cursor:cursor-grok-* ) ;;
@@ -517,9 +519,7 @@ reap() {
 # TERM/INT: reap the live peer group, then exit cleanly (HUP remains ignored).
 on_term() {
   if [ -n "${_HEARTBEAT_PID:-}" ]; then
-    kill "$_HEARTBEAT_PID" 2>/dev/null || true
-    wait "$_HEARTBEAT_PID" 2>/dev/null || true
-    _HEARTBEAT_PID=""
+    stop_heartbeat
   fi
   if [ -n "${ACTIVE_PEER_PID:-}" ]; then
     log "received TERM/INT; reaping peer process group $ACTIVE_PEER_PID"
@@ -556,13 +556,22 @@ start_heartbeat() {
   # Floor to 1s: a non-numeric or 0 value would make `sleep` return instantly and
   # spin the loop, flooding out.log into the runner's byte cap.
   case "$every" in ''|*[!0-9]*) every=60 ;; esac; [ "$every" -lt 1 ] && every=1
-  ( local t0 n; t0="$(date +%s)"
+  _HEARTBEAT_READY=0
+  trap '_HEARTBEAT_READY=1' USR1
+  ( local t0 n sleeper=""
+    trap 'kill "${sleeper:-}" 2>/dev/null || true; exit 0' TERM INT
+    kill -USR1 "$parent_pid"
+    t0="$(date +%s)"
     while kill -0 "$parent_pid" 2>/dev/null; do
-      sleep "$every"
+      sleep "$every" & sleeper=$!
+      wait "$sleeper" 2>/dev/null || exit 0
+      sleeper=""
       kill -0 "$parent_pid" 2>/dev/null || break
       n="$(date +%s)"; log "peer alive ($(( n - t0 ))s elapsed)"
     done ) &
   _HEARTBEAT_PID=$!
+  while [ "$_HEARTBEAT_READY" != 1 ] && kill -0 "$_HEARTBEAT_PID" 2>/dev/null; do sleep 0.01 || true; done
+  trap - USR1
 }
 stop_heartbeat() {
   if [ -n "$_HEARTBEAT_PID" ]; then

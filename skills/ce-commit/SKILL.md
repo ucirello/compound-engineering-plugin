@@ -34,13 +34,11 @@ If scratch space is necessary, use `<workspace-root>/.tmp/<run-id>/`; if that lo
 
 2. **Bookmark first** - ensure the work is represented by a non-default local bookmark derived from its content. If no local bookmark targets `@`, create one with `jj bookmark create <name> -r @`. If `@` is the default revision, create the feature bookmark and move each default bookmark back to `@-` with `jj bookmark move <default-bookmark> --to @- --allow-backwards`. Re-run `jj bookmark list -r @`; do not ask unless a collision or conflicted bookmark prevents a safe transition. Pick a non-conflicting suffix when the derived name exists.
 
-3. **Description authority** - The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed syntax. A user override wins.
+3. **Description authority** - A user override wins. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.
 
 4. **Logical changes** - if changed files clearly separate into distinct concerns, save separate changes at file granularity, 2-3 maximum. If the separation is ambiguous, use one change. Preserve `exclude:<paths>` exactly: excluded paths remain in the working-copy change and are named in the report.
 
 5. **Compose descriptions** - describe the observable outcome rather than listing files. Include a body only when the governing sources or the change's non-obvious motivation, constraints, or consequences call for one. When a plan Implementation Unit ID is already available from the conversation, caller, or files belonging to one unit, retain that semantic association in the form required by local conventions; do not search for a plan, infer an unclear unit, or associate one description with multiple units.
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 6. **Create the changes** - never allow excluded or unrelated paths into a described change. For one group that contains every changed path, describe `@`, then create a fresh working-copy change:
 

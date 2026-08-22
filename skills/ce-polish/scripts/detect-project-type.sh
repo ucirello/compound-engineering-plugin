@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 #
-# detect-project-type.sh — inspect signature files at the Jujutsu workspace root (and, if
+# detect-project-type.sh — inspect signature files at a project root (and, if
 # no root match is found, probe shallow subdirectories) to emit a project-type
 # identifier on stdout.
 #
 # Usage:
-#   detect-project-type.sh
+#   detect-project-type.sh [path]
+#
+# Arguments:
+#   path (optional) — project root to inspect. Relative paths resolve from the
+#                     Jujutsu workspace root. Defaults to the workspace root. The
+#                     resolved path must remain inside the workspace.
 #
 # Output grammar (one line on stdout):
 #
@@ -47,7 +52,36 @@ if [ -z "$WORKSPACE_ROOT" ]; then
   exit 1
 fi
 
-cd "$WORKSPACE_ROOT" || { echo "ERROR: cannot cd to Jujutsu workspace root" >&2; exit 1; }
+WORKSPACE_ROOT=$(cd "$WORKSPACE_ROOT" 2>/dev/null && pwd -P)
+if [ -z "$WORKSPACE_ROOT" ]; then
+  echo "ERROR: cannot resolve Jujutsu workspace root" >&2
+  exit 1
+fi
+
+PROJECT_ROOT="${1:-$WORKSPACE_ROOT}"
+case "$PROJECT_ROOT" in
+  /*) ;;
+  *) PROJECT_ROOT="$WORKSPACE_ROOT/$PROJECT_ROOT" ;;
+esac
+
+if [ ! -d "$PROJECT_ROOT" ]; then
+  echo "ERROR: path does not exist: $PROJECT_ROOT" >&2
+  exit 1
+fi
+
+if ! PROJECT_ROOT=$(cd "$PROJECT_ROOT" 2>/dev/null && pwd -P); then
+  echo "ERROR: cannot resolve project root" >&2
+  exit 1
+fi
+case "$PROJECT_ROOT" in
+  "$WORKSPACE_ROOT"|"$WORKSPACE_ROOT"/*) ;;
+  *)
+    echo "ERROR: path must stay inside Jujutsu workspace root: $PROJECT_ROOT" >&2
+    exit 1
+    ;;
+esac
+
+cd "$PROJECT_ROOT" || { echo "ERROR: cannot cd to project root" >&2; exit 1; }
 
 MATCHES=()
 

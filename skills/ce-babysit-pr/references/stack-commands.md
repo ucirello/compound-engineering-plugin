@@ -8,7 +8,7 @@ Always non-interactive. Prefer JSON/view probes and explicit bookmark names; nev
 
 ```bash
 jj git fetch --remote <remote>
-jj rebase -s <first-open-dependent-bookmark> -d <active-bookmark>
+jj rebase -s <first-open-dependent-bookmark> --onto <active-bookmark>
 jj bookmark set <dependent-bookmark> -r <rebased-revision>
 jj git push --bookmark <dependent-bookmark> --remote <remote>
 ```

@@ -136,7 +136,7 @@ def local_tmp_root(repo: str) -> str:
         root = workspace_root(repo)
     except Operational:
         root = os.path.abspath(repo)
-    return os.path.join(root, ".tmp")
+    return os.path.join(root, ".tmp", "rocketclaw")
 
 
 def runs_root(repo: str | None = None) -> str:
@@ -177,8 +177,12 @@ def ensure_private_dir(path: str) -> None:
 
 
 def ensure_runs_root(root: str) -> str:
-    tmp_root = os.path.dirname(root)
-    for path in (tmp_root, root, os.path.join(root, ".locks")):
+    rocketclaw_root = os.path.dirname(root)
+    tmp_root = os.path.dirname(rocketclaw_root)
+    paths = [root, os.path.join(root, ".locks")]
+    if os.path.basename(root) == "work-runs" and os.path.basename(rocketclaw_root) == "rocketclaw" and os.path.basename(tmp_root) == ".tmp":
+        paths = [tmp_root, rocketclaw_root, *paths]
+    for path in paths:
         ensure_private_dir(path)
     return root
 

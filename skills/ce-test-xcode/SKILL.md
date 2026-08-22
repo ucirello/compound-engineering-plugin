@@ -1,138 +1,26 @@
 ---
 name: ce-test-xcode
-description: "Build and test iOS apps on simulator with XcodeBuildMCP."
+description: "Test iOS apps in a simulator with XcodeBuildMCP. Use when iOS changes need simulator evidence before handoff."
 argument-hint: "[scheme name or 'current' to use default]"
 disable-model-invocation: true
 ---
 
-# Xcode Test Skill
+# Xcode Simulator Test
 
-Build, install, and test iOS apps on the simulator using XcodeBuildMCP. Captures screenshots, logs, and verifies app behavior.
+Build and exercise an iOS app on a simulator, preserving screenshots, logs, human-verification results, and failures as evidence for the user.
 
-Done means the requested build and simulator checks have run, evidence is stored under the workspace-local `.tmp`, and the user receives the tested scope, observed failures, human-verification outcomes, and overall result. Follow the project's active instructions and conventions already in context; when repository history is relevant, inspect it with `jj log`, and prefer those current instructions and observed conventions over generic guidance.
+**Done:**
 
-## Prerequisites
+- A completed run reports overall `PASS`, `FAIL`, or `PARTIAL` plus project, scheme, simulator, build result, per-surface `PASS` / `FAIL` / `SKIP`, console errors, human checks, and residual failures.
+- Per-surface status is derived from evidence, not the user's routing choice. `PASS` requires completed passing evidence. `FAIL` records observed failing evidence until a completed retest replaces it. `SKIP` means the check has no completed outcome.
+- The overall result is `FAIL` while any failure remains, `PARTIAL` when no failure remains but a scoped check is skipped, and otherwise `PASS`.
+- Any failure before the launched-with-log-capture handoff stops later stages and reports an actionable setup blocker with its evidence.
 
-- Xcode installed with command-line tools
-- XcodeBuildMCP MCP server connected
-- Valid Xcode project or workspace
-- At least one iOS Simulator available
+**Boundaries:** this skill tests and reports. Diagnosis and any user-approved product fix belong to `ce-debug`, invoked with authority narrowed to return here without recording or publishing changes. Keep simulator interaction within the app and flows the user placed in scope.
 
-## Workflow
+## Run
 
-### 0. Verify XcodeBuildMCP is Available
+1. **Prepare and launch.** Read `references/setup-and-build.md`. It owns the XcodeBuildMCP availability gate, project and scheme discovery, simulator choice, workspace-local artifact root, build, install, launch, and log-capture start.
+2. **Exercise and report.** After launch, read `references/test-and-report.md`. It owns per-screen evidence, human-only flows, the SwiftUI inline-link automation limitation, failure routing, cleanup, and the fixed summary fields.
 
-Check that the XcodeBuildMCP MCP server is connected by calling its `list_simulators` tool.
-
-MCP tool names vary by platform:
-- Claude Code: `mcp__xcodebuildmcp__list_simulators`
-- Other platforms: use the equivalent MCP tool call for the `XcodeBuildMCP` server's `list_simulators` method
-
-If the tool is unavailable or errors, report the observed failure and provide installation and agent-configuration guidance appropriate to the user's environment from the provider's current documentation.
-
-Do NOT proceed until XcodeBuildMCP is confirmed working.
-
-### 1. Discover Project and Scheme
-
-Call XcodeBuildMCP's `discover_projs` tool to find available projects, then `list_schemes` with the project path to get available schemes.
-
-If an argument was provided, use that scheme name. If "current", use the default/last-used scheme.
-
-Resolve the artifact root with `jj workspace root`; if the command does not return a workspace root, use the current directory. Store screenshots, captured logs, and other temporary test artifacts under `<workspace-root>/.tmp`, creating only the required directories there. Do not use OS-global temporary storage.
-
-### 2. Boot Simulator
-
-Call `list_simulators` to find available simulators. Choose the simulator from the requested test target and project requirements, asking the user only when those inputs do not determine a safe choice, then call `boot_simulator` with its UUID.
-
-Wait for the simulator to be ready before proceeding.
-
-### 3. Build the App
-
-Call `build_ios_sim_app` with the project path and scheme name.
-
-**On failure:**
-- Capture build errors
-- Report to user with specific error details
-
-**On success:**
-- Note the built app path for installation
-- Proceed to step 4
-
-### 4. Install and Launch
-
-1. Call `install_app_on_simulator` with the built app path and simulator UUID
-2. Call `launch_app_on_simulator` with the bundle ID and simulator UUID
-3. Call `capture_sim_logs` with the simulator UUID and bundle ID to start log capture
-
-### 5. Test Key Screens
-
-For each key screen in the app:
-
-**Take screenshot:**
-Call `take_screenshot` with the simulator UUID and a descriptive, collision-safe path under `<workspace-root>/.tmp` derived from the tested screen.
-
-**Review screenshot for:**
-- UI elements rendered correctly
-- No error messages visible
-- Expected content displayed
-- Layout looks correct
-
-**Check logs for errors:**
-Call `get_sim_logs` with the simulator UUID. Look for:
-- Crashes
-- Exceptions
-- Error-level log messages
-- Failed network requests
-
-**Known automation limitation — SwiftUI Text links:**
-Simulated taps (via XcodeBuildMCP or any simulator automation tool) do not trigger gesture recognizers on SwiftUI `Text` views with inline `AttributedString` links. Taps report success but have no effect. This is a platform limitation — inline links are not exposed as separate elements in the accessibility tree. When a tap on a Text link has no visible effect, prompt the user to tap manually in the simulator. If the target URL is known, `xcrun simctl openurl <device> <URL>` can open it directly as a fallback.
-
-### 6. Human Verification (When Required)
-
-Pause for human input when testing touches flows that require device interaction.
-
-Ask for the smallest user action that crosses the human-only boundary, identifying the actual flow, simulator action, and observable success condition from the app under test. This includes authentication, external notification delivery, purchases, protected hardware or data access, location changes, and SwiftUI inline text links that automation cannot activate.
-
-Ask the user using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes), not because a schema load is required. Never silently skip the question. Compose the prompt from the current flow and present neutral choices to continue after success or report what failed.
-
-### 7. Handle Failures
-
-When a test fails:
-
-1. **Document the failure:**
-   - Take screenshot of error state
-   - Capture console logs
-   - Note reproduction steps
-
-2. **Ask the user how to proceed:** report the actual failed screen or feature, observed behavior, and relevant evidence, then offer neutral choices to investigate and retest now or record the failure and continue the remaining scope.
-
-3. If the user chooses investigation, diagnose the evidence, propose an instruction-compatible fix, rebuild, and retest. Apply the quality conventions for the language and project involved; for any Go code in supporting tooling, preserve idiomatic formatting, error handling, tests, and package boundaries where compatible with the project's current conventions.
-4. If the user chooses to continue, record the failure as skipped and test the remaining scope.
-
-### 8. Test Summary
-
-After all tests complete, present a summary derived from the run. Include the project, scheme, simulator, build result, each tested screen and its status, console errors, human verifications, failures, artifact paths, and an overall pass, fail, or partial result. Omit empty sections rather than filling them with fixed examples.
-
-### 9. Cleanup
-
-After testing:
-
-1. Call `stop_log_capture` with the simulator UUID
-2. Optionally call `shutdown_simulator` with the simulator UUID
-
-## Quick Usage Examples
-
-```bash
-# Test with default scheme
-/ce-test-xcode
-
-# Test specific scheme
-/ce-test-xcode <scheme>
-
-# Test after making changes
-/ce-test-xcode current
-```
-
-## Integration with ce-code-review
-
-When reviewing changes that touch iOS code, the `ce-code-review` workflow can spawn an agent to run this skill, build on the simulator, test key screens, and check for crashes.
+Do not replace either required read with remembered tool names. XcodeBuildMCP adapters differ by host, while their observable success conditions do not.

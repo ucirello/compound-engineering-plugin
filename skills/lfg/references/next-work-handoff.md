@@ -77,7 +77,7 @@ rank candidates. Include:
 - **Recommended area:** the winner, or the tied candidate set when the session
   must choose.
 - **Why next:** the evidence-based selection rationale.
-- **Authoritative prior plan:** the repo-relative canonical plan path.
+- **Authoritative prior plan:** the workspace-relative canonical plan path.
 - **Relationship to completed work:** the explicit depends-on, enables, shares,
   or independent relationship.
 - **Actual delivery state:** what finished and what remains in the current tail,

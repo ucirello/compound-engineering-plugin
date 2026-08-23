@@ -54,7 +54,7 @@ All invocation-owned scratch stays under `<jj-root>/.tmp/rocketclaw/ce-compound/
 
 ## Change Descriptions
 
-Whenever this workflow composes or recommends a Jujutsu change description, inspect local descriptions first with `jj log -r ::@`; broaden to `jj log -r 'all()'` only when local ancestry does not reveal a standard. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.
+Whenever this workflow composes or recommends a Jujutsu change description, inspect local descriptions first with `jj log -r '::@'`; broaden to `jj log -r 'all()'` only when local ancestry does not reveal a standard. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Compose from the actual change; never reuse a fixed example or add attribution.
 
 ## Write Boundary
 

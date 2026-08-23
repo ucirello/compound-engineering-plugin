@@ -2,6 +2,8 @@
 
 Read `references/pr-description-writing.md` in full. It owns value-first framing, sizing, program altitude, related references, project-required metadata, and pre-apply audit. Pass any resolved PR URL so rewrite mode can preserve its body. Stack mode uses `references/stack-submit.md` after submission.
 
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win for change descriptions. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Project PR conventions remain authoritative for PR titles and bodies.
+
 ## Evidence
 
 Use user-supplied artifacts or available capture interfaces; never invent or upload evidence.

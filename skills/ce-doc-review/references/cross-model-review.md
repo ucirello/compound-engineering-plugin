@@ -28,7 +28,7 @@ Pass `XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; pass `XHOST_FAMILY` as the f
 <!-- rocketclaw-config-layers:start -->
 **Resolve ordinary RocketClaw YAML keys from the two repo files.**
 
-- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj root`). Missing files are skipped. Ignore rules do not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- rocketclaw-config-layers:end -->
@@ -110,9 +110,9 @@ Disclose that this is not launcher-only isolation: the detached worker inherits 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-doc-review SKILL.md you read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-JJ_ROOT="$(jj root 2>/dev/null)" || JJ_ROOT="";
-case "$JJ_ROOT" in [A-Za-z]:\\*) command -v cygpath >/dev/null 2>&1 && JJ_ROOT="$(cygpath -u "$JJ_ROOT")" ;; esac;
-SCRATCH_ROOT="${JJ_ROOT:+$JJ_ROOT/}.tmp/rocketclaw";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || { echo "not inside a Jujutsu workspace; skipping cross-model pass" >&2; exit 1; };
+case "$WORKSPACE_ROOT" in [A-Za-z]:\\*) command -v cygpath >/dev/null 2>&1 && WORKSPACE_ROOT="$(cygpath -u "$WORKSPACE_ROOT")" ;; esac;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

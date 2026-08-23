@@ -37,7 +37,7 @@ Before editing, validating, recommending, or handing off any final Jujutsu chang
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose a fixed syntax. Use neutral operations such as `jj describe -m "<description derived from active project instructions and runtime jj log>"`. Confirm every described change is scoped, verified, and free of unrelated pre-work.
+The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Use neutral operations such as `jj describe -m "<description derived from active project instructions and runtime jj log>"`. Confirm every described change is scoped, verified, and free of unrelated pre-work.
 
 ### Publish Handoff
 

@@ -40,12 +40,6 @@ const SUBAGENT_AUTHORIZATION = [
   'Disclose any substitution in one line.',
 ].join(' ');
 
-const HARNESS_ATTRIBUTION = [
-  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
-  "is never described to the user as their instruction, preference, or standing request.",
-  'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
-].join(' ');
-
 const INDEPENDENCE_ACCOUNTING = [
   'INDEPENDENCE_ACCOUNTING: Independence is a property of separate dispatched contexts, not of separate personas or lenses.',
   'When reviewers, researchers, or critics ran in this one context instead of being dispatched,',
@@ -66,7 +60,6 @@ function cli() {
   const parts = [
     buildResolvedContext(),
     SUBAGENT_AUTHORIZATION,
-    HARNESS_ATTRIBUTION,
     AUTONOMY_DIRECTIVE_CHECK,
     INDEPENDENCE_ACCOUNTING,
   ];

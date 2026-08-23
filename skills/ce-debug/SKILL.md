@@ -38,9 +38,9 @@ Use the host's blocking question interface. Fall back to numbered options in cha
 
 ## Paths
 
-Reusable learnings live under `<jj-root>/.context/solutions/`, with `<jj-root>` from `jj root`. Resolve that path only when a durable artifact is first needed; a scratch-only or no-workspace run skips it. Configuration lives under `<jj-root>/.rocketclaw/`.
+Reusable learnings live under `<workspace-root>/.context/solutions/`, with `<workspace-root>` from `jj workspace root`. Resolve that path only when a durable artifact is first needed; a scratch-only or no-workspace run skips it. Configuration lives under `<workspace-root>/.rocketclaw/`.
 
-Put every invocation-owned scratch file or directory under `<jj-root>/.tmp/rocketclaw/ce-debug/`. If no Jujutsu workspace is available, use `./.tmp/rocketclaw/ce-debug/`. Never use host-wide temporary storage.
+Put every invocation-owned scratch file or directory under `<workspace-root>/.tmp/rocketclaw/debug/`. If no Jujutsu workspace is available, use `./.tmp/rocketclaw/debug/`. Never use host-wide temporary storage.
 
 ## Execution Flow
 
@@ -94,6 +94,8 @@ If Phase 3 ran, read `references/post-fix-handoff.md` before routing. It owns th
 Land only fix-owned files. If one already carried user edits, ask before finalization whether to include the whole file, leave it in the working-copy change, or stop. Only inclusion continues.
 
 Exactly one route runs:
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.
 
 - **Ships** when the pre-fix working copy had no edits, the bookmark's entire change stack contains only offered work, and `origin` is PR-capable. Preview the described scope, bookmark stack, and create/update action, then invoke `ce-commit-push-pr`; do not finalize first.
 - **Stays local** otherwise. Invoke `ce-commit` for fix-owned files and push nothing. State why it stayed local.

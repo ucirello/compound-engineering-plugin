@@ -355,9 +355,9 @@ if [ "$in_workspace" = "yes" ]; then
     fi
   fi
 
-  # Controllers and skills share the workspace-root .tmp directory.
+  # Controllers and skills share the workspace-root RocketClaw scratch directory.
   scratch_ignored="missing"
-  if [ -f "$workspace_root/.gitignore" ] && grep -Eq '^/?\.tmp/$' "$workspace_root/.gitignore" 2>/dev/null; then
+  if [ -f "$workspace_root/.gitignore" ] && grep -Eq '^/?\.tmp(/?$|/rocketclaw/?$)' "$workspace_root/.gitignore" 2>/dev/null; then
     scratch_ignored="ok"
   fi
 
@@ -565,7 +565,7 @@ if [ "$in_workspace" = "yes" ]; then
     ok "RocketClaw scratch space is ignored"
   else
     skip "RocketClaw scratch space is not ignored"
-    detail "Add .tmp/ to .gitignore; skills and controllers keep local scratch there"
+    detail "Add .tmp/rocketclaw/ to .gitignore; skills and controllers keep local scratch there"
   fi
 
   if [ "$docs_root_status" = "default" ]; then

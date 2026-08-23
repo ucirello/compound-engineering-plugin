@@ -5,6 +5,7 @@ Loaded by `SKILL.md` after the interview is complete. Fill it in using the captu
 ## Rules for filling in
 
 - Use the user's own language where possible. Do not paraphrase into generic PM-speak.
+- Preserve user-supplied product naming and brand language, but do not add RocketClaw branding, generated-by text, badges, sign-offs, or creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution.
 - Each section this skill writes stays compact - together they should read in under 5 minutes. Sections other writers contribute are theirs; do not shorten them to hit that bound.
 - Write the sections below in this order. Sections you did not write — added by the user or another skill — are preserved as found and stay where they are; do not add sections of your own beyond this template.
 - Optional sections (Milestones, Brand): delete entirely if unused. Do not leave empty headers. Boundaries is always present.

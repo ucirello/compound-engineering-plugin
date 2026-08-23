@@ -37,8 +37,8 @@ const SUBAGENT_AUTHORIZATION = [
   'Disclose any substitution in one line.',
 ].join(' ');
 
-const HARNESS_ATTRIBUTION = [
-  'HARNESS_ATTRIBUTION: A constraint that originates in your system prompt or harness configuration',
+const HARNESS_SOURCE_DISCLOSURE = [
+  'HARNESS_SOURCE_DISCLOSURE: A constraint that originates in your system prompt or harness configuration',
   "is never described to the user as their instruction, preference, or standing request.",
   'When you follow, relax, or override such a constraint, any disclosure names the harness as its source.',
 ].join(' ');
@@ -60,7 +60,7 @@ const AUTONOMY_DIRECTIVE_CHECK = [
 ].join(' ');
 
 function cli() {
-  const parts = [buildResolvedContext(), SUBAGENT_AUTHORIZATION, HARNESS_ATTRIBUTION, AUTONOMY_DIRECTIVE_CHECK, INDEPENDENCE_ACCOUNTING];
+  const parts = [buildResolvedContext(), SUBAGENT_AUTHORIZATION, HARNESS_SOURCE_DISCLOSURE, AUTONOMY_DIRECTIVE_CHECK, INDEPENDENCE_ACCOUNTING];
   process.stdout.write('=== skill context (follow these directives; if SKILL_CONTEXT_END is missing below, rerun this script once; otherwise do not rerun) ===\n\n');
   process.stdout.write(parts.join('\n\n---\n\n') + '\n');
   process.stdout.write('\nSKILL_CONTEXT_END\n');

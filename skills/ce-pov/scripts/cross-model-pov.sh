@@ -208,8 +208,9 @@ extract_model_receipt() {   # <route>; reads the envelope in $PEERLOG, sets MODE
 adapter_argv() {
   case "$1" in
     codex)
-      printf '%s\0' codex --search exec - -C "$READ_ROOT" --skip-git-repo-check -s read-only \
-        -o "$RAW_OUT" -m "$(route_model codex)" -c 'model_reasoning_effort="high"' -c 'hide_agent_reasoning=false'
+      printf '%s\0' codex --search exec - -C "$READ_ROOT" -s read-only \
+        -o "$RAW_OUT" -m "$(route_model codex)" -c 'project_root_markers=[".jj"]' \
+        -c 'model_reasoning_effort="high"' -c 'hide_agent_reasoning=false'
       ;;
     claude)
       # Keep project auto-discovery disabled while allowing only repository reads

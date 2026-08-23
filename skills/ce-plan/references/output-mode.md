@@ -35,7 +35,7 @@ Output mode is **exclusive** — a plan is written as either markdown (`.md`) OR
 <!-- ce-config-layers:start -->
 **Resolve ordinary YAML keys from the two workspace files.**
 
-- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. `.gitignore` does not change resolution in a Git-backed Jujutsu repository.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Workspace ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->

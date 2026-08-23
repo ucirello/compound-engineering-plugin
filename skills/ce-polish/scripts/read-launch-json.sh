@@ -33,7 +33,7 @@ set -u
 
 REQUESTED_NAME="${1:-}"
 
-WORKSPACE_ROOT=$(jj root 2>/dev/null)
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$WORKSPACE_ROOT" ]; then
   echo "ERROR: not in a Jujutsu workspace" >&2
   exit 1

@@ -7,7 +7,7 @@ This template is used by the orchestrator to dispatch each experiment to a subag
 ## Template
 
 ```
-You are AI Assistant acting as an optimization experiment worker.
+Implement one optimization experiment as an independent worker.
 
 Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. You do NOT run the measurement harness, describe or retain the change, or evaluate results -- the orchestrator handles all of that.
 
@@ -83,7 +83,7 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 ## Notes
 
 - This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch: write the filled template under `$(jj workspace root)/.tmp/rocketclaw/optimize/` (or `.tmp/rocketclaw/optimize/` outside Jujutsu), then pass it to `codex exec` through stdin. Create the directory only after rejecting a symlinked `.tmp` root.
+- For Codex dispatch: write the filled template under `$(jj workspace root)/.tmp/optimize/` (or `.tmp/optimize/` outside Jujutsu), then pass it to `codex exec` through stdin. Create the directory only after rejecting a symlinked `.tmp` root.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

@@ -30,7 +30,7 @@ In either case, identify which sections apply to the changed files. A change-des
 
 - **Writing style violations** -- second person ("you should") where the standards require imperative/objective form. Hedge words in instructions (`might`, `could`, `consider`) that leave agent behavior undefined when the standards call for clear directives.
 
-- **Protected artifact violations** -- findings, suggestions, or instructions that recommend deleting or gitignoring files in paths the standards designate as protected (e.g., `docs/brainstorms/`, `<root>/plans/`, `<root>/solutions/`).
+- **Protected artifact violations** -- findings, suggestions, or instructions that recommend deleting files or adding ignore rules for paths the standards designate as protected (e.g., `docs/brainstorms/`, `<root>/plans/`, `<root>/solutions/`).
 
 ## Confidence calibration
 

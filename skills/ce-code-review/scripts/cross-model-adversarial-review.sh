@@ -48,7 +48,7 @@
 # output file. The cross-model pass is additive and must never fail the review;
 # the caller detects success purely by the presence of the output file(s).
 #
-# DATA-EGRESS NOTE: the peer reviews the work tree / diff and sends that content
+# DATA-EGRESS NOTE: the peer reviews the workspace / diff and sends that content
 # to an external model provider. The log lines below record every send so the
 # egress is auditable even in mode:agent.
 
@@ -447,7 +447,7 @@ trap 'rm -rf "$RAW_DIR"' EXIT
 # Measure once and retain one exact private artifact. Semantic divisions belong
 # to the orchestrator; the peer reads only the ranges needed for those divisions.
 DIFF_SOURCE="$RAW_DIR/review.diff"
-jj -R "$WORKSPACE_ROOT" diff --from "$BASE" --to @ --git > "$DIFF_SOURCE" 2>/dev/null || skip "cannot write reviewed diff artifact; skipping"
+jj -R "$WORKSPACE_ROOT" diff --from "$BASE" --to @ --color never > "$DIFF_SOURCE" 2>/dev/null || skip "cannot write reviewed diff artifact; skipping"
 chmod 600 "$DIFF_SOURCE" || skip "cannot secure private diff artifact; skipping"
 DIFF_BYTES="$(wc -c < "$DIFF_SOURCE" 2>/dev/null || echo 0)"
 # An empty diff (valid base, no changes) still composes a structurally valid
@@ -632,7 +632,7 @@ compose_large_diff_instruction() {
   else
     printf 'The exact diff is readable at `%s`; use Grep and bounded Read ranges to inspect only the paths and interactions selected by the review map.\n' "$DIFF_SOURCE" >> "$PROMPT_FILE"
   fi
-  printf 'Review the current work tree against base `%s` read-only. Return one usable schema-shaped JSON result even when findings are empty.\n' "$BASE" >> "$PROMPT_FILE"
+  printf 'Review the current workspace against base `%s` read-only. Return one usable schema-shaped JSON result even when findings are empty.\n' "$BASE" >> "$PROMPT_FILE"
 }
 
 # --- liveness heartbeat -----------------------------------------------------

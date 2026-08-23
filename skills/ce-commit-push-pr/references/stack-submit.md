@@ -15,7 +15,7 @@ If `gh` or `gh stack` is missing, or the stack command exits unavailable for thi
 
 ## Topology
 
-**When the user named a parent PR or bookmark to stack on, classify it and root the layers there.** Classify by **PR number** wherever one exists — that is what pulls a stack down from GitHub; a bare head name resolves local stacks only. `references/gh-stack-cli.md` carries the exit codes and command semantics.
+**When the user named a parent PR or bookmark to stack on, classify it and root the layers there.** Classify by **PR number** wherever one exists because that pulls remote stack state into the local manager; a bare head name resolves local stacks only. `references/gh-stack-cli.md` carries the exit codes and command semantics.
 
 Classification may move the stack manager's current head, so record the work bookmark and change ID **before** classifying. Run `jj git import` after manager operations and return with `jj edit <work-change>` before construction; otherwise construction can mistake the parent for the original work.
 
@@ -27,7 +27,7 @@ Use the `init` form chosen here in place of the generic one shown in constructio
 
 When `gh stack view --json` confirms the current head belongs to a managed stack, preserve that topology. If no topology exists, use retrospective construction below. When the user did not ask for a stack in this request — a standing preference alone is not asking — and the complete work is one logical change or only artificial slices are possible, refuse the stack and use the single-PR path. An explicit request is not refusable on those grounds. (Probe's soft/required split governs what to do when the CLI is missing, not whether a stack may be refused.)
 
-Any explicit new upstack bookmark the user already directed must base from the **authoritative parent tip** after `jj git fetch`: prefer `<parent>@<tracking-remote>` when current for the confirmed layer; if the parent's latest work is only local, use the local parent bookmark. Create with `jj new <parent-tip>` and `jj bookmark create <bookmark-name> -r @`. For an **upstack** layer, do **not** follow `references/bookmark-creation.md`, whose default-base flow would detach the layer from its parent. Do not hard-code `origin` when another remote owns the parent.
+Any explicit new upstack bookmark the user already directed must base from the **authoritative parent tip** after `jj git fetch`: prefer `<parent>@<tracking-remote>` when current for the confirmed layer; if the parent's latest work is only local, use the local parent bookmark. Create with `jj new <parent-tip>` and `jj bookmark create <bookmark-name> -r @`. For an **upstack** layer, do **not** follow `references/bookmark-creation.md`, whose default-base flow would detach the layer from its parent. Use the remote that owns the parent rather than a hard-coded remote name.
 
 ## Retrospective construction
 
@@ -37,9 +37,9 @@ When one safe topology is clear, proceed without asking: explicit stack intent a
 
 Choose the bottom layer from the bookmark and change active when retrospective construction began. If construction starts on the resolved default bookmark and no parent was named, follow `references/bookmark-creation.md` to fetch and resolve its safe base. If construction starts on an existing feature bookmark, fetch the resolved base from its owning remote, verify the remote bookmark, and use that exact revision as the bottom parent. When Topology already resolved a verified local parent bookmark, use it instead. Record the original bookmark and change ID, and preserve that change before rewriting. Do not carry the whole feature series into the bottom layer. Every upstack layer starts from its immediate parent through an exported bookmark and `gh stack add`.
 
-Partition whole-file groups directly from the working-copy change with `jj commit <filesets>`; Jujutsu keeps the remaining files in the child change, so no stash transition is needed. Initialize or adopt the bottom layer at the resolved base revision, describe only its files, then create and describe each next layer in order. Files named by `exclude:<paths>` belong to no layer: leave them in the final working-copy change and path-limit every layer operation. If a topology change would make excluded work unsafe, stop with a residual.
+Partition whole-file groups directly from the working-copy change with `jj commit <filesets>`; JJ keeps the remaining files in the child change, so no stash transition is needed. Initialize or adopt the bottom layer at the resolved base revision, describe only its files, then create and describe each next layer in order. Files named by `exclude:<paths>` belong to no layer: leave them in the final working-copy change and path-limit every layer operation. If a topology change would make excluded work unsafe, stop with a residual.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Preserve semantic plan-unit associations already in hand.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Preserve semantic plan-unit associations already in hand.
 
 ```bash
 jj new <base>
@@ -59,7 +59,7 @@ For described work whose existing change boundaries already match the plan, crea
 
 Before submit, resolve the ordinary `pr_teaching_archive` / `archive:on|off` gate. If archival is on, stop with a residual before `gh stack submit`; do not create an explainer change after submission or silently disable requested archival. The user can rerun with `archive:off` to use the safe post-submit description path until stack archival has a manager-aware route.
 
-Before submit, inspect the manager's open PRs (`gh stack view --json` / `gh pr view`) for any **existing draft** layers. If any draft already exists that the author did not explicitly ask to open this run, do **not** pass `--open` (GitHub documents `--open` as also marking existing PRs ready for review). In that case: submit with `gh stack submit --auto` only, then treat remaining drafts as a hard residual before babysit when babysit is on — never auto-ready WIP drafts.
+Before submit, inspect the manager's open PRs (`gh stack view --json` / `gh pr view`) for any **existing draft** layers. If any draft already exists that the author did not explicitly ask to open this run, do **not** pass `--open` (`gh stack submit --help` documents `--open` as also marking existing PRs ready for review). In that case: submit with `gh stack submit --auto` only, then treat remaining drafts as a hard residual before babysit when babysit is on — never auto-ready WIP drafts.
 
 When no existing drafts are present (or the user explicitly authorized opening every layer):
 

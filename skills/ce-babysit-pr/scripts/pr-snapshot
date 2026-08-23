@@ -1304,7 +1304,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted under the repository-local .tmp tree across script versions) — backfill missing keys so a new
+    state.json (persisted under the workspace-local .tmp tree across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):

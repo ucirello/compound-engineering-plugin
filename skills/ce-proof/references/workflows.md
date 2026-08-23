@@ -108,11 +108,11 @@ SLUG="<slug>"
 TOKEN="<access-token>"
 LOCAL="<absolute-path>"
 
-JJ_ROOT=$(jj root 2>/dev/null)
-if [ -n "$JJ_ROOT" ]; then
-  STATE_DIR="$JJ_ROOT/.tmp/proof"
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+if [ -n "$WORKSPACE_ROOT" ]; then
+  STATE_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/proof"
 else
-  STATE_DIR="$(dirname "$LOCAL")/.tmp/proof"
+  STATE_DIR="./.tmp/rocketclaw/proof"
 fi
 mkdir -p "$STATE_DIR"
 STATE_TMP="$STATE_DIR/state.$$"

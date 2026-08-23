@@ -1,9 +1,9 @@
 ---
 name: ce-commit
-description: Create local Jujutsu changes with clear, value-communicating descriptions. Use when the user asks to save current work as one or more repository-appropriate changes.
+description: Create local JJ changes with clear, value-communicating descriptions. Use when the user asks to save current work as one or more repository-appropriate changes.
 ---
 
-# Jujutsu Change
+# JJ Change
 
 Create well-crafted local change(s) from the current working copy. Do not publish or open a review; use `ce-commit-push-pr` for the full ship flow.
 
@@ -15,8 +15,8 @@ Gather context with each command as its **own** shell tool call (program + args 
 
 | Command | Purpose | Non-zero / empty means |
 | --- | --- | --- |
-| `jj root` | Workspace root | Not a Jujutsu workspace; stop |
-| `jj status` | Working-copy change, parents, conflicts, and bookmarks | Not a Jujutsu workspace; stop |
+| `jj root` | Workspace root | Not a JJ workspace; stop |
+| `jj status` | Working-copy change, parents, conflicts, and bookmarks | Not a JJ workspace; stop |
 | `jj diff --summary -r @` | Changed paths in the working-copy change | No path summary |
 | `jj bookmark list -r @` | Local bookmarks currently targeting the working-copy change | No bookmark targets `@` |
 | `jj log -r 'trunk()' --no-graph` | Repository default line of development | Default revision cannot be resolved |
@@ -34,19 +34,19 @@ If scratch space is necessary, use `<workspace-root>/.tmp/<run-id>/`; if that lo
 
 2. **Bookmark first** - ensure the work is represented by a non-default local bookmark derived from its content. If no local bookmark targets `@`, create one with `jj bookmark create <name> -r @`. If `@` is the default revision, create the feature bookmark and move each default bookmark back to `@-` with `jj bookmark move <default-bookmark> --to @- --allow-backwards`. Re-run `jj bookmark list -r @`; do not ask unless a collision or conflicted bookmark prevents a safe transition. Pick a non-conflicting suffix when the derived name exists.
 
-3. **Description authority** - A user override wins. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.
+3. **Description authority** - A user override wins. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example.
 
 4. **Logical changes** - if changed files clearly separate into distinct concerns, save separate changes at file granularity, 2-3 maximum. If the separation is ambiguous, use one change. Preserve `exclude:<paths>` exactly: excluded paths remain in the working-copy change and are named in the report.
 
-5. **Compose descriptions** - describe the observable outcome rather than listing files. Include a body only when the governing sources or the change's non-obvious motivation, constraints, or consequences call for one. When a plan Implementation Unit ID is already available from the conversation, caller, or files belonging to one unit, retain that semantic association in the form required by local conventions; do not search for a plan, infer an unclear unit, or associate one description with multiple units.
+5. **Compose descriptions** - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Describe the observable outcome rather than listing files. Include a body only when the governing sources or the change's non-obvious motivation, constraints, or consequences call for one. When a plan Implementation Unit ID is already available from the conversation, caller, or files belonging to one unit, retain that semantic association in the form required by local conventions; do not search for a plan, infer an unclear unit, or associate one description with multiple units.
 
-6. **Create the changes** - never allow excluded or unrelated paths into a described change. For one group that contains every changed path, describe `@`, then create a fresh working-copy change:
+6. **Create the changes** - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Never allow excluded or unrelated paths into a described change. For one group that contains every changed path, describe `@`, then create a fresh working-copy change:
 
 ```bash
 jj describe -m "<message composed from the standards above>"
 jj new
 ```
 
-When paths must remain out, extract each named group from `@` with `jj split <file1> <file2> -m "<message composed from the standards above>"`. The selected paths become the described parent change and the unselected paths remain in the working-copy child. Move the feature bookmark to that parent with `jj bookmark move <name> --to @- --allow-backwards`, then repeat only for additional groups. This is the Jujutsu-native equivalent of exact file grouping and leaves every excluded path untouched in `@`. Do not use interactive hunk selection.
+When paths must remain out, extract each named group from `@` with `jj split <file1> <file2> -m "<message composed from the standards above>"`. The selected paths become the described parent change and the unselected paths remain in the working-copy child. Move the feature bookmark to that parent with `jj bookmark move <name> --to @- --allow-backwards`, then repeat only for additional groups. This is JJ-native exact file grouping and leaves every excluded path untouched in `@`. Do not use interactive hunk selection.
 
-7. **Validate and report** - run `jj status`, `jj diff --summary -r @`, `jj bookmark list`, and `jj log -r '::@' -n 4 --no-graph`. For each resulting change, run `jj show -r <change-id> --summary`. Verify that every intended path is in the intended described change, every excluded or unrelated path remains in `@`, and the working-copy change is empty unless paths were intentionally left out. Report the resulting change IDs, descriptions, bookmarks, and intentionally retained paths.
+7. **Validate and report** - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Run `jj status`, `jj diff --summary -r @`, `jj bookmark list`, and `jj log -r '::@' -n 4 --no-graph`. For each resulting change, run `jj show -r <change-id> --summary`. Verify that every intended path is in the intended described change, every excluded or unrelated path remains in `@`, and the working-copy change is empty unless paths were intentionally left out. Report the resulting change IDs, descriptions, bookmarks, and intentionally retained paths.

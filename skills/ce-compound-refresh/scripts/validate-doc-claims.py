@@ -17,7 +17,7 @@ citations against the repository:
        exist in the working copy; tokens containing '../' resolve from the
        doc's directory (those escaping the repo are skipped). Misses tracked
        in the parent revision or trunk still count as real paths and are
-       classified (removed in the working copy vs stale checkout). Tokens
+       classified (removed in the working copy vs stale workspace). Tokens
        missing everywhere are flagged only when path-shaped; slash-delimited
        identifiers (bookmark names, provider/model IDs) are skipped.
     2. Cited commit IDs (7-40 hex chars with at least one digit and one
@@ -195,7 +195,7 @@ def main(argv: list[str]) -> int:
                 infos.append(
                     f"INFO: working copy is {behind} commits behind trunk() — "
                     "verify merge-state claims against remote truth through the "
-                    "available forge provider, not this checkout"
+                    "available forge provider, not this workspace"
                 )
         else:
             infos.append(
@@ -255,7 +255,7 @@ def main(argv: list[str]) -> int:
         elif tracked_trunk:
             flags.append(
                 f"FLAG path `{token}`{loc} — not in the working copy but exists "
-                "at trunk(): stale checkout? Annotate or verify against trunk."
+                "at trunk(): stale workspace? Annotate or verify against trunk."
             )
         else:
             where = (
@@ -306,7 +306,7 @@ def main(argv: list[str]) -> int:
             elif in_trunk:
                 flags.append(
                     f"FLAG commit {commit_id}{loc} — not reachable from @ but reachable "
-                    "from trunk(): this checkout predates the landing. Add a "
+                    "from trunk(): this workspace predates the landing. Add a "
                     "temporal qualifier or verify through the forge provider."
                 )
             else:

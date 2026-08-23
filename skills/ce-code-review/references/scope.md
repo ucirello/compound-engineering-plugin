@@ -20,7 +20,7 @@ Then set `FILES:` and `DIFF:` from these commands:
 
 ```
 jj diff --from "$BASE" --to @ --name-only
-jj diff --from "$BASE" --to @ --git --context 10
+jj diff --from "$BASE" --to @ --color never --context 10
 ```
 
 This path works with any unambiguous JJ revision expression, including a commit ID, change ID, bookmark, or remote bookmark. Callers reviewing the current workspace should pass explicit `base:` when auto-detection is unnecessary. **Do not combine `base:` with a PR number or bookmark target.** If both are present, stop with an error: "Cannot use `base:` with a PR number or bookmark target — `base:` implies the current workspace is already on the correct line of work. Pass `base:` alone, or pass the target alone and let scope detection resolve the base."
@@ -61,7 +61,7 @@ Set `BASE:` to `pr:<number-or-url>` (logical marker, not a JJ revision). Set `EX
 
 **Diff by scope mode** (do not mix remote and local diffs — contradictory hunks cause false positives):
 
-- **`local-aligned`:** Resolve `<resolved-base-revision>` from the GitHub `baseRefName` as `<baseRefName>@origin` (run `jj git fetch --remote origin --branch <baseRefName>` if needed). Compute `BASE` as the single revision selected by `fork_point(@ | <resolved-base-revision>)`, then set `FILES:` from `jj diff --from "$BASE" --to @ --name-only` and `DIFF:` from `jj diff --from "$BASE" --to @ --git --context 10`. This includes all snapshotted changes from the fork point through the working-copy commit; JJ has no staging area, and new non-ignored files are tracked automatically by default. Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local workspace is canonical. Note in Coverage: `scope: local-aligned (PR; local workspace diff)`.
+- **`local-aligned`:** Resolve `<resolved-base-revision>` from the GitHub `baseRefName` as `<baseRefName>@origin` (run `jj git fetch --remote origin --branch <baseRefName>` if needed). Compute `BASE` as the single revision selected by `fork_point(@ | <resolved-base-revision>)`, then set `FILES:` from `jj diff --from "$BASE" --to @ --name-only` and `DIFF:` from `jj diff --from "$BASE" --to @ --color never --context 10`. This includes all snapshotted changes from the fork point through the working-copy commit; JJ has no staging area, and new non-ignored files are tracked automatically by default. Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local workspace is canonical. Note in Coverage: `scope: local-aligned (PR; local workspace diff)`.
 - **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `gh pr diff <number-or-url> --color=never`. If `gh pr diff` fails, stop with an actionable error — do not fall back to changing `@`.
 
 When **`pr-remote`**, before Stage 4:
@@ -92,7 +92,7 @@ Produce:
 
 ```
 jj diff --from "$BASE" --to <bookmark-ref> --name-only
-jj diff --from "$BASE" --to <bookmark-ref> --git --context 10
+jj diff --from "$BASE" --to <bookmark-ref> --color never --context 10
 ```
 
 Treat these outputs as `FILES:` and `DIFF:` respectively.
@@ -107,7 +107,7 @@ On success, produce the diff:
 
 ```
 jj diff --from "$BASE" --to @ --name-only
-jj diff --from "$BASE" --to @ --git --context 10
+jj diff --from "$BASE" --to @ --color never --context 10
 ```
 
 Treat these outputs as `FILES:` and `DIFF:` respectively. Using `jj diff --from "$BASE" --to @` compares the fork point with the snapshotted working-copy commit, so it includes the complete committed stack plus current working-copy changes. JJ has no staging-area split.

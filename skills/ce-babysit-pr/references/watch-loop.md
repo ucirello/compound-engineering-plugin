@@ -26,7 +26,7 @@ The needed capability is generic — *run a background process and be woken when
 
 **Checkpoint (the floor):** when no background-and-wake capability exists, run one tick, persist, report, and print the exact host-rendered re-run invocation — monitoring is *paused*, say so plainly. Because every tick is disk-resumable, checkpoint is the same loop hand-cranked; the in-session watch only automates the crank. Never fake a loop with a foreground `sleep` (blocked on Claude Code, discouraged elsewhere) or a detached `nohup` (reaped/unsupported on several harnesses).
 
-**Durability:** the in-session watch dies with the session; re-invoking resumes from the jj repository's `.tmp` tree, or the local workspace's `.tmp` fallback when `jj root` is unavailable. For an unattended multi-day watch, use a durable scheduler — a fresh headless run is context-blind, so persist consequential decisions there. **Shell env vars do not persist between separate tool calls** on any harness — re-set `SKILL_DIR`/`STATE_DIR` inline in every command.
+**Durability:** the in-session watch dies with the session; re-invoking resumes from the workspace's `.tmp` tree, using the current directory's `.tmp` only when `jj workspace root` is unavailable. For an unattended multi-day watch, use a durable scheduler — a fresh headless run is context-blind, so persist consequential decisions there. **Shell env vars do not persist between separate tool calls** on any harness — re-set `SKILL_DIR`/`STATE_DIR` inline in every command.
 
 ## Cadence (the watch interval)
 
@@ -69,7 +69,7 @@ A loop can churn without finishing: CI **ping-pong** (fix A surfaces B, fix B br
 
 ## On-disk state contract
 
-State lives at `<jj-root>/.tmp/babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`, with `./.tmp/babysit-pr/...` as the local fallback when `jj root` is unavailable. The `<host>` segment is load-bearing for GitHub Enterprise. The helper owns all reads and writes under a file lock.
+State lives at `<workspace-root>/.tmp/rocketclaw/ce-babysit-pr/<host>-<owner>-<repo>-<pr>/state.json`, with `./.tmp/rocketclaw/ce-babysit-pr/...` as the local fallback when `jj workspace root` is unavailable. The `<host>` segment is load-bearing for GitHub Enterprise. The helper owns all reads and writes under a file lock.
 
 ```json
 {

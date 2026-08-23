@@ -21,7 +21,7 @@ This is **diff-scoped**, not whole-app exploration. Test what the target introdu
 - Never dogfood `trunk()` on a bookmark/revision or blank target: there is no diff. A PR target always has a declared base, so it remains diffable even when its head bookmark has a trunk-like name.
 - A numeric target stays a PR identity through isolation and revision resolution; never collapse it to an ambiguous head bookmark.
 - Never move the primary workspace out from under the user. This skill decides only whether to offer isolation — no for a blank/current-change target, yes for a PR or another revision — and `ce-worktree` owns the workspace mechanics and verdict. On a declined offer, create or edit a working-copy change at the target only after confirming if moving the current working copy would disturb active work.
-- Screenshots and other transient artifacts go under the current jj workspace's `.tmp/dogfood/<run-id>/`, with `.tmp/dogfood/<run-id>/` under the current directory as the fallback. Use a collision-resistant run ID, clean it when no longer needed, and copy an artifact elsewhere only to embed it in the report.
+- Screenshots and other transient artifacts go under the current jj workspace's `.tmp/dogfood/<run-id>/`. If `jj workspace root` does not resolve or that directory cannot be created, stop with the blocker instead of writing elsewhere. Use a collision-resistant run ID, clean it when no longer needed, and copy an artifact elsewhere only to embed it in the report.
 - Auto-fix only what is small, well-understood, and low-risk. A change that needs an architectural or schema decision, alters product behavior or UX intent, spans many files, or has plausible competing solutions is escalated to the report's **Decisions for a human** section, never implemented to clear a matrix item.
 
 ## Prerequisites
@@ -41,13 +41,13 @@ This is **diff-scoped**, not whole-app exploration. Test what the target introdu
 
 Reports live under `<root>/dogfood-reports/` and personas under `<root>/personas/`. Resolve `<root>` the first time you compose any `<root>/` path, whether reading or writing, and never before. A run that composes none skips it.
 
-<!-- rocketclaw-docs-root:start -->
+<!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- rocketclaw-docs-root:end -->
+<!-- ce-docs-root:end -->
 
 ## Delegation
 

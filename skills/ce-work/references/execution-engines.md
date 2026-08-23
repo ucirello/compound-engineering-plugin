@@ -4,7 +4,7 @@
  
 Engine selection applies only to code execution. Knowledge-work keeps its carve-out. Legacy plans and bare code prompts may select cross-model execution, but otherwise retain the inline/subagent flow in `references/execution-strategy.md`; goal-mode and dynamic-workflow selection remains specific to implementation-ready unified plans.
  
- Invocation origin supplies no routing authority and may not be detectable. Resolve the same inputs whether `ce-work` was explicitly invoked or selected by the host: current-task intent, still-active session intent, typed caller binding, active project instructions, enabled checkout configuration, then native execution.
+ Invocation origin supplies no routing authority and may not be detectable. Resolve the same inputs whether `ce-work` was explicitly invoked or selected by the host: current-task intent, still-active session intent, typed caller binding, active project instructions, enabled workspace configuration, then native execution.
  
  ## Resolve cross-model routing before the capability probe
  
@@ -14,7 +14,7 @@ Engine selection applies only to code execution. Knowledge-work keeps its carve-
  2. a still-active session preference or constraint;
  3. a typed caller binding at its recorded provenance (for example, an LFG current-task assignment retains current-task authority at the `ce-work` seam);
  4. the project's active instructions and conventions already in context;
- 5. enabled per-checkout configuration; then
+ 5. enabled per-workspace configuration; then
  6. native execution.
  
  Lower sources may fill an unspecified detail but cannot contradict or broaden a higher source. Incidental mentions in feature prose, quoted material, examples, comparisons, filenames, or discussion do not activate routing. If two applicable instructions of equal authority genuinely conflict on recipient or egress, surface the conflict instead of guessing.
@@ -37,7 +37,7 @@ A validated recovery run id selects durable state. It never authorizes a fresh d
  
  When the target resolves to the current host's default execution route and no distinct model or serving route was requested, collapse the request to native execution and record requested-versus-actual identity rather than shelling out to the same host.
  
- ### Per-checkout configuration
+ ### Per-workspace configuration
  
 <!-- rocketclaw-config-layers:start -->
 **Resolve ordinary RocketClaw yaml keys from the two workspace files.**

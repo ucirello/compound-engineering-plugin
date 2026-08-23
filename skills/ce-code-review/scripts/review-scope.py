@@ -161,25 +161,24 @@ def main() -> int:
         diff_args = ["--from", args.base, "--to", "@"]
 
     names = jj("diff", "--name-only", *diff_args)
-    patch = jj("diff", "--git", *diff_args)
-    if names.returncode != 0 or patch.returncode != 0:
+    if names.returncode != 0:
         print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
     executable_lines = 0
-    current_is_code = False
-    for line in patch.stdout.splitlines():
-        if line.startswith("diff --git "):
-            current_is_code = any(
-                line.endswith(f" b/{file}") and Path(file).suffix.lower() in CODE_EXTENSIONS
-                for file in files
-            )
-        elif current_is_code and (
-            (line.startswith("+") and not line.startswith("+++"))
-            or (line.startswith("-") and not line.startswith("---"))
-        ):
-            executable_lines += 1
+    for file in files:
+        if Path(file).suffix.lower() not in CODE_EXTENSIONS:
+            continue
+        stat = jj("diff", "--stat", *diff_args, "--", file)
+        if stat.returncode != 0:
+            print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
+            return 0
+        summary = stat.stdout.splitlines()[-1] if stat.stdout.splitlines() else ""
+        insertions = re.search(r"(\d+) insertion", summary)
+        deletions = re.search(r"(\d+) deletion", summary)
+        executable_lines += int(insertions.group(1)) if insertions else 0
+        executable_lines += int(deletions.group(1)) if deletions else 0
 
     uncounted = sum(
         1 for file in files if Path(file).suffix.lower() not in CODE_EXTENSIONS

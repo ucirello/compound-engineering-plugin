@@ -44,13 +44,13 @@ Key improvements:
 ### 4.3 Preserve and Offer Next Steps
 
 The optimization stack is preserved with all retained experiment changes and a recorded current head.
-The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the changes because `.context/` is excluded through `.gitignore`.
+The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the changes because `.context/` is excluded by the workspace's Jujutsu ignore rules.
 
 Present these options after the summary:
 
 1. **Run `ce-code-review`** on the cumulative diff (baseline to final), on the optimization stack. Do not describe or push from this step.
 2. **Run `ce-compound`** to document the winning strategy as an institutional learning.
-3. **Create PR** from the optimization stack using the project's Jujutsu bookmark and provider workflow. If the orchestration change contains review fixes, compose its description before publishing.
+3. **Create PR** from the optimization stack using the project's Jujutsu bookmark and provider workflow. If the orchestration change contains review fixes, follow the option 3 description rule below before publishing.
 4. **Continue** — re-enter Phase 3, state re-read first.
 5. **Done** — leave the optimization stack for manual review.
 
@@ -58,7 +58,7 @@ For option 1, load `ce-code-review` on the optimization stack, interactive or `m
 
 **Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement; push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on — surface what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not describe or push the change from this step — leave it in the optimization stack for the Create PR option.
 
-For option 3, compose any needed Jujutsu change description from the project's active instructions and the description syntax visible in `jj log`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Then set or advance the provider-facing bookmark to the stack head before using the provider workflow.
+For option 3, compose any needed Jujutsu change description from the actual change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Then set or advance the provider-facing bookmark to the stack head before using the provider workflow.
 Option 4 (continue) re-enters Phase 3 with the current state, state re-read from disk first.
 
 ### 4.4 Cleanup

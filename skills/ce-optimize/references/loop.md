@@ -90,10 +90,10 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 **Codex backend:**
 1. Check the active harness context and do NOT delegate if already inside a Codex sandbox; fall back to subagent dispatch.
 2. Fill the experiment prompt template
-3. Write the filled prompt to a private local file under the active Jujutsu workspace's `.tmp/rocketclaw/optimize/`; outside Jujutsu, use `.tmp/rocketclaw/optimize/` relative to the current directory. Reject a symlinked `.tmp`, create the directory with owner-only permissions, and reserve a run-and-iteration-specific filename without overwriting an existing file.
+3. Write the filled prompt to a private local file under the active Jujutsu workspace's `.tmp/optimize/`; outside Jujutsu, use `.tmp/optimize/` relative to the current directory. Reject a symlinked `.tmp`, create the directory with owner-only permissions, and reserve a run-and-iteration-specific filename without overwriting an existing file.
 4. Dispatch via Codex:
    ```bash
-   codex exec --skip-git-repo-check - < "<workspace-root-or-dot>/.tmp/rocketclaw/optimize/<prompt-file>"
+   codex exec --skip-git-repo-check - < "<workspace-root-or-dot>/.tmp/optimize/<prompt-file>"
    ```
 5. Security posture: use the user's selection (ask once per session if not set in spec)
 
@@ -155,7 +155,7 @@ After all experiments in the batch have been measured:
 
 3. **If `decide.mjs` returns `keep` for that winner: KEEP**
    - Snapshot the experiment workspace with `jj status`, identify its working-copy change ID, and verify with `jj diff --summary -r <change-id>` that only mutable-scope changes remain; if no eligible diff remains, treat the experiment as non-improving and abandon it
-   - Compose the Jujutsu change description from the project's active instructions and the description syntax visible in `jj log`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Use the composition with `jj describe -r <change-id> -m <description-composed-from-runtime-conventions>`.
+   - Compose the Jujutsu change description from the actual change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Use the composition with `jj describe -r <change-id> -m <description-composed-from-runtime-conventions>`.
    - Rebase the winning change onto the recorded current-best change, then run `jj new <winning-change-id>` in the orchestration workspace so the winner becomes the durable parent and the new empty working-copy change becomes the next optimization change
    - Record both resulting change IDs before cleaning up the winner's experiment workspace with the helper's `keep` disposition
    - This is now the new baseline for subsequent batches
@@ -164,7 +164,7 @@ After all experiments in the batch have been measured:
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
    - If disjoint: rebase the runner-up change onto the new baseline and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot — do not reuse the standalone experiment's accumulated samples, whose meaning is against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Keep the original standalone log entry for audit.
-   - Keep it only when that result is eligible and `next_measurement` is `none`; compose its description from runtime project conventions, retain it as the next current-best parent, record the resulting IDs, and clean up that experiment workspace with `keep` (outcome: `runner_up_kept`).
+   - Keep it only when that result is eligible and `next_measurement` is `none`; compose its description from the actual change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Retain it as the next current-best parent, record the resulting IDs, and clean up that experiment workspace with `keep` (outcome: `runner_up_kept`).
    - Otherwise: abandon the rebased runner-up, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up that experiment workspace without retaining the change
    - Stop after first failed combination
 

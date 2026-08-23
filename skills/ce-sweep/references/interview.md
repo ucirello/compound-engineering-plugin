@@ -89,11 +89,11 @@ For email sources there are no source-side actions, so approval is moot — reco
 Ask where the sweep's state file lives:
 
 - **Tracked in the workspace** (recommended when multiple actors or machines share a bookmark — one source of truth every workspace reads and writes). Sets `sweep_state_path` to the tracked default under the artifact root's `feedback-sweep/` — resolve `<root>` to its concrete value first (e.g. the default `docs`), so the persisted value is `<resolved-root>/feedback-sweep/state.yml`, never the literal `<root>` placeholder (per the persist rule below).
-- **Machine-local under the workspace `.tmp/`** (solo setups; keeps sweep bookkeeping out of tracked changes). Resolve the path immediately with this shell block, substituting a sanitized workspace slug. When `jj root` is unavailable, use `.tmp/` under the current directory:
+- **Machine-local under the workspace `.tmp/rocketclaw/`** (solo setups; keeps sweep bookkeeping out of tracked changes). Resolve the path immediately with this shell block, substituting a sanitized workspace slug. When `jj root` is unavailable, use `.tmp/rocketclaw/` under the current directory:
 
   ```bash
   WORKSPACE_ROOT="$(jj root 2>/dev/null)";
-  SCRATCH_ROOT="${WORKSPACE_ROOT:-$PWD}/.tmp";
+  SCRATCH_ROOT="${WORKSPACE_ROOT:-$PWD}/.tmp/rocketclaw";
   if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
   (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
   if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current actor: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -105,7 +105,7 @@ Ask where the sweep's state file lives:
 
   Persist the echoed absolute path as `sweep_state_path`; never persist a placeholder.
 
-Let the user override the path if they want a different location. If they pick machine-local, note that another workspace or machine will not see this state — it is local by design. Ensure `.tmp/` is ignored before continuing; Jujutsu honors `.gitignore`, and an already tracked `.tmp/` path must be removed from tracking with `jj file untrack`.
+Let the user override the path if they want a different location. If they pick machine-local, note that another workspace or machine will not see this state — it is local by design. Ensure `.tmp/rocketclaw/` is ignored before continuing; Jujutsu honors `.gitignore`, and an already tracked `.tmp/rocketclaw/` path must be removed from tracking with `jj file untrack`.
 
 **Capture:** `sweep_state_path` (string).
 
@@ -194,7 +194,7 @@ feedback_sources:
   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
-sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # concrete path (<root> resolved before persisting); tracked or workspace-local under .tmp
+sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # concrete path (<root> resolved before persisting); tracked or workspace-local under .tmp/rocketclaw
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
 sweep_shared_bookmark: sweep-state                # optional: publication-gated lease through this tracked bookmark

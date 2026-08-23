@@ -90,7 +90,7 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
    agent-browser errors      # check console/page errors
    ```
 
-   Write transient screenshots under `$(jj workspace root)/.tmp/dogfood/<run-id>/`. If the workspace root cannot be resolved or that directory cannot be created, use the current directory's `.tmp/dogfood/<run-id>/` instead. Keep run IDs collision-resistant, clean the run directory when no longer needed, and only copy a screenshot into the report's location if you intend to embed it in the final report.
+   Write transient screenshots under `$(jj workspace root)/.tmp/dogfood/<run-id>/`. If the workspace root cannot be resolved or that directory cannot be created, stop with the blocker instead of writing elsewhere. Keep run IDs collision-resistant, clean the run directory when no longer needed, and only copy a screenshot into the report's location if you intend to embed it in the final report.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product?
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity.
@@ -109,7 +109,7 @@ When a scenario fails — or a passing scenario carries a sharp paper cut worth 
 1. Investigate the root cause. If it's non-obvious, use `ce-debug`.
 2. Apply the fix in the code.
 3. **Add an automated regression test** that fails before the fix and passes after, so the bug can't return. This is the default for behavioral and code bugs. When an automated test is genuinely impractical — a pure copy, spacing, or visual fix with no behavioral assertion to make — substitute a documented browser-replay or screenshot check and **state in the report why no automated test was meaningful**. Do not invent a hollow test just to satisfy the step.
-4. Finalize one logical jj change per fix and give it a clear description using `ce-commit` with the jj provider.
+4. Finalize one logical JJ change per fix using `ce-commit` with the JJ provider. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose any fixed prefix, type, scope, subject, body, layout, template, or example. Preserve the semantic association with the fix being finalized, and do not add tool, model, or agent branding or attribution.
 5. Re-run the failing scenario in the browser to confirm it now passes; then continue the matrix.
 6. If the bug carried a reusable lesson, capture it with `ce-compound`.
 

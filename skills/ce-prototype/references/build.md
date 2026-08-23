@@ -12,7 +12,7 @@ On the web path the artifact is whatever a browser can display and you can autho
 
 ## Which run root
 
-Prefer `<jj workspace root>/.context/prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Fall back to `<jj workspace root>/.tmp/rocketclaw/prototype/<date>-<slug>/` when the user asks that this run not be kept or the durable path fails its safety checks; without a jj workspace, use `<current working directory>/.tmp/rocketclaw/prototype/<date>-<slug>/`. Confirm that the selected parent is ignored before writing; if it cannot be made safe without a declined ignore-rule write, stop. Calling the prototype throwaway is not a request to discard it — throwaway describes the code, and a kept prototype is never deleted.
+Prefer `<jj workspace root>/.context/prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Fall back to `<jj workspace root>/.tmp/prototype/<date>-<slug>/` when the user asks that this run not be kept or the durable path fails its safety checks; without a Jujutsu workspace, use `<current working directory>/.tmp/prototype/<date>-<slug>/`. Confirm that the selected parent is ignored before writing; if it cannot be made safe without a declined ignore-rule write, stop. Calling the prototype throwaway is not a request to discard it — throwaway describes the code, and a kept prototype is never deleted.
 
 ## Recreate, do not rebuild the app
 

@@ -39,7 +39,7 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 
 ### File Locations (all under `.context/optimize/<spec-name>/`)
 
-The scratch space under `.context/` is excluded through `.gitignore`: it survives a local resume but does not travel with Jujutsu changes, so anything needed durably must be exported to a tracked path.
+The scratch space under `.context/` is excluded by the workspace's Jujutsu ignore rules: it survives a local resume but does not travel with Jujutsu changes, so anything needed durably must be exported to a tracked path.
 
 | File | Purpose | Written When |
 |------|---------|-------------|

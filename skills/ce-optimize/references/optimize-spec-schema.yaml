@@ -249,7 +249,7 @@ required_fields:
       working_directory:
         type: string
         default: "."
-        description: "Working directory for the measurement command, relative to the repo root"
+        description: "Working directory for the measurement command, relative to the Jujutsu workspace root"
       stability:
         type: object
         default: { mode: "stable" }
@@ -336,7 +336,7 @@ required_fields:
         description: "Files and directories the agent MAY modify during experiments"
         items:
           type: string
-          description: "File path or directory (relative to repo root). Directories match all files within."
+          description: "File path or directory (relative to the Jujutsu workspace root). Directories match all files within."
         example:
           - "src/clustering/"
           - "src/preprocessing/"

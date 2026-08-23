@@ -217,7 +217,7 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the Git-backed Jujutsu repository's GitHub URL once at compose time:
+Resolve the workspace's GitHub URL once at compose time:
 
 ```bash
 jj git remote list

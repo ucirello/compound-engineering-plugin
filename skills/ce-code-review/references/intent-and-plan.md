@@ -33,7 +33,7 @@ that no claimed U-ID is missing from the plan.
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with change descriptions from the PR revisions if the body is sparse.
 
 **Bookmark mode:** Run `jj log -r "$BASE..<bookmark-ref>" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved fork point and bookmark revision from Stage 1. Use `<bookmark-ref>` (the resolved `<bookmark>@origin` remote bookmark or local bookmark), not the raw `<bookmark>` argument — a remote-only bookmark has no matching local bookmark, so the raw name would fail or read a stale same-named local bookmark.
 

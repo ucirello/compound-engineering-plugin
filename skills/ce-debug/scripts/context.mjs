@@ -13,7 +13,7 @@ function buildResolvedContext() {
   return [
     'RESOLVED_CONTEXT:',
     `cwd: ${process.cwd()}`,
-    `workspace: ${jj('root') || '(not a Jujutsu workspace)'}`,
+    `workspace: ${jj('workspace', 'root') || '(not a Jujutsu workspace)'}`,
     `bookmarks: ${jj('bookmark', 'list', '-r', '@') || '(none)'}`,
     `change: ${jj('log', '-r', '@', '--no-graph', '-T', 'change_id.short()') || '(none)'}`,
     `commit: ${jj('log', '-r', '@', '--no-graph', '-T', 'commit_id.short()') || '(none)'}`,

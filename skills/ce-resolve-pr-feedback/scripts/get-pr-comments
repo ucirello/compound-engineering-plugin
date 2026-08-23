@@ -65,11 +65,11 @@ fi
 # resolver can weigh identity as evidence, including recognizing its own prior
 # replies as already-handled.
 
-if JJ_ROOT=$(jj root 2>/dev/null); then
-    TMP_ROOT="$JJ_ROOT/.tmp"
-else
-    TMP_ROOT="$PWD/.tmp"
-fi
+JJ_ROOT=$(jj workspace root 2>/dev/null) || {
+    echo "Error: could not resolve the Jujutsu workspace root for local scratch storage." >&2
+    exit 1
+}
+TMP_ROOT="$JJ_ROOT/.tmp"
 effective_uid=$(id -u)
 if [ -L "$TMP_ROOT" ]; then
     echo "Error: local scratch root is a symlink: $TMP_ROOT" >&2

@@ -22,7 +22,7 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 ## Discover and launch
 
-Resolve the artifact root with `jj workspace root`; if it does not return a workspace root, use the current directory. Store screenshots, captured logs, and other temporary test artifacts under `<workspace-root>/.tmp`, creating only the required directories there. Do not use OS-global temporary storage.
+Resolve the artifact root with `jj workspace root`. If it does not return a workspace root, stop with that prerequisite blocker. Store screenshots, captured logs, and other temporary test artifacts under `<workspace-root>/.tmp`, creating only the required directories there. Do not use OS-global temporary storage.
 
 1. Discover projects and workspaces, then list schemes for the selected project. An empty argument or `current` selects the default or last-used scheme; a named argument selects that scheme. Ask only when no such scheme can be resolved or project discovery itself remains materially ambiguous.
 2. List simulators. Choose a compatible simulator from the requested target and project requirements, reusing an already booted one when practical. Ask only when those inputs do not determine a safe choice, then boot the selected simulator by UUID and wait until it is ready.

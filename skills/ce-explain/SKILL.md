@@ -58,7 +58,7 @@ if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUN_DIR="$SCRATCH_ROOT/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
+RUN_DIR="$SCRATCH_ROOT/rocketclaw/explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
 (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR";
 ```
@@ -92,7 +92,7 @@ Ask for the destination once with the blocking question tool; that governs the m
 
 ## Boundaries
 
-- **Not a verdict.** "Should we adopt X?" is `ce-pov`. `ce-explain` teaches what X is and how it works.
-- **Not repo memory.** Documenting a solved problem for future work is `ce-compound`. `ce-explain` teaches the human, not the repo.
+- **Not a verdict.** "Should we adopt X?" is `ce-pov`. This skill teaches what X is and how it works.
+- **Not repo memory.** Documenting a solved problem for future work is `ce-compound`. This skill teaches the human, not the repo.
 - **Not ideation or scoping.** An idea input is explained as given — implications and trade-offs — never expanded into options or a requirements dialogue.
 - **The check-in is never headless.** It exists to exercise the human; automating the answers deletes the product.

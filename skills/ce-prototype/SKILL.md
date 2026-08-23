@@ -1,12 +1,12 @@
 ---
 name: ce-prototype
-description: Build a throwaway prototype to answer how something should work, feel, or read. Use when committing the wrong answer would be expensive to unravel and a cheap sketch cannot settle it. Not a rough visual probe during brainstorming, not for deciding what to build, not polishing a feature that already works, not implementing the real thing.
+description: Build a throwaway prototype to answer how something should work, feel, or read. Use when locking in the wrong answer would be expensive to unravel and a cheap sketch cannot settle it. Not a rough visual probe during brainstorming, not for deciding what to build, not polishing a feature that already works, not implementing the real thing.
 argument-hint: "[prompt, brainstorm path, or plan path]"
 ---
 
 # Prototype
 
-Build a throwaway prototype at the fidelity that can answer this question, before committing an approach later work will treat as given. Then apply the decisions or hand off.
+Build a throwaway prototype at the fidelity that can answer this question, before later work treats an approach as given. Then apply the decisions or hand off.
 
 **Do not fake the dimension being tested.** Modality, fidelity, and medium all follow from that one rule. A question about how a flow or state model behaves is settled by driving it, so a screen that only looks like the product does not answer it. A question about how a layout or a mark reads is settled by seeing it at real finish, so a thin sketch does not answer it either. The user's own perception settles the question, never your judgment of the artifact.
 
@@ -31,9 +31,9 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. It yields in exactly two cases: the user names a technology, or the dimension cannot be rendered in a browser without faking it. In that second case, build in the medium the dimension requires, and name that choice before you build. If a named technology also cannot render the dimension, say so rather than yielding silently. `references/build.md` owns what the artifact may be on either path.
 
-Build a kept run under `<jj workspace root>/.context/prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Use `<jj workspace root>/.tmp/rocketclaw/prototype/<date>-<slug>/` when the run should not be kept or the durable path fails its safety checks; without a jj workspace, use `<current working directory>/.tmp/rocketclaw/prototype/<date>-<slug>/`. `references/build.md` names every case that forces the fallback root.
+Build a kept run under `<jj workspace root>/.context/prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Use `<jj workspace root>/.tmp/prototype/<date>-<slug>/` when the run should not be kept or the durable path fails its safety checks; without a Jujutsu workspace, use `<current working directory>/.tmp/prototype/<date>-<slug>/`. `references/build.md` names every case that forces the fallback root.
 
-Jujutsu automatically snapshots new files and uses `.gitignore` files for ignore rules. The selected `.context/` or `.tmp/` path has to be ignored first. When it is not covered, offer to append the applicable line to the workspace-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone.
+Jujutsu automatically snapshots new files. The selected `.context/` or `.tmp/` path has to be covered by the workspace's Jujutsu ignore rules first. When it is not covered, offer to add the applicable rule to the workspace's ignore configuration, changing it only if the user agrees and leaving every unrelated rule alone.
 
 `references/preview.md` owns that offer and the resolution that follows it. Do not create the run directory yourself; a second claim splits the screens from the capsule.
 

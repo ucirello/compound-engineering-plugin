@@ -12,6 +12,6 @@ Interactive mode shows the target and rationale and asks before editing. Non-int
 
 If `.context/CONCEPTS.md` exists, apply the same semantic check for shared domain vocabulary; otherwise skip it.
 
-If an instruction edit happens after the refresh change was described, include it in the same local revision when safe. Otherwise create a new Jujutsu child, describe it, update the existing bookmark, and push only when publication was selected.
+If an instruction edit happens after the refresh change was described, include it in the same local revision when safe. Otherwise create a new Jujutsu child, describe it, update the existing bookmark, and publish it with `jj git push` only when publication was selected.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Compose from the actual change; never reuse a fixed example or add attribution.

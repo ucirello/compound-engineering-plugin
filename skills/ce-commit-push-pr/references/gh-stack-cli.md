@@ -13,8 +13,8 @@ purpose: do not depend on the user having a separate `gh-stack` skill installed.
 gh stack checkout "<parent-pr-number>"
 ```
 
-Resolve a parent by **PR number** whenever one exists — that is what pulls a stack down from
-GitHub. A bare head name resolves against **local** stacks only, so a name-only parent can be
+Resolve a parent by **PR number** whenever one exists — that is what pulls remote stack state into
+the local manager. A bare head name resolves against **local** stacks only, so a name-only parent can be
 classified locally and no further.
 
 Branch on the exit code; status text goes to stderr and must not be parsed.

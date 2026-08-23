@@ -151,8 +151,8 @@ def _jj_workspace_root() -> str | None:
     return os.path.abspath(root) if result.returncode == 0 and root else None
 
 
-_WORKSPACE_ROOT = _jj_workspace_root() or os.path.abspath(os.getcwd())
-DEFAULT_ROOT = os.path.join(_WORKSPACE_ROOT, ".tmp", "rocketclaw")
+_WORKSPACE_ROOT = _jj_workspace_root()
+DEFAULT_ROOT = os.path.join(_WORKSPACE_ROOT, ".tmp", "rocketclaw") if _WORKSPACE_ROOT else None
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -205,6 +205,8 @@ _RUNNER_HARD_GRACE = 30.0
 
 
 def _is_managed_workspace_path(path: str) -> bool:
+    if DEFAULT_ROOT is None:
+        return False
     root = os.path.normcase(os.path.abspath(DEFAULT_ROOT))
     path = os.path.normcase(os.path.abspath(path))
     try:
@@ -263,29 +265,37 @@ def _private_root_usable(path: str) -> bool:
 def jobs_root_base() -> str:
     configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
     if configured:
-        return os.path.abspath(configured)
-    if _private_root_usable(DEFAULT_ROOT):
+        configured = os.path.abspath(configured)
+        if not _is_managed_workspace_path(configured):
+            raise RunnerError("ROCKETCLAW_PEER_JOBS_ROOT must stay under the workspace .tmp/rocketclaw directory")
+        return configured
+    if DEFAULT_ROOT and _private_root_usable(DEFAULT_ROOT):
         return os.path.abspath(DEFAULT_ROOT)
-    raise RunnerError(f"workspace-local jobs root is unavailable or unsafe: {DEFAULT_ROOT}")
+    raise RunnerError("Jujutsu workspace-local jobs root is unavailable or unsafe")
 
 
 def candidate_jobs_root_bases() -> list:
     """The configured root or the current workspace-local managed root."""
     configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
     if configured:
-        return [os.path.abspath(configured)]
-    return [os.path.abspath(DEFAULT_ROOT)]
+        configured = os.path.abspath(configured)
+        return [configured] if _is_managed_workspace_path(configured) else []
+    return [os.path.abspath(DEFAULT_ROOT)] if DEFAULT_ROOT else []
 
 
 def skill_runs_root(skill: str) -> str:
     if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
-        return os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])
+        configured = os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])
+        if not _is_managed_workspace_path(configured):
+            raise RunnerError("ROCKETCLAW_WORK_RUNS_ROOT must stay under the workspace .tmp/rocketclaw directory")
+        return configured
     return os.path.join(jobs_root_base(), skill)
 
 
 def candidate_skill_runs_roots(skill: str) -> list:
     if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
-        return [os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])]
+        configured = os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])
+        return [configured] if _is_managed_workspace_path(configured) else []
     return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 

@@ -9,7 +9,7 @@ Default to the platform's blocking question tool: `AskUserQuestion` in Claude Co
 ## Config keys
 
 - `feedback_sources` — list of source entries; each carries a `type` (`slack`, `github-issues`, `email`), its target, the standing-approved ack action, an optional close-out action, and an optional `sensitive: true`. Presence of this key means the skill is configured.
-- `sweep_state_path` — path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A path under the workspace's `.tmp/` is machine-local mode and must stay ignored; any other workspace-internal path is tracked mode and is included in each sweep change.
+- `sweep_state_path` — path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A path under the workspace's `.tmp/rocketclaw/` is machine-local mode and must stay ignored; any other workspace-internal path is tracked mode and is included in each sweep change.
 - `sweep_lease_ttl_minutes` — single-writer lease staleness threshold; default `60`. Passed to `lease-acquire` in 2a.
 - `sweep_shared_bookmark` — tracked bookmark name when multiple workspaces publish state through the same remote bookmark (see 2a topology); unset for local-only changes.
 - `sweep_ack_cap` — integer circuit-breaker threshold; default `25`.
@@ -38,7 +38,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 - `STALE-RECLAIMED` — an expired lease was taken over; proceed, and note the takeover in the final summary.
 - `OK` — proceed.
 
-**Shared-bookmark topology** (`sweep_shared_bookmark` set): before any source-side write, snapshot only the state fileset into a described change with `jj commit <state> -m <composed-description>`, retain its change id as `<lease-change>`, move the configured bookmark to it with `jj bookmark set <bookmark> -r <lease-change>`, and publish it with `jj git push --remote <remote> --bookmark <bookmark>`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed in `jj log` win; use the Go guidance only when compatible and only for quality, clarity, and structure, never as fixed syntax. If publication is rejected, run `jj git fetch`, reconcile the tracked bookmark without discarding either side, rebase with `jj rebase -r <lease-change> --onto <bookmark>@<remote>`, and retry `jj git push --remote <remote> --bookmark <bookmark>` only after `lease-acquire` still identifies this writer as the winner. Otherwise record `aborted-locked` and stop. Touch no source until a fetch confirms `<lease-change>` at `<bookmark>@<remote>`.
+**Shared-bookmark topology** (`sweep_shared_bookmark` set): before any source-side write, snapshot only the state fileset into a described change with `jj commit <state> -m <composed-description>`, retain its change id as `<lease-change>`, move the configured bookmark to it with `jj bookmark set <bookmark> -r <lease-change>`, and publish it with `jj git push --remote <remote> --bookmark <bookmark>`. Before composing the description, inspect the project's active instructions and the description syntax visible in `jj log -r '::@'`; those runtime-local conventions take precedence. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. If publication is rejected, run `jj git fetch`, reconcile the tracked bookmark without discarding either side, rebase with `jj rebase -r <lease-change> --onto <bookmark>@<remote>`, and retry `jj git push --remote <remote> --bookmark <bookmark>` only after `lease-acquire` still identifies this writer as the winner. Otherwise record `aborted-locked` and stop. Touch no source until a fetch confirms `<lease-change>` at `<bookmark>@<remote>`.
 
 Then `validate --state <state>` (a lease-agnostic repair): note in the summary any ids it downgrades from `closed` to `fix_pending`.
 
@@ -72,11 +72,11 @@ A failed ack write -> upsert the item as `ack_deferred` and hold the cursor (do 
 
 #### 2e. Media
 
-Resolve and create media scratch under the Jujutsu workspace's `.tmp/`, falling back to `.tmp/` beneath the current directory when no workspace is available. Substitute the current run id:
+Resolve and create media scratch under the Jujutsu workspace's `.tmp/rocketclaw/`, falling back to `.tmp/rocketclaw/` beneath the current directory when no workspace is available. Substitute the current run id:
 
 ```bash
 WORKSPACE_ROOT="$(jj root 2>/dev/null)";
-SCRATCH_ROOT="${WORKSPACE_ROOT:-$PWD}/.tmp";
+SCRATCH_ROOT="${WORKSPACE_ROOT:-$PWD}/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current actor: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -117,7 +117,7 @@ Interactive only. For items needing a product call, ask the user — grouped by 
 
 Render the handoff invocation exactly as the skill body's 2i section states.
 
-- **Record the change.** Snapshot only `<root>/plans/feedback-sweep-plan.md` plus `<state>` when it is outside `.tmp/` with `jj commit <plan-fileset> <optional-state-fileset> -m <composed-description>`, and retain its change id as `<recorded-change>`; `.tmp/` state is never tracked. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed in `jj log` win; use the Go guidance only when compatible and only for quality, clarity, and structure, never as fixed syntax. A recording failure is reported, not fatal. With no shared bookmark, never publish. With `sweep_shared_bookmark` set, run `jj git fetch`, reconcile and run `jj rebase -r <recorded-change> --onto <bookmark>@<remote>`, move the local bookmark with `jj bookmark set <bookmark> -r <recorded-change>`, then run `jj git push --remote <remote> --bookmark <bookmark>`.
+- **Record the change.** Snapshot only `<root>/plans/feedback-sweep-plan.md` plus `<state>` when it is outside `.tmp/rocketclaw/` with `jj commit <plan-fileset> <optional-state-fileset> -m <composed-description>`, and retain its change id as `<recorded-change>`; `.tmp/rocketclaw/` state is never tracked. Before composing the description, inspect the project's active instructions and the description syntax visible in `jj log -r '::@'`; those runtime-local conventions take precedence. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. A recording failure is reported, not fatal. With no shared bookmark, never publish. With `sweep_shared_bookmark` set, run `jj git fetch`, reconcile and run `jj rebase -r <recorded-change> --onto <bookmark>@<remote>`, move the local bookmark with `jj bookmark set <bookmark> -r <recorded-change>`, then run `jj git push --remote <remote> --bookmark <bookmark>`.
 - **Record the run.** `run-record --state <state> --writer <writer> --outcome <completed|partial|failed> --counts '<per-source JSON>' --timestamp <ISO now>`.
 - **Release.** `lease-release --state <state> --writer <writer>`.
 - **Summary** (always emit): new items by source; recordings analyzed, each with its one-line finding; closed items with their fix evidence; the `ack_deferred` / `manual_stuck` / needs-attention list; any circuit-breaker or stale-reclaim note; and always the plan path with the handoff line:

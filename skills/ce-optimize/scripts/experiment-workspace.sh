@@ -10,7 +10,7 @@
 #   experiment-workspace.sh cleanup-all <spec_name>
 #   experiment-workspace.sh count
 #
-# Workspaces are created at: .tmp/rocketclaw/optimize/workspaces/optimize-<spec>-exp-<NNN>/
+# Workspaces are created at: .tmp/optimize/workspaces/optimize-<spec>-exp-<NNN>/
 
 set -euo pipefail
 
@@ -26,19 +26,19 @@ JJ_ROOT=$(jj workspace root 2>/dev/null) || {
 }
 
 TEMP_ROOT="$JJ_ROOT/.tmp"
-WORKSPACE_DIR="$TEMP_ROOT/rocketclaw/optimize/workspaces"
+WORKSPACE_DIR="$TEMP_ROOT/optimize/workspaces"
 
 experiment_workspace_name() {
   local spec_name="${1:?Error: spec_name required}"
   local padded_index="${2:?Error: padded_index required}"
-  echo "rocketclaw-optimize-${spec_name}-exp-${padded_index}"
+  echo "optimize-${spec_name}-exp-${padded_index}"
 }
 
 ensure_temp_root() {
   local path owner mode current_uid
   current_uid=$(id -u)
   umask 077
-  for path in "$TEMP_ROOT" "$TEMP_ROOT/rocketclaw" "$TEMP_ROOT/rocketclaw/optimize" "$WORKSPACE_DIR"; do
+  for path in "$TEMP_ROOT" "$TEMP_ROOT/optimize" "$WORKSPACE_DIR"; do
     if [[ -L "$path" ]]; then
       echo -e "${RED}Error: Refusing symlinked managed path: $path${NC}" >&2
       return 1
@@ -72,10 +72,6 @@ ensure_temp_root() {
     fi
   done
 
-  local ignore_file="$JJ_ROOT/.gitignore"
-  if ! grep -Eq '^/?\.tmp/$' "$ignore_file" 2>/dev/null; then
-    printf '%s\n' '.tmp/' >> "$ignore_file"
-  fi
 }
 
 # Create an experiment workspace
@@ -244,7 +240,7 @@ Commands:
   cleanup-all  Abandon and remove all experiment workspaces for a spec
   count        Count total active experiment workspaces
 
-Workspaces: .tmp/rocketclaw/optimize/workspaces/optimize-<spec>-exp-<NNN>/
+Workspaces: .tmp/optimize/workspaces/optimize-<spec>-exp-<NNN>/
 EOF
       ;;
     *)

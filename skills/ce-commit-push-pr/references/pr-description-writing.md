@@ -1,8 +1,10 @@
 # PR Description Writing
 
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win for change descriptions. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Project PR conventions remain authoritative for every PR title or body composition, edit, validation, and recommendation in this reference.
+
 ## The core principle
 
-The diff is already visible on GitHub. The description exists to explain what the diff cannot show: what was impossible before and is now possible, what was broken and is now fixed, what shape changed. Cut any sentence a reader could reconstruct from the diff itself.
+The PR diff is already visible. The description exists to explain what the diff cannot show: what was impossible before and is now possible, what was broken and is now fixed, what shape changed. Cut any sentence a reader could reconstruct from the diff itself.
 
 - Bad: "Adds `evidence-decider.ts`, modifies the shipping workflow to call it, and updates two test files."
 - Good: "Evidence capture now decides automatically whether a change has observable behavior. CLI tools and libraries are now eligible alongside web UIs."
@@ -37,7 +39,7 @@ If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>` and `he
 
 For current-bookmark mode, resolve `<base>` with `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, then verify `<base>@<base-remote>` with `jj bookmark list --all-remotes`. If no unique base resolves, ask the user. `<head>` is the feature bookmark target, or `@` when no bookmark exists yet.
 
-**Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repository against `jj git remote list`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin`.
+**Base remote:** use the uniquely resolved remote whose URL owns the base repository. For fork PRs, match the PR's base owner/repository against `jj git remote list`. If no local remote matches, skip to the `gh` fallback rather than diffing against an unrelated remote.
 
 ```bash
 jj git fetch --remote <base-remote>
@@ -48,7 +50,7 @@ jj diff -r '<base>@<base-remote>..<head>'
 
 If the change list is empty, report "No changes to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when Jujutsu cannot reach the revisions, including a fork PR with no matching remote, a shallow clone, offline state, or unrelated histories.
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when JJ cannot reach the revisions, including a fork PR with no matching remote, a shallow clone, offline state, or unrelated histories.
 
 Note in the user-facing summary when the API fallback was used.
 
@@ -58,7 +60,7 @@ Note in the user-facing summary when the API fallback was used.
 
 **Size by decision cost, not diff shape** — not changed-line count, file extension, or visual surface. A 5-line ranking or deploy change can carry more reviewer uncertainty than a 500-line mechanical rename.
 
-Build a compact internal **scope map** from the **complete Jujutsu change list and final range diff**. Use concise change descriptions for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale descriptions; consult detailed descriptions only when a concise description remains opaque or conflicts with the diff. Group material outcome clusters, name one umbrella outcome, and identify each cluster's material claims. Derive the map from the full range, never from the latest change, tracker title, bookmark, original request, or the story of how work started. The map is not body content. Classify files by runtime purpose, not extension, and surface only claims the diff cannot establish.
+Build a compact internal **scope map** from the **complete JJ change list and final range diff**. Use concise change descriptions for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale descriptions; consult detailed descriptions only when a concise description remains opaque or conflicts with the diff. Group material outcome clusters, name one umbrella outcome, and identify each cluster's material claims. Derive the map from the full range, never from the latest change, tracker title, bookmark, original request, or the story of how work started. The map is not body content. Classify files by runtime purpose, not extension, and surface only claims the diff cannot establish.
 
 **Program altitude (multi-PR / series).** After the PR-local map, check whether this PR sits inside a larger program (multi-PR project, stack, series, multi-unit plan). Use only signals already in hand: user prompt/conversation, a known plan path, existing PR body, change descriptions, or sibling/series language in context. Do **not** invent a series, and do **not** run a repository-wide open-PR scan solely for this step.
 

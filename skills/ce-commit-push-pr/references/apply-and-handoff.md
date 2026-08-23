@@ -10,7 +10,7 @@
 
 Archive only in full workflow when enabled, a `## New concepts` section exists, and apply is confirmed. Write one file per concept under `<jj-root>/.context/explainers/`. Verify the path is not ignored under workspace ignore rules before writing.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example.
 
 Describe only the explainer files, move the feature bookmark to the described revision, and push it. Build each blob URL for the actual host and bookmark. If write, description, or push fails, warn and continue without the link.
 
@@ -26,11 +26,11 @@ Never implement watcher mechanics here. `babysit:off` is the per-run skip; `baby
 
 ## Applying Via `gh`
 
-Write the body under `<jj-root>/.tmp/rocketclaw/ce-commit-push-pr/` and pass it through `--body-file`; if no workspace can be resolved in description-only mode, use `./.tmp/rocketclaw/ce-commit-push-pr/`. Ensure `.tmp/` is ignored, remove the run file after the call, and never pass the body through stdin or command substitution.
+Write the body under `<jj-root>/.tmp/ce-commit-push-pr/` and pass it through `--body-file`; if no workspace can be resolved in description-only mode, use `./.tmp/ce-commit-push-pr/`. Ensure `.tmp/` is ignored, remove the run file after the call, and never pass the body through stdin or command substitution.
 
 ```bash
 WORKSPACE_ROOT="$(jj root)";
-BODY_DIR="${WORKSPACE_ROOT:-.}/.tmp/rocketclaw/ce-commit-push-pr";
+BODY_DIR="${WORKSPACE_ROOT:-.}/.tmp/ce-commit-push-pr";
 mkdir -p "$BODY_DIR";
 BODY_FILE="$BODY_DIR/pr-body.md";
 cat > "$BODY_FILE" <<'__PR_BODY_END__'

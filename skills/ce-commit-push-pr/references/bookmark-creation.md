@@ -7,16 +7,16 @@ The local default bookmark may include changes absent from its remote counterpar
 Fetch the authoritative remote state:
 
 ```bash
-jj git fetch --remote origin
+jj git fetch --remote <remote>
 ```
 
 If fetch succeeds, inspect changes reachable from the local default bookmark but not its remote bookmark:
 
 ```bash
-jj log -r '<base>@origin..<base>'
+jj log -r '<base>@<remote>..<base>'
 ```
 
-When the range is non-empty, show it and ask whether those changes belong in the new feature work. Carrying them uses `<base>` as `<start>`; leaving them uses `<base>@origin`. Never choose silently because including unrelated changes in a PR is the unsafe direction.
+When the range is non-empty, show it and ask whether those changes belong in the new feature work. Carrying them uses `<base>` as `<start>`; leaving them uses `<base>@<remote>`. Never choose silently because including unrelated changes in a PR is the unsafe direction.
 
 Move the working-copy change onto the selected start when necessary, preserving its file changes, and attach the feature bookmark:
 
@@ -25,7 +25,7 @@ jj rebase -r @ -o <start>
 jj bookmark create <bookmark-name> -r @
 ```
 
-Jujutsu rebases descendants automatically and records the operation, so no stash transition is needed. If the new parent causes conflicts, surface them and stop rather than resolving them automatically.
+JJ rebases descendants automatically and records the operation, so no stash transition is needed. If the new parent causes conflicts, surface them and stop rather than resolving them automatically.
 
 ## Fetch failure fallback
 

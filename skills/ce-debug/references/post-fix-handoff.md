@@ -1,4 +1,4 @@
-# ce-debug — post-fix handoff (interactive)
+# Post-fix handoff (interactive)
 
 Loaded at Phase 4 when Phase 3 actually applied a fix in interactive mode. Not used in `mode:pipeline` (see `pipeline-mode.md`) and not used when the user chose "Diagnosis only" — in both cases Phase 4 ends at the Debug Summary.
 
@@ -46,6 +46,8 @@ SKILL.md's Phase 4 **Routing** block owns the bare per-case actions — which sk
 **The preview is not a question.** State what gets described, which bookmark stack will be pushed, and that a PR will be opened, then proceed without waiting. It exists so the user can interrupt.
 
 **Link what already exists; never open a new record.** Reference the issue of record from Phase 0, plus any existing ticket Phase 1.4 found for this same bug — linking something that already exists is always fine, and on an auto-closing tracker it is how the fix closes it. What is forbidden is *creating* a record for this bug: do not open a ticket in a different system because the repo happens to use it, and do not ask the user whether you should; a Sentry issue, an alert, or a GitHub issue is as much the record as a Linear or Jira ticket, and a duplicate is noise the user then has to close. When Phase 0 found no issue of record — a pasted stack trace, a failing test — this run has none: ship the fix without one rather than opening a ticket to fill the slot. A new ticket is warranted only for a *different* problem you found along the way, per the residual rule above.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.
 
 **Issue auto-close syntax.** When the issue you are linking lives in a tracker with auto-close support, include that tracker's required semantics in the location it parses — usually the PR description, but sometimes the change description — so the fix flows back to the issue and closes it on merge. Preserve the exact issue identifier and required closing behavior without imposing an example syntax that the local tracker does not use. When the tracker has no auto-close syntax, link the record in the PR description and state what the fix addresses.
 

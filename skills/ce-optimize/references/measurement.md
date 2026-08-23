@@ -16,7 +16,7 @@ Present the user with a choice via the platform question tool:
 
 ### 0.5 Create Optimization Change and Scratch Space
 
-Snapshot the current working copy and record its full `change_id` as `baseline_change_id`. Ensure `$(jj workspace root)/.tmp` is a real directory path rather than a symlink and is excluded by the repository's `.gitignore`; create it with owner-only permissions. Outside Jujutsu, scratch-only flows use a real local `.tmp` directory with the same safety checks. Then create the empty orchestration change:
+Snapshot the current working copy and record its full `change_id` as `baseline_change_id`. Ensure `$(jj workspace root)/.tmp` is a real directory path rather than a symlink, is excluded by the workspace's Jujutsu ignore rules, and has owner-only permissions. Outside Jujutsu, scratch-only flows use a real local `.tmp` directory with the same safety checks. Stop before writing scratch data when the applicable `.tmp` path is not ignored. Then create the empty orchestration change:
 
 ```bash
 jj new @

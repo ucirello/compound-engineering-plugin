@@ -1,4 +1,4 @@
-# ce-debug pipeline mode
+# Pipeline mode
 
 Run without questions under the orchestrator's inherited scope: fix, describe, and push the current working-copy change and bookmark. Merge, rebase, bypassed safety, and gated-run approval remain excluded. Narrow or defer; never broaden.
 

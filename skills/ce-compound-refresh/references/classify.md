@@ -8,7 +8,7 @@ Assign each doc one outcome:
 | **Update** | Solution still correct; references drifted (paths, names, links, snippets, metadata, misfiling) | Fix in place |
 | **Consolidate** | Docs overlap heavily, both correct | Merge unique content into the canonical doc, delete the subsumed one |
 | **Replace** | Guidance is now misleading; a trustworthy successor can be written | Successor via subagent, then delete the old |
-| **Delete** | No longer useful, applicable, or distinct | Delete the file — git history is the archive; there is no `_archived/` |
+| **Delete** | No longer useful, applicable, or distinct | Delete the file — Jujutsu history is the archive; there is no `_archived/` |
 
 Judgment rules that are easy to get wrong:
 

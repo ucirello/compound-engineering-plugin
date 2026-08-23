@@ -119,8 +119,8 @@ if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN {
   CENSORING=1
   WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"
   LOCAL_TMP="$WORKSPACE_ROOT/.tmp"
-  CENSOR_DIR="$LOCAL_TMP/rocketclaw/optimize"
-  [[ ! -L "$LOCAL_TMP" && ! -L "$LOCAL_TMP/rocketclaw" && ! -L "$CENSOR_DIR" ]] || { echo "Error: unsafe local temp directory" >&2; exit 1; }
+  CENSOR_DIR="$LOCAL_TMP/optimize"
+  [[ ! -L "$LOCAL_TMP" && ! -L "$CENSOR_DIR" ]] || { echo "Error: unsafe local temp directory" >&2; exit 1; }
   (umask 077; mkdir -p "$CENSOR_DIR")
   CENSOR_STATUS_FILE=$(mktemp "$CENSOR_DIR/ce-optimize-censor-XXXXXX")
 fi

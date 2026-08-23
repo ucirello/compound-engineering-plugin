@@ -6,111 +6,99 @@ argument-hint: "[issue reference, error message, test path, or description of br
 
 # Debug and Fix
 
-Find the root cause of a failure, then — when the user chooses to — fix it with test-first discipline.
+Find the root cause of a failure, then, when the user chooses to, fix it with test-first discipline.
 
-**Done when:** the causal chain from trigger to symptom is stated with no gaps and file:line evidence, and either a verified fix has been handed off (PR, commit, or the user's chosen stop) or a diagnosis-only summary has been delivered. **Escalate rather than persist:** 2-3 hypotheses exhausted without confirmation, or 3 failed fix attempts, means diagnose *why* instead of trying again — that is the smart escalation `references/investigate.md` describes. One hypothesis, one change at a time; changing several to see what helps is shotgun debugging.
+**Done when:** the causal chain from trigger to symptom is stated without gaps and with file:line evidence, and either a verified fix has been handed off as a PR or described change, the user chose another stop, or a diagnosis-only summary was delivered. After 2-3 exhausted hypotheses or 3 failed fixes, diagnose why instead of repeating attempts. One hypothesis and one change at a time.
 
-`<bug_description>` is whatever this skill was invoked with — a failure description, a `mode:` token, or an issue reference (`#123`, `org/repo#123`, an issue URL) — from the user or from a calling skill (`ce-babysit-pr` / `lfg` in `mode:pipeline` pass the failing jobs and log tails). Blank if nothing was provided.
+`<bug_description>` is whatever invoked this skill: a failure description, `mode:` token, or issue reference, supplied by the user or a caller. It is blank when absent.
 
+## Setup
+
+Run this once before subagent dispatch and follow its directives except where this skill's interaction rules override them. Run it as its own unfiltered command. Its output begins with `=== skill context` and ends with `ROCKETCLAW_CONTEXT_END`; if only one appears, rerun once verbatim. If Node is unavailable, proceed unchanged.
+
+```bash
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+NODE="$(for c in node nodejs; do command -v "$c" >/dev/null 2>&1 && "$c" -e '' >/dev/null 2>&1 && { echo "$c"; break; }; done)";
+if [ -n "$NODE" ]; then
+"$NODE" "$SKILL_DIR/scripts/context.mjs" || echo "context script failed; continue with the skill's normal behavior";
+else
+echo "no Node runtime; continue with the skill's normal behavior";
+fi
+```
 
 ## Mode
 
-Default is **interactive**: investigate, run the Phase 2 fix-choice gate, then the Phase 4 handoff.
+Interactive mode investigates, runs the Phase 2 choice, then Phase 4 handoff.
 
-**`mode:pipeline`** (set by an orchestrator such as `ce-babysit-pr` or `lfg`): run fully non-interactively and never call the blocking-question tool. Strip the token from `<bug_description>`, then **read `references/pipeline-mode.md` and follow it** — it overrides every "ask the user" point with a conservative default, replaces the Phase 2 fix-gate with "fix convergent bugs, defer divergent ones", and replaces the Phase 4 handoff with a structured return whose `status` is exactly one of `fixed-and-pushed | fixed-not-pushed | diagnosed-no-fix | flaky-infra | needs-human`. The caller branches on those exact spellings, so never rename, abbreviate, or add to them.
+For `mode:pipeline`, strip the token, **read `references/pipeline-mode.md`**, ask nothing, fix convergent bugs, defer divergent ones, and return exactly one documented status.
 
-## Blocking questions
+## Blocking Questions
 
-Wherever this skill asks the user something, use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded — a pending schema load is not a reason to fall back), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (needs the `pi-ask-user` extension). Fall back to numbered options on the host's chat surface only when no blocking tool exists or the call errors. Never silently skip the question, and never end a phase without a response.
+Use the host's blocking question interface. Fall back to numbered options in chat only when none exists or the call errors. Never silently skip a question or end a phase without its answer.
 
-## Artifact Root
+## Paths
 
-Resolve `<root>` only when you first compose a `<root>/` path — a run that composes none skips this entirely.
+Reusable learnings live under `<workspace-root>/.context/solutions/`, with `<workspace-root>` from `jj workspace root`. Resolve that path only when a durable artifact is first needed; a scratch-only or no-workspace run skips it. Configuration lives under `<workspace-root>/.rocketclaw/`.
 
-<!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
-
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
-- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+Put every invocation-owned scratch file or directory under `<workspace-root>/.tmp/rocketclaw/debug/`. If no Jujutsu workspace is available, use `./.tmp/rocketclaw/debug/`. Never use host-wide temporary storage.
 
 ## Execution Flow
 
-Five phases in order: **0 Triage -> 1 Investigate -> 2 Root Cause -> 3 Fix -> 4 Handoff.** Beyond Phase 0's trivial-bug fast-path there is no skipping and no complexity tiers — a hard bug spends longer in each phase, it does not enter fewer.
+Five phases in order: **0 Triage -> 1 Investigate -> 2 Root Cause -> 3 Fix -> 4 Handoff.** Beyond Phase 0's trivial fast path, do not skip phases or invent complexity tiers.
 
-**Read `references/investigate.md` now and follow it for Phases 0-2** — issue fetching, reproduction, environment sanity and the dirty-tree stash experiment, backward tracing, the tracker/PR-history search, hypothesis grounding, and the escalation table. Only the gates below are stated here.
+**Read `references/investigate.md` now for Phases 0-2.** It owns issue fetching, reproduction, workspace sanity and working-copy isolation, backward tracing, prior-work search, hypothesis grounding, and escalation.
 
-**The issue of record.** Whatever the user handed you is where this bug already lives, whichever system that is — a Sentry issue counts as much as a Linear ticket. Carry its identifier and URL through to Phase 4. Input that is only a stack trace, test path, or description means this run has **no issue of record**. That is an ordinary state, not a gap to fill: ship the fix without one, never open a ticket to manufacture a record, and never ask the user whether to. Phase 1's tracker search reads prior work and **never establishes a new home for the bug** — an existing ticket for this bug is one to *link* in Phase 4, never one to create.
+Whatever issue the user supplied remains the issue of record. Input that is only a stack trace, test path, or description means no issue of record; ship without inventing one. Prior-work search never creates a new home for the bug.
 
-**The trivial-bug fast-path** (cause readable from the input, one-line fix, no deep tracing) still runs Phase 2's fix-choice gate before editing: it saves investigation ceremony, not the user's choice over whether to apply a fix.
+The trivial fast path still runs Phase 2's fix-choice gate before editing.
 
-**Choosing the regression test.** The regression test for a *confirmed defect* belongs wherever existing coverage already owns that behavior: start from the tests that exist rather than from a new file. Read `references/fix.md` for the homes and the naming rule before writing Phase 2's recommendation, not only before Phase 3's edits. A test that fails because the change deliberately reverses the behavior it asserts does not have a wrong expectation — that is the divergent case below, deferred rather than updated.
+Choose regression coverage from existing tests that own the confirmed defect. Read `references/fix.md` before recommending or editing tests. A test whose intended expectation the proposed change reverses is divergent, not wrong.
 
-### Phase 2 gate: present, then ask
+### Phase 2 Gate
 
-**Causal chain gate:** do not proceed to Phase 3 until you can explain the full chain — trigger through every step to the observed symptom — with no gaps. "Somehow X leads to Y" is a gap. Only the user can authorize proceeding on a best-available hypothesis when investigation is stuck.
+Do not proceed until the full causal chain is explained. Only the user can authorize a best-available hypothesis when investigation is stuck.
 
-Once the root cause is confirmed, write the findings as a user-visible block: the causal chain with file:line references; the proposed fix and the files it changes; which tests to use, add, modify, or strengthen, and whether existing tests should have caught this; and any related ticket or PR and how it shapes the recommendation — if an open PR already fixes this, lead with that link instead of a fresh fix.
+Present a user-visible findings block before asking: causal chain with file:line evidence, proposed fix and files, regression-test plan and why existing tests missed it, and relevant prior work. Then ask for **Fix it now**, **Diagnosis only**, or **Rethink the design** only when the cause is a responsibility/interface or requirements problem.
 
-**Same-turn presentation before the gate:** do not open the fix-choice question until that findings block has been written in full — in this turn or the immediately preceding assistant message. The blocking question tool renders only its own stem on modal harnesses, so a question fired on "root cause confirmed" alone leaves the user choosing with none of the causal chain in front of them. Naming the options is not presenting the findings, and a promise to explain after the choice is too late.
-
-Then ask (per **Blocking questions**) which path to take. Do not assume the user wants action now; the test recommendations are part of the diagnosis either way.
-
-1. **Fix it now** — proceed to Phase 3
-2. **Diagnosis only — I'll take it from here** — skip the fix, write Phase 4's summary, end the skill
-3. **Rethink the design** (`ce-brainstorm`) — only when the bug cannot be fixed within the current design: the root cause is a wrong responsibility or interface rather than wrong logic, the requirements themselves are wrong, or every candidate fix is a workaround around an assumption that no longer holds. Size alone is not a design problem.
-
-**`mode:pipeline`:** do not ask. Proceed to Phase 3 and apply a **convergent** fix; a **divergent** fix — one that would reverse a deliberate contract/behavior/product decision, including a "failing" test that asserts intended behavior — is deferred, not applied, per `references/pipeline-mode.md`. Never route to `ce-brainstorm` here; a design problem becomes a `needs-human` residual.
+In `mode:pipeline`, ask nothing: apply a convergent fix and defer a divergent product/design decision as `needs-human`.
 
 ### Phase 3: Fix
 
-If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Rethink the design," control has transferred to `ce-brainstorm` and this skill ends.
+If diagnosis-only was selected, skip to the summary. If design rethinking was selected, invoke `ce-brainstorm` and end.
 
-**Read `references/fix.md` before editing any file** — the test-first sequence, the failed-fix rule, and the defense-in-depth and post-mortem triggers. Two rules decide whether the fix may start at all, so they stay here:
+**Read `references/fix.md` before editing.** Two preconditions remain here because Phase 4 cannot reconstruct them:
 
-- **Branch.** Check `git status`; if the user has unstaged work in files that need modification, confirm before editing. If the current branch is the default branch, create a feature branch without asking — derive a name from the bug, `git checkout -b <name>`, and say which branch you moved to. Detect the default by comparing against `main`, `master`, or `git rev-parse --abbrev-ref origin/HEAD` **with its `origin/` prefix stripped** — the raw output is `origin/<name>`, so an unstripped comparison never matches.
-- **Record the pre-fix scope:** current `HEAD`, whether `git status --short` is clean, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
+- Check `jj status`. If a file that must change carries pre-existing user work, confirm before editing.
+- Record `@`'s change ID and commit ID, whether it has changes, and all pre-existing changed files. Track fix-owned files as work proceeds. If `@` is `trunk()` or immutable, create a dedicated child with `jj new @`; create a bookmark only when publication requires one.
 
 ### Phase 4: Handoff
 
-**`mode:pipeline` — skip this entire interactive handoff.** No polish/review tail, no residual questions, no preview, no learning-capture offer. Commit and push the convergent fix per `references/pipeline-mode.md`, then emit that reference's **structured return** as the final output. Divergent / needs-human items are deferred there (open thread or the caller's run-report comment — never a PR-body section). The rest of this section is the interactive path only.
+In `mode:pipeline`, skip the interactive handoff. Describe and push the convergent fix per `references/pipeline-mode.md`, emit its structured return, and defer divergent items there.
 
-**Structured summary** — always write this first:
+Always begin with:
 
-```
+```text
 ## Debug Summary
 **Problem**: [What was broken]
 **Root Cause**: [Full causal chain, with file:line references]
-**Recommended Tests**: [Tests to add/modify to prevent recurrence, with specific file and assertion guidance]
-**Fix**: [What was changed — or "diagnosis only" if Phase 3 was skipped]
-**Prevention**: [Test coverage added; defense-in-depth if applicable]
+**Recommended Tests**: [Specific tests and assertions]
+**Fix**: [What changed, or diagnosis only]
+**Prevention**: [Coverage and defense-in-depth]
 **Confidence**: [High/Medium/Low]
 ```
 
-**If Phase 3 was skipped**, stop after the summary — the user already said they were taking it from here. Do not prompt.
+If Phase 3 was skipped, stop after the summary.
 
-**If Phase 3 ran, read `references/post-fix-handoff.md` now and follow it before routing below.** It owns this phase's quality tail — the contextual-override checks, the skip-for-mechanical-fixes rule, the scoping that keeps `ce-simplify-code` and `ce-code-review` off unrelated branch work, residual handling, the `## Post-Fix Quality` block, and the learning-capture criteria — and none of that appears in this body. The routing below names *which* action fires, never the scope rules that make it safe, so it cannot be improvised from. Skipping the read ships an unreviewed fix, lets review reach into unrelated branch work, and strands accepted findings in the session.
+If Phase 3 ran, read `references/post-fix-handoff.md` before routing. It owns the quality tail, fix-only scoping, residuals, report block, and learning criteria.
 
-#### Routing
+Land only fix-owned files. If one already carried user edits, ask before finalization whether to include the whole file, leave it in the working-copy change, or stop. Only inclusion continues.
 
-**Land the fix without carrying along anything the user did not offer up** — not into a commit, not into a push, not into a PR. Do not ask whether to open a PR; permission is not the gate. Two questions decide the handoff, answered from the pre-fix scope Phase 3 recorded rather than inferred from how the branch came to exist. **Fire the action itself** via the platform's skill-invocation primitive — never merely tell the user to type a command.
+Exactly one route runs:
 
-**1. What may go into the commit — the fix-owned files and nothing else.** This is a constraint on whichever skill commits in question 2, never an action of its own. It holds on every route, remote or not. Do not commit here.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.
 
-- No fix-owned file carried pre-existing edits: those files are the commit scope, passed to whichever skill commits.
-- A fix-owned file already carried the user's edits: no commit separates them (`ce-commit` groups at file level and never splits a file). Ask (per **Blocking questions**) *before* anything commits: commit that file including their edits, leave the fix uncommitted, or stop. Only the first answer continues — the other two end the handoff, so question 2 never runs and nothing commits; say what was left and why. Every option loses something the agent cannot choose on the user's behalf, which is why this question survives. Phase 3's confirmation covered *editing* the file, never committing the user's edits with the fix.
+- **Ships** when the pre-fix working copy had no edits, the bookmark's entire change stack contains only offered work, and `origin` is PR-capable. Preview the described scope, bookmark stack, and create/update action, then invoke `ce-commit-push-pr`; do not finalize first.
+- **Stays local** otherwise. Invoke `ce-commit` for fix-owned files and push nothing. State why it stayed local.
+- **Not a Jujutsu workspace** stops without finalization.
 
-**2. Who commits, and whether it ships.** Exactly one of these runs.
-
-- **Ships** — the pre-fix tree was clean, nothing on the branch is work the user has not already offered, and `origin` is **PR-capable**: somewhere `gh` can actually open a PR. Establish those however fits the repo in front of you. Two facts make it less obvious than it looks.
-  - `ce-commit-push-pr` pushes the **whole branch**, and its PR spans every commit on it, not just your fix — so the question is about the branch, not your diff. It also pushes *before* creating the PR, so a remote `gh` cannot open a PR against leaves the branch published with no PR.
-  - Already pushed is not already **offered**. Commits in an open PR are under review, so they are offered and this run updates that PR rather than opening a second one; commits pushed for backup or to trigger CI are not, and a first PR would publish them. Compare against the remote rather than a local ref — a local branch, including the default branch Phase 3 may have branched off, can itself be ahead of what was pushed.
-
-  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be committed, on what branch, and whether a PR opens or updates, then **invoke the `ce-commit-push-pr` skill with `branding:on`.** It commits under question 1's scope, so do not commit first. The preview is a statement, not a question. Surface the resulting PR URL.
-- **Stays local** — any of those fails. Invoke the `ce-commit` skill under question 1's scope and push nothing. Say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first — a local commit is reversible.
-- **Not a git repo** — nothing commits. Stop after the summary and the quality block.
-
-**Contextual override** ("don't open PRs from skills", "commit only", "stop after the fix") — follow what the user said, and **Stop here** without committing when that is what they asked for. A vague tonal cue is not an override.
-
-**After a PR is open** — apply the reference's learning-capture criteria; if the user accepts, invoke the `ce-compound` skill, then commit the learning doc to the same branch and push so the open PR picks it up.
+Honor an explicit local-only or stop-after-fix instruction. After a PR opens, apply the learning criteria; if accepted, invoke `ce-compound`, include its learning in a described change on the same bookmark, and push it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax.

@@ -4,23 +4,25 @@ LFG's body owns the shipping precondition and the two invocation strings. This f
 
 ## Step 8 — a project-defined process may own the handoff
 
-The goal is the remaining work committed, pushed, and in an open PR whose URL you hold.
+The goal is the remaining work described and finished, its bookmark pushed, and an open PR whose URL you hold.
 
-If the project's active instructions name a process that owns that handoff — a named skill or command, a stacking tool, or documented steps, but not commit or PR-title conventions, which the default already honors, and a skill directory alone is not a directive — run it non-interactively with the same plan path and context below instead of the default. It is done only when the work is pushed and you hold the URL of an open PR containing it — one the process opened, or a PR that already exists for the branch. If it cannot run headlessly, is unavailable, or ends short of that state, stop as **blocked** naming the process — do not fall through to the default or to step 9.
+If the project's active instructions name a process that owns that handoff — a named skill or command, a stacking tool, or documented steps, but not change-description or PR-title conventions, which the default already honors, and a skill directory alone is not a directive — run it non-interactively with the same plan path and context below instead of the default. It is done only when the bookmark is pushed and you hold the URL of an open PR containing it — one the process opened, or a PR that already exists for the bookmark. If it cannot run headlessly, is unavailable, or ends short of that state, stop as **blocked** naming the process — do not fall through to the default or to step 9.
 
 ## Step 8 — what LFG threads into the default
 
 Thread the recorded plan path from step 1 into the `ce-commit-push-pr` invocation, along with any proceeded-and-flagged `settled_decision_conflicts` entries from step 2, so the PR body's settled-decisions provenance line and its proceed-under-flag clause can fire.
 
-This commits any remaining changes, pushes the branch, and opens a pull request — non-interactively, per the mode token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 10. Once the PR URL is known, back-fill it into any residual tickets filed in step 6 (the `filed` list) so each ticket links to the PR carrying the finding — best-effort, and never block DONE on a failed ticket update. If a PR already exists for the branch (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still commit and push any uncommitted changes.
+Compose each change description from the actual change after inspecting the project's active instructions and the description syntax visible in `jj log`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Every Jujutsu command example uses a dynamic placeholder such as `jj commit -m "<description-composed-from-runtime-conventions>"`; never reuse a fixed example message or add attribution.
 
-**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process** — the default's commit step pushes unconditionally (`git push -u origin HEAD`), so a literal invocation would still hit the impossible push. Instead commit any remaining changes locally yourself (`git add -A && git commit`) and skip the push and PR creation entirely.
+The default describes and finishes any remaining working-copy change, moves or creates a dynamically named bookmark at the finished change, pushes that bookmark, and opens a pull request — non-interactively, per the mode token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 10. Once the PR URL is known, back-fill it into any residual tickets filed in step 6 (the `filed` list) so each ticket links to the PR carrying the finding — best-effort, and never block DONE on a failed ticket update. If a PR already exists for the bookmark (check with `gh pr view --json number,url,state`), skip PR creation but still finish any non-empty working-copy change, set the existing PR bookmark to the finished revision with `jj bookmark set <bookmark> -r @-`, and push it with `jj git push --bookmark <bookmark> --remote <remote>`.
+
+**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process whose contract requires a remote.** Instead, if `jj diff --summary` reports changes, compose a dynamic description under the rule above and run `jj commit -m "<description-composed-from-runtime-conventions>"`; then skip bookmark push and PR creation entirely.
 
 ## Step 9 — stack handoff from step 8
 
 If step 8's `ce-commit-push-pr` completed a stack-mode submit and handed off `ce-babysit-pr` on the **bottom open non-draft** PR with `posture:stack-ready` or `posture:stack-land`:
 
-- Do **not** start a second bare `mode:pipeline` babysit on the current-branch URL (that can supersede the stack-aware run as target-only or watch the wrong layer).
+- Do **not** start a second bare `mode:pipeline` babysit on the current-bookmark URL (that can supersede the stack-aware run as target-only or watch the wrong layer).
 - Prefer the structured result already returned from that handoff when it reflects a completed pipeline stop.
 - If step 8 only confirmed babysit **started** (or no structured result is available), re-invoke `ce-babysit-pr mode:pipeline <bottom-pr-url> posture:<same>` and wait for its pipeline completion — never treat "started" as DONE.
 - Record the bottom PR URL and posture for step 10's user-facing resume line.
@@ -52,7 +54,7 @@ If step 8 recorded a `New concepts:` trailer, first echo one line per concept: `
 
 If an open PR exists, add one line pointing the user to the interactive watch-to-merge (pipeline mode stopped at "CI decided," not "merged"): `PR is moving — run <rendered ce-babysit-pr invocation> to watch it through review to merge.`
 
-When step 8/9 used a stack handoff, render that invocation for the **bottom open non-draft** PR URL with the same `posture:stack-ready` or `posture:stack-land` token — never a bare current-branch URL that would supersede stack scope.
+When step 8/9 used a stack handoff, render that invocation for the **bottom open non-draft** PR URL with the same `posture:stack-ready` or `posture:stack-land` token — never a bare current-bookmark URL that would supersede stack scope.
 
 ### The optional next-work offer
 

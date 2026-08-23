@@ -12,7 +12,7 @@ argument-hint: "[optional: feature description, requirements doc path, plan path
 
 **When directly invoked, always plan.** If the input is unclear, ask clarifying questions or use the planning bootstrap, but never classify a direct invocation as "not a planning task" and abandon the workflow.
 
-**Research, decide, and write the plan — never implement.** Do not write production code, run tests, or learn from execution-time results. Directional pseudo-code and grammar sketches may communicate design; changing code to see what happens belongs in `ce-work`.
+**Research, decide, and write the plan -- never implement.** Do not write production code, run tests, or learn from execution-time results. Directional pseudo-code and grammar sketches may communicate design; changing code to see what happens belongs in `ce-work`.
 
 At every native subagent boundary, classify a rejected dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and otherwise follow that boundary's stated fallback or failed-pass handling.
 
@@ -38,8 +38,8 @@ Phases run in order unless an owner routes out or short-circuits. Read a phase's
 
 ### Phase 0: Output, Resume, and Scope
 
-1. **Output first.** Read `references/output-mode.md` before interpreting any phase. It owns token parsing, output and confirmation precedence, renderer selection, and artifact-root rules. Load it unconditionally, but resolve a repository, config, or artifact root only when a later route composes a rooted path; no-repository answer-seeking and explicit-plan-path routes must not acquire a premature repository dependency.
-2. **Resume, deepen, approach, and domain.** Read `references/resume.md` before acting. It owns repo-backed resume discovery, requirements-only enrichment, deepen fast paths, approach-altitude routing, and the software/non-software split. Follow any terminal route it selects; otherwise continue.
+1. **Output first.** Read `references/output-mode.md` before interpreting any phase. It owns token parsing, output and confirmation precedence, renderer selection, and artifact-root rules. Load it unconditionally, but resolve a workspace, config, or artifact root only when a later route composes a rooted path; no-workspace answer-seeking and explicit-plan-path routes must not acquire a premature workspace dependency.
+2. **Resume, deepen, approach, and domain.** Read `references/resume.md` before acting. It owns workspace-backed resume discovery, requirements-only enrichment, deepen fast paths, approach-altitude routing, and the software/non-software split. Follow any terminal route it selects; otherwise continue.
 3. **Source and scope.** Read `references/intake.md` before Phase 0.2 and follow it through Phase 0.7. It owns upstream-contract discovery, preservation, bootstrap route-outs, blocking questions, depth, named-resource handling, and solo scoping synthesis. Do not cross a required gate that has not resolved.
 
 ### Phases 1-4: Research and Compose

@@ -4,7 +4,7 @@ Loaded when `detect-project-type.sh` returns `procfile` and the startup tuple st
 
 ## Signature
 
-- `Procfile` or `Procfile.dev` exists at the repo root
+- `Procfile` or `Procfile.dev` exists at the Jujutsu workspace root
 - `bin/dev` is **not** present (if it is, use the Rails recipe)
 
 ## Start command
@@ -56,4 +56,4 @@ Substitute `foreman` if `overmind` is unavailable on the user's machine — the 
 
 - **Socket files:** `overmind` writes a socket to `.overmind.sock` by default. If another instance or a stale socket prevents startup, report the log evidence and let the user decide whether to reuse that process or correct the start configuration. The `OVERMIND_SOCKET` env var can redirect the socket to a per-run path when the project already uses that convention.
 - **Procfile vs Procfile.dev:** production and development Procfiles often differ. Always prefer `Procfile.dev` for polish.
-- **Multiple web processes:** some Procfiles split web traffic across multiple processes (API + frontend). Polish can only open one URL — users with multi-web setups should author `.claude/launch.json` explicitly to select which process is "the dev server" for polish.
+- **Multiple web processes:** some Procfiles split web traffic across multiple processes (API + frontend). Polish can only open one URL — users with multi-web setups should author `.rocketclaw/launch.json` explicitly to select which process is "the dev server" for polish.

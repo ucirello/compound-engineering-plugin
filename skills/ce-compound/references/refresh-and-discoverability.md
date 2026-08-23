@@ -36,7 +36,7 @@ When invoking or recommending `ce-compound-refresh`, be explicit about the argum
 - **Specific file** when one learning or pattern doc is the likely stale artifact
 - **Module or component name** when several related docs may need review
 - **Category name** when the drift is concentrated in one solutions area
-- **Pattern filename or pattern topic** when the stale guidance lives in `<root>/solutions/patterns/`
+- **Pattern filename or pattern topic** when stale guidance lives in `.context/solutions/patterns/`
 
 Examples:
 
@@ -53,7 +53,7 @@ Always capture the new learning first. Refresh is a targeted maintenance follow-
 
 ### Discoverability Check
 
-After the learning is written and the refresh decision is made, check whether the project's instruction files would lead an agent to discover and search `<root>/solutions/` before starting work in a documented area. This runs every time — the knowledge store only compounds value when agents can find it.
+After writing, check whether active project instructions lead an agent to `.context/solutions/` before documented work.
 
 1. Identify which root-level instruction files exist (AGENTS.md, CLAUDE.md, or both). Read the file(s) and determine which holds the substantive content — one file may just be a shim that `@`-includes the other (e.g., `CLAUDE.md` containing only `@AGENTS.md`, or vice versa). The substantive file is the assessment and edit target; ignore shims. If neither file exists, skip this check entirely.
 2. Assess whether an agent reading the instruction files would learn three things:
@@ -61,7 +61,7 @@ After the learning is written and the refresh decision is made, check whether th
    - Enough about its structure to search effectively (category organization, YAML frontmatter fields like `module`, `tags`, `problem_type`)
    - When to search it (before implementing features, debugging issues, or making decisions in documented areas — learnings may cover bugs, best practices, workflow patterns, or other institutional knowledge)
 
-   This is a semantic assessment, not a string match. The information could be a line in an architecture section, a bullet in a gotchas section, spread across multiple places, or expressed without ever using the exact path `<root>/solutions/`. Use judgment — if an agent would reasonably discover and use the knowledge store after reading the file, the check passes.
+   This is semantic, not a string match. If an agent would reasonably discover and use the store, the check passes.
 
 3. If the spirit is already met, no action needed — move on.
 4. If not:
@@ -70,27 +70,27 @@ After the learning is written and the refresh decision is made, check whether th
 
       Keep the tone informational, not imperative. Express timing as description, not instruction — "relevant when implementing or debugging in documented areas" rather than "check before implementing or debugging." Imperative directives like "always search before implementing" cause redundant reads when a workflow already includes a dedicated search step. The goal is awareness: agents learn the folder exists and what's in it, then use their own judgment about when to consult it.
 
-      **Substitute the concrete root in what you write.** The examples below show `<root>/solutions/`, but the instruction file is read by agents without this plugin (and by people), who cannot resolve `<root>`. When you insert the text, replace `<root>` with the resolved concrete path — the actual artifact directory, which is the default `docs` root's `solutions/` unless a `docs_root` is configured — never the literal placeholder.
+      Write the concrete `.context/solutions/` path, never a placeholder.
 
       Examples of calibration (not templates — adapt to the file):
 
       When there's an existing directory listing or architecture section — add a line:
       ```
-      <root>/solutions/  # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
+      .context/solutions/  # documented solutions to past problems, organized by category with YAML frontmatter (module, tags, problem_type)
       ```
 
       When nothing in the file is a natural fit — a small headed section is appropriate:
       ```
       ## Documented Solutions
 
-      `<root>/solutions/` — documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
+      `.context/solutions/` - documented solutions to past problems, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`).
       ```
-   c. In full interactive mode, explain to the user why this matters — agents working in this repo (including fresh sessions, other tools, or collaborators without the plugin) won't know to check `<root>/solutions/` unless the instruction file surfaces it. Show the proposed change and where it would go, then use the platform's blocking question tool to get consent before making the edit: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting the proposal on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question. In lightweight mode (interactive or non-interactive), output a one-liner note and move on. In full non-interactive mode, **do not edit instruction files** — surface the gap in the terminal report as `Instruction-file edit: gap noted, not applied` (headless scope is documentation capture, not project-config edits; a human-invoked interactive run applies the edit with consent)
+   c. In full interactive mode, explain that future agents will not discover `.context/solutions/` unless active instructions surface it, show the smallest proposed edit, and ask through the available blocking interface. Fall back to chat only when that interface is unavailable or errors. Lightweight reports one line and moves on. Full non-interactive reports `Instruction-file edit: gap noted, not applied` and does not edit instructions.
 
-5. **If `CONCEPTS.md` exists at repo root, run a parallel discoverability check for it.** Assess whether the instruction file would lead an agent to discover the project's shared domain vocabulary. Use the same workflow as the `<root>/solutions/` check above: same target file, same edit-placement judgment, same consent-then-edit interaction shape per mode. A line in an existing section is almost always better than a new headed section. Example calibration when nothing else fits:
+5. **If `.context/CONCEPTS.md` exists, run the same discoverability check for it.** Prefer one line in an existing section.
 
    ```
-   CONCEPTS.md  # shared domain vocabulary (entities, named processes, status concepts) — relevant when orienting to the codebase or discussing domain concepts
+   .context/CONCEPTS.md  # shared domain vocabulary for codebase orientation
    ```
 
-   **Skip this step entirely if `CONCEPTS.md` does not exist** — never nag for an artifact the project has not adopted. When skipped, this step produces no output and no edit.
+   Skip when `.context/CONCEPTS.md` does not exist.

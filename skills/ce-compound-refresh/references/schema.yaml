@@ -1,5 +1,5 @@
-# Documentation schema for learnings written by ce-compound
-# Treat this as the canonical frontmatter contract for compounded learnings.
+# Documentation schema for captured learnings.
+# Treat this as the canonical frontmatter contract for learning documents.
 #
 # The schema has two tracks based on problem_type:
 #   Bug track  — problem_type is a defect or failure (build_error, test_failure, etc.)
@@ -219,7 +219,7 @@ validation_rules:
   - "Bug-track fields on existing knowledge-track docs are harmless (see backward compatibility note)"
   - "Track-specific optional fields may be included but are not required"
   - "Enum fields (problem_type, severity, resolution_type) must match allowed values exactly"
-  - "Open-vocabulary fields (component, root_cause) follow the corpus-first rule in yaml-schema.md: component is matched by area (the value existing docs under <root>/solutions/ use for that area, most-used spelling when existing docs disagree), root_cause is matched by the cause itself (the value existing docs use for that same cause, most-used spelling when existing docs disagree), suggested_values only when no existing doc covers the area (component) or names the cause (root_cause). Do not coin a near-synonym of a value the corpus already uses"
+  - "Open-vocabulary fields (component, root_cause) follow the corpus-first rule in yaml-schema.md: component is matched by area (the value existing docs under .context/solutions/ use for that area, most-used spelling when existing docs disagree), root_cause is matched by the cause itself (the value existing docs use for that same cause, most-used spelling when existing docs disagree), suggested_values only when no existing doc covers the area (component) or names the cause (root_cause). Do not coin a near-synonym of a value the corpus already uses"
   - "Array fields must respect min_items/max_items when specified"
   - "date must match YYYY-MM-DD format"
   - "framework_version, if provided, only applies to bug-track docs"

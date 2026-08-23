@@ -1,6 +1,6 @@
 # Fix: workspace safety, test-first, and what a failed fix means
 
-Read this before editing any file in Phase 3. The branch check and the pre-fix scope record belong to the body, which runs them before sending you here: do not repeat either, and do not ask a second time about a file whose unstaged edits the body already confirmed.
+Read this before editing any file in Phase 3. The workspace check and pre-fix scope record belong to the body; do not repeat them or re-ask about a file whose existing edits were already confirmed.
 
 *One change at a time. If you are changing multiple things, stop.*
 
@@ -8,7 +8,7 @@ Read this before editing any file in Phase 3. The branch check and the pre-fix s
 
 1. Choose the regression test's home. Follow the active project instructions and any applicable subdirectory-scoped instructions, and always inspect existing tests before adding coverage. Use an existing failing test when it already captures the bug, update an existing test when it owns the contract but has the wrong expectation, strengthen an over-mocked test that should have caught the bug, or add a new minimal isolated test only when no existing test is the right home. It must fail on the current bug and pass once the corrected behavior lands; name it so the failure message explains the bug. The body's precondition decides whether an existing test may be updated at all: a confirmed defect, never a test whose expectation the change deliberately reverses.
 2. Verify that test fails for the right reason — the root cause, not unrelated setup.
-3. Implement the **minimal** fix: the root cause and nothing else. No drive-by refactors, formatting, or unrelated cleanup — those are separate commits.
+3. Implement the **minimal** fix: the root cause and nothing else. No drive-by refactors, formatting, or unrelated cleanup; those belong in separate changes.
 4. Verify the test passes, then run the broader suite for regressions.
 5. Self-review the diff — read every changed line for style violations, missed edge cases, regressions in adjacent behavior, and missing coverage. The broader polish/review/PR tail belongs to Phase 4, after the debug summary.
 

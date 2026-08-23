@@ -24,4 +24,3 @@ The chat POV (the TL;DR) is the deliverable. Any implementation is outside this 
 - **Computed next step** → after the four-part gate passes, invoke the owning skill via the platform's skill-invocation primitive, seeding it with the POV substance (the decision, conditions, requested edits or chosen approach, and verified facts). A stalemate, scope expansion, destructive action, or insufficient authority always returns to the user first.
 - **Full write-up** → read `references/report.md` and follow it (HTML by default; opened locally or published via Proof / an available HTML tool). Opt-in; the default stays chat-only.
 - **"compound it"** → invoke `ce-compound` with `mode:non-interactive`, seeding it with the structured POV and the fitting existing capture type (no schema change; non-interactive avoids its interactive prompts). Never mandatory.
-

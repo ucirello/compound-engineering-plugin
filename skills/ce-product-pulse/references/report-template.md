@@ -2,6 +2,8 @@
 
 Loaded by `SKILL.md` at Phase 2.3 after queries have returned. Fill the template using the query results. Target total length: 30-40 lines.
 
+Preserve the required sections, metrics, source facts, safety constraints, output path, and human or research-source attribution. The template and examples define content and order rather than fixed message syntax. Do not add RocketClaw branding, generated-by text, visual badges, or creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution.
+
 ## Rules for filling in
 
 - Use real numbers, not ranges or hedges. If a number is uncertain, note the source inline.
@@ -16,7 +18,7 @@ Loaded by `SKILL.md` at Phase 2.3 after queries have returned. Fill the template
 
 ## Template
 
-The block below is the literal content to write. Replace every `{{placeholder}}` with query output. Delete lines whose data isn't available for this run.
+Use the block below as the report's required content shape. Replace every `{{placeholder}}` with query output and adapt the prose to runtime conventions. Delete lines whose data isn't available for this run.
 
 ~~~markdown
 # {{product_name}} Pulse - {{window}} - {{YYYY-MM-DD HH:MM}} {{TZ}}
@@ -82,7 +84,7 @@ Before saving and surfacing to chat:
 
 After writing the file, post back:
 
-- The Headlines section verbatim
+- The Headlines section's content
 - The top Followup, if action looks urgent
 - The saved file path so the user can open the full report
 

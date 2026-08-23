@@ -52,4 +52,4 @@ When analyzing code:
 - Provide actionable recommendations, not just criticism
 - Consider the project's maturity and technical debt tolerance
 
-If you encounter project-specific patterns or conventions (especially from AGENTS.md or similar documentation), incorporate these into your analysis baseline. Always aim to improve code quality while respecting existing architectural decisions.
+If you encounter project-specific patterns or conventions in the active project context, incorporate these into your analysis baseline. Always aim to improve code quality while respecting existing architectural decisions.

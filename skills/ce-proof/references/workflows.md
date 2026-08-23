@@ -7,20 +7,20 @@ Required read before running one of these end to end: reviewing a shared doc, cr
 When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 1. Extract the slug and token
-2. Bind presence with the CE identity defaults
+2. Bind presence with the neutral identity defaults
 3. Read via `v3/document`
 4. Edit with `v3/edit` (narrow content ops; review ops for comments/suggestions)
 
 ```bash
 TOKEN="xxx"
 SLUG="abc123"
-AGENT="ai:compound-engineering"
+AGENT="ai:assistant"
 
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Reviewing doc"}'
+  -d '{"name":"AI Assistant","status":"reading","summary":"Reviewing doc"}'
 
 DOC=$(curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
@@ -34,7 +34,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d "$(jq -n --argjson rev "${REVISION:-null}" '{
-    by:"ai:compound-engineering",
+    by:"ai:assistant",
     baseRevision: (if $rev == null then null else $rev end),
     operations:[{op:"comment",on:"text to comment on",body:"Your comment here"}]
   } | if .baseRevision == null then del(.baseRevision) else . end')"
@@ -45,7 +45,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:compound-engineering","operations":[{"op":"replace","find":"old","with":"new"}]}'
+  -d '{"by":"ai:assistant","operations":[{"op":"replace","find":"old","with":"new"}]}'
 
 # Tracked suggestion
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
@@ -53,7 +53,7 @@ curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/v3/edit" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: $AGENT" \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"by":"ai:compound-engineering","operations":[{"op":"suggest","kind":"replace","find":"old","with":"new"}]}'
+  -d '{"by":"ai:assistant","operations":[{"op":"suggest","kind":"replace","find":"old","with":"new"}]}'
 ```
 
 ## Workflow: Create and Share a New Document
@@ -73,13 +73,13 @@ SLUG=$(echo "$RESPONSE" | jq -r '.slug')
 TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken')
 OWNER_SECRET=$(echo "$RESPONSE" | jq -r '.ownerSecret')   # required for owner delete while unclaimed
 
-# Keep OWNER_SECRET in session memory only — never write it into the repo tree.
+# Keep OWNER_SECRET in session memory only — never write it into the workspace tree.
 
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" \
-  -d '{"name":"Compound Engineering","status":"reading","summary":"Uploaded doc"}'
+  -H "X-Agent-Id: ai:assistant" \
+  -d '{"name":"AI Assistant","status":"reading","summary":"Uploaded doc"}'
 
 echo "$URL"
 ```
@@ -104,14 +104,21 @@ Sync the current Proof doc state to a local markdown file. Used for:
 Canonical read for this workflow: `GET /api/agent/$SLUG/v3/document`.
 
 ```bash
-SLUG=<slug>
-TOKEN=<accessToken>
-LOCAL=<absolute-path>
+SLUG="<slug>"
+TOKEN="<access-token>"
+LOCAL="<absolute-path>"
 
-STATE_TMP=$(mktemp "${TMPDIR:-/tmp}/ce-proof-state.XXXXXX")
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+if [ -n "$WORKSPACE_ROOT" ]; then
+  STATE_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/proof"
+else
+  STATE_DIR="./.tmp/rocketclaw/proof"
+fi
+mkdir -p "$STATE_DIR"
+STATE_TMP="$STATE_DIR/state.$$"
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "X-Agent-Id: ai:compound-engineering" > "$STATE_TMP"
+  -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"
 REVISION=$(jq -r '.revision // empty' "$STATE_TMP")
 
 TMP="${LOCAL}.proof-sync.$$"

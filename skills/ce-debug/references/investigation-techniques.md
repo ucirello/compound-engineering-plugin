@@ -76,27 +76,15 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## Jujutsu Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), use jj's native binary search to find the first bad revision:
 
 ```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
+jj bisect run --range '<known-good-revision>..@' -- <test-command>
 ```
 
-The test command should exit 0 for good, non-zero for bad.
+The test command exits 0 for good, 125 to skip a revision, and any other non-zero status for bad. `jj bisect run` restores the original working-copy revision when it completes; if interrupted, return with `jj edit <saved-change-id>` using the exact change ID recorded before starting.
 
 ---
 
@@ -132,7 +120,7 @@ A 5% reproduction rate confirms the bug exists but suggests timing or data sensi
 - Run the suite with randomized test order (most runners support a seed flag) — a different failing-test neighbor each run implies global state mutation
 - Bisect the preceding tests: run the failing test with just the first half of the earlier tests, then the second half, then narrow
 
-Common culprits once isolated: module-level state, mocks not torn down, temp files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
+Common culprits once isolated: module-level state, mocks not torn down, scratch files under `<workspace-root>/.tmp` (or local `./.tmp` fallback) not cleaned up, database rows not rolled back, environment variables mutated and not restored.
 
 ---
 

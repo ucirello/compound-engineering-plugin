@@ -1,6 +1,6 @@
 # Pre-ship quality tail (LFG steps 3–6)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then commits.
+`ce-code-review` is review-only. LFG applies eligible fixes itself, then finishes the Jujutsu change.
 
 ## The shipping precondition, in these steps
 
@@ -8,9 +8,9 @@ A missing remote is a terminal local-only state, not an error: never retry a pus
 
 ## Step 3 — simplify before review
 
-Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the branch-diff scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope (the branch diff remains the scope), with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
+Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the current-stack scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope (the current Jujutsu stack remains the scope), with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
 
-Do not commit in this step. `ce-simplify-code` leaves its changes in the working tree; step 4's review scopes the working tree (uncommitted changes included), and step 8's `ce-commit-push-pr` commits whatever remains. Committing here would sweep any still-uncommitted `ce-work` edits into a misleading `refactor` commit and could stall on a tree that never goes clean.
+Do not finish the working-copy change in this step. `ce-simplify-code` leaves its edits in the working-copy commit; step 4's review includes that commit, and step 8's `ce-commit-push-pr` finishes whatever remains. Finishing it here would sweep any still-undescribed `ce-work` edits into a misleading change and could stall on a working-copy commit that never becomes empty.
 
 ## Step 4 — invoke review
 
@@ -30,7 +30,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the working tree only when **all** of the following hold:
+Apply a finding in the working copy only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -49,9 +49,10 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
+2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files, commit `fix(review): apply review findings`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), resolve a writable remote dynamically: prefer `origin` when present, otherwise use `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push — the local commit suffices. If no eligible fixes were applied, note explicitly and skip commit.
+4. If `jj diff --summary` shows review-driven changes, finish only their filesets with `jj commit -m "<description-composed-from-runtime-conventions>" <review-driven-filesets>`, leaving unrelated edits in the new working-copy change. Compose the message from the actual change after inspecting the project's active instructions and the description syntax visible in `jj log`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. The placeholder is dynamic; do not reuse a fixed example message or add attribution.
+5. Before step 6, when a remote is configured, resolve the target bookmark and writable remote dynamically. Reuse the bookmark carrying the current PR or stack when one exists; otherwise derive a new bookmark name from the change and project conventions. Set it to the finished change with `jj bookmark set <bookmark> -r @-`. Prefer the project's configured push remote when present, otherwise prefer `origin`, otherwise choose the first entry from `jj git remote list`, then run `jj git push --bookmark <bookmark> --remote <remote>`. If there is no remote, the local finished change suffices. If no eligible fixes were applied, note that explicitly and skip finishing and pushing a change.
 
 ## Step 6 — residual handoff
 

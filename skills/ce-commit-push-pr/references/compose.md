@@ -1,29 +1,26 @@
-# Composing the title and body: evidence, teaching, and branding gates
+# Composing the title and body
 
-**You MUST read `references/pr-description-writing.md`** in full — it owns value-first framing, sizing, program altitude, related-work references (preserve existing `Related:` / `Fixes` on rewrite), branding body rules, and the pre-apply audit. The only input it needs from this skill is the PR ref, if one was identified by mode dispatch (description-only with a pasted URL, description update, or confirmed existing-PR rewrite in full workflow). If Step 1 found an existing PR, pass its URL to Step 4 when rewriting so PR mode fetches the existing body. In Stack mode, Step 5 follows the post-submit route in `references/stack-submit.md` instead of composing one default-base body here.
+Read `references/pr-description-writing.md` in full. It owns value-first framing, sizing, program altitude, related references, project-required metadata, and pre-apply audit. Pass any resolved PR URL so rewrite mode can preserve its body. Stack mode uses `references/stack-submit.md` after submission.
 
-**Evidence decision** before composition. CE does not own a capture workflow — use harness capture tools or user-supplied artifacts, never invent/upload evidence or launch another CE skill.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win for change descriptions. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Project PR conventions remain authoritative for PR titles and bodies.
 
-1. **User supplied** (URL, markdown image/embed, local path) — incorporate as `## Demo`, `## Screenshots`, or `## Evidence`.
-2. **User asked for evidence but supplied none** — ask for the artifact or tell them to capture with the harness and return.
-3. **No material observable claim** (internal plumbing, type-only, pure refactor, inert docs) — skip without asking. Classify by runtime purpose, not extension (runtime agent instructions / config / product content / policy YAML is not auto-skippable as "docs").
-4. **Otherwise** (UI, CLI, API, workflow, ranking, deploy/config behavior) — concise validation note of what was exercised; if a real run was impossible (credentials, paid services, deploy-only, hardware, missing setup), say so. Do not block PR creation for missing visuals; test/manual notes are fine — never label test output "Demo" or "Screenshots."
+## Evidence
 
-**Concept teaching gate** before composition. Use the repo root gathered in Context (resolving it with `git rev-parse --show-toplevel` if you don't already have it — description-only/update can skip the Context snapshot) and apply the ordinary-key rule below.
+Use user-supplied artifacts or available capture interfaces; never invent or upload evidence.
 
-<!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+1. Incorporate supplied evidence under an appropriate heading.
+2. If evidence was requested but omitted, ask for it or ask the user to capture it.
+3. Skip when there is no observable claim, judged by runtime purpose rather than extension.
+4. Otherwise state concise validation and any reason a real run was impossible. Tests are not screenshots or demos.
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
-- **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
-- **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
-<!-- ce-config-layers:end -->
+## Teaching
 
-Only an **active (non-commented)** `pr_teaching_section:` key counts — lines starting with `#` are YAML comments; matching commented template keys would silently flip the gate. Off only when the winning active value is exactly `false`; missing key or any other value → default **on**. Same cascade resolves `pr_teaching_archive:` — on only when the winning active value is exactly `true`, else **off**; per-run `archive:on|off` overrides for this invocation.
+Use the workspace root from `jj root`. Resolve ordinary workflow keys from `<jj-root>/.rocketclaw/config.local.yaml`, then `config.yaml`; first active valid value wins, and a present list or map replaces the whole value. `docs_root` does not use this cascade.
 
-- Gate **on** — judge novelty and compose per **Step B2** of the reference. When off, skip judgment, section, Step 5 trailer/offer, and archival entirely.
-- Gate **off** — compose without concept handling.
+Only active `pr_teaching_section:` and `pr_teaching_archive:` keys count. Teaching defaults on; archive defaults off; `archive:on|off` overrides this run. When teaching is on, use Step B2 of the writing reference.
 
-**PR branding gate** before composition. Branding is **off unless this invocation includes `branding:on` or the user explicitly asks in the current prompt to add Compound Engineering branding**; normalize that natural-language request to `branding:on`. `branding:off` forces off when `branding:on` is absent. If both tokens are present, stop and report the conflict rather than guessing. Pass the resolved gate and new-vs-existing PR into Step D of the reference (body rules live there).
+## Metadata
 
-Then continue with the reference (Steps A–E, including Step B2 when the teaching gate is on). Step E must run before the body is returned.
+Include only metadata required by the project's PR contract. Do not add generated provenance, promotional marks, product identity, or tool attribution. Remove such generated material on rewrite unless the project contract requires the exact field.
+
+Continue through Steps A-E of the writing reference. Step E runs before returning the body.

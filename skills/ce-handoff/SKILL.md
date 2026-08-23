@@ -8,7 +8,7 @@ argument-hint: "[create [focus] | resume [source or keywords]]"
 
 Preserve enough session context for a fresh agent to orient quickly, then keep the user in control of what happens next.
 
-Creation and resume are deliberately open at their edges. The managed store and `ce-handoff/v1` metadata are defaults that make CE-created handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
+Creation and resume are deliberately open at their edges. The managed store and `rocketclaw-handoff/v1` metadata are defaults that make created handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
 
 ## Route the invocation
 
@@ -19,13 +19,13 @@ Creation and resume are deliberately open at their edges. The managed store and 
 
 ## Create
 
-Read `references/create.md` before writing anything — a non-optional load. It owns the managed-store shell block and path rules, the `ce-handoff/v1` frontmatter contract, the body contract, and the completion report.
+Read `references/create.md` before writing anything — a non-optional load. It owns the managed-store shell block and path rules, the `rocketclaw-handoff/v1` frontmatter contract, the body contract, and the completion report.
 
-Create one immutable handoff at the destination the user requested, or use the managed temporary store by default. The handoff supplements authoritative artifacts; it does not replace them. Write or publish it with existing capabilities. When the user named another path, folder, format, or publication destination, honor it using an appropriate available capability, including an installed publishing skill. Do not also create a persistent managed-store copy unless the user asks.
+Create one immutable handoff at the destination the user requested, or use the managed workspace-local store by default. The handoff supplements authoritative artifacts; it does not replace them. Write or publish it with existing capabilities. When the user named another path, folder, format, or publication destination, honor it using an appropriate available capability, including an installed publishing skill. Do not also create a persistent managed-store copy unless the user asks.
 
-Point at plans, issues, commits, diffs, documentation, and files rather than reproducing them, and redact secrets, credentials, and unrelated personal information. Keep the handoff pointer-first: for each load-bearing reference, name what specifically matters there — not only the path. Prefer repository-relative paths for repository files; use absolute paths only for machine-local state and label them as machine-local.
+Point at plans, issues, changes, diffs, documentation, and files rather than reproducing them, and redact secrets, credentials, and unrelated personal information. Do not add product branding, badges, generated-by statements, sign-offs, or creator, model, provider, tool, agent, runtime, or workflow attribution. Keep the handoff pointer-first: for each load-bearing reference, name what specifically matters there — not only the path. Prefer workspace-relative paths for versioned files; use absolute paths only for machine-local state and label them as machine-local.
 
-Creation is complete only after confirming the destination contains the handoff. Then report its final path or URL, retention or access limits, and continuity warnings together. Give a succinct, context-specific summary of what the generated handoff captures, so the user can verify its substance without opening it. Managed `/tmp` storage is OS-managed and not permanent. If continuity depends on a fragile worktree, warn the user without mutation: do not commit, stash, copy, preserve, or tear down anything automatically.
+Creation is complete only after confirming the destination contains the handoff. Then report its final path or URL, retention or access limits, and continuity warnings together. Give a succinct, context-specific summary of what the generated handoff captures, so the user can verify its substance without opening it. Managed `.tmp/rocketclaw/` storage is workspace-local scratch and may be cleaned or unavailable from another workspace or host. If continuity depends on a fragile workspace or mutable change, warn the user without mutation: do not describe, abandon, duplicate, preserve, or forget anything automatically.
 
 **User-runnable invocation rendering.** For the copyable resume command below, default to `/ce-handoff resume <source>`; use `$ce-handoff resume <source>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render it as the fenced command below and output one form only.
 
@@ -35,11 +35,12 @@ End the creation response with one fenced, copyable command using the final path
 <rendered resume invocation>
 ```
 
+Quote the source when needed so the command can be pasted verbatim. Do not generate a longer resume prompt.
 ## Resume
 
 Read `references/resume.md` before searching or orienting — a non-optional load. It owns the discovery procedure and bounds, the ranking inputs, the shortlist, and the orientation shape.
 
-A supplied local file, URL or page, pasted document, or other specific artifact is the user's selection: read it and orient from it. Do not require it to have been written by this skill or to use `ce-handoff/v1`; authorship, ownership, location, and format are not eligibility gates. Do not search for an alternative automatically — if the source cannot be read, explain the access problem and ask the user for a reachable source or different direction. A supplied folder or collection is a discovery boundary, not a selected document.
+A supplied local file, URL or page, pasted document, or other specific artifact is the user's selection: read it and orient from it. Do not require it to have been written by this skill or to use `rocketclaw-handoff/v1`; authorship, ownership, location, and format are not eligibility gates. Do not search for an alternative automatically — if the source cannot be read, explain the access problem and ask the user for a reachable source or different direction. A supplied folder or collection is a discovery boundary, not a selected document.
 
 Discovery is metadata-only. Before reading any candidate metadata or frontmatter, resolve the discovery boundary, then exclude symlink candidates and candidates whose resolved path escapes that boundary. This discovery-only containment rule does not restrict an explicit selected source. Rank only frontmatter, filename, location, and filesystem metadata, and never read an unselected body merely to rank it. **MUST stop and ask the user to select a candidate** — do not choose one, read a body, or continue the prior work.
 

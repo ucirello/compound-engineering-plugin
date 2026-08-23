@@ -1,13 +1,13 @@
 # Scope selection and triage
 
-Find all `.md` files under `<root>/solutions/`, excluding `README.md` files and anything under `_archived/` (if `_archived/` exists, flag it in the report as legacy to clean up). READMEs are excluded as review *candidates* only: whenever an action deletes, renames, moves, consolidates, or replaces a doc a catalog README lists, update that README's rows mechanically as part of the action's cleanup.
+Find all `.md` files under `.context/solutions/`, excluding `README.md` files and anything under `_archived/` (if `_archived/` exists, flag it in the report as legacy to clean up). READMEs are excluded as review candidates only: whenever an action deletes, renames, moves, consolidates, or replaces a listed doc, update the catalog row mechanically.
 
 If a scope argument was provided, narrow with the first strategy that produces results: subdirectory name → frontmatter (`module`/`component`/`tags`) → filename → content keyword. No matches: ask the user to clarify (interactive) or report the miss and exit (non-interactive).
 
 If the store is empty, report:
 
 ```text
-No candidate docs found in <root>/solutions/.
+No candidate docs found in .context/solutions/.
 Run /ce-compound after solving problems to start building your knowledge base.
 ```
 

@@ -1,6 +1,6 @@
-# CONCEPTS.md vocabulary rules
+# `.context/CONCEPTS.md` vocabulary rules
 
-`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and AGENTS.md can cite without redefinition. Lives at the repo root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
+`.context/CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `.context/solutions/` and project instructions can cite without redefinition. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
 
 ## How terms enter: accretion and seeding
 
@@ -16,7 +16,7 @@ Define the core domain nouns the area's **declared domain model** exposes that m
 ### Scope of a seed
 
 - A **scoped run** — a learning capture, or a refresh narrowed to an area — seeds only that area's core nouns, and defines only terms it actually investigated against code. It does not reach for repo-wide nouns it never touched.
-- A **repo-wide bootstrap** — an explicit "create CONCEPTS.md" request — seeds the whole project's declared domain model. This is the only path that produces a coherent "what is this project" glossary; a scoped run cannot, and should not pretend to.
+- A **repo-wide bootstrap** — an explicit request to create `.context/CONCEPTS.md` — seeds the whole project's declared domain model. This is the only path that produces a coherent "what is this project" glossary; a scoped run cannot, and should not pretend to.
 
 ## Be opinionated
 
@@ -32,7 +32,7 @@ Each entry teaches its concept to a reader with no access to anything else — n
 - Links to PRs, issues, channels, or roadmap milestones
 - Version-specific claims ("currently uses X; migrating to Y")
 
-Cross-references between entries within `CONCEPTS.md` are fine — they resolve internally. General programming vocabulary (caches, queues, jobs, sessions) and everyday domain English need no redefinition either. But if an entry leans on another *project-specific* term to make sense, that term must be defined here too — an undefined project-specific sibling is itself a candidate to add.
+Cross-references between entries within `.context/CONCEPTS.md` are fine — they resolve internally. General programming vocabulary (caches, queues, jobs, sessions) and everyday domain English need no redefinition either. But if an entry leans on another *project-specific* term to make sense, that term must be defined here too — an undefined project-specific sibling is itself a candidate to add.
 
 ## What earns a slot
 
@@ -79,18 +79,18 @@ The act of placing a Party at a Table once the Party arrives. A Reservation has 
 
 ## Vocabulary capture during a refresh (relocated from the body)
 
-After the per-doc actions execute, reconcile the domain terms flagged during investigation with `CONCEPTS.md`.
+After the per-doc actions execute, reconcile the domain terms flagged during investigation with `.context/CONCEPTS.md`.
 
 **First, read `references/concepts-vocabulary.md` — unconditionally.** Its qualifying criteria are non-obvious; a "nothing qualifies" judgment without reading it is a shortcut, not a result.
 
 1. **Aggregate** qualifying terms across the learnings in scope; when one term surfaced with different shades of precision, union the shades into one entry.
-2. **If `CONCEPTS.md` exists:** add missing terms, refine entries where the corpus surfaced new precision, then reconcile the in-scope core nouns — re-derive the area's core domain nouns per the reference's **Seed goal** and backfill any central-but-missing ones. Bounded to the area in scope; never a repo-wide sweep.
+2. **If `.context/CONCEPTS.md` exists:** add missing terms, refine entries where the corpus surfaced new precision, then reconcile the in-scope core nouns. Never widen a scoped run to a repo-wide sweep.
 3. **If it doesn't exist** and at least one term qualified: bootstrap it — seed the in-scope area's core domain nouns per the Seed goal alongside the surfaced terms, holding the bar conservatively for borderline terms at creation. Start the file with this preamble under a `# Concepts` heading:
 
    > Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
 
    1-4 terms → flat headings; more → cluster by domain relationship per the reference.
 4. **Scrub violations** in existing entries per the reference's criteria (implementation specifics, config values that drift, status/owner/date metadata, duplicates, undefined project-specific siblings). The full sweep is appropriate here because refresh is an audit.
-5. Do not expand beyond the area in scope (the explicit repo-wide bootstrap path is the exception), and do not retroactively inject `(see CONCEPTS.md)` pointers into learnings.
+5. Do not expand beyond the area in scope, except on explicit repo-wide bootstrap, and do not retroactively inject `.context/CONCEPTS.md` pointers into learnings.
 
-If nothing qualified, record that explicitly in the report's `CONCEPTS.md` line (e.g., "scanned, no qualifying terms") — the visible scan record is the audit signal that the reference was consulted. Apply vocabulary edits silently in every mode — no user prompt.
+If nothing qualified, record that explicitly in the report's `.context/CONCEPTS.md` line. Apply vocabulary edits silently in every mode.

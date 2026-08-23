@@ -135,7 +135,11 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
-            canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
+            if workspace_root="$(jj workspace root 2>/dev/null)"; then
+                canon_tmp="$workspace_root/.tmp"
+            else
+                canon_tmp="$cwd/.tmp"
+            fi
             case "$cwd" in
                 "$canon_tmp")
                     printf -- '-tmp'

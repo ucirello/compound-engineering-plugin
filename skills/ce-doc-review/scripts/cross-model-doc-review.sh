@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > CE config cascade >
+#                   resolved preference (conversation > RocketClaw config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -84,7 +84,7 @@ skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no o
 # ONE model per provider at high reasoning, except codex on extra-high (supersedes
 # the old per-lens sol/terra split). Concrete IDs are the CURRENT instance of the
 # tier principle and the single maintenance point when model families change.
-# A checkout may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
+# A workspace may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
 # CROSS_MODEL_MODEL_OVERRIDE, same target/family only) and the reasoning effort
 # (CROSS_MODEL_EFFORT_OVERRIDE, validated per route); both fail closed.
 # codex: luna/xhigh is the benchmarked pick on API dollars (~0.30x sol-medium, tied
@@ -236,7 +236,7 @@ adapter_argv() {
       # like Glob/Grep); --safe-mode suppresses hooks, MCP, plugins, and other
       # custom behavior without bypassing Claude Code's normal OAuth/keychain auth.
       # The run cd's into the empty per-peer workspace (claude has no cwd flag), so
-      # the peer has no repo -- or sibling peer's fold-in artifact -- in reach.
+      # the peer receives no repo context or sibling peer artifact in its prompt.
       # R17 tool-less isolation.
       # stream-json + --verbose for PEERLOG idle (#1270); schema still composes.
       printf '%s\0' claude -p --model "$(route_model claude)" --effort "$(route_effort claude)" --permission-mode dontAsk \
@@ -494,20 +494,22 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+LOCAL_TMP_PARENT="$RUN_DIR/.tmp"
+(umask 077; mkdir -p "$LOCAL_TMP_PARENT") || skip "cannot create local scratch parent; skipping"
+LOCAL_TMP="$LOCAL_TMP_PARENT/$REVIEWER_NAME-$$-${RANDOM:-0}"
+(umask 077; mkdir "$LOCAL_TMP") || skip "cannot claim local scratch directory; skipping"
+PROMPT_FILE="$LOCAL_TMP/prompt.md"
+PEERLOG="$LOCAL_TMP/peer.log"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-err-XXXXXX")"
+PEERERR="$LOCAL_TMP/peer.err"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
 cleanup_temp() {
-  rm -f "$PROMPT_FILE" "$PEERLOG" "$PEERERR"
-  [ -n "$RAW_OUT" ] && rm -f "$RAW_OUT"
-  [ -n "$PEER_WORKDIR" ] && [ "$PEER_WORKDIR" != "${RUN_DIR:-}" ] && rm -rf "$PEER_WORKDIR"
+  [ -n "${LOCAL_TMP:-}" ] && [ "$LOCAL_TMP" != "${RUN_DIR:-}" ] && rm -rf "$LOCAL_TMP"
 }
 trap 'cleanup_temp' EXIT
 # Basename only in the peer prompt: content is already embedded (KTD3). An absolute
@@ -698,7 +700,7 @@ run_timeout_cmd() {
   RUN_SUCCEEDED=false
   # Run from the empty per-peer workspace (absolute stdin/PEERLOG paths are
   # unaffected) so a tool-capable peer -- notably claude, which has no cwd flag --
-  # has no repo files, and no sibling lens's fold-in artifact, in reach. grok/cursor
+  # receives no repo files or sibling fold-in artifact in its prompt. grok/cursor
   # also carry their own --cwd/--workspace flag pointed at the same PEER_WORKDIR.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
@@ -889,12 +891,12 @@ run_provider() {   # <provider>
   OUT="$RUN_DIR/$REVIEWER_NAME-$provider.json"
   # Per-peer empty workspace, kept SEPARATE from the shared fold-in dir (RUN_DIR).
   # The peer's cwd/workspace and its RAW_OUT live here, so a read-capable peer
-  # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
-  # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
+  # (codex/cursor-agent) starts without a shared cwd or a direct path to another
+  # lens's published <lens>-<provider>.json.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
-  # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  # never written into RUN_DIR by the peer itself.
+  PEER_WORKDIR="$LOCAL_TMP/peer-workspace"
+  (umask 077; mkdir "$PEER_WORKDIR") || { log "could not create peer workspace; skipping"; rm -f "$OUT"; return 0; }
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -928,7 +930,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
+    _norm="$LOCAL_TMP/normalized.json"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

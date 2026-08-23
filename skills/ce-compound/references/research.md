@@ -30,8 +30,8 @@ Launch research subagents. Each writes its full output to a per-run scratch arti
 **Run ID and run dir (before dispatching any subagent):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT=$(jj root 2>/dev/null || pwd);
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -42,9 +42,9 @@ RUN_DIR="$SCRATCH_ROOT/ce-compound/$RUN_ID";
 echo "$RUN_DIR";
 ```
 
-**Resolve current vocabulary and conventions before dispatching subagents.** Use the project's active instructions and conventions already in your context. If `CONCEPTS.md` exists, read its relevant terms and pass them to the Context Analyzer.
+**Resolve current vocabulary and conventions before dispatching subagents.** Use active project instructions. If `.context/CONCEPTS.md` exists, pass relevant terms to the Context Analyzer.
 
-**CRITICAL — glob `<root>/solutions/` fresh every run.** The current vocabulary and conventions above do not substitute for the live-tree search in step 3.
+**CRITICAL - glob `.context/solutions/` fresh every run.** Current vocabulary does not substitute for live-tree search.
 
 Pass `{run_id}` and the resolved absolute `{run_dir}` into every Phase 1 subagent prompt. Each subagent **writes its full structured output** to its own file under `{run_dir}/`, **confirms the write succeeded** (the file exists and is non-empty), and then **returns only a one-line confirmation containing the artifact path** — not the prose body inline. Artifact filenames by subagent:
 
@@ -67,12 +67,12 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
    - Extracts conversation history
    - Reads `references/schema.yaml` for field rules and **track classification**
    - Determines the track (bug or knowledge) from the problem_type
-   - **Samples the corpus before choosing vocabulary.** Reads existing docs under `<root>/solutions/` (frontmatter and directory names) and applies the corpus-first rule in `references/yaml-schema.md` for `component`/`root_cause` and for the directory. Records in `context.json` whether each came from the corpus or the default
+   - Samples `.context/solutions/` before choosing vocabulary and records whether values came from corpus or defaults.
    - Identifies problem type, component, and track-appropriate fields:
      - **Bug track**: symptoms, root_cause, resolution_type
      - **Knowledge track**: applies_when (symptoms/root_cause/resolution_type optional)
    - Incorporates auto memory excerpts (if provided by the orchestrator) as supplementary evidence
-   - Reads `references/yaml-schema.md` for the default category mapping into `<root>/solutions/` (used when the corpus has no directory for this area — see the corpus-sampling bullet above)
+   - Reads `references/yaml-schema.md` for fallback category mapping when the corpus has no directory for this area.
    - Suggests a filename using the pattern `[sanitized-problem-slug].md` — no date suffix, even if existing files in the target directory have one; the `date:` frontmatter field is the canonical creation date
    - Writes to `context.json`: YAML frontmatter skeleton (must include `category:` — the corpus directory when one covers this area, else the directory mapped from problem_type), category directory path, suggested filename, and which track applies. Returns only the artifact path.
    - Does not invent enum values, categories, or frontmatter fields from memory; takes the category/directory from the corpus sample first, falling back to the schema and mapping files above, and takes open-vocabulary values from the corpus sample
@@ -84,7 +84,7 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
    - **Writes the full doc-body prose** (all track-appropriate sections below) to `solution.md` and returns only the artifact path. This is the subagent most prone to the issue #956 summary-collapse, so its prose must land on disk rather than only in the inline return.
    - Incorporates auto memory excerpts (if provided by the orchestrator) as supplementary evidence -- conversation history and the verified fix take priority; if memory notes contradict the conversation, note the contradiction as cautionary context
    - **Grounds code-behavior claims in source, not conversation memory.** Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree and cite `file:line` alongside the claim. A claim that cannot be verified against the tree is softened or attributed ("per this session's conclusion…"), never stated as fact
-   - **Writes merge-state claims for time.** Cite PR numbers rather than bare commit SHAs — SHAs are rewritten by rebase/squash merges and may not exist on other checkouts. A "fixed in X" claim requires the fix to be reachable from the current tree; otherwise phrase it as pending ("fix opened in #1608, unmerged as of this writing")
+   - **Writes merge-state claims for time.** Cite PR numbers rather than bare revision IDs, which may be rewritten. A "fixed in X" claim requires reachability from the current tree; otherwise phrase it as pending.
 
    **Bug track output sections:**
 
@@ -104,7 +104,7 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
    - **Examples**: Concrete before/after or usage examples showing the practice in action
 
 #### 3. **Related Docs Finder**
-   - Searches `<root>/solutions/` for related documentation
+   - Searches `.context/solutions/` for related documentation
    - Identifies cross-references and links
    - Finds related GitHub issues
    - Flags any related learning or pattern docs that may now be stale, contradicted, or overly broad
@@ -117,7 +117,7 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
    **Search strategy (grep-first filtering for efficiency):**
 
    1. Extract keywords from the problem context: module names, technical terms, error messages, component types
-   2. If the problem category is clear, narrow search to the matching `<root>/solutions/<category>/` directory
+   2. If the category is clear, narrow search to `.context/solutions/<category>/`
    3. Use the native content-search tool (e.g., Grep in Claude Code) to pre-filter candidate files BEFORE reading any content. Run multiple searches in parallel, case-insensitive, targeting frontmatter fields. These are template patterns -- substitute actual keywords:
       - `title:.*<keyword>`
       - `tags:.*(<keyword1>|<keyword2>)`

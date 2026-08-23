@@ -1,12 +1,12 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current branch or PR. Use when asked to run or check browser tests for the current change.
-argument-hint: "[PR number, branch name, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current change or a Jujutsu revision. Use when asked to run or check browser tests for the current change.
+argument-hint: "[revision, bookmark, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or branch using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a Jujutsu change or revision using the best approved browser driver available in the active harness.
 
 **Done:** the run ends by reporting what it found — either the summary, with every affected route marked Pass, Fail, or Skip and each Skip carrying its reason, or, when a preflight blocker stops testing before any route can be exercised, the blocker and what would clear it. Reaching neither, or dropping a route from the summary because nobody could reach it, is the failure this bar exists to prevent.
 
@@ -29,20 +29,15 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 Read `references/route-and-report.md` from this skill's directory before step 3 — it carries the route-mapping patterns, the port and server commands, the per-page checks, the two human-facing prompts, and the summary format.
 
-1. **Select the driver** per the policy above and record it. This also requires a git repository with changes to test.
-2. **Determine test scope** from the argument: a PR number → `gh pr view [number] --json files -q '.files[].path'`; `current` or empty → `git diff --name-only main...HEAD`; a branch name → `git diff --name-only main...[branch]`.
+1. **Select the driver** per the policy above and record it. This also requires a Jujutsu workspace with changes to test.
+2. **Determine test scope** from the argument. Use `@` when the argument is `current` or empty; otherwise use the supplied revision or bookmark. Use the project's configured trunk revision as the base, falling back to `trunk()`, then list changed files with `jj diff --from '<base-revision>' --to '<target-revision>' --name-only`.
 3. **Map changed files to routes** and build the list of URLs to test.
-4. **Determine the dev server port.** `scripts/resolve-port.sh` owns the resolution and prints the port alone on stdout: an explicit port argument; else a `--port` flag in a `package.json` dev/start script; else `PORT=` in `.env`, `.env.local`, or `.env.development`; else `3000`. Pass an explicit port when the user gave `--port N`, or when your active project instructions already in context state the dev-server port — don't grep instruction files for one, since prose mentions in docs, examples, and troubleshooting are unreliable and false-positive-prone while config files and `.env` are trustworthy. Each mode runs the script in the shell call that needs the port, so no port value has to survive between shell calls or be transcribed out of prose; the reference gives the command. Manual mode uses that port as-is: the user controls their own server, so do not scan for alternatives.
-5. **Verify the dev server is running** before asking the headed/headless question — a manual run with no server stops here, so asking first would waste the question.
-6. **Set visibility, then verify the root.** Visibility is independent from unattended execution:
-   - **Host-native integrated browser:** keep its normal integrated surface visible and non-blocking so the user can watch progress when useful. Do not repeatedly steal focus as routes change. This applies in both manual and pipeline modes.
-   - **`agent-browser` fallback, pipeline mode:** run headless without asking.
-   - **`agent-browser` fallback, manual mode:** ask the user whether to run headed or headless using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to presenting options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors. Never silently skip the question.
-
-   Then navigate to `http://localhost:<port>`, capture its rendered or interactive state, and confirm the root is served before iterating.
+4. **Determine the dev server port.** `scripts/resolve-port.sh` owns the resolution and prints the port alone on stdout: an explicit port argument; else a `--port` flag in a `package.json` dev/start script; else `PORT=` in `.env`, `.env.local`, or `.env.development`; else `3000`. Pass an explicit port when the user gave `--port N`, or when your active project instructions already in context state the dev-server port. Do not grep instruction files for one. Each mode runs the script in the shell call that needs the port. Manual mode uses that port as-is.
+5. **Verify the dev server is running** before asking the headed/headless question. A manual run with no server stops here.
+6. **Set visibility, then verify the root.** A host-native integrated browser keeps its normal integrated surface visible and non-blocking in both modes. The `agent-browser` fallback runs headless without asking in pipeline mode; in manual mode, ask with the platform's blocking question tool and fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists or the call errors. Never silently skip the question. Then navigate to `http://localhost:<port>`, inspect fresh state, and confirm the root is served.
 7. **Test each affected page** — navigate, inspect fresh state, exercise the critical interactions, capture evidence.
-8. **Human verification** where a flow needs external interaction (OAuth, email, payments, SMS, third-party APIs): pause and ask. **Pipeline mode does not pause** — log each such flow as Skip with the reason and continue.
-9. **Handle failures** by capturing the error state and the exact repro, then asking whether to fix now or skip. **Pipeline mode does not ask** — log the failure and continue.
+8. **Human verification** where a flow needs external interaction: pause and ask. Pipeline mode does not pause; log each such flow as Skip with the reason and continue.
+9. **Handle failures** by capturing the error state and exact repro, then asking whether to fix now or continue. Pipeline mode does not ask; log the failure and continue.
 10. **Report the summary** in the format the reference gives.
 
 ## Driver Reference

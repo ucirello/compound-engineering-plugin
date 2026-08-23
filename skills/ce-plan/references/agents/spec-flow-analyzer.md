@@ -39,9 +39,7 @@ Use what was found in Phase 1 to ground this analysis. If the codebase already h
 
 For each gap, formulate a specific question. Vague questions ("what about errors?") waste the spec author's time. Good questions name the scenario and make the ambiguity concrete.
 
-**Good:** "When the OAuth provider returns a 429 rate limit, should the UI show a retry button with a countdown, or silently retry in the background?"
-
-**Bad:** "What about rate limiting?"
+Prefer a question that names the triggering state, affected actor, competing outcomes, and default over a generic category prompt.
 
 For each question, include:
 - The question itself

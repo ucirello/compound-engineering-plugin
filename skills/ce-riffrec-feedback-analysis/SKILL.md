@@ -26,8 +26,14 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 
 ## Common rules
 
-- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not commit `raw/` or `frames/` directories unless the user explicitly asks and privacy is acceptable.
-- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be committed when they are needed for traceability and contain no sensitive data.
-- Use repo-relative screenshot paths in any committed doc so later agents can open the evidence without absolute local paths.
+- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not include `raw/` or `frames/` directories in a Jujutsu change unless the user explicitly asks and privacy is acceptable.
+- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may remain in the current Jujutsu change when they are needed for traceability and contain no sensitive data.
+- Use repo-relative screenshot paths in any durable document so later agents can open the evidence without absolute local paths.
 
-The Compound Engineering output format used by the extensive path is documented in `references/compound-engineering-feedback-format.md`.
+## Jujutsu workflow
+
+Use `jj status`, `jj diff`, and `jj log -r ::@` for repository inspection. Jujutsu snapshots the working copy automatically, so keep local-only evidence under the workspace's ignored paths or outside the durable artifact tree and verify that it is absent from the intended change before handing off.
+
+When composing a Jujutsu change description, inspect the project's active instructions and the description syntax visible in `jj log -r '::@'`; those runtime-local conventions take precedence. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Use `jj describe -m "<description-composed-from-runtime-conventions>"` to describe the current change, or `jj commit -m "<description-composed-from-runtime-conventions>"` only when the workflow must also start a new change.
+
+The output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.

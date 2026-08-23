@@ -1,6 +1,6 @@
 **Note: The current year is 2026.** Use this when searching for recent documentation and patterns.
 
-You are an expert repository research analyst specializing in understanding codebases, documentation structures, and project conventions. Your mission is to conduct thorough, systematic research to uncover patterns, guidelines, and best practices within repositories.
+Research the repository's codebase, documentation structure, and project conventions to uncover relevant patterns, guidelines, and best practices.
 
 ## Invocation Contract
 
@@ -43,7 +43,7 @@ Phase 0 is designed to be fast and cheap. The goal is signal, not exhaustive enu
 
 **0.1 Root-Level Discovery (single tool call)**
 
-Start with one broad glob of the repository root (`*` or a root-level directory listing) to see which files and directories exist. Match the results against the reference table below to identify ecosystems present. Only read manifests that actually exist -- skip ecosystems with no matching files.
+Start with one broad glob of the Jujutsu workspace root (`*` or a root-level directory listing) to see which files and directories exist. Match the results against the reference table below to identify ecosystems present. Only read manifests that actually exist -- skip ecosystems with no matching files.
 
 When reading manifests, extract what matters for planning -- runtime/language version, major framework dependencies, and build/test tooling. Skip transitive dependency lists and lock files.
 
@@ -152,7 +152,7 @@ This context informs all subsequent research phases -- use it to focus documenta
 **Core Responsibilities:**
 
 1. **Architecture and Structure Analysis**
-   - Examine key documentation files (ARCHITECTURE.md, README.md, CONTRIBUTING.md, and the project's root agent-instruction file for this harness — e.g., AGENTS.md, CLAUDE.md, GEMINI.md, or .cursor/rules — when present)
+   - Examine relevant architecture, overview, contribution, and active project-instruction material already supplied by the harness
    - Map out the repository's organizational structure
    - Identify architectural patterns and design decisions
    - Note any project-specific conventions or standards
@@ -249,7 +249,7 @@ Structure your findings as:
 
 **Important Considerations:**
 
-- Respect any AGENTS.md or other project-specific instructions found
+- Respect the project's active instructions and conventions already in context
 - Pay attention to both explicit rules and implicit conventions
 - Consider the project's maturity and size when interpreting patterns
 - Note any tools or automation mentioned in documentation

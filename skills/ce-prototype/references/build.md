@@ -12,13 +12,13 @@ On the web path the artifact is whatever a browser can display and you can autho
 
 ## Which run root
 
-Prefer `.context/compound-engineering/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/` when the user declines the `.gitignore` append, when they ask that this run not be left in their repo, when the run is not inside a git repository, or when the path fails the safety checks; survival there is best-effort, so do not promise it a lifetime. Calling the prototype throwaway is not a request to leave the repo — throwaway describes the code, and a kept prototype is never deleted.
+Prefer `<jj workspace root>/.context/prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Fall back to `<jj workspace root>/.tmp/prototype/<date>-<slug>/` when the user asks that this run not be kept or the durable path fails its safety checks; without a Jujutsu workspace, use `<current working directory>/.tmp/prototype/<date>-<slug>/`. Confirm that the selected parent is ignored before writing; if it cannot be made safe without a declined ignore-rule write, stop. Calling the prototype throwaway is not a request to discard it — throwaway describes the code, and a kept prototype is never deleted.
 
 ## Recreate, do not rebuild the app
 
 Recreate what this question needs from the current product. Do not stand up the full app unless the question is the whole-product feel.
 
-Scale into the existing app only as a throwaway overlay when the user asks or the question is density or chrome on an existing page — an isolated page will hide that. That overlay is not the shipped feature. Do not commit prototype code on the product branch. Undo those edits when the try ends — restore only the files you changed, never work you did not make. An overlay run therefore leaves no artifact behind; nothing survives it. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty tree.
+Scale into the existing app only as a throwaway overlay when the user asks or the question is density or chrome on an existing page — an isolated page will hide that. That overlay is not the shipped feature. Before editing, start a new empty jj change on top of the user's current change so the overlay is isolated; inspect local `jj help` and the workspace's current conventions for compatible syntax rather than assuming a fixed command form. When the try ends, abandon only that isolated overlay change and return to the prior change, preserving work you did not make. An overlay run therefore leaves no artifact behind; nothing survives it. If you cannot undo it cleanly, name the change and files left modified rather than handing off an ambiguous working copy.
 
 ## Showing it
 

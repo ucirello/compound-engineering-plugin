@@ -17,7 +17,7 @@ The conduct above protects other writers' content. Applying it to a file that ha
 
 Read the existing `STRATEGY.md` thoroughly. Summarize current state in 3-5 lines so the user sees what is on file. Legacy headings are migrated as the section above says - headings only, content untouched, mentioned in chat. A section carrying an author-approved marker keeps its heading along with its content. A file in any other shape is read by meaning and updated in its own shape; when this skill adds a section of its own that the file does not yet carry, it uses the template heading (contributing a new section is not restructuring); when a section already carries that meaning under another heading, this skill merges into it and neither renames it nor adds a duplicate.
 
-Check for drift: compare every section of the doc against the repo model - stated intent, structure, and recent history (commits or PRs, plans and learnings under `docs/`) - not only against what changed since the last write, since a targeted update advances `last_updated` without reviewing the rest. Name any section the evidence suggests is stale, with the evidence, as a candidate - not a verdict.
+Check for drift: compare every section of the doc against the workspace model - stated intent, structure, recent Jujutsu changes visible in `jj log` or GitHub PRs, and plans and learnings under `<root>` - not only against what changed since the last write, since a targeted update advances `last_updated` without reviewing the rest. Name any section the evidence suggests is stale, with the evidence, as a candidate - not a verdict.
 
 If the focus hint named a specific section, jump to that section in `references/interview.md`. Preserve every other section's content exactly, including sections this skill did not write, and its place per the ownership test above (a solely-owned file takes the template's order; a multi-writer file is never reordered); the heading migration is a rename only and does not conflict with that. Apply pushback as if this were a first run - do not rubber-stamp existing weak content just because it is already written.
 
@@ -30,4 +30,4 @@ If no specific target, ask the user which section to revisit using the blocking 
 
 For each revisited section, re-interview with full pushback. For sections the user confirms are still accurate, leave their content untouched. If the file is in this skill's house format and no section carries a meaning the template now requires (Boundaries - a migrated `Not working on` already carries it), offer to add it among this skill's own sections - do not add it silently, and do not add it to a file whose own portion is not in house format (a hand-written prose doc). When the file has YAML frontmatter, set `last_updated` to today's ISO date; when it has none, leave it that way - readers fall back to the file's own date.
 
-Write the updated doc back to `STRATEGY.md`.
+Write the updated doc back to `<workspace-root>/STRATEGY.md`.

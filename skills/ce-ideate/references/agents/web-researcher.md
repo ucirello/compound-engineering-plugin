@@ -47,7 +47,7 @@ Read the highest-value sources with the web-fetch tool Step 1 identified. Prefer
 
 - engineering blog posts, postmortems, conference talks, and design docs over marketing landing pages
 - recent (last 24 months) survey or comparison pieces over single-vendor pages
-- primary sources (papers, RFCs, project READMEs) over secondary commentary
+- primary sources (papers, RFCs, and canonical project documentation) over secondary commentary
 
 For each fetched source, extract the specific claims, patterns, or design choices that are relevant to the caller's topic. Capture concrete details (numbers, names, mechanics) — not vague summaries.
 

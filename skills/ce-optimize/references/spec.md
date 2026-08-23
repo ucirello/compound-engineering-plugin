@@ -95,5 +95,5 @@ Check whether the input is:
    - If this is the first run: recommend `execution.mode: serial`, `execution.max_concurrent: 1`, `stopping.max_iterations: 4`, and `stopping.max_hours: 1`
    - If the user named multiple required hard targets or an expensive harness: recommend `metric.objectives` plus `stability.mode: ladder` as above, and show `references/example-expensive-benchmark-spec.yaml`
    - If `type: judge`: recommend `sample_size: 10`, `batch_size: 5`, and `max_total_cost_usd: 5` until the rubric and harness are trusted
-6. Write the spec to `.context/compound-engineering/ce-optimize/<spec-name>/spec.yaml`
+6. Write the spec to `.context/optimize/<spec-name>/spec.yaml`
 7. Present the spec to the user for approval before proceeding

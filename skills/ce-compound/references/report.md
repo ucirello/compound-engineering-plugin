@@ -13,13 +13,13 @@ For `depth:lightweight`, use this lower-overhead report after the Lightweight Mo
 ```
 ✓ Documentation complete (non-interactive lightweight mode)
 
-File: <root>/solutions/<category>/<filename>.md  (created | updated)
+File: .context/solutions/<category>/<filename>.md  (created | updated)
 Track: <bug | knowledge>
 Category: <category>
 Grounding: <mechanical check clean | N flags adjudicated>
 Discoverability: <no gap | gap noted — instruction-file tip emitted | not applicable — no active project instructions>
-CONCEPTS.md: <not present | scanned, no qualifying terms | updated — N added, N refined>
-CONCEPTS.md discoverability: <not checked — CONCEPTS.md not refined | no gap | gap noted — instruction-file tip emitted | not applicable — no active project instructions>
+.context/CONCEPTS.md: <not present | scanned, no qualifying terms | updated - N added, N refined>
+.context/CONCEPTS.md discoverability: <not checked | no gap | gap noted | not applicable>
 Refresh recommendation: <none | scope hint for /ce-compound-refresh>
 
 Documentation complete
@@ -30,13 +30,13 @@ For `depth:full` or backward-compatible non-interactive calls with no depth toke
 ```
 ✓ Documentation complete (non-interactive mode)
 
-File: <root>/solutions/<category>/<filename>.md  (created | updated)
+File: .context/solutions/<category>/<filename>.md  (created | updated)
 Track: <bug | knowledge>
 Category: <category>
 Overlap: <none | low | moderate — see <path> | high — existing doc updated>
 Grounding: <clean | N flags adjudicated (X fixed, Y annotated, Z confirmed) | N claims softened or corrected | degraded — merge-state claims unverified offline>
 Instruction-file edit: <none needed | gap noted, not applied>
-CONCEPTS.md: <scanned, no qualifying terms | created with N entries (M seeded from the learning's area) | updated — N added, N refined>
+.context/CONCEPTS.md: <scanned, no qualifying terms | created with N entries | updated - N added, N refined>
 Refresh recommendation: <none | scope hint for /ce-compound-refresh>
 
 Documentation complete
@@ -65,7 +65,7 @@ Subagent Results:
   ✓ Context Analyzer: Identified performance_issue in background_job (component from corpus), category: performance-issues/
   ✓ Solution Extractor: 3 code fixes, prevention strategies
   ✓ Related Docs Finder: 2 related issues
-  ✓ Session History: 3 prior sessions on same branch, 2 failed approaches surfaced
+  ✓ Session History: 3 prior sessions on the same bookmark lineage, 2 failed approaches surfaced
 
 Grounding Validation:
   ✓ Mechanical check: 14 paths, 2 SHAs, 3 links checked — 1 flag annotated as historical
@@ -76,8 +76,8 @@ Specialized Agent Reviews (Auto-Triggered):
   ✓ Code simplification review: Code examples are appropriately minimal
 
 Files written:
-- <root>/solutions/performance-issues/n-plus-one-brief-generation.md (created)
-- CONCEPTS.md (created with 3 entries: BriefSystem, EmailQueue, Brief Status)
+- .context/solutions/performance-issues/n-plus-one-brief-generation.md (created)
+- .context/CONCEPTS.md (created with 3 entries: BriefSystem, EmailQueue, Brief Status)
 
 This documentation will be searchable for future reference when similar
 issues occur in the Email Processing or Brief System modules.
@@ -92,12 +92,12 @@ Refresh recommendation: none
 ```
 ✓ Documentation updated (existing doc refreshed with current context)
 
-Overlap detected: <root>/solutions/performance-issues/n-plus-one-queries.md
+Overlap detected: .context/solutions/performance-issues/n-plus-one-queries.md
   Matched dimensions: problem statement, root cause, solution, referenced files
   Action: Updated existing doc with fresher code examples and prevention tips
 
 File updated:
-- <root>/solutions/performance-issues/n-plus-one-queries.md (added last_updated: 2026-03-24)
+- .context/solutions/performance-issues/n-plus-one-queries.md (added last_updated: 2026-03-24)
 ```
 
 ## Common Mistakes to Avoid

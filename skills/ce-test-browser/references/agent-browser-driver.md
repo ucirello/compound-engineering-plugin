@@ -24,6 +24,8 @@ If the CLI exists but cannot launch its browser, follow the current core trouble
 
 Add `--headed` to commands when manual mode selected a visible browser. Pipeline mode defaults this fallback driver to headless.
 
+Before capturing file-backed evidence, resolve `<workspace-root>` with `jj workspace root` and create a collision-resistant `.tmp/test-browser/<run-id>/` beneath it. If either step fails, report the blocker instead of writing outside the workspace.
+
 ```bash
 # Navigate and inspect
 agent-browser open <url>
@@ -36,8 +38,8 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+agent-browser screenshot "<workspace-root>/.tmp/test-browser/<run-id>/screenshot.png"
+agent-browser screenshot --full "<workspace-root>/.tmp/test-browser/<run-id>/screenshot-full.png"
 
 # Navigation and waits
 agent-browser back

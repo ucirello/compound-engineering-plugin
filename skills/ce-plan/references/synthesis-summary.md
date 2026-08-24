@@ -296,14 +296,14 @@ Items to surface in the internal draft:
 - **Files/modules to touch (and not touch)** — what the implementation reaches into
 - **Patterns extended vs. introduced new** — architectural decisions the agent made within confirmed scope (R2's content focus, not bias toward either direction)
 - **Test scope** — which existing-but-untested code is in/out of test scope for this work
-- **Refactor scope** — adjacent cleanup, if any, going to deferred items vs. the active Jujutsu change
+- **Refactor scope** — adjacent cleanup, if any, going to deferred items vs. active diff
 - **Cross-cutting impact** — auth, migrations, shared types when they're touched
 
 Most of these will not survive the keep test as separate call-outs. Surface only the forks where another reasonable agent might choose differently and the user can correct cheaply now.
 
-**Reads from the Product Contract, not a synthesis section**: the upstream artifact is a requirements-only unified plan (`product_contract_source: brainstorm`), not a separate brainstorm doc, and it has no `## Synthesis` section (the synthesis is a chat-time artifact in ce-brainstorm; only the prose summary embeds, under the Product Contract). Phase 5.1.5 derives plan-time decisions from the Product Contract's sections — Summary, Problem Frame, Requirements, Key Flows, Scope Boundaries — plus Phase 1 research. Legacy standalone requirements docs (`origin: docs/brainstorms/...`) and older brainstorms that may carry a legacy `## Synthesis` section still work; that content is treated as supplementary, not authoritative, with the Product Contract / body sections taking precedence.
+**Reads from the Product Contract, not a synthesis section**: the upstream artifact is a requirements-only unified plan (`product_contract_source: ce-brainstorm`), not a separate brainstorm doc, and it has no `## Synthesis` section (the synthesis is a chat-time artifact in ce-brainstorm; only the prose summary embeds, under the Product Contract). Phase 5.1.5 derives plan-time decisions from the Product Contract's sections — Summary, Problem Frame, Requirements, Key Flows, Scope Boundaries — plus Phase 1 research. Legacy standalone requirements docs (`origin: docs/brainstorms/...`) and older brainstorms that may carry a legacy `## Synthesis` section still work; that content is treated as supplementary, not authoritative, with the Product Contract / body sections taking precedence.
 
-**Why pre-write, not pre-research**: brainstorm doc + R1 synthesis already validated WHAT, so research is well-targeted. Plan-time decisions emerge during research and structuring (Phases 1-4), so pre-write catches them at the latest cheap moment — before Phase 5.2 writes the plan to disk.
+**Why pre-write, not pre-research**: brainstorm doc + R1 synthesis already validated WHAT, so research is well-targeted. Plan-time decisions emerge during research and structuring (Phases 1-4), so pre-write catches them at the latest cheap moment — before Phase 5.2 commits the plan to disk.
 
 ### Stage 2 template (brainstorm-sourced)
 
@@ -345,12 +345,12 @@ Track which call-outs the user touched per round. The soft-cut blocking question
 
 **Identity across rounds is by decision dimension, not surface wording.** A revision may cause stage 2 to re-derive — the same underlying fork can come back rephrased, merged with another call-out, or split into two. "Same call-out" means the same decision being made (e.g., "where does the scan run" stays one decision whether it's worded as "promote scans the working-dir snapshot" or "scan target: pre-copy working dir"). When a re-cut collapses multiple prior call-outs into one, the new combined call-out inherits the "touched" status of any of its constituents — soft-cut fires if any of those underlying decisions was already revised once before.
 
-When the soft-cut fires, use the platform's blocking question tool with two options:
+When the soft-cut fires, use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name) with two options:
 
 - `Proceed and continue to [research / plan-write]`
 - `Hold off — keep discussing before continuing`
 
-Fall back to a numbered list on the host's user-visible chat surface only when no blocking tool exists or the call errors. Never silently skip.
+Presence in the list is proof; never call a user-facing question tool to discover whether it exists. Fall back to a numbered list on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip.
 
 ---
 
@@ -368,7 +368,7 @@ When the skill is invoked from an automated workflow such as LFG or any `disable
 **Shared behavior across both variants:**
 
 - **No user prompt; no stage 2; no auto-proceed announcement.** All three are moot.
-- **Route internal-draft content with mode-aware shape** (nested under Product Contract / Planning Contract in a `unified-plan/v1` artifact; top-level `##` headings in a legacy standalone plan):
+- **Route internal-draft content with mode-aware shape** (nested under Product Contract / Planning Contract in a `ce-unified-plan/v1` artifact; top-level `##` headings in a legacy standalone plan):
   - **Stated** content → Product Contract `### Requirements` (user-stated constraints, traced to origin's R-IDs when present), and where relevant `### Problem Frame` for narrative context
   - **Success signals — Stated only on these paths** → Product Contract `### Success Criteria` when its catalog entry fires. An *inferred* success signal does not come here: these paths never confirmed it, so it stays under `### Assumptions` with the other un-validated bets.
   - **Out-of-scope** content → Product Contract `### Scope Boundaries`
@@ -398,7 +398,7 @@ In either case: stop ce-plan, suggest the alternative skill, offer to load it in
 
 ## Doc shape after confirmation
 
-After user confirmation (or after the soft-cut decision proceeds), Phase 5.2 writes the plan doc. The internal draft does NOT carry into the plan as a `## Synthesis` section. Only the stage-2 summary embeds, under the Product Contract's `### Summary`. Internal-draft content dissolves into the unified plan's sections. In a `unified-plan/v1` artifact these destinations are nested — Summary, Problem Frame, Requirements, and Scope Boundaries live under `## Product Contract`; Key Technical Decisions and Assumptions live under `## Planning Contract`; Implementation Units is its own top-level section. (Legacy standalone plans without `artifact_contract` keep these as top-level `##` headings.)
+After user confirmation (or after the soft-cut decision proceeds), Phase 5.2 writes the plan doc. The internal draft does NOT carry into the plan as a `## Synthesis` section. Only the stage-2 summary embeds, under the Product Contract's `### Summary`. Internal-draft content dissolves into the unified plan's sections. In a `ce-unified-plan/v1` artifact these destinations are nested — Summary, Problem Frame, Requirements, and Scope Boundaries live under `## Product Contract`; Key Technical Decisions and Assumptions live under `## Planning Contract`; Implementation Units is its own top-level section. (Legacy standalone plans without `artifact_contract` keep these as top-level `##` headings.)
 
 | Internal-draft element | Where it goes in the unified plan |
 |---|---|

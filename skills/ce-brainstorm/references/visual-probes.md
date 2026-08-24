@@ -20,7 +20,7 @@ Do not use a visual probe for product goals, scope boundaries, success criteria,
 
 When the Phase 0.3 tripwire flagged an inherently-visual topic, the offer must fire before the **first** decision about shape, behavior, state, layout, flow, or a diagram is raised in *any* form — plain chat or a blocking question. A decision that meets Interaction Rule 7 routes to `ce-prototype` instead; this gate does not fire for it.
 
-**Timing is state-based, not memory-based.** Anchor the check to the decision you are about to raise, not to a "pending gate" remembered since Phase 0.3: offer unless this specific decision has already been through the offer (the user already chose text or visual for it). This gate takes precedence over the default blocking-question path — do not raise the shape decision as an `AskUserQuestion`/`request_user_input` menu, or as a plain-chat shape question, until the user has declined visual (or visual feedback has returned to chat).
+**Timing is state-based, not memory-based.** Anchor the check to the decision you are about to raise, not to a "pending gate" remembered since Phase 0.3: offer unless this specific decision has already been through the offer (the user already chose text or visual for it). This gate takes precedence over the default blocking-question path — do not raise the shape decision as a blocking-question menu, or as a plain-chat shape question, until the user has declined visual (or visual feedback has returned to chat).
 
 **Having been through the offer closes only this offer, never Rule 7.** Two paths reopen the prototype route for a decision already offered here: the user chose text and the decision then turns on finish or motion, or a rough sketch was built and did not settle it. Route those to `ce-prototype` rather than treating the decision as closed.
 
@@ -30,7 +30,7 @@ When the Phase 0.3 tripwire flagged an inherently-visual topic, the offer must f
 
 Ask once at the decision point. Do not enable a session-wide mode.
 
-Use the platform's blocking question tool for the opt-in when available (`AskUserQuestion`, `request_user_input`, `ask_user`, or equivalent). Use a plain chat question only when no interactive question tool exists or the tool errors. The opt-in should have two clear options:
+Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Use a plain chat question only when no such tool is in the list or a real question call errors. The opt-in should have two clear options:
 
 - Visual sketch — create rough options in a local browser
 - Text description — keep the decision in chat
@@ -76,17 +76,14 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
-LOCAL_TMP="$WORKSPACE_ROOT/.tmp";
-if [ -L "$LOCAL_TMP" ] || ! (umask 077; mkdir -p "$LOCAL_TMP") 2>/dev/null || [ ! -O "$LOCAL_TMP" ] || [ ! -w "$LOCAL_TMP" ]; then LOCAL_TMP="$PWD/.tmp"; fi;
-if [ -L "$LOCAL_TMP" ]; then echo "unsafe local temp root symlink: $LOCAL_TMP" >&2; exit 1; fi;
-(umask 077; mkdir -p "$LOCAL_TMP") || exit 1; chmod 700 "$LOCAL_TMP" || exit 1;
-SCRATCH_ROOT="$LOCAL_TMP/rocketclaw";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; [ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$PWD";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+if [ -L "$SCRATCH_ROOT" ] || { [ -e "$SCRATCH_ROOT" ] && [ ! -O "$SCRATCH_ROOT" ]; }; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
+PROBE_ROOT="$SCRATCH_ROOT/ce-brainstorm-visual"; (umask 077; mkdir -p "$PROBE_ROOT") || exit 1; chmod 700 "$PROBE_ROOT" || exit 1;
+PROBE_DIR="$PROBE_ROOT/<run-id>"; (umask 077; mkdir "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" start --root "$PROBE_DIR"
 ```
 
@@ -94,15 +91,11 @@ Append `--foreground` to that `start` command for foreground mode. Status and st
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
-LOCAL_TMP="$WORKSPACE_ROOT/.tmp";
-if [ -L "$LOCAL_TMP" ] || ! (umask 077; mkdir -p "$LOCAL_TMP") 2>/dev/null || [ ! -O "$LOCAL_TMP" ] || [ ! -w "$LOCAL_TMP" ]; then LOCAL_TMP="$PWD/.tmp"; fi;
-if [ -L "$LOCAL_TMP" ]; then echo "unsafe local temp root symlink: $LOCAL_TMP" >&2; exit 1; fi;
-(umask 077; mkdir -p "$LOCAL_TMP") || exit 1; chmod 700 "$LOCAL_TMP" || exit 1;
-SCRATCH_ROOT="$LOCAL_TMP/rocketclaw";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; [ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$PWD";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+if [ -L "$SCRATCH_ROOT" ] || { [ -e "$SCRATCH_ROOT" ] && [ ! -O "$SCRATCH_ROOT" ]; }; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" status --root "$PROBE_DIR"
@@ -128,7 +121,7 @@ Never force the visual path because a local server exists. The user chose visual
 
 ## Post-Artifact Feedback
 
-After showing the visual artifact, use the platform's blocking question tool for bounded artifact feedback when available. This is still chat-based feedback, not browser event capture.
+After showing the visual artifact, use the host's blocking question tool already in the current tool list for bounded artifact feedback. This is still chat-based feedback, not browser event capture.
 
 Use a bounded interactive question when the expected response is a small choice set:
 
@@ -159,19 +152,15 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use the Jujutsu workspace's `.tmp/rocketclaw` directory by default, with the
-current directory's `.tmp/rocketclaw` as the no-workspace or unwritable-root
-fallback, because visual probes are disposable scratch:
+Use workspace-local scratch because visual probes are disposable. Outside a
+Jujutsu workspace, resolve the same `.tmp/rocketclaw` tree under the current directory:
 
 ```text
-<scratch-root>/ce-brainstorm-visual/<run-id>/
+<workspace-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/
     display-info.json
 ```
 
-When the user explicitly wants to preserve or curate the sketches, move the
-selected output to a durable project location they approve. The probe remains
-disposable scratch under `.tmp`; the durable Phase 3 artifact lives under
-`<root>/plans/`.
+Use `.context/ce-brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `<root>/plans/`.

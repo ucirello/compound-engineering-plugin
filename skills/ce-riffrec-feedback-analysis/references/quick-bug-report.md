@@ -4,13 +4,13 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Resolve the workspace root with `jj workspace root`; if that fails, use the physical current directory. Under that root, atomically claim a private unique directory at `.tmp/rocketclaw/riffrec-quick-<run-id>` with mode `0700`, rejecting a symlinked `.tmp` parent. Set that directory as `OUTPUT_DIR`, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
+1. Resolve the workspace root with `jj workspace root`; outside a Jujutsu workspace, use the physical current directory. Confirm the applicable `.gitignore` rules exclude `.tmp/` before creating scratch so Jujutsu cannot snapshot it into the working-copy change. Create a private unique directory under `<workspace-root>/.tmp/rocketclaw/ce-riffrec-feedback-analysis/`, set `OUTPUT_DIR` to it and `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it. Never use OS-global or user-global temporary storage.
 
 2. Read only `analysis.md` from the scratch output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 
 3. Pick at most one or two screenshots from `frames/` that directly show the reported issue. Prefer frames near a verbal complaint, a failed click, a console error, or a failed network request.
 
-4. Emit a single concise bug report. Default to printing it inline in the chat so the user can confirm before anything is written to disk. Only write a file if the user asks for one — and even then, prefer a single `bug-report.md` next to the source recording or in a path the user names. Do not create a durable `.rocketclaw` artifact for this path automatically.
+4. Emit a single concise bug report. Default to printing it inline in the chat so the user can confirm before anything is written to disk. Only write a file if the user asks for one — and even then, prefer a single `bug-report.md` next to the source recording or in a path the user names. Do not auto-create `docs/brainstorms/...` for this path.
 
 ## Bug report shape
 
@@ -30,7 +30,7 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- Do not track `raw/` or `frames/`. They live only in the workspace-local scratch directory and may be removed after the report is delivered.
+- Do not include `raw/` or `frames/` in a Jujutsu change. Remove only this run's unique scratch directory after the report no longer needs them.
 - No source-mapping pass across the codebase.
 
 ## Escalation

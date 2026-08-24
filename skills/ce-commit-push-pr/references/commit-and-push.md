@@ -1,38 +1,21 @@
-# Committing and pushing with Jujutsu
+# Committing and pushing
 
-If the stack reference constructed and committed retrospective layers before this step, skip ordinary single-bookmark commit/push and continue to Step 4; `gh stack submit` in Step 5 pushes the stack.
+If the stack reference constructed and described retrospective layers before this step, skip ordinary single-bookmark publication and continue to Step 4; Step 5 pushes the stack bookmarks.
 
-If the work is based directly on the default bookmark, read `references/bookmark-creation.md` and resolve the base before continuing.
+If the work starts from trunk, read `references/bookmark-creation.md`. It protects the decision between a fresh remote base and unpublished local base changes without relying on Git's current-branch or stash model.
 
-Inspect the working-copy change with `jj status` and `jj diff`. Group only clearly distinct concerns into separate commits, with no more groups than the work naturally requires. Use whole-file filesets; when a safe split requires hunks, ask before using interactive `jj split`. When ambiguous, one commit is fine.
+Scan the complete unpublished range and working-copy change for naturally distinct concerns. If whole-file groups form separate logical changes, use path-limited `jj commit` or `jj split` to produce the smallest useful sequence. When the boundary is ambiguous, keep one change. Do not use an interactive hunk split unless the user explicitly approves that review boundary.
 
-Honor `exclude:<paths>` when present. Path-limit every commit to its intended files so excluded or unrelated content remains in the new working-copy change. With filesets, `jj commit` keeps the selected paths in the completed commit and moves the remaining content into a new working-copy commit.
+Jujutsu snapshots visible working-copy files and has no staging area. Pass each group's filesets to `jj commit` so only that group remains in the described change and the rest moves to the new working-copy change. **Honor `exclude:<paths>`:** excluded paths belong to no published change, and the report names them. If ignored or generated content is already tracked in the current change, separate or untrack it before publication rather than relying on an index.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository instructions and the syntax established by `git log` always win. Apply compatible Go guidance where those sources leave room, including a history-useful first line and rationale in the body when needed. Do not force a type, scope, prefix, subject grammar, body, or Conventional Commit form. When a plan Implementation Unit ID is already in hand and the repository's syntax permits it, include that unit ID without changing the established message form. Do not hunt for a plan; omit it when the change spans units or the unit is unclear.
 
-The project's active runtime conventions and descriptions visible in current `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, tense, punctuation, line length, or example. Preserve any known implementation-unit identifier only when project conventions or the caller require it.
+Pass the composed description directly as one argv value to `jj commit --message` or `jj describe --message`; do not substitute a fixed message placeholder. After each operation, inspect `jj show` and `jj status` to verify the change has exactly its intended files and description and that excluded paths remain outside the publication range.
 
-For each whole-file group:
-
-```bash
-jj commit -m "<message-derived-from-current-conventions>" <fileset>...
-```
-
-Before creating or updating the feature bookmark, verify the completed top commit and its description with `jj show @-` and verify excluded content remains in `@` with `jj status`.
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-If `<bookmark>` does not exist, create it at the completed top commit. If it already identifies this feature line, advance it to the completed top commit. Do not move an unrelated bookmark or move one backward without explicit confirmation.
+Move or create the feature bookmark at the intended completed change. An empty working-copy child normally means the bookmark targets `@-`; a still-active described working-copy change may target `@`. Verify the exact target instead of assuming either shape. Re-check the bookmark, push remote, and remote bookmark immediately before publication:
 
 ```bash
-jj bookmark create <bookmark> -r @-
-jj bookmark set <bookmark> -r @-
+jj git push --remote <push-remote> --bookmark <bookmark>
 ```
 
-Run only the applicable bookmark command. Immediately before pushing, separately re-confirm the local target with `jj bookmark list <bookmark>` and remote targets with `jj log -r 'remote_bookmarks(exact:"<bookmark>")' --no-graph -T 'json(remote_bookmarks) ++ "\n"'`. Stop if the intended local target or remote is ambiguous. Then push that bookmark explicitly:
-
-```bash
-jj git push --remote <remote> --bookmark <bookmark>
-```
-
-If push safety checks fail, fetch that remote, resolve bookmark divergence or conflicts, and retry only when the intended target is still clear. If the working-copy change is empty and the bookmark already matches its remote, this step is a no-op.
+If the bookmark and its tracked remote bookmark already agree and no unpublished changes belong to the PR, this step is a no-op. On a stale or conflicted remote-bookmark refusal, fetch and reconcile; never bypass Jujutsu's safety checks.

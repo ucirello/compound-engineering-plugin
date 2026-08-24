@@ -1,11 +1,11 @@
-# Cross-Model Adversarial Pass — Skill-Creator Eval Spec
+# Cross-Model Adversarial Pass — Behavioral Eval Spec
 
 This is the load-bearing behavioral eval for ce-code-review's cross-model
 adversarial pass. Deterministic route tests cover the worker; these cases cover
 the SKILL.md/reference orchestration that only a fresh agent can execute. Inject
 the current `SKILL.md`, `references/cross-model-review.md`, and the relevant
-Stage 5 synthesis prose through the `skill-creator` workflow. Run on Claude Code
-and Codex with fake peer CLIs first on PATH.
+Stage 5 synthesis prose through a fresh-agent evaluation workflow. Run on two
+supported runtimes with fake peer CLIs first on PATH.
 
 ## Eval cases
 
@@ -25,11 +25,11 @@ and Codex with fake peer CLIs first on PATH.
 
 3. **Cursor and Composer remain distinct.** A stated `cursor` preference selects
    Cursor default/Auto with no `--model`; `composer` selects an explicit
-   Composer-family model through Cursor. A receiptless Cursor or Composer return
-   records `model_actual: unverified` and `independence_verified: false`.
+   Composer-family model through Cursor. A route without verifiable independence
+   records `independence_verified: false`.
 
 4. **Fold-in promotion requires verified independence.** A stubbed
-   `adversarial-<provider>.json` finding matching the in-process adversarial
+   external adversarial finding matching the in-process adversarial
    finding promotes one anchor step only with `independence_verified: true`.
    With `independence_verified: false`, it remains attributed evidence and does
    not count as different-model corroboration. Peer findings never gain silent
@@ -51,7 +51,7 @@ and Codex with fake peer CLIs first on PATH.
 7. **Detached lifecycle remains bounded.** The orchestrator starts the peer job
    in a short runner call, polls in bounded slices while other review work
    continues, reaps at the aggregate deadline, reads owned results and skip logs,
-   names non-`done` terminal states, and removes private workspace-local artifacts.
+   names non-`done` terminal states, and removes private scratch.
 
 8. **Mode-specific disclosure is honest.** Human-facing default mode announces
    the fixed route and egress before dispatch and calls it independent only when
@@ -69,7 +69,7 @@ and Codex with fake peer CLIs first on PATH.
 
 ## Pass criteria
 
-All nine cases pass on the current on-disk source on Claude Code and Codex. The
+All nine cases pass on the current on-disk source on two supported runtimes. The
 negative activation cases launch no peer, the fixed-route cases perform no
 worker-internal recipient fallback, and only `independence_verified: true`
 artifacts can promote agreement.

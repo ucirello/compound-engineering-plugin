@@ -50,7 +50,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize transient screenshots only under a collision-resistant run directory in `<workspace-root>/.tmp/ce-test-browser/`, where `<workspace-root>` comes from `jj workspace root` and falls back to the current project directory. Keep them out of the Jujutsu working-copy change. When a later workflow needs durable evidence, copy only that evidence to its owned artifact location; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
 
 ## Human verification (when required)
 
@@ -95,7 +95,7 @@ Did it work correctly?
    2. Skip - continue testing other pages
    ```
 
-3. **If "Fix now":** investigate, propose a fix, apply, and re-run the failing test. Keep the fix in the resolved target's Jujutsu scope and do not move or publish another bookmark. If this path composes, edits, validates, or recommends a change description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. Runtime project instructions and `jj log` take precedence. Preserve the tested fix's meaning while adapting syntax dynamically. Apply compatible Go guidance only for quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example. Do not add product branding, generated-by text, or creator, model, provider, tool, agent, runtime, workflow, or co-author attribution.
+3. **If "Fix now":** investigate, propose a fix, apply, re-run the failing test
 4. **If "Skip":** log as skipped, continue
 
 ## Test summary
@@ -103,7 +103,7 @@ Did it work correctly?
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [Jujutsu revision or bookmark]
+**Test Scope:** PR #[number] / JJ [revision or bookmark]
 **Server:** http://localhost:<port>
 
 ### Pages Tested: [count]

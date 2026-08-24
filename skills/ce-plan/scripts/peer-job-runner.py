@@ -57,27 +57,27 @@ fallback when the group kill is unavailable. The supervisor classifies the
 outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
-Configuration (defaults in parentheses):
-  Job state root            <jj-workspace-root>/.tmp/rocketclaw-peer-jobs, or
-                            <current-directory>/.tmp/rocketclaw-peer-jobs when
-                            `jj workspace root` is unavailable
-  ROCKETCLAW_PEER_IDLE_SECS idle window, no out.log growth (240)
-  ROCKETCLAW_PEER_HARD_SECS hard cap on worker wall clock
+Environment overrides (defaults in parentheses):
+  Jobs root                 <current jj workspace>/.tmp; outside Jujutsu,
+                            <current working directory>/.tmp
+  CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
+  CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
+  CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
                             an explicit value always wins)
-  CROSS_MODEL_HARD_SECS     when ROCKETCLAW_PEER_HARD_SECS is unset, widens the
+  CROSS_MODEL_HARD_SECS     when CE_PEER_HARD_SECS is unset, widens the
                             supervisor hard window (see above)
-  ROCKETCLAW_PEER_LOG_MAX_BYTES     out.log byte cap (10485760)
-  ROCKETCLAW_PEER_RESULT_MAX_BYTES  result byte cap, supervise + read (5242880)
-  ROCKETCLAW_PEER_POLL_SECS         supervisor poll interval (2)
-  ROCKETCLAW_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
-  ROCKETCLAW_PEER_BASH              Windows: absolute bash.exe for peer workers
+  CE_PEER_LOG_MAX_BYTES     out.log byte cap (10485760)
+  CE_PEER_RESULT_MAX_BYTES  result byte cap, supervise + read (5242880)
+  CE_PEER_POLL_SECS         supervisor poll interval (2)
+  CE_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
+  CE_PEER_BASH              Windows: absolute bash.exe for peer workers
                             (preferred over PATH / WSL System32 bash)
   CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
-                             ROCKETCLAW_PEER_BASH is unset (#1268)
+                            CE_PEER_BASH is unset (#1268)
 
 Security posture: the job root is an owner-private directory under the current
-workspace's `.tmp` namespace. Every read of job state opens the file first (no-follow) and
+workspace's `.tmp`. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -110,8 +110,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root uses the same workspace-local `.tmp` namespace as POSIX and is
-            protected by an owner-only ACL.
+  jobs root follows the same workspace-local `.tmp` rule as POSIX.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -141,6 +140,21 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
+def _workspace_root() -> str:
+    """Current Jujutsu workspace root, or the current directory outside JJ."""
+    try:
+        result = subprocess.run(
+            ["jj", "--ignore-working-copy", "workspace", "root"],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        result = None
+    if result is not None and result.returncode == 0 and result.stdout.strip():
+        return os.path.abspath(result.stdout.strip())
+    return os.path.abspath(os.getcwd())
+
+
+DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -166,9 +180,9 @@ exit codes:
   4  ownership check failed (job state or result not owned by the current
      user) — content is never emitted
 
-environment overrides: ROCKETCLAW_PEER_IDLE_SECS,
-ROCKETCLAW_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS, ROCKETCLAW_PEER_LOG_MAX_BYTES,
-ROCKETCLAW_PEER_RESULT_MAX_BYTES, ROCKETCLAW_PEER_POLL_SECS, ROCKETCLAW_PEER_GRACE_SECS (defaults in
+environment overrides: CE_WORK_RUNS_ROOT, CE_PEER_IDLE_SECS,
+CE_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS, CE_PEER_LOG_MAX_BYTES,
+CE_PEER_RESULT_MAX_BYTES, CE_PEER_POLL_SECS, CE_PEER_GRACE_SECS (defaults in
 the module docstring).
 """
 
@@ -191,67 +205,29 @@ _RUNNER_HARD_FLOOR = 1230.0
 _RUNNER_HARD_GRACE = 30.0
 
 
-def _workspace_root() -> str:
-    """Use the current Jujutsu workspace, with the current directory fallback."""
-    try:
-        result = subprocess.run(
-            ["jj", "workspace", "root"], capture_output=True, text=True,
-            check=False, cwd=os.getcwd(),
-        )
-    except OSError:
-        result = None
-    if result is not None and result.returncode == 0 and result.stdout.strip():
-        return os.path.abspath(result.stdout.strip())
-    return os.path.abspath(os.getcwd())
-
-
-def _default_root() -> str:
-    tmp_base = os.path.join(_workspace_root(), ".tmp")
-    try:
-        os.mkdir(tmp_base, 0o700)
-    except FileExistsError:
-        pass
-    _check_owned_dir(tmp_base)
-    return os.path.join(tmp_base, "rocketclaw-peer-jobs")
-
-
-def _env_value(primary: str, legacy: str = None):
-    if primary in os.environ:
-        return os.environ[primary]
-    return os.environ.get(legacy) if legacy else None
-
-
 def jobs_root_base() -> str:
-    configured = _env_value("ROCKETCLAW_PEER_JOBS_ROOT", "CE_PEER_JOBS_ROOT")
-    if configured:
-        return os.path.abspath(configured)
-    return _default_root()
+    return os.path.abspath(DEFAULT_ROOT)
 
 
 def candidate_jobs_root_bases() -> list:
-    """The current workspace-local root."""
-    configured = _env_value("ROCKETCLAW_PEER_JOBS_ROOT", "CE_PEER_JOBS_ROOT")
-    if configured:
-        return [os.path.abspath(configured)]
-    return [_default_root()]
+    """The workspace-local root where existing jobs live."""
+    return [os.path.abspath(DEFAULT_ROOT)]
 
 
 def skill_runs_root(skill: str) -> str:
-    configured = _env_value("ROCKETCLAW_WORK_RUNS_ROOT", "CE_WORK_RUNS_ROOT")
-    if skill == "ce-work" and configured:
-        return os.path.abspath(configured)
+    if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
+        return os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])
     return os.path.join(jobs_root_base(), skill)
 
 
 def candidate_skill_runs_roots(skill: str) -> list:
-    configured = _env_value("ROCKETCLAW_WORK_RUNS_ROOT", "CE_WORK_RUNS_ROOT")
-    if skill == "ce-work" and configured:
-        return [os.path.abspath(configured)]
+    if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
+        return [os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])]
     return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 
-def _env_num(name: str, default: float, conv, *, allow_zero: bool = False, legacy: str = None):
-    raw = _env_value(name, legacy)
+def _env_num(name: str, default: float, conv, *, allow_zero: bool = False):
+    raw = os.environ.get(name)
     if not raw:
         return default
     try:
@@ -264,10 +240,10 @@ def _env_num(name: str, default: float, conv, *, allow_zero: bool = False, legac
 
 
 def _derived_hard_default() -> float:
-    """Outermost supervisor hard window when ROCKETCLAW_PEER_HARD_SECS is unset.
+    """Outermost supervisor hard window when CE_PEER_HARD_SECS is unset.
 
     Reads ambient CROSS_MODEL_HARD_SECS (the runner already forwards os.environ
-    to the worker, so a user-set knob is present here). Explicit ROCKETCLAW_PEER_HARD_SECS
+    to the worker, so a user-set knob is present here). Explicit CE_PEER_HARD_SECS
     still wins via cfg() — ce-work and elevation paths keep their own windows.
     """
     cross = _env_num("CROSS_MODEL_HARD_SECS", 0.0, float)
@@ -276,12 +252,12 @@ def _derived_hard_default() -> float:
 
 def cfg(skill=None) -> dict:
     return {
-        "idle": _env_num("ROCKETCLAW_PEER_IDLE_SECS", 240.0, float, allow_zero=skill == "ce-work", legacy="CE_PEER_IDLE_SECS"),
-        "hard": _env_num("ROCKETCLAW_PEER_HARD_SECS", _derived_hard_default(), float, legacy="CE_PEER_HARD_SECS"),
-        "log_max": int(_env_num("ROCKETCLAW_PEER_LOG_MAX_BYTES", 10 * 1024 * 1024, int, legacy="CE_PEER_LOG_MAX_BYTES")),
-        "result_max": int(_env_num("ROCKETCLAW_PEER_RESULT_MAX_BYTES", 5 * 1024 * 1024, int, legacy="CE_PEER_RESULT_MAX_BYTES")),
-        "poll": _env_num("ROCKETCLAW_PEER_POLL_SECS", 2.0, float, legacy="CE_PEER_POLL_SECS"),
-        "grace": _env_num("ROCKETCLAW_PEER_GRACE_SECS", 5.0, float, legacy="CE_PEER_GRACE_SECS"),
+        "idle": _env_num("CE_PEER_IDLE_SECS", 240.0, float, allow_zero=skill == "ce-work"),
+        "hard": _env_num("CE_PEER_HARD_SECS", _derived_hard_default(), float),
+        "log_max": int(_env_num("CE_PEER_LOG_MAX_BYTES", 10 * 1024 * 1024, int)),
+        "result_max": int(_env_num("CE_PEER_RESULT_MAX_BYTES", 5 * 1024 * 1024, int)),
+        "poll": _env_num("CE_PEER_POLL_SECS", 2.0, float),
+        "grace": _env_num("CE_PEER_GRACE_SECS", 5.0, float),
     }
 
 
@@ -467,7 +443,7 @@ if IS_WINDOWS:
         """A per-job named kernel object. Naming it is what makes this a real
         pgid analog: a DIFFERENT process (cmd_reap, after the supervisor is
         gone) can reopen it by name and terminate the whole tree."""
-        return "Local\\rocketclaw-peer-job-" + os.path.basename(job_dir.rstrip("\\/"))
+        return "Local\\ce-peer-job-" + os.path.basename(job_dir.rstrip("\\/"))
 
     def _win_create_job(name: str):
         """Create the job the worker tree will live in. Deliberately WITHOUT
@@ -722,9 +698,9 @@ def ensure_owned_dirs(base: str, path: str) -> None:
         # POSIX's chmod 0700 is not: it permanently drops inherited ACEs. So
         # only re-ACL a root this runner owns -- one we just created, or the
         # managed default (repairing a default left non-private, which is what
-        # the POSIX unconditional chmod is for).
-        configured_root = _env_value("ROCKETCLAW_PEER_JOBS_ROOT", "CE_PEER_JOBS_ROOT")
-        default_root = None if configured_root else os.path.abspath(_default_root())
+        # the POSIX unconditional chmod is for). A pre-existing user-supplied
+        # A pre-existing caller-selected ce-work root keeps its ACLs and rests on the owner check.
+        default_root = os.path.abspath(DEFAULT_ROOT) if DEFAULT_ROOT else None
         ours = created_base or (
             default_root is not None
             and os.path.normcase(cur) == os.path.normcase(default_root))
@@ -804,7 +780,7 @@ def write_atomic(path: str, data: bytes) -> None:
     tmp = None
     for _ in range(CLAIM_ATTEMPTS):
         candidate = os.path.join(
-            directory, f".rocketclaw-tmp-{os.getpid()}-{os.urandom(8).hex()}"
+            directory, f".tmp-{os.getpid()}-{os.urandom(4).hex()}",
         )
         try:
             fd = os.open(
@@ -817,9 +793,7 @@ def write_atomic(path: str, data: bytes) -> None:
         except FileExistsError:
             continue
     if fd is None or tmp is None:
-        raise RunnerError(
-            f"could not reserve an atomic publication file after {CLAIM_ATTEMPTS} attempts"
-        )
+        raise RunnerError("could not reserve an atomic workspace-local scratch file")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -1369,16 +1343,12 @@ def _rewrite_windows_env_bash_argv(argv):
 def _resolve_windows_posix_shell() -> str:
     """Absolute path to a non-WSL POSIX shell for native Windows peer workers.
 
-    Order: ROCKETCLAW_PEER_BASH, CLAUDE_CODE_GIT_BASH_PATH, well-known Git Bash
+    Order: CE_PEER_BASH, CLAUDE_CODE_GIT_BASH_PATH, well-known Git Bash
     installs, then every PATH bash/sh excluding System32 WSL. Fail closed when
     nothing usable remains — never select System32\\bash.exe (#1268).
     """
     candidates = []
-    shell_keys = ["ROCKETCLAW_PEER_BASH"]
-    if "ROCKETCLAW_PEER_BASH" not in os.environ:
-        shell_keys.append("CE_PEER_BASH")
-    shell_keys.append("CLAUDE_CODE_GIT_BASH_PATH")
-    for key in shell_keys:
+    for key in ("CE_PEER_BASH", "CLAUDE_CODE_GIT_BASH_PATH"):
         val = (os.environ.get(key) or "").strip()
         if val:
             candidates.append(val)
@@ -1400,7 +1370,7 @@ def _resolve_windows_posix_shell() -> str:
 
     raise RunnerError(
         "no usable Git Bash (or other non-WSL POSIX shell) for native Windows "
-        "peer workers; install Git for Windows or set ROCKETCLAW_PEER_BASH / "
+        "peer workers; install Git for Windows or set CE_PEER_BASH / "
         "CLAUDE_CODE_GIT_BASH_PATH to an absolute bash.exe path "
         "(System32\\bash.exe / WSL is not used)"
     )
@@ -1488,8 +1458,8 @@ def supervise(job_dir: str, argv, result_path, conf: dict, ack_fd: int) -> None:
             # python3 stub — see resolve-python convention / #1247.
             worker_env = {
                 **os.environ,
-                "ROCKETCLAW_PEER_JOB_ID": os.path.basename(job_dir),
-                "ROCKETCLAW_PEER_PYTHON": sys.executable,
+                "CE_PEER_JOB_ID": os.path.basename(job_dir),
+                "CE_PEER_PYTHON": sys.executable,
             }
             popen_kwargs = dict(
                 stdin=devnull,
@@ -1798,7 +1768,8 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (native-Windows detach requirement #1243)."
+            "a Windows Python 3 build (see "
+            "the native Windows support notes)."
         )
 
 

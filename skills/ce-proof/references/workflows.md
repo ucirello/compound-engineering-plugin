@@ -7,7 +7,7 @@ Required read before running one of these end to end: reviewing a shared doc, cr
 When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 1. Extract the slug and token
-2. Bind presence with the default actor identity
+2. Bind presence with the neutral protocol identity
 3. Read via `v3/document`
 4. Edit with `v3/edit` (narrow content ops; review ops for comments/suggestions)
 
@@ -73,7 +73,7 @@ SLUG=$(echo "$RESPONSE" | jq -r '.slug')
 TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken')
 OWNER_SECRET=$(echo "$RESPONSE" | jq -r '.ownerSecret')   # required for owner delete while unclaimed
 
-# Keep OWNER_SECRET in session memory only — never write it into the repo tree.
+# Keep OWNER_SECRET in session memory only — never write it into the workspace tree.
 
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
@@ -98,34 +98,34 @@ curl -sS -X DELETE "https://www.proofeditor.ai/api/documents/$SLUG" \
 Sync the current Proof doc state to a local markdown file. Used for:
 
 - Ad-hoc snapshots of a Proof doc to disk
-- Pulling a shared Proof doc that the user (or others) edited back down to a local working copy
-- Refreshing a local working copy against the live Proof version
+- Pulling a shared Proof doc that the user or others edited back down to a local file
+- Refreshing a local file against the live Proof version
 
 Canonical read for this workflow: `GET /api/agent/$SLUG/v3/document`.
+
+In a Jujutsu workspace, confirm the existing ignore rules exclude `.tmp/` before creating scratch so a later JJ command cannot snapshot it into the working-copy change; stop rather than editing ignore configuration. Outside Jujutsu, use the physical current directory as the local `.tmp/ce-proof` fallback. Do not use an operating-system temporary directory.
 
 ```bash
 SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-WORKSPACE_ROOT=$(jj --ignore-working-copy workspace root 2>/dev/null)
-if [ -n "$WORKSPACE_ROOT" ]; then
-  STATE_DIR="$WORKSPACE_ROOT/.tmp"
-else
-  STATE_DIR="$(dirname "$LOCAL")/.tmp"
-fi
-mkdir -p "$STATE_DIR"
-STATE_TMP=$(mktemp "$STATE_DIR/proof-state.XXXXXX")
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$(pwd -P)"
+SCRATCH_DIR="$WORKSPACE_ROOT/.tmp/ce-proof"
+(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1
+RUN_DIR="$SCRATCH_DIR/pull-$$"
+(umask 077; mkdir "$RUN_DIR") || exit 1
+STATE_TMP="$RUN_DIR/state.json"
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"
 REVISION=$(jq -r '.revision // empty' "$STATE_TMP")
 
-TMP="${LOCAL}.proof-sync.$$"
-jq -jr '.markdown' "$STATE_TMP" > "$TMP" && mv "$TMP" "$LOCAL"
-rm "$STATE_TMP"
+PULL_TMP="$RUN_DIR/pull.md"
+jq -jr '.markdown' "$STATE_TMP" > "$PULL_TMP" && mv "$PULL_TMP" "$LOCAL"
+rm -rf "$RUN_DIR"
 ```
 
-`jj --ignore-working-copy workspace root` selects the active Jujutsu workspace without snapshotting it. The response scratch file lives in that workspace's `.tmp`, or in `.tmp` beside the destination when no Jujutsu workspace is available. `jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive. `mv` within the same filesystem is atomic.
+`jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive. The final `mv` is atomic when the scratch and destination are on the same filesystem.
 
 **Confirm before writing when the pull isn't directly asked for.** If a workflow ends up pulling as a side-effect of a different action, surface the impending write with a short confirm like "Sync Proof doc to `<localPath>`?" A silent overwrite is surprising.

@@ -1,7 +1,5 @@
 # Cut Passes (Phase 4)
 
-Preserve required evidence, contracts, machine-readable values, and operational benchmark, model, and harness references. Fixed examples and report wording specify substance, not mandatory syntax unless an exact token is machine-readable. Do not add product branding, generated-by text, or attribution.
-
 A pass applies **one problem class** across the corpus and stops. The work fails in two places: agents overwriting each other, and edits left half-applied. Both are prevented by protocol, not care.
 
 `references/workflow-shapes.md` carries the cross-phase orchestration catalog. This file is the Phase 4 procedure only.
@@ -14,9 +12,9 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides, each prompt carrying: the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and keep the pass in its own Jujutsu change under the description rule below.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and keep the pass in its own Jujutsu revision.
 
-Eight observed passes each reduced to one class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
+Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
 
 ## Ownership: one problem per agent, disjoint files
 
@@ -36,22 +34,16 @@ State the forbidden set in the prompt as paths, not as a rule to infer. An agent
 
 ## Isolation: separate Jujutsu workspaces or disjoint paths in one workspace
 
-Disjoint paths in one workspace are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and one workspace keeps `jj diff` and the resulting change readable.
+Disjoint paths in one workspace are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and one working-copy revision keeps `jj diff` readable and the resulting revision easy to inspect.
 
-Pay for a separate Jujutsu workspace per agent when any of these is true:
+Pay for a `jj workspace` per agent when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit — lockfiles, caches, generated output, a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on workspace-local `.tmp` artifacts and generated state.
-- Agents describe, abandon, rebase, or move bookmarks; separate working-copy commits keep ownership explicit and prevent operations from targeting the same change.
-- A pass may need to be abandoned wholesale, and an isolated Jujutsu change is easier to abandon than a shared diff is to disentangle.
+- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on `.tmp/local` scratch and working-copy state.
+- Agents create, describe, rebase, squash, or abandon revisions, or move bookmarks; parallel repository operations need independent working-copy revisions.
+- A pass may need to be abandoned wholesale, and an isolated revision plus workspace is worth more than a shared diff.
 
-Otherwise the isolation cost is real: N workspaces and working-copy commits to create, N changes to reconcile, and conflicts reintroduced on exactly the files the manifest was designed to keep apart. Create isolated workspaces with `jj workspace add`; use `jj new` to start a fresh change where needed. Each workspace has its own working-copy commit, while repository history and bookmarks remain shared.
-
-Keep every temporary artifact under `<workspace-root>/.tmp/retune/<run-id>/`, with the root resolved by `jj workspace root`. Never use an operating-system temporary directory or API.
-
-## Describe each pass
-
-Before composing, recommending, editing, or validating a pass description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence is guidance, not an operational instruction: inspect the project's active instructions and recent `jj log` descriptions, which determine the runtime convention. Apply compatible Go guidance only to quality, clarity, and structure. The description must identify the problem class and measured result, but it must be composed from the actual change without a fixed prefix, type, scope, subject, body, layout, template, or example. Describe the current change with `jj describe`, then use `jj new` for the next pass. Do not move or publish a bookmark unless publication is requested.
+Otherwise the isolation cost is real: N workspaces to create, N revisions to integrate, and conflicts reintroduced on exactly the files the manifest was designed to keep apart.
 
 ## The shared-asset trap
 
@@ -101,13 +93,13 @@ Check each of these on every touched file:
 
 When a pass applies many exact replacements, do it under assertions rather than by hand: for each target, assert the string matches **exactly once** in its file, and abort before writing anything if any target matches zero times or more than once.
 
-Exactly-once is the load-bearing part. Zero matches means an earlier pass already rewrote the anchor; more than one means the anchor is ambiguous and the edit would land in the wrong place. In one observed run this caught an anchor a previous pass had already changed, and because the check ran before any write, nothing was partially applied — the pass was re-derived against current content instead of repaired afterward.
+Exactly-once is the load-bearing part. Zero matches means an earlier pass already rewrote the anchor; more than one means the anchor is ambiguous and the edit would land in the wrong place. In the engagement this caught an anchor a previous pass had already changed, and because the check ran before any write, nothing was partially applied — the pass was re-derived against current content instead of repaired afterward.
 
 Fail closed, all-or-nothing per file at minimum. A script that writes files 1 through 7 and dies on 8 leaves a state no one can review.
 
 ## Report the skips
 
-**Report what you deliberately did not cut, and why.** An agent that applied 100% of its proposals has almost certainly over-cut. A meaningful skip rate is the expected outcome, not underperformance: in one observed audit, 81 of 616 proposed cuts were defended and kept.
+**Report what you deliberately did not cut, and why.** An agent that applied 100% of its proposals has almost certainly over-cut. A meaningful skip rate is the expected outcome, not underperformance: in the engagement's audit, 81 of 616 proposed cuts were defended and kept.
 
 ## The over-cut failure mode
 
@@ -132,6 +124,8 @@ A failure that moves to a later phase is progress and names the next target. A f
 
 ## Ship (Phase 6)
 
-Keep each pass as a separate described Jujutsu change so history says which measured change was made and why, and so release tooling can classify intent. Before composing, recommending, editing, or validating that description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence is guidance, not an operational instruction: inspect the project's active instructions and recent `jj log` descriptions, which determine the runtime convention. Apply compatible Go guidance only to quality, clarity, and structure. Compose from the actual change without fixed syntax, a template, or attribution. Keep the measurement artifacts.
+Keep each pass as a separate Jujutsu revision and describe it so `jj log` says which change was made and why. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax, and treat any example as descriptive. Keep the measurement artifacts.
+
+Move or create the review bookmark only after the measured revision stack is ready, track it when required, publish it with `jj git push --bookmark <name>`, and use `gh` for the GitHub pull request and its review state. In a non-colocated Jujutsu repository, run `gh` with `GIT_DIR` set from `jj git root`; keep repository mutations in Jujutsu.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

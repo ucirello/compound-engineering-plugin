@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rocketclaw.dev/schemas/work-implementation-result-v1.json",
-  "title": "External implementation worker result",
+  "$id": "urn:ce-work:implementation-result:v1",
+  "title": "ce-work external implementation worker result",
   "type": "object",
   "required": [
     "terminal_status",

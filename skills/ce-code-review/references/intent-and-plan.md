@@ -7,7 +7,7 @@ Read this at Stage 2. It owns the intent summary, plan discovery, reviewer groun
 When a plan is provided via `plan:<path>` or discovered from PR/bookmark context,
 classify readiness before checking completeness:
 
-- Unified artifact: metadata includes `artifact_contract: unified-plan/v1`. When reading persisted plans, also accept the historical contract alias formed by prefixing `ce-` to `unified-plan/v1`; never write that alias.
+- Unified artifact: metadata includes `artifact_contract: ce-unified-plan/v1`.
   - `artifact_readiness: requirements-only` can inform product intent, but it
     must not trigger implementation-unit completeness findings. Report that the
     artifact was not implementation-ready if the diff appears to implement it.
@@ -33,14 +33,14 @@ that no claimed U-ID is missing from the plan.
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with change descriptions from the PR if the body is sparse.
 
-**Bookmark mode:** Run `jj log -r '${BASE}..<bookmark-revision>' --no-graph` using the resolved fork point and reviewed bookmark revision from Stage 1.
+**Bookmark mode:** Run `jj log --no-graph -r '${BASE}..<bookmark-ref>'` using the resolved base and bookmark ref from Stage 1. Use `<bookmark-ref>` (the resolved `<bookmark>@<remote>` or local bookmark), not the raw argument; a remote-only bookmark may have no matching local bookmark.
 
 **Standalone (current workspace):** Run:
 
 ```
-jj bookmark list -r '::@'; jj log -r "${BASE}..@" --no-graph
+jj log --no-graph -r 'heads(::@ & bookmarks())' -T '"BOOKMARK:\n" ++ bookmarks ++ "\n"' && jj log --no-graph -r '${BASE}..@'
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:
@@ -52,7 +52,7 @@ with a flat-rate computation. Must not regress edge cases in tax-exempt handling
 
 Pass this to every reviewer in their spawn prompt. Intent shapes *how hard each reviewer looks*, not which reviewers are selected. Keep any `session-settled:` annotations (from a plan or the conversation) out of this summary — reviewers stay blind to settlement (Stage 2b).
 
-**When intent is ambiguous:** Infer from bookmark names, change descriptions, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage — never block on a clarifying question.
+**When intent is ambiguous:** Infer from bookmark name, change descriptions, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage — never block on a clarifying question.
 
 ### Stage 2b: Plan discovery (requirements verification)
 
@@ -60,7 +60,7 @@ Locate the plan document so Stage 6 can verify requirements completeness. Check 
 
 1. **`plan:` argument.** If the caller passed a plan path, use it directly. Read the file to confirm it exists.
 2. **PR body.** If PR metadata was fetched in Stage 1, scan the body for paths matching `<root>/plans/*.{md,html}` (unified plans may be markdown or HTML). If exactly one match is found and the file exists, use it as `plan_source: explicit`. If multiple plan paths appear, treat as ambiguous — demote to `plan_source: inferred` for the most recent match that exists on disk, or skip if none exist or none clearly relate to the PR title/intent. Always verify the selected file exists before using it — stale or copied plan links in PR descriptions are common.
-3. **Auto-discover.** Extract 2-3 keywords from the nearest relevant bookmark name. Glob `<root>/plans/*` and filter filenames containing those keywords. If exactly one match, use it. If multiple matches or the match looks ambiguous (e.g., generic keywords like `review`, `fix`, `update` that could hit many plans), **skip auto-discovery** — a wrong plan is worse than no plan. If zero matches, skip.
+3. **Auto-discover.** Extract 2-3 keywords from the bookmark name (e.g., `feat/onboarding-skill` -> `onboarding`, `skill`). Glob `<root>/plans/*` and filter filenames containing those keywords. If exactly one match, use it. If multiple matches or the match looks ambiguous (e.g., generic keywords like `review`, `fix`, `update` that could hit many plans), **skip auto-discovery** — a wrong plan is worse than no plan. If zero matches, skip.
 
 **Confidence tagging:** Record how the plan was found:
 - `plan:` argument -> `plan_source: explicit` (high confidence)
@@ -76,4 +76,4 @@ When the discovered plan's Key Technical Decisions carry `session-settled:` anno
 
 Use the project's active instructions already in context plus the current diff and source. Give each reviewer only the task-relevant context for its lens; the `project-standards` reviewer reads the actual standards sources. If a reviewer cannot scope the affected area from the diff and supplied context, allow one targeted probe.
 
-In `pr-remote`, current source and targeted probes use `gh api` at the supplied head object ID or the supplied diff hunks. In `bookmark-remote`, use `jj file show` at the supplied bookmark revision. Never inspect unrelated workspace paths.
+In `pr-remote` / `bookmark-remote`, current source and any targeted probe must use `jj file show -r <reviewed-head-ref> <path>`, or the supplied diff hunks when no head ref is available; never inspect workspace paths.

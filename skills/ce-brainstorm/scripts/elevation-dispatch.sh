@@ -51,9 +51,9 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole local scratch root instead would expose
-  # unrelated files and credentials to the elevated model; the scoped dir does
-  # not. Read-only (only Read/Glob/Grep available).
+  # via --add-dir. Adding the whole workspace scratch root instead would expose
+  # unrelated run data to the elevated model; the scoped dir does not.
+  # Read-only (only Read/Glob/Grep available).
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
   # --no-session-persistence: this is a one-shot background model call, so the
@@ -65,7 +65,7 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
        --permission-mode dontAsk
        "${add_dirs[@]}"
        --tools "$csv" --allowedTools "${ALLOWED[@]}"
-       --max-turns "${ROCKETCLAW_ELEVATION_MAX_TURNS-${ELEVATION_MAX_TURNS:-30}}")
+       --max-turns "${ELEVATION_MAX_TURNS:-30}")
 }
 
 # Test hook: print the argv the worker would exec, without calling a model.
@@ -85,23 +85,13 @@ RESULT_PATH="${3:?result-path required}"
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole local scratch root. Pure-bash dirname (no
+# to an absolute path), never the whole workspace scratch root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
 HANDOFF_DIR="$(cd "$HANDOFF_DIR" 2>/dev/null && pwd || printf '%s' "$HANDOFF_DIR")"
 
-write_result() {   # <json-string> -> atomic publish to RESULT_PATH
-  local staging="" candidate attempt
-  for attempt in 1 2 3 4 5 6 7 8; do
-    candidate="${RESULT_PATH}.publish.$$.$RANDOM.$attempt"
-    if (umask 077; set -C; : > "$candidate") 2>/dev/null; then staging="$candidate"; break; fi
-  done
-  [ -n "$staging" ] || return 1
-  printf '%s' "$1" > "$staging" && mv -f "$staging" "$RESULT_PATH"
-}
-
-# jq builds every result envelope; it is only an optional capability (ce-setup),
+# jq builds every result envelope; it is only an optional setup capability,
 # so preflight it here rather than spending the CLI call and failing to parse.
 # Exit 0 with a failure envelope, NOT nonzero: the runner classifies a nonzero
 # exit as `failed`, and its `result` command then refuses to emit the artifact,
@@ -109,23 +99,22 @@ write_result() {   # <json-string> -> atomic publish to RESULT_PATH
 # `done`, the envelope's status:failed is read, and it degrades to inline.
 if ! command -v jq >/dev/null 2>&1; then
   log "jq not found on PATH; cannot parse the elevated result — degrading to inline"
-  write_result "{\"status\":\"failed\",\"requested_model\":\"$MODEL\",\"evidence\":\"jq unavailable on PATH\"}" 2>/dev/null || true
+  printf '{"status":"failed","requested_model":"%s","evidence":"jq unavailable on PATH"}' "$MODEL" > "$RESULT_PATH" 2>/dev/null || true
   exit 0
 fi
 
-PEERLOG=""
-for attempt in 1 2 3 4 5 6 7 8; do
-  candidate="$HANDOFF_DIR/.elevation-peer-$$-$RANDOM-$attempt"
-  if (umask 077; set -C; : > "$candidate") 2>/dev/null; then PEERLOG="$candidate"; break; fi
-done
-[ -n "$PEERLOG" ] || { log "cannot reserve a private peer log in $HANDOFF_DIR"; exit 2; }
+PEERLOG="${RESULT_PATH}.peerlog.$$"
+(umask 077; set -C; : > "$PEERLOG") 2>/dev/null || {
+  log "could not claim workspace-local peer log: $PEERLOG"
+  exit 2
+}
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's ROCKETCLAW_PEER_HARD_SECS so it never reaps a
 # healthy run before the outer supervisor's own raised backstop.
-IDLE_SECS="${ROCKETCLAW_ELEVATION_IDLE_SECS-${CE_ELEVATION_IDLE_SECS:-180}}"
-HARD_SECS="${ROCKETCLAW_ELEVATION_HARD_SECS-${CE_ELEVATION_HARD_SECS:-5400}}"
-POLL_SECS="${ROCKETCLAW_ELEVATION_POLL_SECS-${CE_ELEVATION_POLL_SECS:-5}}"   # $PEERLOG growth poll interval
+IDLE_SECS="${ROCKETCLAW_ELEVATION_IDLE_SECS:-180}"
+HARD_SECS="${ROCKETCLAW_ELEVATION_HARD_SECS:-5400}"
+POLL_SECS="${ROCKETCLAW_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
 
 reap() {
   local pid="$1" grp
@@ -150,6 +139,11 @@ on_term() {
   exit 0
 }
 trap 'on_term' TERM INT
+
+write_result() {   # <json-string> -> atomic publish to RESULT_PATH
+  local tmp="${RESULT_PATH}.atomic.$$"
+  printf '%s' "$1" > "$tmp" && mv -f "$tmp" "$RESULT_PATH"
+}
 
 # Bounded stderr/stdout tail for a failed run. tail -c avoids the macOS bash
 # negative-slice bug that erased sub-300-char evidence in the review worker.
@@ -272,19 +266,14 @@ if [ "$RUN_SUCCEEDED" = true ] && [ "$HAS_OUTPUT" = "yes" ] \
   # Build the envelope by piping the event THROUGH jq, which reads .result
   # internally — never pass the plan text as an argv --arg, which would exceed
   # ARG_MAX for a large Deep plan.
-  staging=""
-  for attempt in 1 2 3 4 5 6 7 8; do
-    candidate="${RESULT_PATH}.publish.$$.$RANDOM.$attempt"
-    if (umask 077; set -C; : > "$candidate") 2>/dev/null; then staging="$candidate"; break; fi
-  done
-  [ -n "$staging" ] || { write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"result envelope path reservation failed"}')"; exit 0; }
+  tmp="${RESULT_PATH}.atomic.$$"
   if printf '%s' "$EVENT" | jq --arg m "$MODEL" --arg s "$SERVED" --arg r "$RECEIPT" \
        '{status:"ok", requested_model:$m, served_model:$s, receipt:$r, output:.result}' \
-       > "$staging" 2>/dev/null; then
-    mv -f "$staging" "$RESULT_PATH"
+       > "$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$RESULT_PATH"
     log "elevated step complete: requested=$MODEL served=$SERVED receipt=$RECEIPT"
   else
-    rm -f "$staging"
+    rm -f "$tmp"
     write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"result envelope build failed"}')"
     log "elevated step: result envelope build failed"
   fi

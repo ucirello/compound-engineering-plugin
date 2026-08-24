@@ -2,7 +2,7 @@
 """
 Analyze a product feedback source.
 
-Supported sources: Riffrec zip or unpacked capture directory, standalone
+Supported sources: capture zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
 transcript, high-signal video frames when available, and planning-friendly markdown
 artifacts.
@@ -52,7 +52,7 @@ NOISY_NETWORK_PATTERNS = (
 VIDEO_EXTENSIONS = {".webm", ".mp4", ".mov", ".m4v", ".mkv", ".avi"}
 AUDIO_EXTENSIONS = {".webm", ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".ogg", ".flac"}
 NOTES_EXTENSIONS = {".txt", ".md", ".markdown", ".text"}
-RIFFREC_DIRECTORY_MARKERS = {"session.json", "events.json"}
+CAPTURE_DIRECTORY_MARKERS = {"session.json", "events.json"}
 
 
 class SourceInputError(ValueError):
@@ -64,18 +64,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "source_path",
         type=Path,
-        help="Path to a Riffrec zip or unpacked capture directory, video, audio, or meeting notes file",
+        help="Path to a capture zip or unpacked capture directory, video, audio, or meeting notes file",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted evidence/kickoff artifacts. Defaults to the workspace-local .tmp/rocketclaw/ce-sweep/analyzer/<source-stem>; durable ce-brainstorm outputs live in the plans artifact directory.",
+        help="Directory for extracted evidence artifacts. Defaults to <workspace-root>/.tmp/feedback-analysis/<source-stem>.",
     )
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
         "--model",
-        default=os.environ.get("RIFFREC_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe"),
-        help="OpenAI transcription model to use when OPENAI_API_KEY is set",
+        default=os.environ.get("TRANSCRIPTION_MODEL"),
+        help="Transcription model identifier; requires TRANSCRIPTION_API_URL and TRANSCRIPTION_API_KEY",
+    )
+    parser.add_argument(
+        "--transcription-url",
+        default=os.environ.get("TRANSCRIPTION_API_URL"),
+        help="Multipart transcription endpoint; defaults to TRANSCRIPTION_API_URL",
     )
     parser.add_argument("--no-transcribe", action="store_true", help="Skip media transcription")
     parser.add_argument("--max-moments", type=int, default=12, help="Maximum screenshots to extract")
@@ -84,7 +89,42 @@ def parse_args() -> argparse.Namespace:
 
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
-    return re.sub(r"-{2,}", "-", slug) or "riffrec-feedback"
+    return re.sub(r"-{2,}", "-", slug) or "feedback-analysis"
+
+
+def workspace_root() -> Path:
+    try:
+        result = subprocess.run(
+            ["jj", "root"], capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        result = None
+    if result and result.returncode == 0 and result.stdout.strip():
+        return Path(result.stdout.strip()).resolve()
+    return Path.cwd().resolve()
+
+
+def create_local_work_dir(destination_parent: Path, label: str) -> Path:
+    """Create workspace-root .tmp storage, falling back beside the destination."""
+    candidates = (
+        workspace_root() / ".tmp" / "feedback-analysis",
+        destination_parent / ".tmp",
+    )
+    for root in candidates:
+        try:
+            root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if root.is_symlink() or root.stat().st_dev != destination_parent.stat().st_dev:
+                continue
+            for _ in range(32):
+                path = root / f"{label}-{secrets.token_hex(8)}"
+                try:
+                    path.mkdir(mode=0o700)
+                    return path
+                except FileExistsError:
+                    continue
+        except OSError:
+            continue
+    raise SourceInputError("Unable to create workspace-local .tmp storage")
 
 
 def read_json(path: Path, default: Any) -> Any:
@@ -121,18 +161,18 @@ def safe_copy_capture_directory(source_dir: Path, dest: Path) -> None:
     entries = sorted(source_dir.rglob("*"), key=lambda path: str(path.relative_to(source_dir)))
     for entry in entries:
         if entry.is_symlink():
-            raise SourceInputError(f"Unpacked Riffrec capture contains a symlink: {entry}")
+            raise SourceInputError(f"Unpacked capture contains a symlink: {entry}")
         resolved = entry.resolve()
         if not resolved.is_relative_to(source_root):
-            raise SourceInputError(f"Unpacked Riffrec capture entry escapes its source directory: {entry}")
+            raise SourceInputError(f"Unpacked capture entry escapes its source directory: {entry}")
         if not entry.is_dir() and not entry.is_file():
-            raise SourceInputError(f"Unpacked Riffrec capture contains an unsupported entry type: {entry}")
+            raise SourceInputError(f"Unpacked capture contains an unsupported entry type: {entry}")
 
     for entry in entries:
         relative = entry.relative_to(source_dir)
         target = dest / relative
         if not target.resolve().is_relative_to(dest_root):
-            raise SourceInputError(f"Unsafe unpacked Riffrec capture path: {relative}")
+            raise SourceInputError(f"Unsafe unpacked capture path: {relative}")
         if entry.is_dir():
             target.mkdir(parents=True, exist_ok=True)
         else:
@@ -154,9 +194,10 @@ def validate_raw_destination(raw_dir: Path) -> None:
 
 def promote_raw_snapshot(staging_dir: Path, raw_dir: Path) -> None:
     validate_raw_destination(raw_dir)
-    previous_dir = raw_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
+    previous_dir = create_local_work_dir(raw_dir.parent, f"{raw_dir.name}-previous")
+    previous_dir.rmdir()
     if previous_dir.exists() or previous_dir.is_symlink():
-        raise SourceInputError(f"Prior raw snapshot path already exists: {previous_dir}")
+        raise SourceInputError(f"Local raw snapshot path already exists: {previous_dir}")
 
     had_previous = raw_dir.exists()
     if had_previous:
@@ -186,9 +227,10 @@ def validate_frames_destination(frames_dir: Path) -> None:
 
 def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
     validate_frames_destination(frames_dir)
-    previous_dir = frames_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
+    previous_dir = create_local_work_dir(frames_dir.parent, f"{frames_dir.name}-previous")
+    previous_dir.rmdir()
     if previous_dir.exists() or previous_dir.is_symlink():
-        raise SourceInputError(f"Prior frames snapshot path already exists: {previous_dir}")
+        raise SourceInputError(f"Local frames snapshot path already exists: {previous_dir}")
 
     had_previous = frames_dir.exists()
     if had_previous:
@@ -206,52 +248,24 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
 
 def default_output_dir(source_path: Path) -> Path:
     stem = slugify(source_path.stem)
-    return workspace_root() / ".tmp" / "rocketclaw" / "ce-sweep" / "analyzer" / stem
-
-
-def workspace_root() -> Path:
-    try:
-        result = subprocess.run(
-            ["jj", "workspace", "root"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-        root = result.stdout.strip()
-        if result.returncode == 0 and Path(root).is_absolute():
-            return Path(root)
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return Path.cwd()
-
-
-def create_staging_dir(parent: Path, name: str) -> Path:
-    parent.mkdir(parents=True, exist_ok=True)
-    while True:
-        path = parent / f".{name}.staging-{secrets.token_hex(12)}"
-        try:
-            path.mkdir(mode=0o700)
-            return path
-        except FileExistsError:
-            continue
+    return workspace_root() / ".tmp" / "feedback-analysis" / stem
 
 
 def classify_source(source_path: Path) -> str:
     if source_path.is_dir():
-        missing = sorted(marker for marker in RIFFREC_DIRECTORY_MARKERS if not (source_path / marker).is_file())
+        missing = sorted(marker for marker in CAPTURE_DIRECTORY_MARKERS if not (source_path / marker).is_file())
         if missing:
-            expected = ", ".join(sorted(RIFFREC_DIRECTORY_MARKERS))
+            expected = ", ".join(sorted(CAPTURE_DIRECTORY_MARKERS))
             missing_text = ", ".join(missing)
             raise SourceInputError(
                 f"Unsupported source directory: {source_path}. "
-                f"An unpacked Riffrec capture must contain {expected}; missing {missing_text}."
+                f"An unpacked capture must contain {expected}; missing {missing_text}."
             )
-        return "riffrec_directory"
+        return "capture_directory"
     if not source_path.is_file():
         raise SourceInputError(f"Unsupported source path type: {source_path}")
     if zipfile.is_zipfile(source_path):
-        return "riffrec_zip"
+        return "capture_zip"
     suffix = source_path.suffix.lower()
     if suffix in NOTES_EXTENSIONS:
         return "meeting_notes"
@@ -316,18 +330,18 @@ def read_notes(path: Path) -> dict[str, Any]:
 def populate_source_snapshot(source_path: Path, snapshot_dir: Path, source_kind: str) -> dict[str, Any]:
     snapshot_dir.mkdir(parents=True, exist_ok=True)
 
-    if source_kind in {"riffrec_zip", "riffrec_directory"}:
-        if source_kind == "riffrec_zip":
+    if source_kind in {"capture_zip", "capture_directory"}:
+        if source_kind == "capture_zip":
             safe_extract(source_path, snapshot_dir)
         else:
             safe_copy_capture_directory(source_path, snapshot_dir)
             missing = sorted(
-                marker for marker in RIFFREC_DIRECTORY_MARKERS if not (snapshot_dir / marker).is_file()
+                marker for marker in CAPTURE_DIRECTORY_MARKERS if not (snapshot_dir / marker).is_file()
             )
             if missing:
                 missing_text = ", ".join(missing)
                 raise SourceInputError(
-                    f"Unpacked Riffrec capture changed during normalization; missing {missing_text}."
+                    f"Unpacked capture changed during normalization; missing {missing_text}."
                 )
         session = read_json(snapshot_dir / "session.json", {})
         events_payload = read_json(snapshot_dir / "events.json", {})
@@ -390,7 +404,7 @@ def populate_source_snapshot(source_path: Path, snapshot_dir: Path, source_kind:
 def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = None) -> dict[str, Any]:
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir = create_staging_dir(raw_dir.parent, raw_dir.name)
+    staging_dir = create_local_work_dir(raw_dir.parent, f"{raw_dir.name}-staging")
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
         promote_raw_snapshot(staging_dir, raw_dir)
@@ -466,15 +480,15 @@ def transcript_has_complaint(transcript: str) -> bool:
     return any(cue in lowered for cue in COMPLAINT_CUES)
 
 
-def transcribe_media(media_path: Path | None, model: str) -> dict[str, Any]:
+def transcribe_media(media_path: Path | None, model: str | None, endpoint: str | None) -> dict[str, Any]:
     if not media_path or not media_path.exists():
         return {"status": "missing", "text": ""}
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    api_key = os.environ.get("TRANSCRIPTION_API_KEY")
+    if not api_key or not endpoint or not model:
         return {
             "status": "skipped",
             "text": "",
-            "reason": "OPENAI_API_KEY is not set. Re-run with the key available to transcribe the media file.",
+            "reason": "Transcription endpoint, key, and model must all be configured.",
         }
     if not shutil.which("curl"):
         return {"status": "skipped", "text": "", "reason": "curl is not installed"}
@@ -482,7 +496,7 @@ def transcribe_media(media_path: Path | None, model: str) -> dict[str, Any]:
     command = [
         "curl",
         "-sS",
-        "https://api.openai.com/v1/audio/transcriptions",
+        endpoint,
         "-H",
         f"Authorization: Bearer {api_key}",
         "-F",
@@ -525,7 +539,8 @@ def should_retry_transcription_in_chunks(transcript: dict[str, Any]) -> bool:
 
 def transcribe_media_chunks(
     media_path: Path | None,
-    model: str,
+    model: str | None,
+    endpoint: str | None,
     chunks_dir: Path,
     duration: float,
     chunk_seconds: int = 420,
@@ -575,7 +590,7 @@ def transcribe_media_chunks(
             )
             continue
 
-        chunk_transcript = transcribe_media(chunk_path, model)
+        chunk_transcript = transcribe_media(chunk_path, model, endpoint)
         chunk_results.append(
             {
                 "chunk": index + 1,
@@ -678,7 +693,7 @@ def select_moments(
 def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[dict[str, Any]]) -> None:
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
-    staging_dir = create_staging_dir(frames_dir.parent, frames_dir.name)
+    staging_dir = create_local_work_dir(frames_dir.parent, f"{frames_dir.name}-staging")
     try:
         if not recording_path or not recording_path.exists():
             for moment in moments:
@@ -945,7 +960,7 @@ def write_requirements_kickoff(
             "## Success Criteria",
             "",
             "- A human reviewer can understand what went wrong without rewatching the entire recording.",
-            "- `ce-brainstorm` can confirm requirements from linked source evidence before any planning begins.",
+            "- A requirements review can confirm requirements from linked source evidence before planning begins.",
             "",
             "---",
             "",
@@ -960,7 +975,7 @@ def write_requirements_kickoff(
             "## Key Decisions",
             "",
             "- Evidence first: Requirements should cite moments and screenshots before moving to planning.",
-            "- Brainstorm before plan: Use `ce-brainstorm` to refine product behavior when the recording reveals ambiguity.",
+            "- Refine product behavior from the evidence before planning when the recording reveals ambiguity.",
             "",
             "---",
             "",
@@ -989,7 +1004,7 @@ def write_requirements_kickoff(
             "",
             "## Next Steps",
             "",
-            "-> Resume `/ce-brainstorm` to confirm candidate findings and replace generic R-items with product-specific requirements.",
+            "-> Continue requirements review to confirm candidate findings and replace generic R-items with product-specific requirements.",
         ]
     )
     output_path.write_text("\n".join(lines) + "\n")
@@ -1027,7 +1042,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Revision policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; record generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
+        "- Change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots stay under workspace-local `.tmp`; include generated Markdown/JSON/manifests in a change only when useful for planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -1048,10 +1063,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not safe to record by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; excluded from changes by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be recorded by default.")
+    lines.append("Extracted screenshots are retained locally for inspection and should be excluded from changes by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -1070,7 +1085,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not include them in a revision unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally local-only by default. Do not include them in a change unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")
@@ -1251,11 +1266,12 @@ def main() -> int:
     elif args.no_transcribe:
         transcript = {"status": "skipped", "text": "", "reason": "--no-transcribe was passed"}
     else:
-        transcript = transcribe_media(source["transcription_path"], args.model)
+        transcript = transcribe_media(source["transcription_path"], args.model, args.transcription_url)
         if should_retry_transcription_in_chunks(transcript):
             transcript = transcribe_media_chunks(
                 source["transcription_path"],
                 args.model,
+                args.transcription_url,
                 raw_dir / "transcription_chunks",
                 duration,
             )
@@ -1318,8 +1334,8 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, workspace_root_path)}")
     print(f"Problem statements: {display_path(problem_analysis_md, workspace_root_path)}")
-    print(f"Brainstorm handoff: invoke ce-brainstorm with {display_path(kickoff_md, workspace_root_path)}")
-    print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
+    print(f"Requirements review: {display_path(kickoff_md, workspace_root_path)}")
+    print("Confirm whether the captured requirements are complete and correctly grouped before writing a durable plan.")
     return 0
 
 

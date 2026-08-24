@@ -93,7 +93,7 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj workspace root`).
+1. Workspace root (resolve via `jj workspace root`; outside Jujutsu, use the current working directory).
 2. `docs/DESIGN.md`.
 3. `.rocketclaw/DESIGN.md`.
 
@@ -217,10 +217,10 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repository's GitHub URL once at compose time. Jujutsu owns local remote discovery; `gh` remains the provider interface. In a non-colocated Jujutsu repository, set `GIT_DIR` from `jj git root` for `gh` commands as the official Jujutsu GitHub guide requires:
+Resolve the workspace's GitHub URL once at compose time through the GitHub CLI:
 
 ```bash
-jj git remote list
+gh repo view --json url --jq .url
 ```
 
 Apply linking to three reference shapes:
@@ -266,8 +266,8 @@ a browser. Keep the heading text visible and adjacent to the `id`; do not rely
 on a nav link alone to carry the section name.
 
 Optional sections with a contract-defined semantic role put that role on their
-wrapping `<section>` with `data-plan-section`. For example, the broader-work
-relationship section uses `data-plan-section="work-relationships"`. The role is
+wrapping `<section>` with `data-ce-section`. For example, the broader-work
+relationship section uses `data-ce-section="work-relationships"`. The role is
 stable even when the visible heading changes; it supplements, rather than
 replaces, readable heading text and any useful anchor.
 

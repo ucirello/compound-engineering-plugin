@@ -24,7 +24,7 @@ The orchestrating agent (main conversation) performs these steps:
 3. **Incorporate session history findings** (if available). When the internal session-history flow returned relevant prior-session context:
    - Fold investigation dead ends and failed approaches into the **What Didn't Work** section (bug track) or **Context** section (knowledge track)
    - Use cross-session patterns to enrich the **Prevention** or **Why This Matters** sections
-   - Tag session-sourced content with "(session history)" so its evidence source is clear to future readers; this is not a creator, builder, or byline credit
+   - Tag session-sourced content with "(session history)" so its origin is clear to future readers
    - If findings are thin or "no relevant prior sessions," proceed without session context
 4. Assemble complete markdown file from the collected pieces, reading `assets/resolution-template.md` for the section structure of new docs
 5. Validate YAML frontmatter against `references/schema.yaml`, including the YAML-safety quoting rule for array items (see `references/yaml-schema.md` > YAML Safety Rules)
@@ -58,7 +58,7 @@ When creating a new doc, preserve the section order from `assets/resolution-temp
 
 **First, read `references/concepts-vocabulary.md`.** This is unconditional. Do not pre-judge from memory that nothing qualifies — the reference's criteria are non-obvious and qualifying terms often live in the surrounding conversation rather than the new doc itself. Reading the reference is what makes the rest of the phase possible.
 
-Then, applying those criteria, scan the new doc **and** the surrounding conversation for qualifying domain terms. If `CONCEPTS.md` exists at the workspace root, add missing qualifying terms and refine existing entries when new precision surfaced. If it does not exist and at least one qualifying term surfaced, create it.
+Then, applying those criteria, scan the new doc **and** the surrounding conversation for qualifying domain terms. If `CONCEPTS.md` exists at repo root, add missing qualifying terms and refine existing entries when new precision surfaced. If it does not exist and at least one qualifying term surfaced, create it.
 
 **Verify behavior assertions against source before writing them.** When an entry asserts how code behaves (states, transitions, limits, semantics), Read the defining source at the current tree first — an entry drafted from a session-level summary is exactly how wrong semantics enter the glossary. Phase 2.45 re-checks these entries, but the cheap fix is to not write the error.
 
@@ -68,7 +68,7 @@ Then, applying those criteria, scan the new doc **and** the surrounding conversa
 
 **When bootstrapping the file, start with this preamble under the `# Concepts` heading**, then add the qualifying entries below it:
 
-> Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as learnings are documented and refreshed; direct edits are fine. Glossary only, not a spec or catch-all.
+> Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
 
 **Refresh the coherence neighborhood of any entry you touch.** When adding or editing an entry, also inspect its *coherence neighborhood* — its cluster siblings and the terms it cross-references or that reference it. Within that neighborhood, do two things: fix glossary violations (implementation specifics — file paths, class names, function signatures, current-config values), and refresh entries the learning's own evidence shows have drifted. Bounds: neighborhood only, never a full-file audit; refresh only on evidence already in hand; if judging a neighbor would require investigation this learning did not do, flag it for `ce-compound-refresh` rather than editing on a guess. The test: after the edit, would a reader find the touched entry's siblings or referenced terms inconsistent with it? Broader audit is `ce-compound-refresh`'s job.
 
@@ -80,7 +80,7 @@ If no terms qualified after applying the reference's criteria, record that outco
 
 The doc (and any `CONCEPTS.md` entries from Phase 2.4) is about to become permanent, trusted knowledge. Validate its claims against the tree before it compounds. **Read `references/grounding-validation.md` now** — it holds the adjudication rules and the validator prompt; the steps below are only the trigger.
 
-1. **Mechanical claims check (every mode, including non-interactive).** Optionally run `jj git fetch` first when the workspace uses a Git backend (best-effort — skip silently offline; the network is never a correctness dependency). Then run the bundled validator against the written doc:
+1. **Mechanical claims check (every mode, including non-interactive).** Optionally run `jj git fetch` first (best-effort — skip silently offline; the network is never a correctness dependency). Then run the bundled validator against the written doc:
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -92,9 +92,9 @@ The doc (and any `CONCEPTS.md` entries from Phase 2.4) is about to become perman
    fi
    ```
 
-   Exit 0 means nothing flagged. Exit 1 means flags to **adjudicate, not auto-fix** — each flagged path, revision ID, link, or scaffold pattern is fixed, annotated as historical, or confirmed intentional per the reference's adjudication table. A doc may legitimately cite a path deleted by the very fix it documents; a flag is a question, not a failure. If the script cannot be resolved on this platform, apply the reference's manual checklist and say so in the output — never silently skip.
+   Exit 0 means nothing flagged. Exit 1 means flags to **adjudicate, not auto-fix** — each flagged path, SHA, link, or scaffold pattern is fixed, annotated as historical, or confirmed intentional per the reference's adjudication table. A doc may legitimately cite a path deleted by the very fix it documents; a flag is a question, not a failure. If the script cannot be resolved on this platform, apply the reference's manual checklist and say so in the output — never silently skip.
 
-2. **Semantic grounding validator (Full mode, including non-interactive Full; lightweight skips it).** Dispatch one read-only generic subagent built from the prompt template in the reference, covering the written doc plus any `CONCEPTS.md` entries added or edited this run. It verifies code-behavior claims by quoting the defining source line, merge-state claims against remote truth (`gh` primary, Jujutsu reachability fallback), and internal completeness of countable assertions. Apply its verdicts per the reference (fix contradicted claims from the quoted evidence; soften or drop unverifiable ones; mark offline merge-state checks as degraded), then re-run the mechanical check if the body changed.
+2. **Semantic grounding validator (Full mode, including non-interactive Full; lightweight skips it).** Dispatch one read-only generic subagent built from the prompt template in the reference, covering the written doc plus any `CONCEPTS.md` entries added or edited this run. It verifies code-behavior claims by quoting the defining source line, merge-state claims against remote truth (`gh` primary, JJ reachability fallback), and internal completeness of countable assertions. Apply its verdicts per the reference (fix contradicted claims from the quoted evidence; soften or drop unverifiable ones; mark offline merge-state checks as degraded), then re-run the mechanical check if the body changed.
 
 ## What It Creates
 

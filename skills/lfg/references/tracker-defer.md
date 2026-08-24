@@ -14,7 +14,7 @@ Used by `ce-code-review` Interactive mode's routing question, walk-through Defer
 
 - First Defer of the session with a generic (non-named) label confirms the effective tracker choice.
 - Execution failures prompt with Retry / Fall back to next sink / Convert to Skip.
-- Labels in the routing question reflect `named_sink_available`: name a verified tracker and otherwise use a generic tracker action.
+- Labels in the routing question reflect `named_sink_available` (name the tracker) vs fallback generics.
 
 ### Non-interactive mode
 
@@ -68,8 +68,8 @@ When Interactive mode's routing question is skipped entirely (R2 zero-findings c
 
 ## Label logic (Interactive mode)
 
-- When `confidence = high` AND `named_sink_available = true`, both defer choices name the verified tracker.
-- When `any_sink_available = true` but either `confidence = low` or `named_sink_available = false`, both defer choices use generic ticket wording. Before executing the first Defer of the session, the agent confirms the effective tracker choice with the user using the platform's blocking question tool.
+- When `confidence = high` AND `named_sink_available = true`: the routing question's option C and the walk-through's per-finding Defer option both include the tracker name verbatim. Example: `File a Linear ticket per finding`, `Defer — file a Linear ticket`.
+- When `any_sink_available = true` but either `confidence = low` or `named_sink_available = false` (a fallback tier is working instead): the labels read generically — `File an issue per finding`, `Defer — file a ticket`. Before executing the first Defer of the session, the agent confirms the effective tracker choice with the user using the platform's blocking question tool.
 - When `any_sink_available = false`: option C is omitted from the routing question, option B (Defer) is omitted from the walk-through per-finding options, and the agent tells the user why in the routing question's stem.
 
 Non-interactive mode skips label decisions entirely — it acts silently on the detected sink.
@@ -97,10 +97,10 @@ Every Defer action creates a ticket with the following content, adapted to the t
   - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `<artifact-path>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
   - Suggested fix (when present in the finding's `suggested_fix`).
   - Evidence (direct quotes from the reviewer's artifact).
-  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the Jujutsu bookmark and commit ID, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
+  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the shipping bookmark when known plus the JJ change ID and Git commit ID of its target, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
   - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Reviewer(s): <list>`, `Finding ID: <fingerprint>`.
 - **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`) and, when the tracker convention supports it, a category label sourced from the reviewer name.
-- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in review artifact: <artifact-path>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
+- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in ce-code-review run artifact: <artifact-path>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
 
 The finding_id is a stable fingerprint composed as `normalize(file) + line_bucket(line, +/-3) + normalize(title)` — the same fingerprint used by the merge pipeline.
 
@@ -112,13 +112,19 @@ When ticket creation fails at execution (API error, auth expiry mid-session, rat
 
 **Interactive mode:** surface the failure inline and ask the user using the platform's blocking question tool.
 
-State which tracker failed and summarize the error. Offer three decisions: retry that tracker once, continue with the next sink, or skip filing while recording the failure in the completion report. The choices must preserve those actions but need no fixed labels or prompt text.
+Stem:
+> Defer failed: <tracker name> returned <error summary>. How should the agent handle this finding?
+
+Options:
+- `Retry on <tracker>` — re-attempt the same tracker once more (useful for transient errors)
+- `Fall back to next sink` — move this finding's Defer to the next tier in the fallback chain (e.g., from Linear to GitHub Issues)
+- `Convert to Skip — record the failure` — abandon this Defer, note the failure in the completion report's failure section, and continue the walk-through or bulk flow
 
 **Non-interactive mode:** do not prompt. Automatically fall through to the next tier. If every tier fails, record the finding in the `failed` bucket of the structured return and continue. If the chain exhausts with no sink ever available, the finding ends up in the `no_sink` bucket.
 
 When a high-confidence named tracker fails at execution, the cached `named_sink_available` is set to `false` for the rest of the session. Subsequent Defer actions fall straight through to the next tier without retrying a confirmed-broken sink. `any_sink_available` is only downgraded to `false` when every tier has been confirmed broken — a failed Linear call that succeeds via `gh` keeps `any_sink_available = true`.
 
-Only when `ToolSearch` explicitly returns no match or the tool call errors — or on a platform with no blocking question tool — fall back to presenting numbered options on the host's user-visible chat surface and waiting for the user's reply (Interactive mode only).
+Only when no such tool is in the list or a real question call errors — or on a platform with no blocking question tool — fall back to presenting numbered options on the host's user-visible chat surface and waiting for the user's reply (Interactive mode only).
 
 ---
 
@@ -139,6 +145,6 @@ When uncertain, prefer "drop with explicit user-facing notice" over "pass throug
 
 ## Cross-platform notes
 
-The question-tool name varies by platform. In Interactive mode, use the platform's blocking question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension)). In Claude Code the tool should already be loaded from the Interactive-mode pre-load step — if it isn't, call `ToolSearch` with query `select:AskUserQuestion` now. Fall back to numbered options on the host's user-visible chat surface only when the harness genuinely lacks a blocking tool — `ToolSearch` returns no match, the tool call explicitly fails, or the runtime mode does not expose it (e.g., Codex edit modes without `request_user_input`). A pending schema load is not a fallback trigger. Never silently skip the question.
+The question-tool name varies by platform. In Interactive mode, use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list, a real question call errors, or the runtime mode does not expose one. Never silently skip the question.
 
 Non-interactive mode is platform-agnostic: it never prompts, so the platform's question tool is not relevant.

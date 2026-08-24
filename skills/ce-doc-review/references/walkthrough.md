@@ -23,7 +23,7 @@ C. Apply none of them
 ```
 
 - **A** — apply the batch in one pass, as the Apply step does. Track each for the "Applied changes" section. Recommended because 3.7 already established each member has one sensible remedy.
-- **B** — step through the batch only, using the per-finding presentation below. **In batch context that loop is a subroutine:** exactly one exit — run the accumulated Apply set against the document, **clear it**, then return to the routing question — and it never emits the completion report, including via `Auto-resolve with best judgment on the rest`, which is scoped to the remaining batch and returns here. **Flushing the edits is part of the exit, not of the report.** The walk-through normally defers them to a single pass at its terminal path, which this exit skips; leaving them queued means fixes the reader approved never land. Clearing is the other half: the decision pass runs that same terminal dispatch later, so a set still holding batch members would write them a second time. An exit that ends the run from inside the batch pass is a bug whatever its name.
+- **B** — step through the batch only, using the per-finding presentation below. **In batch context that loop is a subroutine:** exactly one exit — run the accumulated Apply set against the document, **clear it**, then return to the routing question — and it never emits the completion report, including via `Auto-resolve with best judgment on the rest`, which is scoped to the remaining batch and returns here. **Flushing the edits is part of the exit, not of the report.** The walk-through normally defers them to a single pass at its terminal path, which this exit skips; leaving them staged means fixes the reader approved never land. Clearing is the other half: the decision pass runs that same terminal dispatch later, so a set still holding batch members would write them a second time. An exit that ends the run from inside the batch pass is a bug whatever its name.
 - **C** — apply none; every member is reported as skipped in the completion report.
 
 ---
@@ -44,7 +44,7 @@ These do **not** satisfy the invariant:
 
 On interactive entry after a same-session non-interactive pass (e.g. `ce-plan` "Decide on the review's open items"), still render the interactive presentation before routing. Reusing the prior pass's applied-fix and R29 decision state is fine; skipping presentation is not. The routing question itself does not need duplicated per-finding decision fields — its A/B/C/D labels are already self-describing sentences; this invariant is about findings being in front of the user when they choose a route.
 
-Use the platform's blocking question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension)). In Claude Code, the tool should already be loaded from the Interactive-mode pre-load step in `references/modes.md` — if it isn't, call `ToolSearch` with query `select:AskUserQuestion` now. Fall back to presenting the options as a numbered list only when the harness genuinely lacks a blocking tool — `ToolSearch` returns no match, the tool call explicitly fails, or the runtime mode does not expose it (e.g., Codex edit modes without `request_user_input`). A pending schema load is not a fallback trigger. Never silently skip the question. Rendering the routing question as narrative text without the numbered-list fallback is a bug.
+Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to presenting the options as a numbered list only when no such tool is in the list, a real question call errors, or the runtime mode does not expose one. Never silently skip the question. Rendering the routing question as narrative text without the numbered-list fallback is a bug.
 
 **Stem:** `What should the agent do with the remaining N findings?`
 
@@ -125,7 +125,7 @@ Substitutions:
 - **`suggested_fix`** — from the merged finding's `suggested_fix` field. Render as prose describing intent, not as raw markup. The user's job is to trust or reject the action — they don't need to review exact text. Rules:
   - **Default — one sentence describing the effect.** What does the fix achieve, and where does it live? Prefer intent language over quoted text.
     - Good: `Drop the Advisory tier from the enum; advisory-style findings surface in an FYI subsection at the presentation layer.`
-    - Good: `Add a deployment-ordering constraint requiring Units 3 and 4 in a single commit.`
+    - Good: `Add a deployment-ordering constraint requiring Units 3 and 4 in a single JJ change.`
     - Bad: `Change "autofix_class: [auto, gated_auto, advisory, present]" to "autofix_class: [safe_auto, gated_auto, manual]" in findings-schema.json on line 48.` — too syntax-focused for a decision loop
   - **Code-span budget** — at most 2 inline backtick spans per sentence, each a single identifier, flag, or short phrase (e.g., `` `safe_auto` ``, `` `<work-context>` ``). Always leave a space before and after each backtick span.
   - **Raw code blocks** — only for short (≤5-line) genuinely additive content where no before-state exists. Above 5 lines, switch to a summary.
@@ -135,7 +135,7 @@ Substitutions:
 
 ### Question string (decision-focused; self-sufficient on modal harnesses)
 
-After the terminal block renders, fire the platform's blocking question tool. Most adapters expose a single question string (`AskUserQuestion`, `request_user_input`, `ask_question`, `ask_user`), so the stem and the compact decision fields share that string. Shape:
+After the terminal block renders, fire the host's blocking question tool already in the current tool list. Most adapters expose a single question string, so the stem and the compact decision fields share that string. Shape:
 
 ```
 Finding {N} of {M} — {severity} {short handle}.
@@ -157,7 +157,7 @@ If the blocking-question tool rejects the multi-line question string (schema / l
 
 ### Confirmation between findings
 
-After the user answers and before printing the next finding's terminal block, emit a one-line confirmation of the action taken. Examples: `Applied. Edit queued for the "Scope Boundaries" section.`, `Deferred. Entry appended to "## Deferred / Open Questions".`, `Skipped.`
+After the user answers and before printing the next finding's terminal block, emit a one-line confirmation of the action taken. Examples: `→ Applied. Edit staged at "Scope Boundaries" section.`, `→ Deferred. Entry appended to "## Deferred / Open Questions".`, `→ Skipped.`
 
 ### Options (four; adapted as noted)
 
@@ -210,7 +210,7 @@ Do not fire this sub-question with a single option. One option means there is no
 
 - **Combined N=1 + no-append:** the menu shows two options: Apply / Skip.
 
-Only when `ToolSearch` explicitly returns no match or the tool call errors — or on a platform with no blocking question tool — fall back to presenting the options as a numbered list and waiting for the user's next reply.
+Only when no such tool is in the list or a real question call errors — or on a platform with no blocking question tool — fall back to presenting the options as a numbered list and waiting for the user's next reply.
 
 ---
 
@@ -263,7 +263,7 @@ Evaluate lazily, at the point the finding would have been presented — do not s
 
 Record each as `withdrawn` in the decision list, noting which decision retired it. Withdrawn is its own completion-report bucket. It carries forward in the decision primer as a rejected-class decision — alongside Skip, Defer, and Acknowledge — **only when a user decision durably settled it**: a settled premise (Skip/Defer) or a user-asserted fact. Those are user judgments that the finding needn't be actioned, so R29 should suppress a round N+1 re-raise since the document itself never changed.
 
-**An Apply-triggered withdrawal never carries forward as rejected-class.** It is a *prediction* that a queued fix will resolve the finding, not a user judgment that it needn't be. The Apply runs only at end-of-walk-through, and its landing is neither certain nor proof of semantic resolution — it can fail outright, or land in the wrong place and leave the withdrawn finding's evidence untouched (R30 verifies the applied fix's own fingerprint, not the withdrawn finding's). So round N+1 re-synthesis, not R29, is the check: if the fix genuinely resolved the finding, fresh personas won't regenerate it against the edited document; if it didn't — whether the Apply failed or landed ineffectively — the finding resurfaces for the user instead of being silently suppressed. When such an Apply fails outright during execution (write error, or the defensive no-fix fallback), also list its reverted withdrawals in the completion report's failure section as returned to scope, so the user sees them in-run rather than only next round.
+**An Apply-triggered withdrawal never carries forward as rejected-class.** It is a *prediction* that a staged fix will resolve the finding, not a user judgment that it needn't be. The Apply runs only at end-of-walk-through, and its landing is neither certain nor proof of semantic resolution — it can fail outright, or land in the wrong place and leave the withdrawn finding's evidence untouched (R30 verifies the applied fix's own fingerprint, not the withdrawn finding's). So round N+1 re-synthesis, not R29, is the check: if the fix genuinely resolved the finding, fresh personas won't regenerate it against the edited document; if it didn't — whether the Apply failed or landed ineffectively — the finding resurfaces for the user instead of being silently suppressed. When such an Apply fails outright during execution (write error, or the defensive no-fix fallback), also list its reverted withdrawals in the completion report's failure section as returned to scope, so the user sees them in-run rather than only next round.
 
 ---
 

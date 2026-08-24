@@ -43,12 +43,11 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
-- **Source / composition signal.** A visible footer at the bottom of the
-  doc names the composition timestamp and source identifier (the user prompt
-  context or upstream source document). Example shape:
-  `<footer class="composition-signal">Composed 2026-05-17T14:23Z from <code>docs/plans/...-requirements.md</code></footer>`.
-  Under exclusive output mode this signal is the artifact's own source record.
-  Do not include creator, builder, composer, author, skill, or provider credit.
+- **Source / composition signal.** A visible footer at the bottom of
+  the doc carries the composition timestamp and source identifier when
+  the section contract requires them. Include only those functional
+  values. Do not add logos, badges, bylines, product identity, model or
+  agent attribution, or decorative attribution.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -99,14 +98,15 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj workspace root`).
+1. JJ workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
 3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
 Workspace-root only — do not fall through to another workspace. Users
-who want HTML defaults can add DESIGN.md to the current workspace.
+working from a JJ workspace who want HTML defaults can add DESIGN.md to
+that workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -222,16 +222,17 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the workspace's GitHub URL once at compose time through the reachable GitHub interface:
+Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-gh repo view --json url --jq .url
+jj git remote list
 ```
 
 Apply linking to three reference shapes:
 
-- **Workspace-relative code/doc paths** (`services/foo.ts`,
-  `<root>/solutions/bar.md`) → the repository's canonical blob URL for `<path>` at the current mainline revision.
+- **Repo-relative code/doc paths** (`services/foo.ts`,
+  `<root>/solutions/bar.md`) → the repository host's canonical file URL
+  for the current default bookmark and path.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -239,10 +240,11 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If the reachable repository interface cannot resolve a
-canonical URL, leave entries as `<code>` text. If the external
-tracker workspace isn't established, leave as text. A broken or
-guessed link is worse than no link.
+**Do not invent URLs.** Read the remote listing and the project's active
+instructions. If the repository host's file URL pattern or default bookmark
+is not established, leave entries as `<code>` text. If the external tracker
+workspace isn't established, leave as text. A broken or guessed link is worse
+than no link.
 
 **Scope: reference index only, not inline prose.** Inline `<code>`
 mentions of paths or PRs inside paragraph prose stay as code or text.
@@ -270,8 +272,8 @@ a browser. Keep the heading text visible and adjacent to the `id`; do not rely
 on a nav link alone to carry the section name.
 
 Optional sections with a contract-defined semantic role put that role on their
-wrapping `<section>` with `data-section-role`. For example, the broader-work
-relationship section uses `data-section-role="work-relationships"`. The role is
+wrapping `<section>` with `data-ce-section`. For example, the broader-work
+relationship section uses `data-ce-section="work-relationships"`. The role is
 stable even when the visible heading changes; it supplements, rather than
 replaces, readable heading text and any useful anchor.
 
@@ -602,8 +604,9 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
-- **Source / composition signal** is present as a visible footer at the bottom
-  of the doc (composition timestamp + source identifier, without producer credit).
+- **Source / composition signal**, when required by the section contract,
+  contains only the composition timestamp and source identifier, with no
+  branding, byline, or model or agent attribution.
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

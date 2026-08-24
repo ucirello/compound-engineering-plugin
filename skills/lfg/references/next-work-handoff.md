@@ -7,10 +7,7 @@ area without silently extending the completed plan or current session.
 ## Establish whether an offer is warranted
 
 Start from the canonical plan path retained from LFG step 1. Locate a Product
-Contract section carrying the semantic role `work-relationships`:
-
-- Markdown: `<!-- plan-section: work-relationships -->`
-- HTML: `data-plan-section="work-relationships"`
+Contract section carrying the semantic role `work-relationships`.
 
 The visible heading is not part of this protocol. For an older unmarked plan,
 use a semantic fallback only when one Product Contract section clearly names
@@ -56,7 +53,10 @@ offering it.
 Place the offer before LFG's `<promise>DONE</promise>`. Keep it non-blocking and
 do not invoke `ce-handoff` yet.
 
-For one winner, name the area, give the shortest concrete reason it is next, and offer an optional fresh-session `ce-handoff` for that brainstorm. Do not require fixed wording.
+For one winner, use this shape in natural prose:
+
+> The clearest next area is **<area>** because <reason>. If you want to continue
+> it in a fresh agent session, I can create a `ce-handoff` for that brainstorm.
 
 For a real tie, name the tied areas and offer a fresh-session handoff focused on
 choosing the next coherent area. The pipeline still ends with the DONE promise;

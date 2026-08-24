@@ -1,6 +1,6 @@
 # Analyzer contract
 
-All non-setup paths use the bundled analyzer through this one invocation shape. The path reference supplies a concrete `INPUT_PATH`. Set `OUTPUT_DIR` only when that path owns an override; otherwise leave it empty so the script owns its `.rocketclaw/riffrec-feedback/` default. Set `INVOCATION_PREFIX` to `/` by default or `$` only on Codex or a host that documents dollar-prefixed skill invocation.
+All non-setup paths use the bundled analyzer through this one invocation shape. The path reference supplies a concrete `INPUT_PATH`. Set `OUTPUT_DIR` only when that path owns an override; otherwise leave it empty so the script owns its default.
 
 Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feedback-analysis` `SKILL.md`. Resolve Python by executing each candidate so a Windows Store stub is not mistaken for a working interpreter:
 
@@ -8,9 +8,8 @@ Set `SKILL_DIR` to the absolute directory containing the loaded `ce-riffrec-feed
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 INPUT_PATH="<absolute input path>";
 OUTPUT_DIR="${OUTPUT_DIR:-}";
-INVOCATION_PREFIX="<resolved / or $ prefix>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-ANALYZER_ARGS=("$INPUT_PATH" --invocation-prefix "$INVOCATION_PREFIX"); [ -z "$OUTPUT_DIR" ] || ANALYZER_ARGS+=(--output-dir "$OUTPUT_DIR");
+ANALYZER_ARGS=("$INPUT_PATH"); [ -z "$OUTPUT_DIR" ] || ANALYZER_ARGS+=(--output-dir "$OUTPUT_DIR");
 "$PY" "$SKILL_DIR/scripts/analyze_riffrec_zip.py" "${ANALYZER_ARGS[@]}"
 ```
 

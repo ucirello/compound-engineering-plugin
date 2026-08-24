@@ -61,6 +61,29 @@ describe("ce-work review contract", () => {
     expect(shipping).toContain("Ship-handoff gate")
   })
 
+  // Hosts such as Grok register a bundled skill named `review`. Headings like
+  // "invoke review" and slash examples like `/review` caused sibling-path reads of
+  // this plugin's skills/review/SKILL.md, which does not exist.
+  test("orchestration names ce-code-review, not a host skill named review", async () => {
+    const lfg = await readRepoFile("skills/lfg/SKILL.md")
+    const followup = await readRepoFile("skills/lfg/references/review-followup.md")
+    const shipping = await readRepoFile("skills/ce-work/references/shipping-workflow.md")
+    const findings = await readRepoFile(
+      "skills/ce-work/references/review-findings-followup.md",
+    )
+
+    expect(followup).toContain("## Step 4 — invoke `ce-code-review`")
+    expect(followup).not.toContain("invoke review")
+    expect(followup).toContain("host catalog's listed path")
+    expect(followup).toContain("skills/review/SKILL.md")
+    expect(findings).toContain("invoke `ce-code-review` only for cold callers")
+    expect(findings).not.toContain("invoke review only")
+    expect(shipping).toContain("A host catalog entry named `review` is not this step")
+    expect(shipping).not.toMatch(/`\/review`/)
+    expect(shipping).toContain("use that entry's listed path")
+    expect(lfg).toContain("available-skills list")
+  })
+
   // Issue #1351: prose-only review mandate was silently skipped. The always-loaded
   // body owns the completion predicate; the required shipping owner owns receipt and
   // fallback mechanics, including the exact phrases and mechanical exclusions.
@@ -849,9 +872,11 @@ describe("ce-doc-review contract", () => {
     expect(skill).toContain("`references/dispatch.md`")
     expect(dispatch).toContain("{decision_primer}")
     expect(dispatch).toContain("<prior-decisions>")
-    // The harness tool names and the fallback trigger moved with the mode rules.
-    expect(modes).toContain("AskUserQuestion")
-    expect(modes).toContain("ToolSearch")
+    // Question-tool discovery matches the current list by capability (issue #1522);
+    // Claude's ToolSearch select:AskUserQuestion is not the portable path.
+    expect(modes).toContain("already in the current tool list")
+    expect(modes).toContain("never call a user-facing question tool")
+    expect(modes).not.toContain("select:AskUserQuestion")
     expect(modes).toContain("numbered-list fallback")
     expect(dispatch).toContain("active-subagent limit")
     expect(dispatch).toContain("spawn errors as backpressure, not reviewer failure")
@@ -944,15 +969,17 @@ describe("ce-doc-review contract", () => {
     expect(bulkPreview).toContain("Skipping (N):")
 
     // The preview and question are two ordered user-facing events. The
-    // portable contract names the capability before non-exhaustive adapters.
+    // portable contract names the capability, then matches a tool already in
+    // the current list — not a closed per-host catalog (issue #1522).
     const previewEvent = bulkPreview.indexOf("Preview event")
     const questionCapability = bulkPreview.indexOf(
       "agent-callable blocking-question capability"
     )
-    const adapters = bulkPreview.indexOf("Non-exhaustive adapters")
+    const listMatch = bulkPreview.indexOf("already in the current tool list")
     expect(previewEvent).toBeGreaterThan(-1)
     expect(questionCapability).toBeGreaterThan(previewEvent)
-    expect(adapters).toBeGreaterThan(questionCapability)
+    expect(listMatch).toBeGreaterThan(questionCapability)
+    expect(bulkPreview).not.toContain("select:AskUserQuestion")
     expect(bulkPreview).toContain("user-visible assistant text")
     expect(bulkPreview).toMatch(/(?:thinking|reasoning).*does not count/)
     expect(bulkPreview).toContain("do not invoke the blocking-question capability")

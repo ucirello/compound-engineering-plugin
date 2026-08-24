@@ -25,8 +25,9 @@ Ask the user only when the answer materially affects architecture, scope, sequen
 
 #### 3.1 Title and File Naming
 
-- Draft a clear, searchable title that names the intended outcome without embedding a fixed change-description syntax
-- Determine the plan type from the repository's current categories; do not impose a fixed conventional prefix set
+- Draft a clear, searchable title in plain language. Do not embed a fixed commit-message prefix or syntax in the title.
+- Determine the plan type from the work's intent, using the project's local classification when one exists rather than a fixed type list.
+- Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active local commit-message syntax takes precedence over generic syntax and examples.
 - Build the filename following the repository convention: `<root>/plans/YYYY-MM-DD-HHMM-<type>-<descriptive-name>-plan.md`
   - Create `<root>/plans/` if it does not exist
   - Take `YYYY-MM-DD-HHMM` from the local wall-clock time at write, so the prefix matches the `date:` frontmatter and the day the user experienced; do not scan for or allocate a daily sequence number
@@ -81,7 +82,7 @@ The tree is a scope declaration showing the expected output shape. It is not a c
 
 #### 3.5 Define Each Implementation Unit
 
-Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as bulleted list items or prefix them with `- [ ]` / `- [x]` checkbox markers. List-based unit titles fragment in every standard renderer because the per-unit fields (`**Goal:**`, `**Files:**`, `**Approach:**`, etc.) are written flush-left, which terminates CommonMark list continuation and detaches the fields from the unit they describe. Headings render correctly everywhere, are the right semantic match for sections containing multi-block content, and give each unit an anchor link. The plan is a decision artifact; execution progress is derived from Jujutsu revisions and the working-copy change by `ce-work` rather than stored in the plan body.
+Each unit is a level-3 heading carrying a stable U-ID prefix matching the format used for R/A/F/AE in requirements docs: `### U1. [Name]`. Number sequentially within the plan starting at U1. Do not render units as bulleted list items or prefix them with `- [ ]` / `- [x]` checkbox markers. List-based unit titles fragment in every standard renderer because the per-unit fields (`**Goal:**`, `**Files:**`, `**Approach:**`, etc.) are written flush-left, which terminates CommonMark list continuation and detaches the fields from the unit they describe. Headings render correctly everywhere, are the right semantic match for sections containing multi-block content, and give each unit an anchor link. The plan is a decision artifact; execution progress is derived from Jujutsu history by `ce-work` rather than stored in the plan body.
 
 **Stability rule.** Once assigned, a U-ID is never renumbered. Reordering units leaves their IDs in place (e.g., U1, U3, U5 in their new order is correct; renumbering to U1, U2, U3 is not). Splitting a unit keeps the original U-ID on the original concept and assigns the next unused number to the new unit. Deletion leaves a gap; gaps are fine. This rule matters most during deepening (Phase 5.3), which is the most likely accidental-renumber vector.
 
@@ -181,11 +182,11 @@ Omit "include when material" sections that don't carry information for this spec
 #### 4.3 Planning Rules
 
 - **Horizontal rules (`---`) between top-level sections** in Standard and Deep plans, mirroring the `ce-brainstorm` requirements doc convention. Improves scannability of dense plans where many H2 sections sit close together. Omit for Lightweight plans where the whole doc fits on a single screen.
-- **All file paths must be repo-relative** — never use absolute paths like `/Users/name/Code/project/src/file.ts`. Use `src/file.ts` instead. Absolute paths make plans non-portable across machines, Jujutsu workspaces, and teammates. When a plan targets a different repo than the document's home, state the target repo once at the top of the plan (e.g., `**Target repo:** my-other-project`) and use repo-relative paths throughout
+- **All file paths must be repo-relative** — never use absolute paths like `/Users/name/Code/project/src/file.ts`. Use `src/file.ts` instead. Absolute paths make plans non-portable across machines, workspaces, and teammates. When a plan targets a different repo than the document's home, state the target repo once at the top of the plan (e.g., `**Target repo:** my-other-project`) and use repo-relative paths throughout
 - Prefer path plus class/component/pattern references over brittle line numbers
 - Do not include implementation code — no imports, exact method signatures, or framework-specific syntax
 - Pseudo-code sketches and DSL grammars are allowed in the High-Level Technical Design section and per-unit technical design fields when they communicate design direction. Frame them explicitly as directional guidance, not implementation specification
 - Mermaid diagrams are encouraged when they clarify relationships or flows that prose alone would make hard to follow — ERDs for data model changes, sequence diagrams for multi-service interactions, state diagrams for lifecycle transitions, flowcharts for complex branching logic
-- Do not include Jujutsu commands, change descriptions, or exact test command recipes
+- Do not include Jujutsu commands, commit messages, or exact test command recipes
 - Do not expand implementation units into micro-step `RED/GREEN/REFACTOR` instructions
 - Do not pretend an execution-time question is settled just to make the plan look complete

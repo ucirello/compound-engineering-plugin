@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url"
 const scriptPath = fileURLToPath(import.meta.url)
 const DEFAULT_HOST = "127.0.0.1"
 const DEFAULT_URL_HOST = "localhost"
-const IDLE_TIMEOUT_MS = Number(process.env.ROCKETCLAW_LIGHT_WEB_IDLE_TIMEOUT_MS ?? process.env.LIGHT_WEB_IDLE_TIMEOUT_MS ?? process.env.CE_LIGHT_WEB_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
-const LIFECYCLE_CHECK_MS = Number(process.env.ROCKETCLAW_LIGHT_WEB_LIFECYCLE_CHECK_MS ?? process.env.LIGHT_WEB_LIFECYCLE_CHECK_MS ?? process.env.CE_LIGHT_WEB_LIFECYCLE_CHECK_MS) || 60 * 1000
+const IDLE_TIMEOUT_MS = Number(process.env.LIGHT_WEB_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
+const LIFECYCLE_CHECK_MS = Number(process.env.LIGHT_WEB_LIFECYCLE_CHECK_MS) || 60 * 1000
 
 function usage() {
   return [

@@ -48,9 +48,9 @@ Each section answers a different question:
 
 Then the confirmation, which names **what actually happens next** so the user knows what is coming and can interrupt without ambiguity. When a doc is expected — the common case — that is the artifact write: *"Confirm and I'll write the requirements-only plan next, drawing on our dialogue and this synthesis. Or tell me what to change."*
 
-When a doc is already ruled out — the user declined one, or `brainstorm-sections.md`'s "Decide whether a doc is warranted at all" criteria plainly hold — name where the decisions actually go instead, which is whichever of that rule's alternatives *this run* established (`ce-plan`, the user's change description, `<root>/solutions/`): *"Confirm and we're done here — the scope above carries straight into [the destination the dialogue established]. Or tell me what to change."* When the dialogue named none, drop the clause rather than picking one: *"Confirm and we're done here — no doc, as you asked. Or tell me what to change."*
+When a doc is already ruled out — the user declined one, or `brainstorm-sections.md`'s "Decide whether a doc is warranted at all" criteria plainly hold — name where the decisions actually go instead, which is whichever of that rule's alternatives *this run* established (`ce-plan`, the user's change description, `<root>/solutions/`): *"Confirm and we're done here — the scope above carries straight into [the destination the dialogue established]. Or tell me what to change."* When the dialogue named none, drop the clause rather than picking one: *"Confirm and we're done here — no doc, as you asked. Or tell me what to change."* If this phase composes change-description text: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax.
 
-Do not hardcode a destination. This phase writes no change description and hands off at Phase 4, so asserting a downstream action the run will not take is the same overreach as promising the doc. Phase 3, not this phase, owns the doc-warranted decision, so promising the write here makes a user who already declined a doc decline it a second time.
+Do not hardcode a destination. This phase does not publish a change description and hands off at Phase 4, so asserting a downstream action the run will not take is the same overreach as promising the doc. Phase 3, not this phase, owns the doc-warranted decision, so promising the write here makes a user who already declined a doc decline it a second time.
 
 ### Path A vs Path B: the gate that fires the confirmation question
 
@@ -240,12 +240,12 @@ Track which scoping synthesis items the user touched per round. The soft-cut blo
 
 **Identity across rounds is by decision dimension, not surface wording or section.** A revision may cause stage 2 to re-derive — the same underlying decision can come back rephrased, merged with another bullet, or moved to a different section (e.g., what was a Trade-off in round one becomes a Call-out in round two after the user pushed back). "Same item" means the same underlying decision regardless of which section currently holds it. When a re-cut collapses multiple prior bullets into one, the new combined bullet inherits the "touched" status of any of its constituents — soft-cut fires if any underlying decision was already revised once before.
 
-When the soft-cut fires, use the platform's blocking question tool (`AskUserQuestion` in Claude Code, `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi) with two options:
+When the soft-cut fires, use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name) with two options:
 
 - `Proceed and write the requirements-only plan`
 - `Hold off — keep discussing before the doc`
 
-Fall back to a numbered list on the host's user-visible chat surface only when no blocking tool exists or the call errors. Never silently skip.
+Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to a numbered list on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip.
 
 ---
 

@@ -54,5 +54,5 @@ Substitute the resolved package manager (`npm` / `pnpm` / `yarn` / `bun`) and po
 ## Common gotchas
 
 - **Classic vs Vite:** Classic Remix uses `remix.config.js`; new Remix (v2+) uses Vite -- detected as `vite` type, not `remix`. The `remix` type is specifically for classic Remix projects that still have a `remix.config.*` file.
-- **Remix v1 vs v2 dev server:** `remix dev` in v2 starts an Express-based dev server that binds a port; `remix dev` in v1 was a watcher only (no server). This workflow needs v2+ for the dev server to bind a port and respond to reachability probes.
+- **Remix v1 vs v2 dev server:** `remix dev` in v2 starts an Express-based dev server that binds a port; `remix dev` in v1 was a watcher only (no server). Polish needs v2+ for the dev server to bind a port and respond to reachability probes.
 - **Remix on Vite inherits Vite's port:** When Remix runs on Vite (no `remix.config.*`), the default port is 5173 (Vite's default), not 3000. That case is handled by the `vite` recipe, not this one.

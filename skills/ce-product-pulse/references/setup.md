@@ -34,10 +34,10 @@ If the user offers read-write database access, refuse and offer the alternatives
 
 ## Writing the config
 
-Write the captured config to `<workspace-root>/.rocketclaw/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the workspace root with `jj workspace root`; if that fails, use the current project directory as the local root. Preserve unrelated keys when merging into an existing file. Before creating or updating the local config, apply the ignore and tracked-file checks in `references/interview.md`. Show the resulting pulse block to the user in chat and offer one round of edits.
+Write the captured config to `<workspace-root>/.rocketclaw/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the workspace root with `jj workspace root`, using the physical current directory when unavailable. Create `.rocketclaw/` when absent; otherwise merge the new values while preserving every key outside the `pulse_*` namespace. Keep the local config excluded from the JJ working-copy change: if the path is not covered by the workspace's ignore rules, offer to add an ignore entry before writing; if it was already tracked, untrack it only after the ignore rule exists and the user accepts that local mutation. Show the resulting pulse block to the user in chat and offer one round of edits.
 
 ## Scheduling
 
-After the config is written, run the **scheduling recommendation** from `references/interview.md` section 9: offer to set up a recurring run so the user gets the pulse on a cadence instead of having to remember to run it. Accept yes/no/later. If yes, hand off to the `schedule` skill when callable; otherwise note that scheduling depends on the current environment and state what the recurring job must invoke. Do not schedule inline.
+After the config is written, run the **scheduling recommendation** from `references/interview.md` section 9: offer to set up a recurring run so the user gets the pulse on a cadence instead of having to remember to run it. Accept yes/no/later. If yes, hand off to whichever scheduling primitive the current harness exposes — the in-plugin `schedule` skill if it is installed, otherwise note that scheduling is platform-specific (cron, GitHub Actions, the host's own automation) and emit a brief hint covering what would need to run. Do not schedule inline.
 
 The later-runs re-surface rule lives in `SKILL.md` Phase 3; do not repeat it here.

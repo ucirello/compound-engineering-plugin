@@ -1,7 +1,5 @@
 # Phase 3: Adversarial Corpus Audit
 
-Preserve required evidence, citations, schemas, machine-readable values, and operational benchmark, model, and harness references. Fixed examples and report wording specify substance, not mandatory syntax unless an exact token is machine-readable. Do not add product branding, generated-by text, or attribution.
-
 Produces one finding set per corpus unit, each finding carrying a defender ruling. That ruling set is the input to Phase 4's passes — nothing here edits a file.
 
 The audit is not evidence. It ranks candidates; only the harness says whether a cut helped. Do not let a large finding count imply a large effect — a corpus's run-to-run spread on fixed inputs (`references/noise-floor.md`) is the same whether the audit found 6 findings or 600.
@@ -18,13 +16,13 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite — grep a distinctive substring of the target text.
-3. Jujutsu history — use `jj file annotate <target-path>` to identify the change that introduced the targeted line, then inspect that change and its description with `jj show <change-id>`. If annotation is insufficient, inspect the path's patches with `jj log -r 'ancestors(@)' -p -- <target-path>`. Read the linked review when one exists.
+3. Version history — use `jj log` to inspect the repository's revisions, identify the change that introduced the substring from its patch, then use `jj show` to read its description and patch and `gh` to read the GitHub pull request when one exists. Repository-local message syntax takes precedence over generic guidance, and any example is descriptive rather than fixed syntax. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Source 3 is unavailable in a corpus copy with no Jujutsu history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a Jujutsu workspace that has history, or record the whole audit's provenance basis as partial.
+Source 3 is unavailable in a corpus copy with no Jujutsu history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a Jujutsu repository that has history, or record the whole audit's provenance basis as partial.
 
 **Pipeline the waves.** Start a unit's defense as soon as its proposal set returns; do not wait for wave 1 to finish — the two waves share no state across units. It is 2N dispatches on N units, so plan the wave count against the host's concurrency cap (`references/workflow-shapes.md`).
 
-Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a change description returns "no provenance found" for everything, which silently converts the audit into a demolition.
+Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a revision description and patch returns "no provenance found" for everything, which silently converts the audit into a demolition.
 
 ## Finding schema
 
@@ -56,7 +54,7 @@ Ordered by expected behavior change per finding, not by word count. The last ent
 | `step-machinery` | Would a different order, or skipping the ceremony, produce a different artifact? |
 | `capability-restatement` | Would the model do this if the line were deleted? |
 | `filler-rationale` | Does the rule survive intact if the sentence after it is removed? |
-| `vestigial-mode` | Grep the corpus for a caller that sets this mode, flag, or branch. Is there one? |
+| `vestigial-mode` | Grep the corpus for a caller that sets this mode, flag, or bookmark. Is there one? |
 | `mandatory-fanout` | Is this helper dispatch or self-verification pass conditional on anything, or does it fire every run regardless of need? |
 | `cross-unit-duplication` | Is this block near-identical elsewhere, and is factoring it out actually permitted? |
 | `oversized-reference` | Could this file's entire content be five lines? |
@@ -99,7 +97,7 @@ For three categories the default inverts: **absence of provenance is not grounds
 
 What *is* cuttable around all three is the justification clause — the sentence explaining that a separate consumer is waiting on the string. Keep the data, cut the story about who wants it. That is usually a `reduce`, and it is frequently also a `phantom-handoff`.
 
-`cross-unit-duplication` collides with this category more than any other class. Before proposing a factor-out, check whether the duplication is mandated: a documented decision, or a test that forbids sharing the block. The most-duplicated block in a corpus is often the one thing that must stay duplicated. In one observed corpus, it was a security guard whose duplication a test explicitly required, and the largest duplication mandate was itself the documented fix for a bug that had regressed twice.
+`cross-unit-duplication` collides with this category more than any other class. Before proposing a factor-out, check whether the duplication is mandated: a documented decision, or a test that forbids sharing the block. The most-duplicated block in a corpus is often the one thing that must stay duplicated — in the engagement it was a security guard whose duplication a test explicitly required, and the largest duplication mandate was itself the documented fix for a bug that had regressed twice.
 
 ## Synthesis: rank contradiction above confirmation
 

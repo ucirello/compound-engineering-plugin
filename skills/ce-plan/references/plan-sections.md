@@ -28,7 +28,7 @@ readiness states, not a requirements doc plus a separate implementation doc.
 
 When the artifact is meant to be consumed by implementation agents, use:
 
-- **`artifact_contract: unified-plan/v1`** — declares this contract.
+- **`artifact_contract: ce-unified-plan/v1`** — declares this contract.
 - **`artifact_readiness`** — document completeness, not work progress. Valid
   values are:
   - `requirements-only` — Product Contract exists; planning sections are not
@@ -43,7 +43,7 @@ When the artifact is meant to be consumed by implementation agents, use:
     do not hold readiness back — mark each open question as blocking or deferred
     so this distinction is explicit.
 - **`product_contract_source`** — where the Product Contract came from:
-  `brainstorm`, `plan-bootstrap`, `legacy-requirements`, or another
+  `ce-brainstorm`, `ce-plan-bootstrap`, `legacy-requirements`, or another
   explicit source string when a repo has a specialized producer.
 - **`execution`** — `code` for implementation plans, `knowledge-work` for
   non-code deliverables. Absence remains legacy-compatible and means `code`
@@ -167,7 +167,7 @@ present. They carry the contracts downstream consumers depend on.
   completion contract for `/goal` or equivalent long-running workflows. Include
   a cleanup criterion: a long autonomous run accumulates dead-end and
   experimental code from approaches that did not pan out; declaring done
-  requires that abandoned-attempt code is removed, not left in the working-copy change.
+  requires that abandoned-attempt code is removed, not left in the diff.
 
 ## Include when material
 
@@ -286,7 +286,7 @@ versa.
 The agent also picks per artifact:
 
 - Whether Problem Frame merges into Summary — legacy and non-unified plans
-  only. Any `unified-plan/v1` artifact keeps both headings regardless of
+  only. Any `ce-unified-plan/v1` artifact keeps both headings regardless of
   plan depth: the hard floor names them separately and downstream consumers
   anchor on them. (Scoped by artifact contract, not by depth — a `Lightweight`
   plan can still be implementation-ready.)
@@ -338,7 +338,7 @@ targets the connective tissue around precision, never the precision itself.
 **Resolve in place; don't stratify.** When deepening, a doc-review pass, or a
 later decision supersedes earlier text, rewrite or remove the original — don't
 leave it standing as strikethrough or stack a separate "resolutions" layer on
-top of it. Jujutsu holds the revision history. Stacked strata double the reading
+top of it. Version control holds the history. Stacked strata double the reading
 surface and hide which text is live.
 
 **One owner per rule; cite, don't restate.** A normative rule — a gate, cap,
@@ -381,14 +381,11 @@ plan.
 
 ### Required
 
-- **`title`** — the plan's descriptive name with a ` - Plan` suffix
-  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
+- **`title`** — the plan's descriptive name with a local plan-title suffix when the project uses one, matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
-  across readiness states (it is a plan at every stage). Do not put a
-  change-description prefix in the title — the `type` field carries the repository's classification.
-- **`type`** — classification chosen from the repository's present plan metadata conventions rather than a fixed syntax. It carries the intent the eventual change description should reflect.
-  Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-  Apply the project's active instructions first and the conventions visible in the current `jj log` second; the quoted `git log` wording is non-operational and does not authorize Git commands. Use compatible Go guidance only for message quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example on the eventual change description.
+  across readiness states (it is a plan at every stage). Do not put commit-message syntax in the title; the `type` field carries local classification when applicable.
+- **`type`** — the project's local intent classification. Do not constrain it to a fixed generic enum. It carries the intent the eventual commit message should reflect.
+- Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active local commit-message syntax takes precedence over generic syntax and examples.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
@@ -412,7 +409,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the bookmark/test/change-description/CI lifecycle); absent or `code` routes
+  skipping the change-stack/test/description/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.
@@ -439,7 +436,7 @@ These apply regardless of rendering format.
   KTD is added, split, or first cited by a unit. Untouched unnumbered KTDs
   in legacy plans stay as they are — readable by label, no mass renumbering.
 - **Repo-relative paths.** Always. Never absolute paths in plan content;
-  they break portability across machines, Jujutsu workspaces, teammates.
+  they break portability across machines, workspaces, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
   metadata belongs in change descriptions and tool output, not the artifact.

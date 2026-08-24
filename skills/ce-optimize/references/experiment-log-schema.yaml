@@ -2,7 +2,7 @@
 # This is the canonical schema for the experiment log file that accumulates
 # across an optimization run.
 #
-# Location: <workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml
+# Location: <workspace-root>/.tmp/ce-optimize/runs/<spec-name>/experiment-log.yaml
 #
 # PERSISTENCE MODEL:
 # The experiment log on disk is the SINGLE SOURCE OF TRUTH. The agent's
@@ -43,15 +43,20 @@ structure:
     format: "ISO 8601 timestamp"
     required: true
 
-  baseline_change_id:
+  base_change_id:
     type: string
     required: true
-    description: "Jujutsu change ID whose content was measured as the original baseline. Required in new logs; its absence in a legacy log is handled by read_compatibility."
+    description: "Stable JJ change ID selected as the run baseline"
 
-  optimization_change_id:
+  base_commit_id:
     type: string
     required: true
-    description: "Current empty orchestration change above the retained optimization stack. Required in new logs; its absence in a legacy log is handled by read_compatibility."
+    description: "JJ commit ID of the measured baseline snapshot"
+
+  best_change_id:
+    type: string
+    required: true
+    description: "Stable JJ change ID of the current best revision"
 
   baseline:
     type: object
@@ -84,7 +89,7 @@ structure:
   experiments:
     type: array
     required: true
-    description: "Ordered list of all experiments, including kept, abandoned, errored, and deferred"
+    description: "Ordered list of all experiments, including kept, reverted, errored, and deferred"
     items:
       type: object
       # See EXPERIMENT ENTRY below
@@ -97,9 +102,6 @@ structure:
       iteration:
         type: integer
         description: "Iteration number of the best experiment (use 0 for the baseline snapshot before any experiment is kept)"
-      change_id:
-        type: string
-        description: "Jujutsu change ID whose content produced the current best metrics"
       metrics:
         type: object
         description: "All metric values from the current best state (seed with baseline metrics during CP-1)"
@@ -159,23 +161,23 @@ experiment_entry:
       values:
         - measured                # measurement finished and metrics were persisted, awaiting batch evaluation / integration
         - promising               # eligible on current samples but the ladder still needs confirmation before keep
-        - kept                    # eligible, confirmed, and retained in the optimization stack
+        - kept                    # eligible, confirmed, and selected into the accepted JJ stack
         - not_selected            # eligible after comparison but not integrated (not the winner, overlapping, or past the runner-up cap)
-        - abandoned               # compared and not eligible (regressed a required objective, or none improved)
+        - reverted                # compared and not eligible (regressed a required objective, or none improved)
         - inconclusive            # delta inside the comparison threshold; not a keep and not a demonstrated regression
         - censored                # aborted as noncompetitive under the predeclared futility bound
-        - degenerate              # degenerate gate or smoke test failed -> immediately abandoned, no judge evaluation
+        - degenerate              # degenerate gate or smoke test failed -> immediately reverted, no judge evaluation
         - error                   # measurement command crashed, timed out, or produced malformed output
         - deferred_needs_approval # experiment needs an unapproved dependency -> set aside for batch approval
         - timeout                 # measurement command exceeded timeout_seconds
-        - runner_up_kept          # file-disjoint runner-up rebased onto the current best and re-measured successfully
-        - runner_up_abandoned     # file-disjoint runner-up rebased onto the current best but not retained
+        - runner_up_kept          # file-disjoint runner-up rebased onto best and re-measured successfully
+        - runner_up_reverted      # rebased runner-up whose combined measurement was not better
       description: >
-        Load-bearing state: the loop selects its next action from this value.
+        Load-bearing state: the loop selects behavior from this value.
         'measured' and 'promising' are non-terminal: CP-3 persists raw metrics
         before batch-level comparison, and 'promising' means the ladder still
         needs confirmation samples. An eligible decide `keep` stays `measured`
-        until its change is retained in the optimization stack. 'kept' and 'runner_up_kept'
+        until its change is in the accepted stack. 'kept' and 'runner_up_kept'
         mean that integration happened. 'not_selected' is terminal for an
         eligible candidate that was not integrated. 'deferred_needs_approval'
         items are re-presented at wrap-up. All other states are terminal for
@@ -243,7 +245,11 @@ experiment_entry:
 
     change_id:
       type: string
-      description: "Jujutsu change ID in the optimization stack (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "Stable JJ change ID for this experiment"
+
+    commit_id:
+      type: string
+      description: "JJ commit ID of the measured snapshot; refresh after rewrites"
 
     deferred_reason:
       type: string
@@ -253,34 +259,9 @@ experiment_entry:
       type: string
       description: "Error details (only for 'error' and 'timeout' outcomes)"
 
-    integrated_with:
+    combined_with:
       type: integer
-      description: "Iteration number of the experiment this was integrated with (only for 'runner_up_kept' and 'runner_up_abandoned')"
-
-# ============================================================================
-# READ COMPATIBILITY
-# ============================================================================
-
-read_compatibility:
-  outcomes:
-    reverted: abandoned
-    runner_up_reverted: runner_up_abandoned
-  experiment_fields:
-    commit:
-      normalize_to: change_id
-      precedence: "change_id wins when both fields are present"
-      transform: "Resolve the legacy Git commit identifier as a JJ revision and store its full Jujutsu change ID"
-    merged_with:
-      normalize_to: integrated_with
-      precedence: "integrated_with wins when both fields are present"
-  missing_top_level_change_ids:
-    fields: [baseline_change_id, optimization_change_id]
-    rule: >
-      Accept their absence in persisted legacy logs. Recover resolvable revisions
-      from the optimization bookmark, revision history, and normalized retained
-      change fields before continuing; stop for user direction if recovery is
-      ambiguous. New and rewritten logs always include both JJ-native fields.
-  write_rule: "Emit only current outcomes and fields; never emit a legacy alias"
+      description: "Iteration number of the accepted experiment this runner-up was rebased onto"
 
 # ============================================================================
 # OUTCOME STATE TRANSITIONS
@@ -299,16 +280,16 @@ read_compatibility:
 #           -> persist raw metrics   -> outcome: measured or promising
 #           -> judge evaluated (if type: judge)
 #             -> decide.mjs eligible, next_measurement none -> stay measured until integration
-#               -> change retained in optimization stack -> outcome: kept
+#               -> change selected into accepted stack -> outcome: kept
 #               -> eligible leftover             -> outcome: not_selected
-#             -> runner-up, file-disjoint -> rebase onto current best + re-measure
+#             -> runner-up, file-disjoint -> rebase onto best + re-measure
 #               -> combined eligible and integrated -> outcome: runner_up_kept
-#               -> combined not kept              -> outcome: runner_up_abandoned
+#               -> combined not kept              -> outcome: runner_up_reverted
 #             -> inconclusive             -> outcome: inconclusive
-#             -> not eligible             -> outcome: abandoned
+#             -> not eligible             -> outcome: reverted
 #       -> needs unapproved dep    -> outcome: deferred_needs_approval
 #
-# Only 'kept' and 'runner_up_kept' retain a change in the optimization stack.
+# Only 'kept' and 'runner_up_kept' are reachable in the accepted base-to-best revset.
 # Only 'deferred_needs_approval' items are re-presented at wrap-up for approval.
 
 # ============================================================================
@@ -316,11 +297,11 @@ read_compatibility:
 # ============================================================================
 #
 # Written after each batch to:
-#   <workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/strategy-digest.md
+#   <workspace-root>/.tmp/ce-optimize/runs/<spec-name>/strategy-digest.md
 #
 # Contains a compressed summary of:
 # - What hypothesis categories have been tried
-# - Which approaches succeeded (kept) and which failed (abandoned)
+# - Which approaches succeeded (kept) and which failed (reverted)
 # - The exploration frontier: what hasn't been tried yet
 # - Key learnings that should inform next hypotheses
 #

@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # Discover session files across Claude Code, Codex, Cursor, Pi, and oh-my-pi (omp).
 #
-# Usage: discover-sessions.sh <workspace-name> <days> [--cwd /abs/workspace/root] [--platform claude|codex|cursor|pi|omp]
+# Usage: discover-sessions.sh <repo-name> <days> [--cwd /abs/repo/root] [--platform claude|codex|cursor|pi|omp]
 #
 # Outputs one file path per line. Safe in both bash and zsh (all globs guarded).
 # Pass output to extract-metadata.py:
-#   python3 extract-metadata.py --cwd-filter <workspace-name> $(bash discover-sessions.sh <workspace-name> 7)
+#   python3 extract-metadata.py --cwd-filter <repo-name> $(bash discover-sessions.sh <repo-name> 7)
 #
 # Arguments:
-#   workspace-name  Folder name of the workspace. Used for directory matching.
+#   repo-name  Folder name of the repo (e.g., "my-repo"). Used for directory matching.
 #   days       Scan window in days (e.g., 7). Files older than this are skipped.
-#   --cwd      Absolute workspace root. Used for exact Pi encoded-CWD discovery
+#   --cwd      Absolute repo root. Used for exact Pi encoded-CWD discovery
 #              and the omp raw-bucket probe. Claude listing is unfiltered;
 #              extract-metadata.py --cwd-filter matches recorded cwd.
 #   --platform Restrict to a single platform. Omit to search all.
 
 set -euo pipefail
 
-WORKSPACE_NAME="${1:?Usage: discover-sessions.sh <workspace-name> <days> [--cwd /abs/workspace/root] [--platform claude|codex|cursor|pi|omp]}"
-DAYS="${2:?Usage: discover-sessions.sh <workspace-name> <days> [--cwd /abs/workspace/root] [--platform claude|codex|cursor|pi|omp]}"
+REPO_NAME="${1:?Usage: discover-sessions.sh <repo-name> <days> [--cwd /abs/repo/root] [--platform claude|codex|cursor|pi|omp]}"
+DAYS="${2:?Usage: discover-sessions.sh <repo-name> <days> [--cwd /abs/repo/root] [--platform claude|codex|cursor|pi|omp]}"
 PLATFORM="all"
 REPO_CWD=""
 
@@ -41,7 +41,7 @@ encode_pi_cwd() {
 
 # --- Claude Code ---
 # List every recent jsonl under <config-dir>/projects. Folder names are an
-# undocumented encoder of session CWD; do not invert them. Workspace matching
+# undocumented encoder of session CWD; do not invert them. Repo association
 # is the recorded `cwd` field, applied by extract-metadata.py --cwd-filter.
 # CLAUDE_CONFIG_DIR relocates the whole config tree (official); unset -> ~/.claude.
 discover_claude() {
@@ -68,7 +68,7 @@ discover_cursor() {
     local base="$HOME/.cursor/projects"
     [ -d "$base" ] || return 0
 
-    for dir in "$base"/*"$WORKSPACE_NAME"*/; do
+    for dir in "$base"/*"$REPO_NAME"*/; do
         [ -d "$dir" ] || continue
         local transcripts="$dir/agent-transcripts"
         [ -d "$transcripts" ] || continue
@@ -88,7 +88,7 @@ discover_pi() {
     if [ -n "${PI_CODING_AGENT_SESSION_DIR:-}" ]; then
         find "$base" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
         if [ -z "$REPO_CWD" ]; then
-            for dir in "$base"/*"$WORKSPACE_NAME"*/; do
+            for dir in "$base"/*"$REPO_NAME"*/; do
                 [ -d "$dir" ] || continue
                 find "$dir" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
             done
@@ -97,8 +97,8 @@ discover_pi() {
     fi
 
     # Pi stores sessions under --<absolute-cwd-with-slashes-as-hyphens>--.
-    # When the caller supplies an exact workspace root, probe only that encoded
-    # directory so sibling workspaces never enter the pipeline.
+    # When the caller supplies an exact repo root, probe only that encoded
+    # directory so sibling repos like my-repo-old never enter the pipeline.
     if [ -n "$REPO_CWD" ]; then
         local dir="$base/$(encode_pi_cwd "$REPO_CWD")"
         [ -d "$dir" ] || return 0
@@ -107,7 +107,7 @@ discover_pi() {
     fi
 
     # Fallback for direct script use without --cwd.
-    for dir in "$base"/*"$WORKSPACE_NAME"*/; do
+    for dir in "$base"/*"$REPO_NAME"*/; do
         [ -d "$dir" ] || continue
         find "$dir" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
     done
@@ -123,7 +123,7 @@ discover_pi() {
 # with physical paths so symlinked cwds resolve to the same bucket, mirroring
 # omp's resolveEquivalentPath. Prints nothing when the cwd cannot be resolved.
 encode_omp_raw_cwd() {
-    local cwd canon_home rel
+    local cwd canon_home canon_tmp local_tmp rel
     cwd="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
     canon_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || canon_home="$HOME"
     case "$cwd" in
@@ -135,8 +135,21 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
-            rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
-            printf -- '--%s--' "$rel"
+            local_tmp="$(jj workspace root 2>/dev/null || pwd -P)/.tmp"
+            canon_tmp="$(cd "$local_tmp" 2>/dev/null && pwd -P)" || canon_tmp=""
+            case "$cwd" in
+                "$canon_tmp")
+                    printf -- '-tmp'
+                    ;;
+                "$canon_tmp"/*)
+                    rel="$(printf '%s' "${cwd#"$canon_tmp"/}" | sed 's/[/\\:]/-/g')"
+                    printf -- '-tmp-%s' "$rel"
+                    ;;
+                *)
+                    rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
+                    printf -- '--%s--' "$rel"
+                    ;;
+            esac
             ;;
     esac
 }
@@ -161,7 +174,7 @@ discover_omp() {
     fi
 
     # omp has two bucket-naming schemes in the wild, and both keep the raw
-    # workspace basename (spaces and all) inside the bucket name:
+    # repo basename (spaces and all) inside the bucket name:
     #   - raw: "-<home-rel>", "-tmp-<tmp-rel>", "--<abs>--" (legacy relative to
     #     the hashed scheme; restored as current in omp 17.2.9, #7646)
     #   - hashed: "<scope>-<sanitized-basename>-<sha256-of-canonical-cwd>"
@@ -169,7 +182,7 @@ discover_omp() {
     #     "-", edge dashes stripped, capped at the last 80 chars, empty falls
     #     back to "project" — session-paths.ts getDefaultSessionDirName)
     # Scan basename-matching buckets in the default-profile sessions root and
-    # in every named-profile root; exact workspace matching comes from the
+    # in every named-profile root; exact repo association comes from the
     # downstream header `cwd` filter (extract-metadata.py --cwd-filter reads
     # the type:"session" header). Glob the sanitized form so repos whose
     # basename contains characters the hashed scheme normalizes (e.g. spaces)
@@ -179,7 +192,7 @@ discover_omp() {
     # name: it catches buckets the basename globs miss when the bucket's path
     # segments no longer resemble the repo name as typed.
     local sanitized
-    sanitized="$(printf '%s' "$WORKSPACE_NAME" | sed -E 's/[^a-zA-Z0-9._-]+/-/g; s/^-+//; s/-+$//' | tail -c 80)"
+    sanitized="$(printf '%s' "$REPO_NAME" | sed -E 's/[^a-zA-Z0-9._-]+/-/g; s/^-+//; s/-+$//' | tail -c 80)"
     [ -n "$sanitized" ] || sanitized="project"
     local agent_dir="${PI_CODING_AGENT_DIR:-$HOME/$config_dir/agent}"
     # omp getSessionsDir() flattens the agent/ prefix under XDG: ~/.omp/agent/sessions
@@ -219,8 +232,8 @@ discover_omp() {
                 [ -d "$dir" ] || continue
                 find "$dir" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
             done
-            if [ "$WORKSPACE_NAME" != "$sanitized" ]; then
-                for dir in "$root"/*"$WORKSPACE_NAME"*/; do
+            if [ "$REPO_NAME" != "$sanitized" ]; then
+                for dir in "$root"/*"$REPO_NAME"*/; do
                     [ -d "$dir" ] || continue
                     find "$dir" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
                 done
@@ -241,7 +254,7 @@ case "$PLATFORM" in
         # Pi and omp share the PI_CODING_AGENT_SESSION_DIR override: when it
         # is set, both discover functions emit the same flat-dir files, and
         # the downstream xargs call does not deduplicate. Emit each path once;
-        # platform detection is unaffected because extract-metadata.py
+        # platform association is unaffected because extract-metadata.py
         # detects the file shape (title slot => omp, otherwise pi).
         { discover_claude; discover_codex; discover_cursor; discover_pi; discover_omp; } | awk '!seen[$0]++'
         ;;

@@ -6,7 +6,7 @@ argument-hint: "[question, document, or approaches] [cross-check] — or bare"
 
 # Form a Point of View
 
-Produce a decisive, project-grounded point of view in the subject's own shape: a **graded verdict** on an external-adoption question, a **holistic take** on a document, or a **position** on a supplied approach set. The subject is whatever this skill was invoked with, in the prompt or the conversation. Stay read-only while forming and reconciling the POV. You are done when the POV is delivered with its required evidence and disclosure, or when an explicit blocker is returned. **The year is 2026**, for source recency.
+Produce a decisive, project-grounded point of view in the subject's own shape: a **graded verdict** on an external-adoption question, a **holistic take** on a document, or a **position** on a supplied approach set. The subject is whatever this skill was invoked with, in the prompt or the conversation. Stay read-only while forming and reconciling the POV. You are done when the POV is delivered with its attribution and required disclosure, or when an explicit blocker is returned. **The year is 2026**, for source recency.
 
 
 ## The moat
@@ -15,17 +15,11 @@ Produce a decisive, project-grounded point of view in the subject's own shape: a
 
 ## User-facing communication
 
-Write for the person deciding what to do. Lead with the decision, question, or recommendation. Keep internal workflow vocabulary and mechanics out of chat unless asked, and put any consequence they need into ordinary language. Call the codebase "this project" or "the repository" unless the user supplied a recognizable name. Never promote a directory, workspace, working-copy change, bookmark, or path into the project name.
+Write for the person deciding what to do. Lead with the decision, question, or recommendation. Keep internal workflow vocabulary and mechanics out of chat unless asked, and put any consequence they need into ordinary language. Call the codebase "this project" or "the repository" unless the user supplied a recognizable name. Never promote a directory, workspace, bookmark, or path into the project name.
 
 ## Interaction Method
 
-Ask through the host's blocking question tool, one question at a time: `AskUserQuestion` (Claude Code; run `ToolSearch` with `select:AskUserQuestion` if its schema is not loaded), `request_user_input` (Codex), `ask_question` (`agy`), `ask_user` (Pi). Fall back to numbered chat options only when none exists or the call errors. Never skip the question.
-
-## Runtime Conventions
-
-Use Jujutsu for every local version-control operation. Resolve the current workspace with `jj workspace root`; treat `@` as the working-copy commit; inspect state with `jj status`, content changes with `jj diff` (`--from`/`--to` for explicit comparison endpoints), revision history with `jj log` and revsets, line origins with `jj file annotate`, remotes with `jj git remote list`, branch-like pointers as bookmarks, and additional working copies as `jj workspace` workspaces. Jujutsu has no active bookmark, so never infer a current branch; inspect bookmarks and remote bookmarks explicitly. Prefer stable change IDs across rewrites and commit IDs only when the exact immutable revision matters. Use `jj describe` to edit an existing change description; use `jj commit` only when the intended operation is to describe the working-copy change and create a new change on top. Preserve GitHub, `gh`, and other provider-specific references; for `gh` in a non-colocated Jujutsu repository, set `GIT_DIR` from `jj git root`.
-
-At every site in this skill and its references that composes, edits, validates, recommends, or emits a user-facing message, persisted decision, or Jujutsu change description, apply this exact sentence: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The sentence's `git log` wording is not an operational instruction: inspect the project's active instructions and current `jj log` history; their runtime tone, vocabulary, and syntax take precedence. Preserve required decisions, paths, interaction semantics, and operational provider, model, or harness facts while adapting prose dynamically. Fixed stems, examples, and invocation tokens define required substance rather than mandatory message syntax. Do not impose a fixed prefix, heading, subject, body, layout, template, or example. Do not add product branding, generated-by text, or creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution; operational references are facts, not attribution.
+Ask through the host's blocking question tool, one question at a time: the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered chat options only when no such tool is in the list or a real question call errors. Never skip the question.
 
 ## Artifact Root
 
@@ -35,7 +29,7 @@ Resolve `<root>` the first time you compose a `<root>/` path; a read of `<root>/
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 

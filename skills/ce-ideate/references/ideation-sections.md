@@ -119,7 +119,7 @@ Two constraints on any visual you do add:
   *opposite* of a plan or requirements diagram. The shared rendering
   reference treats plan diagrams as authoritative content and forbids
   "directional sketch" framing; ideation visuals are the reverse —
-  deliberately directional overviews of a direction nobody has committed
+  deliberately directional overviews of a direction nobody has chosen
   to yet. Keep them conceptual (contrast, analogy, rough flow). Detailed
   architecture, sequence diagrams, and wireframes belong downstream in
   ce-brainstorm / ce-plan once a direction is chosen, not here.
@@ -185,5 +185,7 @@ mode: <repo-grounded | elsewhere-software | elsewhere-non-software>
 ## No process exhaust
 
 Keep engineering-process metadata out of the artifact — no "captured at
-Phase X" notes, no skill-pointer "next steps", no producer credits, and no
-process-credit lines. The reader wants the ideas and their basis.
+Phase X" notes, no skill-pointer "next steps", no italic provenance
+lines, and no tool, product, model, or agent attribution. The reader wants
+the ideas and their basis. HTML may carry only the functional timestamp and
+source identifier required by its rendering contract.

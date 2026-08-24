@@ -112,7 +112,7 @@ The names below are skill-local prompt asset file stems under `references/agents
 - `framework-docs-researcher` for official framework or library behavior
 - `best-practices-researcher` for current external patterns and industry guidance
 - `web-researcher` for landscape/prior-art gaps — competitor patterns, market signals, or an unsettled external option set (which library/provider/approach) that recommendations depend on
-- Add `jujutsu-history-analyzer` only when historical rationale or prior art is materially missing
+- Add `jj-history-analyzer` only when historical rationale or prior art is materially missing
 
 **Key Technical Decisions**
 - `architecture-strategist` for design integrity, boundaries, and architectural tradeoffs
@@ -176,10 +176,10 @@ Signals that justify artifact-backed mode:
 
 If artifact-backed mode is not clearly warranted, stay in direct mode.
 
-Artifact-backed mode uses a private per-run directory under `$(jj workspace root)/.tmp`, with `$(pwd)/.tmp` as the fallback when workspace-root resolution fails. Create it once by atomically claiming a unique `rocketclaw-plan-deepen-<run-id>` directory with mode `0700`, capture its **absolute path**, and pass that absolute path to each sub-agent so they write to it directly. Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
+Artifact-backed mode uses a private per-run directory under the current Jujutsu workspace's `.tmp`; outside a Jujutsu workspace, use `.tmp` under the current working directory. Create it once before dispatching sub-agents and capture its **absolute path**. Pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`. Do not pass unresolved shell-variable strings to sub-agents.
 
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"; TMP_BASE="$WORKSPACE_ROOT/.tmp"; umask 077; [ ! -L "$TMP_BASE" ] || exit 1; mkdir -p "$TMP_BASE" || exit 1; SCRATCH_DIR="$TMP_BASE/rocketclaw-plan-deepen-$(date +%Y%m%dT%H%M%S)-$$-${RANDOM:-0}"; mkdir -m 700 "$SCRATCH_DIR" || exit 1; printf '%s\n' "$SCRATCH_DIR"
+WORKSPACE_ROOT="$(jj --ignore-working-copy workspace root 2>/dev/null || pwd)"; SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"; mkdir -p "$SCRATCH_ROOT"; SCRATCH_DIR="$SCRATCH_ROOT/ce-plan-deepen-<run-id>"; (umask 077; mkdir "$SCRATCH_DIR"); printf '%s\n' "$SCRATCH_DIR"
 ```
 
 Refer to the echoed absolute path as `<scratch-dir>` throughout the rest of this workflow.
@@ -224,7 +224,7 @@ Findings against `session-settled:`-labeled KTDs are presented like any other �
 
 After all agents have been reviewed, carry only the accepted findings forward to 5.3.7.
 
-If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. Leave `$SCRATCH_DIR` in the workspace-local `.tmp` namespace when rejected findings are useful for debugging; otherwise remove that claimed run directory.
+If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. Leave `$SCRATCH_DIR` in the workspace-local `.tmp` for debugging and report its path; a later run may remove stale per-run artifacts.
 
 If findings were accepted and the plan was modified, proceed through 5.3.7 and 5.3.8 as normal — document-review acts as a quality gate on the changes.
 
@@ -236,7 +236,7 @@ Strengthen only the selected sections. Keep the plan coherent and preserve its o
 
 **Session-settled KTD stability.** Deepening may append rationale or a conflict call-out to a `session-settled:`-labeled Key Technical Decision, but never removes the annotation or inverts the decision. Contradiction evidence routes through the severity ladder: nothing found — proceed silently; suboptimal-but-workable — proceed as settled and attach a conflict call-out to the KTD; invalidating — stop as blocked per the SKILL.md Phase 5.2 pipeline contract.
 
-Deepening may tighten, not only grow. A section can be strengthened by cutting as well as adding — collapse multi-idea sentences, drop hedges, and delete superseded text outright rather than leaving it as strikethrough or stacking a separate "resolutions" layer on top of it. Jujutsu preserves the prior revisions. A shorter, contradiction-free section is a stronger one. This is distinct from "rewrite the entire plan from scratch" below, which stays forbidden.
+Deepening may tighten, not only grow. A section can be strengthened by cutting as well as adding — collapse multi-idea sentences, drop hedges, and delete superseded text outright rather than leaving it as strikethrough or stacking a separate "resolutions" layer on top of it. A shorter, contradiction-free section is a stronger one. This is distinct from "rewrite the entire plan from scratch" below, which stays forbidden.
 
 **Strengthen at the owning entry.** A rule owned by an R or KTD gains evidence, rationale, or precision at that entry; a sibling section that needs it cites the owning ID. Never restate an owned rule into a Key Decision, Scope bullet, or unit Approach — deleting an unlinked sibling restatement found in a strengthened section is itself a valid tightening move.
 

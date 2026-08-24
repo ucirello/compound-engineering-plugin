@@ -1,10 +1,8 @@
 # Proof web API reference
 
-Required read before any Proof HTTP call. Endpoints, operation tables, error handling, and lifecycle; the skill body carries the identity, credential, and safety boundaries.
+Required read before any Proof HTTP call. Endpoints, operation tables, error handling, and lifecycle; the skill body carries the neutral protocol identity, credential, and safety boundaries.
 
 ## Web API
-
-On Claude Code, each new `curl` pattern prompts for permission. Suggest the allowlist rule `"Bash(curl * https://www.proofeditor.ai/*)"` under `permissions.allow` if the user wants a quieter session; do not add it silently.
 
 Auth on document surfaces (preferred first):
 
@@ -117,7 +115,7 @@ Prefer the narrowest op:
 
 If a `find`/anchor matches more than once, the server rejects with `TARGET_AMBIGUOUS` and `error.candidates` — nothing is changed. Disambiguate with `occurrence` (`"first"`, `"last"`, or 0-based index) or `before`/`after`. Never assume silent first-match.
 
-Content ops in one request apply atomically; review ops then apply in order. If a review op fails after content committed, the response is `ok: false` with `partial: true` — re-read and retry only the failed op (same `Idempotency-Key` safely replays).
+Content ops in one request apply atomically; review ops then apply in order. If a review op fails after content applied, the response is `ok: false` with `partial: true` — re-read and retry only the failed op (same `Idempotency-Key` safely replays).
 
 **Errors** use `{ ok:false, error:{ code, message, retryable, opIndex?, target?, candidates?, current? } }`. Codes: `AUTH`, `NOT_FOUND`, `INVALID_REQUEST`, `TARGET_NOT_FOUND`, `TARGET_AMBIGUOUS`, `CONFLICT`, `TOO_LARGE`, `BUSY`, `PENDING`, `INTERNAL`.
 
@@ -128,7 +126,7 @@ Content ops in one request apply atomically; review ops then apply in order. If 
 - Retryable `CONFLICT` on a structural suggestion — a connected editor is on an older suggestion reader; retry after it reconnects. Non-retryable `CONFLICT` — the op crosses frontmatter, raw HTML, or unknown content; use a whole-block op or leave it
 - `accept` that keeps failing with `SUGGESTION_OWNERSHIP_MISSING` after a fresh read — the suggestion is wedged; `reject` it (always allowed) and recreate instead of retrying `accept`
 - Settled `200` with `ok:true` — inspect returned `revision` / document; chain without an extra read when the body is complete
-- `202` / `PENDING` — write may have committed; re-read `v3/document` before chaining or reporting success
+- `202` / `PENDING` — write may have applied; re-read `v3/document` before chaining or reporting success
 
 After every successful edit: confirm `ok:true`, confirm the intended text/comment/suggestion, then report the Proof link with a short summary.
 

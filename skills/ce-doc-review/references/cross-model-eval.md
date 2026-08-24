@@ -23,7 +23,7 @@ as specified.
 Cases 11-14 cover the detached launch->wait lifecycle and model-identity
 receipts. Case 15 covers U8's fixed-route and bounded-adaptability contract.
 Run them with the fake-CLI harness pattern — stub peer CLIs placed first on
-PATH — and cross-host per the workspace's eval default: the `claude` and `codex` providers.
+PATH — and cross-host per the repository's eval default.
 
 1. **Activation gate — fires (R1, R2).** A document that activates at least one
    trio lens (e.g. a greenfield plan with a high-stakes domain activating
@@ -34,7 +34,7 @@ PATH — and cross-host per the workspace's eval default: the `claude` and `code
    for non-activated lenses.
 
 2. **Activation gate — does not fire (R2, R3).** A routine plan with validated
-   upstream provenance (`product_contract_source: brainstorm`), no high-stakes
+   upstream provenance (`product_contract_source: ce-brainstorm`), no high-stakes
    domain, and no new abstraction → no trio lens activates → **no** cross-model
    call is launched. Assert: zero peer calls; the review completes normally.
 

@@ -18,15 +18,15 @@ Read this when checking the V15 cache before dispatching `web-researcher`, or wh
 ]
 ```
 
-Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` is `<workspace-root>/.tmp/rocketclaw/ideate/<run-id>` or the `$PWD`-local fallback resolved once in `references/grounding.md` Phase 1.
+Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` is `<workspace-root>/.tmp/local/ce-ideate/<run-id>` with `$PWD/.tmp/local/ce-ideate/<run-id>` as the no-workspace fallback, resolved once in `references/grounding.md` Phase 1.
 
 ## Reuse check
 
 Before dispatching `web-researcher`, resolve the scratch root (the parent of `<scratch-dir>`) in bash and list sibling run-id directories — refinement loops within a session may legitimately reuse another run's cache by topic, not run-id:
 
 ```bash
-SCRATCH_DIR="<absolute scratch-dir resolved in Phase 1>"
-SCRATCH_ROOT="$(dirname "$SCRATCH_DIR")"
+SCRATCH_DIR="<absolute scratch-dir resolved in Phase 1>";
+SCRATCH_ROOT="$(dirname "$SCRATCH_DIR")";
 find "$SCRATCH_ROOT" -maxdepth 2 -name 'web-research-cache.json' -type f 2>/dev/null
 ```
 
@@ -44,9 +44,12 @@ After a fresh dispatch, append the new result to the current run's cache file at
 
 The topic surface is the user-supplied content the web research is grounded on:
 - **Elsewhere modes (`elsewhere-software`, `elsewhere-non-software`):** the user's topic prompt plus any Phase 0.4 intake answers (the actual subject the agent is researching). The two sub-modes are keyed separately — a reclassification between software and non-software for the same topic hash must force a fresh dispatch, since the research domain differs.
-- **Repo mode:** the focus hint plus the absolute path returned by `jj workspace root`. This keeps the cache key meaningful when focus is empty while workspace-local storage already separates unrelated repositories. If no workspace root is available, use the current working directory's absolute path. Hash the discriminator; the first 8 hex characters of SHA-256 are sufficient.
+- **Repo mode:** the focus hint plus a stable repository discriminator. This keeps the cache key meaningful when focus is empty and differentiates unrelated workspaces. Resolve the discriminator with this fallback chain and hash the result (first 8 hex chars of sha256 is sufficient):
+    1. The `origin` URL reported by `jj git remote list` — stable across machines and correct for collaborators on the same remote.
+    2. `jj workspace root` — an absolute workspace path; machine-local but available in a JJ workspace.
+    3. The current working directory's absolute path — last resort outside a JJ workspace.
 
-Normalize before hashing: lowercase, collapse whitespace. (The workspace discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
+Normalize before hashing: lowercase, collapse whitespace. (The repo discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
 
 ## Degradation
 

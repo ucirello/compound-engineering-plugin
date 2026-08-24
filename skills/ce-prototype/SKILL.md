@@ -6,7 +6,7 @@ argument-hint: "[prompt, brainstorm path, or plan path]"
 
 # Prototype
 
-Build a throwaway prototype at the fidelity that can answer this question, before later work treats an approach as given. Then apply the decisions or hand off.
+Build a throwaway prototype at the fidelity that can answer this question, before locking in an approach later work will treat as given. Then apply the decisions or hand off.
 
 **Do not fake the dimension being tested.** Modality, fidelity, and medium all follow from that one rule. A question about how a flow or state model behaves is settled by driving it, so a screen that only looks like the product does not answer it. A question about how a layout or a mark reads is settled by seeing it at real finish, so a thin sketch does not answer it either. The user's own perception settles the question, never your judgment of the artifact.
 
@@ -17,13 +17,11 @@ Build a throwaway prototype at the fidelity that can answer this question, befor
 
 If there is no person to experience the prototype — LFG, `mode:pipeline`, or any unattended run — stop. Do not start a preview, and do not invent how it should feel. Return that this skill needs a human.
 
-**Runtime prose conventions.** At every site in this skill and its references that composes, edits, validates, recommends, or emits a user-facing message, persisted decision, or Jujutsu change description, apply this exact sentence: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The sentence's `git log` wording is not an operational instruction: inspect the project's active instructions and current `jj log` history; their runtime tone, vocabulary, and syntax take precedence. Preserve required decisions, paths, interaction semantics, and operational provider, model, or harness facts while adapting prose dynamically. Fixed stems, examples, and invocation tokens define required substance rather than mandatory message syntax. Do not impose a fixed prefix, heading, subject, body, layout, template, or example. Do not add product branding, generated-by text, or creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution; operational references are facts, not attribution.
-
 **User-runnable invocation rendering.** Two outputs print invocation syntax: the attended re-run in that refusal, and the next-skill recommendation when the user applies. Default to `/ce-prototype`, `/ce-brainstorm`, and `/ce-plan`; use `$ce-prototype`, `$ce-brainstorm`, and `$ce-plan` only on Codex or a host that documents dollar-prefixed skill invocation. Render only each invocation as inline code and output one form only.
 
 ## Scope the question
 
-Read `references/scoping.md` before you ask the user anything or touch the repo. That load is not optional. It owns how the question arrives and the scoped repo read of what the question touches — do not scan the tree. It also owns narrow vs wide, sizing, the go-ahead message, and how the remaining questions change after each decision. Do not build until the user proceeds.
+Read `references/scoping.md` before you ask the user anything or touch the workspace. That load is not optional. It owns how the question arrives and the scoped workspace read of what the question touches — do not scan the tree. It also owns narrow vs wide, sizing, the go-ahead message, and how the remaining questions change after each decision. Do not build until the user proceeds.
 
 ## Build it
 
@@ -33,13 +31,13 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. It yields in exactly two cases: the user names a technology, or the dimension cannot be rendered in a browser without faking it. In that second case, build in the medium the dimension requires, and name that choice before you build. If a named technology also cannot render the dimension, say so rather than yielding silently. `references/build.md` owns what the artifact may be on either path.
 
-Build a kept run under `<jj workspace root>/.context/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Use `<jj workspace root>/.tmp/ce-prototype/<date>-<slug>/` when the run should not be kept or the durable path fails its safety checks; without a Jujutsu workspace, use `<physical current directory>/.tmp/ce-prototype/<date>-<slug>/`. `references/build.md` owns the fallback conditions.
+Build under `<workspace-root>/.context/ce-prototype/<date>-<slug>/`, where `<workspace-root>` is resolved with `jj workspace root`, so the prototype survives for the implementation that follows. Use `<workspace-root>/.tmp/ce-prototype/<date>-<slug>/` for a transient run. Outside a JJ workspace, use `<current-directory>/.tmp/ce-prototype/<date>-<slug>/`; never use OS-global temporary storage. `references/build.md` owns root selection.
 
-Jujutsu automatically snapshots new files and uses `.gitignore`, not a Jujutsu-specific ignore file. Before writing, confirm that the selected `.context/` or `.tmp/` parent is ignored. When it is not, offer to add that exact root-relative rule to the `.gitignore` at the selected local root, changing it only if the user agrees and leaving every unrelated rule alone. If the path was already tracked in Jujutsu, ignoring it is not enough; use `jj file untrack` only for the selected scratch path after confirming the command against local `jj file untrack --help`.
+Before creating either root, prove its top-level directory is excluded from JJ snapshots by the workspace's applicable ignore rules. JJ snapshots new non-ignored files at the start of ordinary commands. When `.context/` is not already ignored, offer to append that exact rule before resolving a persistent root. Prove `.tmp/` is ignored before any transient run and before a persistent run that may fall back there, offering to append that exact rule when needed. If every root the run may use cannot be excluded, stop instead of letting prototype files enter the working-copy change.
 
 `references/preview.md` owns that offer and the resolution that follows it. Do not create the run directory yourself; a second claim splits the screens from the capsule.
 
-Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches the product tree. Before editing, start a new empty Jujutsu change on top of the user's current change so the overlay is isolated; inspect local `jj help` and the workspace's current conventions for compatible syntax rather than assuming a fixed command form. When the try ends, abandon only that isolated overlay change, preserving work you did not make. If the overlay cannot be isolated or abandoned cleanly, name the change and files left modified rather than handing off an ambiguous working copy. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
+Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches product files, and it runs only in a dedicated JJ workspace with its own anonymous working-copy change. Do not create, move, or publish a bookmark. When the try ends, abandon only that owned overlay change, forget only that workspace, and remove only its transient workspace directory after confirming it contains no unrelated work. If clean isolation or cleanup cannot be proved, stop and name the workspace, change ID, and files left behind. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
 
 ## Keep the decisions
 
@@ -53,7 +51,7 @@ Read `decisions.md` before building for the next related question, and work out 
 
 When the user applies:
 
-- If this run has a directly related brainstorm or plan — passed on invoke, passed by the calling skill, or named in this session as the file this prototype is for — load `references/write-back.md` and follow it. Markdown and HTML both. Use `decisions.md` when present. Do not pick a plan because one exists in the repo.
+- If this run has a directly related brainstorm or plan — passed on invoke, passed by the calling skill, or named in this session as the file this prototype is for — load `references/write-back.md` and follow it. Markdown and HTML both. Use `decisions.md` when present. Do not pick a plan because one exists in the workspace.
 - If there is no such file or relatedness is unclear: do not mint a plan or a third note. Recap from `decisions.md` when present, carrying the decisions and, when the run left one behind, the prototype path — an overlay run has none, so say that rather than pointing at something you undid. That recap is a complete outcome, not a degraded one.
 
 Then continue. If a calling skill invoked this, return the choices in `decisions.md` and let it continue. Otherwise recommend a next skill and pass this session as the seed. After a write-back, recommend `ce-plan`: the plan is now `requirements-only` with its HOW stripped, and `ce-work` refuses it until `ce-plan` re-enriches. After a file-free run, recommend `ce-brainstorm` when product-level questions remain, or `ce-plan` when the session is enough to plan. Print that recommendation per the rendering rule above.

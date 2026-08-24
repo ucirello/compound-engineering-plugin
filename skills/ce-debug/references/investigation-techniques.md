@@ -78,13 +78,13 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ## Jujutsu Bisect for Regressions
 
-When a bug is a regression, save the current operation ID and working-copy change ID, choose a known-good revision, and use Jujutsu's native binary search over the revset from good to bad:
+When a bug is a regression ("it worked before"), use Jujutsu's bisection runner to find the first bad revision. The range heads are assumed bad and ancestors outside the range good:
 
 ```bash
 jj bisect run --range '<known-good-revision>..@' -- <test-command>
 ```
 
-The command exits 0 for good, 125 to skip, 127 to abort because the command is unavailable, and any other non-zero status for bad. The range heads are assumed bad and ancestors just outside the range good, so verify both boundary observations before trusting the result. `jj bisect run` restores the original working-copy revision when complete. If interrupted, return with `jj edit <saved-change-id>` and use `jj op log` plus the saved operation ID to inspect or recover any uncertain state.
+The test command must exit 0 for good, 125 to skip, and another non-zero status for bad. Jujutsu directly edits each candidate revision while evaluating it.
 
 ---
 
@@ -120,7 +120,7 @@ A 5% reproduction rate confirms the bug exists but suggests timing or data sensi
 - Run the suite with randomized test order (most runners support a seed flag) — a different failing-test neighbor each run implies global state mutation
 - Bisect the preceding tests: run the failing test with just the first half of the earlier tests, then the second half, then narrow
 
-Common culprits once isolated: module-level state, mocks not torn down, scratch files under `<workspace-root>/.tmp/rocketclaw/ce-debug/` (or `./.tmp/rocketclaw/ce-debug/` without a workspace) not cleaned up, database rows not rolled back, environment variables mutated and not restored.
+Common culprits once isolated: module-level state, mocks not torn down, temp files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
 
 ---
 

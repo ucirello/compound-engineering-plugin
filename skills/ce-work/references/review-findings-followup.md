@@ -2,7 +2,7 @@
 
 Load this reference when `ce-code-review` has finished and **ce-work** (or another caller) should apply fixes before the Residual Work Gate.
 
-`ce-code-review` is invoked here with `mode:agent`, so it is review-only: it reports findings and writes artifacts but does not mutate the workspace, describe or publish changes, or file tickets. The caller owns apply/fix policy. Standalone review is also report-only unless local apply was explicitly authorized.
+`ce-code-review` is invoked here with `mode:agent`, so it is **review-only** in this context: it reports findings and writes artifacts but does not mutate changes, bookmarks, remotes, or tickets. **The caller owns apply/fix policy.** Standalone review is also report-only unless local apply was explicitly authorized.
 
 ## Consume the completed review (do not re-run it)
 
@@ -15,19 +15,19 @@ Reuse the review output already in hand:
 
 If `status` is `failed`, stop shipping and surface `reason`. If `degraded`, note partial reviewer coverage before applying anything.
 
-### Fallback — invoke review only for cold callers
+### Fallback — invoke `ce-code-review` only for cold callers
 
 Only when the caller reached this file **without** already running review (no review output in hand): invoke `ce-code-review` once, then proceed to apply. Do not invoke when the caller already ran review (e.g., ce-work shipping step 3a).
 
 Invoke the skill explicitly — do not treat a casual "review my changes" prompt as a substitute unless the harness routed it to `ce-code-review`.
 
 ```
-ce-code-review mode:agent plan:<plan-path> base:<base-revision>
+ce-code-review mode:agent plan:<plan-path> base:<revset-or-ref>
 ```
 
 - `mode:agent` — JSON output (`review.json` + primary JSON response) for programmatic parsing; same review pipeline as default.
 - `plan:` — when Phase 1 used a plan file (requirements completeness).
-- `base:` — when the diff base revision is already resolved in the current workspace; omit when reviewing a PR number/URL or standalone current bookmark.
+- `base:` — when the review revset base is already resolved; omit when reviewing a PR number/URL or the current JJ change stack.
 - Do **not** pass deprecated `mode:autofix`.
 
 For human-facing shipping, invoke `ce-code-review` without `mode:agent` if markdown tables are preferred. It still reports only unless the invocation explicitly authorizes local apply. Capture the Actionable Findings and artifact dir before caller-owned apply.
@@ -40,13 +40,13 @@ For human-facing shipping, invoke `ce-code-review` without `mode:agent` if markd
 
 ## What to apply
 
-Default to applying every actionable finding. Applying is a reversible edit to the working-copy change; diffs are reviewed before finalization and verification runs afterward, so leaving a clear fix unapplied "to be safe" is the failure mode.
+Default to applying every actionable finding. Applying is a reversible edit in a JJ change; diffs are reviewed before acceptance and tests run after, while `jj op log` preserves repository operations. Bias to act:
 
 - **Apply** any finding with a concrete `suggested_fix` that is a clear improvement — the common case. `confidence` and `autofix_class` tell you what to prioritize and what to flag, not whether you may apply: `autofix_class` is signal, **never permission**.
 - **Push back** — keep the finding, don't apply — when the reviewer is wrong; note why.
 - **Flag, don't block, green-but-unverifiable edits** — when an applied fix touches auth/authz, a public or cross-service contract/schema, or concurrency, a passing test does not prove safety; apply it when there is a clear `suggested_fix` and confidence, and call it out prominently in the diff review.
 
-There is no precondition safety checklist or deny-list. Diff review, verification, and the Jujutsu operation log control the downside of reversible edits.
+There is no precondition safety checklist and no deny-list. Downside is controlled by fileset review, tests, and the JJ operation log.
 
 **Evidence still matches the code** — the fix subagent confirms at `file:line` before editing. The orchestrator does **not** open files just to decide eligibility or dispatch.
 
@@ -62,7 +62,7 @@ Surface what was deferred and why; never silently drop.
 
 The orchestrator **does not investigate findings** (no pre-read of cited files to judge complexity or inline vs subagent). That would spend the context window you are trying to protect.
 
-**Orchestrator owns:** parse review output -> eligibility filter on JSON fields only -> build batches -> dispatch fix subagents -> review diffs -> verification -> canonical change description -> Residual Work Gate.
+**Orchestrator owns:** parse review output -> **eligibility filter on JSON fields only** -> build batches -> dispatch fix subagents -> review filesets -> tests -> accept and describe changes -> Residual Work Gate.
 
 **Fix subagents own:** read `file:line`, confirm evidence still matches, apply or skip with reason, return summary.
 
@@ -74,7 +74,7 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 
 1. Sort applicable findings by severity (P0 first).
 2. **Group by `file`.** All eligible findings on the same file → **one subagent** (it loads the file once and works through its `#` list in severity order).
-3. **Parallel waves:** batches with disjoint file sets may run in parallel under the same isolated-workspace rules as Phase 1.
+3. **Parallel waves:** batches with **disjoint filesets** may run in parallel under the same JJ workspace/shared-directory rules as Phase 1 Step 4 in `ce-work`.
 4. **Same file, many findings:** keep one subagent per file. If the prompt would exceed a comfortable size (~8 findings), split into **serial** subagent passes on that file (first batch highest severity, then next batch after merge or after the prior agent returns).
 5. **Cross-file coupling:** do not merge unrelated files into one subagent just to reduce agent count — file grouping is the default. Only co-batch multiple files when findings explicitly reference the same small edit surface (rare); when in doubt, separate by file.
 
@@ -82,9 +82,13 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Work through assigned `#` in severity order; at each `file:line`, skip with a one-line reason if evidence no longer matches
 - Apply the mechanical bar from § What to apply / What not to apply — skip anything that needs design judgment
 - Do not re-run `ce-code-review`
-- Shared-directory fallback: do not split, describe, bookmark, or publish the change; return which `#` were applied or skipped and which files changed
+- Shared-directory fallback: do not run mutating JJ commands; return which `#` were applied or skipped and which files changed
 
-**After each wave:** the orchestrator reviews assigned diffs, runs targeted or broader verification according to `requires_verification`, and finishes a dynamically described Jujutsu change unless isolated workspace integration is still pending. Repeat until all batches complete.
+**After each wave:** the orchestrator reviews the fileset (scope = assigned `#` only), rejects recorded conflicts, runs required tests, composes a locally conforming change description, accepts the change, and advances the feature bookmark. Repeat until all batches complete.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Project instructions and observed `git log` syntax win; do not prescribe a fixed type, scope, or finding-message template.
 
 ### Optional inline shortcut (skip subagent spawn)
 

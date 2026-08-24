@@ -262,6 +262,26 @@ def _replace_atomic(src, dst):
             time.sleep(_WIN_RETRY_SECONDS)
 
 
+def _write_json_atomic(path, value, indent=None):
+    """Write a replacement file beside its workspace-local destination."""
+    directory = os.path.dirname(path)
+    name = ".{}.{}.pending".format(os.path.basename(path), uuid.uuid4().hex)
+    pending = os.path.join(directory, name)
+    fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=indent)
+            stream.flush()
+            os.fsync(stream.fileno())
+        _replace_atomic(pending, path)
+    except BaseException:
+        try:
+            os.unlink(pending)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 class _WatchSuperseded(Exception):
     """Internal control flow: this watch lost ownership and must unwind immediately."""
 
@@ -288,7 +308,28 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
+    if cmd and cmd[0] == "gh" and not env.get("GIT_DIR"):
+        try:
+            root = subprocess.run(
+                ["jj", "git", "root"], capture_output=True, text=True,
+                encoding="utf-8", timeout=10,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            root = None
+        if root is not None and root.returncode == 0 and root.stdout.strip():
+            env["GIT_DIR"] = root.stdout.strip()
     return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
+
+
+def _run_git_transport(cmd):
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["GCM_INTERACTIVE"] = "never"
+    env["GIT_ASKPASS"] = ""
+    env["SSH_ASKPASS"] = ""
+    return subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
+    )
 
 
 def _run_checked(cmd, label):
@@ -345,25 +386,6 @@ def _valid_oid(value):
         re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", value))
 
 
-def _fetch_remote_ref_oid(owner, name, ref, host=None):
-    """Read one exact GitHub branch ref without mutating local repository state."""
-    query = """
-query($owner:String!,$repo:String!,$ref:String!){
-  repository(owner:$owner,name:$repo){ ref(qualifiedName:$ref){ target { oid } } }
-}"""
-    result = _run([
-        "gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}",
-        "-f", f"repo={name}", "-f", f"ref=refs/heads/{ref}", "-f", f"query={query}",
-    ])
-    if result.returncode != 0:
-        return None
-    try:
-        oid = json.loads(result.stdout)["data"]["repository"]["ref"]["target"]["oid"]
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-        return None
-    return oid if _valid_oid(oid) else None
-
-
 def fetch_pr_merge_identity(pr, owner, name, host=None):
     """Read mergeability and the identities it was computed from in one GraphQL observation."""
     query = """
@@ -392,8 +414,8 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
     PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to an exact
-    GitHub GraphQL ref query while preserving read-only remote observation and exact-ref matching.
+    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
+    transport while preserving exact-ref matching and non-interactive failure behavior.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -430,8 +452,31 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     ])
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        current_oid = _fetch_remote_ref_oid(owner, name, ref, host)
-    if not _valid_oid(current_oid):
+        exact_ref = f"refs/heads/{ref}"
+        remote_url = (f"https://{host or 'github.com'}/"
+                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
+        try:
+            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
+            # headless host with no configured Git credential helper is not anonymous here.
+            git_result = _run_git_transport([
+                "git", "-c", "core.askPass=",
+                "-c", "credential.helper=",
+                "-c", "credential.helper=!gh auth git-credential",
+                "ls-remote", "--exit-code", "--refs",
+                remote_url, exact_ref,
+            ])
+        except (subprocess.TimeoutExpired, OSError):
+            git_result = None
+        if git_result is not None and git_result.returncode == 0:
+            matches = []
+            for line in (git_result.stdout or "").splitlines():
+                fields = line.split()
+                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
+                    matches.append(fields[0])
+            if len(matches) == 1:
+                current_oid = matches[0]
+                r = git_result
+    if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
     if not (_valid_oid(graphql_oid) and _valid_oid(head_oid)):
@@ -728,8 +773,10 @@ def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, hos
     The local manager is the fast/rich path, but its output is accepted only when it contains the
     requested PR. `gh stack view` has no target argument and may describe a different current stack.
     """
-    local = _run(["gh", "stack", "view", "--json"])
-    if local.returncode == 0:
+    exported = _run(["jj", "git", "export"])
+    local = (_run(["gh", "stack", "view", "--json"])
+             if exported.returncode == 0 else None)
+    if local is not None and local.returncode == 0:
         try:
             chain = _chain_from_stack_view(json.loads(local.stdout), pr, url)
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -1323,7 +1370,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in the workspace-local .tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace-local .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -2237,7 +2284,7 @@ def diff(state, cur, now=None, advance_trajectory=True):
         "blocked_external_review_moved_this_tick": (
             awaiting_approval > 0 and external_review_moved),
         "pr_chain": state["pr_chain"],
-        "stack_blocker": _stack_blocker(state["pr_chain"]),
+        "stack_blocker": _stack_blocker(state["pr_chain"], cur),
         "open_needs_human": open_needs_human,
         "needs_human_ids": needs_human_ids,
         "needs_human_residuals": needs_human_residuals,
@@ -2303,8 +2350,11 @@ def _change_sig(state):
             bool(state.get("awaiting_approval")))
 
 
-def _stack_blocker(chain):
-    """Return the manager-currency residual that blocks target readiness, if any."""
+def _stack_blocker(chain, cur=None):
+    """Return the manager-currency residual that blocks target readiness, if any.
+    Manager freshness (`needsRebase`) fires on plain trunk drift, which GitHub already prices into
+    the target's own mergeability against its parent base; so a certain MERGEABLE/CLEAN read defers
+    to GitHub and only a stale-or-unknown target that GitHub does not clear blocks."""
     status = (chain or {}).get("manager_status")
     if status == MANAGER_PROBE_ERROR:
         return "manager-probe-error"
@@ -2312,10 +2362,16 @@ def _stack_blocker(chain):
         return "relationship-probe-error"
     if status == MANAGER_CONFIRMED:
         freshness = chain.get("target_needs_rebase")
+        if freshness is False:
+            return None
+        cur = cur or {}
+        if (cur.get("mergeable") == "MERGEABLE" and cur.get("merge_state_status") == "CLEAN"
+                and _mergeability_certain(cur.get("mergeable"), cur.get("merge_state_status"),
+                                          cur.get("base"))):
+            return None
         if freshness is True:
             return "target-needs-rebase"
-        if freshness is not False:
-            return "managed-freshness-unknown"
+        return "managed-freshness-unknown"
     return None
 
 
@@ -2391,18 +2447,7 @@ def locked_state(state_dir, pr, repo, now):
         state.setdefault("invocation_backstop_seconds", DEFAULT_INVOCATION_BACKSTOP_SECONDS)
         box = {"state": state}
         yield box
-        tmp_path = os.path.join(state_dir, ".state-{}.tmp".format(uuid.uuid4().hex))
-        try:
-            with open(tmp_path, "x") as tmp:
-                json.dump(box["state"], tmp, indent=2)
-                tmp.flush()
-                os.fsync(tmp.fileno())
-            _replace_atomic(tmp_path, state_path)
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except FileNotFoundError:
-                pass
+        _write_json_atomic(state_path, box["state"], indent=2)
 
 
 def _fetch_snapshot(args):
@@ -2681,18 +2726,7 @@ def _reserve_watch_candidate(args, generation):
     }
     with _state_lock(args.state_dir, exclusive=True):
         previous = _read_watch_candidate(args)
-        tmp_path = os.path.join(args.state_dir, ".watch-candidate-{}.tmp".format(uuid.uuid4().hex))
-        try:
-            with open(tmp_path, "x") as tmp:
-                json.dump(candidate, tmp)
-                tmp.flush()
-                os.fsync(tmp.fileno())
-            _replace_atomic(tmp_path, _watch_candidate_path(args))
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except FileNotFoundError:
-                pass
+        _write_json_atomic(_watch_candidate_path(args), candidate)
     return previous
 
 

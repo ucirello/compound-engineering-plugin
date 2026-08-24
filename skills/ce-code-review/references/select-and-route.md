@@ -51,10 +51,10 @@ Treat changed persistence writes, event publication, retry/partial-failure behav
 
 **`previous-comments` is PR-only AND comment-gated.** Only select this persona when both conditions hold:
 
-1. Stage 1 gathered PR metadata (PR number or URL was provided, or `gh pr view` resolved a bookmark on the current stack).
+1. Stage 1 gathered PR metadata (PR number or URL was provided as an argument, or `gh pr view <bookmark>` returned metadata for the current bookmark).
 2. `hasPriorComments` from Stage 1 is true (the PR has at least one review submission or issue comment).
 
-Skip it for standalone workspace reviews with no associated PR, and skip it for PRs with no prior feedback yet -- there is nothing for the persona to verify, and a spawned subagent that returns empty findings still costs the full subagent startup overhead (persona spec, diff, schema, plus its own gh calls).
+Skip it for standalone bookmark reviews with no associated PR, and skip it for PRs with no prior feedback yet -- there is nothing for the persona to verify, and a spawned subagent that returns empty findings still costs the full subagent startup overhead (persona spec, diff, schema, plus its own `gh` calls).
 
 Stack-specific personas are additive when runtime behavior warrants them. A Hotwire UI change may warrant `julik-frontend-races`; a TypeScript boundary change may warrant `api-contract` only when the diff changes an externally consumed contract, not merely because it exports a symbol.
 
@@ -67,7 +67,7 @@ For `deployment-verification-agent`, use the same migration-artifact gate when t
 Before spawning sub-agents, find the file paths (not contents) of all relevant standards files for the `project-standards` persona. Use the native file-search/glob tool to locate:
 
 1. Use the native file-search tool (e.g., Glob in Claude Code) to find all `**/CLAUDE.md` and `**/AGENTS.md` in the repo.
-2. Filter to those whose directory is an ancestor of at least one changed file. A standards file governs all files below it (e.g., `AGENTS.md` at the workspace root applies to the whole workspace, while `skills/AGENTS.md` would apply to everything under `skills/`).
+2. Filter to those whose directory is an ancestor of at least one changed file. A standards file governs all files below it (e.g., `AGENTS.md` at the repo root applies to the whole checkout, while `skills/AGENTS.md` would apply to everything under `skills/`).
 
 Distinguish an empty successful search from a failed or unavailable search:
 
@@ -99,29 +99,26 @@ Complete this stage **before reading persona prompt assets, `references/dispatch
 Generate the review run ID now so both routes share one artifact directory:
 
 ```bash
-WORKSPACE_ROOT="$(jj --ignore-working-copy workspace root 2>/dev/null)" || WORKSPACE_ROOT="$(pwd)";
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUNS_ROOT="$SCRATCH_ROOT/ce-code-review";
-(umask 077; mkdir -p "$RUNS_ROOT") || exit 1; chmod 700 "$RUNS_ROOT" || exit 1;
-RUN_DIR="";
-for _ in 1 2 3 4 5 6 7 8; do RUN_ID="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"; CANDIDATE="$RUNS_ROOT/$RUN_ID"; if (umask 077; mkdir "$CANDIDATE") 2>/dev/null; then RUN_DIR="$CANDIDATE"; break; fi; done;
-[ -n "$RUN_DIR" ] || { echo "could not atomically claim review run directory" >&2; exit 1; };
-chmod 700 "$RUN_DIR" || exit 1;
+RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ');
+RUN_DIR="$SCRATCH_ROOT/ce-code-review/$RUN_ID";
+(umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR";
 ```
 
 When adversarial was selected and scope is `local-aligned` or standalone, read `references/cross-model-review.md` from this skill's directory in full, attest the host, resolve and sanction one fixed route, and make its required egress announcement. Before start, write both orchestrator-owned inputs the reference defines: the dedicated host-vetted constraints file, and the separate untrusted semantic brief containing intent plus material risk divisions inferred from the current file inventory and diff. Do not embed the diff, mechanically copy every path, or combine the two files. Then start the detached peer job using the reference's exact invocation and persist its job ID, target, requested model/reasoning, and start epoch in working state.
 
 - If the runner returns a job ID, the peer owns the adversarial lens for this run. Remove `adversarial-reviewer` from the local roster immediately. Do not read its local persona asset or dispatch it later — except when the owning fold-in rules in `references/cross-model-review.md` require the did-not-run fallback or the in-process restore after a failed same-route rate-limit retry.
-- If no job starts because of a dispatch-infrastructure failure (a non-zero exit before any job id, an unresolved `$SKILL_DIR`/script path), first attempt the bounded same-route hand recovery from `references/cross-model-review.md` before accepting the fallback: re-run the identical resolved route, holding target/model and read scope fixed, while each failure is a new plausibly recoverable one and the shared peer deadline holds. If recovery returns a job id, treat it as the branch above (the peer owns the lens; remove `adversarial-reviewer`). Only when recovery is exhausted — a failure repeats or the deadline is spent — or the peer was never eligible to start (gate not met, disabled by workspace config, host un-attestable, no different provider, or CLI missing), keep `adversarial-reviewer` in the local roster as the fallback and record the peer skip reason for Coverage.
-- In `pr-remote` / `bookmark-remote`, do not start the peer; keep the selected in-process adversarial reviewer because it can inspect the reviewed revision through the owning provider/Jujutsu path.
+- If no job starts because of a dispatch-infrastructure failure (a non-zero exit before any job id, an unresolved `$SKILL_DIR`/script path), first attempt the bounded same-route hand recovery from `references/cross-model-review.md` before accepting the fallback: re-run the identical resolved route, holding target/model and read scope fixed, while each failure is a new plausibly recoverable one and the shared peer deadline holds. If recovery returns a job id, treat it as the branch above (the peer owns the lens; remove `adversarial-reviewer`). Only when recovery is exhausted — a failure repeats or the deadline is spent — or the peer was never eligible to start (gate not met, disabled by checkout config, host un-attestable, no different provider, or CLI missing), keep `adversarial-reviewer` in the local roster as the fallback and record the peer skip reason for Coverage.
+- In `pr-remote` / `bookmark-remote`, do not start the peer; keep the selected in-process adversarial reviewer because it can inspect the reviewed revisions.
 
 When a job ID is returned and task tracking is active, add a distinct task that names the independent cross-model adversarial review. Keep it in progress while the detached job runs, then record its terminal outcome when the artifact is collected. Never create this task before a peer starts or leave it behind when the local adversarial fallback runs.
 
 Do not proceed until the final local roster is materialized. This is a routing boundary, not a preference: a started peer and the in-process adversarial reviewer must never both receive the same review brief.
 
-Announce that final team before spawning, as a user-facing summary: name the always-on reviewers plainly, and for each conditional reviewer give the one-line reason it was added (the real concern, not the keyword that matched). Do **not** put local reviewer model-tier labels (`[session model]`/`[mid-tier]`) or scope-mode codenames in this announce — those are internal. Still decide each local reviewer's tier here and keep it in working state for Stage 4. The cross-model line is separate and follows the receipt-aware model/reasoning and route wording in its reference. This is progress reporting, not a blocking confirmation.
+Announce that final team before spawning, as a user-facing summary: name the always-on reviewers plainly, and for each conditional reviewer give the one-line reason it was added. Do not include model-tier, creator, harness, or scope-mode attribution. Still decide each local reviewer's tier here and keep it in working state for Stage 4. The external-review line follows the disclosure wording in its reference. This is progress reporting, not a blocking confirmation.

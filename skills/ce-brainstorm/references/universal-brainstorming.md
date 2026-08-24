@@ -63,11 +63,11 @@ When the conversation has enough material to narrow — reflect back what you've
 
 **Always synthesize a summary in the chat.** Before offering any next steps, reflect back what emerged: key decisions, the direction chosen, open threads, and any assumptions made. This is the primary output of the brainstorm — the user should be able to read the summary and know what they landed on.
 
-**Then offer next steps** using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+**Then offer next steps** using the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question.
 
 **Question:** "Brainstorm wrapped. What would you like to do next?"
 
 - **Create a plan** → hand off to `ce-plan` with the decided goal and constraints; let `ce-plan` choose the universal/knowledge-work artifact shape, not the software unified-plan contract
 - **Save summary to disk** → write the summary as a markdown file in the current working directory
-- **Publish to Proof — shareable link** → load the `ce-proof` skill to publish the doc to the Proof editor and get a shareable link to read, comment on, or share with others (one-way; the local summary stays canonical)
+- **Publish to Proof — shareable link** → load the `ce-proof` skill to publish the doc to Every's Proof editor and get a shareable link to read, comment on, or share with others (one-way; the local summary stays canonical)
 - **Done** → the conversation was the value, no artifact needed

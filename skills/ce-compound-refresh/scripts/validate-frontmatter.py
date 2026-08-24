@@ -20,8 +20,7 @@ Checks (regex-based, no YAML parser dependency):
        lines, not substrings — `----` and `---extra` are rejected)
     2. No top-level scalar value contains ` #` unquoted (silent comment
        truncation)
-    3. No top-level scalar value contains `: ` unquoted (mapping confusion —
-       a scalar value can otherwise be interpreted as a mapping)
+    3. No top-level scalar value contains `: ` unquoted (mapping confusion)
 
 The script does NOT flag values starting with YAML reserved indicators
 (`` ` ``, `*`, `&`, `!`, etc.) because those produce loud parser errors

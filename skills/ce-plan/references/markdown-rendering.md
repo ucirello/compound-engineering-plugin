@@ -22,7 +22,7 @@ These hold regardless of which skill produced the artifact.
   — they break portability across machines, workspaces, teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
-  semantic marker such as `<!-- plan-section: work-relationships -->`; it carries
+  semantic marker such as `<!-- ce-section: work-relationships -->`; it carries
   section meaning for downstream agents and does not create layout. If a layout
   idea only works as HTML, defer it to the HTML rendering. Markdown stays
   markdown.

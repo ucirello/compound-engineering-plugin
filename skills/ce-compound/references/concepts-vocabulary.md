@@ -1,6 +1,6 @@
 # CONCEPTS.md vocabulary rules
 
-`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and active project instructions can cite without redefinition. It lives at the workspace root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
+`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and AGENTS.md can cite without redefinition. Lives at the repo root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
 
 ## How terms enter: accretion and seeding
 
@@ -16,7 +16,7 @@ Define the core domain nouns the area's **declared domain model** exposes that m
 ### Scope of a seed
 
 - A **scoped run** — a learning capture, or a refresh narrowed to an area — seeds only that area's core nouns, and defines only terms it actually investigated against code. It does not reach for repo-wide nouns it never touched.
-- A **workspace-wide bootstrap** — an explicit "create CONCEPTS.md" request — seeds the whole project's declared domain model. This is the only path that produces a coherent "what is this project" glossary; a scoped run cannot, and should not pretend to.
+- A **repo-wide bootstrap** — an explicit "create CONCEPTS.md" request — seeds the whole project's declared domain model. This is the only path that produces a coherent "what is this project" glossary; a scoped run cannot, and should not pretend to.
 
 ## Be opinionated
 

@@ -45,16 +45,37 @@ AGENT_SURFACE_PATTERN = re.compile(
 
 
 def jj(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["jj", "--no-pager", *args], capture_output=True, text=True, check=False
-    )
+    try:
+        return subprocess.run(
+            ["jj", *args], capture_output=True, text=True, check=False
+        )
+    except OSError as error:
+        return subprocess.CompletedProcess(["jj", *args], 127, "", str(error))
 
 
-def valid_revision(ref: str | None) -> bool:
+def resolve_revision(ref: str | None) -> str | None:
     if not ref:
-        return False
-    result = jj("log", "-r", ref, "--no-graph", "-T", 'commit_id ++ "\\n"')
-    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
+        return None
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\\n"')
+    revisions = [line for line in result.stdout.splitlines() if line]
+    if result.returncode != 0 or len(revisions) != 1:
+        return None
+    return revisions[0]
+
+
+def unique_common_ancestor(base: str, head: str) -> str | None:
+    result = jj(
+        "log",
+        "--no-graph",
+        "-r",
+        f"heads(::{base} & ::{head})",
+        "-T",
+        'commit_id ++ "\\n"',
+    )
+    candidates = [line for line in result.stdout.splitlines() if line]
+    if result.returncode != 0 or len(candidates) != 1:
+        return None
+    return candidates[0]
 
 
 DEFAULT_DOCS_ROOT = "docs"
@@ -75,14 +96,14 @@ def normalize_docs_root(docs_root: str | None) -> str:
     return docs_root
 
 
-def workspace_root() -> Path:
-    """The workspace root, matching how docs_root is resolved everywhere else.
+def repo_root() -> Path:
+    """The repository root, matching how docs_root is resolved everywhere else.
 
-    docs_root is workspace-relative (``<workspace-root>/<docs_root>``), so the corpus
+    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
     check must resolve against the Jujutsu workspace root, not the current working
     directory. ce-code-review can run from a subdirectory (``jj diff`` still
     works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when Jujutsu cannot answer.
+    wrongly report the corpus absent. Fall back to cwd outside a Jujutsu workspace.
     """
     result = jj("workspace", "root")
     if result.returncode == 0 and result.stdout.strip():
@@ -96,14 +117,14 @@ def has_learnings_corpus(docs_root: str | None) -> bool:
     docs_root is the artifact root resolved by the calling skill (default
     ``docs``). Guard it the way the skill-prose rule does: normalize an
     unset/placeholder value to the default, and treat a value that is absolute
-    or escapes the workspace as absent rather than probing an external path.
+    or escapes the repository as absent rather than probing an out-of-repo path.
     """
     docs_root = normalize_docs_root(docs_root)
     if os.path.isabs(docs_root):
         return False
-    workspace = workspace_root()
-    candidate = (workspace / docs_root / "solutions").resolve()
-    if workspace not in candidate.parents and candidate != workspace:
+    repo = repo_root()
+    candidate = (repo / docs_root / "solutions").resolve()
+    if repo not in candidate.parents and candidate != repo:
         return False
     return candidate.is_dir()
 
@@ -126,46 +147,55 @@ def fail_closed(reason: str, learnings_corpus: bool = False) -> dict[str, object
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
-    parser.add_argument("--to")
+    parser.add_argument("--head")
     parser.add_argument("--docs-root", default="docs")
     args = parser.parse_args()
 
     learnings_corpus = has_learnings_corpus(args.docs_root)
 
-    if not valid_revision(args.base):
+    base = resolve_revision(args.base)
+    if base is None:
         print(json.dumps(fail_closed("invalid base endpoint", learnings_corpus), sort_keys=True))
         return 0
-    if args.to is not None and not valid_revision(args.to):
-        print(json.dumps(fail_closed("invalid destination revision", learnings_corpus), sort_keys=True))
+    head = resolve_revision(args.head) if args.head is not None else None
+    if args.head is not None and head is None:
+        print(json.dumps(fail_closed("invalid head endpoint", learnings_corpus), sort_keys=True))
         return 0
 
-    diff_args = ["--from", args.base, "--to", args.to or "@"]
+    diff_args = ["--from", base]
+    if head:
+        common_ancestor = unique_common_ancestor(base, head)
+        if common_ancestor is None:
+            print(json.dumps(fail_closed("common ancestor unavailable or ambiguous", learnings_corpus), sort_keys=True))
+            return 0
+        diff_args = ["--from", common_ancestor, "--to", head]
+
     names = jj("diff", *diff_args, "--name-only")
-    patch = jj("diff", *diff_args, "--git")
-    if names.returncode != 0 or patch.returncode != 0:
+    if names.returncode != 0:
         print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
     executable_lines = 0
-    current_path: str | None = None
-    old_path: str | None = None
-    for line in patch.stdout.splitlines():
-        if line.startswith("--- a/"):
-            old_path = line[6:]
-        elif line.startswith("+++ b/"):
-            current_path = line[6:]
-        elif line == "+++ /dev/null":
-            current_path = old_path
-        elif current_path and Path(current_path).suffix.lower() in CODE_EXTENSIONS:
-            if (line.startswith("+") and not line.startswith("+++")) or (
-                line.startswith("-") and not line.startswith("---")
-            ):
-                executable_lines += 1
-
     uncounted = sum(
         1 for file in files if Path(file).suffix.lower() not in CODE_EXTENSIONS
     )
+    for file in files:
+        if Path(file).suffix.lower() not in CODE_EXTENSIONS:
+            continue
+        patch = jj("diff", *diff_args, "--git", "--", file)
+        if patch.returncode != 0:
+            uncounted += 1
+            continue
+        changed = sum(
+            1
+            for line in patch.stdout.splitlines()
+            if (line.startswith("+") and not line.startswith("+++"))
+            or (line.startswith("-") and not line.startswith("---"))
+        )
+        if changed == 0 and patch.stdout:
+            uncounted += 1
+        executable_lines += changed
     signals = [
         name
         for name, pattern in SIGNAL_PATTERNS.items()

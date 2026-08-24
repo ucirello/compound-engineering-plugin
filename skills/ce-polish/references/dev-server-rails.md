@@ -23,9 +23,9 @@ Default: `3000`. Overrides follow the cascade in `references/dev-server-detectio
 3. `.env` / `.env.development` `PORT=<n>`
 4. a dev-server port explicitly stated in the project's active instructions in context (not grepped from instruction files)
 
-## Stub generation for `.rocketclaw/launch.json`
+## Stub generation for `.workspace/launch.json`
 
-When the user accepts "Save this as `.rocketclaw/launch.json`?", emit the Rails stub from `launch-json-schema.md`:
+When the user accepts "Save this as `.workspace/launch.json`?", emit the Rails stub from `launch-json-schema.md`:
 
 ```json
 {

@@ -17,7 +17,7 @@
 #   stdout: Raw JSON output from the measurement command
 #   stderr: Passed through from the measurement command
 #   exit code: Same as the measurement command (124 for timeout, 125 when
-#              ROCKETCLAW_OPTIMIZE_CENSOR_AFTER or its legacy alias fires)
+#              CE_OPTIMIZE_CENSOR_AFTER fires before timeout_seconds)
 
 set -euo pipefail
 
@@ -107,36 +107,36 @@ PY
   exit 1
 }
 
-# Optional futility bound: ROCKETCLAW_OPTIMIZE_CENSOR_AFTER=<seconds> kills a live
-# run that has already exceeded a predeclared noncompetitive bound. The legacy
-# CE_OPTIMIZE_CENSOR_AFTER alias is lower priority. Distinct from timeout_seconds
-# (the spec's hard cap). Exit 125 means censored; 124 still means the configured
-# timeout fired.
-CENSOR_AFTER="${ROCKETCLAW_OPTIMIZE_CENSOR_AFTER:-${CE_OPTIMIZE_CENSOR_AFTER:-}}"
+# Optional futility bound: CE_OPTIMIZE_CENSOR_AFTER=<seconds> kills a live
+# run that has already exceeded a predeclared noncompetitive bound. Distinct
+# from timeout_seconds (the spec's hard cap). Exit 125 means censored; 124
+# still means the configured timeout fired.
+CENSOR_AFTER="${CE_OPTIMIZE_CENSOR_AFTER:-}"
 CENSORING=0
 CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd -P)
-  TMP_ROOT="$WORKSPACE_ROOT/.tmp"
-  CENSOR_DIR="$TMP_ROOT/rocketclaw/optimize/censor"
-  for path in "$TMP_ROOT" "$TMP_ROOT/rocketclaw" "$TMP_ROOT/rocketclaw/optimize" "$CENSOR_DIR"; do
-    [[ ! -L "$path" ]] || { echo "Error: refusing symlinked local scratch path: $path" >&2; exit 1; }
-    if [[ ! -e "$path" ]]; then
-      (umask 077; mkdir "$path")
+  if WORKSPACE_ROOT=$(jj root 2>/dev/null); then
+    LOCAL_TMP="$WORKSPACE_ROOT/.tmp/ce-optimize/measure"
+    GIT_ROOT=$(jj git root 2>/dev/null) || {
+      echo "Error: JJ repository has no Git backing store for local ignore rules" >&2
+      exit 1
+    }
+    EXCLUDE_FILE="$GIT_ROOT/info/exclude"
+    mkdir -p "$(dirname "$EXCLUDE_FILE")"
+    if ! grep -q '^/\.tmp/$' "$EXCLUDE_FILE" 2>/dev/null; then
+      printf '/.tmp/\n' >> "$EXCLUDE_FILE"
     fi
-    [[ -d "$path" && -O "$path" ]] || { echo "Error: unsafe local scratch path: $path" >&2; exit 1; }
-    chmod 700 "$path"
-  done
-  for attempt in $(seq 1 100); do
-    candidate="$CENSOR_DIR/status-$$-$attempt"
-    if (set -C; umask 077; : > "$candidate") 2>/dev/null; then
-      CENSOR_STATUS_FILE="$candidate"
-      break
-    fi
-  done
-  [[ -n "$CENSOR_STATUS_FILE" ]] || { echo "Error: could not reserve local status file" >&2; exit 1; }
+  else
+    LOCAL_TMP="$PWD/.tmp/ce-optimize/measure"
+  fi
+  mkdir -p "$LOCAL_TMP"
+  CENSOR_STATUS_FILE="$LOCAL_TMP/censor-status-$$-${RANDOM:-0}"
+  ( set -o noclobber; : > "$CENSOR_STATUS_FILE" ) 2>/dev/null || {
+    echo "Error: cannot reserve local censor status file" >&2
+    exit 1
+  }
 fi
 
 # Run the measurement command with timeout

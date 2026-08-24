@@ -12,9 +12,8 @@ Check whether the input is:
 
 **If spec file provided:**
 1. Read the YAML spec file. The orchestrating agent parses YAML natively -- no shell script parsing.
-2. Normalize accepted legacy aliases before validation. Treat `max_runner_up_merges_per_batch` as `max_runner_up_integrations_per_batch` only when the current key is absent; when both are present, the current key wins.
-3. Validate the normalized spec against **every** rule in the `validation_rules` section of `references/optimize-spec-schema.yaml` (that section is the single source of truth for what a valid spec requires — do not rely on a remembered subset; conditional rules such as the singleton-rubric and exclusive-resources requirements live only there).
-4. If any rule fails, report the specific failures and ask the user to fix them before proceeding
+2. Validate the spec against **every** rule in the `validation_rules` section of `references/optimize-spec-schema.yaml` (that section is the single source of truth for what a valid spec requires — do not rely on a remembered subset; conditional rules such as the singleton-rubric and exclusive-resources requirements live only there).
+3. If any rule fails, report the specific failures and ask the user to fix them before proceeding
 
 **If description provided:**
 1. Analyze the project to understand what can be measured
@@ -96,5 +95,5 @@ Check whether the input is:
    - If this is the first run: recommend `execution.mode: serial`, `execution.max_concurrent: 1`, `stopping.max_iterations: 4`, and `stopping.max_hours: 1`
    - If the user named multiple required hard targets or an expensive harness: recommend `metric.objectives` plus `stability.mode: ladder` as above, and show `references/example-expensive-benchmark-spec.yaml`
    - If `type: judge`: recommend `sample_size: 10`, `batch_size: 5`, and `max_total_cost_usd: 5` until the rubric and harness are trusted
-6. Write the normalized spec with current field names to `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/spec.yaml`; outside a Jujutsu workspace use `.tmp/rocketclaw/optimize/<spec-name>/spec.yaml` relative to the current directory
+6. Write the spec to `<workspace-root>/.tmp/ce-optimize/runs/<spec-name>/spec.yaml`; outside JJ, use only `$PWD/.tmp/ce-optimize/runs/<spec-name>/spec.yaml`
 7. Present the spec to the user for approval before proceeding

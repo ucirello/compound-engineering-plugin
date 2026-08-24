@@ -1,47 +1,15 @@
-# Feature bookmark creation from the default bookmark
+# Bookmark creation from trunk
 
-The local `<base>` bookmark may differ from `<base>@<remote>`. Ask when the local bookmark has unpublished changes because Jujutsu cannot infer whether those changes belong in the new work.
+Jujutsu has no current branch and needs no stash before changing topology. A bookmark names the change that GitHub will expose as a branch; it does not own the working copy.
 
-## Decision flow
+Fetch the selected base remote with `jj git fetch --remote <remote>`. If fetch succeeds, use the resolved `trunk()` target or the explicitly resolved base remote bookmark as the parent. Before moving work, inspect `jj log -r '<base>@<remote>..<local-base>'` when a local base bookmark exists. If it contains unpublished changes, show them and ask whether the feature should include them or start at the remote base. Never silently include unrelated local changes.
 
-### 1. Fetch the remote base
-
-```bash
-jj git fetch --remote <remote> --branch <base>
-```
-
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
-
-### 2. Check for unpublished local changes on `<base>`
+Create or rebase the feature change on the chosen parent with Jujutsu operations. Preserve the current change ID when the work already exists; use `jj rebase -r @ -o <parent>` rather than copying its diff. If the work has not started, use `jj new <parent>`. Create the publication bookmark only after the target change is known:
 
 ```bash
-jj log -r '<base>@<remote>..<base>' --no-graph
+jj bookmark create <bookmark> -r <target>
 ```
 
-- **Empty output:** use `<base>@<remote>` as the base.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
+If the bookmark already exists, verify its target and ownership. Move it with `jj bookmark move <bookmark> --to <target>` only when advancing the intended publication line; a backward or sideways move requires explicit confirmation and `--allow-backwards`.
 
-  > "Local `<base>` has N unpublished changes not on `<base>@<remote>`. Include them in the new feature work, or start from the remote bookmark?"
-
-  - **Include** -> use `<base>` as the base.
-  - **Start remote-clean** -> use `<base>@<remote>` as the base; local changes remain reachable from `<base>`.
-
-  Never default silently because including unrelated unpublished changes in a PR is worse than asking again.
-
-### 3. Root the working-copy change
-
-```bash
-jj rebase -r @ -o <base-ref>
-```
-
-Jujutsu rebases the working-copy change and automatically rebases descendants. If the rebase produces conflicts, surface them and stop; do not auto-resolve. Create or move `<feature-bookmark>` only after the intended commit exists, as `references/commit-and-push.md` specifies.
-
-## Fetch failure fallback
-
-If fetch fails, leave `@` on its current parent and continue only when that parent is the intended base:
-
-```bash
-jj log -r '@-' --no-graph
-```
-
-Otherwise stop and ask for a resolvable base. Note in the user-facing summary when base freshness was not verified. Skip the unpublished-change comparison because a stale remote bookmark cannot answer it reliably.
+If fetch fails, retain the existing parent and report that remote-base freshness was not verified. Do not invent a remote target or rewrite the change onto an unverified base.

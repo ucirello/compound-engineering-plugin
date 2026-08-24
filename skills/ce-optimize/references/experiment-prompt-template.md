@@ -7,9 +7,9 @@ This template is used by the orchestrator to dispatch each experiment to a subag
 ## Template
 
 ```
-Implement one optimization experiment as an independent worker.
+You are an optimization experiment worker.
 
-Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. You do NOT run the measurement harness, describe or retain the change, or evaluate results -- the orchestrator handles all of that.
+Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. Your workspace's JJ working-copy change records the edits automatically. You do not run the measurement harness, describe or publish the change, or evaluate results; the orchestrator handles that.
 
 <experiment-context>
 Experiment: #{iteration} for optimization target: {spec_name}
@@ -55,9 +55,9 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 2. Implement the hypothesis described above
 3. Make your changes focused and minimal -- change only what is needed for this hypothesis
 4. Do NOT run the measurement harness (the orchestrator handles this)
-5. Do NOT describe or retain the change (the orchestrator handles the winning revision)
+5. Do not describe, rebase, abandon, bookmark, or publish the JJ change; the orchestrator owns its lifecycle
 6. Do NOT modify files outside the mutable scope
-7. When done, run `jj diff --stat` so the orchestrator can see your changes
+7. When done, run `jj diff --stat -r @` and `jj log -r 'conflicts() & @'` so the orchestrator can inspect the candidate and reject unresolved conflicts
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.
@@ -83,7 +83,7 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 ## Notes
 
 - This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch, reserve the filled prompt without overwrite under `<workspace-root>/.tmp/rocketclaw/optimize/prompts/`, or local `.tmp/rocketclaw/optimize/prompts/` outside Jujutsu, and pass it through standard input. Reject symlinked managed paths and use owner-only permissions.
+- For Codex dispatch: write the filled template under `<workspace-root>/.tmp/ce-optimize/prompts/`, or `$PWD/.tmp/ce-optimize/prompts/` outside JJ, and redirect it to `codex exec --skip-git-repo-check -`.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

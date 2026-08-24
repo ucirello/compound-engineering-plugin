@@ -16,7 +16,7 @@ Resolution steps:
 4. **Default.** Otherwise `OUTPUT_FORMAT=md`.
 5. **Pipeline override.** When invoked from LFG or any `disable-model-invocation` context, force `OUTPUT_FORMAT=md` regardless of steps 1-4. Downstream consumers (`ce-plan`, `ce-work`) parse markdown reliably; HTML in pipeline runs is unnecessary friction.
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, `brainstorm_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens, including repository-specific change-description prefixes that may appear inside a feature description, pass through verbatim. A stripped `brainstorm_model:<alias>` carrier (passed by an orchestrator) is retained for the approach-generation model-elevation step, not woven into the feature description.
+**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, `brainstorm_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens pass through verbatim because runtime-local change-description syntax is product content, not a flag grammar. A stripped `brainstorm_model:<alias>` carrier (passed by an orchestrator) is retained for the approach-generation model-elevation step, not woven into the feature description.
 
 **Model-elevation visibility.** Treat a stripped `brainstorm_model:<alias>` carrier or a surfaced `brainstorm_model` config value as a pending Phase 2 input, not a resolved choice. Phase 2 resolves the choice from the current conversation, carrier, and config immediately before generating approaches, so later user intent cannot be lost. Pipeline / `disable-model-invocation` mode still evaluates carrier and config.
 

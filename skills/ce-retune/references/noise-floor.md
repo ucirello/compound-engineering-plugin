@@ -1,23 +1,21 @@
 # Noise Floor and the Registered Bar
 
-Preserve required evidence, statistics, machine-readable values, and operational benchmark, model, and harness references. Fixed examples and report wording specify substance, not mandatory syntax unless an exact token is machine-readable. Do not add product branding, generated-by text, or attribution.
-
 Phase 2 protocol. Measure what changing nothing produces, then write down the bar before a change exists.
 
 ## What the A/A run buys
 
-Two builds of the corpus at the same immutable Jujutsu revision, run under one harness on one task, produce a distribution rather than a result. That distribution is the floor: any later claim smaller than it is unsupported no matter how confidently it was reported. In one observed corpus, 12 runs across identical builds gave workflow adherence 7 of 12 and output tokens from 21,872 to 155,682, a 7.12x spread on unchanged code. A claimed improvement from 2 of 8 to 5 of 8 sits entirely inside that envelope.
+Two builds of the corpus at the same Jujutsu revision, run under one harness on one task, produce a distribution rather than a result. That distribution is the floor: any later claim smaller than it is unsupported no matter how confidently it was reported. In the engagement this was the single most valuable measurement of the session — 12 runs across two identical builds gave workflow adherence 7 of 12 and output tokens from 21,872 to 155,682, a 7.12x spread on identical code. It retired every small-sample claim in flight, including an outside analyst's "2 of 8 improved to 5 of 8", which sits entirely inside the envelope of doing nothing.
 
 The A/A also tests the instrument. Identical builds that differ significantly are not evidence about the corpus; they are a harness, provenance, or scoring bug. Chase that before continuing.
 
 ## Setup
 
-Required capability: a harness that can point a run at a specific source workspace or corpus copy (Phase 0's build selector) and writes a per-run artifact you can parse. Both arms must go through the *same* runner, task, and model configuration.
+Required capability: a harness that can point a run at a specific Jujutsu workspace containing the corpus (Phase 0's build selector) and writes a per-run artifact you can parse. Both arms must go through the *same* runner, task, and model configuration.
 
-1. Materialize two Jujutsu workspaces from the same immutable revision with `jj workspace add`. Record the source change ID and commit ID for each arm.
+1. Materialize two `jj workspace` working copies at the same revision. Record both the change ID and commit ID for each arm; equality of commit IDs establishes identical content at that point.
 2. Hash both trees and assert equality before the first run (`find <dir> -type f | sort` then a checksum over the file list and contents). An accidental difference between arms gets read as noise and poisons the floor silently.
 3. Label the arms concretely by path, not by intent (`build-a`, `build-b`). Nothing downstream should be able to guess an arm from a filename that also encodes a hypothesis.
-4. **Prove the selector is honored, in one run, before planning any.** Point a single run at `build-a`, then open the finished artifact and confirm it names `build-a` in the durable field below. Two failures both look like a normal run: a harness that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all 12 runs unlabeled and unusable, and both are invisible until you try to score. If you want a positive control, put a harmless unique string in a **third**, throwaway workspace under `<workspace-root>/.tmp/retune/<run-id>/` and confirm it reaches that run's trace — never in either arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.
+4. **Prove the selector is honored, in one run, before planning any.** Point a single run at `build-a`, then open the finished artifact and confirm it names `build-a` in the durable field below. Two failures both look like a normal run: a harness that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all 12 runs unlabeled and unusable, and both are invisible until you try to score. If you want a positive control, put a harmless unique string in a **third**, throwaway Jujutsu workspace and confirm it reaches that run's trace — never in either arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.
 5. Plan 12 or more runs total, split evenly. Below about 10 the floor estimate is itself noise; the spread ratio in particular needs the tails.
 
 ## Interleave, never batch
@@ -32,7 +30,7 @@ If a run dies for an infrastructure reason, re-run *that arm's* slot rather than
 
 Every scored row must carry which build produced it, **read from the artifact the harness wrote**, never inferred from run order, timestamp, or the order you launched things.
 
-One observed scorer read the field the harness exposes for the source-workspace override *while a run is in flight*. On completion the harness folded that value into the run's metadata and cleared the live field, so every finished row had an empty build column and the arms were unverifiable from the scored data. The runs were fine; the measurement was worthless until re-scored.
+The engagement's first scorer read the field the harness exposes for the source-workspace override *while a run is in flight*. On completion the harness folds that value into the run's metadata and clears the live field, so every finished row had an empty build column and the arms were unverifiable from the scored data. The runs were fine; the measurement was worthless until re-scored.
 
 The rule that generalizes: **read the durable post-completion field first, fall back to the transient in-flight one.**
 
@@ -48,7 +46,7 @@ Minimum row schema:
 |---|---|
 | `run_id` | join key back to the raw trace |
 | `build` | arm, from the durable field |
-| `source_change_id`, `source_commit_id` | identifies the logical source and proves both arms used the same immutable revision |
+| `change_id`, `commit_id` | identifies the Jujutsu change and proves the arms were the same source revision |
 | `pair_index`, `position_in_pair` | recovers the interleave for paired analysis |
 | `adherence` | followed the workflow (separate from outcome) |
 | `outcome` | did the job |
@@ -81,7 +79,7 @@ Two-proportion sample size at 80% power, alpha 0.05, two-sided:
 n_per_arm = 7.849 * (p1*(1-p1) + p2*(1-p2)) / (p2 - p1)^2
 ```
 
-Against an observed 58% baseline, detecting +30 points gives about 31 per arm from that formula, and a power tool reported about 39 once it applied a continuity correction. **Take the larger.** Corrections differ by method and land roughly 20-40% above the plain figure at these rates, so with no tool to hand, plan on the plain figure inflated by a third rather than treating 31 as the budget. Print the number next to the non-result, in the same line, so the cost of the claim is visible where the claim is.
+Against the engagement's 58% baseline, detecting +30 points gives about 31 per arm from that formula, and the power tool used reported about 39 once it applied a continuity correction. **Take the larger.** Corrections differ by method and land roughly 20-40% above the plain figure at these rates, so with no tool to hand, plan on the plain figure inflated by a third rather than treating 31 as the budget. Print the number next to the non-result, in the same line, so the cost of the claim is visible where the claim is.
 
 ## The cheap one-armed alternative
 
@@ -106,7 +104,7 @@ The streak is a one-sided instrument: it can show a change is unlikely to be noi
 
 ## Registering the bar
 
-The registration is a written artifact at a path you can point a skeptic at, not an intention (`references/workflow-shapes.md` defines where the artifacts live). It must name:
+The registration is a written artifact at a path you can point a skeptic at, not an intention (`references/workflow-shapes.md` for where the engagement's artifacts live). It must name:
 
 - the metric, in the exact form the summarizer computes it;
 - the effect size worth detecting, and why that size and not a smaller one;
@@ -114,7 +112,7 @@ The registration is a written artifact at a path you can point a skeptic at, not
 - the stopping rule, including what counts as a broken run that does not consume the streak;
 - the phases the probe task traverses, from the validation below.
 
-**When the affordable n cannot detect the effect you care about, say so and change the design — not the interpretation.** Options, in preference order: pick a cheaper metric that moves more per run (token spread usually moves before completion rate), target a bigger effect, or use the streak. Running an underpowered two-armed test and reporting its point estimate is the failure mode this whole phase exists to prevent, as the 2-of-8 versus 5-of-8 example demonstrates.
+**When the affordable n cannot detect the effect you care about, say so and change the design — not the interpretation.** Options, in preference order: pick a cheaper metric that moves more per run (token spread usually moves before completion rate), target a bigger effect, or use the streak. Running an underpowered two-armed test and reporting its point estimate is the failure mode this whole phase exists to prevent, and it is exactly what the outside analyst's 2-of-8 versus 5-of-8 was.
 
 ## Sizing the probe task
 
@@ -126,7 +124,7 @@ Then validate that it does, before spending n on it:
 2. For each phase, check the trace for its boundary marker — the dispatch, the artifact write, the gate. Score against the phase-marker map Phase 1 already built (`references/baseline-mining.md`) rather than re-deriving markers here; a probe scored against a second, differently-derived map is not comparable to the archive baseline.
 3. List the phases the probe never entered.
 
-**A probe that structurally cannot enter a phase can never fail in it.** Its green result certifies only the phases it traversed, and the unentered ones stay unmeasured while the streak makes the corpus look verified. In one observed corpus, two cut passes came from auditing unreachable phases and could not have come from the runs. That is why Phase 5 requires reading the phases the instrument cannot reach, and why the unentered list belongs in the registration rather than in a footnote afterward.
+**A probe that structurally cannot enter a phase can never fail in it.** Its green result certifies only the phases it traversed, and the unentered ones stay unmeasured while the streak makes the corpus look verified. Two of the engagement's landed cut passes came out of auditing exactly those unreachable phases; none of them could have come from the runs. That is why Phase 5 requires reading the phases the instrument cannot reach, and why the unentered list belongs in the registration rather than in a footnote afterward.
 
 ## Reading a tie honestly
 

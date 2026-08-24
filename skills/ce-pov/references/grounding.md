@@ -14,15 +14,17 @@ Dispatch is tiered by task shape, never hardcoded to a model name:
 
 Classify a rejected scout dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and if another launch failure survives correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
 
-Create the scratch dir once, and reuse the echoed path for every scout this run:
+Create the scratch directory once under the Jujutsu workspace and reuse the echoed path for every scout this run. When the current directory is not in a Jujutsu workspace, use its local `.tmp` directory instead:
 
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/local/rocketclaw/ce-pov";
-umask 077;
-for path in "$WORKSPACE_ROOT/.tmp" "$WORKSPACE_ROOT/.tmp/local" "$WORKSPACE_ROOT/.tmp/local/rocketclaw" "$SCRATCH_ROOT"; do [ ! -L "$path" ] || { echo "unsafe scratch path symlink: $path" >&2; exit 1; }; mkdir -p "$path" || exit 1; [ -d "$path" ] && [ -O "$path" ] || { echo "scratch path is not owned by the current user: $path" >&2; exit 1; }; chmod 700 "$path" || exit 1; done;
-for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do SCRATCH_DIR="$SCRATCH_ROOT/$(date +%Y%m%dT%H%M%S)-$$-$(openssl rand -hex 4)"; mkdir -m 700 "$SCRATCH_DIR" 2>/dev/null && break; SCRATCH_DIR=""; done;
-[ -n "$SCRATCH_DIR" ] || { echo "could not claim a private scratch directory" >&2; exit 1; };
+WORKSPACE_ROOT="$(jj --ignore-working-copy workspace root 2>/dev/null || pwd -P)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-pov";
+if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+chmod 700 "$SCRATCH_ROOT" || exit 1;
+SCRATCH_DIR="$SCRATCH_ROOT/$(date +%Y%m%dT%H%M%S)-$$";
+(umask 077; mkdir "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
 

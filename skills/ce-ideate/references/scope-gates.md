@@ -4,7 +4,7 @@ Required read at the start of Phase 0, before any grounding dispatch. Owns the s
 
 ## Asking (applies to every gate below)
 
-Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question.
 
 Ask one question at a time. Prefer concise single-select choices when natural options exist.
 
@@ -51,10 +51,10 @@ Routing:
 
 | Phase | Delta |
 |---|---|
-| 0.3 mode | **Deterministic — skip Decision 1/2.** CWD inside a `jj` workspace → repo-grounded; otherwise elsewhere-software. Never elsewhere-non-software: with no subject there is no naming/narrative/personal intent to infer. No ambiguity-confirmation question. |
-| 0.4 substance | Required, not optional, when routed to elsewhere-software: with no subject *and* no workspace, Phase 1 has nothing to discover from. One ask; if the user still has no URL, description, or paste, end cleanly so they can re-invoke with material. |
+| 0.3 mode | **Deterministic — skip Decision 1/2.** CWD inside a JJ workspace → repo-grounded; otherwise elsewhere-software. Never elsewhere-non-software: with no subject there is no naming/narrative/personal intent to infer. No ambiguity-confirmation question. |
+| 0.4 substance | Required, not optional, when routed to elsewhere-software: with no subject *and* no repo, Phase 1 has nothing to discover from. One ask; if the user still has no URL, description, or paste, end cleanly so they can re-invoke with material. |
 | Model tiers | Whole ideation fleet moves to the ceiling tier — subject discovery is judgment-heavy and is the mode's whole value. |
-| 1 grounding | Go deeper, because Phase 2 discovers subjects from what Phase 1 returns. Repo: sample representative files per top-level area and surface recent PR/change activity with `jj log`, bounded — representative, not exhaustive. Elsewhere: extract themes, recurring language, tensions, and omissions rather than restating the user's context; broaden web research to the domain's landscape. |
+| 1 grounding | Go deeper, because Phase 2 discovers subjects from what Phase 1 returns. Repo: sample representative files per top-level area and surface recent PR/JJ change activity, bounded — representative, not exhaustive. Elsewhere: extract themes, recurring language, tensions, and omissions rather than restating the user's context; broaden web research to the domain's landscape. |
 | 1.5 axes | Skipped — no settled subject to decompose. Note `Decomposition skipped — surprise-me mode`. |
 | 2 generation | Each frame picks its own subject (see `references/divergent-ideation.md`); cross-cutting synthesis carries the coverage role Phase 1.5 would have, so expect 5-8 combinations rather than 3-5. No axis-coverage recovery dispatch. |
 
@@ -64,7 +64,7 @@ The user can correct at any point by interrupting and re-invoking with a named s
 
 Do not resolve or create the artifact root before mode is classified — an elsewhere or no-workspace run never needs it.
 
-Classify the **subject of ideation** (settled in 0.2) into one of three modes for dispatch routing. A user inside any workspace can ideate about something unrelated to that workspace; a user outside a workspace can ideate about code they hold in their head.
+Classify the **subject of ideation** (settled in 0.2) into one of three modes for dispatch routing. A user inside any JJ workspace can ideate about something unrelated to that workspace; a user outside one can ideate about code they hold in their head.
 
 **Surprise-me short-circuit.** In surprise-me mode, skip the two decisions below and the ambiguity-confirmation step; apply the 0.2 table's `0.3 mode` row. State the chosen mode in one sentence and proceed to 0.4.
 

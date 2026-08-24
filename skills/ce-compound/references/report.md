@@ -65,10 +65,10 @@ Subagent Results:
   ✓ Context Analyzer: Identified performance_issue in background_job (component from corpus), category: performance-issues/
   ✓ Solution Extractor: 3 code fixes, prevention strategies
   ✓ Related Docs Finder: 2 related issues
-  ✓ Session History: 3 prior sessions on the same bookmark lineage, 2 failed approaches surfaced
+  ✓ Session History: 3 prior sessions matching current bookmarks, 2 failed approaches surfaced
 
 Grounding Validation:
-  ✓ Mechanical check: 14 paths, 2 revisions, 3 links checked — 1 flag annotated as historical
+  ✓ Mechanical check: 14 paths, 2 SHAs, 3 links checked — 1 flag annotated as historical
   ✓ Semantic validator: 9 claims verified, 1 merge-state claim softened to pending
 
 Specialized Agent Reviews (Auto-Triggered):
@@ -109,5 +109,5 @@ File updated:
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Non-interactive Discoverability Check edits AGENTS.md/CLAUDE.md | non-interactive Full reports `Instruction-file edit: gap noted, not applied`; non-interactive Lightweight emits a discoverability tip; only interactive Full applies the edit after consent |
 | Creating a new doc when an existing doc covers the same problem | Check overlap assessment; update the existing doc when overlap is high |
-| Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over revision IDs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
+| Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over SHAs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
 | Batching several learnings through one run and stitching cross-references between drafts | One learning per run; run the skill sequentially for each additional learning |

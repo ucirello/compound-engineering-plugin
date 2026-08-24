@@ -9,7 +9,7 @@ The detection stub in SKILL.md routes here for anything that isn't clearly softw
 - **Is this actually a software task?** The key distinction is task-type, not topic-domain. A study guide about Rust is non-software (producing educational content). A Rust library refactor is software (modifying code). If this is actually software, return to Phase 0.2 in the main SKILL.md.
 - **Is this a trivial single-fact lookup?** Only a question answerable from one fact with no research, retrieval, or judgment skips planning — answer it directly and stop, in the user's terms. Do not narrate that it "isn't a planning task" or explain the routing; that is process exhaust (see Veil of value below). Examples: "zsh: command not found: brew", "what's the capital of France." A question that needs multiple steps, any retrieval, or synthesis to answer well does **not** qualify: it is an answer-seeking task (see Disposition below), not a quick-help exit. When unsure, do not exit.
 - **Pipeline mode?** If invoked from `lfg` or any `disable-model-invocation` context: tell the user this is a non-software task, `lfg` requires the software-only `ce-work` path, and they should invoke `ce-plan` directly for non-software planning. For this user-runnable output, default to `/ce-plan`; use `$ce-plan` only on Codex or a host explicitly documented as dollar-prefixed. Render only the invocation as inline code and output one form only, then stop.
-- **Unified artifact guard.** Universal-planning outputs are not software implementation plans. Do not label them `artifact_contract: unified-plan/v1` and do not produce a `/goal` launch block unless the deliverable itself is a complete software implementation plan with Product Contract, Planning Contract, Implementation Units, Verification Contract, and Definition of Done.
+- **Unified artifact guard.** Universal-planning outputs are not software implementation plans. Do not label them `artifact_contract: ce-unified-plan/v1` and do not produce a `/goal` launch block unless the deliverable itself is a complete software implementation plan with Product Contract, Planning Contract, Implementation Units, Verification Contract, and Definition of Done.
 
 Once past these checks, commit to the task — do not bail because it looks like a "lookup" or "research question." The user invoked the planning tool on purpose. Then choose the disposition below.
 
@@ -98,7 +98,7 @@ Example for "plan a date night in Seattle this Saturday":
 
 ## Step 1b: Focused Q&A
 
-Ask up to 3 questions targeting the unknowns that would most change the plan. Use the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+Ask up to 3 questions targeting the unknowns that would most change the plan. Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question.
 
 **How to ask well:**
 - Offer informed options, not open-ended blanks. Instead of "When are you going?", try "Mid-week visits have 30-40% shorter lines — are you flexible on timing?" The question should give the user a frame of reference, not just extract information.
@@ -147,7 +147,7 @@ Example: A date night plan should present 2-3 restaurant options, 2-3 activity o
 
 ## Step 3: Save or Share
 
-After structuring the plan, ask the user how they want to receive it using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip the question.
+After structuring the plan, ask the user how they want to receive it using the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question.
 
 **Question:** "Plan ready. How would you like to receive it?"
 
@@ -156,12 +156,12 @@ After structuring the plan, ask the user how they want to receive it using the p
 1. **Save to disk** — Write the plan as a markdown file. Ask where:
    - `<root>/plans/` (only show if this directory exists)
    - Current working directory
-   - `$(jj workspace root)/.tmp` (or `$(pwd)/.tmp` when workspace-root resolution fails)
+   - `<current Jujutsu workspace>/.tmp` (outside Jujutsu, `<current working directory>/.tmp`)
    - A custom path
    - Use filename convention: `YYYY-MM-DD-HHMM-<descriptive-name>-plan.md`, taking `HHMM` from the local wall-clock time at write; reserve the path atomically and, on collision, retry with the smallest available numeric suffix before the extension rather than overwriting
    - Start the document with a `# Title` heading, followed by `Created: YYYY-MM-DD` on the next line. No YAML frontmatter.
 
-2. **Publish to Proof — shareable link** — Publish the doc to Every's Proof editor and get a shareable link to read, comment on, or share with others. Load the `ce-proof` skill to create the shared document and return the URL. One-way: nothing syncs back to disk.
+2. **Publish to Proof — shareable link** — Publish the doc to Proof and get a shareable link to read, comment on, or share with others. Load the `ce-proof` skill to create the shared document and return the URL. One-way: nothing syncs back to disk.
 
 3. **Save to disk AND publish to Proof** — Do both: write the markdown file to disk and publish a shareable Proof copy for review. The local file stays canonical.
 

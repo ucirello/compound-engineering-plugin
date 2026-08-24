@@ -1,13 +1,13 @@
 # Dogfood Report — <target>
 
-> Diff-scoped browser QA of `<target-revision>` vs `<base-revision>` on <YYYY-MM-DD>.
+> Diff-scoped browser QA of the JJ change stack from `<trunk>` through `<target>` on <YYYY-MM-DD>.
 
-<!-- Use workspace-relative paths throughout this doc, never absolute paths, so it stays portable. -->
+<!-- Use repo-relative paths throughout this doc, never absolute paths, so it stays portable. -->
 <!-- This template is the source of truth for the report's sections; build the report to this shape rather than from memory. -->
 
 ## Diff Summary
 
-<What changed between the target and its base: new features, modified behavior, new/changed routes, views, components, data flows.>
+<What changed in the cumulative tree diff from the trunk through the target revision: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
 
 ## Personas
 
@@ -30,7 +30,7 @@ flowchart TD
 
 ## Test Matrix & Results
 
-| # | Flow | Journey / Scenario | Status | Issue | Fix | Change ID |
+| # | Flow | Journey / Scenario | Status | Issue | Fix | JJ Change |
 |---|------|--------------------|--------|-------|-----|--------|
 | 1 |      |                    | Pass   | -     | -   | -      |
 | 2 |      |                    | Fixed  |       |     | <change-id> |
@@ -70,9 +70,7 @@ For each issue found and fixed:
 - **What's broken:** <symptom / failing scenario>
 - **Why escalated:** <why it's not a safe autonomous fix — scope, risk, ambiguity, product trade-off>
 - **Options:** <option A (trade-offs) / option B (trade-offs)>
-- **Recommendation:** <the suggested direction for the human to confirm; derive its wording and structure from current project conventions rather than this placeholder>
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply that sentence when composing, validating, or recommending report prose. The required decision facts are not fixed message syntax; do not preserve this template's placeholder wording, impose a fixed prefix or layout, or add branding or attribution.
+- **Recommendation:** <the agent's suggested direction, for the human to confirm>
 
 ## Learnings
 
@@ -80,4 +78,4 @@ Based on https://go.dev/wiki/CommitMessage and on past commit messages that you 
 
 ## Final Status
 
-<Overall readiness verdict for the target. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run; a green matrix with a red suite is not "ready.">
+<Overall readiness verdict for the target change stack. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run — a green matrix with a red suite is not "ready.">

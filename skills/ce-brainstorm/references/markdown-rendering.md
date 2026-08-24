@@ -22,7 +22,7 @@ These hold regardless of which skill produced the artifact.
   — they break portability across machines, workspaces, teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
-  semantic marker such as `<!-- plan-section: work-relationships -->`; it carries
+  semantic marker such as `<!-- section: work-relationships -->`; it carries
   section meaning for downstream agents and does not create layout. If a layout
   idea only works as HTML, defer it to the HTML rendering. Markdown stays
   markdown.
@@ -224,7 +224,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from Jujutsu, not stored in the doc.
+  the work shipped is derived from `jj log`, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit

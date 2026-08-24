@@ -1,10 +1,10 @@
 # Extensive analysis path
 
-Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full artifact set that feeds `ce-brainstorm`.
+Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full RocketClaw-compatible artifact set that feeds `ce-brainstorm`.
 
 ## Workflow
 
-1. Set `INPUT_PATH` to the supplied capture and use the invocation in `references/analyzer.md`. Set `OUTPUT_DIR` when the user supplied a destination; otherwise leave it empty so the analyzer writes under `<workspace-root>/.rocketclaw/riffrec-feedback/`. When `jj workspace root` is unavailable, the analyzer uses the physical current directory as the local root.
+1. Set `INPUT_PATH` to the supplied capture and use the invocation in `references/analyzer.md`. Set `OUTPUT_DIR` when the user supplied a destination; otherwise leave it empty so the analyzer owns its default. In a workspace with `docs/brainstorms/`, that default goes under `docs/brainstorms/riffrec-feedback/` as an evidence/kickoff-artifact exception, not as the durable brainstorm output convention.
 
 2. Read the generated `analysis.md`, `problem-analysis.md`, `review-prompt.md`, and `requirements-kickoff.md`.
 
@@ -75,7 +75,7 @@ The analyzer writes:
 - `problem-analysis.md`: a categorized problem statement scaffold for visual, functional, requirement, and UX findings.
 - `review-prompt.md`: a filled prompt containing screenshot paths and transcript for a deeper visual analysis pass.
 - `source-materials.md`: a manifest linking the original source location, local-only raw files, transcript locations, chunks, local-only frames, and generated artifacts.
-- `requirements-kickoff.md`: a requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
+- `requirements-kickoff.md`: a RocketClaw-ready requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
 - `analysis.json`: structured session, event, transcript, moment, and artifact metadata.
 - `frames/`: extracted PNG screenshots for selected moments. Local-only by default.
 - `raw/`: normalized capture contents and copied standalone media. Local-only by default.

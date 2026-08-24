@@ -22,6 +22,8 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 ## Discover and launch
 
+Resolve a private per-run evidence directory at `<workspace-root>/.tmp/ce-test-xcode/<run-id>/`, where `<workspace-root>` comes from `jj workspace root`. If no Jujutsu workspace resolves, use `<physical-current-directory>/.tmp/ce-test-xcode/<run-id>/`. In a Jujutsu workspace, confirm the applicable ignore rules exclude `.tmp/` before creating the directory; ordinary JJ commands snapshot non-ignored files, as documented at https://jj-vcs.github.io/jj/latest/working-copy/#ignored-files. Stop rather than editing ignore rules or allowing test evidence into `@`. Reject a symlinked or reused run directory, create it with mode `0700`, and retain its absolute path. Never use an OS-global or user-global temporary facility.
+
 1. Discover projects and workspaces, then list schemes for the selected project. An empty argument or `current` selects the default or last-used scheme; a named argument selects that scheme. Ask only when no such scheme can be resolved or project discovery itself remains materially ambiguous.
 2. List simulators. Reuse a compatible booted simulator when practical; otherwise prefer an available iPhone 15 Pro and boot it by UUID. Wait until it is ready.
 3. Build the simulator app with the selected project/workspace and scheme. On failure, report the relevant build errors and stop; do not install or launch a missing artifact.
@@ -29,4 +31,4 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 Any failure before the app is visibly launched with log capture running is a setup blocker: preserve its evidence, report it, and stop later stages.
 
-At handoff, retain the project/workspace, scheme, simulator identity, app identity, and log-capture handle needed by `test-and-report.md`.
+At handoff, retain the project/workspace, scheme, simulator identity, app identity, evidence-directory path, and log-capture handle needed by `test-and-report.md`.

@@ -20,13 +20,13 @@ Resolution steps:
 4. **Default.** Otherwise `OUTPUT_FORMAT=html`.
 5. **Pipeline override.** When invoked from any pipeline or `disable-model-invocation` context, force `OUTPUT_FORMAT=md` regardless of steps 1-4 — automated downstream consumers parse markdown reliably and HTML in pipeline runs is unnecessary friction.
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens, including message-like prefixes inside a focus hint, pass through verbatim; do not interpret them as a fixed change-description syntax.
+**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens that appear inside a focus hint pass through verbatim.
 
 **Defer loading the format-rendering reference.** The deliverable is written at Phase 4 (after generation), so `references/ideation-sections.md` and the format-rendering references (`markdown-rendering.md` / `html-rendering.md`) are only needed then — loading them at Phase 0.0 would carry them through the entire grounding and ideation dispatch for no benefit. Resolve `OUTPUT_FORMAT` now, but load the section contract and the matching rendering reference at write time (see `references/post-ideation-workflow.md` §4.1). The `output:` preference does NOT auto-propagate to `ce-brainstorm` on handoff — see §5.2 there.
 
 #### 0.1 Check for Recent Ideation Work
 
-Look in `<root>/ideation/` for ideation documents (`*.md` or `*.html`) created within the last 30 days. This is a workspace-mode convenience: when there is no `jj` workspace or `<root>` fails to resolve, skip the scan and continue — do not fail the run before 0.3 classifies mode, since elsewhere and no-workspace runs write beneath local `.tmp/rocketclaw` and never touch `<root>/ideation/`.
+Look in `<root>/ideation/` for ideation documents (`*.md` or `*.html`) created within the last 30 days. This is a repo-mode convenience: when there is no JJ workspace or `<root>` fails to resolve, skip the scan and continue — do not fail the run before 0.3 classifies mode, since elsewhere and no-workspace runs write to workspace-local scratch and never touch `<root>/ideation/`.
 
 A prior doc is relevant when its topic, path, or subsystem overlaps the requested focus, or the request is open-ended and one obvious recent open doc exists. Issue-grounded and non-issue ideations are distinct topics — never offer to resume across that line.
 

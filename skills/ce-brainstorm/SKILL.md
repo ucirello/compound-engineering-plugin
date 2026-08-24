@@ -21,25 +21,25 @@ The feature description is what the invocation carries, whether the user wrote i
 
 ## Artifact Root
 
-Resolve `<root>` the first time you compose or read a `<root>/` path, never earlier; a scratch-only or no-workspace run that touches none skips this entirely.
+Resolve `<root>` the first time you compose or read a `<root>/` path, never earlier; a scratch-only or no-repo run that touches none skips this entirely.
 
-<!-- rocketclaw-docs-root:start -->
+<!-- docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or a colocated `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- rocketclaw-docs-root:end -->
+<!-- docs-root:end -->
 
 `brainstorm_output` and `brainstorm_model` resolve by this rule instead:
 
-<!-- rocketclaw-config-layers:start -->
+<!-- config-layers:start -->
 **Resolve ordinary YAML keys from the two workspace files.**
 
 - **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
-<!-- rocketclaw-config-layers:end -->
+<!-- config-layers:end -->
 
 ## Execution Flow
 

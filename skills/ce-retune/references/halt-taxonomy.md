@@ -1,7 +1,5 @@
 # Halt Taxonomy
 
-Preserve required diagnostics, machine-readable values, and operational benchmark, model, and harness references. Fixed replacements, examples, and report wording specify substance, not mandatory syntax unless an exact token is machine-readable. Do not add product branding, generated-by text, or attribution.
-
 ## The mechanism
 
 When a workflow "phase" is invoked by loading its instructions into the **same conversation** — a skill load, an include, a prose route to "the review phase" — rather than by spawning a separate process, the model on both sides of that seam is one model in one turn. In an unattended run there is no second party and no next user message, and a reply that contains no tool call ends the session. So an instruction to return, hand back, or report to a caller has exactly one expressible form at that seam: stop. The prose is not wrong about its protocol; the protocol has no runtime.
@@ -22,7 +20,7 @@ grep -rniE 'return control|hand back|hand off to|the caller (owns|applies)' <cor
 
 **Why it halts:** a mandated fan-out plus a wait ceiling. If the helpers were never spawned concurrently, or the runtime reaped them at turn end, the wait resolves to nothing — and "wait" has no tool call to express it, so the turn ends inside the ceiling.
 
-**Falsifiable check before touching it:** from the archive, measure the maximum number of helpers dispatched *concurrently* per run (see `references/baseline-mining.md` for the extraction). In one observed corpus, 331 of 332 runs never exceeded one at a time, which falsified the wall-clock justification the corpus had written for its own fan-out machinery.
+**Falsifiable check before touching it:** from the archive, measure the maximum number of helpers dispatched *concurrently* per run (see `references/baseline-mining.md` for the extraction). In the engagement, 331 of 332 runs never exceeded one at a time, which falsified the wall-clock justification the corpus had written for its own fan-out machinery.
 
 **Replacement:** dispatch serially, or state parallelism as an allowance rather than a mandate, and delete the wait ceiling with the wall-clock rationale that justified it.
 
@@ -115,7 +113,7 @@ Treating every stop as the enemy is the failure mode of applying this file. Run 
 1. **The user is genuinely the subject.** The instruction concerns a human's decision, consent, or preference — not a fabricated caller.
 2. **It is a terminal no-op.** Nothing is left for anyone: "no findings, stop." A continuation here invents work.
 3. **The roles split across a real runtime boundary.** The opening diagnostic shows two distinct sessions or processes. Then "return to the caller" is accurate and the halt is somebody else's turn ending, correctly.
-4. **The site already has an unattended default.** "If no reply within X, choose Y", "in non-interactive mode, do Z." The path exists; the stop is the interactive branch.
+4. **The site already has an unattended default.** "If no reply within X, choose Y", "in non-interactive mode, do Z." The path exists; the stop is the interactive route.
 5. **The word bounds an activity, not the turn.** "Stop expanding the search once you have three candidates", "halt the retry loop after two failures." A grep for `stop` catches these; they are scope quantifiers and removing them removes a threshold.
 
 **Sixth case, stated separately because it is the one that gets deleted anyway:** a workflow whose product **is** stopping to ask. An interview that must take one question at a time. A teaching check-in that pauses for the learner's answer. An approval gate that exists in order to be a gate. Deleting the pause deletes the unit. These get an unattended degradation path — a stated default, a skip-with-reason, or an explicit refusal to run unattended — never a deletion. If such a unit fails the benchmark, the benchmark's task is wrong for it: exclude the unit and report the exclusion rather than editing the unit to pass.

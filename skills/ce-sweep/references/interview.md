@@ -4,11 +4,11 @@ Loaded by `SKILL.md` when `ce-sweep` runs with `feedback_sources` unset after th
 
 This interview is **interactive only**. The caller refuses first-run setup in non-interactive mode — a scheduled or piped run with no config aborts and tells the user to run `ce-sweep` interactively once. Do not attempt to infer sources, actions, or approvals without asking.
 
-**User-runnable invocation rendering.** Whenever this interview prints or registers a `ce-sweep` invocation, default to `/ce-sweep` (plus any arguments); use `$ce-sweep` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. On oh-my-pi (`omp`), use `/skill:ce-sweep` (plus any arguments). Render only the invocation as inline code and output one form only.
+**User-runnable invocation rendering.** Whenever this interview prints or registers a `ce-sweep` invocation, default to `/ce-sweep` (plus any arguments); use `$ce-sweep` only when the active host documents dollar-prefixed skill invocation. If a non-model-visible skill requires a host-native form, use that documented form. Render only the invocation as inline code and output one form only.
 
 ## Interaction Method
 
-Ask **one question at a time** using the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists in the harness or the call errors — never silently skip a question or assume a default without surfacing it.
+Ask **one question at a time** using the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list or a real question call errors — never silently skip a question or assume a default without surfacing it.
 
 ## Overall Rules
 
@@ -75,7 +75,7 @@ For email sources there are no source-side actions, so approval is moot — reco
 
 ## 3. Sensitive flag (per source)
 
-**Ask:** "Should item content from `{{source id}}` be withheld from recorded state and from plan text? Say yes when the source can carry screen recordings, PII, customer data, or anything you don't want written to a revision or shared. When yes, the sweep drops item body and quote before writing state — only titles, urls, ids, and status persist. Default is no."
+**Ask:** "Should item content from `{{source id}}` be withheld from versioned state and from plan text? Say yes when the source can carry screen recordings, PII, customer data, or anything you don't want written to a change that may be shared. When yes, the sweep drops item body and quote before writing state — only titles, urls, ids, and status persist. Default is no."
 
 - **No** (default) -> `sensitive: false`. Full item content is retained in state and available to plans.
 - **Yes** -> `sensitive: true`. The state engine drops `body` and `quote` at write time for this source's items, and plans reference items by id/title/url only.
@@ -88,10 +88,22 @@ For email sources there are no source-side actions, so approval is moot — reco
 
 Ask where the sweep's state file lives:
 
-- **Recorded in the workspace** (recommended when multiple agents or machines share a bookmark). Sets `sweep_state_path` to the tracked default under the artifact root's `feedback-sweep/`; resolve `<root>` to its concrete value first, so the persisted value is `<resolved-root>/feedback-sweep/state.yml`, never the literal placeholder.
-- **Workspace-local under `.tmp/rocketclaw/`** (solo setups; keeps sweep bookkeeping out of revisions). Sets `sweep_state_path` to `<workspace-root>/.tmp/rocketclaw/ce-sweep/state.yml`, where `<workspace-root>` comes from `jj workspace root` and falls back to the current directory when no JJ workspace is available.
+- **Versioned in the workspace** (recommended when multiple agents or machines synchronize one bookmark). Sets `sweep_state_path` to the versioned default under the artifact root's `feedback-sweep/` — resolve `<root>` to its concrete value first, so the persisted value is `<resolved-root>/feedback-sweep/state.yml`, never the literal placeholder.
+- **Local under `<workspace-root>/.tmp`** (solo setups; keeps sweep bookkeeping out of changes). Resolve the path immediately with this shell block:
 
-Let the user override the path if they want a different workspace-relative location, but keep workspace-local state under `<workspace-root>/.tmp/rocketclaw/`. Note that another workspace or teammate's machine will not see it.
+  ```bash
+  WORKSPACE_ROOT="$(jj root 2>/dev/null)" || WORKSPACE_ROOT="$(pwd -P)";
+  LOCAL_ROOT="$WORKSPACE_ROOT/.tmp";
+  if [ -L "$LOCAL_ROOT" ]; then echo "unsafe local root symlink: $LOCAL_ROOT" >&2; exit 1; fi;
+  (umask 077; mkdir -p "$LOCAL_ROOT") || exit 1;
+  SWEEP_STATE_PATH="$LOCAL_ROOT/sweep/state.yml";
+  SWEEP_STATE_DIR="$(dirname "$SWEEP_STATE_PATH")"; (umask 077; mkdir -p "$SWEEP_STATE_DIR") || exit 1; chmod 700 "$SWEEP_STATE_DIR" || exit 1;
+  printf '%s\n' "$SWEEP_STATE_PATH";
+  ```
+
+  Persist the echoed absolute path as `sweep_state_path`; never persist a placeholder.
+
+Ensure `.tmp/` is ignored before using local state; if it is already tracked, run `jj file untrack 'root:.tmp'`. Let the user override the path if they want another workspace-relative location. Local state belongs only to this workspace and is not synchronized.
 
 **Capture:** `sweep_state_path` (string).
 
@@ -105,16 +117,16 @@ Let the user override the path if they want a different workspace-relative locat
 
 ---
 
-## 6. Shared bookmark (only if recorded state)
+## 6. Shared bookmark (only if versioned state)
 
-**Skip this section entirely if the user chose workspace-local state in section 4** — the shared-bookmark topology only applies to recorded state.
+**Skip this section entirely if the user chose local state in section 4.**
 
-**Ask:** "Is this a multi-agent setup where several workspaces publish sweep state through the same shared bookmark? Answer yes only if more than one machine or agent records revisions and publishes that bookmark. Default is no — one workspace records revisions locally."
+**Ask:** "Should several workspaces synchronize sweep state through one remote bookmark? If yes, what bookmark name should they share? Leave it unset for local-only changes."
 
-- **No** (default) -> `sweep_shared_bookmark: false`. The single-writer lease serializes overlapping sweeps within one workspace.
-- **Yes** -> `sweep_shared_bookmark: true`. Explain that the lease becomes publication-gated: before any source-side write, the sweep records the lease in a path-limited revision, moves and publishes the configured bookmark, and confirms its writer won. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is not an operational instruction; inspect history with `jj log`. Runtime project instructions and description syntax inferred from `jj log` win. Preserve the requirement that the description communicate lease acquisition while adapting its syntax to those conventions; apply compatible Go guidance only to quality, clarity, and structure, and impose no fixed prefix, type, scope, subject, body, layout, template, or example.
+- **Unset** (default) -> omit `sweep_shared_bookmark`. The lease serializes overlapping sweeps within one workspace.
+- **Bookmark supplied** -> `sweep_shared_bookmark: <bookmark>`. The lease becomes publish-gated: the sweep commits only the state fileset, moves that bookmark to the lease change, and confirms `jj git push --bookmark <bookmark>` before any source-side write.
 
-**Capture:** `sweep_shared_bookmark` (`true` | `false`).
+**Capture:** `sweep_shared_bookmark` (bookmark name or unset).
 
 ---
 
@@ -122,7 +134,7 @@ Let the user override the path if they want a different workspace-relative locat
 
 Offer to seed state from an existing legacy feedback-tracking file so prior work is not re-ingested and already-acknowledged items are not acknowledged again.
 
-**Ask:** "Do you have an existing feedback state file to import — for example a prior dogfood tracker like `<root>/dogfood-reports/cora-v2-alpha-feedback-state.yml`? Importing carries over its cursors and items so the first sweep skips what's already been processed. Skip if this is a clean start."
+**Ask:** "Do you have an existing feedback state file to import, such as `<root>/feedback-archive/previous-state.yml`? Importing carries over its cursors and items so the first sweep skips what's already been processed. Skip if this is a clean start."
 
 - **No / skip** -> proceed to section 8.
 - **Yes** -> ask for the file path. Then build a `--source-map`: for each legacy channel/source id in the file, pair it with the configured source id from section 1 (the short name the live connector reads by), as a JSON object like `{"C0AQLMQBGBD":"slack-alpha"}`. This is load-bearing — without it, an imported `C0AQLMQBGBD` cursor lands under `C0AQLMQBGBD` while the connector reads under `slack-alpha`, orphaning the cursor and re-ingesting everything on the first sweep. Run the import from **this skill's directory**; set `SKILL_DIR` inline to the absolute path of the directory containing the `SKILL.md` you loaded:
@@ -139,18 +151,18 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 
 ## 8. Write config
 
-Merge the captured settings into `<workspace-root>/.rocketclaw/config.local.yaml`. Resolve the workspace root with `jj workspace root`; if that fails because no JJ workspace is available, use the current directory.
+Merge the captured settings into `<workspace-root>/.rocketclaw/config.local.yaml`. Resolve the workspace root with `jj root`.
 
 - If the directory or file does not exist, create `.rocketclaw/` and write the file.
 - If the file exists, merge the sweep keys into the existing YAML, **preserving every unrelated key untouched** (e.g. `pulse_*`, `plan_*`). Only add or update the sweep keys.
-- If `.rocketclaw/config.local.yaml` and `.tmp/rocketclaw/` are not already covered by the workspace's ignore rules, offer to add both entries before writing.
+- If `.rocketclaw/config.local.yaml` is not already covered by an ignore rule, offer to add it to `.gitignore` before writing. If it was previously tracked, use `jj file untrack 'root-file:".rocketclaw/config.local.yaml"'` after the ignore rule exists.
 
 Write these keys (see "Config File Shape" below for the exact form):
 
 - `feedback_sources` — the list of source maps assembled across sections 1-3.
 - `sweep_state_path` — from section 4.
 - `sweep_ack_cap` — from section 5.
-- `sweep_shared_bookmark` — from section 6 (default `false`; only meaningful with recorded state).
+- `sweep_shared_bookmark` — from section 6 when supplied; omit it otherwise.
 
 Then surface the resulting Sweep section to the user in chat and offer **one round of edits**.
 
@@ -180,15 +192,15 @@ feedback_sources:
   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
-sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # concrete path; recorded (multi-agent) or .tmp/rocketclaw path (solo)
+sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # versioned, or <workspace-root>/.tmp/sweep/state.yml for local state
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
-sweep_shared_bookmark: false                      # true: publication-gated lease through a shared bookmark
+sweep_shared_bookmark: feedback-sweep             # optional: publish-gated lease through this bookmark
 ~~~
 
 Notes:
 
-- Each `feedback_sources` entry carries: `type` (`slack` | `github-issues` | `email`), `id` (short handle), `target` (channel ID / `owner/repo` / mailbox hint), `ack_action` and `closeout_action` (emoji/label names; omit both for email), `sensitive` (`true` withholds body/quote from recorded state and plan text), and `approved` (standing approval for source-side writes; `false` keeps the source read-only with `ack_deferred` items).
+- Each `feedback_sources` entry carries: `type` (`slack` | `github-issues` | `email`), `id` (short handle), `target` (channel ID / `owner/repo` / mailbox hint), `ack_action` and `closeout_action` (emoji/label names; omit both for email), `sensitive` (`true` withholds body/quote from versioned state and plan text), and `approved` (standing approval for source-side writes; `false` keeps the source read-only with `ack_deferred` items).
 - `feedback_sources` is a generic key — other skills may read this list.
 - `sweep_lease_ttl_minutes` is not asked in the interview; it is written with its default of `60` and left as a tunable the user can edit.
 - Email sources are read-only: omit `ack_action`/`closeout_action`, and record `approved: false`.

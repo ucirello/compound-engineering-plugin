@@ -65,9 +65,9 @@ A brainstorm ends in chat unless a file is earned. A file is earned when the
 dialogue surfaced structural decisions, scope boundaries, or acceptance
 criteria that downstream consumers (planner, reviewer, future reader) need in
 IDed form, or when the user asks for one. Decisions that flow naturally to
-  downstream artifacts (`ce-plan`'s prompt, a change description,
+downstream artifacts (`ce-plan`'s prompt, a change description,
 `<root>/solutions/`) do not earn a file; `phase-0.md` 0.3 states the
-Lightweight case.
+Lightweight case. When composing that change description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax.
 
 **Stress test:** a brainstorm about a tiny bug fix where the user asks "fix
 this with a null check or with upstream validation?" and the agent confirms
@@ -151,8 +151,8 @@ the Phase 4 handoff:
    every Outstanding Question is classified as `Resolve Before Planning` or
    `Deferred to Planning`. When the coherent-work gate split a broader request,
    the `work-relationships` section is present and carries the marker for the
-   resolved output format: `<!-- plan-section: work-relationships -->` in Markdown
-   or `data-plan-section="work-relationships"` on its wrapping `<section>` in HTML.
+   resolved output format: `<!-- section: work-relationships -->` in Markdown
+   or `data-section="work-relationships"` on its wrapping `<section>` in HTML.
 2. **Consistent** — Goal Capsule, Requirements, Key Flows, Acceptance Examples,
    Scope Boundaries, and the `work-relationships` section do not contradict one
    another. Could a reader find a contradiction in each section in one pass? A
@@ -232,8 +232,8 @@ worse than omitting it.
   body of separately planned work and the relationship materially orients a
   cold reader. Give this section the semantic role `work-relationships`, which
   remains stable even if its visible heading is renamed: in Markdown, place
-  `<!-- plan-section: work-relationships -->` immediately before the heading; in
-  HTML, put `data-plan-section="work-relationships"` on the wrapping `<section>`.
+  `<!-- section: work-relationships -->` immediately before the heading; in
+  HTML, put `data-section="work-relationships"` on the wrapping `<section>`.
   The role identifies meaning, not wording, and is the downstream discovery
   contract. Lead with the one area this plan owns and state that the broader
   breakdown is the current understanding, not a committed roadmap. Then use a
@@ -356,12 +356,14 @@ artifact.
 
 ### Required
 
-- **`title`** — the artifact's descriptive name with a ` - Plan` suffix,
-  matching the H1 (markdown) or document `<h1>` (HTML). It is a unified plan
-  at every readiness state, so the title stays stable when `ce-plan` enriches
-  it. Keep the change classification out of the title; the `type` field carries
-  that.
-- **`type`** — the repository's local, history-aligned change classification.
+- **`title`** — the artifact's descriptive name with a ` - Plan` suffix
+  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
+  `<h1>` (HTML). It is a unified plan at every readiness state, so the title
+  stays stable when `ce-plan` enriches it. Keep change-description syntax out
+  of the title; the `type` field carries a neutral work classification.
+- **`type`** — a short, lowercase work classification derived from the request
+  and the project's runtime-local vocabulary. Do not impose a fixed change-description
+  grammar or fixed examples when the project does not define one.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
   Matches the calendar date in the filename
   (`<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>`), which adds the
@@ -380,8 +382,8 @@ artifact.
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No artifact carries mutable progress state; whether work shipped is
-derived from Jujutsu, not stored in the doc. Do not introduce one.
+progress. No artifact carries mutable progress state; whether work shipped
+is derived from `jj log`, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 
@@ -403,7 +405,7 @@ Same shape as plan rules.
   heading levels.
 - **Workspace-relative paths.** Always. Never absolute paths.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
-  pointing to ce-plan, no italic provenance lines. Engineering process
+  pointing to `ce-plan`, no italic provenance lines. Engineering process
   metadata belongs in change descriptions and tool output, not the artifact.
 - **No implementation details by default.** Libraries, schemas, endpoints,
   file layouts, code structure stay out unless the brainstorm itself is

@@ -9,7 +9,7 @@
 #
 # Arguments:
 #   path (optional) — project root to inspect. Relative paths resolve from the
-#                     Jujutsu workspace root. Defaults to the workspace root. The
+#                     workspace root. Defaults to the workspace root. The
 #                     resolved path must remain inside the workspace.
 #
 # Output grammar (one line on stdout):
@@ -36,8 +36,8 @@
 #   signature files. Deeper nesting is ignored to avoid false positives.
 #
 #   Excluded directories (not real project roots):
-#     node_modules .jj vendor dist build coverage .next .nuxt
-#     .svelte-kit .turbo .tmp tmp fixtures
+#     node_modules .jj .git vendor dist build coverage .next .nuxt
+#     .svelte-kit .turbo tmp fixtures
 #
 # `multiple` vs `rails`: Rails apps commonly ship a Procfile.dev alongside
 # bin/dev. To avoid treating every Rails app as a monorepo, the `rails`
@@ -46,7 +46,7 @@
 
 set -u
 
-WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+WORKSPACE_ROOT=$(jj root 2>/dev/null)
 if [ -z "$WORKSPACE_ROOT" ]; then
   echo "ERROR: not in a Jujutsu workspace" >&2
   exit 1
@@ -54,7 +54,7 @@ fi
 
 WORKSPACE_ROOT=$(cd "$WORKSPACE_ROOT" 2>/dev/null && pwd -P)
 if [ -z "$WORKSPACE_ROOT" ]; then
-  echo "ERROR: cannot resolve Jujutsu workspace root" >&2
+  echo "ERROR: cannot resolve workspace root" >&2
   exit 1
 fi
 
@@ -76,7 +76,7 @@ fi
 case "$PROJECT_ROOT" in
   "$WORKSPACE_ROOT"|"$WORKSPACE_ROOT"/*) ;;
   *)
-    echo "ERROR: path must stay inside Jujutsu workspace root: $PROJECT_ROOT" >&2
+    echo "ERROR: path must stay inside workspace root: $PROJECT_ROOT" >&2
     exit 1
     ;;
 esac
@@ -154,7 +154,7 @@ esac
 # Exclusion list: directories that ship framework configs as fixtures or build
 # output, not as real project roots.
 
-EXCLUDE_DIRS="node_modules .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo .tmp tmp fixtures"
+EXCLUDE_DIRS="node_modules .jj .git vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
 EXCLUDE_ARGS=""
 for d in $EXCLUDE_DIRS; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS -path './$d' -prune -o -path '*/$d' -prune -o"

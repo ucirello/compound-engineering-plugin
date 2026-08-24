@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 #
-# read-launch-json.sh — read the preferred .rocketclaw/launch.json or fall back
-# to .claude/launch.json at the Jujutsu workspace root, then emit the selected
-# configuration as JSON on stdout or a sentinel on failure.
+# read-launch-json.sh — read .workspace/launch.json from the workspace root and emit
+# the selected configuration as JSON on stdout, or a sentinel on failure.
 #
 # Usage:
 #   read-launch-json.sh [config-name]
@@ -16,8 +15,7 @@
 #
 # Output contract:
 #   Success: single-line JSON object on stdout representing the chosen
-#            configuration. Shape mirrors VS Code's launch.json entry:
-#            {name, runtimeExecutable, runtimeArgs, port, cwd, env}.
+#            configuration: {name, runtimeExecutable, runtimeArgs, port, cwd, env}.
 #   Sentinels (printed to stdout, one per line):
 #     __NO_LAUNCH_JSON__           - file not found
 #     __INVALID_LAUNCH_JSON__      - file exists but fails JSON parsing
@@ -34,7 +32,7 @@ set -u
 
 REQUESTED_NAME="${1:-}"
 
-WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+WORKSPACE_ROOT=$(jj root 2>/dev/null)
 if [ -z "$WORKSPACE_ROOT" ]; then
   echo "ERROR: not in a Jujutsu workspace" >&2
   exit 1
@@ -45,10 +43,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-LAUNCH_PATH="$WORKSPACE_ROOT/.rocketclaw/launch.json"
-if [ ! -f "$LAUNCH_PATH" ]; then
-  LAUNCH_PATH="$WORKSPACE_ROOT/.claude/launch.json"
-fi
+LAUNCH_PATH="$WORKSPACE_ROOT/.workspace/launch.json"
 
 if [ ! -f "$LAUNCH_PATH" ]; then
   echo "__NO_LAUNCH_JSON__"

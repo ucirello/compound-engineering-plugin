@@ -8,13 +8,13 @@ import json
 import os
 import sys
 
-from unit_workspace_state import DESCRIPTION_GUIDANCE, Operational, TrustFailure, cmd_checkpoint_plan, cmd_init
+from unit_workspace_state import Operational, TrustFailure, cmd_checkpoint_plan, cmd_init
 from unit_workspace_jobs import cmd_authorize_dispatch, cmd_prepare, cmd_record_job, cmd_sync_job, cmd_terminalize
 from unit_workspace_integration import (
     cmd_integration_acquire,
     cmd_integration_release,
     cmd_mark_applied,
-    cmd_mark_committed,
+    cmd_mark_accepted,
     cmd_mark_verified,
     cmd_preflight,
     cmd_restore,
@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("checkpoint-plan")
     p.add_argument("--run-id", required=True)
-    p.add_argument("--checkpoint-description", help=f"Description for a new plan-only change. {DESCRIPTION_GUIDANCE}")
+    p.add_argument("--change-description", required=True)
 
     p = sub.add_parser("prepare")
     p.add_argument("--run-id", required=True)
@@ -101,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--summary", default="authoritative verification passed")
     p.add_argument("--ignored-state", default=None)
 
-    p = sub.add_parser("mark-committed")
+    p = sub.add_parser("mark-accepted")
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
     p.add_argument("--lock-token", required=True)
@@ -109,7 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("integrate")
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
-    p.add_argument("--change-description", required=True, help=f"Jujutsu change description. {DESCRIPTION_GUIDANCE}")
+    p.add_argument("--change-description", required=True)
     p.add_argument("--verification-summary", default="authoritative verification passed")
     p.add_argument("--allowed-change", action="append", default=[])
     p.add_argument("verification_command", nargs=argparse.REMAINDER)
@@ -177,7 +177,7 @@ COMMANDS = {
     "preflight": cmd_preflight,
     "mark-applied": cmd_mark_applied,
     "mark-verified": cmd_mark_verified,
-    "mark-committed": cmd_mark_committed,
+    "mark-accepted": cmd_mark_accepted,
     "integrate": cmd_integrate,
     "verify-run": cmd_verify_run,
     "wave-advance": cmd_wave_advance,
@@ -194,22 +194,6 @@ COMMANDS = {
 
 def main(argv: list[str]) -> int:
     os.umask(0o077)
-    legacy_aliases = {
-        "--allowed-" + "head": "--allowed-change",
-        "--canonical-" + "commit": "--canonical-change",
-        "--accepted-" + "head": "--accepted-change",
-        "--commit-" + "message": "--change-description",
-    }
-    normalized = []
-    for value in argv:
-        replacement = legacy_aliases.get(value)
-        if replacement is None:
-            replacement = next(
-                (new + value[len(old):] for old, new in legacy_aliases.items() if value.startswith(old + "=")),
-                value,
-            )
-        normalized.append(replacement)
-    argv = normalized
     args = build_parser().parse_args(argv)
     try:
         word, body = COMMANDS[args.command](args)

@@ -17,7 +17,7 @@ For code-review invocations, search the full learning corpus described below, th
 
 ## Step 0: Ground in CONCEPTS.md (if present)
 
-Before searching `<root>/solutions/`, check whether `CONCEPTS.md` exists at the workspace root. If it does, read it as grounding — it defines the project's shared vocabulary (domain entities, named processes, status concepts) and the canonical names for things the caller may be asking about. Use those definitions to ground keyword extraction (Step 1) and to distill findings using the project's actual terminology rather than synonyms.
+Before searching `<root>/solutions/`, check whether `CONCEPTS.md` exists at the repo root. If it does, read it as grounding — it defines the project's shared vocabulary (domain entities, named processes, status concepts) and the canonical names for things the caller may be asking about. Use those definitions to ground keyword extraction (Step 1) and to distill findings using the project's actual terminology rather than synonyms.
 
 If `CONCEPTS.md` does not exist, skip this step entirely and proceed to Step 1.
 
@@ -197,7 +197,7 @@ Structure findings as follows:
 ### Relevant Learnings
 
 #### 1. [Title from document]
-- **File**: [absolute or workspace-relative path]
+- **File**: [absolute or repo-relative path]
 - **Module**: [module/domain from frontmatter, or the repo area the learning applies to]
 - **Problem Type**: [raw `problem_type` value from frontmatter, e.g. `architecture_pattern`, `design_pattern`, `tooling_decision`, `runtime_error`. Mark as "inferred" when the entry has no `problem_type`.]
 - **Relevance**: [why this matters for the caller's work]

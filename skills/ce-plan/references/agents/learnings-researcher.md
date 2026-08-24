@@ -17,7 +17,7 @@ For planning invocations, search the full learning corpus described below, then 
 
 ## Step 0: Ground in CONCEPTS.md (if present)
 
-Before searching `<root>/solutions/`, check whether `CONCEPTS.md` exists at the Jujutsu workspace root. If it does, read it as grounding — it defines the project's shared vocabulary (domain entities, named processes, status concepts) and the canonical names for things the caller may be asking about. Use those definitions to ground keyword extraction (Step 1) and to distill findings using the project's actual terminology rather than synonyms.
+Before searching `<root>/solutions/`, check whether `CONCEPTS.md` exists at the repo root. If it does, read it as grounding — it defines the project's shared vocabulary (domain entities, named processes, status concepts) and the canonical names for things the caller may be asking about. Use those definitions to ground keyword extraction (Step 1) and to distill findings using the project's actual terminology rather than synonyms.
 
 If `CONCEPTS.md` does not exist, skip this step entirely and proceed to Step 1.
 

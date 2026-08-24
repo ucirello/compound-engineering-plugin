@@ -44,20 +44,20 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", "--no-pager", *args], capture_output=True, text=True, check=False
     )
 
 
-def valid_commit(ref: str | None) -> bool:
+def valid_revision(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    return jj("log", "-r", ref, "--no-graph", "-T", "commit_id ++ '\n'").returncode == 0
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+    result = jj("log", "-r", f"heads(::{base} & ::{head})", "--no-graph", "-T", "commit_id ++ '\n'")
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -86,12 +86,12 @@ def repo_root() -> Path:
     """The repository root, matching how docs_root is resolved everywhere else.
 
     docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
+    check must resolve against the JJ workspace root, not the current working
+    directory. The skill can run from a subdirectory, where ``Path.cwd()`` would
+    join docs_root under the subdir and wrongly report the corpus absent. Fall
+    back to cwd when JJ cannot answer.
     """
-    result = git("rev-parse", "--show-toplevel")
+    result = jj("workspace", "root")
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -139,38 +139,36 @@ def main() -> int:
 
     learnings_corpus = has_learnings_corpus(args.docs_root)
 
-    if not valid_commit(args.base):
+    if not valid_revision(args.base):
         print(json.dumps(fail_closed("invalid base endpoint", learnings_corpus), sort_keys=True))
         return 0
-    if args.head is not None and not valid_commit(args.head):
+    if args.head is not None and not valid_revision(args.head):
         print(json.dumps(fail_closed("invalid head endpoint", learnings_corpus), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
+    diff_args = ["--from", args.base]
     if args.head:
         merge_base = unique_merge_base(args.base, args.head)
         if merge_base is None:
             print(json.dumps(fail_closed("merge base unavailable or ambiguous", learnings_corpus), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_args = ["--from", merge_base, "--to", args.head]
 
-    names = git("diff", "--name-only", *diff_args)
-    numstat = git("diff", "--numstat", *diff_args)
-    if names.returncode != 0 or numstat.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", learnings_corpus), sort_keys=True))
+    names = jj("diff", *diff_args, "--name-only")
+    patch = jj("diff", *diff_args, "--git")
+    if names.returncode != 0 or patch.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
     executable_lines = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3 or Path(parts[2]).suffix.lower() not in CODE_EXTENSIONS:
-            continue
-        try:
-            executable_lines += int(parts[0]) + int(parts[1])
-        except ValueError:
-            # Binary/unknown counts fail the lite gate through uncounted_files below.
-            pass
+    current_file = ""
+    for line in patch.stdout.splitlines():
+        if line.startswith("diff --git a/"):
+            current_file = line.split(" b/", 1)[-1]
+        elif current_file and Path(current_file).suffix.lower() in CODE_EXTENSIONS:
+            if (line.startswith("+") and not line.startswith("+++")) or (line.startswith("-") and not line.startswith("---")):
+                executable_lines += 1
 
     uncounted = sum(
         1 for file in files if Path(file).suffix.lower() not in CODE_EXTENSIONS

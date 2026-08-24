@@ -31,6 +31,7 @@ The `problem_type` determines which **track** applies. Each track has different 
 - **problem_type**: One of the values listed in the Tracks table above
 - **component**: Component or area involved — open vocabulary (see Corpus-First Vocabulary). Suggested defaults when the corpus has no value for the area: `data_model`, `api_layer`, `service_layer`, `background_job`, `database`, `frontend`, `messaging`, `infrastructure`, `observability`, `authentication`, `payments`, `development_workflow`, `testing_framework`, `documentation`, `tooling`
 - **severity**: One of `critical`, `high`, `medium`, `low`
+- **ai**: The neutral protocol identity `assistant`; render it as `AI Assistant` only when a prose display label is required
 
 ## Bug Track Fields
 
@@ -64,6 +65,7 @@ Docs created before the track system may have `symptoms`/`root_cause`/`resolutio
 - Bug-track fields present on a knowledge-track doc are harmless. Do not strip them during refresh unless the doc is being rewritten for other reasons.
 - Docs written before `component`/`root_cause` became open vocabulary may carry values from the earlier closed list or the earlier `rails_version` field (now `framework_version`). They stay valid, and a corpus that consistently uses them keeps using them.
 - When creating **new** docs, follow the track rules above.
+- Existing docs without `ai` remain valid; add `ai: assistant` when a doc is replaced, not during an otherwise unrelated refresh.
 
 ## Category Mapping
 
@@ -91,14 +93,15 @@ Default layout for a repo with no existing learnings. When `<root>/solutions/` a
 
 1. Determine the track from `problem_type` using the Tracks table.
 2. All shared required fields must be present.
-3. Bug-track required fields (`symptoms`, `root_cause`, `resolution_type`) must be present on bug-track docs.
-4. Knowledge-track docs have no additional required fields beyond the shared ones.
-5. Bug-track fields on existing knowledge-track docs are harmless (see Backward Compatibility).
-6. Enum fields (`problem_type`, `severity`, `resolution_type`) must match the allowed values exactly.
-7. Open-vocabulary fields (`component`, `root_cause`) follow the Corpus-First Vocabulary rule above.
-8. Array fields must respect min/max item counts.
-9. `date` must match `YYYY-MM-DD`.
-10. `framework_version`, if present, only applies to bug-track docs.
+3. `ai` must be `assistant`; no other attribution field is added.
+4. Bug-track required fields (`symptoms`, `root_cause`, `resolution_type`) must be present on bug-track docs.
+5. Knowledge-track docs have no additional required fields beyond the shared ones.
+6. Bug-track fields on existing knowledge-track docs are harmless (see Backward Compatibility).
+7. Enum fields (`problem_type`, `severity`, `resolution_type`) must match the allowed values exactly.
+8. Open-vocabulary fields (`component`, `root_cause`) follow the Corpus-First Vocabulary rule above.
+9. Array fields must respect min/max item counts.
+10. `date` must match `YYYY-MM-DD`.
+11. `framework_version`, if present, only applies to bug-track docs.
 
 ## YAML Safety Rules
 

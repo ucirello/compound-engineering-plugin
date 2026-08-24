@@ -29,19 +29,19 @@ Pass `XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; pass `XHOST_FAMILY` as the f
 Cursor is the one identity self-knowledge cannot complete, because the harness does not determine the serving model: it keeps family `unknown` unless an observable serving-family attestation supplies `codex`, `claude`, `grok`, or `composer`. Never infer serving family from the Cursor brand. An unknown host family cannot satisfy automatic same-family exclusion, so skip the automatic cross-model pass.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary checkout YAML keys from the two workspace files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
-**Checkout egress policy — evaluate first.** Read `cross_model_review_mode:` from the same two repo CE config files under the ordinary-key rule. Valid values are `auto` (default) and `off`; anything else is invalid and continues to the next layer, then `auto`. When it resolves to `off`, skip the automatic cross-model pass here — before peer resolution, disclosure, or any job start — unless the user explicitly asked for a cross-model peer for this run in conversation (a `cross_model_peer` value or a project-instruction preference is not that opt-in). Record the skip reason as **disabled by checkout config**, distinct from an un-attestable host or an unavailable or non-independent route; each trio lens keeps its in-process twin exactly as it does for any peer that never started, and the whole-document sweep does not run. A live user prohibition still overrides `auto`.
+**Checkout egress policy — evaluate first.** Read `cross_model_review_mode:` from the same two workspace config files under the ordinary-key rule. Valid values are `auto` (default) and `off`; anything else is invalid and continues to the next layer, then `auto`. When it resolves to `off`, skip the automatic cross-model pass here — before peer resolution, disclosure, or any job start — unless the user explicitly asked for a cross-model peer for this run in conversation (a `cross_model_peer` value or a project-instruction preference is not that opt-in). Record the skip reason as **disabled by checkout config**, distinct from an un-attestable host or an unavailable or non-independent route; each trio lens keeps its in-process twin exactly as it does for any peer that never started, and the whole-document sweep does not run. A live user prohibition still overrides `auto`.
 
 Resolve the preference in this order:
 
 1. A preference the user **states in conversation** (e.g. "use grok for the cross-model pass").
-2. `cross_model_peer:` from the two repo CE config files (`config.local.yaml` then `config.yaml`). Apply the ordinary-key rule: first active supported target wins; an invalid value continues to the next layer, then step 3.
+2. `cross_model_peer:` from the two workspace config files (`config.local.yaml` then `config.yaml`). Apply the ordinary-key rule: first active supported target wins; an invalid value continues to the next layer, then step 3.
 3. A preference already in your **project instructions** (the active instructions in your context) — consumed from context, **never** read from a named file.
 4. **Default:** first available attested-different target in `codex → claude → grok → composer`; Cursor-default participates only when explicitly preferred.
 
@@ -59,7 +59,7 @@ The host harness does not choose the Grok route. Target `grok` binds `grok-cli` 
 
 A failed dispatched route returns no artifact; it never changes provider or intermediary internally. Retrying the same resolved route retains its existing sanction and disclosure; changing the route or any recipient requires a new resolution, sanction, and disclosure before dispatch. The worker may repeat that same route once only after an exact provider-overload 529; it keeps the recipient, model, scope, and shared peer deadline fixed. For backward compatibility, either `cursor` or `composer` in `CROSS_MODEL_PEERS` sanctions Cursor as an intermediary, but selecting a Cursor-default voice itself requires target `cursor`; `grok` alone never sanctions Grok-via-Cursor.
 
-**Checkout-configured model and effort.** After the target is resolved, read `cross_model_model:` and `cross_model_effort:` from the same two repo CE config files under the ordinary-key rule. When `cross_model_model` is set, pass `CROSS_MODEL_MODEL_OVERRIDE_TARGET=<resolved-target>` and `CROSS_MODEL_MODEL_OVERRIDE=<value>`; when `cross_model_effort` is set, pass `CROSS_MODEL_EFFORT_OVERRIDE=<value>`. Both ride the `env` prefix of the start invocation below. The worker validates each against the route it actually runs — a model must be the resolved target's own family (an alias such as `fable` or a full id such as `claude-opus-5` for `claude`; `gpt-*` for `codex`, optionally namespace-qualified such as `openai.gpt-5.6-sol` when that CLI routes through a non-default `model_provider`), an effort must be a level that CLI documents, and cursor-agent routes accept no effort override — and an incompatible value fails the pass closed with a named skip reason rather than substituting. Unset keys leave the script's editorial mapping unchanged. Announce the configured model and effort in the Step 3 line exactly as requested. A model or effort the user states in conversation outranks the config keys.
+**Checkout-configured model and effort.** After the target is resolved, read `cross_model_model:` and `cross_model_effort:` from the same two workspace config files under the ordinary-key rule. When `cross_model_model` is set, pass `CROSS_MODEL_MODEL_OVERRIDE_TARGET=<resolved-target>` and `CROSS_MODEL_MODEL_OVERRIDE=<value>`; when `cross_model_effort` is set, pass `CROSS_MODEL_EFFORT_OVERRIDE=<value>`. Both ride the `env` prefix of the start invocation below. The worker validates each against the route it actually runs — a model must be the resolved target's own family (an alias such as `fable` or a full id such as `claude-opus-5` for `claude`; `gpt-*` for `codex`, optionally namespace-qualified such as `openai.gpt-5.6-sol` when that CLI routes through a non-default `model_provider`), an effort must be a level that CLI documents, and cursor-agent routes accept no effort override — and an incompatible value fails the pass closed with a named skip reason rather than substituting. Unset keys leave the script's editorial mapping unchanged. Announce the configured model and effort in the Step 3 line exactly as requested. A model or effort the user states in conversation outranks the config keys.
 
 Preferred model mappings run first. Only after the preferred ID is observed unavailable, obsolete, or incompatible may the host inspect current CLI capabilities and choose the closest compatible **same-target/same-family** replacement. Bind it with both `CROSS_MODEL_MODEL_OVERRIDE_TARGET=<target>` and `CROSS_MODEL_MODEL_OVERRIDE=<model-id>`. Never substitute across families, apply one target's override to another route, silently change an explicit model, or add a recipient.
 
@@ -85,7 +85,7 @@ Each call is a CLI shell-out, not a subagent. Resolve one target and one fixed r
 
 **Two modes — slice the trio, sweep the whole doc (R20, KTD6):**
 
-- **Trio peers, sliced.** On **unified artifacts**, pass each activated trio lens the *same reviewer-specific slice its in-process twin got* as `<document-path>` (write that slice to a temp file — e.g. product-lens/adversarial get the Product Contract), not the full document, so the peer is a true corroborating twin rather than an off-lens reviewer. On legacy docs the peer gets the same full document the twin does.
+- **Trio peers, sliced.** On **unified artifacts**, pass each activated trio lens the *same reviewer-specific slice its in-process twin got* as `<document-path>` (write that slice beneath the run's workspace-local `.tmp/rocketclaw/ce-doc-review/` directory — e.g. product-lens/adversarial get the Product Contract), not the full document, so the peer is a true corroborating twin rather than an off-lens reviewer. On legacy docs the peer gets the same full document the twin does.
 - **One whole-doc sweep.** In the **same wave**, also launch **one** call with reviewer-name **`whole-doc`**, the **full** document (never sliced), and the same resolved provider — a broad different-model read of the entire doc. It runs **once per document** (not per lens), writes `whole-doc-<provider>.json`, and folds in as an independent reviewer that corroborates against *any* in-process finding 3.3 merged it with (it has no in-process twin). Same gate, isolation, and non-blocking rules as the trio calls. A model following this contract MUST issue this `whole-doc` invocation whenever the pass runs, or the broad coverage R20/U9 promises is silently skipped.
 
 Invoke via the skill-dir anchor — set `SKILL_DIR` to the absolute directory of **this** skill's `SKILL.md` (the Bash tool's CWD is the user's project, not the skill dir, on every host; shell state does not persist between Bash calls, so set it inline in every runner call):
@@ -115,11 +115,13 @@ Disclose that this is not launcher-only isolation: the detached worker inherits 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-doc-review SKILL.md you read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+WORKSPACE_REAL="$(cd "$WORKSPACE_ROOT" && pwd -P)" || exit 1; SCRATCH_REAL="$(cd "$SCRATCH_ROOT" && pwd -P)" || exit 1;
+if [ "$SCRATCH_REAL" != "$WORKSPACE_REAL/.tmp/rocketclaw" ]; then echo "scratch root escapes the workspace: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 RUN_DIR="$SCRATCH_ROOT/ce-doc-review/<run-id>"; (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "peer-deadline-secs=$(( ${CROSS_MODEL_HARD_SECS:-1200} + 10 ))";

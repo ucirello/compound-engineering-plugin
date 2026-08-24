@@ -6,9 +6,9 @@ Markdown and HTML artifacts both get written back. `ce-plan` already rewrites an
 
 ## Fail closed
 
-Where a branch below sends the run to a recap, that recap — the decisions, plus the prototype path when the run left one behind — is the run's complete result, not a degraded write-back. What fails closed is the write, not the run.
+Where a route below sends the run to a recap, that recap — the decisions, plus the prototype path when the run left one behind — is the run's complete result, not a degraded write-back. What fails closed is the write, not the run.
 
-- If there is no related path, or more than one file could be the target: do not write. Recap in chat. Recommend `ce-brainstorm` or `ce-plan`. Do not mint a plan or a third note. Do not search the repo for a matching plan. Do not write under `<root>/plans/` or any other artifact root.
+- If there is no related path, or more than one file could be the target: do not write. Recap in chat. Recommend `ce-brainstorm` or `ce-plan`. Do not mint a plan or a third note. Do not search the workspace for a matching plan. Do not write under `<root>/plans/` or any other artifact root.
 - If the file has no Product Contract section: do not invent a file or a section. Recap in chat. Recommend `ce-brainstorm` or `ce-plan`.
 - If the file is `requirements-only` and a same-basename sibling in the other format is `implementation-ready`, a format conversion superseded the one you were handed and `ce-work` executes the sibling instead. Do not write. Name the canonical file and let the user say which one they meant — decisions written into the superseded copy would never reach what gets built.
 
@@ -16,7 +16,7 @@ Where a branch below sends the run to a recap, that recap — the decisions, plu
 
 Scan the document. Edit the Product Contract only — the `## Product Contract` heading in markdown; in HTML it spans the `product-contract` and `product-requirements` sections, and nothing outside them.
 
-**HTML invariants.** Skill isolation means `ce-plan`'s rendering reference cannot be loaded here, so the rules these edits depend on are restated. Every ID-bearing item you add or change carries both the anchor and the ID as visible text — `id="r7"` on the element and `R7.` readable inside it — because downstream agents grep the HTML the way they grep markdown. A `session-settled:` annotation is visible text in the Key Decision card with its stem verbatim, never an attribute or hidden markup. Use the document's own HTML structure; never insert markdown heading syntax into it.
+**HTML invariants.** Skill isolation means `ce-plan`'s rendering reference cannot be loaded here, so the rules these edits depend on are restated. Every ID-bearing item you add or change carries its `<r-id>` anchor and matching `<R-ID>.` as visible text because downstream protocol actors inspect HTML the way they inspect markdown. A `session-settled:` annotation is visible text in the Key Decision card with its stem verbatim, never an attribute or hidden markup. Use the document's existing HTML structure and local syntax; never insert markdown heading syntax into it.
 
 Do not edit Planning Contract, Implementation Units, Verification Contract, Definition of Done, Key Technical Decisions, or any other HOW section as content. Those sections are removed wholesale when readiness is downgraded (below), not rewritten.
 

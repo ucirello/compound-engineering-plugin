@@ -1,12 +1,12 @@
 ---
 name: ce-prototype
-description: Build a throwaway prototype to answer how something should work, feel, or read. Use when committing the wrong answer would be expensive to unravel and a cheap sketch cannot settle it. Not a rough visual probe during brainstorming, not for deciding what to build, not polishing a feature that already works, not implementing the real thing.
+description: Build a throwaway prototype to answer how something should work, feel, or read. Use when choosing the wrong answer would be expensive to unravel and a cheap sketch cannot settle it. Not a rough visual probe during brainstorming, not for deciding what to build, not polishing a feature that already works, not implementing the real thing.
 argument-hint: "[prompt, brainstorm path, or plan path]"
 ---
 
 # Prototype
 
-Build a throwaway prototype at the fidelity that can answer this question, before committing an approach later work will treat as given. Then apply the decisions or hand off.
+Build a throwaway prototype at the fidelity that can answer this question, before choosing an approach later work will treat as given. Then apply the decisions or hand off.
 
 **Do not fake the dimension being tested.** Modality, fidelity, and medium all follow from that one rule. A question about how a flow or state model behaves is settled by driving it, so a screen that only looks like the product does not answer it. A question about how a layout or a mark reads is settled by seeing it at real finish, so a thin sketch does not answer it either. The user's own perception settles the question, never your judgment of the artifact.
 
@@ -31,13 +31,11 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. It yields in exactly two cases: the user names a technology, or the dimension cannot be rendered in a browser without faking it. In that second case, build in the medium the dimension requires, and name that choice before you build. If a named technology also cannot render the dimension, say so rather than yielding silently. `references/build.md` owns what the artifact may be on either path.
 
-Build under `.context/compound-engineering/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/`, where survival is best-effort. `references/build.md` names every case that forces the fallback root.
+Build under `$(jj workspace root)/.rocketclaw/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Runs that must not use the durable root go under `$(jj workspace root)/.tmp/rocketclaw/ce-prototype/<date>-<slug>/`; outside JJ, use the current directory's matching `.tmp` path. `references/build.md` owns the durability condition.
 
-The `.context` path has to be gitignored first. Probe it from the repo root with `git -C <repo root> check-ignore -q .context/compound-engineering/`; the trailing slash is load-bearing. When it is not covered, the offer to add that line comes before the root is resolved, or accepting it cannot help this run.
+Inside a JJ workspace, `.tmp/` and any selected `.rocketclaw/` root have to be ignored before any run directory is created because JJ snapshots new working-copy files automatically. `references/preview.md` owns the offer, fallback, and root resolution. Do not create the run directory yourself; a second claim splits the screens from the capsule.
 
-`references/preview.md` owns that offer and the resolution that follows it. Do not create the run directory yourself; a second claim splits the screens from the capsule.
-
-Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches the product tree. Never commit it. When the try ends, restore only the files you changed, never work you did not make. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty tree. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
+Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches the product tree. In a JJ workspace, isolate it in a new working-copy change and abandon that change when the try ends. Restore only the filesets you changed and preserve any unrelated content in the change. If the cleanup cannot be proved safe, name the filesets left modified rather than discarding someone else's work. Outside JJ, do not use the overlay path because its cleanup cannot be isolated. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
 
 ## Keep the decisions
 

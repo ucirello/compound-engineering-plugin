@@ -1,6 +1,6 @@
-# Phase 0.3-1.7: prior learnings, identity, and measurement scaffolding
+# Phase 0.3-1.7: prior learnings, run state, and measurement scaffolding
 
-Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the clean-tree gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run identity and resume detection, the branch and scratch space, the measurement harness, the baseline, the parallelism probe, and the worktree budget.
+Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the clean-change gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run detection, the optimization bookmark and local state, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
 
 ### 0.3 Search Prior Learnings
 
@@ -8,27 +8,28 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 
 ### 0.4 Run Identity Detection
 
-Check if `optimize/<spec-name>` branch already exists:
+Resolve the run bookmark with a revset:
 
 ```bash
-git rev-parse --verify "optimize/<spec-name>" 2>/dev/null
+jj log -r 'bookmarks(exact:"optimize/<spec-name>")' --no-graph -T 'change_id ++ "\n"'
 ```
 
-**If branch exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
+If the revset resolves, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
-- **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning worktree directories for `result.yaml` markers. Then apply the body's resume rule to decide what is skipped and which gates are re-entered.
-- **Fresh start**: archive the old branch to `optimize-archive/<spec-name>/archived-<timestamp>`, clear the experiment log, start from scratch
+- **Resume**: read all state from the experiment log on disk. Recover measured-but-unlogged experiments by scanning experiment workspaces for `result.yaml` markers. Then apply the body's resume rule to decide what is skipped and which gates are re-entered.
+- **Fresh start**: move the existing bookmark to a dynamically named archive bookmark that preserves the spec and archival time, clear the experiment log, and start from the current working-copy change.
 
-### 0.5 Create Optimization Branch and Scratch Space
+### 0.5 Create Optimization Bookmark and Local State
 
 ```bash
-git checkout -b "optimize/<spec-name>"  # or switch to existing if resuming
+jj bookmark create "optimize/<spec-name>" -r @
 ```
 
-Create scratch directory:
+On resume, use the existing bookmark rather than creating it. Create local state under `.context` and repository-local transient files under `.tmp/rocketclaw`:
 ```bash
-mkdir -p .context/compound-engineering/ce-optimize/<spec-name>/
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
+mkdir -p "$WORKSPACE_ROOT/.context/ce-optimize/<spec-name>" "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-optimize"
 ```
 
 ---
@@ -44,9 +45,9 @@ SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 bash "$SKILL_DIR/scripts/<name>"
 ```
 
-### 1.1 Clean-Tree Gate
+### 1.1 Clean-Change Gate
 
-The body owns this gate. Run `git status --porcelain`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result: name the dirty in-scope files and ask the user to commit or stash them, and do not continue until they are clean.
+The body owns this gate. Convert `scope.mutable` and `scope.immutable` into one workspace-rooted fileset, then run `jj diff -r @ --summary <fileset>`. Apply the body's rule to the result: name the modified in-scope files and ask the user to move them into a separate change or finish the current change before continuing. Jujutsu snapshots the working copy automatically; there is no staging index or stash gate.
 
 ### 1.2 Build or Validate Measurement Harness
 
@@ -110,9 +111,9 @@ bash "$SKILL_DIR/scripts/parallel-probe.sh" "<project_directory>" "<measurement.
 
 Read the JSON output. Present any blockers to the user with suggested mitigations. Treat the probe as intentionally narrow: it should inspect the measurement command, the measurement working directory, and explicitly declared shared files, not the entire repository.
 
-### 1.5 Worktree Budget Check
+### 1.5 Workspace Budget Check
 
-Count existing worktrees:
+Count existing experiment workspaces:
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 bash "$SKILL_DIR/scripts/experiment-worktree.sh" count
@@ -120,14 +121,14 @@ bash "$SKILL_DIR/scripts/experiment-worktree.sh" count
 
 If count + `execution.max_concurrent` would exceed 12:
 - Warn the user
-- Suggest cleaning up existing worktrees or reducing `max_concurrent`
+- Suggest cleaning up existing experiment workspaces or reducing `max_concurrent`
 - Do NOT block -- the user may proceed at their own risk
 
 ### 1.6 Write Baseline to Disk (CP-1)
 
 **MANDATORY CHECKPOINT.** Before presenting results to the user, write the initial experiment log with baseline metrics to disk:
 
-1. Create the experiment log file at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`
+1. Create the experiment log file at `.context/ce-optimize/<spec-name>/experiment-log.yaml`
 2. Include all required top-level sections from `references/experiment-log-schema.yaml`: `spec`, `run_id`, `started_at`, `baseline`, `experiments`, and `best`
 3. Seed `experiments` as an empty array and seed `best` from the baseline snapshot (use `iteration: 0`, baseline metrics, and baseline judge scores if present) so later phases have a valid current-best state to compare against
 4. Optionally seed `hypothesis_backlog: []` here as well so the log shape is stable before Phase 2 populates it
@@ -136,6 +137,6 @@ If count + `execution.max_concurrent` would exceed 12:
 
 ### 1.7 User Approval Gate
 
-The body owns this gate — what is presented, the options and the condition on adjusting the spec, the uncapped-spend disclosure, and the rule that Phase 2 does not start without explicit approval. A resume that cannot prove the user cleared this gate runs it again, so this phase supplies the same payload then. What this phase supplies to it: the baseline's gate values, diagnostic values, and judge scores; the experiment log path; the probe results with any blockers and mitigations; the clean-tree confirmation; the worktree count and projection; and the estimated per-experiment judge cost against the configured cap.
+The body owns this gate — what is presented, the options and the condition on adjusting the spec, the uncapped-spend disclosure, and the rule that Phase 2 does not start without explicit approval. A resume that cannot prove the user cleared this gate runs it again, so this phase supplies the same payload then. What this phase supplies to it: the baseline's gate values, diagnostic values, and judge scores; the experiment log path; the probe results with any blockers and mitigations; the clean-change confirmation; the workspace count and projection; and the estimated per-experiment judge cost against the configured cap.
 
 ---

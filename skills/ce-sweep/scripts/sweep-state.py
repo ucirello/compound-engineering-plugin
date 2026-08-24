@@ -40,8 +40,8 @@ are emitted as inline JSON flow on a single line — itself valid YAML.
 import argparse
 import json
 import os
+import secrets
 import sys
-import tempfile
 from datetime import datetime, timezone
 
 try:
@@ -255,13 +255,11 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # A machine-local state file can live under world-shared /tmp, and
-            # it is a correctness dependency (lease, cursors, closed status) as
-            # well as an injection sink (item bodies re-read into agent
-            # context). Reject a file not owned by us so a co-tenant cannot
-            # plant a forged lease/cursor or attacker-authored item text. Skip
-            # where geteuid is unavailable (non-POSIX), where the threat does
-            # not apply.
+            # Workspace-local state is a correctness dependency (lease,
+            # cursors, closed status) and an injection sink (item bodies are
+            # re-read into assistant context). Reject a file not owned by us so
+            # another local user cannot plant a forged lease/cursor or item
+            # text. Skip where geteuid is unavailable (non-POSIX).
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return ("corrupt", None)
@@ -293,7 +291,18 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    fd = None
+    tmp = None
+    for _ in range(100):
+        candidate = os.path.join(d, f".sweep-write-{secrets.token_hex(8)}.yml")
+        try:
+            fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            tmp = candidate
+            break
+        except FileExistsError:
+            continue
+    if fd is None or tmp is None:
+        raise OSError(f"could not reserve atomic state write in {d}")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
@@ -543,8 +552,8 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-commit mode there
-    # is a single writer per checkout, so this bookkeeping write is safe.
+    # the lease yet must still record its outcome. In local-recorded mode there
+    # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
         return emit("CORRUPT")
@@ -752,7 +761,7 @@ _HANDLERS = {
 # (run-record for an aborted-locked run, validate, import-legacy). Two
 # concurrent invocations (an overlapping cron and manual sweep) could otherwise
 # interleave load -> mutate -> write and lose an update — e.g. an aborted run's
-# stale-snapshot write clobbering the holder's just-committed upsert. An OS
+# stale-snapshot write clobbering the holder's just-persisted upsert. An OS
 # advisory lock held across each mutating RMW makes them mutually exclusive
 # regardless of lease ownership.
 _MUTATING = {

@@ -65,14 +65,16 @@ A brainstorm ends in chat unless a file is earned. A file is earned when the
 dialogue surfaced structural decisions, scope boundaries, or acceptance
 criteria that downstream consumers (planner, reviewer, future reader) need in
 IDed form, or when the user asks for one. Decisions that flow naturally to
-downstream artifacts (`ce-plan`'s prompt, the commit message,
+downstream artifacts (`ce-plan`'s prompt, the JJ change description,
 `<root>/solutions/`) do not earn a file; `phase-0.md` 0.3 states the
 Lightweight case.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repo-local instructions and repository-local history syntax always win; apply only compatible Go guidance. Use neutral placeholders when discussing a future change description rather than prescribing a fixed syntax, example, or template.
 
 **Stress test:** a brainstorm about a tiny bug fix where the user asks "fix
 this with a null check or with upstream validation?" and the agent confirms
 "upstream validation, here's why" doesn't need a brainstorm doc. The
-decision flows to `ce-plan` (or directly to commit message, or to
+decision flows to `ce-plan` (or directly to a JJ change description, or to
 `<root>/solutions/` if it's a pattern worth carrying) without a brainstorm
 artifact in the middle.
 
@@ -356,13 +358,12 @@ artifact.
 
 ### Required
 
-- **`title`** — the artifact's descriptive name with a ` - Plan` suffix
-  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
+- **`title`** — the artifact's descriptive name with a ` - Plan` suffix,
+  matching the H1 (markdown) or document
   `<h1>` (HTML). It is a unified plan at every readiness state, so the title
-  stays stable when `ce-plan` enriches it. Do not put a conventional-commit
-  prefix (`feat:`/`fix:`) in the title — the `type` field carries that.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `docs`, etc.).
+  stays stable when `ce-plan` enriches it. Do not put a change-description
+  prefix in the title — the `type` field carries the classification.
+- **`type`** — the repository's change-description classification.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
   Matches the calendar date in the filename
   (`<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>`), which adds the
@@ -381,8 +382,8 @@ artifact.
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No CE artifact carries mutable progress state; whether work shipped
-is derived from git, not stored in the doc. Do not introduce one.
+progress. No artifact carries mutable progress state; whether work shipped is
+derived from `jj log`, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 
@@ -405,7 +406,7 @@ Same shape as plan rules.
 - **Repo-relative paths.** Always. Never absolute paths.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to ce-plan, no italic provenance lines. Engineering process
-  metadata belongs in commit messages and tool output, not the artifact.
+  metadata belongs in change descriptions and tool output, not the artifact.
 - **No implementation details by default.** Libraries, schemas, endpoints,
   file layouts, code structure stay out unless the brainstorm itself is
   inherently about a technical or architectural change and those details are

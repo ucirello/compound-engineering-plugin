@@ -26,14 +26,14 @@ Delete authority is unchanged in MCP mode. An unclaimed doc still needs its `own
 
 ## Identity
 
-Every write is attributed with both fields, and they do not vary. The machine ID is `ai:compound-engineering`, sent as `by` on every op and as the `X-Agent-Id` header. The display name is `Compound Engineering`, sent as `name` on `POST /presence`, set once per doc session so Proof binds it to that agent ID. A caller may pass a different `identity` pair when a distinct sub-agent should own the doc. Never improvise a variant such as `ai:compound`.
+Every write is attributed with both fields, and the defaults do not vary. The machine ID is `ai:assistant`, sent as `by` on every op and as the `X-Agent-Id` header. The display name is `AI Assistant`, sent as `name` on `POST /presence`, set once per doc session so Proof binds it to that actor ID. Preserve a caller-supplied identity pair when a distinct actor, provider, model, or human should own the doc; never replace human attribution with the defaults or improvise a variant.
 
 ## Credentials and boundaries
 
-- `accessToken` is the everyday bearer for read, edit, presence, and events. `ownerSecret` carries owner authority only — delete and other owner-level ops — and is never the everyday bearer. Capture both at create time, and persist `ownerSecret` for the session separately from `accessToken`, in shell vars or equivalent; it is required for owner delete while the doc is unclaimed. Neither belongs in repo-tracked files, commits, or durable logs, and `ownerSecret` never appears in user-facing copy.
+- `accessToken` is the everyday bearer for read, edit, presence, and events. `ownerSecret` carries owner authority only — delete and other owner-level ops — and is never the everyday bearer. Capture both at create time, and persist `ownerSecret` for the session separately from `accessToken`, in shell vars or equivalent; it is required for owner delete while the doc is unclaimed. Neither belongs in tracked files, JJ changes, or durable logs, and `ownerSecret` never appears in user-facing copy.
 - Hand humans the tokenized link (`tokenUrl`), never a bare `/d/<slug>` — the editor token doubles as claim capability for ownerless docs.
 - Public creates are ownerless until a signed-in Every user claims the doc in the browser. Claiming permanently revokes `ownerSecret` while `accessToken` keeps working, so delete then needs the owner's Every session — ask the owner, or use their session token. Two responses mean the secret was revoked: a `403` with `code: "DOCUMENT_DELETE_FORBIDDEN"` and `reason: "CREDENTIAL_NOT_OWNER"`, or a `401` when presenting the creation `ownerSecret`. Stop using the secret rather than retrying. `reason: "DOCUMENT_HAS_NO_OWNER"` is the opposite: the doc is still unclaimed, so only the original `ownerSecret` can delete it and an Every session cannot.
-- Never put secrets, credentials, API keys, private tokens, or sensitive personal data into a Proof doc unless the user explicitly approves, and never silently replace a repo-tracked project doc with a Proof link.
+- Never put secrets, credentials, API keys, private tokens, or sensitive personal data into a Proof doc unless the user explicitly approves, and never silently replace a tracked project doc with a Proof link.
 - Emptying the markdown does **not** scrub comment marks. Quotes and commentary stay readable to anyone with the share credential, so a content wipe is not a privacy cleanup. Deleting the document is — with `ownerSecret` while the doc is unclaimed, or as the owner after a claim.
 - Do not auto-delete after a publish handoff. Review docs must linger. Delete when the user asks, or when finishing an explicitly ephemeral scratch doc.
 
@@ -62,4 +62,4 @@ Stop classes, before retrying anything:
 - `202` / `PENDING`, or `ok: false` with `partial: true` — the write may have committed. Re-read `v3/document` before chaining or reporting success, and retry only the failed op (a repeated `Idempotency-Key` replays safely).
 - Still failing after a fresh read and one safe retry — report the bug per `references/api.md` rather than looping.
 
-Pulling a doc down to a local file overwrites that file. When the pull is a side effect of some other action rather than something the user asked for, confirm the path first.
+Pulling a doc down to a local file overwrites that file. When the pull is a side effect of some other action rather than something the user asked for, confirm the path first. Keep transient pull data under `.tmp/rocketclaw` at the root returned by `jj workspace root`; outside a JJ workspace, use `.tmp/rocketclaw` under the current local directory. Do not fall back to an OS-global temporary location.

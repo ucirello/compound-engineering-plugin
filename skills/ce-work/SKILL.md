@@ -11,7 +11,7 @@ argument-hint: "[Plan path, work description, or recovery request with run id; b
 - **Result:** A fully implemented, locally verified change set from a plan, specification, or concrete work prompt.
 - **Next consumer:** In standalone use, the shipping workflow takes the verified change through review and delivery. In Return-to-Caller Mode, the invoking workflow receives the structured implementation and verification envelope and owns its remaining gates.
 - **Done:** Every in-scope task is complete, required verification evidence is recorded, relevant checks pass, and the run reaches either its owned shipping handoff (with a code-review receipt or explicit skip phrase — see Phase 3-4), a complete return envelope, or an explicit blocker.
-- **Intent:** Finish the requested feature without renegotiating the plan or transferring canonical integration authority. Workers receive bounded units; the host orchestrator inspects actual changes and owns authoritative verification and canonical commits.
+- **Intent:** Finish the requested feature without renegotiating the plan or transferring canonical integration authority. Workers receive bounded units; the host orchestrator inspects actual changes and owns authoritative verification and canonical JJ changes.
 
 ## Execution Workflow
 
@@ -27,21 +27,21 @@ When triage enters Return-to-Caller Mode, immediately read `references/return-to
 
 ### Phase 1: Quick Start
 
-1. **Establish the workspace.** Before a branch move, edit, dispatch, or commit, read `references/workspace-setup.md`. It owns writable-checkout selection, plan clarification, branch placement, pre-work inventory, collision handling, and task setup. Do not write without a writable canonical checkout or on the real default branch without the user's explicit same-session direction.
+1. **Establish the workspace.** Before changing the working-copy change, editing, dispatching, or describing work, read `references/workspace-setup.md`. It owns writable JJ workspace selection, plan clarification, bookmark placement, pre-work inventory, collision handling, and task setup. Do not write without a writable canonical JJ workspace or directly on `trunk()` without the user's explicit same-session direction.
 
-   **WIP/write gate.** Nothing the user did not offer may be committed or published. When a unit needs a file that was already dirty, standalone mode asks once whether to include or exclude it; Return-to-Caller Mode does not ask or edit it and returns blocked with the collision and recovery path. An unreadable workspace owner stops before the branch move or edit.
+   **WIP/write gate.** Nothing the user did not offer may enter a described change or be published. When a unit needs a path already modified in the starting working-copy change, standalone mode asks once whether to include or exclude it; Return-to-Caller Mode does not ask or edit it and returns blocked with the collision and recovery path. An unreadable workspace owner stops before changing the working-copy change or editing.
 
 2. **Resolve the engine, then strategy.** After bounded plan intake and task derivation, but before selecting a unit for execution, writing, dispatching, or committing, read `references/execution-engines.md` and complete its route-resolution gate. It applies with or without a typed binding; native execution is eligible only when that owner selects it or exhausts an allowed fallback. Engine choice never changes the Phase 0 tail owner.
 
    If cross-model execution is selected, read `references/cross-model-execution.md` before content or authority crosses that route. It owns controller initialization, the post-init engine lock, bounded egress, transactions, recovery, and receipts; do not approximate it with native dispatch.
 
-   Before choosing inline, serial, or parallel execution or dispatching a worker, read `references/execution-strategy.md`. It owns scheduling, isolation, unit packets, worker lifecycle, and integration. The host orchestrator keeps authoritative verification and canonical commits.
+   Before choosing inline, serial, or parallel execution or dispatching a worker, read `references/execution-strategy.md`. It owns scheduling, isolation, unit packets, worker lifecycle, and integration. The host orchestrator keeps authoritative verification and canonical JJ changes.
 
 ### Phase 2: Execute
 
-Before the first implementation write — including a Trivial route — read `references/implementation-loop.md`. It owns evidence choice, implementation, verification, completion stops, incremental commits, pattern-following, continuous testing, simplification boundaries, UI work, progress tracking, and settled-decision handling.
+Before the first implementation write — including a Trivial route — read `references/implementation-loop.md`. It owns evidence choice, implementation, verification, completion stops, incremental JJ change boundaries, pattern-following, continuous testing, simplification boundaries, UI work, progress tracking, and settled-decision handling.
 
-The kernel's write gate remains active: every implementation commit is path-limited to that unit's owned files; a bare commit can absorb the user's pre-existing index and is forbidden.
+The kernel's write gate remains active: every finalized implementation change is limited by explicit filesets to that unit's owned paths; a bare `jj commit` can absorb unrelated content from the working-copy change and is forbidden.
 
 ### Phase 3-4: Quality Check and Finishing Work
 
@@ -55,4 +55,4 @@ Return-to-Caller Mode performs implementation and local verification only. It mu
 
 Immediately before emitting the result, read `references/return-to-caller.md` again. It alone owns the full envelope, evidence completion gate, route and model receipts, recovery semantics, and `standalone_shipping_skipped: true`. Do not reconstruct a complete envelope from this kernel.
 
-If that required read fails after planning or implementation created state, preserve every changed file, commit, workspace, and controller receipt. Return the minimum blocked recovery result from this kernel: `status: blocked`, `plan_path`, `run_id` when known, `changed_state`, `blockers` naming the missing owner, and `recovery_path`. Do not erase partial state, report success, or fall into the standalone tail.
+If that required read fails after planning or implementation created state, preserve every changed file, JJ change, workspace, and controller receipt. Return the minimum blocked recovery result from this kernel: `status: blocked`, `plan_path`, `run_id` when known, `changed_state`, `blockers` naming the missing owner, and `recovery_path`. Do not erase partial state, report success, or fall into the standalone tail.

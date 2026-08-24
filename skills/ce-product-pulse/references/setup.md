@@ -34,7 +34,7 @@ If the user offers read-write database access, refuse and offer the alternatives
 
 ## Writing the config
 
-Write the captured config to `<repo-root>/.compound-engineering/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the repo root with `git rev-parse --show-toplevel`. To write: (1) if the file or directory does not exist, create `.compound-engineering/` and write the YAML file; (2) if the file exists, merge new keys into the existing YAML, preserving any non-pulse keys (e.g., `plan_*`) untouched. If `.compound-engineering/config.local.yaml` is not already covered by the repo's `.gitignore`, offer to add the entry before writing. Show the resulting pulse block to the user in chat and offer one round of edits.
+Write the captured config to `<workspace-root>/.rocketclaw/config.local.yaml` as flat `pulse_*` keys, using the schema in `references/interview.md` under "Config file shape". Resolve the workspace root with `jj workspace root`. If the file or directory does not exist, create `.rocketclaw/` and write the YAML file; if the file exists, merge new keys into the existing YAML while preserving non-pulse keys such as `plan_*`. If `.rocketclaw/config.local.yaml` is not already covered by the workspace's `.gitignore`, offer to add the entry before writing; JJ honors that file, and an already tracked config must be untracked with `jj file untrack <config-path>` after the ignore rule exists. Show the resulting pulse block to the user in chat and offer one round of edits.
 
 ## Scheduling
 

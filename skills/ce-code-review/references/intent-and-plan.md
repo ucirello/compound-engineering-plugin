@@ -4,10 +4,10 @@ Read this at Stage 2. It owns the intent summary, plan discovery, reviewer groun
 
 ## Plan Requirements Completeness
 
-When a plan is provided via `plan:<path>` or discovered from PR/branch context,
+When a plan is provided via `plan:<path>` or discovered from PR/bookmark context,
 classify readiness before checking completeness:
 
-- Unified artifact: metadata includes `artifact_contract: ce-unified-plan/v1`.
+- Unified artifact: metadata includes `artifact_contract: rocketclaw-unified-plan/v1`.
   - `artifact_readiness: requirements-only` can inform product intent, but it
     must not trigger implementation-unit completeness findings. Report that the
     artifact was not implementation-ready if the diff appears to implement it.
@@ -24,7 +24,7 @@ Extract requirements from these shapes, in order:
 3. Legacy `## Requirements Trace`
 
 For unified implementation-ready plans, also extract U-IDs from
-`## Implementation Units` and compare against PR body/branch context when
+`## Implementation Units` and compare against PR body/bookmark context when
 available. Do not require every Product Contract R-ID to map one-to-one to a
 single U-ID; verify that implemented U-IDs cite the relevant R/F/AE/KTD IDs and
 that no claimed U-ID is missing from the plan.
@@ -35,12 +35,12 @@ Understand what the change is trying to accomplish. The source of intent depends
 
 **PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
 
-**Branch mode:** Run `git log --oneline ${BASE}..<branch-ref>` using the resolved merge-base and resolved branch ref from Stage 1. Use `<branch-ref>` (the resolved `origin/<branch>` or fetched ref), not the raw `<branch>` argument — a remote-only branch has no matching local ref, so the raw name would fail or read a stale same-named local branch.
+**Bookmark mode:** Run `jj log -r "${BASE}..<bookmark-ref>"` using the resolved common ancestor and bookmark from Stage 1. Use `<bookmark-ref>` rather than the raw argument so a remote-only bookmark cannot resolve to a stale local bookmark.
 
-**Standalone (current branch):** Run:
+**Standalone (current workspace):** Run:
 
 ```
-echo "BRANCH:" && git rev-parse --abbrev-ref HEAD && echo "COMMITS:" && git log --oneline ${BASE}..HEAD
+jj bookmark list -r @ && jj log -r "${BASE}..@"
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:
@@ -52,7 +52,7 @@ with a flat-rate computation. Must not regress edge cases in tax-exempt handling
 
 Pass this to every reviewer in their spawn prompt. Intent shapes *how hard each reviewer looks*, not which reviewers are selected. Keep any `session-settled:` annotations (from a plan or the conversation) out of this summary — reviewers stay blind to settlement (Stage 2b).
 
-**When intent is ambiguous:** Infer from branch name, commits, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage — never block on a clarifying question.
+**When intent is ambiguous:** Infer from bookmark name, JJ changes, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage; never block on a clarifying question.
 
 ### Stage 2b: Plan discovery (requirements verification)
 
@@ -76,4 +76,4 @@ When the discovered plan's Key Technical Decisions carry `session-settled:` anno
 
 Use the project's active instructions already in context plus the current diff and source. Give each reviewer only the task-relevant context for its lens; the `project-standards` reviewer reads the actual standards sources. If a reviewer cannot scope the affected area from the diff and supplied context, allow one targeted probe.
 
-In `pr-remote` / `branch-remote`, current source and any targeted probe must use `git show` against the supplied reviewed head ref, or the supplied diff hunks when no head ref is available; never inspect workspace paths.
+In `pr-remote` / `branch-remote`, current source and any targeted probe must use `jj file show -r` against the supplied reviewed head revision, or the supplied diff hunks when no head revision is available; never inspect workspace paths.

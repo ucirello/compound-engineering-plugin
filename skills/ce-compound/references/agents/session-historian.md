@@ -9,12 +9,12 @@ Your scope is **synthesis only**. The caller handles discovery, branch/keyword f
 The dispatch prompt provides:
 
 - **`problem_topic`** — one sentence naming the concrete question or problem to synthesize against.
-- **`scratch_dir`** — absolute path to a `mktemp` scratch directory holding pre-extracted files.
+- **`scratch_dir`** — absolute path to the run directory under the workspace-local `.tmp/rocketclaw` namespace holding pre-extracted files.
 - **`sessions`** — an array of objects (5 max), one per pre-extracted session, each with:
   - `path` — absolute path to a skeleton text file inside `scratch_dir`
   - `errors_path` *(optional)* — absolute path to an errors text file when the orchestrator extracted errors-mode for this session
   - `platform` — `claude`, `codex`, `cursor`, `pi`, or `omp`
-  - `branch` — git branch when present (Claude Code only)
+  - `bookmark` — JJ bookmark when the orchestrator could identify one unambiguously
   - `cwd` — working directory when present (Claude, Codex, Pi, and omp)
   - `ts` and `last_ts` — session start and last-message timestamps
   - `match_count` and `keyword_matches` — when keyword filtering was used by the orchestrator

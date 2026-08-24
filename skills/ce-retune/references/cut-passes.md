@@ -12,7 +12,7 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides, each prompt carrying: the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and keep the pass in its own Jujutsu revision.
 
 Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
 
@@ -32,18 +32,18 @@ Fan out by **unit** instead: one agent owns one skill directory and applies the 
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate Jujutsu workspaces or disjoint paths in one workspace
 
-Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
+Disjoint paths in one workspace are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and one working-copy revision keeps `jj diff` readable and the resulting revision easy to inspect.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Pay for a `jj workspace` per agent when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit — lockfiles, caches, generated output, a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations; one git index shared by parallel agents corrupts staging.
-- A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
+- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on `.tmp/local` scratch and working-copy state.
+- Agents create, describe, rebase, squash, or abandon revisions, or move bookmarks; parallel repository operations need independent working-copy revisions.
+- A pass may need to be abandoned wholesale, and an isolated revision plus workspace is worth more than a shared diff.
 
-Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+Otherwise the isolation cost is real: N workspaces to create, N revisions to integrate, and conflicts reintroduced on exactly the files the manifest was designed to keep apart.
 
 ## The shared-asset trap
 
@@ -124,6 +124,8 @@ A failure that moves to a later phase is progress and names the next target. A f
 
 ## Ship (Phase 6)
 
-Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+Keep each pass as a separate Jujutsu revision and describe it so `jj log` says which change was made and why. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax, and treat any example as descriptive. Keep the measurement artifacts.
+
+Move or create the review bookmark only after the measured revision stack is ready, track it when required, publish it with `jj git push --bookmark <name>`, and use `gh` for the GitHub pull request and its review state. In a non-colocated Jujutsu repository, run `gh` with `GIT_DIR` set from `jj git root`; keep repository mutations in Jujutsu.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

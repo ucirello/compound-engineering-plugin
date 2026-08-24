@@ -65,7 +65,7 @@ Subagent Results:
   ✓ Context Analyzer: Identified performance_issue in background_job (component from corpus), category: performance-issues/
   ✓ Solution Extractor: 3 code fixes, prevention strategies
   ✓ Related Docs Finder: 2 related issues
-  ✓ Session History: 3 prior sessions on same branch, 2 failed approaches surfaced
+  ✓ Session History: 3 prior sessions matching current bookmarks, 2 failed approaches surfaced
 
 Grounding Validation:
   ✓ Mechanical check: 14 paths, 2 SHAs, 3 links checked — 1 flag annotated as historical

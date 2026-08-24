@@ -36,9 +36,9 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
    **3a. Review (read-only).** Invoke `ce-code-review` through the host's normal skill-invocation mechanism with `mode:agent` (add `plan:<path>` when known; `base:<ref>` when the diff base is resolved). Pass **`depth:full`** when the plan, the task, or the user explicitly asked for a full / deep / thorough review — that is the one escalation signal `ce-code-review` cannot infer from the diff alone. Do not pass `mode:autofix`. Parse the JSON and retain the receipt only when `status` is `complete` (plus `artifact_path` / `run_id`).
 
-   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, dispatch fix subagents. Orchestrator merges, tests, commits. Then proceed to the Residual Work Gate.
+   **3b. Apply fixes (caller-owned).** Load `references/review-findings-followup.md`: filter on JSON, batch by file, and dispatch fix subagents. The orchestrator inspects filesets, handles conflicts, tests, describes and accepts changes, and advances the bookmark. Then proceed to the Residual Work Gate.
 
-   **If `ce-code-review` cannot run at all** — subagent dispatch unavailable, unauthenticated, hard-capped, or returns `status: failed`/`degraded`/`skipped` with no completed coverage even after its own sequential Fallback: in an **interactive** session, run the harness-native review if the session catalog lists one (use that entry's listed path; it is not a Compound Engineering skill), fix inline, and note `Code review: harness-native fallback` with a one-line reason (that phrase is the gate satisfaction — not a silent mental review); in a **non-interactive** session (autonomous pipeline, or no native review available), skip the dedicated step, note `Code review: skipped (ce-code-review unavailable)`, and add an explicit manual diff scan to Final Validation. Never silently ship a non-mechanical change with no review of any kind.
+   **If `ce-code-review` cannot run at all** — subagent dispatch unavailable, unauthenticated, hard-capped, or returns `status: failed`/`degraded`/`skipped` with no completed coverage even after its own sequential fallback: in an **interactive** session, run the harness-native review if the session catalog lists one, fix inline, and note `Code review: harness-native fallback` with a one-line reason; in a **non-interactive** session, note `Code review: skipped (ce-code-review unavailable)` and add an explicit manual `jj diff` scan to Final Validation. Never silently ship a non-mechanical change with no review of any kind.
 
 4. **Residual Work Gate** (REQUIRED when `ce-code-review` ran and left actionable residuals)
 
@@ -53,7 +53,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
    Stem: `Code review left N actionable finding(s) not yet fixed. How should the agent proceed?`
 
    Options (four or fewer, self-contained labels):
-   - `Apply/fix now` — load `references/review-findings-followup.md`, dispatch batched fix subagents for remaining eligible findings, run tests, commit if needed; optionally re-run `ce-code-review` only after the diff changed materially.
+   - `Apply/fix now` — load `references/review-findings-followup.md`, dispatch batched fix subagents for remaining eligible findings, run tests, and accept a described JJ change if needed; optionally re-run `ce-code-review` only after the diff changed materially.
    - `File tickets via project tracker` — load `references/tracker-defer.md` in Interactive mode; the agent files tickets in the project's detected tracker (or `gh` fallback, or leaves them in the report if no sink exists) and proceeds to Final Validation.
    - `Accept and proceed` — record the residual findings in a durable sink before shipping. If a PR will be created or updated in Phase 4, include them in the PR description's "Known Residuals" section (the agent owns this when calling `ce-commit-push-pr`). If the user later chooses the no-PR `ce-commit` path, file a tracker ticket per finding (via `references/tracker-defer.md`) with enough background to action it standalone. When no tracker sink is reachable, state the accepted findings and their review-run context in the final summary and say plainly that they are recorded nowhere else — the user has acknowledged the risk, and an honest report beats a committed file nobody reads.
    - `Stop — do not ship` — abort the shipping workflow. The user will handle findings manually before re-invoking.
@@ -84,19 +84,23 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 1. **Prepare Validation Context**
 
-   Do not try to launch a dedicated CE evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
+   Do not launch a dedicated branded evidence-capture workflow. Use the harness's browser, screenshot, terminal recording, and artifact tools directly only when requested or when the artifact already exists.
 
    Note whether the completed work has observable behavior (UI rendering, CLI output, API/library behavior with a runnable example, generated artifacts, or workflow output), and summarize any manual validation performed. If the user supplied evidence (URL, markdown embed, local artifact path), pass it to `ce-commit-push-pr` as PR-description context.
 
-2. **Commit and Create Pull Request**
+2. **Finalize Changes and Create Pull Request**
 
    **Ship-handoff gate.** Before loading `ce-commit-push-pr` or `ce-commit`, confirm the Phase 3 code-review completion gate is satisfied (completed review receipt **or** exact skip / harness-native-fallback phrase). If neither is present, stop and run step 3 (or write the legitimate skip) — do not push "and review later." Pass the receipt summary (`status: complete` + `artifact_path`/`run_id`) or the skip phrase into the shipping summary and PR-description context the same way Known Residuals already travel.
 
-   **Do not publish what the user did not offer.** `ce-commit-push-pr` pushes the whole branch and its PR spans every commit on it. Check the pre-work scope Phase 1 Step 2 recorded: if the branch carries pre-existing commits that are not on the remote (or Step 2 could not tell), and those commits are not already in an open PR for this branch, load `ce-commit` instead — commit the work locally under any `exclude:` paths, say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first; a local commit is reversible and one word gets the rest. Otherwise:
+   **Do not publish what the user did not offer.** A JJ push publishes the selected bookmark and all prerequisite changes not already present remotely. Check the pre-work change IDs and `remote_bookmarks(remote=<remote>)..<feature-bookmark>` revset recorded in Phase 1, using the retained applicable JJ remote. If that set contains pre-existing unpublished changes outside this run and they are not already represented by the intended PR, finalize locally with `ce-commit`, state what stayed local, and offer publication on request. Otherwise continue.
 
-   **Project-defined shipping process wins.** If the project's active instructions already in your context name a process that owns the shipping handoff — committing, pushing, and opening the PR — such as a named skill or command (e.g. a `/create-pr` skill), a stacking tool, or documented steps, use that process instead of the default below. Conventions the default already honors (commit-message format, PR title style, PR template) are not a process and do not trigger this. Presence of a skill directory alone is not a directive; the instruction has to say so. Hand the process the same context this step would hand `ce-commit-push-pr` (plan summary, testing notes, evidence, review receipt, Known Residuals) — if it cannot take a piece, state that in the shipping summary. When this run recorded `Code review: skipped (mechanical diff)`, also hand it the condition that a mechanical diff needs no post-PR watch; the process owns how it honors that. The `exclude:` paths are a constraint, not context: if the process cannot keep them out of the commit, do not run it — use the default below, which can. The ship-handoff gate and the publish rule above hold whichever process runs. Precedence: the user's stated preference for this run > the project-defined process > the default. Absent a project-defined process:
+   **Project-defined shipping process wins.** If the project's active instructions name a process that owns change finalization, bookmark publication, and PR creation, use it instead of the default. Description and PR conventions alone do not trigger this override. Hand it the plan summary, tests, evidence, review receipt, residuals, excluded filesets, and unpublished change exclusions. If it cannot preserve an exclusion, use the default. Precedence is the user's current preference, then project process, then the default below.
 
-   Load the `ce-commit-push-pr` skill with `branding:on` to handle committing, pushing, and PR creation. When this run recorded `Code review: skipped (mechanical diff)`, also pass `babysit:off` — a mechanical diff needs no post-PR watch — and name that in the PR-description context. Pass `exclude:<paths>` naming every file from Phase 1 Step 2's pre-work scope that this run did not commit — untouched WIP and any leave-uncommitted files alike — so the skill's dirty-file scan leaves the user's work out of the shipping commit. This explicit signal records that the Compound Engineering workflow produced the work; the skill handles convention detection, branch safety, logical commit splitting, adaptive PR descriptions, and PR attribution. If the session already stated shipping topology — a PR stack, and any parent PR or branch to stack on — pass it on that invocation.
+   Load `ce-commit-push-pr` to finalize descriptions, set or move the feature bookmark, run `jj git fetch --remote <remote>`, resolve any bookmark conflict against `<name>@<remote>`, push only that bookmark with `jj git push --remote <remote> --bookmark <name>`, and create the PR. Use the retained remote resolved from explicit configuration or repository/provider identity; block rather than substituting another remote. When this run recorded `Code review: skipped (mechanical diff)`, also pass `babysit:off`. Pass `exclude:<paths>` for every pre-work path left in its original change and identify unpublished pre-work change IDs that must not become ancestors of the pushed bookmark. If the session stated stacking topology, pass the parent bookmark or PR explicitly.
+
+   Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+   Project instructions and the syntax observed in `git log` win. Do not impose fixed types, scopes, prefixes, or messages; the composed text becomes each JJ change description and the local PR-title convention decides the title.
 
    When providing context for the PR description, include:
    - The plan's summary and key decisions
@@ -109,7 +113,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
    If the Residual Work Gate filed residual findings as tracker tickets, back-fill the opened PR's URL into those tickets once it exists — best-effort, so each ticket links to the PR carrying the finding.
 
-   If the user prefers to commit without creating a PR, load the `ce-commit` skill instead — only after the same ship-handoff gate passes.
+   If the user prefers local finalization without a PR, load the functional `ce-commit` skill instead, only after the same ship-handoff gate passes.
 
 3. **Notify User**
    - Summarize what was completed
@@ -128,13 +132,12 @@ Before creating PR, verify:
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
 - [ ] Validation/evidence context passed to `ce-commit-push-pr` when the change has observable behavior
-- [ ] Commit messages follow conventional format
+- [ ] Change descriptions follow project instructions and observed local history
 - [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
 - [ ] Simplify: `ce-simplify-code` when the diff has >=30 substantive changed code lines (or skipped with reason)
 - [ ] Code review completion gate: completed receipt (`status: complete` + `artifact_path`/`run_id` or markdown Actionable/Coverage/Verdict) **or** exact phrase (`Code review: skipped (mechanical diff)` / `Code review: skipped (ce-code-review unavailable)` / `Code review: harness-native fallback`); residuals handled via the Residual Work Gate
 - [ ] Ship-handoff gate passed before `ce-commit-push-pr` / `ce-commit` (completed receipt or exact phrase in shipping context)
 - [ ] PR description includes summary, testing notes, and evidence when captured
-- [ ] `ce-commit-push-pr` received `branding:on` from the Compound Engineering workflow (or the project-defined shipping process ran with the same context)
 
 ## Code Review
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# read-launch-json.sh — read .claude/launch.json from the repo root and emit
+# read-launch-json.sh — read .workspace/launch.json from the workspace root and emit
 # the selected configuration as JSON on stdout, or a sentinel on failure.
 #
 # Usage:
@@ -15,8 +15,7 @@
 #
 # Output contract:
 #   Success: single-line JSON object on stdout representing the chosen
-#            configuration. Shape mirrors VS Code's launch.json entry:
-#            {name, runtimeExecutable, runtimeArgs, port, cwd, env}.
+#            configuration: {name, runtimeExecutable, runtimeArgs, port, cwd, env}.
 #   Sentinels (printed to stdout, one per line):
 #     __NO_LAUNCH_JSON__           - file not found
 #     __INVALID_LAUNCH_JSON__      - file exists but fails JSON parsing
@@ -27,15 +26,15 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, git root not found).
+# genuine operational failures (missing `jq`, Jujutsu workspace root not found).
 
 set -u
 
 REQUESTED_NAME="${1:-}"
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a git repository" >&2
+WORKSPACE_ROOT=$(jj root 2>/dev/null)
+if [ -z "$WORKSPACE_ROOT" ]; then
+  echo "ERROR: not in a Jujutsu workspace" >&2
   exit 1
 fi
 
@@ -44,7 +43,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-LAUNCH_PATH="$REPO_ROOT/.claude/launch.json"
+LAUNCH_PATH="$WORKSPACE_ROOT/.workspace/launch.json"
 
 if [ ! -f "$LAUNCH_PATH" ]; then
   echo "__NO_LAUNCH_JSON__"

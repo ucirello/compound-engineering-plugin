@@ -4,15 +4,15 @@ Read this before interpreting any planning phase. It owns prompt-token parsing, 
 
 ## Artifact Root
 
-**Every file reference inside the plan document is repo-relative** (`src/models/user.rb`), never absolute — unit file lists, pattern references, origin links, and prose mentions alike. Absolute paths break portability across machines, worktrees, and teammates. Paths printed to the user in chat are the exception and stay absolute so they are clickable.
+**Every file reference inside the plan document is repo-relative** (`src/models/user.rb`), never absolute — unit file lists, pattern references, origin links, and prose mentions alike. Absolute paths break portability across machines, workspaces, and teammates. Paths printed to the user in chat are the exception and stay absolute so they are clickable.
 
 This skill writes plans under `<root>/plans/` and reads learnings under `<root>/solutions/`. Resolve `<root>` when you first compose a `<root>/` path, never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count, so either one triggers resolution; only a run that touches no `<root>/` path at all — a scratch-only or no-repo flow — skips it. Pass the resolved path to any subagent, not the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`; outside Jujutsu, use the current working directory). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -28,14 +28,14 @@ Output mode is **exclusive** — a plan is written as either markdown (`.md`) OR
 4. **Default.** Otherwise `OUTPUT_FORMAT=md`. If `<repo-root>` cannot be resolved so the config cannot be read, fall through to this default rather than failing.
 5. **Pipeline override.** When invoked from LFG or any `disable-model-invocation` context, force `OUTPUT_FORMAT=md` regardless of steps 1-4. Pipeline mode forces markdown and skips interactive questions but does **not** disable model elevation — `plan_model` config (and a `plan_model:<alias>` caller carrier) is still honored (see the model-elevation sub-step below and `references/reasoning-elevation.md`).
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, the exact `confirm:auto`/`confirm:ask` forms, `plan_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including commit prefixes like `feat:` and any unrecognized `confirm:<value>` — pass through verbatim into the feature description. A stripped `plan_model:<alias>` carrier is retained for the Phase 5.2 model-elevation step.
+**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, the exact `confirm:auto`/`confirm:ask` forms, `plan_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including project-local message syntax and any unrecognized `confirm:<value>` — pass through verbatim into the feature description. A stripped `plan_model:<alias>` carrier is retained for the Phase 5.2 model-elevation step.
 
 **For an artifact-producing route, load the format-rendering reference only after the value settles:** `references/markdown-rendering.md` when `OUTPUT_FORMAT=md`, `references/html-rendering.md` when `OUTPUT_FORMAT=html`. Section content is the same either way; presentation differs. Both are paired with `references/plan-sections.md`.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary yaml keys from the two workspace files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`; outside Jujutsu, use the current working directory). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->

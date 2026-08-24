@@ -4,9 +4,9 @@ description: Refresh the repo's captured learnings against the current codebase.
 argument-hint: "[optional: scope hint — directory, filename, module, or keyword] [mode:non-interactive] "
 ---
 
-# Compound Refresh
+# Learning Refresh
 
-Audit the learnings under `<root>/solutions/` against the current codebase, apply the maintenance actions the evidence supports, and deliver a complete per-doc report plus committed changes. The report and the corrected document set are the deliverables. The store only compounds value if every doc can be trusted.
+Audit the learnings under `<root>/solutions/` against the current codebase, apply the maintenance actions the evidence supports, and deliver a complete per-doc report plus recorded JJ changes. The report and the corrected document set are the deliverables. The store only compounds value if every doc can be trusted.
 
 
 ## Mode
@@ -22,12 +22,14 @@ Resolve `<root>` when you first compose a `<root>/solutions/` path. Pass the res
 Classify a rejected subagent dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and if another launch failure survives correction, perform that pass in the orchestrator with the same inputs and report the substitution.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.local.yaml`, then `<workspace-root>/.rocketclaw/config.yaml`; the first non-empty value wins (`<workspace-root>` = `jj workspace root`). Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
+
+Keep temporary refresh artifacts workspace-local. Resolve the workspace root with `jj workspace root` and use `<workspace-root>/.tmp/rocketclaw/ce-compound-refresh/<run-id>/`; outside a JJ workspace, use `<current-directory>/.tmp/rocketclaw/ce-compound-refresh/<run-id>/`. Never use an OS-global temporary location.
 
 ## Scope
 
@@ -67,13 +69,13 @@ Edits apply silently in every mode. The report's `CONCEPTS.md` line records what
 
 **Print the full report as markdown.** It is the deliverable, not an internal summary, and in non-interactive mode it is the only one. Keep it self-contained and never abbreviated, split into **Applied** and **Recommended**. **Read `references/report.md`** for the summary block, per-file detail, and what belongs under Recommended.
 
-## Commit
+## Record
 
-Skip if nothing changed. Otherwise stage **only** the files this refresh modified, and commit in the repo's convention. **Read `references/commit.md`** for the per-mode branch decision and the git-failure fallback.
+Skip if nothing changed. Otherwise record **only** the files this refresh modified without disturbing unrelated work in the working-copy change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Preserve the refresh summary semantics. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax, prefix, type, scope, subject, body, layout, template, or example. **Read `references/commit.md`** for the per-mode bookmark decision, publication, and the JJ-failure fallback.
 
 ## Discoverability Check
 
-After the report, check that the project's instructions would lead an agent to `<root>/solutions/` before working in a documented area. Do this every time: the store only compounds value when agents can find it. **Read `references/discoverability.md`** for what the reader must learn, the smallest-addition rule and its tone, the `CONCEPTS.md` variant, consent versus a report line per mode, and folding a late edit into the commit.
+After the report, check that the project's instructions would lead an agent to `<root>/solutions/` before working in a documented area. Do this every time: the store only compounds value when agents can find it. **Read `references/discoverability.md`** for what the reader must learn, the smallest-addition rule and its tone, the `CONCEPTS.md` variant, consent versus a report line per mode, and folding a late edit into the described JJ change.
 
 ## Relationship to ce-compound
 

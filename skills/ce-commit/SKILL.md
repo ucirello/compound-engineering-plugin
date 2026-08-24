@@ -1,59 +1,45 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communicating message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate message.
+description: Describe Jujutsu changes with clear, value-communicating messages. Use when the user asks to commit or save working-copy changes with repository-appropriate descriptions.
 ---
 
-# Git Commit
+# Jujutsu Change Description
 
-Create well-crafted local commit(s) from the current working tree. No push, no PR — use `ce-commit-push-pr` for the full ship flow.
+Turn the requested working-copy content into well-bounded local Jujutsu changes with accurate descriptions. Do not push or open a PR; route that work to `ce-commit-push-pr`.
 
-**Done when:** each logical change is committed with an explicit file list and a message that states the outcome, and `git status` is clean of those changes. **Stop when:** the tree is clean (nothing to commit).
+**Done when:** every requested logical change occupies an explicit change boundary, has a description that states its outcome, and contains exactly its intended files; excluded or unrelated content remains outside those changes. **Stop when:** there is no requested content to describe, the directory is not a Jujutsu workspace, or ambiguity or conflicts prevent a truthful boundary or description.
 
 ## Context
 
-Gather context with each command as its **own** shell tool call (program + args only). Do **not** join with `;`, `&&`, `||`, pipes, `$(...)`, or redirects — that syntax fails under Windows PowerShell. A non-zero exit is a normal state to interpret, not a failure to suppress.
+Gather current state with separate shell tool calls. Do not join commands with shell operators, substitutions, pipes, or redirects. Interpret non-zero exits as state, and use the installed `jj help <command>` when repository configuration or the installed version affects a command form.
 
-| Command | Purpose | Non-zero / empty means |
+| Command form | Purpose | Non-zero or empty result |
 | --- | --- | --- |
-| `git status` | Working-tree state | Not a git repo — stop |
-| `git diff HEAD` | Uncommitted changes | Unborn repo / no commits yet |
-| `git branch --show-current` | Current branch | Empty = detached HEAD |
-| `git log --oneline -10` | Recent message style | Unborn repo — no history |
-| `git rev-parse --abbrev-ref origin/HEAD` | Remote default branch | No `origin/HEAD` / bare `HEAD` — try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, else `main` |
+| `jj root` | Confirm the workspace and obtain its root | Not a Jujutsu workspace; stop |
+| `jj status` | Inspect the working-copy change, conflicts, and changed paths | State unavailable; stop |
+| `jj diff -r <working-copy-change>` | Inspect the complete content to be bounded and described | No content in that change |
+| `jj log -r <working-copy-change> --no-graph` | Read the current change ID and description | Change unavailable; stop |
+| `git log <repository-appropriate-history-options>` | Observe the repository's established message syntax | No useful history; rely on active repository-local instructions and compatible Go guidance |
 
-Treat this as a snapshot. Re-read branch and staged set immediately before committing if anything may have changed.
-
-**Default branch name:** strip a leading `origin/` from `origin/HEAD` (so `origin/trunk` → `trunk`). Use that bare name for all “on the default branch?” checks — never compare against `origin/<name>`.
+Jujutsu snapshots the working copy at the start of ordinary commands, so this context can change while it is gathered. Re-read `jj status` and the relevant `jj diff` immediately before each boundary or description mutation.
 
 ## Workflow
 
-0. **Gather** — run every Context command above (own shell call each), then continue.
+1. **Establish scope** - Compare the complete working-copy change with the user's request. Honor `exclude:<paths>` whenever the invocation carries it: excluded paths must remain outside every requested change and must be named in the report. Stop and ask when ownership of content is ambiguous or unresolved conflicts prevent an accurate boundary or description.
 
-1. **Nothing to commit** — if `git status` shows no staged, modified, or untracked files, report that and stop. Do not use `git diff HEAD` alone as cleanliness (it misses untracked files).
+2. **Choose change boundaries** - Group the requested content by independently understandable outcome. Use one change when separation is ambiguous and at most three unless the user requests otherwise. Select whole files only; do not split hunks interactively. When the working-copy change contains multiple groups, exclusions, or unrelated content, use explicit JJ filesets to split each requested group into its own change while leaving all unselected content in the remaining working-copy change. When the existing boundary already contains exactly one requested group, preserve its content and topology.
 
-2. **Branch first** — if detached HEAD, or on the default branch (`main` / `master` / the bare default name above), create a feature branch from the change content (`git checkout -b <name>`), then re-read `git branch --show-current`. Do not ask — commit-only still must not leave work only on a detached HEAD or the default branch. If the derived name exists, pick a non-conflicting suffix.
+3. **Compose each description** - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The user's request, repository-local active instructions, and the syntax observed in `git log` determine the current standard; repository-local instructions and `git log` syntax always win over Go guidance. The description must communicate the change's outcome rather than enumerate its files. Include motivation, trade-offs, issue context, or a known plan implementation-unit identifier only when the current standards and available context make them relevant. Do not search for a plan solely to add an identifier. Do not add generated-by text, authorship, co-authorship, sign-off, or other attribution.
 
-3. **Convention** — match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). When using conventional commits and `fix`/`feat` both fit, default to `fix:` (remedying broken or missing behavior); reserve `feat:` for new capabilities. User override wins.
+4. **Apply boundaries and descriptions** - Use the installed forms of these commands with neutral values:
 
-4. **Logical commits** — if changed files clearly split into distinct concerns, make separate commits (file level only, 2–3 max, no `git add -p`). If ambiguous, one commit.
-
-5. **Message** — subject is imperative and names the outcome (what is now possible or fixed), not the file list. Body only when motivation or trade-offs are not obvious from the subject. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
-
-   - Bad: `Update checkout.rb` / `Add tests and fix stuff`
-   - Good: `Fix double-submit on checkout`
-   - Good: `Add per-subscription mute (U3)`
-
-6. **Stage and commit** — stage **named files only** (never `git add -A` or `git add .`). Honor `exclude:<paths>` when the invocation carries it: those files stay uncommitted no matter what else changed; say in the report that they were left out. Prefer one shell call per commit group:
-
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-type(scope): subject line here
-
-Optional body when the why is not obvious from the subject.
-EOF
-)" -- file1 file2 file3
+```text
+jj split -r <source-change> -m "<composed-description>" <included-filesets...>
+jj describe -r <target-change> -m "<composed-description>"
 ```
 
-The trailing path list on `git commit` is load-bearing: a bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would ride into the commit. Naming the paths commits exactly the group and leaves other index entries alone.
+Use `jj split` only when a content boundary must change; its selected filesets form the described change and its unselected content remains in the child change. Use `jj describe` when the target already has the exact intended content. After every mutation, identify changes by change ID rather than assuming a position such as parent or child, then verify the target's full diff and the remaining working-copy diff before continuing.
 
-7. **Confirm** — `git status`; report hash(es) and subject(s).
+Pass a complete multiline description as one message value. If the harness cannot pass that value safely, use an ignored file under `<workspace-root>/.tmp/ce-commit/` as the fallback and remove it after use. Confirm `.tmp` is ignored before creating the file; otherwise stop rather than snapshot scratch content. Do not use an operating-system temporary directory.
+
+5. **Verify and report** - Run `jj status`, inspect each resulting change with `jj diff -r <created-change>` and `jj log -r <created-change> --no-graph`, and confirm that descriptions and exact filesets match the intended groups. Report each change ID, commit ID, description, and fileset, plus every excluded, unrelated, or newly arrived path left in the working-copy change. If concurrent edits changed a boundary, stop and report that the affected description must be reconsidered.

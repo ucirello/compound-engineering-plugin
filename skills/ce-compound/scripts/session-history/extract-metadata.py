@@ -32,7 +32,7 @@ def try_claude(lines):
         if result is None and obj.get("type") == "user" and "gitBranch" in obj:
             result = {
                 "platform": "claude",
-                "branch": obj["gitBranch"],
+                "legacy_branch": obj["gitBranch"],
                 "ts": obj.get("timestamp", ""),
                 "session": obj.get("sessionId", ""),
             }

@@ -103,7 +103,7 @@ Did it work correctly?
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / JJ [revision or bookmark]
 **Server:** http://localhost:<port>
 
 ### Pages Tested: [count]

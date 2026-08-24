@@ -13,7 +13,7 @@ When the user picks an option, fire its action rather than acknowledging the cho
 - **Local file** — copy it out of `$RUN_DIR` to the path the user names, then offer to open it where the platform exposes `open` / `xdg-open` / `start`; otherwise print the absolute path.
 - **Publish to Proof** (markdown only) — publish per that destination's section below and surface the share URL; on failure retry once, then report and move on.
 - **Send to Thinkroom** (only when a Thinkroom capability is detected) — send per that destination's section below.
-- **Leave it** — report the `$RUN_DIR` path, noting it is temporary and does not survive reboot; nothing else is written.
+- **Leave it** — report the `$RUN_DIR` path, noting it is workspace-local scratch under `.tmp` and may be cleaned; nothing else is written.
 
 ## Audience mismatch — offered before the destination's own consent gate
 
@@ -56,7 +56,7 @@ After the user selects the warned option or explicitly confirms after the warnin
 
 ## Publish to Proof (markdown output only)
 
-Proof ingests markdown, so this option renders only when the run resolved `output:md`. Invoke the `ce-proof` skill via the platform's skill-invocation primitive when it is installed, passing the artifact path, a title (`Explainer: <subject>`), and identity `ai:compound-engineering` / `Compound Engineering`; surface the returned share URL. When the skill is not installed but the Proof web API is reachable, POST the markdown per that API. On failure: retry once after a short wait, then report plainly that the upload didn't succeed and why, and fall back to the local-file path. One-way publish; the run-dir file stays canonical.
+Proof ingests markdown, so this option renders only when the run resolved `output:md`. Invoke the `ce-proof` skill via the platform's skill-invocation primitive when it is installed, passing the artifact path, a title (`Explainer: <subject>`), and neutral identity `ai:assistant` / `AI Assistant`; surface the returned share URL. When the skill is not installed but the Proof web API is reachable, POST the markdown per that API. On failure: retry once after a short wait, then report plainly that the upload didn't succeed and why, and fall back to the local-file path. One-way publish; the run-dir file stays canonical.
 
 ## Send to Thinkroom
 

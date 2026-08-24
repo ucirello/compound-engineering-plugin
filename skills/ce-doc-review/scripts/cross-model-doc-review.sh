@@ -22,14 +22,15 @@
 #   <host-serving-family>
 #                   the peer-key of the host's OWN serving family, attested by
 #                   the calling skill (it knows its harness). A peer-key, never
-#                   a provider name: openai->codex, anthropic->claude,
-#                   xai->grok, cursor/composer->composer.
+#                   a provider attribution. The peer-key namespace map is
+#                   codex->codex, claude->claude, grok->grok,
+#                   cursor/composer->composer.
 #                   Excluded from selection when attested. `unknown` is allowed,
 #                   but any returned review remains non-independent and cannot
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > CE config cascade >
+#                   resolved preference (conversation > config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -89,7 +90,7 @@ case "$TRANSIENT_RETRY_DELAY_SECS" in ''|*[!0-9]*) skip "transient retry delay m
 # ONE model per provider at high reasoning, except codex on extra-high (supersedes
 # the old per-lens sol/terra split). Concrete IDs are the CURRENT instance of the
 # tier principle and the single maintenance point when model families change.
-# A checkout may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
+# A workspace may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
 # CROSS_MODEL_MODEL_OVERRIDE, same target/family only) and the reasoning effort
 # (CROSS_MODEL_EFFORT_OVERRIDE, validated per route); both fail closed.
 # codex: luna/xhigh is the benchmarked pick on API dollars (~0.30x sol-medium, tied
@@ -278,9 +279,9 @@ adapter_argv() {
 # Accept a host-discovered replacement only for its declared target and model
 # family. An override for another target is ignored rather than leaking across
 # routes; an unbound or cross-family override is invalid for its own route.
-# A codex id may carry the serving provider's own namespace (openai.gpt-...,
-# openai/gpt-...) when the CLI routes through a non-default model_provider; the
-# family segment after the namespace is still checked.
+# A codex id may carry the serving provider's namespace when the CLI routes
+# through a non-default model_provider; the family segment after the namespace
+# is still checked.
 validate_model_override() {
   local route="$1" override="${CROSS_MODEL_MODEL_OVERRIDE:-}" override_target="${CROSS_MODEL_MODEL_OVERRIDE_TARGET:-}" target
   [ -n "$override" ] || { [ -z "$override_target" ]; return; }
@@ -348,6 +349,25 @@ RUN_DIR="${7:-}"
 mkdir -p "$RUN_DIR" 2>/dev/null
 [ -d "$RUN_DIR" ] || skip "run-dir '$RUN_DIR' could not be created; skipping"
 command -v jq >/dev/null 2>&1 || skip "jq not installed; skipping"
+
+# Keep every private intermediate beside the run artifacts under the caller's
+# JJ-workspace `.tmp` root. Exclusive claims avoid predictable-name collisions.
+claim_run_file() {
+  local stem="$1" i path
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
+    path="$RUN_DIR/.$stem-$$-$RANDOM-$i"
+    if (umask 077; set -C; : > "$path") 2>/dev/null; then printf '%s\n' "$path"; return 0; fi
+  done
+  return 1
+}
+claim_run_dir() {
+  local stem="$1" i path
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
+    path="$RUN_DIR/.$stem-$$-$RANDOM-$i"
+    if (umask 077; mkdir "$path") 2>/dev/null; then printf '%s\n' "$path"; return 0; fi
+  done
+  return 1
+}
 
 # Validate the host identity tuple. An unknown serving family is allowed, but
 # normalization marks every result non-independent.
@@ -499,23 +519,23 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+PROMPT_FILE="$(claim_run_file xmodel-doc-prompt)" || skip "could not claim prompt file under run-dir; skipping"
+PEERLOG="$(claim_run_file xmodel-doc-log)" || { rm -f "$PROMPT_FILE"; skip "could not claim peer log under run-dir; skipping"; }
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-err-XXXXXX")"
+PEERERR="$(claim_run_file xmodel-doc-err)" || { rm -f "$PROMPT_FILE" "$PEERLOG"; skip "could not claim peer error log under run-dir; skipping"; }
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
 PROVIDER_OUTCOME="ok"
-cleanup_temp() {
+cleanup_run_files() {
   rm -f "$PROMPT_FILE" "$PEERLOG" "$PEERERR"
   [ -n "$RAW_OUT" ] && rm -f "$RAW_OUT"
   [ -n "$PEER_WORKDIR" ] && [ "$PEER_WORKDIR" != "${RUN_DIR:-}" ] && rm -rf "$PEER_WORKDIR"
 }
-trap 'cleanup_temp' EXIT
+trap 'cleanup_run_files' EXIT
 # Basename only in the peer prompt: content is already embedded (KTD3). An absolute
 # path would give cursor-agent residual-Read a repo coordinate to walk from.
 DOC_BASENAME="$(basename "$DOC_PATH")"
@@ -1060,9 +1080,8 @@ run_provider() {   # <provider>
   # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
   # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
-  # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  # never written into RUN_DIR by the peer itself.
+  PEER_WORKDIR="$(claim_run_dir xmodel-doc-peer)" || { log "could not claim peer workspace under run-dir; skipping"; rm -f "$OUT"; return 0; }
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -1077,7 +1096,7 @@ run_provider() {   # <provider>
   validate_model_override "$primary" || { log "model override '${CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$primary'; skipping"; rm -f "$OUT"; return 0; }
   validate_effort_override "$primary" || { log "effort override '${CROSS_MODEL_EFFORT_OVERRIDE:-}' not compatible with route '$primary'; skipping"; rm -f "$OUT"; return 0; }
   # Track the route that actually produced the fold-in, so the artifact records
-  # whether a grok return went out directly (grok-cli -> xAI) or through Cursor
+  # whether a grok return used its native route or the Cursor intermediary
   # (grok-cursor -> Cursor also received the full document). The <lens>-<provider>
   # filename alone cannot encode that intermediary.
   ACTUAL_ROUTE="$primary"
@@ -1119,7 +1138,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
+    _norm="$(claim_run_file xmodel-doc-norm)" || { log "could not claim normalization file under run-dir; skipping"; rm -f "$OUT" "$RAW_OUT"; return 0; }
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

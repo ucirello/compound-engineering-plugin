@@ -1,6 +1,6 @@
 ---
 name: ce-sweep
-description: "Sweep configured feedback sources (Slack, GitHub Issues; email experimental) for new items: acknowledge at source, analyze recordings, verify fixes merged to main, and emit an `lfg`-ready plan. First run sets up sources; supports mode:non-interactive for scheduled runs."
+description: "Sweep configured feedback sources (Slack, GitHub Issues; email experimental) for new items: acknowledge at source, analyze recordings, verify fixes integrated into the default bookmark, and emit an `lfg`-ready plan. First run sets up sources; supports mode:non-interactive for scheduled runs."
 disable-model-invocation: true
 argument-hint: "[setup|reconfigure] [mode:non-interactive]"
 allowed-tools:
@@ -16,7 +16,7 @@ allowed-tools:
 
 # Feedback Sweep
 
-**Outcome:** every item posted to a configured source since the last run is acknowledged at that source. Its recordings are analyzed, and any fix it claims is verified merged to the default branch. The open items are folded into a rolling `lfg`-ready plan.
+**Outcome:** every item posted to a configured source since the last run is acknowledged at that source. Its recordings are analyzed, and any fix it claims is verified integrated into the default bookmark. The open items are folded into a rolling `lfg`-ready plan.
 
 **Done:** the run is recorded, the lease is released, and the summary is printed with the plan path.
 
@@ -27,8 +27,8 @@ allowed-tools:
 **Boundaries.**
 
 - A source whose config entry has `approved: false` receives no source-side write, ever — no ack, no close-out — even when the write tool is available. Its items are still fetched and upserted as `ack_deferred`; they are never skipped.
-- Raw media is never committed. Only the plan and the repo-internal state are.
-- A fix ref reaches a git or gh command only when the whole value is a bare PR number (`#?\d+`) or a commit SHA (`[0-9a-f]{7,40}`). Anything else stays an unresolved claim.
+- Raw media is never included in a change. Only the plan and the workspace-internal state are.
+- A fix ref reaches a `jj` or `gh` command only when the whole value is a bare PR number (`#?\d+`) or a Git commit SHA (`[0-9a-f]{7,40}`). Anything else stays an unresolved claim.
 - Every upsert carries its source's `sensitive` flag.
 
 
@@ -45,19 +45,19 @@ Parse a `mode:non-interactive` token or its deprecated alias `mode:headless` fro
 Swept feedback lives under `<root>/feedback-sweep/`. Resolve `<root>` the first time you compose any `<root>/` path, whether to read or to write. A run that composes none skips the resolution.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the configured artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Phase 0: Route by Config State
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary configuration keys from the two workspace files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -66,7 +66,7 @@ Swept feedback lives under `<root>/feedback-sweep/`. Resolve `<root>` the first 
 
 ## Phase 1: First-Run Setup
 
-Read `references/interview.md` and follow it — it writes the config keys into `<repo-root>/.compound-engineering/config.local.yaml`, offers a scheduling handoff, then Phase 2 runs.
+Read `references/interview.md` and follow it — it writes the config keys into `<workspace-root>/.rocketclaw/config.local.yaml`, offers a scheduling handoff, then Phase 2 runs.
 
 ## Phase 2: Sweep Run
 
@@ -80,14 +80,14 @@ Within 2d, work one item at a time in cursor order, never batched across the rea
 
 - `LOCKED` -> record `aborted-locked` and exit.
 - `LEASE-LOST` -> stop writing, record `partial`, exit.
-- An engine call that cannot write state at all -> stop before any further source-side write. An ack that state cannot record gets acked again next run.
+- An engine call that cannot write state at all -> stop before any further source-side write. An ack that state cannot record gets acknowledged again next run.
 
-Everything state *can* record continues. A failed ack marks the item `ack_deferred` and holds its cursor. A failed download, scratch setup, or analysis marks it and moves on.
+Everything state *can* record continues. A failed ack marks the item `ack_deferred` and holds its cursor. A failed download, local-storage setup, or analysis marks it and moves on.
 
 #### 2i. Wrap-up
 
-**User-runnable invocation rendering.** In the handoff below, default to `/lfg <root>/plans/feedback-sweep-plan.md`; use `$lfg <root>/plans/feedback-sweep-plan.md` only on Codex or a host documenting dollar-prefixed invocation. Render only the invocation as inline code and output one form only.
+**User-runnable invocation rendering.** In the handoff below, default to `/lfg <root>/plans/feedback-sweep-plan.md`; use `$lfg <root>/plans/feedback-sweep-plan.md` only when the active host documents dollar-prefixed invocation. Render only the invocation as inline code and output one form only.
 
-`git add` only the plan, plus the repo-internal `<state>` — never `-A`. A commit failure is reported, not fatal, and never blocks `run-record` or `lease-release`. Always emit the summary with every field `references/run.md` lists, ending with the plan path and this handoff line:
+Commit only the root-relative fileset containing the plan and, when applicable, workspace-internal `<state>`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax. A `jj commit` failure is reported, not fatal, and never blocks `run-record` or `lease-release`. Always emit the summary with every field `references/run.md` lists, ending with the plan path and this handoff line:
 
   `<rendered lfg invocation for <root>/plans/feedback-sweep-plan.md>`

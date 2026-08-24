@@ -44,20 +44,34 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
-    )
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["jj", *args], capture_output=True, text=True, check=False
+        )
+    except OSError as error:
+        return subprocess.CompletedProcess(["jj", *args], 127, "", str(error))
 
 
-def valid_commit(ref: str | None) -> bool:
+def resolve_revision(ref: str | None) -> str | None:
     if not ref:
-        return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+        return None
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\\n"')
+    revisions = [line for line in result.stdout.splitlines() if line]
+    if result.returncode != 0 or len(revisions) != 1:
+        return None
+    return revisions[0]
 
 
-def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+def unique_common_ancestor(base: str, head: str) -> str | None:
+    result = jj(
+        "log",
+        "--no-graph",
+        "-r",
+        f"heads(::{base} & ::{head})",
+        "-T",
+        'commit_id ++ "\\n"',
+    )
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -86,12 +100,12 @@ def repo_root() -> Path:
     """The repository root, matching how docs_root is resolved everywhere else.
 
     docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
+    check must resolve against the Jujutsu workspace root, not the current working
+    directory. ce-code-review can run from a subdirectory (``jj diff`` still
     works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
+    wrongly report the corpus absent. Fall back to cwd outside a Jujutsu workspace.
     """
-    result = git("rev-parse", "--show-toplevel")
+    result = jj("workspace", "root")
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -139,42 +153,49 @@ def main() -> int:
 
     learnings_corpus = has_learnings_corpus(args.docs_root)
 
-    if not valid_commit(args.base):
+    base = resolve_revision(args.base)
+    if base is None:
         print(json.dumps(fail_closed("invalid base endpoint", learnings_corpus), sort_keys=True))
         return 0
-    if args.head is not None and not valid_commit(args.head):
+    head = resolve_revision(args.head) if args.head is not None else None
+    if args.head is not None and head is None:
         print(json.dumps(fail_closed("invalid head endpoint", learnings_corpus), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
-    if args.head:
-        merge_base = unique_merge_base(args.base, args.head)
-        if merge_base is None:
-            print(json.dumps(fail_closed("merge base unavailable or ambiguous", learnings_corpus), sort_keys=True))
+    diff_args = ["--from", base]
+    if head:
+        common_ancestor = unique_common_ancestor(base, head)
+        if common_ancestor is None:
+            print(json.dumps(fail_closed("common ancestor unavailable or ambiguous", learnings_corpus), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_args = ["--from", common_ancestor, "--to", head]
 
-    names = git("diff", "--name-only", *diff_args)
-    numstat = git("diff", "--numstat", *diff_args)
-    if names.returncode != 0 or numstat.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", learnings_corpus), sort_keys=True))
+    names = jj("diff", *diff_args, "--name-only")
+    if names.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
     executable_lines = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3 or Path(parts[2]).suffix.lower() not in CODE_EXTENSIONS:
-            continue
-        try:
-            executable_lines += int(parts[0]) + int(parts[1])
-        except ValueError:
-            # Binary/unknown counts fail the lite gate through uncounted_files below.
-            pass
-
     uncounted = sum(
         1 for file in files if Path(file).suffix.lower() not in CODE_EXTENSIONS
     )
+    for file in files:
+        if Path(file).suffix.lower() not in CODE_EXTENSIONS:
+            continue
+        patch = jj("diff", *diff_args, "--git", "--", file)
+        if patch.returncode != 0:
+            uncounted += 1
+            continue
+        changed = sum(
+            1
+            for line in patch.stdout.splitlines()
+            if (line.startswith("+") and not line.startswith("+++"))
+            or (line.startswith("-") and not line.startswith("---"))
+        )
+        if changed == 0 and patch.stdout:
+            uncounted += 1
+        executable_lines += changed
     signals = [
         name
         for name, pattern in SIGNAL_PATTERNS.items()

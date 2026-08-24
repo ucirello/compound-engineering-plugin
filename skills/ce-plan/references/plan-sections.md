@@ -21,7 +21,7 @@ Sections earn their place by serving one of these audiences. Omit padding.
 
 ## Unified plan artifact contract
 
-`ce-plan` writes the canonical compound-engineering plan artifact. The same
+`ce-plan` writes the canonical unified plan artifact. The same
 artifact may begin as a requirements-only skeleton from `ce-brainstorm` and
 later be enriched by `ce-plan`; it is still one plan file moving through
 readiness states, not a requirements doc plus a separate implementation doc.
@@ -381,20 +381,16 @@ plan.
 
 ### Required
 
-- **`title`** — the plan's descriptive name with a ` - Plan` suffix
-  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
+- **`title`** — the plan's descriptive name with a local plan-title suffix when the project uses one, matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
-  across readiness states (it is a plan at every stage). Do not put a
-  conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
-  carries that classification.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual commit message should reflect.
+  across readiness states (it is a plan at every stage). Do not put commit-message syntax in the title; the `type` field carries local classification when applicable.
+- **`type`** — the project's local intent classification. Do not constrain it to a fixed generic enum. It carries the intent the eventual commit message should reflect.
+- Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active local commit-message syntax takes precedence over generic syntax and examples.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from git, not stored in the doc. Do not
+whether a plan shipped is derived from Jujutsu history, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -413,7 +409,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the branch/test/commit/CI lifecycle); absent or `code` routes
+  skipping the change-stack/test/description/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.
@@ -440,10 +436,10 @@ These apply regardless of rendering format.
   KTD is added, split, or first cited by a unit. Untouched unnumbered KTDs
   in legacy plans stay as they are — readable by label, no mass renumbering.
 - **Repo-relative paths.** Always. Never absolute paths in plan content;
-  they break portability across machines, worktrees, teammates.
+  they break portability across machines, workspaces, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
-  metadata belongs in commit messages and tool output, not the artifact.
+  metadata belongs in change descriptions and tool output, not the artifact.
 - **Session-settled annotations on KTDs.** A Key Technical Decision that
   records a decision settled in the invoking conversation carries an inline
   annotation on its entry:

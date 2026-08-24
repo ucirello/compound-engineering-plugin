@@ -9,8 +9,8 @@
 #
 # Arguments:
 #   path (optional) — project root to inspect. Relative paths resolve from the
-#                     repository root. Defaults to the repository root. The
-#                     resolved path must remain inside the repository.
+#                     workspace root. Defaults to the workspace root. The
+#                     resolved path must remain inside the workspace.
 #
 # Output grammar (one line on stdout):
 #
@@ -36,7 +36,7 @@
 #   signature files. Deeper nesting is ignored to avoid false positives.
 #
 #   Excluded directories (not real project roots):
-#     node_modules .git vendor dist build coverage .next .nuxt
+#     node_modules .jj .git vendor dist build coverage .next .nuxt
 #     .svelte-kit .turbo tmp fixtures
 #
 # `multiple` vs `rails`: Rails apps commonly ship a Procfile.dev alongside
@@ -46,22 +46,22 @@
 
 set -u
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a git repository" >&2
+WORKSPACE_ROOT=$(jj root 2>/dev/null)
+if [ -z "$WORKSPACE_ROOT" ]; then
+  echo "ERROR: not in a Jujutsu workspace" >&2
   exit 1
 fi
 
-REPO_ROOT=$(cd "$REPO_ROOT" 2>/dev/null && pwd -P)
-if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: cannot resolve repo root" >&2
+WORKSPACE_ROOT=$(cd "$WORKSPACE_ROOT" 2>/dev/null && pwd -P)
+if [ -z "$WORKSPACE_ROOT" ]; then
+  echo "ERROR: cannot resolve workspace root" >&2
   exit 1
 fi
 
-PROJECT_ROOT="${1:-$REPO_ROOT}"
+PROJECT_ROOT="${1:-$WORKSPACE_ROOT}"
 case "$PROJECT_ROOT" in
   /*) ;;
-  *) PROJECT_ROOT="$REPO_ROOT/$PROJECT_ROOT" ;;
+  *) PROJECT_ROOT="$WORKSPACE_ROOT/$PROJECT_ROOT" ;;
 esac
 
 if [ ! -d "$PROJECT_ROOT" ]; then
@@ -74,9 +74,9 @@ if ! PROJECT_ROOT=$(cd "$PROJECT_ROOT" 2>/dev/null && pwd -P); then
   exit 1
 fi
 case "$PROJECT_ROOT" in
-  "$REPO_ROOT"|"$REPO_ROOT"/*) ;;
+  "$WORKSPACE_ROOT"|"$WORKSPACE_ROOT"/*) ;;
   *)
-    echo "ERROR: path must stay inside repo root: $PROJECT_ROOT" >&2
+    echo "ERROR: path must stay inside workspace root: $PROJECT_ROOT" >&2
     exit 1
     ;;
 esac
@@ -154,7 +154,7 @@ esac
 # Exclusion list: directories that ship framework configs as fixtures or build
 # output, not as real project roots.
 
-EXCLUDE_DIRS="node_modules .git vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
+EXCLUDE_DIRS="node_modules .jj .git vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
 EXCLUDE_ARGS=""
 for d in $EXCLUDE_DIRS; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS -path './$d' -prune -o -path '*/$d' -prune -o"

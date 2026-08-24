@@ -24,7 +24,7 @@ Then apply only the judgment the helper cannot own:
 
 1. **Semantic reconciliation.** Merge differently worded findings only when they describe the same defect and fix path. Keep disagreements visible. Union the mechanics-produced `reviewers` and `independent_reviewers` lists from the merged candidates; never add an identity to `independent_reviewers` merely because it appears in `reviewers`. A pre-existing gap stays primary only when the new change directly depends on it for correctness; mark that reconciled candidate `pre_existing: false` before the final helper pass. Nearby cleanup remains pre-existing.
 2. **Settled decisions.** Inspect both surviving `findings` and `suppressed_findings`. If a finding merely prefers an alternative to a `session-settled:` KTD, stamp `settled_conflict`, route it advisory/human, and include it in the synthetic rerun so the helper preserves it in the primary report. Never apply it. Do not demote a real defect or evidence that the settled approach cannot work. Honor inferred-plan settlements only when the match is unambiguous.
-3. **Restore mechanics.** After semantic reconciliation, direct-dependency reclassification, or settlement stamping, rerun the helper with every reconciled candidate, including unchanged primary and pre-existing candidates plus stamped and unstamped suppressed candidates. It enforces the quote-the-line gate, discrete confidence anchors, exact dedup, independent-agreement promotion, conservative routing, pre-existing partition, confidence gate, deterministic sort, and stable `#` numbering. `fast-pass` never promotes confidence; an `adversarial-<provider>` peer promotes only when `independence_verified: true`. Peer findings never carry apply authority.
+3. **Restore mechanics.** After semantic reconciliation, direct-dependency reclassification, or settlement stamping, rerun the helper with every reconciled candidate, including unchanged primary and pre-existing candidates plus stamped and unstamped suppressed candidates. It enforces the quote-the-line gate, discrete confidence anchors, exact dedup, independent-agreement promotion, conservative routing, pre-existing partition, confidence gate, deterministic sort, and stable `#` numbering. `fast-pass` never promotes confidence; `adversarial-external` promotes only when `independence_verified: true`. Peer findings never carry apply authority.
 4. **Soft-bucket demotion before validation.** After the final helper pass, inspect both surviving `findings` and the remaining `suppressed_findings`. Keep every `settled_conflict`-stamped finding primary as required by Stage 5 step 2.
    - A current P0/P1 remains primary unless it is a semantic duplicate, validated false, preference-only settled conflict, or genuinely pre-existing. Never move it to `residual_risks` or `testing_gaps` merely because only one reviewer found it. Findings with different failure modes or fix paths are not duplicates even when they touch the same lines (for example, awaiting a ledger append does not solve a later publish-failure retry that appends twice).
    - For testing-only absence-of-coverage findings, keep at most one umbrella primary finding per changed subsystem when the lack of tests is itself material; move narrower case-by-case coverage findings to `testing_gaps` regardless of their persona severity.
@@ -50,7 +50,7 @@ Then apply only the judgment the helper cannot own:
 
 Independent verification remains required for findings that lack cross-model corroboration. Do not spend another model call re-verifying evidence already established independently across serving families.
 
-1. Skip a validator only when the finding has `first_evidence` and both an ordinary reviewer plus an `adversarial-<provider>` reviewer whose artifact records `independence_verified:true`. Same-model corroboration never licenses this shortcut. Record the skip count in Coverage.
+1. Skip a validator only when the finding has `first_evidence` and both an ordinary reviewer plus `adversarial-external` whose artifact records `independence_verified:true`. Non-independent corroboration never licenses this shortcut. Record the skip count in Coverage.
 2. Select every remaining P0/P1 and every remaining actionable finding, except preference-grade `settled_conflict` items. Single-source P0s are always selected. P2/P3 advisory items should already have moved to the soft buckets; do not validate them merely to keep them primary.
 3. Put the selected set into **one** deterministic validator batch, ordered by severity and stable `#`, using `references/validator-batch-template.md`. Eight findings is the normal cap. When more than eight P0/P1 survive, expand that same batch past the normal cap to include every surviving P0/P1 rather than silently omitting a blocker; never split the work into another batch. The validator returns one independent verdict per finding. Cost, elapsed time, confidence, or a finding appearing mechanically obvious never licenses an additional skip; when the required validator cannot run, keep P0/P1 as validation-degraded and say so.
 4. Run the validator batch foreground with background execution off, then classify the observed return rather than trusting that request as a wait guarantee. Collection completes when the successful launch reaches a terminal outcome. Consume a valid compact validator verdict whether returned in-band or collected asynchronously; classify a terminal tool error or malformed output as validator infrastructure failure under step 5. A launch receipt is uncollected, not a validator return: use the host's blocking collection capability until the validator reaches a terminal outcome. If no reliable blocking collection exists, stop the launched validator and treat it as validator infrastructure failure under step 5. Never use shell no-ops (`echo waiting`, `noop`, `yield turn`, `end turn`, `true`, or sleeps), detached status polls, scheduled wakeups, or narrated "still waiting" turns.
@@ -72,7 +72,7 @@ Severity, confidence, and cross-reviewer agreement tell you what to do first and
 
 One exception: `settled_conflict`-stamped preference findings (Stage 5 step 2) stay report-only even when local apply is authorized — the bias-to-act rule does not apply to them. The user already chose against that alternative; reversing it is not this review's improvement to make.
 
-**Scope invariant.** Apply only when the working tree *is* what was reviewed — `local-aligned` or standalone. In `pr-remote` / `branch-remote` the working tree is not the reviewed head; do not apply — report instead.
+**Scope invariant.** Apply only when the working copy *is* what was reviewed — `local-aligned` or standalone. In `pr-remote` / `bookmark-remote` the working copy is not the reviewed head; do not apply — report instead.
 
 **Verify, then keep.** After applying, run the affected tests and lint (targeted by default; broaden when fixes span files). If they fail, revert that fix and report it as a finding instead — an unverified fix is not finished. Never leave the tree red.
 
@@ -82,10 +82,10 @@ One exception: `settled_conflict`-stamped preference findings (Stage 5 step 2) s
 - If a reviewer item is pure information (no defect, no code contract change, no test gap), classify it as advisory/non-actionable in Coverage or residual risks; do not patch it or describe it as a missed defect.
 If this self-review changes files, rerun the affected tests or lint for those follow-up edits before committing or reporting; the earlier validation only covers the original autofix diff.
 
-**Commit when the pre-review tree was clean.** Before applying, note whether the working tree already had uncommitted changes (`git status --porcelain`). The permanence gate is the **push**, not the commit — a local commit is private and reversible (`git reset --soft HEAD~1`).
+**Finish the change when the pre-review working-copy change was empty.** Before applying, record whether `jj diff` was empty. The permanence gate is the **push**, not the local description/commit checkpoint; `jj undo` can reverse the latest local operation.
 
-- **Clean before the review:** after applying and verifying, commit the fixes as one isolated, review-labeled fix commit — `fix(review): <summary>`, or the repo's nearest convention if `review` isn't an allowed scope. Labeled and reversible, returning the tree to a known state.
-- **Dirty before the review:** apply but do **not** commit — the fixes interleave with the user's in-flight work and ride along with the commit they were already going to make. The Applied section lists what changed.
+- **Empty before the review:** after applying and verifying, finish the fixes as one isolated change with `jj commit -m "<message composed from the standards below>"`, returning the workspace to a known state. The message must describe the applied review fixes. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax.
+- **Non-empty before the review:** apply but do **not** commit; the fixes remain in the user's in-flight change. The Applied section lists what changed.
 - **Never push, open a PR, or file tickets** — that's the outward-facing step the user owns.
 
 **Surface green-but-unverifiable edits.** When an applied fix touches auth/authz, a public or cross-service contract/schema, or concurrency/ordering, a passing test does not prove safety — flag it prominently in the Applied section so the diff reviewer's attention goes there.
@@ -117,7 +117,7 @@ Write human-readable findings in an ASD-STE100 Simplified Technical English (STE
 - **The Verdict and Actionable list are present, last, and self-sufficient.** This is satisfied by the closing, not the section skeleton: the Verdict is the final report section, immediately followed by the post-report prioritized Actionable recap (default mode — see *Emit actionable findings summary* below). The in-report `Actionable Findings` section keeps its skeleton position (5) as the detailed table; the recap is the self-sufficient last word the reader sees without scrolling. (If for some layout you cannot emit the recap, move the Actionable list itself to just after the Verdict.)
 
 1. **Header.** Scope, intent, mode, reviewer team with per-conditional justifications.
-2. **Applied (explicit local apply only).** When Stage 5c applied fixes, list them first — before the findings — in an Applied section (see review output template); each entry carries `#`, file, the fix, and reviewer (a multi-file fix is one row with one `#`), then a one-line validation outcome (e.g. "pin tests 4 -> 6; suite 94 pass, lint clean") and commit status (committed on a clean tree as `fix(review): …` or the repo's nearest convention, or left uncommitted for the user on a dirty one). Flag green-but-unverifiable edits (auth/contract/concurrency) prominently. Omit this section when local apply was not authorized or nothing was applied. Applied findings appear here, not in the severity tables.
+2. **Applied (explicit local apply only).** When Stage 5c applied fixes, list them first — before the findings — in an Applied section (see review output template); each entry carries `#`, file, the fix, and reviewer (a multi-file fix is one row with one `#`), then a one-line validation outcome and checkpoint status (committed with the project's local description syntax when the working-copy change was initially empty, or left in the user's existing change when it was not). The project's local syntax takes precedence. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Flag green-but-unverifiable edits (auth/contract/concurrency) prominently. Omit this section when local apply was not authorized or nothing was applied. Applied findings appear here, not in the severity tables.
 2b. **Triage Groups.** When finalized `triage_groups` exist (post-validation, post-apply — Stage 5b step 5 / Stage 5c), render a `### Triage Groups` section before the findings as a compact table (`| Group | Findings | Context | Preferred Resolution | Why |`) — a table fits this content well. The `Findings` cell lists the stable `#`s it covers; the resolution names the order/dependency. **Mark whether each group is an apply-queue or a decision-gate** (so an automated fixer applies the mechanical groups and stops at the design calls). Every referenced `#` must appear in the findings below; groups supplement the findings, never replace them. Omit the section when `grouping:off` is active or no groups survived. In `mode:agent` this section is carried by the `triage_groups` JSON field instead.
 3. **Findings.** Grouped by severity (`### P0 -- Critical`, `### P1 -- High`, `### P2 -- Moderate`, `### P3 -- Low`), rendered per the per-finding direction above and consistent within the section. Surface the decision-vs-mechanical split where it helps the actor (flag the design calls). Omit empty severity levels. Finding numbers come from the stable assignment in Stage 5 -- never re-derive them per severity section or triage group.
 4. **Requirements Completeness.** Include only when a plan was found in Stage 2b. For each requirement (R1, R2, etc.) and implementation unit in the plan, report whether corresponding work appears in the diff. Use a simple checklist: met / not addressed / partially addressed. Routing depends on `plan_source`:
@@ -151,9 +151,9 @@ Minimum shape:
   "status": "complete",
   "verdict": "Ready to merge | Ready with fixes | Not ready",
   "scope": {
-    "base": "<merge-base sha, pr:NNN marker, or base: ref>",
-    "branch": "<current branch name>",
-    "head_sha": "<git rev-parse HEAD>",
+    "base": "<resolved base revision, pr:NNN marker, or base: ref>",
+    "bookmark": "<closest current bookmark or null>",
+    "head_change": "<jj log --no-graph -r @ -T 'change_id'>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },
@@ -194,14 +194,14 @@ Before delivering the review, verify:
 2. **No false positives from skimming.** For each finding, verify the surrounding code was actually read. Check that the "bug" isn't handled elsewhere in the same function, that the "unused import" isn't used in a type annotation, that the "missing null check" isn't guarded by the caller.
 3. **Severity is calibrated.** A style nit is never P0. A SQL injection is never P3. Re-check every severity assignment.
 4. **Line numbers are accurate.** Verify each cited line number against the file content. A finding pointing to the wrong line is worse than no finding.
-5. **Protected artifacts are respected.** Discard any finding that recommends deleting or gitignoring a CE pipeline artifact, per the Protected Artifacts rule at the end of this reference: any file under a `plans/`, `solutions/`, or legacy `brainstorms/` directory whose immediate parent is the artifact root (a directory named `docs`, or the configured `docs_root` when resolved). Categories nest (`solutions/<category>/`); a `references/personas/` skill asset, parented by `references`, is not a protected artifact.
+5. **Protected artifacts are respected.** Discard any finding that recommends deleting or ignoring a protected workflow artifact, per the Protected Artifacts rule at the end of this reference: any file under a `plans/`, `solutions/`, or legacy `brainstorms/` directory whose immediate parent is the artifact root (a directory named `docs`, or the configured `docs_root` when resolved). Categories nest (`solutions/<category>/`); a `references/personas/` skill asset, parented by `references`, is not a protected artifact.
 6. **Findings don't duplicate linter output.** Don't flag things the project's linter/formatter would catch (missing semicolons, wrong indentation). Focus on semantic issues.
 
 ## Protected Artifacts
 
-Compound-engineering pipeline artifacts must never be flagged for deletion, removal, or gitignore by any reviewer. A protected artifact is any file **under** a `plans/`, `solutions/`, or legacy `brainstorms/` directory **whose immediate parent is the artifact root** — a directory named `docs` (the default, and where unmigrated legacy artifacts stay even after a project sets `docs_root`) or the configured `docs_root` when this run resolved it:
+Workflow artifacts must never be flagged for deletion, removal, or ignore rules by any reviewer. A protected artifact is any file **under** a `plans/`, `solutions/`, or legacy `brainstorms/` directory **whose immediate parent is the artifact root** — a directory named `docs` (the default, and where unmigrated legacy artifacts stay even after a project sets `docs_root`) or the configured `docs_root` when this run resolved it:
 
-- `plans/` under the artifact root -- unified plan artifacts created by ce-brainstorm or ce-plan (decision artifacts; execution progress is derived from git, not stored in plan bodies)
+- `plans/` under the artifact root -- unified plan artifacts created by `ce-brainstorm` or `ce-plan` (decision artifacts; execution progress is derived from Jujutsu, not stored in plan bodies)
 - `solutions/` under the artifact root -- solution documents created during the pipeline (categories nest, e.g. `solutions/<category>/foo.md`)
 - the legacy `brainstorms/` -- requirements documents created by older ce-brainstorm versions
 
@@ -209,7 +209,7 @@ Matching by the immediate parent covers nested category files while leaving a sa
 
 ## After Review
 
-After Stage 6, stop. When local apply was explicitly authorized, Stage 5c may already have applied and, on a clean pre-review tree, committed verified fixes. Otherwise the caller or user decides what to apply from the report and artifacts.
+After Stage 6, stop. When local apply was explicitly authorized, Stage 5c may already have applied and, on an initially empty working-copy change, committed verified fixes. Otherwise the caller or user decides what to apply from the report and artifacts.
 
 ### Emit actionable findings summary (default mode only)
 
@@ -230,7 +230,7 @@ Do not run post-review triage (no per-finding walk-through, bulk ticket filing, 
 | **Default** | Markdown tables + Actionable Findings summary. |
 | **`mode:agent`** | JSON object + `review.json` in run artifact dir. |
 
-Do not offer push/PR/create-branch next steps from this skill.
+Do not offer push/PR/create-bookmark next steps from this skill.
 
 #### Run artifacts
 
@@ -249,11 +249,11 @@ Always write run artifacts under the resolved `<run-dir>`:
 ```json
 {
   "run_id": "<run-id>",
-  "branch": "<git branch --show-current at dispatch time>",
-  "head_sha": "<git rev-parse HEAD at dispatch time>",
+  "bookmark": "<jj log --no-graph -r 'heads(::@ & bookmarks())' -T 'bookmarks' at dispatch time>",
+  "head_change": "<jj log --no-graph -r @ -T 'change_id' at dispatch time>",
   "verdict": "<Ready to merge | Ready with fixes | Not ready>",
   "completed_at": "<ISO 8601 UTC timestamp>"
 }
 ```
 
-Capture `branch` and `head_sha` at dispatch time (no in-skill fixes will land afterward).
+Capture `bookmark` and `head_change` at dispatch time (no in-skill fixes will land afterward).

@@ -1,6 +1,6 @@
 # CONCEPTS.md vocabulary rules
 
-`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and AGENTS.md can cite without redefinition. Lives at the repo root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
+`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and the project's instructions can cite without redefinition. It lives at the workspace root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
 
 ## How terms enter: accretion and seeding
 
@@ -24,7 +24,7 @@ When the team uses several words for the same concept, pick the best one and ret
 
 ## The file stands on its own
 
-Each entry teaches its concept to a reader with no access to anything else — no codebase, no PR history, no architecture meetings, no Slack. This rules out:
+Each entry teaches its concept to a reader with no access to anything else — no codebase, no PR history, no architecture meetings, and no team-chat history. This rules out:
 
 - Implementation specifics (file paths, class names, function signatures, table names, library calls)
 - Status fields, dates, owners on the entries

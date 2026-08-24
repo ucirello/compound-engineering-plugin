@@ -8,9 +8,9 @@ argument-hint: "[optional: section to revisit, e.g. 'metrics' or 'approach']"
 
 **The current year is 2026** - use it when dating the document.
 
-`ce-strategy` writes and maintains its part of `STRATEGY.md` - the repo-root project document that captures what the project is, who it serves, how it succeeds, and where the team is investing. The file is shared with other tools and people; this skill owns only the sections `references/strategy-template.md` names. Downstream skills read it when it exists: `ce-ideate`, `ce-brainstorm`, and `ce-plan` for what work is on-strategy; `ce-product-pulse` for the product name and key metrics; `ce-dogfood` for the primary persona. Its frontmatter keys and this skill's section headings are the contract those skills parse - keep them for every section this skill authors; a meaning an existing section already carries is merged into it (`references/update-run.md`).
+`ce-strategy` writes and maintains its part of `STRATEGY.md` at the Jujutsu workspace root. Outside a Jujutsu workspace, use the current project directory. The document captures what the project is, who it serves, how it succeeds, and where the team is investing. The file is shared with other tools and people; this skill owns only the sections `references/strategy-template.md` names. Downstream skills read it when it exists: `ce-ideate`, `ce-brainstorm`, and `ce-plan` for what work is on-strategy; `ce-product-pulse` for the product name and key metrics; `ce-dogfood` for the primary persona. Its frontmatter keys and this skill's section headings are the contract those skills parse - keep them for every section this skill authors; a meaning an existing section already carries is merged into it (`references/update-run.md`).
 
-**Done:** `STRATEGY.md` exists at the repo root and the user has seen what will be written and had an edit pass. For a file in this skill's house format, every required section is filled from answers that survived pushback (or explicitly deferred to a linked legacy doc) and the file matches `references/strategy-template.md`. For a file in any other shape, done is the user-approved minimal edits applied, with the document's shape unchanged. A section the user could not sharpen in two rounds is written as given and named in chat as worth revisiting - a completed run, not a blocked one.
+**Done:** `STRATEGY.md` exists at the resolved workspace root and the user has seen what will be written and had an edit pass. For a file in this skill's house format, every required section is filled from answers that survived pushback (or explicitly deferred to a linked legacy doc) and the file matches `references/strategy-template.md`. For a file in any other shape, done is the user-approved minimal edits applied, with the document's shape unchanged. A section the user could not sharpen in two rounds is written as given and named in chat as worth revisiting - a completed run, not a blocked one.
 
 ## Boundaries
 
@@ -18,7 +18,10 @@ argument-hint: "[optional: section to revisit, e.g. 'metrics' or 'approach']"
 - **The user answers; the repo only grounds the question.** Evidence earns a sharper question, never fills in a section. Do not derive the strategy from the repo.
 - **Short is a feature.** Push back on expansion rather than adding sections.
 - **Record which metrics matter and where they live**, not what they read today.
+- **Keep output neutral.** Do not add project or workflow branding, generated-by text, visual badges, or creator, model, provider, tool, agent, harness, runtime, workflow, co-author, sign-off, or similar attribution. Preserve human and research-source attribution already present in user-owned content.
 - **Meaning is the contract; the shape belongs to whoever created the doc.** A file that is solely this skill's - `references/update-run.md` states the test - is maintained in house format on every write: headings renamed, sections in the template's current order, missing required sections offered; do not treat it as multi-writer merely because the file is shared in principle. A file in any other shape - hand-written, from another tool - is read by meaning and edited in its own shape and idiom: no restructuring into the template, no uninvited frontmatter or headings. Either way a section carrying an author-approved marker (e.g. `<!-- <tool>: author-approved 2026-07-10 -->`), or a doc the user does not own, is not edited at all - report the conflict, or write a separate file that links to it - and a targeted update preserves every other section's content exactly, its place following that ownership test (a solely-owned file takes the template's order; a multi-writer file is never reordered). `references/update-run.md` owns the rest and is a required read before you edit an existing file.
+
+Resolve the workspace root with `jj workspace root`. Run it as a single shell-tool call; if it fails because no Jujutsu workspace is available, use the current project directory. If temporary files are needed, keep them under `<workspace-root>/.tmp/ce-strategy/`; with no Jujutsu workspace, use `./.tmp/ce-strategy/`. Never use an OS or machine-global temporary directory.
 
 ## Asking and routing
 
@@ -30,7 +33,7 @@ Any argument this skill was invoked with — present in the current prompt or co
 
 Phase 0 produces a repo model and a route, whatever the harness reads. `references/grounding.md` is a non-optional load: it carries the full source list and the wording of the disagreement question and the focus hint.
 
-**The repo model** is your working understanding of what this product is. Read `STRATEGY.md` if it exists. Take what the product is from its stated intent and structure - README, `CONCEPTS.md`, `docs/`, sibling docs such as `PRODUCT.md`, what the code is organized around - and bound that read to "what is this and who is it for" rather than profiling the whole repo. Take what is getting attention now from recent commits or PRs. Attention informs only the Tracks question and staleness in an update run; where it disagrees with stated intent, that is a question for the user, never a conclusion. Show the model in chat before the first question: three to five lines on what you take the product to be, who it seems to serve, and where attention has gone, each with its source named, and invite correction. If the model did not supply the product's name, ask for it here - the template's frontmatter and title need it. A repo with no substantive content is a normal path: say so in one line and run the interview ungrounded.
+**The repo model** is your working understanding of what this product is. Read `STRATEGY.md` if it exists. Take what the product is from its stated intent and structure - README, `CONCEPTS.md`, `docs/`, sibling docs such as `PRODUCT.md`, what the code is organized around - and bound that read to "what is this and who is it for" rather than profiling the whole repo. Take what is getting attention now from recent Jujutsu changes or GitHub PRs. Inspect change history with `jj log`; inspect GitHub PR evidence through `gh`. Attention informs only the Tracks question and staleness in an update run; where it disagrees with stated intent, that is a question for the user, never a conclusion. Show the model in chat before the first question: three to five lines on what you take the product to be, who it seems to serve, and where attention has gone, each with its source named, and invite correction. If the model did not supply the product's name, ask for it here - the template's frontmatter and title need it. A repo with no substantive content is a normal path: say so in one line and run the interview ungrounded.
 
 **The route** is announced in one line by file state: no file -> Phase 1 ("Strategy doc not found - let's write it."), after the legacy-sibling offer in `references/grounding.md` when one applies; file exists -> Phase 2 ("Found existing strategy - let's review and update.").
 
@@ -48,7 +51,6 @@ Run the interview in this order (the document itself follows the template's orde
 6. Stress test
 7. Boundaries (always written)
 8. Milestones (optional)
-9. Brand (optional)
 
 When every section is captured, read `references/strategy-template.md`, fill it in, present the full draft in chat, offer one round of edits, then write `STRATEGY.md`.
 
@@ -58,4 +60,4 @@ Read `references/update-run.md` first - a non-optional load, before the summary,
 
 ## Phase 3: Downstream handoff
 
-Note in one line where the file lives and that `ce-ideate`, `ce-brainstorm`, and `ce-plan` pick it up as grounding on their next run. If no downstream skill has run here yet, suggest `ce-ideate` or `ce-brainstorm` as a next step.
+Note in one line where the file lives and that `ce-ideate`, `ce-brainstorm`, and `ce-plan` pick it up as grounding on their next run. If no downstream skill has run here yet, suggest `ce-ideate` or `ce-brainstorm` as a next step through the active harness's callable skill mechanism.

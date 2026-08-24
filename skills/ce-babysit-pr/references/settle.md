@@ -42,7 +42,7 @@ Check cheaply (one `gh` call at the settle decision — reactions on the PR body
 
 **The `merge-ready` wake protocol (the canonical settle policy).** The detector automates the current 👀 signal (`review_in_progress`) and remembers whether one appeared on this head (`review_signal_seen_on_head`); it cannot decide whether a reviewer is slow, completed through another surface, or stalled. On every wake, run the guard's one `gh` check against the **current head**, then branch per reviewer:
 
-If a persisted 👀 lifecycle no longer identifies its reactor, a done signal from some other reviewer does **not** clear it. Keep the unattributed lifecycle incomplete until the bounded stale path resolves it; never turn missing attribution into assumed completion.
+If a persisted 👀 lifecycle no longer identifies its reactor, a done signal from some other reviewer does **not** clear it. Keep that unidentified lifecycle incomplete until the bounded stale path resolves it; never turn missing identity into assumed completion.
 
 - **Every present signal is a done signal on the current head** (a reviewer's thumbs-up / "no issues found" / approval, with no reviewer still in progress or expected) → those reviewers are finished. A done signal never extends the wait — accept the wake and, if the rest of the looks-ready gate holds, declare "looks ready" now, with no further settle period.
 - **No incomplete lifecycle** (no signal was observed on this head, or every observed reviewer has a current-head done signal) → the elapsed default window already decided; declare "looks ready — your call to merge."

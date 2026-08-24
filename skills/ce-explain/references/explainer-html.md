@@ -30,7 +30,7 @@ Default: the user personally. Second person, and no orientation they already hav
 
 When intake resolved another reader, render for that reader instead. What changes:
 
-- **No second person.** The subject goes to third person when a name is available — recap mode's commit authors, or a name the user supplied — and impersonal ("the retry path was rewritten") when none is.
+- **No second person.** The subject goes to third person when a name is available — recap mode's revision authors, or a name the user supplied — and impersonal ("the retry path was rewritten") when none is.
 - **Minimum orientation added.** One or two sentences of what the project or area is, where the personal rendering would assume it. Add only what the reader cannot follow without.
 - **Nothing else changes.** Same depth, same real code from evidence, same `Unverified` label when it applies, same one-sitting length.
 - **The form does not become a status update or a deck.** A share-out request often sounds like one ("something for the #eng channel"), and rendering for that reader is right — but they are getting the explainer, at full depth, not a summary. Adapting the audience never licenses thinning the content.
@@ -40,7 +40,7 @@ When intake resolved another reader, render for that reader instead. What change
 - Hold prose to ~70ch (`max-width` on text blocks); full-width only for diagrams and code.
 - Lead each section with the point, then the mechanism, then the caveat.
 - Dense is good; long is not. The explainer is one sitting's read — cut background that doesn't change understanding.
-- **When the evidence exceeds one sitting** (a busy recap window is routinely 50+ commits), select rather than truncate: lead with the few threads that changed how the project works, carry the rest as a compact roll-up, and say plainly what you set aside so the reader knows the timeline isn't the whole log. Never silently drop the tail.
+- **When the evidence exceeds one sitting** (a busy recap window is routinely 50+ revisions), select rather than truncate: lead with the few threads that changed how the project works, carry the rest as a compact roll-up, and say plainly what you set aside so the reader knows the timeline isn't the whole log. Never silently drop the tail.
 - Code samples: real code from the grounding evidence where it exists, invented minimal examples only for external topics, always syntax-highlighted with inline `<style>` classes.
 
 ## Post-compose audit

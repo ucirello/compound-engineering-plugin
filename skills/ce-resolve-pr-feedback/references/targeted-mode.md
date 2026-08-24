@@ -35,9 +35,9 @@ If this prints anything, stop. Tell the user they have an unsubmitted review on 
 
 ## 2. Judge, Fix, Reply, Resolve
 
-Apply Full Mode step 7's independent reply/resolution completion check before judgment. When the target is already `resolution-pending`, that shared step owns the only remaining work; skip judgment, fixing, validation, and commit, then complete the missing resolution without posting again.
+Apply Full Mode step 7's independent reply/resolution completion check before judgment. When the target is already `resolution-pending`, that shared step owns the only remaining work; skip judgment, fixing, validation, and revision creation, then complete the missing resolution without posting again.
 
-**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read (callers, invariants, `git blame`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
+**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read callers, invariants, `jj file annotate`, revision history, and PR rationale before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
 
 **Then act on the verdict:**
 
@@ -45,4 +45,4 @@ Apply Full Mode step 7's independent reply/resolution completion check before ju
 - **`replied` / `not-addressing` / `declined`** — no subagent. Compose the reply text per the rubric and proceed to reply/resolve.
 - **`needs-human`** — compose `decision_context` and the natural-sounding reply per the rubric, leave the thread open (don't resolve), and present the decision to the user (use the platform's blocking question tool as in Full Mode step 9). The shared reply step below posts the reply once — do not post it here.
 
-Then follow the same validate -> commit -> push -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validate/commit when no code changed.
+Then follow the same validate -> create revision -> advance and push PR bookmark -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validation and revision creation when no code changed.

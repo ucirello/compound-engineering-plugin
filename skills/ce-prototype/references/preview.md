@@ -2,7 +2,7 @@
 
 Load this when serving a local web prototype. Feedback stays in chat.
 
-This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that. The file is a byte-identical copy of brainstorm's helper.
+This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that. This skill owns its helper's behavior and configuration names.
 
 Use the bundled helper when the current platform can run a bundled skill script. Invoke it via the `SKILL_DIR` anchor: set `SKILL_DIR` to the absolute path of the directory containing the `ce-prototype` `SKILL.md` you loaded (the Bash tool's cwd is the user's project, not the skill dir), and re-set it in the same command on each call since shell vars do not persist between Bash invocations. Do not resolve the helper from the user's project CWD.
 
@@ -10,16 +10,16 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
-Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be left in the repo, and run the block as it stands — it sends the run to OS temp and nothing else changes. Otherwise, when the run is inside a git repository, probe the repo root for `.context/compound-engineering/`; if it is not covered, offer to append that one line to the repo-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone. A run that is headed for OS temp either way gets no offer.
+Settle durability before you run this block; it reads the decision once and there is no second pass. Set `RUN_KEEP="no"` for a transient run. Resolve the JJ workspace with `jj workspace root`; when that fails, use the current directory as the local fallback. Before running the block in a JJ workspace, prove that `.tmp/` and, for a kept run, `.context/` are covered by applicable `.gitignore` rules, offering to append only the needed rules before any prototype file is created. The kept path preflights `.tmp/` because that is its safety fallback. If every possible path cannot remain outside the working-copy change, stop. Never substitute an OS-global temporary root.
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)";
-TEMP_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$TEMP_ROOT" ] && (umask 077; mkdir -p "$TEMP_ROOT") 2>/dev/null && [ ! -L "$TEMP_ROOT" ] && [ -O "$TEMP_ROOT" ] && [ -w "$TEMP_ROOT" ] || TEMP_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ "$RUN_KEEP" = yes ] && [ -n "$REPO_ROOT" ] && [ ! -L "$REPO_ROOT/.context" ] && [ ! -L "$REPO_ROOT/.context/compound-engineering" ] && git -C "$REPO_ROOT" check-ignore -q .context/compound-engineering/ 2>/dev/null; then
-ROOT="$REPO_ROOT/.context/compound-engineering";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
+if [ -n "$WORKSPACE_ROOT" ]; then IN_JJ=yes; else WORKSPACE_ROOT="$PWD"; IN_JJ=no; fi;
+TEMP_ROOT="$WORKSPACE_ROOT/.tmp";
+if [ "$RUN_KEEP" = yes ] && [ "$IN_JJ" = yes ]; then
+ROOT="$WORKSPACE_ROOT/.context";
 else
 ROOT="$TEMP_ROOT";
 fi;
@@ -34,8 +34,8 @@ elif ! (umask 077; mkdir -p "$BASE"); then echo "could not create $BASE" >&2;
 elif [ ! -O "$BASE" ]; then echo "base is not owned by the current user: $BASE" >&2;
 elif ! chmod 700 "$BASE"; then echo "could not restrict $BASE" >&2;
 else break; fi;
-if [ "$ROOT" = "$TEMP_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
-echo "falling back to $TEMP_ROOT" >&2; ROOT="$TEMP_ROOT";
+if [ "$ROOT" = "$TEMP_ROOT" ]; then echo "no usable workspace-local run root" >&2; exit 1; fi;
+echo "falling back to workspace-local $TEMP_ROOT" >&2; ROOT="$TEMP_ROOT";
 done;
 RUN_DIR="$BASE/$RUN_SLUG"; n=1;
 while ! (umask 077; mkdir "$RUN_DIR") 2>/dev/null; do
@@ -47,7 +47,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-Three things this block is careful about. The symlink and ownership checks run against both the **root** — the directory sitting in a shared or world-writable location — and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe in-repo path at either level falls back to OS temp rather than aborting — a hostile or misconfigured `.context` costs the run its durability, not the run itself, and only a temp root that also fails is fatal.
+The symlink and ownership checks run against both the root and the `ce-prototype` directory beneath it because `mkdir -p` follows an existing symlink and `chmod` would affect its target. Every check is inside the retry loop, so an unsafe `.context` path falls back to the workspace-local `.tmp`; an unsafe `.tmp` is fatal. No route leaves the workspace or current-directory fallback for OS-global storage.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -93,7 +93,7 @@ The browser reloads only when the newest screen changes; it must not continually
 Write screens under:
 
 ```text
-<repo>/.context/compound-engineering/ce-prototype/<YYYY-MM-DD>-<run-slug>/
+<workspace-root>/.context/ce-prototype/<YYYY-MM-DD>-<run-slug>/
   decisions.md               # run capsule for the next skill; not a plan
   01-<question-slug>/
     screens/
@@ -107,7 +107,7 @@ Write screens under:
     state/
 ```
 
-The fallback root takes the same shape under `/tmp/compound-engineering-<uid>/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The transient root takes the same shape under `<workspace-root>/.tmp/ce-prototype/`, or `<current-directory>/.tmp/ce-prototype/` outside JJ. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Launch mode by platform
 

@@ -101,7 +101,7 @@ For GitHub issue best practices specifically, you will research:
 - Providing reproducible examples
 - Community engagement practices
 
-## Source Attribution
+## Source Handling
 
 Always cite your sources and indicate the authority level:
 - **Repo guidance**: "The repository guidance recommends..." (highest authority - curated)

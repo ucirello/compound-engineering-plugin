@@ -1,54 +1,46 @@
 ---
 name: ce-worktree
-description: Set up isolated git worktrees — create a new branch for fresh work, or attach a worktree to an existing branch, PR, or commit. Use when starting isolated work or isolating an existing ref.
+description: Set up isolated JJ workspaces with a dedicated change. Use when starting isolated work or isolating an existing bookmark, PR, change, or revision.
 ---
 
-# Worktree Isolation
+# Workspace Isolation
 
-Ensure the current work happens in an isolated workspace, without disturbing the user's main checkout. Most coding harnesses now create a worktree by default at session start, so the common case is that **isolation already exists**.
+Put the requested work in a dedicated JJ workspace and working-copy change without moving or rewriting another workspace's change. Preserve the requested GitHub target when isolating a PR.
 
-**Done when:** the caller is working in an isolated tree — existing or newly created — and its path and branch have been reported, or a blocker has been reported instead.
+**Done when:** the caller can continue from a dedicated workspace whose `@` is a distinct change with the intended parent, and the report names the workspace path, workspace name, change ID, parent revision, and publication bookmark when one applies. A blocker is also a complete result when isolation cannot be proved.
 
-**Order of operations: detect existing isolation -> prefer a native worktree tool -> fall back to plain git.** Never create a worktree the harness cannot see.
+Use JJ for repository state and mutation. Do not use Git branches, worktrees, the index, checkout, switch, or another VCS's workspace operations. Read-only `git log` is allowed only where the mandated message guidance below calls for it, and `jj git` is allowed for Git remote interoperability. Use `gh` for GitHub metadata, not for checkout.
 
-**Two modes, set by the caller's need:**
+## Choose The Target
 
-- **New work (default).** No ref named — create a fresh branch from a base (trunk). This is what `ce-work` and `ce-code-review` use when the user picks the worktree option.
-- **Isolate an existing ref.** The caller names a PR head, branch, or commit — attach the worktree to that ref instead of creating a new branch. **A branch can be checked out in only one worktree at a time.** If the named ref is already checked out anywhere (most commonly as the primary checkout's current branch), do **not** create a second worktree — report that it is already checked out at `<path>` and let the caller act (work there in place; or, only if a clean separate tree is essential, create a *detached* worktree at the same commit).
+- **New work (default):** use the repository's configured trunk revision as the parent. If trunk is absent or ambiguous, resolve the intended base from the caller and repository conventions before mutation. Choose a meaningful workspace name and a Git-interoperable bookmark name from the work description.
+- **Existing target:** resolve the named bookmark, change, or revision to one exact revision. The new workspace gets a fresh child change; do not edit, duplicate, or move the target change.
+- **GitHub PR:** ask GitHub for the head repository, head bookmark, and head object ID. Match that repository to a configured JJ remote, adding a uniquely named remote only when the caller's requested isolation requires it, then fetch the head with `jj git`. Require the fetched remote bookmark to resolve to the reported head object ID. A fork, missing remote, ambiguous target, or changed head is a reason to stop rather than guess. For a non-colocated repository, point each `gh` invocation at the backing Git repository reported by `jj git root`.
 
-## Step 0: Detect existing isolation
+JJ bookmarks name revisions; they do not own workspaces and there is no active or checked-out bookmark. The same bookmark or revision may therefore be the parent of multiple workspace changes. Never reject isolation merely because another workspace is based on the same target.
 
-Compare the **resolved absolute** git dir against the **resolved absolute** common git dir. Git mixes absolute and relative forms depending on the current directory (from a subdirectory of a normal checkout, `--git-dir` comes back absolute while `--git-common-dir` may be relative), so a raw string compare yields a false "already isolated":
+## Preserve Existing Work
+
+Resolve the current workspace root with `jj workspace root`, then inspect `jj status`, `jj log -r '@|@-'`, and `jj workspace list`. Ordinary JJ commands snapshot visible working-copy files, so re-check the current status immediately before mutation.
+
+If the current environment already identifies its workspace as dedicated to this session, and its `@` is a distinct change with the intended parent and no unrelated content, work there instead of creating another workspace. Otherwise leave its change, description, parentage, bookmarks, and files untouched and create a sibling workspace. A JJ workspace by itself is not proof of session isolation.
+
+## Create The Workspace
+
+Place new workspace directories under `<current-workspace-root>/.tmp/ce-worktree/workspaces/<workspace-name>`. Outside a JJ workspace, the only permitted temporary root is `<current-directory>/.tmp`; because no shared JJ repository can be resolved there, report the blocker instead of creating an imitation workspace. Never use OS-global temporary storage.
+
+Before creating anything under `.tmp`, prove that the applicable ignore rules exclude it from JJ's working-copy snapshot. If they do not, offer to add only the needed `.tmp/` ignore rule. If exclusion is declined or cannot be proved, stop before creating the directory.
+
+Create the workspace with one explicit parent so its working-copy change is new and distinct:
 
 ```bash
-git rev-parse --absolute-git-dir                     # absolute git dir for this worktree
-(cd "$(git rev-parse --git-common-dir)" && pwd -P)   # absolute shared (common) git dir
+jj workspace add --name <workspace-name> --revision <target-revision> <workspace-destination>
 ```
 
-**Equal** -> normal checkout; continue to Step 1.
+Run subsequent repository actions against the new workspace. Confirm that its root and name are the requested ones, `@` is a new change, its parent is the exact target revision, and no source-workspace content moved.
 
-**Different** -> a linked worktree *or* a submodule. Distinguish with `git rev-parse --show-superproject-working-tree`:
+For new work, create the chosen local bookmark at the new `@`. For an existing bookmark or PR, leave that bookmark on the target until completed work is ready to publish; report it as the publication bookmark so the downstream commit or PR workflow can move it deliberately. For a raw change or revision, create no bookmark unless publication was requested.
 
-- **Non-empty** -> submodule; treat it as a normal checkout and continue to Step 1.
-- **Empty** -> **already isolated**. Report the worktree path (`git rev-parse --show-toplevel`) and current branch, then **work in place** — a worktree-from-worktree lands in the wrong tree and is invisible to the harness that made the current one. In isolate-an-existing-ref mode, check that ref out here (unless it is already current) rather than nesting a worktree.
+Describe the new working-copy change at this message site. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Preserve the requirement that the description identify the isolated work while adapting its form to runtime conventions. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax, prefix, type, scope, subject, body, layout, template, or example.
 
-## Step 1: Prefer the harness's native worktree tool
-
-If the harness provides a native worktree primitive — for example an `EnterWorktree` / `WorktreeCreate` tool, a `/worktree` command, or a `--worktree` flag — use it and stop. Native tools place, track, and clean up the worktree so the harness can manage it. A behind-the-back `git worktree add` creates phantom state the harness cannot see, navigate to, or clean up.
-
-## Step 2: Git fallback
-
-Only when there is no native tool **and** Step 0 found no existing isolation.
-
-1. **Run from the repo root:** `cd "$(git rev-parse --show-toplevel)"`. The paths below are repo-root-relative, but the skill runs from the user's current directory — without this, `.worktrees/<branch>` and the `.gitignore` edit land in a subdirectory (e.g. `src/.worktrees/...`).
-2. Choose a meaningful branch name from the work description (e.g. `feat/login`, `fix/email-validation`) — never an opaque auto-generated one. Base: origin's default branch, else `main`.
-3. **Ensure `.worktrees/` is gitignored before creating anything:** `git check-ignore -q .worktrees/` — **with the trailing slash**, so an existing directory-only `.worktrees/` rule is honored even before the directory exists (without the slash the probe misses it and dirties a correctly-configured repo). Not ignored -> add a `.worktrees/` line to `.gitignore`.
-4. Refresh the base with `git fetch origin <from-branch>`. This is **non-fatal** — no `origin` remote, a differently-named remote, or a local-only branch is not an abort; continue with the local ref.
-5. Create the worktree, per mode:
-   - **New work:** `git worktree add -b <branch-name> .worktrees/<branch-name> origin/<from-branch>` (use the local `<from-branch>` ref if `origin/<from-branch>` does not exist).
-   - **Existing branch or tag:** `git worktree add .worktrees/<slug> <target-ref>`.
-   - **PR:** check it out on a **local branch** — `git fetch origin pull/<n>/head:pr-<n>` then `git worktree add .worktrees/pr-<n> pr-<n>`. Never a detached `FETCH_HEAD`: that orphans the fix loop's commits instead of updating the PR. (For push-tracking back to the PR, create it detached — `git worktree add --detach .worktrees/pr-<n>` — then `cd` in and run `gh pr checkout <n>`, which is fork-safe.)
-   - If git reports the ref is already checked out elsewhere, apply the one-branch-one-worktree rule above — do not force a second worktree.
-6. `cd` into it, then report the path and branch.
-
-If `git worktree add` fails with a sandbox or permission error, the requested isolation does not exist. Do **not** proceed in the current checkout — the user chose isolation specifically to avoid it. Report the failure and ask, offering options such as "work in the current checkout" vs "stop and resolve the permission issue", using the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Only when no such tool is in the list or a real question call errors, present the numbered options in chat and wait for the reply. Never skip the confirmation, and do not retry alternative paths automatically.
+If workspace creation or verification fails because of permissions, sandboxing, stale state, target drift, or an unexpected existing destination, the requested isolation does not exist. Do not continue in the invoking workspace and do not retry another path automatically. Report the attempted workspace name and destination, exact target, unchanged source workspace, and failure. Use an available blocking question capability to offer working in the current workspace or stopping to resolve the blocker; if no such capability is available, present numbered options and wait.

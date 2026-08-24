@@ -26,8 +26,8 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 
 ## Common rules
 
-- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not commit `raw/` or `frames/` directories unless the user explicitly asks and privacy is acceptable.
-- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be committed when they are needed for traceability and contain no sensitive data.
-- Use repo-relative screenshot paths in any committed doc so later agents can open the evidence without absolute local paths.
+- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. In a Jujutsu workspace, keep `raw/`, `frames/`, and `.tmp/` excluded from the working-copy change unless the user explicitly asks to track them and privacy is acceptable. Jujutsu snapshots new non-ignored files automatically; use the workspace's applicable `.gitignore` rules as documented at https://jj-vcs.github.io/jj/latest/working-copy/#ignored-files.
+- Text and metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be included in a Jujutsu change when they are needed for traceability and contain no sensitive data.
+- Use workspace-relative screenshot paths in any tracked document so later agents can open the evidence without absolute local paths.
 
-The Compound Engineering output format used by the extensive path is documented in `references/compound-engineering-feedback-format.md`.
+The RocketClaw output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.

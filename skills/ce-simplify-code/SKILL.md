@@ -1,19 +1,18 @@
 ---
 name: ce-simplify-code
 description: "Simplify settled, recently changed code for clarity, reuse, quality, and efficiency while preserving behavior. Use after implementation and before review; use ce-debug for bugs."
-argument-hint: "[blank to simplify current branch changes, or describe what to simplify]"
+argument-hint: "[blank to simplify current JJ changes, or describe what to simplify]"
 ---
 
 Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
-
 
 ## Step 1: Identify scope
 
 Resolve the simplification scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it.
-2. **Otherwise, in git**, use the current branch versus its base. Without a usable base, use staged and unstaged changes (`git diff HEAD`).
-3. **Outside git or without a diff**, use files the user named or that were edited earlier in the conversation.
+2. **Otherwise, in a Jujutsu workspace**, use the cumulative diff from the unambiguous `trunk()` revision through the working-copy revision: `jj diff --from 'trunk()' --to @`. If `trunk()` is unavailable or ambiguous, use the current working-copy change with `jj diff -r @`; Jujutsu snapshots visible working-copy files and has no staging area.
+3. **Outside Jujutsu or without a diff**, use files the user named or that were edited earlier in the conversation.
 
 If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question.
 
@@ -21,9 +20,11 @@ If none of the above produces a non-empty scope, stop and ask the user what to s
 
 When the platform's task-tracking capability is available, show the review, apply, and verification outcomes without creating one task per reviewer. Otherwise continue without simulating a task list in chat.
 
+If a transient handoff file is needed, place it under `<workspace-root>/.tmp/local/ce-simplify-code/<run-id>/`, where `<workspace-root>` is resolved with `jj workspace root`; outside a Jujutsu workspace, use `$PWD/.tmp/local/ce-simplify-code/<run-id>/`. In a Jujutsu workspace, require `.tmp/` to remain outside the working-copy change. Never use operating-system or user-global temporary storage.
+
 ## Step 2: Launch 3 review agents in parallel
 
-Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set) so it has complete context:
+Dispatch three generic subagents — code-reuse, code-quality, and efficiency reviewers — through the harness's subagent capability where available; otherwise run the reviews inline or serially. For each reviewer, read its prompt asset from this skill's directory and pass the **full file content** as the subagent's prompt, together with the resolved scope (the full diff or file set) so it has complete context:
 
 - `references/personas/code-reuse-reviewer.md`
 - `references/personas/code-quality-reviewer.md`
@@ -33,7 +34,7 @@ Do not paraphrase these rubrics from memory — read each file and pass it verba
 
 **Bounded dispatch.** Queue the three reviewers and launch only as many as the harness accepts at once; treat a concurrency/active-agent-limit error as backpressure (leave the reviewer queued and retry after a slot frees), not as reviewer failure. If a dispatch fails for a reason that survives correcting the invocation, run that reviewer's pass inline in the parent context using the same prompt asset, and disclose the substitution in one line.
 
-**Model selection.** Use the platform's balanced mid-tier model for these reviewers when the current harness exposes a known override. In Claude Code this is the Sonnet class. In Codex, apply this tier only when the active dispatch primitive exposes an explicit model or custom-agent selector; task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
+**Model selection.** Use the platform's balanced mid-tier model for these reviewers only when the active dispatch capability exposes an explicit, verified model or custom-agent selector. Task wording alone does not select a different model. Otherwise omit the override and inherit the parent model -- a working pass on the parent model beats a broken dispatch.
 
 **Permission mode.** Omit the `mode` parameter on the dispatch call so the user's configured permission settings apply.
 
@@ -45,7 +46,7 @@ Inspect beyond the resolved scope when needed to evaluate a finding, but edit on
 
 Each fix must preserve outputs, errors, side effects, and ordering. If that cannot be established, skip it.
 
-An interface or data shape that existed only in an earlier iteration of the current unshipped scope is not protected behavior once you verify it has no deployed, persisted, public, external, dependent-branch, or in-repo caller outside the resolved scope. Remove that compatibility path only when every required caller update fits the existing mutation boundary; otherwise preserve it.
+An interface or data shape that existed only in an earlier iteration of the current unshipped scope is not protected behavior once you verify it has no deployed, persisted, public, external, dependent-change, or in-repo caller outside the resolved scope. Remove that compatibility path only when every required caller update fits the existing mutation boundary; otherwise preserve it.
 
 **Never simplify away a safety check.** Preserve trust-boundary validation, data-loss protection, security checks, and accessibility affordances. Skip any finding that would thin or remove one.
 

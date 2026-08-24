@@ -1,12 +1,12 @@
 ---
 name: ce-prototype
-description: Build a throwaway prototype to answer how something should work, feel, or read. Use when committing the wrong answer would be expensive to unravel and a cheap sketch cannot settle it. Not a rough visual probe during brainstorming, not for deciding what to build, not polishing a feature that already works, not implementing the real thing.
+description: Build a throwaway prototype to answer how something should work, feel, or read. Use when locking in the wrong answer would be expensive to unravel and a cheap sketch cannot settle it. Not a rough visual probe during brainstorming, not for deciding what to build, not polishing a feature that already works, not implementing the real thing.
 argument-hint: "[prompt, brainstorm path, or plan path]"
 ---
 
 # Prototype
 
-Build a throwaway prototype at the fidelity that can answer this question, before committing an approach later work will treat as given. Then apply the decisions or hand off.
+Build a throwaway prototype at the fidelity that can answer this question, before locking in an approach later work will treat as given. Then apply the decisions or hand off.
 
 **Do not fake the dimension being tested.** Modality, fidelity, and medium all follow from that one rule. A question about how a flow or state model behaves is settled by driving it, so a screen that only looks like the product does not answer it. A question about how a layout or a mark reads is settled by seeing it at real finish, so a thin sketch does not answer it either. The user's own perception settles the question, never your judgment of the artifact.
 
@@ -21,7 +21,7 @@ If there is no person to experience the prototype — LFG, `mode:pipeline`, or a
 
 ## Scope the question
 
-Read `references/scoping.md` before you ask the user anything or touch the repo. That load is not optional. It owns how the question arrives and the scoped repo read of what the question touches — do not scan the tree. It also owns narrow vs wide, sizing, the go-ahead message, and how the remaining questions change after each decision. Do not build until the user proceeds.
+Read `references/scoping.md` before you ask the user anything or touch the workspace. That load is not optional. It owns how the question arrives and the scoped workspace read of what the question touches — do not scan the tree. It also owns narrow vs wide, sizing, the go-ahead message, and how the remaining questions change after each decision. Do not build until the user proceeds.
 
 ## Build it
 
@@ -31,13 +31,13 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. It yields in exactly two cases: the user names a technology, or the dimension cannot be rendered in a browser without faking it. In that second case, build in the medium the dimension requires, and name that choice before you build. If a named technology also cannot render the dimension, say so rather than yielding silently. `references/build.md` owns what the artifact may be on either path.
 
-Build under `.context/compound-engineering/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/`, where survival is best-effort. `references/build.md` names every case that forces the fallback root.
+Build under `<workspace-root>/.context/ce-prototype/<date>-<slug>/`, where `<workspace-root>` is resolved with `jj workspace root`, so the prototype survives for the implementation that follows. Use `<workspace-root>/.tmp/ce-prototype/<date>-<slug>/` for a transient run. Outside a JJ workspace, use `<current-directory>/.tmp/ce-prototype/<date>-<slug>/`; never use OS-global temporary storage. `references/build.md` owns root selection.
 
-The `.context` path has to be gitignored first. Probe it from the repo root with `git -C <repo root> check-ignore -q .context/compound-engineering/`; the trailing slash is load-bearing. When it is not covered, the offer to add that line comes before the root is resolved, or accepting it cannot help this run.
+Before creating either root, prove its top-level directory is excluded from JJ snapshots by the workspace's applicable ignore rules. JJ snapshots new non-ignored files at the start of ordinary commands. When `.context/` is not already ignored, offer to append that exact rule before resolving a persistent root. Prove `.tmp/` is ignored before any transient run and before a persistent run that may fall back there, offering to append that exact rule when needed. If every root the run may use cannot be excluded, stop instead of letting prototype files enter the working-copy change.
 
 `references/preview.md` owns that offer and the resolution that follows it. Do not create the run directory yourself; a second claim splits the screens from the capsule.
 
-Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches the product tree. Never commit it. When the try ends, restore only the files you changed, never work you did not make. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty tree. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
+Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches product files, and it runs only in a dedicated JJ workspace with its own anonymous working-copy change. Do not create, move, or publish a bookmark. When the try ends, abandon only that owned overlay change, forget only that workspace, and remove only its transient workspace directory after confirming it contains no unrelated work. If clean isolation or cleanup cannot be proved, stop and name the workspace, change ID, and files left behind. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
 
 ## Keep the decisions
 
@@ -51,7 +51,7 @@ Read `decisions.md` before building for the next related question, and work out 
 
 When the user applies:
 
-- If this run has a directly related brainstorm or plan — passed on invoke, passed by the calling skill, or named in this session as the file this prototype is for — load `references/write-back.md` and follow it. Markdown and HTML both. Use `decisions.md` when present. Do not pick a plan because one exists in the repo.
+- If this run has a directly related brainstorm or plan — passed on invoke, passed by the calling skill, or named in this session as the file this prototype is for — load `references/write-back.md` and follow it. Markdown and HTML both. Use `decisions.md` when present. Do not pick a plan because one exists in the workspace.
 - If there is no such file or relatedness is unclear: do not mint a plan or a third note. Recap from `decisions.md` when present, carrying the decisions and, when the run left one behind, the prototype path — an overlay run has none, so say that rather than pointing at something you undid. That recap is a complete outcome, not a degraded one.
 
 Then continue. If a calling skill invoked this, return the choices in `decisions.md` and let it continue. Otherwise recommend a next skill and pass this session as the seed. After a write-back, recommend `ce-plan`: the plan is now `requirements-only` with its HOW stripped, and `ce-work` refuses it until `ce-plan` re-enriches. After a file-free run, recommend `ce-brainstorm` when product-level questions remain, or `ce-plan` when the session is enough to plan. Print that recommendation per the rendering rule above.

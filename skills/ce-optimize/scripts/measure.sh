@@ -117,7 +117,26 @@ CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  CENSOR_STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-optimize-censor-XXXXXX")
+  if WORKSPACE_ROOT=$(jj root 2>/dev/null); then
+    LOCAL_TMP="$WORKSPACE_ROOT/.tmp/ce-optimize/measure"
+    GIT_ROOT=$(jj git root 2>/dev/null) || {
+      echo "Error: JJ repository has no Git backing store for local ignore rules" >&2
+      exit 1
+    }
+    EXCLUDE_FILE="$GIT_ROOT/info/exclude"
+    mkdir -p "$(dirname "$EXCLUDE_FILE")"
+    if ! grep -q '^/\.tmp/$' "$EXCLUDE_FILE" 2>/dev/null; then
+      printf '/.tmp/\n' >> "$EXCLUDE_FILE"
+    fi
+  else
+    LOCAL_TMP="$PWD/.tmp/ce-optimize/measure"
+  fi
+  mkdir -p "$LOCAL_TMP"
+  CENSOR_STATUS_FILE="$LOCAL_TMP/censor-status-$$-${RANDOM:-0}"
+  ( set -o noclobber; : > "$CENSOR_STATUS_FILE" ) 2>/dev/null || {
+    echo "Error: cannot reserve local censor status file" >&2
+    exit 1
+  }
 fi
 
 # Run the measurement command with timeout

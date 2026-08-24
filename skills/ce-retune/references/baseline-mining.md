@@ -6,7 +6,7 @@ An archive is usually an order of magnitude larger than the experiment you can a
 
 ## What the archive must contain
 
-Per run, in whatever form the harness stores it (JSONL transcript, structured log, a directory per run): the ordered tool-call trace, token counts, timestamps, and the final assistant message. If it stores only a pass/fail verdict, the archive is not minable — say so and go to Phase 2.
+Per run, in whatever form the harness stores it (JSONL transcript, structured log, a directory per run): the ordered tool-call trace, token counts, timestamps, and the final `ai:assistant` protocol message. If it stores only a pass/fail verdict, the archive is not minable — say so and go to Phase 2.
 
 Find the archive by asking the harness where it writes run output, or by locating the directory it appends to after a run. Do not assume a schema; read one run end to end and derive the field paths before writing any extractor.
 
@@ -49,7 +49,7 @@ Treat those bands as the shape to look for, not as thresholds to import. Find yo
 **The two booleans the spine requires, derived independently:**
 
 ```
-task_done       = the run's expected deliverable exists (artifact on disk, commit, PR, file changed)
+task_done       = the run's expected deliverable exists (artifact on disk, JJ change, PR, file changed)
 process_followed = every required phase appears in phase_trace, in spine order
 ```
 

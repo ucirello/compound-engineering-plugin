@@ -25,7 +25,7 @@ Map each changed file to the route(s) that render it, then build the list of URL
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh");
-if lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
+if bash "$SKILL_DIR/scripts/resolve-port.sh" --check "$PORT"; then
   echo "Server running on port ${PORT}";
 else
   echo "Server not running on port ${PORT}";
@@ -103,7 +103,7 @@ Did it work correctly?
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / JJ [change, revision, or bookmark]
 **Server:** http://localhost:<port>
 
 ### Pages Tested: [count]

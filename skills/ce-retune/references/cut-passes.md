@@ -7,12 +7,12 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 ## The pass loop
 
 1. Pick one class from the Phase 3 findings (`references/corpus-audit.md`), or one regression class from `references/halt-taxonomy.md`. One class per pass, no bundling.
-2. Write the **ownership manifest**: unit -> owning agent -> exact paths. Shared assets get a single named owner (below).
+2. Write the **ownership manifest**: unit -> owning agent -> exact JJ fileset. Shared assets get a single named owner (below).
 3. If the rewrite has cross-referencing strings, author the **contract file** first, serially (below).
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides, each prompt carrying: the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and commit the pass alone.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and finish the pass as one JJ change according to Phase 6.
 
 Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
 
@@ -20,39 +20,39 @@ Eight passes landed in the engagement that produced this skill. Every one reduce
 
 Fanning out by **problem** looks natural and collides immediately: a single class — say, a phrasing that implies an absent reader — appears in twenty files, and the next class appears in eleven of the same twenty. Two agents open one file, both write, the second write wins, and the loss is silent because each agent's own diff looks correct.
 
-Fan out by **unit** instead: one agent owns one skill directory and applies the class everywhere inside it. Ownership is then a partition of the filesystem, and the invariant is checkable before dispatch: every path appears in exactly one manifest row.
+Fan out by **unit** instead: one agent owns one skill directory and applies the class everywhere inside it. Ownership is then a partition expressed as JJ filesets, and the invariant is checkable before dispatch: every path selected by `jj file list` appears in exactly one manifest row.
 
 | Manifest column | Content |
 |---|---|
 | unit | the directory the agent owns, e.g. `skills/<name>/` |
-| paths | explicit glob or file list inside it |
+| paths | explicit JJ fileset or file list inside it |
 | forbidden | shared assets and anything outside `unit`, listed by path |
 | class | the one problem being applied |
 | contract | path to the canonical mapping, or `none` |
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate worktrees or disjoint paths in one tree
+## Isolation: separate JJ workspaces or disjoint filesets in one workspace
 
-Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the commit trivial.
+Disjoint filesets in one workspace are enough when nothing an agent runs mutates state outside its own fileset. That covers most cut passes: edits are text, the manifest is a partition, and one working-copy change keeps `jj diff` readable and the pass easy to inspect.
 
-Pay for a worktree (or equivalent per-agent checkout) when any of these is true:
+Create a named JJ workspace per agent with `jj workspace add --name <workspace-name> -r <base-revset> <destination>` when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit — lockfiles, caches, generated output, a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one tree race on scratch and on git index state.
-- Agents commit, stage, or use branch operations; one git index shared by parallel agents corrupts staging.
-- A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
+- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on scratch and working-copy files.
+- Agents describe, rebase, split, squash, or abandon changes, or move bookmarks; each workspace needs its own working-copy change.
+- A pass may need to be abandoned wholesale, and an isolated change is worth more than a shared diff.
 
-Otherwise the isolation cost is real: N checkouts to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
+Otherwise the isolation cost is real: N workspaces to create, N working-copy changes to inspect and integrate, and conflicts reintroduced on exactly the filesets the manifest was designed to keep apart. Refer to another workspace's current change with the `<workspace-name>@` revset. After the barrier, inspect the participating changes with `jj log` and `jj diff -r <revset>`, then integrate each accepted disjoint change into the pass change with `jj squash --from <source-revset> --into <pass-revset>`.
 
 ## The shared-asset trap
 
 Some corpora hold byte-identical copies of a file inside several units, deliberately, with a parity test asserting the copies match. A per-unit agent editing "its" copy breaks parity, and the breakage surfaces as a test failure in a *different* pass, attributed to the wrong change.
 
-Discover them before dispatch. Shape (POSIX shell; hash every candidate file, key by basename, report pairs appearing in more than one path):
+Discover them before dispatch. Shape (POSIX shell, including Git Bash; select versioned candidates with a JJ fileset, hash each file, key by basename, and report basenames appearing in more than one path):
 
 ```
-find . -type f \( -name '*.md' -o -name '*.py' -o -name '*.sh' \) -exec shasum {} + \
+jj file list 'glob:"**/*.md" | glob:"**/*.py" | glob:"**/*.sh"' | xargs shasum \
   | awk '{ n = $2; sub(/.*\//, "", n); print $1, n }' \
   | sort | uniq -c | awk '$1 > 1'
 ```
@@ -77,7 +77,7 @@ Corollary: **gathering the inventory is parallelizable; deciding the canonical r
 
 ## Reconcile
 
-After editing, re-read every block touched and fix what the edit itself broke. A half-applied cut is worse than no cut: it leaves prose that is internally inconsistent, which is a defect the corpus did not have before.
+After editing, use the pass fileset to re-read every block touched and fix what the edit itself broke. A half-applied cut is worse than no cut: it leaves prose that is internally inconsistent, which is a defect the corpus did not have before.
 
 Check each of these on every touched file:
 
@@ -124,6 +124,6 @@ A failure that moves to a later phase is progress and names the next target. A f
 
 ## Ship (Phase 6)
 
-Commit each pass separately with its own message so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+Keep each pass as a separate JJ change so history says which measured change was made and why, and release tooling can classify intent. Before composing, editing, validating, or recommending its description, follow this rule: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Inspect the current project's descriptions with `jj log`; runtime-local syntax and conventions win, and Go guidance applies only where compatible. Derive the description from the measured pass and local history instead of supplying fixed syntax, examples, or templates. Set or edit it with `jj describe <pass-revset>`, then start the next pass with `jj new <pass-revset>`. Keep the measurement artifacts.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

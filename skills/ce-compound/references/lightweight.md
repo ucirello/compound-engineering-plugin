@@ -12,9 +12,9 @@ Non-interactive mode enters Lightweight only when explicitly invoked with `depth
 
 The orchestrator (main conversation) performs ALL of the following in one sequential pass:
 
-1. **Extract from conversation**: Identify the problem and solution from conversation history. Also scan the "user's auto-memory" block injected into your system prompt, if present (Claude Code only) -- use any relevant notes as supplementary context alongside conversation history. Tag any memory-sourced content incorporated into the final doc with "(auto memory [claude])". Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree — soften or attribute any claim you cannot verify. Cite PR numbers over bare commit SHAs, and phrase unmerged fixes as pending
+1. **Extract from conversation**: Identify the problem and solution from conversation history. Also scan injected supplementary memory when present and use relevant notes only as secondary evidence. Mark memory-sourced content as supplementary evidence without generation metadata. Before asserting how code behaves, read the defining line at the current tree and soften or attribute any claim you cannot verify. Cite PR numbers over bare commit IDs, and identify unmerged fixes as pending. Repo-local runtime syntax always wins; apply Go quality guidance only when the project and change use Go. When the learning composes, edits, validates, or recommends a commit message or JJ description, preserve this sentence verbatim: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 2. **Classify**: Read `references/schema.yaml` and `references/yaml-schema.md`, then determine track (bug vs knowledge), category, and filename. Sample existing docs under `<root>/solutions/` and choose `component`, `root_cause`, and the directory under the corpus-first rule in `references/yaml-schema.md` (it names what each is matched on and when the suggested defaults apply)
-3. **Write minimal doc**: Before writing, check whether the exact proposed `<root>/solutions/[category]/[filename].md` path exists. If it exists, read it: update it only when it covers the same problem, preserving its path and frontmatter structure and adding `last_updated: YYYY-MM-DD`; otherwise choose a distinct, descriptive filename and re-check that exact path is absent before writing. This is exact-path collision handling only — do not run Full mode's semantic overlap research or dispatch subagents. Create or update the doc using the appropriate track template from `assets/resolution-template.md`, with:
+3. **Write minimal doc**: Before writing, check whether the exact proposed `<root>/solutions/[category]/[filename].md` path exists. If it exists, read it: update it only when it covers the same problem, preserving its path and frontmatter structure and adding `last_updated: YYYY-MM-DD`; otherwise choose a distinct, descriptive filename and re-check that exact path is absent before writing. This is exact-path collision handling only — do not run Full mode's semantic overlap research or dispatch subagents. Create or update the doc using the appropriate track structure from `assets/resolution-template.md`, with:
    - YAML frontmatter with track-appropriate fields, applying the YAML-safety quoting rule for array items (see `references/yaml-schema.md` > YAML Safety Rules)
    - Bug track: Problem, root cause, solution with key code snippets, one prevention tip
    - Knowledge track: Context, guidance with key examples, one applicability note
@@ -29,25 +29,7 @@ The orchestrator (main conversation) performs ALL of the following in one sequen
 
 **User-runnable retry rendering.** In the lightweight completion output below, default to `/ce-compound`; use `$ce-compound` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
-**Lightweight completion output:** In non-interactive Lightweight, do not emit this interactive block; use the depth-specific report under `Non-interactive mode` in `references/report.md` instead. In interactive Lightweight, emit:
-```
-✓ Documentation complete (lightweight mode)
-
-File created:
-- <root>/solutions/[category]/[filename].md
-
-[If discoverability check found instruction files don't surface the knowledge store:]
-Tip: Your AGENTS.md/CLAUDE.md doesn't surface <root>/solutions/ to agents —
-a brief mention helps all agents discover these learnings.
-
-[If CONCEPTS.md was refined this run and isn't surfaced in the instruction files:]
-Tip: Your AGENTS.md/CLAUDE.md doesn't surface CONCEPTS.md —
-a one-line mention helps agents find the shared vocabulary.
-
-Note: This was created in lightweight mode. For richer documentation
-(cross-references, detailed prevention strategies, specialized reviews,
-semantic grounding validation), re-run <rendered invocation> in a fresh session.
-```
+**Lightweight completion output:** In non-interactive Lightweight, use the depth-specific report in `references/report.md`. In interactive Lightweight, report completion, the artifact path, any discoverability tips, and that a fresh full-mode run adds cross-references, prevention research, specialist reviews, and semantic grounding. Render the one user-runnable retry invocation according to the rule above.
 
 **No subagents are launched. No parallel tasks. The solution doc is the one deliverable** (Phase 2.4's update-only vocabulary capture may also refine an existing `CONCEPTS.md`).
 

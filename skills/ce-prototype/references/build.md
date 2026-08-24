@@ -4,7 +4,7 @@ Required read before you write any prototype code, alongside `references/preview
 
 ## Fidelity
 
-Fidelity is a different axis from size (`references/scoping.md` owns sizing, which the go-ahead depends on). Throwaway means unmaintained and unshipped, not thin — do not test, abstract, or harden past runnable, but take finish as far as the dimension under test needs. A flow or state model gets rich enough to drive; a visual direction gets finished enough to judge; a placement question stays thin. Fidelity may differ per avenue within one wide run. Do not stay low-fidelity on principle, and persist state only when persistence is the question.
+Fidelity is a different axis from size (`references/scoping.md` owns sizing, which the go-ahead depends on). Throwaway means unmaintained and unshipped, not thin — do not test, abstract, or harden past runnable, but take finish as far as the dimension under test needs. A flow or state model gets rich enough to drive; a visual direction gets finished enough to judge; a placement question stays thin. Fidelity may differ per avenue within one wide run. Do not stay low-fidelity on principle, and persist state only when persistence is the question. Follow the product's current runtime, syntax, and conventions instead of imposing a fixed scaffold. When the required medium is Go, use only quality practices compatible with its current module, toolchain, and local conventions.
 
 ## The artifact on the web path
 
@@ -12,13 +12,21 @@ On the web path the artifact is whatever a browser can display and you can autho
 
 ## Which run root
 
-Prefer `.context/compound-engineering/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/` when the user declines the `.gitignore` append, when they ask that this run not be left in their repo, when the run is not inside a git repository, or when the path fails the safety checks; survival there is best-effort, so do not promise it a lifetime. Calling the prototype throwaway is not a request to leave the repo — throwaway describes the code, and a kept prototype is never deleted.
+Inside JJ, prefer `<workspace-root>/.rocketclaw/ce-prototype/<date>-<slug>/` so the prototype survives with the workspace. Use `<workspace-root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` when the user declines the durable root, asks that the run not be retained there, or the durable root fails its safety checks. These paths remain outside `@` only when `.tmp/` and any selected `.rocketclaw/` root are ignored before creation. If those ignores cannot be established safely, stop before writing. Outside JJ, use `<current-directory>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/`; its survival is best-effort. Calling the prototype throwaway is not a request to delete a kept prototype.
+
+## JJ workspace model
+
+Use `jj workspace root` to discover the workspace. Treat `@` as the current working-copy change, not as a named checkout. JJ has no staging area: ordinary file writes are automatically snapshotted into `@`. Use `jj status` or `jj diff -r <revset>` with the narrowest workspace-relative `root:` fileset needed for inspection. Use change IDs and revsets to identify work; use bookmarks only when a provider or remote needs a named pointer.
+
+Prefer JJ for mutations. Git remains valid for read-only inspection in a colocated workspace and where a provider, GitHub, `gh`, or another Git-only integration requires it. Use `jj git import` or `jj git export` when a non-colocated interoperability step needs synchronization. When `gh` needs the underlying Git repository, resolve it with `jj git root` and provide that path as `GIT_DIR` for the invocation. Run shell adapters in the active local shell; POSIX blocks must also remain valid in Git Bash.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 ## Recreate, do not rebuild the app
 
 Recreate what this question needs from the current product. Do not stand up the full app unless the question is the whole-product feel.
 
-Scale into the existing app only as a throwaway overlay when the user asks or the question is density or chrome on an existing page — an isolated page will hide that. That overlay is not the shipped feature. Do not commit prototype code on the product branch. Undo those edits when the try ends — restore only the files you changed, never work you did not make. An overlay run therefore leaves no artifact behind; nothing survives it. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty tree.
+Scale into the existing app only as a throwaway overlay when the user asks or the question is density or chrome on an existing page — an isolated page will hide that. That overlay is not the shipped feature. Before editing, let JJ snapshot current files into the existing `@`, create a new child working-copy change, and record the exact `root:` filesets the overlay will touch. At cleanup, inspect the whole child change. If it contains only the recorded overlay filesets, abandon it. If unrelated work appeared, restore only the overlay filesets from the child's parent and leave the remaining change intact; if that separation is ambiguous, preserve everything and report the affected filesets. An overlay leaves no prototype artifact. Outside a JJ workspace, use an isolated prototype instead of an overlay.
 
 ## Showing it
 

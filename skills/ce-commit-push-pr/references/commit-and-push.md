@@ -1,26 +1,35 @@
-# Committing and pushing
+# Describing changes and pushing a bookmark
 
-If the stack reference constructed and committed retrospective layers before this step, skip ordinary single-branch commit/push and continue to Step 4; `gh stack submit` in Step 5 pushes the stack.
+If stack construction already described all retrospective layers, skip this file's single-bookmark flow and continue to PR composition.
 
-If on the default branch, branch creation needs to handle stale local `<base>`, unpushed commits on local `<base>`, and uncommitted changes that collide with the fresh remote base. Read `references/branch-creation.md` and follow its decision flow before continuing.
+When work is based on the default bookmark, read `references/branch-creation.md` and resolve the exact parent before publication. A JJ working-copy change is already tracked without staging; never introduce an index or stash workflow.
 
-Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate commits (2-3 max). Group at file level only — no `git add -p`. When ambiguous, one commit is fine.
+## Group and describe
 
-Stage and commit each group. **Avoid `git add -A` and `git add .`** — they sweep in `.env`, build artifacts, and generated files. **Honor `exclude:<paths>` when the invocation carries it:** a caller names files that must stay uncommitted (typically a user's own in-progress edits it could not separate from its work); never stage or commit them, and say in the report that they were left out. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+Use `jj status`, `jj diff --summary`, and `jj diff` to identify the complete work. Group naturally separate concerns into the smallest useful set of linear changes, normally no more than three. Use whole-path filesets; do not use interactive hunk selection merely to manufacture a split. One change is correct when boundaries are ambiguous.
 
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-commit message here
-EOF
-)" -- file1 file2 file3
-```
+`exclude:<paths>` removes those paths from every fileset in this run. Because `jj commit <filesets>` leaves unselected content in the new working-copy change, verify after each commit that excluded content remains only there and that the published ancestry does not contain it.
 
-The trailing path list on `git commit` is load-bearing: a bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would ride into the commit. Naming the paths commits exactly the group and leaves other index entries alone.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Then push. Immediately before pushing, re-confirm you are on the intended feature branch (`git branch --show-current`) — the branch gathered in Context is a hint, and Step 1 may have created or switched branches since. Push the live `HEAD` so it reflects the current checkout, never a stale branch name:
+Runtime project instructions and recent history determine the message. Compatible Go guidance means a concise summary and, when useful, a body that explains why and the resulting behavior. Use dynamic `<message-derived-from-local-standards>` content; do not impose a fixed prefix, type, scope, subject, or body template. Append a known Implementation Unit ID only when runtime conventions permit it and the change maps unambiguously to one supplied unit; do not search for a plan.
+
+Commit each whole-path fileset:
 
 ```bash
-git push -u origin HEAD
+jj commit -m "<message-derived-from-local-standards>" <fileset>...
 ```
 
-If the working tree is clean and all commits are already pushed, this step is a no-op.
+After each command, use `jj show <created-change>` and `jj status` to validate content and residual paths. If the description needs correction, the same message rule above governs `jj describe <created-change> -m "<revised-message-derived-from-local-standards>"`.
+
+## Place and push
+
+Set `<publish-change>` to the final intended described change, not automatically `@`: after `jj commit`, `@` is the new working-copy change and the committed change is its parent. Create or safely advance the feature bookmark per `references/branch-creation.md`.
+
+Re-verify bookmark target and remote, then push exactly that bookmark:
+
+```bash
+jj git push --remote <remote> --bookmark <bookmark>
+```
+
+JJ push safety is lease-like and depends on fetched remote state. On a rejection, fetch the same named remote, resolve bookmark conflicts or changed remote state, and retry only after the intended target is still proven. Do not switch to an all-bookmark push. A clean working-copy change does not prove the bookmark is already pushed; compare local and remote bookmark targets.

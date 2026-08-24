@@ -13,8 +13,7 @@ Based on problem type, optionally dispatch generic subagents seeded with local p
 - **performance_issue** → `references/agents/performance-oracle.md`
 - **security_issue** → `references/agents/security-sentinel.md`
 - **database_issue** → `references/agents/data-integrity-guardian.md`
-- Any code-heavy issue → preserve code simplification as a **read-only documentation review**. Inspect the solution draft's code examples and explanatory claims inline, or dispatch a generic subagent seeded with a local prompt only to return suggestions. Do **not** invoke `ce-simplify-code` from this phase and do not mutate product code unless the user explicitly asks for a separate code-simplification pass. Do not use the deleted `code-simplicity-reviewer`.
-  Example: review the solution draft's examples for speculative abstractions, redundant wrappers, dead branches, and just-in-case parameters. Apply edits only to the documentation/examples being written by `ce-compound`; leave any branch code changes untouched.
+- Any code-heavy issue → preserve code simplification as a **read-only documentation review**. Inspect project-native evidence and explanatory claims for speculative abstractions, redundant wrappers, dead branches, and unnecessary parameters. Apply edits only to the documentation written by `ce-compound`; leave working-copy code untouched. Do **not** invoke `ce-simplify-code` from this phase or mutate product code unless the user explicitly asks for a separate code-simplification pass. Do not use the deleted `code-simplicity-reviewer`.
 
 </parallel_tasks>
 

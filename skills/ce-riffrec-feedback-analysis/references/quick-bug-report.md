@@ -4,9 +4,13 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Create `OUTPUT_DIR` with `mktemp -d "${TMPDIR:-/tmp}/riffrec-quick-XXXXXX"`, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
+1. Resolve `<workspace-root>` with `jj workspace root`; outside a JJ workspace, use the current directory. Create one private run directory under `<workspace-root>/.tmp/rocketclaw/ce-riffrec-feedback-analysis/`, set it as `OUTPUT_DIR`, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. In a JJ workspace, existing ignore rules must exclude `.tmp/rocketclaw/` before creating the directory; otherwise stop rather than snapshotting scratch into `@`. Capture the analyzer's printed output directory because later steps read from it. Use this POSIX and Git Bash-compatible command:
 
-2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
+   ```bash
+   WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD"; SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-riffrec-feedback-analysis"; mkdir -p "$SCRATCH_ROOT"; OUTPUT_DIR="$SCRATCH_ROOT/quick-$(date +%Y%m%dT%H%M%S)-$$"; (umask 077; mkdir "$OUTPUT_DIR") || exit 1
+   ```
+
+2. Read only `analysis.md` from the scratch output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` because they are designed for the extensive path.
 
 3. Pick at most one or two screenshots from `frames/` that directly show the reported issue. Prefer frames near a verbal complaint, a failed click, a console error, or a failed network request.
 
@@ -30,9 +34,9 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only in the temp dir and are discarded by the OS.
+- Keep `raw/` and `frames/` out of the JJ working-copy change. They live only in this run's workspace-local scratch directory; remove that directory after the report is delivered.
 - No source-mapping pass across the codebase.
 
 ## Escalation
 
-If, while reading the transcript, the recording turns out to contain multiple distinct issues, requirements, or a workflow walkthrough, stop and tell the user: "This recording has more than one issue — switching to the extensive path." Then load `references/extensive-analysis.md` and re-run the analyzer with a non-temp output directory.
+If the transcript contains multiple distinct issues, requirements, or a workflow walkthrough, stop the quick route, explain that the input requires extensive analysis using details from the recording, then load `references/extensive-analysis.md` and re-run the analyzer with its durable output policy.

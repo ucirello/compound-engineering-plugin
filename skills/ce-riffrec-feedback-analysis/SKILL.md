@@ -26,8 +26,11 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 
 ## Common rules
 
-- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not commit `raw/` or `frames/` directories unless the user explicitly asks and privacy is acceptable.
-- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be committed when they are needed for traceability and contain no sensitive data.
-- Use repo-relative screenshot paths in any committed doc so later agents can open the evidence without absolute local paths.
+- Use JJ for repository state and mutations: inspect the working-copy change with `jj status` and `jj diff`, and inspect history with `jj log`. JJ has no staging index and snapshots non-ignored files automatically.
+- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Keep `raw/` and `frames/` out of the JJ working-copy change unless the user explicitly requests versioning and privacy is acceptable.
+- Text and metadata artifacts may remain in the working-copy change when traceability needs them and they contain no sensitive data. Use workspace-relative screenshot paths in versioned documents.
+- Use `gh` for GitHub operations. In a non-colocated Git-backed JJ workspace, point `GIT_DIR` at `jj git root` when `gh` needs the underlying Git repository. Preserve operational provider, GitHub, Git interoperability, and Git Bash constraints when they affect the workflow.
+- When this skill composes, edits, validates, or recommends a JJ change description or commit message, apply this sentence exactly: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime repository syntax wins; apply only compatible Go quality guidance. Derive the description from the actual change and do not impose a fixed prefix, type, scope, subject, body, template, or example.
+- Do not add creator identity, generated-by text, model or harness identity, badges, bylines, signatures, or product branding to artifacts. Preserve model, provider, research, or human attribution only when it is evidence or an operational requirement. When a protocol requires a neutral actor, use `ai:assistant`; render it as `AI Assistant` in prose.
 
-The Compound Engineering output format used by the extensive path is documented in `references/compound-engineering-feedback-format.md`.
+The output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.

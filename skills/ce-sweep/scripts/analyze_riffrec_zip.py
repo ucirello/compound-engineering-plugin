@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and CE-friendly markdown
+transcript, high-signal video frames when available, and planning-ready markdown
 artifacts.
 """
 
@@ -14,10 +14,10 @@ import argparse
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
-import tempfile
 import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted evidence/kickoff artifacts. Defaults to docs/brainstorms/riffrec-feedback/<source-stem> when available; durable ce-brainstorm outputs live in the plans artifact directory.",
+        help="Directory for extracted evidence/kickoff artifacts. Defaults below the current JJ workspace's .tmp/rocketclaw tree, with a current-directory fallback outside JJ; durable ce-brainstorm outputs live in the plans artifact directory.",
     )
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
@@ -204,12 +204,44 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
         shutil.rmtree(previous_dir, ignore_errors=True)
 
 
+def workspace_root() -> Path:
+    result = subprocess.run(
+        ["jj", "workspace", "root"], capture_output=True, text=True, timeout=10
+    ) if shutil.which("jj") else None
+    if result and result.returncode == 0 and result.stdout.strip():
+        return Path(result.stdout.strip()).resolve()
+    return Path.cwd().resolve()
+
+
+def scratch_root() -> Path:
+    root = workspace_root() / ".tmp" / "rocketclaw" / "ce-sweep"
+    if root.is_symlink():
+        raise SourceInputError(f"Scratch root must not be a symlink: {root}")
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if root.is_symlink() or not root.is_dir():
+        raise SourceInputError(f"Scratch root is not a safe directory: {root}")
+    if hasattr(os, "geteuid") and root.stat().st_uid != os.geteuid():
+        raise SourceInputError(f"Scratch root is not owned by the current user: {root}")
+    root.chmod(0o700)
+    return root
+
+
+def reserve_private_dir(namespace: str, prefix: str) -> Path:
+    base = scratch_root() / namespace
+    base.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for _ in range(100):
+        candidate = base / f"{prefix}{secrets.token_hex(8)}"
+        try:
+            candidate.mkdir(mode=0o700)
+            return candidate
+        except FileExistsError:
+            continue
+    raise SourceInputError(f"Could not reserve a unique scratch directory under {base}")
+
+
 def default_output_dir(source_path: Path) -> Path:
-    cwd = Path.cwd()
     stem = slugify(source_path.stem)
-    if (cwd / "docs" / "brainstorms").is_dir():
-        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return cwd / "riffrec-feedback" / stem
+    return scratch_root() / "riffrec-feedback" / stem
 
 
 def classify_source(source_path: Path) -> str:
@@ -365,9 +397,7 @@ def populate_source_snapshot(source_path: Path, snapshot_dir: Path, source_kind:
 def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = None) -> dict[str, Any]:
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
-    )
+    staging_dir = reserve_private_dir("analyzer-staging", f"{raw_dir.name}-")
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
         promote_raw_snapshot(staging_dir, raw_dir)
@@ -655,9 +685,7 @@ def select_moments(
 def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[dict[str, Any]]) -> None:
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
-    staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
-    )
+    staging_dir = reserve_private_dir("analyzer-staging", f"{frames_dir.name}-")
     try:
         if not recording_path or not recording_path.exists():
             for moment in moments:
@@ -833,7 +861,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use workspace-relative screenshot paths when moving evidence into a requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -882,7 +910,7 @@ def write_requirements_kickoff(
         "",
         "- A1. User: Operates the product in the recorded session and verbalizes friction.",
         "- A2. Product surface: The UI and backend behavior visible in the recording.",
-        "- A3. Brainstorm agent: Uses the evidence bundle to confirm, correct, and group requirements before planning.",
+        "- A3. AI Assistant (`ai:assistant`): Uses the evidence bundle to confirm, correct, and group requirements before planning.",
         "",
         "---",
         "",
@@ -1006,7 +1034,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Commit policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; commit generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
+        "- JJ tracking policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots stay under workspace-local `.tmp/rocketclaw` and outside working-copy changes; include generated Markdown/JSON/manifests only when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -1027,10 +1055,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not commit-safe by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; keep it outside JJ working-copy changes by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be committed by default.")
+    lines.append("Extracted screenshots are retained locally for inspection and should remain outside JJ working-copy changes by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -1049,7 +1077,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not commit these unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally workspace-local by default. Do not include them in a JJ change unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")
@@ -1297,7 +1325,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff target: ce-brainstorm; kickoff: {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

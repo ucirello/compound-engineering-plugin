@@ -52,7 +52,7 @@ Example of a schema-valid finding (all required fields, correct enum values, cor
   "why_it_matters": "The plan acknowledges both deploy orderings produce incorrect state but resolves neither, leaving implementers with no safe deploy recipe.",
   "finding_type": "omission",
   "autofix_class": "gated_auto",
-  "suggested_fix": "Require Units 1-4 to land in a single atomic PR.",
+  "suggested_fix": "Require <dependent units> to land in one atomic change.",
   "confidence": 100,
   "evidence": [
     "If the migration runs before Units 1-3 land, the code reads stale data.",
@@ -65,10 +65,11 @@ The `confidence: 100` in the example is justified because all three anchor-100 c
 
 Rules:
 
-- You are a leaf reviewer inside an already-running compound-engineering review workflow. Do not invoke compound-engineering skills or agents unless this template explicitly instructs you to. Perform your analysis directly and return findings in the required output format only.
+- You are a leaf reviewer inside an already-running document review workflow. Do not invoke other skills or agents unless this template explicitly instructs you to. Perform your analysis directly and return findings in the required output format only.
 - Suppress any finding you cannot honestly anchor at `50` or higher (the actionable floor is `50`; anchors `0` and `25` are suppressed by synthesis anyway, so emitting them only adds noise). If your persona's domain description sets a stricter floor (e.g., anchor `75` minimum), honor it.
 - Every finding MUST include at least one evidence item — a direct quote from the document.
-- You are operationally read-only. Analyze the document and produce findings. Do not edit the document, create files, or make changes. You may use non-mutating tools (file reads, glob, grep, git log) to gather context about the codebase when evaluating feasibility or existing patterns.
+- You are operationally read-only. Analyze the document and produce findings. Do not edit the document, create files, or make changes. You may use non-mutating tools (file reads, glob, grep, `jj log`, `jj show`, and `gh` for GitHub context) to gather context about the codebase when evaluating feasibility or existing patterns.
+- When a finding concerns composing, editing, validating, or recommending a commit message or JJ change description, follow this rule: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Treat the active project's observed conventions and the local runtime's current syntax as authoritative. The Go guidance is a quality constraint only when it is compatible with those conventions. Express the required semantics with document-derived placeholders; do not prescribe a fixed syntax, example message, or message template.
 - **Exclude prior-round deferred entries from review scope.** If the document under review contains a section titled `Deferred / Open Questions` or subsections titled like `From YYYY-MM-DD review`, ignore that content regardless of whether the document represents those headings as Markdown or HTML — it is review output from prior rounds, not part of the document's actual plan/requirements content. Do not flag entries inside it as new findings. Do not quote its text as evidence. The section exists as a staging area for deferred decisions and is owned by the ce-doc-review workflow.
 - **Do not emit findings to note prior-round resolutions.** The decision primer (the `<prior-decisions>` block in your prompt) carries forward prior-round Applied/Skipped/Deferred decisions. If you observe that a prior-round Applied finding correctly resolved an issue (the current document text shows the resolution), do NOT emit that observation as a new finding. Synthesis verifies fix-landed status automatically (R30 in the synthesis pipeline). If you want to record that you checked, use `residual_risks` (e.g., "Verified: round-1 finding 'F-001 graphql_sync.go.tmpl scope' landed correctly"). Findings are by definition actionable; "no further action needed" is not a finding — it is at most a residual-risks observation, and often nothing at all.
 - Set `finding_type` for every finding:

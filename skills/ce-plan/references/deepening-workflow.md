@@ -176,11 +176,10 @@ Signals that justify artifact-backed mode:
 
 If artifact-backed mode is not clearly warranted, stay in direct mode.
 
-Artifact-backed mode uses a per-run OS-temp scratch directory. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b), matching the repo Scratch Space convention for one-shot artifacts. Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
+Artifact-backed mode uses a private per-run directory under `<workspace-root>/.tmp/rocketclaw`, where `<workspace-root>` comes from `jj workspace root` and falls back to the current directory outside a JJ workspace. Create it atomically once before dispatching sub-agents and capture its **absolute path**. Pass that path to each sub-agent so they write to it directly. Do not use `.context/`; these artifacts are per-run scratch. Do not pass unresolved shell-variable strings to sub-agents.
 
 ```bash
-SCRATCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ce-plan-deepen-XXXXXX")"
-echo "$SCRATCH_DIR"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"; SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-plan-deepen"; mkdir -p "$SCRATCH_ROOT"; SCRATCH_DIR="$SCRATCH_ROOT/$(date +%Y%m%dT%H%M%S)-$$"; (umask 077; mkdir "$SCRATCH_DIR") || exit 1; printf '%s\n' "$SCRATCH_DIR"
 ```
 
 Refer to the echoed absolute path as `<scratch-dir>` throughout the rest of this workflow.
@@ -225,7 +224,7 @@ Findings against `session-settled:`-labeled KTDs are presented like any other �
 
 After all agents have been reviewed, carry only the accepted findings forward to 5.3.7.
 
-If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. No explicit scratch cleanup needed — `$SCRATCH_DIR` is OS temp and will be cleaned up by the OS; leaving it in place preserves the rejected agent artifacts for debugging.
+If the user accepted no findings, report "No findings accepted — plan unchanged." Then proceed directly to Phase 5.4 (skip document-review and synthesis — the plan was not modified). This interactive-mode-only skip does not apply in auto mode; auto mode always proceeds through 5.3.7 and 5.3.8. Preserve `$SCRATCH_DIR` only when its rejected artifacts are needed for debugging; otherwise remove it during final cleanup.
 
 If findings were accepted and the plan was modified, proceed through 5.3.7 and 5.3.8 as normal — document-review acts as a quality gate on the changes.
 
@@ -255,7 +254,7 @@ Allowed changes:
 
 Do **not**:
 - Add implementation code — no imports, exact method signatures, or framework-specific syntax. Pseudo-code sketches and DSL grammars are allowed
-- Add git commands, commit choreography, or exact test command recipes
+- Add repository commands, change choreography, or exact test command recipes
 - Add generic `Research Insights` subsections everywhere
 - Rewrite the entire plan from scratch
 - Invent new product requirements, scope changes, or success criteria without surfacing them explicitly

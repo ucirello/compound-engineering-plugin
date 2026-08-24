@@ -1,6 +1,6 @@
 ---
 name: ce-setup
-description: "Check Rocketclaw health and workspace-local config."
+description: "Check environment health and workspace-local config."
 disable-model-invocation: true
 ---
 
@@ -14,10 +14,10 @@ Ask each question below using the host's blocking question tool already in the c
 
 ## Artifact Root Resolution
 
-Every Rocketclaw skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other Rocketclaw-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
+Every skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other managed trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
 
 <!-- ce-docs-root:start -->
-**Resolve the Rocketclaw artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or a colocated `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
@@ -28,7 +28,7 @@ Every Rocketclaw skill that writes or reads an artifact directory (`solutions`, 
 
 ### Step 1: Determine Plugin Version
 
-Detect the installed Rocketclaw plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
+Detect the installed plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
 
 If a version is found, pass it to the check script via `--version`. Otherwise omit the flag.
 
@@ -51,7 +51,7 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 
 If the script is unavailable, run the inline equivalent listed in `references/repo-fixes.md`.
 
-Display the diagnostic output to the user. Missing optional tools are not setup failures. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); surface that line so the operator can confirm where Rocketclaw artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
+Display the diagnostic output to the user. Missing optional tools are not setup failures. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); surface that line so the operator can confirm where artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
 
 ### Step 3: Decide Whether Fixes Are Needed
 
@@ -69,7 +69,7 @@ Also remediate these project issues when the report names them:
 - `.rocketclaw/config.local.yaml` exists but is not safely excluded from the Jujutsu working-copy change
 - `.rocketclaw/config.example.yaml` is missing or outdated
 - the health report marks the `ce-work` skill implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`
-- the health report marks `docs_root` invalid (`Invalid docs_root ...`) — Rocketclaw artifacts will not be written until it is fixed
+- the health report marks `docs_root` invalid (`Invalid docs_root ...`) -- artifacts will not be written until it is fixed
 
 If optional tools are missing, do not offer a bulk install. The diagnostic already printed the relevant install command or project URL. Say: "Install optional tools only for the workflows you use."
 
@@ -77,7 +77,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 Read `references/repo-fixes.md` from this skill's directory before making any workspace-local change. It carries Steps 4-8: removing the obsolete `rocketclaw.local.md`, refreshing the example config, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, and the two `.gitignore` offers.
 
-All paths there resolve from the Jujutsu workspace root (`jj workspace root`), not the current working directory. Maintaining the generated example files is the work Phase 2 does on its own — refreshing `config.example.yaml` and removing the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
+All paths there resolve from the Jujutsu workspace root (`jj workspace root`), not the current working directory. Maintaining the example files is the work Phase 2 does on its own -- refreshing `config.example.yaml` and removing the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
 
 ## Phase 3: Summary
 

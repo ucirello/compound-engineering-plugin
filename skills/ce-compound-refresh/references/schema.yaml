@@ -96,6 +96,12 @@ required_fields:
       - low
     description: "Impact severity"
 
+  ai:
+    type: enum
+    values:
+      - assistant
+    description: "Neutral protocol identity. Render as AI Assistant in prose when a display label is required."
+
 # --- Track-specific rules ----------------------------------------------------
 track_rules:
   bug:
@@ -205,6 +211,8 @@ bug_optional_fields:
 #   - Bug-track fields present on a knowledge-track doc are harmless. Do not
 #     strip them during refresh unless the doc is being rewritten for other reasons.
 #   - When creating NEW docs, follow the track rules above.
+# Existing docs without ai remain valid. Add ai: assistant when replacing a doc,
+# not during an otherwise unrelated refresh.
 # Docs written before component/root_cause became open vocabulary may carry
 # values from the earlier closed list (rails_*, hotwire_turbo, missing_include,
 # ...) or a rails_version field. They stay valid; the corpus-first rule means a
@@ -214,6 +222,8 @@ bug_optional_fields:
 validation_rules:
   - "Determine track from problem_type using the tracks section above"
   - "All shared required_fields must be present"
+  - "ai must be assistant; render it as AI Assistant when a prose display label is required"
+  - "Existing docs without ai remain valid until replacement"
   - "Bug-track required fields (symptoms, root_cause, resolution_type) must be present on bug-track docs"
   - "Knowledge-track docs have no additional required fields beyond the shared ones"
   - "Bug-track fields on existing knowledge-track docs are harmless (see backward compatibility note)"

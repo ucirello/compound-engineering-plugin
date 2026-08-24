@@ -179,19 +179,17 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-WORKSPACE_ROOT="$(jj -R "$WORKSPACE" workspace root 2>/dev/null)" || { log "workspace is not a JJ workspace"; exit 2; }
-SCRATCH_PARENT="$WORKSPACE_ROOT/.tmp"
+SCRATCH_PARENT="$RESULT_DIR/.tmp/rocketclaw"
 mkdir -p "$SCRATCH_PARENT" || exit 2
-chmod 700 "$SCRATCH_PARENT" || exit 2
-if [ ! -e "$SCRATCH_PARENT/.gitignore" ]; then
-  (umask 077; set -o noclobber; printf '*\n' > "$SCRATCH_PARENT/.gitignore") 2>/dev/null || [ -f "$SCRATCH_PARENT/.gitignore" ] || exit 2
-fi
+chmod 700 "$RESULT_DIR/.tmp" "$SCRATCH_PARENT" 2>/dev/null || exit 2
 SCRATCH=""
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
-  candidate="$SCRATCH_PARENT/ce-work-adapter-$$-${RANDOM:-0}"
+scratch_attempt=0
+while [ "$scratch_attempt" -lt 64 ]; do
+  scratch_attempt=$((scratch_attempt + 1))
+  candidate="$SCRATCH_PARENT/adapter-$$-$RANDOM-$RANDOM"
   if mkdir -m 700 "$candidate" 2>/dev/null; then SCRATCH="$candidate"; break; fi
 done
-[ -n "$SCRATCH" ] || { log "could not reserve adapter scratch under $SCRATCH_PARENT"; exit 2; }
+[ -n "$SCRATCH" ] || { log "could not reserve local adapter scratch"; exit 2; }
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
 RAW_STDERR="$SCRATCH/stderr.log"
@@ -454,10 +452,10 @@ try:
         except FileExistsError:
             continue
     if receipt_fd is None:
-        raise OSError("could not reserve a result receipt staging file")
+        raise OSError("could not reserve a result receipt temporary file")
     target = os.fstat(receipt_fd)
     if not stat.S_ISREG(target.st_mode):
-        raise OSError("result receipt staging file is not regular")
+        raise OSError("result receipt temporary file is not regular")
     os.fchmod(receipt_fd, 0o600)
     view = memoryview(data)
     while view:
@@ -693,7 +691,7 @@ while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROU
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-MIN_ENV+=("TMPDIR=$WORKSPACE_ROOT/.tmp")
+MIN_ENV+=("TMPDIR=$SCRATCH_PARENT")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")

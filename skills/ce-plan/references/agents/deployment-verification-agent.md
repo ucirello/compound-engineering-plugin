@@ -123,7 +123,7 @@ Produce a complete Go/No-Go checklist that an engineer can literally execute:
 - [ ] Confirm rollback plan reviewed
 
 ## 🟡 Deploy Steps
-1. [ ] Deploy revision [id]
+1. [ ] Deploy revision [change-or-commit-id]
 2. [ ] Run migration
 3. [ ] Enable feature flag
 

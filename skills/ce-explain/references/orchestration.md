@@ -21,7 +21,7 @@ The skill body carries the ownership-checked block that creates `$RUN_DIR`; run 
 
 ## Grounding by input shape
 
-**Repo-touching inputs** (a concept with footprint in this repo, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or revisions. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted root or workspace probe.
+**Workspace-touching inputs** (a concept with footprint in this workspace, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or revisions. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted `jj workspace root` probe.
 
 **Diff mode:** resolve the change (the `diff:` revision or revset, or the most recent substantial change when the request points at one implicitly) and gather its evidence with `jj diff`, `jj show`, and `jj log` — the diff itself, the files it touches, and any plan or solution doc that motivated it. Use `references/intake.md`'s namespace mapping for Git-shaped compatibility input. For a PR, preserve GitHub metadata through `gh` or another GitHub interface and map its base/head to JJ commit IDs or remote bookmarks for local inspection. Gather silently: nothing learned here is narrated to the user until the Phase 3 ordering rule is satisfied.
 

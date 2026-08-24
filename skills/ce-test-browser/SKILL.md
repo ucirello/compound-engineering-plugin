@@ -1,19 +1,19 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current JJ change, a revision, or a PR. Use when asked to run or check browser tests for the current change.
-argument-hint: "[PR number, JJ revision/bookmark, 'current', or --port PORT]"
+description: Run browser tests for pages affected by the current change, bookmark, or PR. Use when asked to run or check browser tests for the current change.
+argument-hint: "[PR number, JJ revision or bookmark, 'current', or --port PORT]"
 ---
 
 # Browser Test Skill
 
-Run end-to-end browser tests on pages affected by a PR or JJ revision using the best approved browser driver available in the active harness.
+Run end-to-end browser tests on pages affected by a PR, JJ change, or bookmark using the best approved browser driver available in the active harness.
 
 **Done:** the run ends by reporting what it found — either the summary, with every affected route marked Pass, Fail, or Skip and each Skip carrying its reason, or, when a preflight blocker stops testing before any route can be exercised, the blocker and what would clear it. Reaching neither, or dropping a route from the summary because nobody could reach it, is the failure this bar exists to prevent.
 
 ## Modes
 
 - **Manual (default):** the user controls the dev server. When the fallback driver is `agent-browser`, ask whether to run headed or headless.
-- **Pipeline (`mode:pipeline`):** invoked by LFG or another automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides port selection (step 4), dev-server startup (step 5), and visibility prompts (step 6), running the same port script with `--free` inside the block that starts the server.
+- **Pipeline (`mode:pipeline`):** invoked by an automated runner. The run is unattended — never block on a question. Read `references/pipeline-orchestration.md` from this skill's directory and follow it; it overrides port selection (step 4), dev-server startup (step 5), and visibility prompts (step 6), running the same port script with `--free` inside the block that starts the server.
 
 ## Browser Driver Policy
 
@@ -29,8 +29,8 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 Read `references/route-and-report.md` from this skill's directory before step 3 — it carries the route-mapping patterns, the port and server commands, the per-page checks, the two human-facing prompts, and the summary format.
 
-1. **Select the driver** per the policy above and record it. A non-PR scope requires a JJ workspace with changes to test.
-2. **Determine test scope** from the argument: a PR number -> `gh pr view [number] --json files -q '.files[].path'`; `current` or empty -> `jj diff --name-only --from 'trunk()' --to '@'`; a JJ revision or bookmark -> `jj diff --name-only --from 'trunk()' --to '<revision>'`. Let the repository's configured `trunk()` alias select the base. For a remote bookmark, use JJ's `<bookmark>@<remote>` syntax. Keep GitHub inspection in `gh`; in a non-colocated JJ workspace, point `GIT_DIR` at the path printed by `jj git root` when invoking `gh`.
+1. **Select the driver** per the policy above and record it. This also requires a JJ workspace with changes to test.
+2. **Determine test scope** from the argument. Keep GitHub PR identifiers in the GitHub namespace and query their files with `gh pr view <pr-number> --json files -q '.files[].path'`; in a non-colocated Git-backed JJ workspace, point `GIT_DIR` at the path from `jj git root` if `gh` needs the backing repository. For `current` or an empty argument, use `jj diff -r 'trunk()..@' --name-only`. For another target, resolve a local bookmark or JJ revision directly, map a Git remote branch to `<bookmark>@<remote>`, and use `jj diff -r 'trunk()..<resolved-target>' --name-only`. If a provider supplies a Git commit ID, resolve it in JJ with `commit_id(<full-commit-id>)`. Stop with the unresolved namespace or ambiguous revision rather than guessing.
 3. **Map changed files to routes** and build the list of URLs to test.
 4. **Determine the dev server port.** `scripts/resolve-port.sh` owns the resolution and prints the port alone on stdout: an explicit port argument; else a `--port` flag in a `package.json` dev/start script; else `PORT=` in `.env`, `.env.local`, or `.env.development`; else `3000`. Pass an explicit port when the user gave `--port N`, or when your active project instructions already in context state the dev-server port — don't grep instruction files for one, since prose mentions in docs, examples, and troubleshooting are unreliable and false-positive-prone while config files and `.env` are trustworthy. Each mode runs the script in the shell call that needs the port, so no port value has to survive between shell calls or be transcribed out of prose; the reference gives the command. Manual mode uses that port as-is: the user controls their own server, so do not scan for alternatives.
 5. **Verify the dev server is running** before asking the headed/headless question — a manual run with no server stops here, so asking first would waste the question.

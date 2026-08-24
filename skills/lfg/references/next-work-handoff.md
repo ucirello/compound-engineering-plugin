@@ -7,7 +7,10 @@ area without silently extending the completed plan or current session.
 ## Establish whether an offer is warranted
 
 Start from the canonical plan path retained from LFG step 1. Locate a Product
-Contract section carrying the semantic role `work-relationships`.
+Contract section carrying the semantic role `work-relationships`:
+
+- Markdown: `<!-- rocketclaw-section: work-relationships -->`
+- HTML: `data-rocketclaw-section="work-relationships"`
 
 The visible heading is not part of this protocol. For an older unmarked plan,
 use a semantic fallback only when one Product Contract section clearly names

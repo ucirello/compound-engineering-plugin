@@ -108,7 +108,7 @@ Run the `ce-optimize` skill to reduce this repository's full test-suite wall tim
 
 Local warm median is currently about six minutes and the range is wide. Treat local wall time, CI critical path, and aggregate runner-minutes as required targets: a change that helps only CI may be kept if it does not regress the others, and the run is not done until every declared target is met.
 
-Do not spend a five-run cold/warm protocol on every exploratory experiment. Smoke for correctness, take one paired sample, abort anything already far worse than the current best, and reserve the full protocol for a candidate you are about to keep and for final confirmation.
+Do not spend a five-run cold/warm protocol on every exploratory experiment. Smoke for correctness, take one paired sample, abort anything already far worse than the current best, and reserve the full protocol for a candidate about to be kept and for final confirmation.
 ```
 
 ### 4. Prompt Optimization

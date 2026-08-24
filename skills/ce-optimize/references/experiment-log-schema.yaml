@@ -2,7 +2,7 @@
 # This is the canonical schema for the experiment log file that accumulates
 # across an optimization run.
 #
-# Location: <workspace-root>/.tmp/ce-optimize/runs/<spec-name>/experiment-log.yaml
+# Location: .context/ce-optimize/<spec-name>/experiment-log.yaml
 #
 # PERSISTENCE MODEL:
 # The experiment log on disk is the SINGLE SOURCE OF TRUTH. The agent's
@@ -42,21 +42,6 @@ structure:
     type: string
     format: "ISO 8601 timestamp"
     required: true
-
-  base_change_id:
-    type: string
-    required: true
-    description: "Stable JJ change ID selected as the run baseline"
-
-  base_commit_id:
-    type: string
-    required: true
-    description: "JJ commit ID of the measured baseline snapshot"
-
-  best_change_id:
-    type: string
-    required: true
-    description: "Stable JJ change ID of the current best revision"
 
   baseline:
     type: object
@@ -161,7 +146,7 @@ experiment_entry:
       values:
         - measured                # measurement finished and metrics were persisted, awaiting batch evaluation / integration
         - promising               # eligible on current samples but the ladder still needs confirmation before keep
-        - kept                    # eligible, confirmed, and selected into the accepted JJ stack
+        - kept                    # eligible, confirmed, and targeted by the optimization bookmark
         - not_selected            # eligible after comparison but not integrated (not the winner, overlapping, or past the runner-up cap)
         - reverted                # compared and not eligible (regressed a required objective, or none improved)
         - inconclusive            # delta inside the comparison threshold; not a keep and not a demonstrated regression
@@ -170,14 +155,14 @@ experiment_entry:
         - error                   # measurement command crashed, timed out, or produced malformed output
         - deferred_needs_approval # experiment needs an unapproved dependency -> set aside for batch approval
         - timeout                 # measurement command exceeded timeout_seconds
-        - runner_up_kept          # file-disjoint runner-up rebased onto best and re-measured successfully
-        - runner_up_reverted      # rebased runner-up whose combined measurement was not better
+        - runner_up_kept          # file-disjoint runner-up rebased onto the current best and re-measured successfully
+        - runner_up_reverted      # file-disjoint runner-up rebased onto the current best but not better in combination
       description: >
-        Load-bearing state: the loop selects behavior from this value.
+        Load-bearing state: this value determines the loop transition.
         'measured' and 'promising' are non-terminal: CP-3 persists raw metrics
         before batch-level comparison, and 'promising' means the ladder still
         needs confirmation samples. An eligible decide `keep` stays `measured`
-        until its change is in the accepted stack. 'kept' and 'runner_up_kept'
+        until its change is targeted by the optimization bookmark. 'kept' and 'runner_up_kept'
         mean that integration happened. 'not_selected' is terminal for an
         eligible candidate that was not integrated. 'deferred_needs_approval'
         items are re-presented at wrap-up. All other states are terminal for
@@ -245,11 +230,7 @@ experiment_entry:
 
     change_id:
       type: string
-      description: "Stable JJ change ID for this experiment"
-
-    commit_id:
-      type: string
-      description: "JJ commit ID of the measured snapshot; refresh after rewrites"
+      description: "Jujutsu change ID targeted by the optimization bookmark (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string
@@ -261,7 +242,7 @@ experiment_entry:
 
     combined_with:
       type: integer
-      description: "Iteration number of the accepted experiment this runner-up was rebased onto"
+      description: "Iteration number of the experiment this was combined with (only for 'runner_up_kept' and 'runner_up_reverted')"
 
 # ============================================================================
 # OUTCOME STATE TRANSITIONS
@@ -280,16 +261,16 @@ experiment_entry:
 #           -> persist raw metrics   -> outcome: measured or promising
 #           -> judge evaluated (if type: judge)
 #             -> decide.mjs eligible, next_measurement none -> stay measured until integration
-#               -> change selected into accepted stack -> outcome: kept
+#               -> optimization bookmark targets change -> outcome: kept
 #               -> eligible leftover             -> outcome: not_selected
-#             -> runner-up, file-disjoint -> rebase onto best + re-measure
+#             -> runner-up, file-disjoint -> rebase onto current best + re-measure
 #               -> combined eligible and integrated -> outcome: runner_up_kept
 #               -> combined not kept              -> outcome: runner_up_reverted
 #             -> inconclusive             -> outcome: inconclusive
 #             -> not eligible             -> outcome: reverted
 #       -> needs unapproved dep    -> outcome: deferred_needs_approval
 #
-# Only 'kept' and 'runner_up_kept' are reachable in the accepted base-to-best revset.
+# Only 'kept' and 'runner_up_kept' leave a described change on the optimization bookmark stack.
 # Only 'deferred_needs_approval' items are re-presented at wrap-up for approval.
 
 # ============================================================================
@@ -297,7 +278,7 @@ experiment_entry:
 # ============================================================================
 #
 # Written after each batch to:
-#   <workspace-root>/.tmp/ce-optimize/runs/<spec-name>/strategy-digest.md
+#   .context/ce-optimize/<spec-name>/strategy-digest.md
 #
 # Contains a compressed summary of:
 # - What hypothesis categories have been tried

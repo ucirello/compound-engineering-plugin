@@ -1,4 +1,4 @@
-# Rocketclaw workspace config
+# Workspace config
 # Copy to .rocketclaw/config.yaml in your workspace root (team defaults).
 # Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
@@ -7,20 +7,20 @@
 # docs_root fails closed on an unusable value.
 
 # --- Artifact root ---
-# Relocate every Rocketclaw-written artifact folder (solutions, plans, ideation,
+# Relocate every managed artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
 # feedback-sweep, personas) under one workspace-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location Rocketclaw
-# reads and writes; Rocketclaw never falls back to reading `docs/`.
+# byte-identical to today. A configured root becomes the sole location read and
+# written by these skills; they never fall back to reading `docs/`.
 #
 # Set this only in this recorded file so every workspace shares one artifact
 # tree. A docs_root in config.local.yaml is ignored.
 #
-# The value must be a workspace-relative directory whose real (symlink-resolved) path
-# stays inside the workspace, is not the workspace root itself, and is not under
-# `.jj/` or a colocated `.git/`.
+# The value must be a workspace-relative directory whose real (symlink-resolved)
+# path stays inside the workspace, is not the workspace root itself, and is not
+# under `.jj/` or a colocated `.git/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- Rocketclaw stops with an error so a typo can't silently write artifacts into
+# default -- processing stops with an error so a typo cannot silently write into
 # the location you configured away from. `/ce-setup` reports the resolved root.
 
 # docs_root: .rocketclaw/artifacts   # workspace-relative dir (default: docs)
@@ -34,7 +34,7 @@
 # pulse_primary_event: "session_started"                # the event that means "user showed up"
 # pulse_value_event: "task_completed"                   # the event that means "user got value"
 # pulse_completion_events: "onboarded,first_purchase"   # comma-separated, 0-3 events
-# pulse_quality_scoring: false                          # true | false (default: false; AI products only)
+# pulse_quality_scoring: false                          # true | false (default: false; AI Assistant products only)
 # pulse_quality_dimension: "answer accuracy"            # dimension scored 1-5 when pulse_quality_scoring is true
 # pulse_analytics_source: posthog                       # posthog | mixpanel | custom (no default)
 # pulse_tracing_source: sentry                          # sentry | datadog | custom (no default)
@@ -169,7 +169,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # recorded (multi-agent) or <workspace-root>/.tmp/rocketclaw/ce-sweep/state.yml (solo; current-directory fallback outside Jujutsu)
+# sweep_state_path: docs/feedback-sweep/state.yml   # recorded (multi-agent) or "$(jj workspace root)/.tmp/rocketclaw/ce-sweep/state.yml" (solo); use .tmp/rocketclaw/ce-sweep/state.yml when root resolution is unavailable
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
-# sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
+# sweep_shared_branch: false                        # true: `jj git push`-gated lease for shared-docs-bookmark topology

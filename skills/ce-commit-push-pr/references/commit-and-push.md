@@ -1,21 +1,35 @@
-# Committing and pushing
+# Describing changes and pushing a bookmark
 
-If the stack reference constructed and described retrospective layers before this step, skip ordinary single-bookmark publication and continue to Step 4; Step 5 pushes the stack bookmarks.
+If stack construction already described all retrospective layers, skip this file's single-bookmark flow and continue to PR composition.
 
-If the work starts from trunk, read `references/bookmark-creation.md`. It protects the decision between a fresh remote base and unpublished local base changes without relying on Git's current-branch or stash model.
+When work is based on the default bookmark, read `references/branch-creation.md` and resolve the exact parent before publication. A JJ working-copy change is already tracked without staging; never introduce an index or stash workflow.
 
-Scan the complete unpublished range and working-copy change for naturally distinct concerns. If whole-file groups form separate logical changes, use path-limited `jj commit` or `jj split` to produce the smallest useful sequence. When the boundary is ambiguous, keep one change. Do not use an interactive hunk split unless the user explicitly approves that review boundary.
+## Group and describe
 
-Jujutsu snapshots visible working-copy files and has no staging area. Pass each group's filesets to `jj commit` so only that group remains in the described change and the rest moves to the new working-copy change. **Honor `exclude:<paths>`:** excluded paths belong to no published change, and the report names them. If ignored or generated content is already tracked in the current change, separate or untrack it before publication rather than relying on an index.
+Use `jj status`, `jj diff --summary`, and `jj diff` to identify the complete work. Group naturally separate concerns into the smallest useful set of linear changes, normally no more than three. Use whole-path filesets; do not use interactive hunk selection merely to manufacture a split. One change is correct when boundaries are ambiguous.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository instructions and the syntax established by `git log` always win. Apply compatible Go guidance where those sources leave room, including a history-useful first line and rationale in the body when needed. Do not force a type, scope, prefix, subject grammar, body, or Conventional Commit form. When a plan Implementation Unit ID is already in hand and the repository's syntax permits it, include that unit ID without changing the established message form. Do not hunt for a plan; omit it when the change spans units or the unit is unclear.
+`exclude:<paths>` removes those paths from every fileset in this run. Because `jj commit <filesets>` leaves unselected content in the new working-copy change, verify after each commit that excluded content remains only there and that the published ancestry does not contain it.
 
-Pass the composed description directly as one argv value to `jj commit --message` or `jj describe --message`; do not substitute a fixed message placeholder. After each operation, inspect `jj show` and `jj status` to verify the change has exactly its intended files and description and that excluded paths remain outside the publication range.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Move or create the feature bookmark at the intended completed change. An empty working-copy child normally means the bookmark targets `@-`; a still-active described working-copy change may target `@`. Verify the exact target instead of assuming either shape. Re-check the bookmark, push remote, and remote bookmark immediately before publication:
+Runtime project instructions and recent history determine the message. Compatible Go guidance means a concise summary and, when useful, a body that explains why and the resulting behavior. Use dynamic `<message-derived-from-local-standards>` content; do not impose a fixed prefix, type, scope, subject, or body template. Append a known Implementation Unit ID only when runtime conventions permit it and the change maps unambiguously to one supplied unit; do not search for a plan.
+
+Commit each whole-path fileset:
 
 ```bash
-jj git push --remote <push-remote> --bookmark <bookmark>
+jj commit -m "<message-derived-from-local-standards>" <fileset>...
 ```
 
-If the bookmark and its tracked remote bookmark already agree and no unpublished changes belong to the PR, this step is a no-op. On a stale or conflicted remote-bookmark refusal, fetch and reconcile; never bypass Jujutsu's safety checks.
+After each command, use `jj show <created-change>` and `jj status` to validate content and residual paths. If the description needs correction, the same message rule above governs `jj describe <created-change> -m "<revised-message-derived-from-local-standards>"`.
+
+## Place and push
+
+Set `<publish-change>` to the final intended described change, not automatically `@`: after `jj commit`, `@` is the new working-copy change and the committed change is its parent. Create or safely advance the feature bookmark per `references/branch-creation.md`.
+
+Re-verify bookmark target and remote, then push exactly that bookmark:
+
+```bash
+jj git push --remote <remote> --bookmark <bookmark>
+```
+
+JJ push safety is lease-like and depends on fetched remote state. On a rejection, fetch the same named remote, resolve bookmark conflicts or changed remote state, and retry only after the intended target is still proven. Do not switch to an all-bookmark push. A clean working-copy change does not prove the bookmark is already pushed; compare local and remote bookmark targets.

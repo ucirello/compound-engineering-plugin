@@ -1,13 +1,14 @@
 # Strategy Template
 
-Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `STRATEGY.md`.
+Loaded by `SKILL.md` after the interview is complete. Fill it in using the captured answers and write to `<workspace-root>/STRATEGY.md`.
 
 ## Rules for filling in
 
 - Use the user's own language where possible. Do not paraphrase into generic PM-speak.
 - Each section this skill writes stays compact - together they should read in under 5 minutes. Sections other writers contribute are theirs; do not shorten them to hit that bound.
-- Write the sections below in this order. Sections you did not write — added by the user or another skill — are preserved as found and stay where they are; do not add sections of your own beyond this template.
-- The optional Milestones section is deleted entirely if unused. Do not leave an empty header. Boundaries is always present.
+- Write the sections below in this order. Existing sections outside this template are preserved as found and stay where they are; do not add sections of your own beyond this template.
+- Keep the document neutral: no visual badges, bylines, generated-by text, or creator, model, provider, tool, agent, harness, runtime, workflow, co-author, sign-off, or similar attribution. Preserve existing human and research-source attribution.
+- Optional sections (Milestones, Brand): delete entirely if unused. Do not leave empty headers. Boundaries is always present.
 - Set `last_updated` in the YAML frontmatter to today's ISO date (YYYY-MM-DD). Do not duplicate the date in prose.
 - Set `name` in the frontmatter to the product or initiative name (the same value used in the H1 title).
 
@@ -23,7 +24,7 @@ last_updated: {{YYYY-MM-DD}}
 
 # {{product_name}} Strategy
 
-{{If a legacy sibling doc from another tool still exists at the resolved workspace root - VISION.md, PRODUCT.md - and the user chose to link to it rather than fold it in (a folded sibling is redundant: no pointer, nothing deferred to it), one line here pointing to it, e.g. "See VISION.md for the project's principles; this document carries direction." Then do not restate what that doc already says: where a section below would repeat it, keep this doc's section to what is specific to strategy and defer to the sibling for the rest. Omit the line when no sibling exists. Sections other tools have already written into this file stay where they are; this skill's sections are placed around them in the order below without moving them.}}
+{{If a legacy sibling doc still exists at the workspace root - VISION.md or PRODUCT.md - and the user chose to link rather than fold it in, add one neutral line pointing to the sibling and stating which meaning remains there. Do not restate that meaning below. Omit the line when no sibling exists. Existing sections outside this template stay where they are; place this skill's sections around them in the order below without moving them.}}
 
 ## Purpose
 
@@ -71,6 +72,13 @@ _Why it serves the approach:_ {{one line}}
 
 <!-- Optional. Delete the section if unused. Only externally visible milestones: launches, fundraises, conferences, renewals. -->
 
+## Brand
+
+**One-liner:** {{single-sentence pitch}}
+
+**Key message:** {{2-3 lines if useful}}
+
+<!-- Optional. Delete the section if unused. -->
 ~~~
 
 ## Post-write checklist
@@ -81,7 +89,7 @@ Before confirming the write, scan the draft for:
 - [ ] `last_updated` carries today's date in ISO format (YYYY-MM-DD).
 - [ ] No section this skill wrote has more than 4 sentences except Tracks (where each track has its own short block); sections other writers contribute are not measured.
 - [ ] No placeholders remain (`{{...}}`).
-- [ ] Milestones has been deleted when unused, not left empty; Boundaries is present.
+- [ ] Optional sections (Milestones, Brand) with no content have been deleted, not left empty; Boundaries is present.
 - [ ] Sections this skill did not write are unchanged and still in place.
 - [ ] Metric count is between 3 and 5 and track count between 2 and 4 - counting a meaning explicitly deferred to a linked legacy doc as carried there, not as missing here.
 - [ ] Purpose and Positioning are connected - one clearly responds to the other.

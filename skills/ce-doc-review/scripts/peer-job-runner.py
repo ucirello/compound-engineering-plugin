@@ -58,9 +58,9 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (<workspace-root>/.tmp/rocketclaw/peer-jobs,
-                            or <current-directory>/.tmp/rocketclaw/peer-jobs
-                            outside a JJ workspace)
+  CE_PEER_JOBS_ROOT         optional workspace-local jobs root override
+                            (default: <jj-workspace>/.tmp/rocketclaw; outside a
+                            JJ workspace: <current-dir>/.tmp/rocketclaw)
   CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
@@ -74,8 +74,11 @@ Environment overrides (defaults in parentheses):
   CE_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
   CE_PEER_BASH              Windows: absolute bash.exe for peer workers
                             (preferred over PATH / WSL System32 bash)
+  CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
+                            CE_PEER_BASH is unset (#1268)
+
 Security posture: the job root is a predictable, owner-private directory under
-the workspace-local `.tmp`. Every read of job state opens the file first (no-follow) and
+the current workspace's local scratch tree. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -108,8 +111,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the current workspace's `.tmp`, or the current
-            directory's `.tmp` when no Jujutsu workspace is available.
+  jobs root uses the same workspace-local `.tmp\\rocketclaw` namespace.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -139,23 +141,25 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-
-
 def _workspace_root() -> str:
     try:
-        result = subprocess.run(
-            ["jj", "workspace", "root"], capture_output=True, text=True,
-            check=False,
+        proc = subprocess.run(
+            ["jj", "workspace", "root"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
         )
-        root = result.stdout.strip() if result.returncode == 0 else ""
-    except OSError:
-        root = ""
-    return os.path.abspath(root or os.getcwd())
+        root = proc.stdout.strip()
+        if root:
+            return os.path.abspath(root)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.path.abspath(os.getcwd())
 
 
-_WORKSPACE_ROOT = _workspace_root()
-DEFAULT_SCRATCH_ROOT = os.path.join(_WORKSPACE_ROOT, ".tmp")
-DEFAULT_ROOT = os.path.join(DEFAULT_SCRATCH_ROOT, "rocketclaw", "peer-jobs")
+WORKSPACE_ROOT = _workspace_root()
+DEFAULT_ROOT = os.path.join(WORKSPACE_ROOT, ".tmp", "rocketclaw")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -209,19 +213,26 @@ _RUNNER_HARD_GRACE = 30.0
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     root = os.path.abspath(configured) if configured else os.path.abspath(DEFAULT_ROOT)
-    scratch = os.path.abspath(DEFAULT_SCRATCH_ROOT)
+    local_root = os.path.realpath(DEFAULT_ROOT)
     try:
-        contained = os.path.commonpath((scratch, root)) == scratch
+        root_is_local = os.path.commonpath((os.path.realpath(root), local_root)) == local_root
     except ValueError:
-        contained = False
-    if not contained:
-        raise RunnerError(f"jobs root must be contained by {scratch}")
-    ensure_owned_dirs(scratch, root)
+        root_is_local = False
+    if not root_is_local:
+        raise RunnerError(f"jobs root must stay under {DEFAULT_ROOT}")
+    scratch_parent = os.path.dirname(DEFAULT_ROOT)
+    os.makedirs(scratch_parent, mode=0o700, exist_ok=True)
+    try:
+        scratch_is_local = os.path.commonpath((os.path.realpath(scratch_parent), os.path.realpath(WORKSPACE_ROOT))) == os.path.realpath(WORKSPACE_ROOT)
+    except ValueError:
+        scratch_is_local = False
+    if not scratch_is_local:
+        raise RunnerError(f"workspace scratch escapes through a symlink: {scratch_parent}")
     return root
 
 
 def candidate_jobs_root_bases() -> list:
-    """The workspace-local root where existing jobs are stored."""
+    """The configured root or the current workspace-local scratch root."""
     return [jobs_root_base()]
 
 
@@ -786,36 +797,21 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    parent = os.path.dirname(path)
-    tmp = None
-    fd = None
+    directory = os.path.dirname(path)
     for _ in range(CLAIM_ATTEMPTS):
-        candidate = os.path.join(parent, f".atomic-{os.getpid()}-{os.urandom(4).hex()}")
+        tmp = os.path.join(directory, f".atomic-{os.urandom(8).hex()}")
         try:
-            fd = os.open(
-                candidate,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY,
-                0o600,
-            )
-            tmp = candidate
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
             break
         except FileExistsError:
             continue
-    if fd is None or tmp is None:
-        raise OSError(f"could not claim an atomic write file in {parent}")
+    else:
+        raise OSError(f"could not reserve atomic file beside {path}")
     try:
-        view = memoryview(data)
-        while view:
-            written = os.write(fd, view)
-            if written <= 0:
-                raise OSError("atomic write made no progress")
-            view = view[written:]
-        os.close(fd)
-        fd = None
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
         os.replace(tmp, path)
     except BaseException:
-        if fd is not None:
-            os.close(fd)
         try:
             os.unlink(tmp)
         except OSError:
@@ -1132,6 +1128,36 @@ def _is_system32_wsl_bash(path: str) -> bool:
     return parent in blocked_parents
 
 
+def _git_bash_well_known_paths():
+    """Standard Git for Windows bash.exe locations."""
+    pf64 = os.environ.get("ProgramW6432") or ""
+    pf = os.environ.get("ProgramFiles") or r"C:\Program Files"
+    pf86 = os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
+    local = os.environ.get("LOCALAPPDATA") or ""
+    roots = []
+    seen = set()
+    for root in (pf64, pf, pf86):
+        if not root:
+            continue
+        key = os.path.normcase(os.path.abspath(root))
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(root)
+    paths = []
+    for root in roots:
+        paths.extend([
+            os.path.join(root, "Git", "bin", "bash.exe"),
+            os.path.join(root, "Git", "usr", "bin", "bash.exe"),
+        ])
+    if local:
+        paths.extend([
+            os.path.join(local, "Programs", "Git", "bin", "bash.exe"),
+            os.path.join(local, "Programs", "Git", "usr", "bin", "bash.exe"),
+        ])
+    return paths
+
+
 def _windows_path_shell_candidates():
     """Every bash/sh on PATH in PATH order (not only shutil.which's first hit)."""
     path_env = os.environ.get("PATH") or ""
@@ -1239,7 +1265,7 @@ def _env_bash_index(argv):
     Matches the production cross-model shape `env VAR=… bash script.sh …`
     (#1268). Operand-taking options (-u/-C and long forms) consume their
     arguments before the command token is sought (#1292). Split-string forms
-    fail closed because Python shlex does not match the native env.exe semantics.
+    fail closed because Python shlex does not match Git env.exe semantics.
 
     Returns (argv_index, None), or (-1, None) when no bash/sh command is
     present.
@@ -1291,7 +1317,7 @@ def _windows_path_is_absolute(path: str) -> bool:
 def _prefer_windows_posix_shell(token: str) -> str:
     """Absolute non-WSL bash/sh kept; bare names and System32 go through resolve.
 
-    Explicit absolute paths from custom installs must not be
+    Explicit absolute paths (portable Git, custom installs) must not be
     substituted by the preferred resolver (#1292 Codex P2). Bare `bash`/`sh`
     and System32 WSL launchers still use `_resolve_windows_posix_shell()`.
     """
@@ -1330,14 +1356,16 @@ def _rewrite_windows_env_bash_argv(argv):
 def _resolve_windows_posix_shell() -> str:
     """Absolute path to a non-WSL POSIX shell for native Windows peer workers.
 
-    Order: CE_PEER_BASH, then every PATH bash/sh excluding System32 WSL. Fail closed when
+    Order: CE_PEER_BASH, CLAUDE_CODE_GIT_BASH_PATH, well-known Git Bash
+    installs, then every PATH bash/sh excluding System32 WSL. Fail closed when
     nothing usable remains — never select System32\\bash.exe (#1268).
     """
     candidates = []
-    for key in ("CE_PEER_BASH",):
+    for key in ("CE_PEER_BASH", "CLAUDE_CODE_GIT_BASH_PATH"):
         val = (os.environ.get(key) or "").strip()
         if val:
             candidates.append(val)
+    candidates.extend(_git_bash_well_known_paths())
     candidates.extend(_windows_path_shell_candidates())
 
     seen = set()
@@ -1354,8 +1382,9 @@ def _resolve_windows_posix_shell() -> str:
         return path
 
     raise RunnerError(
-        "no usable non-WSL POSIX shell for native Windows peer workers; "
-        "install a compatible shell or set CE_PEER_BASH to an absolute bash.exe path "
+        "no usable Git Bash (or other non-WSL POSIX shell) for native Windows "
+        "peer workers; install Git for Windows or set CE_PEER_BASH / "
+        "CLAUDE_CODE_GIT_BASH_PATH to an absolute bash.exe path "
         "(System32\\bash.exe / WSL is not used)"
     )
 
@@ -1364,7 +1393,7 @@ def _popen_argv(argv):
     """Argv for subprocess.Popen.
 
     On Windows, CreateProcess does not honor shebang, so a bare *.sh / *.bash
-    worker must be launched through bash/sh. Prefer a configured non-WSL shell over System32
+    worker must be launched through bash/sh. Prefer Git Bash over System32
     WSL bash (#1268). Bare `bash`/`sh` prefixes (review skills) and bare
     `bash`/`sh` tokens after `env VAR=…` (cross-model) are rewritten to that
     absolute path. Explicit absolute non-WSL bash/sh paths are kept (#1292 P2).
@@ -1782,8 +1811,8 @@ def cmd_start(args, worker_argv) -> int:
     windows_posix_shell = None
     base0 = os.path.basename(argv0).lower()
     if IS_WINDOWS and base0 in ("bash", "bash.exe", "sh", "sh.exe"):
-        # Prefer the configured non-WSL shell over PATH/System32 WSL before meta + detach (#1268).
-        # Keep an explicit absolute non-WSL bash (#1292 P2).
+        # Prefer Git Bash over PATH/System32 WSL before meta + detach (#1268).
+        # Keep an explicit absolute non-WSL bash (portable Git) (#1292 P2).
         try:
             resolved = _prefer_windows_posix_shell(argv0)
             windows_posix_shell = resolved
@@ -1815,7 +1844,7 @@ def cmd_start(args, worker_argv) -> int:
             problem = "does not exist or is not a regular file"
         elif IS_WINDOWS and resolved.lower().endswith((".sh", ".bash")):
             # CreateProcess cannot run shebang scripts; _popen_argv wraps with
-            # the selected POSIX shell. Require it now so start fails closed, not after
+            # Git Bash. Require that shell now so start fails closed, not after
             # detach. Skip the X_OK check — Windows often marks .sh non-exec.
             try:
                 windows_posix_shell = _resolve_windows_posix_shell()
@@ -1947,7 +1976,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable scratch path unchecked.
+        # consumer must never read a predictable workspace-scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

@@ -1,42 +1,41 @@
 # Managed-stack CLI recipes
 
-Load this file only for a fresh `manager_status == "confirmed"` stack. If `gh stack` is unavailable, return a residual rather than inferring membership from topology.
+Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs manager discovery or JJ propagation recipes. Soft-depend on `gh stack view` / `gh stack merge`: if the extension is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
 
-The stack extension is Git-facing. JJ bookmarks remain authoritative, so each transaction must start from unconflicted bookmarks and an empty dedicated `@`, save the current JJ change ID, export immediately before the `gh stack` calls, import immediately after them, fetch the tracking remote, inspect the imported bookmark/change graph, and restore the saved working-copy change. Never invoke raw Git yourself.
+Always non-interactive. Prefer JSON/view probes and explicit bookmark names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack bookmarks' actual tracking remote — never assume a remote name when SKILL.md already resolved a different one.
 
-## Propagate An Owned Target Push
+## After an owned push on the active layer (dependents exist)
 
 ```bash
-jj git export
-gh stack rebase "<first-open-dependent-bookmark>" --upstack --no-trunk --remote <tracking-remote>
-gh stack push --remote <tracking-remote>
-jj git import
 jj git fetch --remote <tracking-remote>
-jj edit <saved-empty-working-copy-change>
+jj rebase -s <first-open-dependent-bookmark> -o <active-target-bookmark>
+jj resolve --list -r <first-open-dependent-bookmark>::
+jj git push --remote <tracking-remote> --bookmark <affected-dependent-bookmark> [--bookmark <affected-dependent-bookmark> ...]
 ```
 
-Starting at the first dependent excludes the active target. Quote the exported bookmark name because it may contain shell metacharacters. If rebase reports a conflict, run `gh stack rebase --abort`, then `jj git import` and `jj edit <saved-empty-working-copy-change>` before surfacing the residual. After success, reject divergent changes, conflicted bookmarks, an altered target bookmark, or any remote result that does not match the manager's reported tips.
+Starting at the first dependent excludes the active target from the cascading rebase. Quote bookmark names because provider-compatible names may contain shell metacharacters. JJ materializes conflicts instead of pausing for a continuation; if `jj resolve --list` reports any, do not push and surface a needs-human / stack-sync residual with the rebase operation evidence.
 
-## Discover Order
+## Discover order / next open layer
 
 ```bash
-jj git export
 gh stack view --json
 ```
 
-This is read-only after export. It must not change `@` or remote state.
+## Land one prefix (only under `posture:stack-land`)
 
-## Land One Prefix
-
-Only under `posture:stack-land`, merge the bottom-most open settled PR. The extension merges the prefix through that PR.
+Merge the **bottom-most open settled** PR — `gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
 
 ```bash
-jj git export
-gh stack merge <bottom-most-open-settled-pr> --yes --squash
-gh stack sync --remote <tracking-remote>
-jj git import
+gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
 jj git fetch --remote <tracking-remote>
-jj edit <saved-empty-working-copy-change>
 ```
 
-Re-probe the landed PR before advancing. A queued but still-open PR is not landed. Under `target` and `stack-ready`, print the applicable `gh stack merge <pr> --yes --squash` command when ready-as-next but do not execute it. Never use `gh pr merge` on managed members.
+Re-probe the landed PR before advancing: on merge-queue bases the CLI may succeed after enqueue while the PR stays OPEN — keep watching or return a queued residual until `pr_state` is `MERGED`. Only then treat the just-merged PR as a **layer transition** (stop watcher, re-probe, continue next open non-draft needing work with posture restated) — not a run-level Terminal stop for this babysit invocation.
+
+## Forbidden on managed stack members
+
+```bash
+gh pr merge …
+```
+
+Use the manager's provider-side `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.

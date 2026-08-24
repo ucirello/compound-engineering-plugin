@@ -2,7 +2,7 @@
 
 Load this when serving a local web prototype. Feedback stays in chat.
 
-This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that. This skill owns its helper's behavior and configuration names.
+This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that.
 
 Use the bundled helper when the current platform can run a bundled skill script. Invoke it via the `SKILL_DIR` anchor: set `SKILL_DIR` to the absolute path of the directory containing the `ce-prototype` `SKILL.md` you loaded (the Bash tool's cwd is the user's project, not the skill dir), and re-set it in the same command on each call since shell vars do not persist between Bash invocations. Do not resolve the helper from the user's project CWD.
 
@@ -10,32 +10,34 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
-Settle durability before you run this block; it reads the decision once and there is no second pass. Set `RUN_KEEP="no"` for a transient run. Resolve the JJ workspace with `jj workspace root`; when that fails, use the current directory as the local fallback. Before running the block in a JJ workspace, prove that `.tmp/` and, for a kept run, `.context/` are covered by applicable `.gitignore` rules, offering to append only the needed rules before any prototype file is created. The kept path preflights `.tmp/` because that is its safety fallback. If every possible path cannot remain outside the working-copy change, stop. Never substitute an OS-global temporary root.
+Settle durability before you run this block; it claims the run once and there is no second pass. Set `RUN_KEEP="no"` when the user asks not to use the durable root. In a JJ workspace, ensure the workspace-root ignore rules cover `.tmp/` and, for a durable run, `.rocketclaw/` before creating either path. For each missing pattern, offer to append exactly that top-level pattern to the workspace-root `.gitignore`, changing nothing else. If the user declines or an ignore cannot be established safely, stop before writing. Outside JJ, use the current directory's local `.tmp` without changing ignore rules.
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
-if [ -n "$WORKSPACE_ROOT" ]; then IN_JJ=yes; else WORKSPACE_ROOT="$PWD"; IN_JJ=no; fi;
-TEMP_ROOT="$WORKSPACE_ROOT/.tmp";
-if [ "$RUN_KEEP" = yes ] && [ "$IN_JJ" = yes ]; then
-ROOT="$WORKSPACE_ROOT/.context";
-else
-ROOT="$TEMP_ROOT";
-fi;
+if [ -n "$WORKSPACE_ROOT" ]; then LOCAL_ROOT="$WORKSPACE_ROOT"; else LOCAL_ROOT="$(pwd -P)"; fi;
+TMP_ROOT="$LOCAL_ROOT/.tmp";
+FALLBACK_ROOT="";
+CHECK_TMP="yes";
+if [ -n "$WORKSPACE_ROOT" ] && [ "$RUN_KEEP" = yes ]; then ROOT="$WORKSPACE_ROOT/.rocketclaw"; FALLBACK_ROOT="$TMP_ROOT/rocketclaw"; CHECK_TMP="no"; else ROOT="$TMP_ROOT/rocketclaw"; fi;
 while :; do
 BASE="$ROOT/ce-prototype";
-if [ -L "$ROOT" ]; then echo "unsafe root symlink: $ROOT" >&2;
+if [ "$CHECK_TMP" = yes ] && [ -L "$TMP_ROOT" ]; then echo "unsafe .tmp symlink: $TMP_ROOT" >&2;
+elif [ "$CHECK_TMP" = yes ] && ! (umask 077; mkdir -p "$TMP_ROOT"); then echo "could not create $TMP_ROOT" >&2;
+elif [ "$CHECK_TMP" = yes ] && { [ -L "$TMP_ROOT" ] || [ ! -O "$TMP_ROOT" ]; }; then echo ".tmp is not owned by the current user: $TMP_ROOT" >&2;
+elif [ "$CHECK_TMP" = yes ] && ! chmod 700 "$TMP_ROOT"; then echo "could not restrict $TMP_ROOT" >&2;
+elif [ -L "$ROOT" ]; then echo "unsafe root symlink: $ROOT" >&2;
 elif ! (umask 077; mkdir -p "$ROOT"); then echo "could not create $ROOT" >&2;
-elif [ -L "$ROOT" ] || [ ! -O "$ROOT" ]; then echo "root is not owned by the current user: $ROOT" >&2;
+elif [ ! -O "$ROOT" ]; then echo "root is not owned by the current user: $ROOT" >&2;
 elif ! chmod 700 "$ROOT"; then echo "could not restrict $ROOT" >&2;
 elif [ -L "$BASE" ]; then echo "unsafe base symlink: $BASE" >&2;
 elif ! (umask 077; mkdir -p "$BASE"); then echo "could not create $BASE" >&2;
 elif [ ! -O "$BASE" ]; then echo "base is not owned by the current user: $BASE" >&2;
 elif ! chmod 700 "$BASE"; then echo "could not restrict $BASE" >&2;
 else break; fi;
-if [ "$ROOT" = "$TEMP_ROOT" ]; then echo "no usable workspace-local run root" >&2; exit 1; fi;
-echo "falling back to workspace-local $TEMP_ROOT" >&2; ROOT="$TEMP_ROOT";
+if [ -z "$FALLBACK_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
+echo "falling back to $FALLBACK_ROOT" >&2; ROOT="$FALLBACK_ROOT"; FALLBACK_ROOT=""; CHECK_TMP="yes";
 done;
 RUN_DIR="$BASE/$RUN_SLUG"; n=1;
 while ! (umask 077; mkdir "$RUN_DIR") 2>/dev/null; do
@@ -47,7 +49,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-The symlink and ownership checks run against both the root and the `ce-prototype` directory beneath it because `mkdir -p` follows an existing symlink and `chmod` would affect its target. Every check is inside the retry loop, so an unsafe `.context` path falls back to the workspace-local `.tmp`; an unsafe `.tmp` is fatal. No route leaves the workspace or current-directory fallback for OS-global storage.
+The symlink and ownership checks cover the selected root and `ce-prototype`, plus `.tmp` and `rocketclaw` on the fallback path, because they survive between runs. `mkdir -p` follows an existing symlink, and `chmod` would otherwise affect its target. An unsafe durable root falls back inside the same workspace; an unsafe fallback stops before writing and never redirects the run to a global location.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -84,7 +86,7 @@ node "$SKILL_DIR/scripts/light-webserver.js" status --root "$PROTO_DIR"
 
 If `SKILL_DIR` cannot be resolved to a concrete skill directory, do not guess from the project CWD. Stop and report that the preview cannot start; do not settle the question in chat instead.
 
-The helper creates `screens/` and `state/`, serves the newest `.html` file in `screens/` at `/`, writes `state/display-info.json`, and exposes `/version` so the browser can poll for screen changes. Every other path is read from `screens/` at that same path — `/img/blot.webp` serves `screens/img/blot.webp` — so a screen keeps whatever asset layout it was copied from, nesting included. Put the assets the screen references under `screens/` at the paths it asks for, or inline them as data URIs. Anything resolving outside `screens/` is refused.
+The helper creates `screens/` and `state/`, serves the newest `.html` file in `screens/` at `/`, writes `state/display-info.json`, and exposes `/version` so the browser can poll for screen changes. Every other URL is read from the matching nested path under `screens/`, so a screen keeps the asset layout it was copied from. Put referenced assets under `screens/` at those paths, or inline them as data URIs. Anything resolving outside `screens/` is refused.
 
 Before handing over the URL, look at the rendered screen — a screenshot where the platform has one, otherwise measure the laid-out result in the DOM. A 200 on every asset is not that check: an image that loads correctly at the wrong size passes it, as does a script that leaves the page inert. Check each variant at rest, not just the page — one bug in shared scaffolding reads as several bad designs. Drive an interaction only when its behavior is invisible at rest, which is also the case where telling them to try something you have not tried is a claim you made up. Measurement lies by default — computed styles read mid-transition, scroll events coalesce — so read after things settle, and suspect the instrument before you conclude the page is broken. You are done when they could judge the idea, not when the code is correct. If you have no way to see the rendered result, say so when you hand over the URL rather than implying it was checked.
 
@@ -93,13 +95,12 @@ The browser reloads only when the newest screen changes; it must not continually
 Write screens under:
 
 ```text
-<workspace-root>/.context/ce-prototype/<YYYY-MM-DD>-<run-slug>/
+<workspace-root>/.rocketclaw/ce-prototype/<run-id>/
   decisions.md               # run capsule for the next skill; not a plan
   01-<question-slug>/
     screens/
       001-<variant>.html
-      img/blot.webp          # any assets the screen references, at the paths it uses
-      world/cast/pip.webp
+      <asset-path>            # assets at the paths the screen references
     state/
       display-info.json
   02-<question-slug>/         # only when the run covers a second related question
@@ -107,7 +108,7 @@ Write screens under:
     state/
 ```
 
-The transient root takes the same shape under `<workspace-root>/.tmp/ce-prototype/`, or `<current-directory>/.tmp/ce-prototype/` outside JJ. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The in-workspace fallback starts at `<workspace-root>/.tmp/rocketclaw/ce-prototype/`; outside JJ, it starts at `<current-directory>/.tmp/rocketclaw/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Launch mode by platform
 

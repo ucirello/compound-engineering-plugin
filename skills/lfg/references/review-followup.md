@@ -1,16 +1,16 @@
 # Pre-ship quality tail (LFG steps 3–6)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then records them as a distinct described JJ change.
+`ce-code-review` is review-only. LFG applies eligible fixes itself, then separates and describes them as a JJ change.
 
 ## The shipping precondition, in these steps
 
-A missing remote is a terminal local-only state, not an error: never retry a push or hunt for a remote. Steps 5 and 6 still preserve every described change they call for; only bookmark publication and PR-side records drop. With no PR to comment on, the run output is the residual record — state the residuals in the DONE report rather than creating a file nobody will read.
+A missing remote is a terminal local-only state, not an error: never retry a bookmark push or hunt for a remote. Steps 5 and 6 still finalize every JJ change they call for; only bookmark publication and the PR-side records drop. With no PR to comment on, the run output is the residual record — state the residuals in the DONE report rather than adding a file nobody will read.
 
 ## Step 3 — simplify before review
 
-Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the `trunk()..@` delivery-change scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope, with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
+Simplification runs before review so the code-review in step 4 covers the simplified code. Give `ce-simplify-code` the stack scope selected by `jj diff -r 'trunk()..@'`; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope, with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
 
-Do not finalize or describe a change in this step. `ce-simplify-code` leaves its edits in the working-copy change so step 4 reviews the complete delivery change set; step 8 separates and describes whatever remains. Finalizing here could mix still-undescribed implementation edits into a misleading change.
+Do not finalize a change in this step. `ce-simplify-code` leaves its edits in the JJ working-copy change; step 4 reviews `trunk()..@`, including that change, and step 8 finalizes whatever remains. Describing or splitting here could mix still-open implementation work with simplification before review establishes the correct boundary.
 
 ## Step 4 — invoke `ce-code-review`
 
@@ -32,7 +32,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the working copy only when **all** of the following hold:
+Apply a finding in the JJ working-copy change only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -51,9 +51,11 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. When at least one eligible fix exists, run `jj new` before editing so review work starts in a distinct empty working-copy change, then apply the fixes in severity order (`#` stable from the review).
+2. Apply eligible fixes in the JJ working-copy change in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `jj status` shows review-driven edits, describe that change without using an index or absorbing unrelated working-copy content. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax, prefix, or example. Give the review-fix change a message that semantically identifies it as applying the eligible review findings. Leave bookmark publication to step 8 so one explicit shipping bookmark advances over the complete delivery stack. If no eligible fixes were applied, note explicitly and do not create an extra change.
+4. If no eligible fixes were applied, note that and leave `@` unchanged. Otherwise inspect the review-driven edits with `jj diff -r @`. When `@` also contains other work, run `jj split -i --editor` and select only the review-driven hunks or workspace-rooted filesets into the described revision. When `@` contains only review-driven edits, use `jj commit` to describe that change and create a new empty working-copy change above it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active repo-local instructions and the syntax visible in its history take precedence; apply Go guidance only where compatible. Do not impose a fixed prefix, type, scope, subject, body, example, or template. Validate the resulting description with `jj log -r <review-revision>` and the isolated content with `jj diff -r <review-revision>`.
+
+Before step 6, publish the review revision when a remote is configured. Move the current work's existing bookmark to the stack head with `jj bookmark move <bookmark> --to <stack-head>`, or create a semantically named bookmark there with `jj bookmark create <bookmark> -r <stack-head>` when none exists. Resolve the destination from `jj config get git.push` when configured; otherwise use `origin` when present in `jj git remote list`, use the sole configured remote, or stop as blocked when multiple non-`origin` remotes leave the destination ambiguous. Push only that bookmark with `jj git push --bookmark <bookmark> --remote <remote>`. If no remote exists, keep the finalized local change and bookmark without pushing.
 
 ## Step 6 — residual handoff
 
@@ -69,6 +71,6 @@ Two further triggers also require step 6, both outside the apply path: step 4 em
    - For each item in `no_sink`: a bullet with severity, file:line, and title inlined verbatim, since the comment is the only record these get.
    - For each `settled_conflict`-stamped finding from step 4: a bullet with severity, file:line, title, and the conflicting KTD the stamp names — included even though the finding is report-only.
    - For each proceeded-and-flagged `settled_decision_conflicts` entry from step 2: a bullet with the KTD, the evidence, and how it was routed.
-4. Never write the `## Residual Review Findings` section into the PR description: it duplicates GitHub's own tracking and goes stale as items resolve. Review residuals have no GitHub thread of their own, so they are made durable by the tracker tickets filed above plus **one run-report comment on the PR** carrying the composed section (ticket links included) and the source run context — the same surface `ce-babysit-pr` already uses for unfixable CI. Post it with `gh pr comment` when a PR already exists; otherwise retain the section for step 8 and post it immediately after the PR opens. A point-in-time comment does not go stale as items resolve, the way a body section or a versioned file does.
+4. Never write the `## Residual Review Findings` section into the PR description: it duplicates GitHub's own tracking and goes stale as items resolve. Review residuals have no GitHub thread of their own, so they are made durable by the tracker tickets filed above plus **one run-report comment on the PR** carrying the composed section (ticket links included) and the source run context — the same surface `ce-babysit-pr` already uses for unfixable CI. Post it with `gh pr comment`; a point-in-time comment does not go stale as items resolve, the way a body section or a committed file does.
 
-When no PR can exist (no remote, per LFG's shipping precondition), the run output is the record: state the residuals in the DONE report rather than creating a file nobody will read.
+When no PR exists at all (no remote, per LFG's shipping precondition), the run output is the record: state the residuals in the DONE report rather than adding a file nobody will read.

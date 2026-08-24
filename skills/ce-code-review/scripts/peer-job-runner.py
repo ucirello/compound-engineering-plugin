@@ -58,10 +58,8 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (<jj-workspace>/.tmp/rocketclaw, or
-                             <current-directory>/.tmp/rocketclaw outside a
-                             Jujutsu workspace)
-  CE_WORK_RUNS_ROOT         parent work dir containing all <run-id>/ dirs
+  CE_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw)
+  CE_WORK_RUNS_ROOT         optional parent directory containing run directories
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -77,8 +75,8 @@ Environment overrides (defaults in parentheses):
   CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
                             CE_PEER_BASH is unset (#1268)
 
-Security posture: the job root is a predictable, owner-private directory under
-the workspace-local `.tmp/rocketclaw` tree. Every read of job state opens the file first (no-follow) and
+Security posture: the job root is an owner-private directory under the current
+JJ workspace. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -111,8 +109,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root uses the workspace-local `.tmp\\rocketclaw` default and a hardened
-             owner-private ACL.
+  jobs root defaults under <workspace>\\.tmp\\rocketclaw with the same hardened ACL.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -126,6 +123,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -143,15 +141,12 @@ IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
 def _workspace_root() -> str:
-    try:
-        result = subprocess.run(
-            ["jj", "workspace", "root"], capture_output=True, text=True, check=False
-        )
-    except OSError:
-        return os.getcwd()
+    result = subprocess.run(
+        ["jj", "workspace", "root"], capture_output=True, text=True, check=False
+    )
     if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
-    return os.getcwd()
+        return os.path.abspath(result.stdout.strip())
+    return os.path.abspath(os.getcwd())
 
 
 DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw")
@@ -208,11 +203,13 @@ _RUNNER_HARD_GRACE = 30.0
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe. The namespace remains owner-private even when the
-    workspace-local `.tmp` parent already exists with broader permissions.
+    Creation is the probe. A pre-existing root must still pass ownership and
+    writability checks before any job is created.
     """
     try:
-        os.makedirs(path, mode=0o700, exist_ok=True)
+        os.makedirs(path, mode=0o700)
+    except FileExistsError:
+        pass
     except OSError:
         return False
     try:
@@ -225,29 +222,49 @@ def _private_root_usable(path: str) -> bool:
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
-        return os.path.abspath(configured)
+        configured = os.path.abspath(configured)
+        try:
+            inside_workspace_scratch = os.path.commonpath((configured, os.path.abspath(DEFAULT_ROOT))) == os.path.abspath(DEFAULT_ROOT)
+        except ValueError:
+            inside_workspace_scratch = False
+        if not inside_workspace_scratch:
+            raise RunnerError("CE_PEER_JOBS_ROOT must stay under <workspace>/.tmp/rocketclaw")
+        return configured
     if _private_root_usable(DEFAULT_ROOT):
         return os.path.abspath(DEFAULT_ROOT)
-    raise RunnerError(f"workspace-local jobs root is unavailable: {DEFAULT_ROOT}")
+    raise RunnerError(f"workspace scratch root is unavailable: {DEFAULT_ROOT}")
 
 
 def candidate_jobs_root_bases() -> list:
-    """Every root an existing job may live under."""
+    """Return the configured or workspace-local root for existing jobs."""
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
-        return [os.path.abspath(configured)]
+        configured = os.path.abspath(configured)
+        try:
+            inside_workspace_scratch = os.path.commonpath((configured, os.path.abspath(DEFAULT_ROOT))) == os.path.abspath(DEFAULT_ROOT)
+        except ValueError:
+            inside_workspace_scratch = False
+        if not inside_workspace_scratch:
+            raise RunnerError("CE_PEER_JOBS_ROOT must stay under <workspace>/.tmp/rocketclaw")
+        return [configured]
     return [os.path.abspath(DEFAULT_ROOT)]
 
 
 def skill_runs_root(skill: str) -> str:
     if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])
+        configured = os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])
+        try:
+            if os.path.commonpath((configured, os.path.abspath(DEFAULT_ROOT))) == os.path.abspath(DEFAULT_ROOT):
+                return configured
+        except ValueError:
+            pass
+        raise RunnerError("CE_WORK_RUNS_ROOT must stay under <workspace>/.tmp/rocketclaw")
     return os.path.join(jobs_root_base(), skill)
 
 
 def candidate_skill_runs_roots(skill: str) -> list:
     if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return [os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])]
+        return [skill_runs_root(skill)]
     return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 
@@ -800,21 +817,7 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    tmp = ""
-    fd = -1
-    for _ in range(CLAIM_ATTEMPTS):
-        tmp = os.path.join(os.path.dirname(path), f"rocketclaw-{os.urandom(6).hex()}")
-        try:
-            fd = os.open(
-                tmp,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY,
-                0o600,
-            )
-            break
-        except FileExistsError:
-            continue
-    if fd < 0:
-        raise OSError(f"cannot reserve atomic publish path beside {path}")
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -1789,7 +1792,8 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build."
+            "a Windows Python 3 build (see "
+            "issue #1243)."
         )
 
 
@@ -1984,7 +1988,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace-temp path unchecked.
+        # consumer must never read a predictable scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

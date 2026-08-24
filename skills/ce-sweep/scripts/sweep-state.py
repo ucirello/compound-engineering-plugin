@@ -13,8 +13,8 @@ Design rules (shared with the repo's other state helpers):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a workspace-local .tmp file + os.replace on the same
-    filesystem, so a concurrent reader never sees a torn file.
+  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
+    POSIX), so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -41,7 +41,6 @@ import argparse
 import json
 import os
 import secrets
-import subprocess
 import sys
 from datetime import datetime, timezone
 
@@ -256,9 +255,11 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # State is a correctness dependency and an injection sink. Reject
-            # a file not owned by us so another local user cannot plant a forged
-            # lease, cursor, or item body. Skip where geteuid is unavailable.
+            # Workspace-local state is a correctness dependency (lease,
+            # cursors, closed status) and an injection sink (item bodies are
+            # re-read into assistant context). Reject a file not owned by us so
+            # another local user cannot plant a forged lease/cursor or item
+            # text. Skip where geteuid is unavailable (non-POSIX).
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return ("corrupt", None)
@@ -290,11 +291,10 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    tmp_root = _local_write_root(d)
     fd = None
     tmp = None
-    for _ in range(32):
-        candidate = os.path.join(tmp_root, "state-{}.yml".format(secrets.token_hex(8)))
+    for _ in range(100):
+        candidate = os.path.join(d, f".sweep-write-{secrets.token_hex(8)}.yml")
         try:
             fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             tmp = candidate
@@ -302,7 +302,7 @@ def write_state(path, state):
         except FileExistsError:
             continue
     if fd is None or tmp is None:
-        raise OSError("unable to reserve workspace-local state write path")
+        raise OSError(f"could not reserve atomic state write in {d}")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
@@ -314,31 +314,6 @@ def write_state(path, state):
             pass
         raise
     return True
-
-
-def _local_write_root(state_dir):
-    """Use workspace-root .tmp when atomic replacement can stay on one device."""
-    try:
-        result = subprocess.run(
-            ["jj", "root"], capture_output=True, text=True, timeout=10, check=False
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        result = None
-    workspace = result.stdout.strip() if result and result.returncode == 0 else os.getcwd()
-    candidates = (
-        os.path.join(workspace, ".tmp", "sweep-state-writes"),
-        os.path.join(state_dir, ".tmp"),
-    )
-    for candidate in candidates:
-        try:
-            os.makedirs(candidate, mode=0o700, exist_ok=True)
-            if os.path.islink(candidate):
-                continue
-            if os.stat(candidate).st_dev == os.stat(state_dir).st_dev:
-                return candidate
-        except OSError:
-            continue
-    raise OSError("unable to create workspace-local .tmp state write directory")
 
 
 # --------------------------------------------------------------------------- #
@@ -577,7 +552,7 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-change mode there
+    # the lease yet must still record its outcome. In local-recorded mode there
     # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -599,7 +574,7 @@ def cmd_run_record(args):
 
 
 def cmd_import_legacy(args):
-    """Best-effort import of a legacy state file. Liberal on input:
+    """Best-effort import of a Cora-style legacy state file. Liberal on input:
     map what matches the known shapes, skip what doesn't, never fail."""
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -644,7 +619,7 @@ def _read_legacy(path):
             raw = f.read()
     except (OSError, UnicodeDecodeError):
         return None
-    # Try JSON first; fall back to our YAML subset.
+    # Try JSON first (Cora persists JSON); fall back to our YAML subset.
     try:
         return json.loads(raw)
     except ValueError:
@@ -786,7 +761,7 @@ _HANDLERS = {
 # (run-record for an aborted-locked run, validate, import-legacy). Two
 # concurrent invocations (an overlapping cron and manual sweep) could otherwise
 # interleave load -> mutate -> write and lose an update — e.g. an aborted run's
-# stale-snapshot write clobbering the holder's just-committed upsert. An OS
+# stale-snapshot write clobbering the holder's just-persisted upsert. An OS
 # advisory lock held across each mutating RMW makes them mutually exclusive
 # regardless of lease ownership.
 _MUTATING = {

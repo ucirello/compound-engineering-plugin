@@ -8,8 +8,8 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 
 | Token | Example | Effect |
 |-------|---------|--------|
-| `diff:<revision-or-revset>` | `diff:@`, `diff:main..@`, `diff:PR#42` | Forces diff mode on that change |
-| `since:<window-or-revision>` | `since:monday`, `since:7d`, `since:v2.1.0` | Forces recap mode over that window |
+| `diff:<revision-or-revset>` | `diff:@`, `diff:<bookmark>..@`, `diff:PR#<number>` | Forces diff mode on that change |
+| `since:<window-or-revision>` | `since:<day>`, `since:<duration>`, `since:<tag>` | Forces recap mode over that window |
 | `output:<md\|html>` | `output:md` | Overrides the artifact format (default `html`) |
 | `audience:<who>` | `audience:team`, `audience:"the design review"` | Renders for that reader instead of the user personally |
 
@@ -18,7 +18,7 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 - "walk me through the diff: why did we split the parser" — stripping `diff:why` leaves "walk me through the did we split the parser". Garbled, so this is prose. Classify by meaning (a diff request about the parser split), and never let the bogus ref `why` outrank that.
 - "explain how we pick the audience: engineers vs designers" — a concept request about audience selection, rendered personally. Not an `audience:` flag naming "engineers".
 - "teach me how our renderer decides output: html or terminal escape codes" — prose. Note this one fails quietly if mis-parsed, because `html` is already the default format, so nothing visible contradicts it.
-- `diff:main..@`, or `audience:team` leading a request — genuine flags: nothing is left to garble.
+- `diff:<bookmark>..@`, or `audience:<reader>` leading a request — genuine flags: nothing is left to garble.
 
 - A token in flag position beats inference. A colon inside prose does not.
 - `diff:` and `since:` together conflict — say so and ask which mode the user wants.

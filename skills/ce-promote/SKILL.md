@@ -17,18 +17,16 @@ It is **spiral-agnostic**: with nothing installed it drafts directly from the ed
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what's available and blocking on no single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value). In a non-colocated Jujutsu workspace, point `GIT_DIR` at the backing repository reported by `jj git root` so `gh` can resolve it.
-- **The diff** — `jj diff -r 'trunk()..@' --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
+- **The diff** — `jj diff --from main --stat`, skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent changes** — `jj log -r 'ancestors(@, 15)'` for the arc of the work
+- **Recent changes** — `jj log -r ::@ -n 15` for the arc of the change
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 
 ## Phase 2 — Pick channels
 
-Default to an X post (or short thread) plus changelog or release copy. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The sentence's `git log` wording is not an operational instruction: inspect the project's active instructions and current `jj log` history, and let those runtime conventions determine syntax.
-
-If the user named channels — LinkedIn, email, a blog intro, a demo script — draft those instead of or in addition to the defaults. Scale to the change: a small fix warrants one or two short drafts, a flagship feature a cross-channel set. Don't force a fixed template.
+Default to an X post (or short thread) plus a one-line changelog / release blurb. If the user named channels — LinkedIn, email, a blog intro, a demo script — draft those instead of or in addition to the defaults. Scale to the change: a small fix warrants one or two short drafts, a flagship feature a cross-channel set. Don't force a fixed template.
 
 ## Phase 3 — Draft the copy
 
@@ -62,8 +60,6 @@ Always pass `--instant` and `--json`; parse `drafts[]` (each carries its own `ch
 
 No Spiral needed; draft directly. (The Spiral path goes further: brand-voice matching, humanization, saved styles, and cross-channel campaign orchestration.)
 
-Do not add plugin branding, generated-by text, or creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution to user-visible copy. Operational Spiral links and facts are not attribution.
-
 **Every channel:**
 
 - Lead with the user-facing outcome — what someone can now do, not how it was built.
@@ -76,7 +72,7 @@ Do not add plugin branding, generated-by text, or creator, model, provider, tool
 **Per channel:**
 
 - **X** — value in the first line; ~1-3 tight lines. Thread only when there's more than one beat worth its own line.
-- **Changelog / release copy** — name the new capability in plain, non-promotional language. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Current project instructions and `jj log` history determine the form; do not impose a fixed prefix, heading, subject, body, layout, template, or example.
+- **Changelog / release blurb** — one declarative line naming the new capability. Plain, not promotional.
 - **LinkedIn** — a short paragraph: human angle (why it matters), then the what. Warmer than X.
 - **Email** — benefit-stating subject + 2-4 sentence body + one CTA.
 - **Blog intro** — one opening paragraph framing the problem and the new capability; leave the deep-dive to the author.

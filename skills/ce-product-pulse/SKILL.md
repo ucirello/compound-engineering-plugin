@@ -20,12 +20,11 @@ allowed-tools:
 
 ## Boundaries
 
-- **Read-only, everywhere.** The skill does not mutate the product, the database, or any external system. Its only durable writes are pulse settings merged into `.rocketclaw/config.local.yaml` and the report file. MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them. A database source must be a read-only connection — the interview refuses read-write credentials, and DB access is optional, since many products complete the pulse with analytics and tracing alone.
+- **Read-only, everywhere.** The skill does not mutate the product, the database, or any external system. Its only writes are pulse settings appended to `.rocketclaw/config.local.yaml` (interview and opt-out writes stay on the local override) and the report file. MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them. A database source must be a read-only connection — the interview refuses read-write credentials, and DB access is optional, since many products complete the pulse with analytics and tracing alone.
 - **No PII in saved reports.** No user emails, account IDs, or message content in the file written to disk.
 - **Read it like a founder.** No hardcoded thresholds, no default "good"/"bad" labels, no alerting: present the numbers and let the reader judge.
 - **Single page.** Target 30-40 lines. If a section is thin, leave it thin; if the report is getting long, cut.
-- **Not a shipping log or a dashboard replacement.** Shipped work lives in the issue tracker and JJ change history. Deep investigation still uses the native tools; this consolidates a single-page read, and every run is saved so past pulses browse as a timeline.
-- **No productized workflow attribution.** Preserve required human and research-source attribution. Do not add project or workflow branding, generated-by text, visual badges, or creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution to config, reports, or chat output.
+- **Not a shipping log or a dashboard replacement.** Shipped work lives in the issue tracker and JJ change history. Deep investigation still uses the native tools; this consolidates a single-page read, and every run is saved so past pulses browse as a timeline. If a followup recommends composing, editing, or validating a change description, include this guidance exactly: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 ## Interaction Method
 
@@ -43,41 +42,33 @@ Apply a **15-minute trailing buffer** to the window's upper bound. Many analytic
 
 ## Artifact Root
 
-This skill writes pulse reports under `<root>/pulse-reports/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all skips it.
+This skill writes pulse reports under `<root>/pulse-reports/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it.
 
-<!-- rocketclaw-docs-root:start -->
+<!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`; outside a Jujutsu workspace, use the physical current directory as the local fallback). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or a colocated `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- rocketclaw-docs-root:end -->
+<!-- ce-docs-root:end -->
 
-## Storage Map
+## Temporary Storage
 
-- Durable reports: `<root>/pulse-reports/`.
-- Local pulse settings: `<workspace-root>/.rocketclaw/config.local.yaml`.
-- Transient run files, when needed: `<workspace-root>/.tmp/rocketclaw/ce-product-pulse/<run-id>/`.
-
-Resolve `<workspace-root>` with `jj workspace root`; if that fails, use the physical current directory for the settings and scratch paths. Never use OS-global or user-global temporary storage. Before creating scratch, require `.tmp/` to be excluded from the JJ working-copy change, reject symlinked path components, claim a fresh run directory, and set it to mode `0700`.
-
-## JJ Change Descriptions
-
-At every site in this skill and its loaded references that composes, edits, validates, or recommends a JJ change description or commit message, apply the project's active instructions and repository history conventions. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Preserve each site's semantic content and apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax, prefix, type, scope, subject, body, layout, template, example, bookmark namespace, or command sequence. Use `<description-composed-from-runtime-conventions>` wherever an interface requires a description field.
+If a run needs temporary storage, resolve `<workspace-root>` with `jj workspace root` and use `<workspace-root>/.tmp`. Outside a JJ workspace, use `.tmp` under the current workspace directory. Do not use OS-global temporary storage or add a product-specific namespace below `.tmp`.
 
 ## Phase 0: Route by config state
 
-<!-- rocketclaw-config-layers:start -->
+<!-- ce-config-layers:start -->
 **Resolve ordinary YAML keys from the two workspace files.**
 
-- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`; outside a Jujutsu workspace, use the physical current directory). Missing files are skipped. JJ ignore rules do not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
-<!-- rocketclaw-config-layers:end -->
+<!-- ce-config-layers:end -->
 
-Resolve `<workspace-root>` with `jj workspace root`, using the physical current directory when unavailable, then apply the ordinary-key rule above to the `pulse_*` keys. Read `references/config.md` whenever a `pulse_*` value has to be interpreted — it is the key schema and nothing else: each key, its allowed values, and its default, with an unset or invalid value taking the documented default rather than being guessed.
+Resolve `<workspace-root>` with `jj workspace root`, then apply the ordinary-key rule above to the `pulse_*` keys. Read `references/config.md` whenever a `pulse_*` value has to be interpreted — it is the key schema and nothing else: each key, its allowed values, and its default, with an unset or invalid value taking the documented default rather than being guessed.
 
-**Routing:** every run passes through Phase 2 and then Phase 3. Run Phase 1 first when `pulse_product_name` is unset after cascade or when the argument was `setup`, `reconfigure`, or `edit config`. Otherwise start at Phase 2.
+**Routing:** every run passes through Phase 2 and then Phase 3. Run Phase 1 first when `pulse_product_name` is unset after cascade, when the JJ workspace root cannot be resolved, or when the argument was `setup`, `reconfigure`, or `edit config`. Otherwise start at Phase 2.
 
 ## Phase 1: First-run interview
 

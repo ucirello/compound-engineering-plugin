@@ -19,13 +19,13 @@ Teach the user one thing well: a concept, a change, an idea, or a window of thei
 
 An explainer lands under `<root>/explainers/` only when archived to the repo, and learnings may be read under `<root>/solutions/`. Resolve `<root>` only when you compose such a path; a scratch-only or external-concept run never composes one. Pass the resolved path to any subagent, not the config.
 
-<!-- ce-docs-root:start -->
-**Resolve the AI Assistant artifact root `<root>` before composing any artifact path.**
+<!-- rocketclaw-docs-root:start -->
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.ai-assistant/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under Jujutsu metadata (`.jj/`) or colocated Git metadata (`.git/`). Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+<!-- rocketclaw-docs-root:end -->
 
 ## Execution Flow
 
@@ -37,7 +37,7 @@ Read `references/intake.md` now and classify the request into one of the four in
 
 ### Phase 2: Ground
 
-Create the run directory first — every run gets one, before any artifact exists. It holds the explainer and the recap evidence under the Jujutsu workspace's `.tmp`; when no workspace is available, local `.tmp` under the current directory is the fallback. In a JJ workspace, first confirm the project's existing ignore rules exclude `.tmp/` from working-copy snapshots; if they do not, stop and report the blocker rather than editing ignore configuration or putting scratch in the change. Run this block as written rather than improvising a `mkdir`: the checks refuse a scratch namespace you do not own or one reached through a symlink.
+Create the run directory first — every run gets one, before any artifact exists. It holds the explainer and recap evidence under `$(jj workspace root)/.tmp/rocketclaw`; when the current directory is not in a JJ workspace, local `.tmp/rocketclaw` is the fallback. In a JJ workspace, first confirm the project's existing ignore rules exclude `.tmp/` from working-copy snapshots; if they do not, stop and report the blocker rather than editing ignore configuration or putting scratch in the change. Run this block as written rather than improvising a `mkdir`: the checks refuse a scratch namespace you do not own or one reached through a symlink.
 
 ```bash
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD";
@@ -45,7 +45,7 @@ WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" && pwd -P)" || exit 1;
 if [ -L "$WORKSPACE_ROOT/.tmp" ]; then echo "unsafe scratch directory symlink: $WORKSPACE_ROOT/.tmp" >&2; exit 1; fi;
 (umask 077; mkdir -p "$WORKSPACE_ROOT/.tmp") || exit 1;
 if [ ! -d "$WORKSPACE_ROOT/.tmp" ] || [ ! -O "$WORKSPACE_ROOT/.tmp" ] || [ ! -w "$WORKSPACE_ROOT/.tmp" ]; then echo "scratch directory is not owned and writable by the current user: $WORKSPACE_ROOT/.tmp" >&2; exit 1; fi;
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/ai-assistant";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch namespace symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ ! -d "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch namespace is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -57,7 +57,7 @@ echo "$RUN_DIR";
 
 Then match grounding to the input shape per `references/orchestration.md`'s grounding section, which also owns the empty-window and unreachable-web paths. Two rules govern what reaches the user while you gather, so they hold here:
 
-- **Diff mode.** Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied. **Empty revset** (the expression resolves to no revisions): do not silently explain something else. Say what it resolved to, name the nearest real candidate (the working-copy revision `@` or its parent `@-`), and use it only after the user agrees — or, when they can't be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject doesn't exist in this repo at all ("the retry logic" where there is none): report that before explaining an adjacent thing.
+- **Diff mode.** Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied. **Empty selection** (the revset resolves to no revisions or its selected diff has no content): do not silently explain something else. Say what the selection resolved to, name the nearest real candidate (the working-copy revision `@` or its nearest non-empty ancestor), and use it only after the user agrees — or, when they can't be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject doesn't exist in this workspace at all ("the retry logic" where there is none): report that before explaining an adjacent thing.
 - **Recap mode.** Do not pre-scan, count, or characterize the window in the main conversation: an early broad `jj log -r 'all()'` summary seeds the run with a false bookmark or activity model. Instead dispatch a generic subagent directly at the extraction tier, seeded with `references/agents/work-recap-scout.md` and passed the resolved window, the workspace root, and `$RUN_DIR`. **Empty window** (no JJ activity, no doc changes): say so, offer to widen it, write no artifact, and end the run after the user responds. **When the harness exposes no subagent primitive**, the degradation rule applies: run the scout inline against its own prompt's sources and budgets, and still write `recap-evidence.md`; the no-pre-scan rule then means what it protects rather than where it runs — do the scout's evidence pass first and form no view of the window until it is done.
 
 ### Phase 3: Check-in gate — before anything is revealed

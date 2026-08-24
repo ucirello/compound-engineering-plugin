@@ -76,14 +76,10 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; [ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$PWD";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
 SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || { [ -e "$SCRATCH_ROOT" ] && [ ! -O "$SCRATCH_ROOT" ]; }; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-PROBE_ROOT="$SCRATCH_ROOT/ce-brainstorm-visual"; (umask 077; mkdir -p "$PROBE_ROOT") || exit 1; chmod 700 "$PROBE_ROOT" || exit 1;
-PROBE_DIR="$PROBE_ROOT/<run-id>"; (umask 077; mkdir "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
+PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" start --root "$PROBE_DIR"
 ```
 
@@ -91,12 +87,9 @@ Append `--foreground` to that `start` command for foreground mode. Status and st
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; [ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$PWD";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
 SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || { [ -e "$SCRATCH_ROOT" ] && [ ! -O "$SCRATCH_ROOT" ]; }; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
 PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" status --root "$PROBE_DIR"
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)
@@ -152,11 +145,10 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use workspace-local scratch because visual probes are disposable. Outside a
-Jujutsu workspace, resolve the same `.tmp/rocketclaw` tree under the current directory:
+Use the active JJ workspace's `.tmp/rocketclaw`, or the current directory's `.tmp/rocketclaw` outside JJ, because visual probes are disposable scratch:
 
 ```text
-<workspace-root>/.tmp/rocketclaw/ce-brainstorm-visual/<run-id>/
+<scratch-root>/ce-brainstorm-visual/<run-id>/
   screens/
     001-<decision>.html
   state/

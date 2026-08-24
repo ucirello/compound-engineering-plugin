@@ -1,6 +1,6 @@
-# Phase 0.3-1.7: prior learnings, JJ identity, and measurement scaffolding
+# Phase 0.3-1.7: prior learnings, run state, and measurement scaffolding
 
-Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the baseline-state gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run identity and resume detection, JJ revisions and local state, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
+Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the clean-change gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run detection, the optimization bookmark and local state, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
 
 ### 0.3 Search Prior Learnings
 
@@ -8,29 +8,29 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 
 ### 0.4 Run Identity Detection
 
-Resolve `<workspace-root>` and check for an existing run log:
+Resolve the run bookmark with a revset:
 
 ```bash
-WORKSPACE_ROOT="$(jj root)";
-test -f "$WORKSPACE_ROOT/.tmp/ce-optimize/runs/<spec-name>/experiment-log.yaml"
+jj log -r 'bookmarks(exact:"optimize/<spec-name>")' --no-graph -T 'change_id ++ "\n"'
 ```
+
+If the revset resolves, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
-- **Resume**: read all state from the experiment log on disk. Recover measured-but-unlogged experiments by scanning named experiment workspace directories for `result.yaml` markers. Resolve stored change IDs with `exactly(change_id(<id>), 1)` before use; stop if an ID is absent or divergent. Then apply the body's resume rule.
-- **Fresh start**: move the old run directory under `<workspace-root>/.tmp/ce-optimize/archive/<spec-name>/<timestamp>/`, preserve any described experiment changes, and start a new log. Do not delete support or audit assets.
+- **Resume**: read all state from the experiment log on disk. Recover measured-but-unlogged experiments by scanning experiment workspaces for `result.yaml` markers. Then apply the body's resume rule to decide what is skipped and which gates are re-entered.
+- **Fresh start**: move the existing bookmark to a dynamically named archive bookmark that preserves the spec and archival time, clear the experiment log, and start from the current working-copy change.
 
-### 0.5 Establish Baseline And Local State
-
-Before creating `.tmp`, ensure `/.tmp/` is present in the backing Git repository's `info/exclude`, located from `jj git root`. This local exclusion is required because JJ snapshots new files automatically; do not add run state to the working-copy change.
+### 0.5 Create Optimization Bookmark and Local State
 
 ```bash
-WORKSPACE_ROOT="$(jj root)";
-mkdir -p "$WORKSPACE_ROOT/.tmp/ce-optimize/runs/<spec-name>" "$WORKSPACE_ROOT/.tmp/ce-optimize/workspaces"
+jj bookmark create "optimize/<spec-name>" -r @
 ```
 
-Resolve the selected baseline to exactly one revision and record both its change ID and commit ID. Initialize `best_change_id` to that change ID. A change ID is the stable workflow identity; a commit ID is only a snapshot identifier and may change when JJ rewrites descendants.
-
-Do not create a bookmark for a local run. JJ has no current bookmark, and bookmarks are not workspace identities. Create or move `optimize/<spec-name>` only if the user later chooses GitHub publication.
+On resume, use the existing bookmark rather than creating it. Create local state under `.context` and repository-local transient files under `.tmp/rocketclaw`:
+```bash
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
+mkdir -p "$WORKSPACE_ROOT/.context/ce-optimize/<spec-name>" "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-optimize"
+```
 
 ---
 
@@ -38,16 +38,16 @@ Do not create a bookmark for a local run. JJ has no current bookmark, and bookma
 
 **This phase is a HARD GATE. The user must approve baseline and parallel readiness before Phase 2.**
 
-**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `decide.mjs`, `parallel-probe.sh`, `experiment-worktree.sh`). The last filename is retained for compatibility but manages JJ workspaces, not Git worktrees. Invoke each by the skill's own absolute path. Every runnable block below sets `SKILL_DIR` inline; replace the placeholder with the directory containing this SKILL.md.
+**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `decide.mjs`, `parallel-probe.sh`, `experiment-worktree.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve — invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it); just replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from before running. The shape:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 bash "$SKILL_DIR/scripts/<name>"
 ```
 
-### 1.1 Baseline-State Gate
+### 1.1 Clean-Change Gate
 
-The body owns this gate. Use `jj diff --summary -r @` and filter the result against `scope.mutable` and `scope.immutable`. Use `jj log -r 'conflicts() & @'` to detect first-class conflicts. JJ automatically snapshots the working copy and has no staging index, so never ask the user to stage, commit, or stash. If in-scope content exists, ask whether it is intentionally part of the baseline; otherwise ask the user to finish or move that work and start a new empty change. Stop on any unresolved conflict in the selected baseline.
+The body owns this gate. Convert `scope.mutable` and `scope.immutable` into one workspace-rooted fileset, then run `jj diff -r @ --summary <fileset>`. Apply the body's rule to the result: name the modified in-scope files and ask the user to move them into a separate change or finish the current change before continuing. Jujutsu snapshots the working copy automatically; there is no staging index or stash gate.
 
 ### 1.2 Build or Validate Measurement Harness
 
@@ -121,22 +121,22 @@ bash "$SKILL_DIR/scripts/experiment-worktree.sh" count
 
 If count + `execution.max_concurrent` would exceed 12:
 - Warn the user
-- Suggest forgetting unused experiment workspaces or reducing `max_concurrent`
+- Suggest cleaning up existing experiment workspaces or reducing `max_concurrent`
 - Do NOT block -- the user may proceed at their own risk
 
 ### 1.6 Write Baseline to Disk (CP-1)
 
 **MANDATORY CHECKPOINT.** Before presenting results to the user, write the initial experiment log with baseline metrics to disk:
 
-1. Create the experiment log file at `<workspace-root>/.tmp/ce-optimize/runs/<spec-name>/experiment-log.yaml`
+1. Create the experiment log file at `.context/ce-optimize/<spec-name>/experiment-log.yaml`
 2. Include all required top-level sections from `references/experiment-log-schema.yaml`: `spec`, `run_id`, `started_at`, `baseline`, `experiments`, and `best`
-3. Record `base_change_id`, `base_commit_id`, and `best_change_id`; seed `experiments` as an empty array and seed `best` from the baseline snapshot so later phases have a valid current-best revision and metric state
+3. Seed `experiments` as an empty array and seed `best` from the baseline snapshot (use `iteration: 0`, baseline metrics, and baseline judge scores if present) so later phases have a valid current-best state to compare against
 4. Optionally seed `hypothesis_backlog: []` here as well so the log shape is stable before Phase 2 populates it
 5. **Verify**: read the file back and confirm the required sections are present and the baseline values match
 6. Only THEN present results to the user
 
 ### 1.7 User Approval Gate
 
-The body owns this gate — what is presented, the options and the condition on adjusting the spec, the uncapped-spend disclosure, and the rule that Phase 2 does not start without explicit approval. A resume that cannot prove the user cleared this gate runs it again, so this phase supplies the same payload then. What this phase supplies to it: the baseline's gate values, diagnostic values, and judge scores; the experiment log path; the probe results with any blockers and mitigations; the baseline revision and conflict confirmation; the workspace count and projection; and the estimated per-experiment judge cost against the configured cap.
+The body owns this gate — what is presented, the options and the condition on adjusting the spec, the uncapped-spend disclosure, and the rule that Phase 2 does not start without explicit approval. A resume that cannot prove the user cleared this gate runs it again, so this phase supplies the same payload then. What this phase supplies to it: the baseline's gate values, diagnostic values, and judge scores; the experiment log path; the probe results with any blockers and mitigations; the clean-change confirmation; the workspace count and projection; and the estimated per-experiment judge cost against the configured cap.
 
 ---

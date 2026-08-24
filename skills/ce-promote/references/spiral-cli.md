@@ -24,14 +24,14 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 ### Check the opt-out
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary project YAML keys from workspace-local files.**
+**Resolve ordinary assistant YAML keys from the two repository files.**
 
-- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then its `.tmp/local/.rocketclaw/config.local.yaml` fallback, then `.rocketclaw/config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution. Use the fallback only when the preferred local file cannot be kept outside the working-copy change.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `<repo-root>/.rocketclaw/config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
-Resolve the workspace root (never CWD), then apply the ordinary-key rule above for `promote_spiral_optout`. If the winning **uncommented** top-level value is exactly `true`, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template ships a `# promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
+Resolve the repo root (never CWD), then apply the ordinary-key rule above for `ce_promote_spiral_optout`. If the winning **uncommented** top-level value is exactly `true`, **skip Path 0** and go straight to Path B. **Ignore commented lines** — `ce-setup`'s template ships a `# ce_promote_spiral_optout: true` example, and a commented line is documentation, not an opt-out (a naive substring match would wrongly suppress the offer for any project that accepted the default template). Otherwise, offer setup.
 
 ### Ask
 
@@ -64,16 +64,14 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the workspace root with `jj workspace root`, then add `promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+Resolve the repository root, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
 
-- **File already exists:** ensure an **uncommented** `promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it and its `.rocketclaw/` directory with the key. Run `jj status 'root-file:.rocketclaw/config.local.yaml'`; no reported file means an ignore rule already keeps it outside the working-copy change.
-- **Preferred file is reported:** resolve the backing repository with `jj git root`, append `.rocketclaw/*.local.yaml` to its `info/exclude`, then run `jj file untrack 'root-file:.rocketclaw/config.local.yaml'`. This is the Jujutsu-native local-exclude path for both colocated and non-colocated Git-backed workspaces. Do not hardcode `.git` under the workspace root or change a tracked ignore file for this drafts-only action.
-- **No writable backing-repository exclude:** remove only the newly created preferred file and use `<root>/.tmp/local/.rocketclaw/config.local.yaml`. Verify with `jj status 'root-file:.tmp/local/.rocketclaw/config.local.yaml'` that the fallback remains outside the working-copy change; otherwise remove it and continue without persistence. Never use OS or user-global temporary storage. `ce-setup` remains the route for adding a shared ignore rule for teammates.
+- **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
+- **File absent:** create it (and its `.rocketclaw/` directory) with the key only after ensuring the machine-local config will remain untracked. If the root-relative path is not already covered by an applicable ignore rule, append `.rocketclaw/*.local.yaml` to the Git backend's local exclude file, resolving the backend directory with `jj git root`; do not infer it from workspace layout. Use the local exclude rather than changing a tracked `.gitignore`, because this drafts-only action must not alter shared repository state. `ce-setup` owns the shared ignore rule for teammates. If no applicable ignore rule or usable local exclude is available, skip the write rather than let machine-local state enter the working-copy change.
 
 If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm the selected workspace-local path and explain that removing `promote_spiral_optout` restores the offer. Do not use a fixed response template.
+After recording, confirm in one line that the preference was saved to `.rocketclaw/config.local.yaml`, remains outside version control, and can be undone by removing `ce_promote_spiral_optout` or asking to enable the offer again.
 
 ## Generate
 

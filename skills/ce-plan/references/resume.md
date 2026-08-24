@@ -4,12 +4,12 @@ Phase 0.1 and 0.1a of `ce-plan`. Read this when the run may target an existing p
 
 #### 0.1 Resume Existing Plan Work When Appropriate
 
-This resume check needs `<root>/plans/`. Resolve the root from the current Jujutsu workspace; outside Jujutsu, use the current working directory as the local root. If resolving `<root>` fails because `docs_root` is invalid, do **not** fail the run here — skip resume discovery and continue to Phase 0.1a/0.1b, which route non-software and answer-seeking work that never touches `<root>/plans/`. When a plan path was given explicitly, use it directly without resolving `<root>`.
+This resume check needs `<root>/plans/`, so it only applies to a JJ-workspace-backed run. If there is no JJ workspace, or resolving `<root>` fails (a bad `docs_root`), do **not** fail the run here — skip resume discovery and continue to Phase 0.1a/0.1b, which route non-software and answer-seeking work that never touches `<root>/plans/`. When a plan path was given explicitly, use it directly without resolving `<root>`.
 
 If the user references an existing plan file or there is an obvious recent matching plan in `<root>/plans/`:
 - Read it
 - Confirm whether to update it in place or create a new plan
-- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from Jujutsu history by `ce-work`, so there is no progress to preserve across edits
+- If updating, revise only the still-relevant sections. Plans do not carry per-unit progress state — progress is derived from JJ by `ce-work`, so there is no progress to preserve across edits
 
 **A requirements-only unified plan is not a resume target.** A `<root>/plans/` file with `artifact_readiness: requirements-only` is an *enrichment input* — do not fire the update-or-create confirmation for it. Fall through to Phase 0.2, which enriches it in place. In pipeline mode the resume choice is made automatically (default to in-place update of the referenced plan) and is never prompted, because no user is present to answer.
 

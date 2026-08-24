@@ -1,18 +1,18 @@
-# Cross-Model Adversarial Pass — Behavioral Eval Spec
+# Cross-Model Adversarial Pass Eval Spec
 
 This is the load-bearing behavioral eval for ce-code-review's cross-model
 adversarial pass. Deterministic route tests cover the worker; these cases cover
 the SKILL.md/reference orchestration that only a fresh agent can execute. Inject
 the current `SKILL.md`, `references/cross-model-review.md`, and the relevant
-Stage 5 synthesis prose through a fresh-agent evaluation workflow. Run on two
-supported runtimes with fake peer CLIs first on PATH.
+Stage 5 synthesis prose through a fresh-agent evaluation workflow. Run on Claude Code
+and Codex with fake peer CLIs first on PATH.
 
 ## Eval cases
 
 1. **Activation fires only on the existing gate.** A local-aligned or standalone
    diff that selects `adversarial-reviewer` launches one detached cross-model
    adversarial job in the Stage 4 wave. A trivial diff that does not select the
-   persona launches none. A `pr-remote` or `bookmark-remote` review launches none
+   persona launches none. A `pr-remote` or `branch-remote` review launches none
    even when adversarial analysis is warranted.
 
 2. **Host identity and fixed route precede egress.** The orchestrator keeps host
@@ -25,11 +25,11 @@ supported runtimes with fake peer CLIs first on PATH.
 
 3. **Cursor and Composer remain distinct.** A stated `cursor` preference selects
    Cursor default/Auto with no `--model`; `composer` selects an explicit
-   Composer-family model through Cursor. A route without verifiable independence
-   records `independence_verified: false`.
+   Composer-family model through Cursor. A receiptless Cursor or Composer return
+   records `model_actual: unverified` and `independence_verified: false`.
 
 4. **Fold-in promotion requires verified independence.** A stubbed
-   external adversarial finding matching the in-process adversarial
+   `adversarial-<provider>.json` finding matching the in-process adversarial
    finding promotes one anchor step only with `independence_verified: true`.
    With `independence_verified: false`, it remains attributed evidence and does
    not count as different-model corroboration. Peer findings never gain silent
@@ -69,7 +69,7 @@ supported runtimes with fake peer CLIs first on PATH.
 
 ## Pass criteria
 
-All nine cases pass on the current on-disk source on two supported runtimes. The
+All nine cases pass on the current on-disk source on Claude Code and Codex. The
 negative activation cases launch no peer, the fixed-route cases perform no
 worker-internal recipient fallback, and only `independence_verified: true`
 artifacts can promote agreement.

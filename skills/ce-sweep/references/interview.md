@@ -4,7 +4,7 @@ Loaded by `SKILL.md` when `ce-sweep` runs with `feedback_sources` unset after th
 
 This interview is **interactive only**. The caller refuses first-run setup in non-interactive mode — a scheduled or piped run with no config aborts and tells the user to run `ce-sweep` interactively once. Do not attempt to infer sources, actions, or approvals without asking.
 
-**User-runnable invocation rendering.** Whenever this interview prints or registers a `ce-sweep` invocation, default to `/ce-sweep` (plus any arguments); use `$ce-sweep` only when the active host documents dollar-prefixed skill invocation. If a non-model-visible skill requires a host-native form, use that documented form. Render only the invocation as inline code and output one form only.
+**User-runnable invocation rendering.** Whenever this interview prints or registers a `ce-sweep` invocation, default to `/ce-sweep` (plus any arguments); use `$ce-sweep` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. On oh-my-pi (`omp`), use `/skill:ce-sweep` (plus any arguments). Render only the invocation as inline code and output one form only.
 
 ## Interaction Method
 
@@ -75,7 +75,7 @@ For email sources there are no source-side actions, so approval is moot — reco
 
 ## 3. Sensitive flag (per source)
 
-**Ask:** "Should item content from `{{source id}}` be withheld from versioned state and from plan text? Say yes when the source can carry screen recordings, PII, customer data, or anything you don't want written to a change that may be shared. When yes, the sweep drops item body and quote before writing state — only titles, urls, ids, and status persist. Default is no."
+**Ask:** "Should item content from `{{source id}}` be withheld from recorded state and from plan text? Say yes when the source can carry screen recordings, PII, customer data, or anything you don't want written to a file that may be finalized or shared. When yes, the sweep drops item body and quote before writing state — only titles, urls, ids, and status persist. Default is no."
 
 - **No** (default) -> `sensitive: false`. Full item content is retained in state and available to plans.
 - **Yes** -> `sensitive: true`. The state engine drops `body` and `quote` at write time for this source's items, and plans reference items by id/title/url only.
@@ -88,22 +88,24 @@ For email sources there are no source-side actions, so approval is moot — reco
 
 Ask where the sweep's state file lives:
 
-- **Versioned in the workspace** (recommended when multiple agents or machines synchronize one bookmark). Sets `sweep_state_path` to the versioned default under the artifact root's `feedback-sweep/` — resolve `<root>` to its concrete value first, so the persisted value is `<resolved-root>/feedback-sweep/state.yml`, never the literal placeholder.
-- **Local under `<workspace-root>/.tmp`** (solo setups; keeps sweep bookkeeping out of changes). Resolve the path immediately with this shell block:
+- **Recorded in the JJ workspace** (recommended when multiple AI Assistants or machines share a bookmark, so every workspace sees one source of truth). Sets `sweep_state_path` to the default under the artifact root's `feedback-sweep/` — resolve `<root>` to its concrete value first (e.g. the default `docs`), so the persisted value is `<resolved-root>/feedback-sweep/state.yml`, never the literal `<root>` placeholder.
+- **Workspace-local under `.tmp/rocketclaw`** (solo setups; keeps sweep bookkeeping outside JJ working-copy changes). In a JJ workspace, first confirm existing ignore rules exclude `.tmp/`; if they do not, offer to add that top-level ignore and stop this path when the user declines. Then resolve the path with this POSIX and Git Bash compatible shell block, substituting a sanitized workspace slug:
 
   ```bash
-  WORKSPACE_ROOT="$(jj root 2>/dev/null)" || WORKSPACE_ROOT="$(pwd -P)";
-  LOCAL_ROOT="$WORKSPACE_ROOT/.tmp";
-  if [ -L "$LOCAL_ROOT" ]; then echo "unsafe local root symlink: $LOCAL_ROOT" >&2; exit 1; fi;
-  (umask 077; mkdir -p "$LOCAL_ROOT") || exit 1;
-  SWEEP_STATE_PATH="$LOCAL_ROOT/sweep/state.yml";
+  WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD";
+  SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+  if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+  (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+  if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+  chmod 700 "$SCRATCH_ROOT" || exit 1;
+  SWEEP_STATE_PATH="$SCRATCH_ROOT/ce-sweep/<workspace-slug>/state.yml";
   SWEEP_STATE_DIR="$(dirname "$SWEEP_STATE_PATH")"; (umask 077; mkdir -p "$SWEEP_STATE_DIR") || exit 1; chmod 700 "$SWEEP_STATE_DIR" || exit 1;
-  printf '%s\n' "$SWEEP_STATE_PATH";
+  echo "$SWEEP_STATE_PATH";
   ```
 
   Persist the echoed absolute path as `sweep_state_path`; never persist a placeholder.
 
-Ensure `.tmp/` is ignored before using local state; if it is already tracked, run `jj file untrack 'root:.tmp'`. Let the user override the path if they want another workspace-relative location. Local state belongs only to this workspace and is not synchronized.
+Let the user override the path only within the resolved workspace-local `.tmp/rocketclaw` tree. If they pick workspace-local, note that another workspace or machine will not see this state.
 
 **Capture:** `sweep_state_path` (string).
 
@@ -117,16 +119,16 @@ Ensure `.tmp/` is ignored before using local state; if it is already tracked, ru
 
 ---
 
-## 6. Shared bookmark (only if versioned state)
+## 6. Shared bookmark (only if recorded state)
 
-**Skip this section entirely if the user chose local state in section 4.**
+**Skip this section entirely if the user chose workspace-local state in section 4** — the shared-bookmark topology only applies to state recorded in JJ changes.
 
-**Ask:** "Should several workspaces synchronize sweep state through one remote bookmark? If yes, what bookmark name should they share? Leave it unset for local-only changes."
+**Ask:** "Is this a multi-assistant setup where several JJ workspaces push the sweep state through one shared bookmark? Answer yes only if more than one machine or AI Assistant publishes to that bookmark. Default is no — one workspace records changes locally."
 
-- **Unset** (default) -> omit `sweep_shared_bookmark`. The lease serializes overlapping sweeps within one workspace.
-- **Bookmark supplied** -> `sweep_shared_bookmark: <bookmark>`. The lease becomes publish-gated: the sweep commits only the state fileset, moves that bookmark to the lease change, and confirms `jj git push --bookmark <bookmark>` before any source-side write.
+- **No** (default) -> `sweep_shared_bookmark: false`. The single-writer lease serializes overlapping sweeps within one workspace.
+- **Yes** -> `sweep_shared_bookmark: true`. Ask for the publication bookmark and Git remote. Explain that the lease becomes **push-gated**: before any source-side write, the sweep finalizes the lease acquisition in a JJ change, moves the publication bookmark to it, pushes only that bookmark through `jj git push`, and confirms the remote bookmark resolves to that change.
 
-**Capture:** `sweep_shared_bookmark` (bookmark name or unset).
+**Capture:** `sweep_shared_bookmark` (`true` | `false`), plus `sweep_publication_bookmark` and `sweep_publication_remote` when true.
 
 ---
 
@@ -134,7 +136,7 @@ Ensure `.tmp/` is ignored before using local state; if it is already tracked, ru
 
 Offer to seed state from an existing legacy feedback-tracking file so prior work is not re-ingested and already-acknowledged items are not acknowledged again.
 
-**Ask:** "Do you have an existing feedback state file to import, such as `<root>/feedback-archive/previous-state.yml`? Importing carries over its cursors and items so the first sweep skips what's already been processed. Skip if this is a clean start."
+**Ask:** "Do you have an existing feedback state file to import — for example a prior dogfood tracker like `<root>/dogfood-reports/cora-v2-alpha-feedback-state.yml`? Importing carries over its cursors and items so the first sweep skips what's already been processed. Skip if this is a clean start."
 
 - **No / skip** -> proceed to section 8.
 - **Yes** -> ask for the file path. Then build a `--source-map`: for each legacy channel/source id in the file, pair it with the configured source id from section 1 (the short name the live connector reads by), as a JSON object like `{"C0AQLMQBGBD":"slack-alpha"}`. This is load-bearing — without it, an imported `C0AQLMQBGBD` cursor lands under `C0AQLMQBGBD` while the connector reads under `slack-alpha`, orphaning the cursor and re-ingesting everything on the first sweep. Run the import from **this skill's directory**; set `SKILL_DIR` inline to the absolute path of the directory containing the `SKILL.md` you loaded:
@@ -151,18 +153,19 @@ Offer to seed state from an existing legacy feedback-tracking file so prior work
 
 ## 8. Write config
 
-Merge the captured settings into `<workspace-root>/.rocketclaw/config.local.yaml`. Resolve the workspace root with `jj root`.
+Merge the captured settings into `<workspace-root>/.rocketclaw/config.local.yaml`. Resolve the workspace root with `jj workspace root`.
 
 - If the directory or file does not exist, create `.rocketclaw/` and write the file.
 - If the file exists, merge the sweep keys into the existing YAML, **preserving every unrelated key untouched** (e.g. `pulse_*`, `plan_*`). Only add or update the sweep keys.
-- If `.rocketclaw/config.local.yaml` is not already covered by an ignore rule, offer to add it to `.gitignore` before writing. If it was previously tracked, use `jj file untrack 'root-file:".rocketclaw/config.local.yaml"'` after the ignore rule exists.
+- If `.rocketclaw/config.local.yaml` is not already covered by the workspace's ignore rules, offer to add the entry to the workspace-root `.gitignore` before writing. Jujutsu consumes Git ignore files; do not run Git repository commands for this check.
 
 Write these keys (see "Config File Shape" below for the exact form):
 
 - `feedback_sources` — the list of source maps assembled across sections 1-3.
 - `sweep_state_path` — from section 4.
 - `sweep_ack_cap` — from section 5.
-- `sweep_shared_bookmark` — from section 6 when supplied; omit it otherwise.
+- `sweep_shared_bookmark` — from section 6 (default `false`; only meaningful with recorded state).
+- `sweep_publication_bookmark` and `sweep_publication_remote` — from section 6 when shared publication is enabled.
 
 Then surface the resulting Sweep section to the user in chat and offer **one round of edits**.
 
@@ -192,15 +195,17 @@ feedback_sources:
   - { type: slack, id: slack-alpha, target: C0XXXXXXX, ack_action: eyes, closeout_action: white_check_mark, sensitive: false, approved: true }
   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
-sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # versioned, or <workspace-root>/.tmp/sweep/state.yml for local state
+sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # concrete path; recorded, or <workspace-root>/.tmp/rocketclaw/... for workspace-local use
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
-sweep_shared_bookmark: feedback-sweep             # optional: publish-gated lease through this bookmark
+sweep_shared_bookmark: false                      # true: push-gated lease for shared-bookmark topology
+# sweep_publication_bookmark: <runtime-selected-bookmark>
+# sweep_publication_remote: <runtime-selected-git-remote>
 ~~~
 
 Notes:
 
-- Each `feedback_sources` entry carries: `type` (`slack` | `github-issues` | `email`), `id` (short handle), `target` (channel ID / `owner/repo` / mailbox hint), `ack_action` and `closeout_action` (emoji/label names; omit both for email), `sensitive` (`true` withholds body/quote from versioned state and plan text), and `approved` (standing approval for source-side writes; `false` keeps the source read-only with `ack_deferred` items).
+- Each `feedback_sources` entry carries: `type` (`slack` | `github-issues` | `email`), `id` (short handle), `target` (channel ID / `owner/repo` / mailbox hint), `ack_action` and `closeout_action` (emoji/label names; omit both for email), `sensitive` (`true` withholds body/quote from recorded state and plan text), and `approved` (standing approval for source-side writes; `false` keeps the source read-only with `ack_deferred` items).
 - `feedback_sources` is a generic key — other skills may read this list.
 - `sweep_lease_ttl_minutes` is not asked in the interview; it is written with its default of `60` and left as a tunable the user can edit.
 - Email sources are read-only: omit `ack_action`/`closeout_action`, and record `approved: false`.

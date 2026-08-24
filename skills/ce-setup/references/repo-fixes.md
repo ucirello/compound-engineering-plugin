@@ -8,10 +8,10 @@ When the bundled `scripts/check-health` is unavailable, perform these checks by 
 2. If inside a Jujutsu workspace, resolve its root with `jj workspace root`.
 3. Check for obsolete `rocketclaw.local.md` at the workspace root.
 4. Check whether `.rocketclaw/config.yaml` exists.
-5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether applicable `.gitignore` rules keep it outside the Jujutsu working-copy change. An already tracked file is not safe merely because it now matches an ignore rule.
+5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, snapshot that path with `jj -R <workspace-root> status 'root-file:.rocketclaw/config.local.yaml'`, then require `jj -R <workspace-root> --ignore-working-copy file list 'root-file:.rocketclaw/config.local.yaml'` to omit it. Applicable `.gitignore` rules must keep it outside the Jujutsu working-copy change; an already tracked file is not safe merely because it now matches an ignore rule.
 6. Compare `.rocketclaw/config.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 
-This file is read at two points: from Step 2 whenever the bundled health script is unavailable, for the inline equivalent above; and before any Phase 2 write, once Step 3 has decided that a writable workspace exists and which reported issues need remediation. Ask with the blocking question tool named in SKILL.md. Maintaining the generated example files is the work this phase does on its own — Step 5's refresh and its removal of the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
+This file is read at two points: from Step 2 whenever the bundled `scripts/check-health` is unavailable, for the inline equivalent above; and before any Phase 2 write, once Step 3 has decided that a writable workspace exists and which reported issues need remediation. Ask with the blocking question tool named in SKILL.md. Maintaining the example files is the work this phase does on its own -- Step 5's refresh and its removal of the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
 
 ## Phase 2: Fix Workspace-Local Issues
 
@@ -27,23 +27,13 @@ Ask whether to delete it now. Delete only if the user approves.
 
 Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file belongs in the workspace's recorded project state and should always reflect the latest available settings.
 
-If leftover `<workspace-root>/.rocketclaw/config.local.example.yaml` remains after the new example exists, treat it as stale generated example (not user config) and remove it with `trash` (never `rm`).
+If leftover `<workspace-root>/.rocketclaw/config.local.example.yaml` remains after the new example exists, treat it as a stale example rather than user config and remove it with `trash` (never `rm`).
 
 If the bundled template cannot be located by the current platform, print the source template path that failed and tell the user the example config could not be refreshed automatically.
 
 ### Step 6: Create Workspace Config If Missing
 
-If `.rocketclaw/config.yaml` does not exist, ask — even when health is otherwise green:
-
-```text
-Set up a workspace config file for this project?
-This creates .rocketclaw/config.yaml with optional Rocketclaw team defaults.
-Everything starts commented out -- you only enable what you need.
-It does not create config.local.yaml.
-
-1. Yes, create it
-2. No thanks
-```
+If `.rocketclaw/config.yaml` does not exist, ask whether to create the workspace config. Explain that it contains optional team defaults, starts with every setting disabled, and does not create `config.local.yaml`. Use neutral choice labels rather than a fixed prompt template.
 
 If the user approves, copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.yaml`. Never overwrite an existing `config.yaml` or `config.local.yaml`.
 
@@ -57,7 +47,7 @@ When the health report marks the `ce-work` implementation engine unavailable or 
 
 ### Step 6b: Repair Invalid `docs_root`
 
-When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the workspace, `..` traversal, workspace root, `.jj/`, colocated `.git/`, or a non-directory component) and the consequence: Rocketclaw artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the recorded value to a valid workspace-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
+When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the workspace, `..` traversal, workspace root, `.jj/`, colocated `.git/`, or a non-directory component) and the consequence: artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored -- if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the recorded value to a valid workspace-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
 
 ### Step 7: Keep Local Config Out Of The Working-Copy Change
 
@@ -71,12 +61,12 @@ Append the entry to the workspace-root `.gitignore` only if the user approves. D
 
 ### Step 8: Keep Scratch Out Of The Working-Copy Change
 
-Skills keep local scratch under `<workspace-root>/.tmp/rocketclaw/`, with `<current-directory>/.tmp/rocketclaw/` as the fallback outside Jujutsu. Before creating scratch in a Jujutsu workspace, require applicable `.gitignore` rules to keep `.tmp/` outside the working-copy change. When they do not, offer to add:
+Skills keep local scratch under `$(jj workspace root)/.tmp/rocketclaw/`, with `.tmp/rocketclaw/` relative to the current directory only when workspace-root resolution is unavailable. Before creating scratch in a Jujutsu workspace, require applicable `.gitignore` rules to keep `.tmp/rocketclaw/` outside the working-copy change. When they do not, offer to add:
 
 ```text
-.tmp/
+.tmp/rocketclaw/
 ```
 
 Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
-Unlike Step 7 this does not wait for the path to exist. The skill about to write there offers the same entry at its first write, so a workspace that never uses scratch never needs the line — adding it here only means that prompt never has to fire.
+Unlike Step 7 this does not wait for the path to exist. The skill about to write there offers the same entry at its first write, so a workspace that never uses one of those skills never needs the line -- adding it here only means that prompt never has to fire.

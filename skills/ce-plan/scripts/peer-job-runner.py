@@ -58,8 +58,9 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  Jobs root                 <current jj workspace>/.tmp; outside Jujutsu,
-                            <current working directory>/.tmp
+  CE_PEER_JOBS_ROOT         base dir (<workspace-root>/.tmp/rocketclaw, with
+                            <workspace-root> from `jj workspace root` and the
+                            current directory as fallback outside JJ)
   CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
@@ -76,8 +77,8 @@ Environment overrides (defaults in parentheses):
   CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
                             CE_PEER_BASH is unset (#1268)
 
-Security posture: the job root is an owner-private directory under the current
-workspace's `.tmp`. Every read of job state opens the file first (no-follow) and
+Security posture: the job root is a predictable, owner-private directory under
+the active workspace's `.tmp/rocketclaw`. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -110,7 +111,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root follows the same workspace-local `.tmp` rule as POSIX.
+  jobs root defaults under the active workspace's `.tmp/rocketclaw`, owner-private.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -140,21 +141,22 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
+
+
 def _workspace_root() -> str:
-    """Current Jujutsu workspace root, or the current directory outside JJ."""
     try:
-        result = subprocess.run(
-            ["jj", "--ignore-working-copy", "workspace", "root"],
-            capture_output=True, text=True, check=False,
+        proc = subprocess.run(
+            ["jj", "workspace", "root"], capture_output=True, text=True,
+            check=False,
         )
     except OSError:
-        result = None
-    if result is not None and result.returncode == 0 and result.stdout.strip():
-        return os.path.abspath(result.stdout.strip())
+        proc = None
+    if proc is not None and proc.returncode == 0 and proc.stdout.strip():
+        return os.path.abspath(proc.stdout.strip())
     return os.path.abspath(os.getcwd())
 
 
-DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp")
+DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -180,7 +182,7 @@ exit codes:
   4  ownership check failed (job state or result not owned by the current
      user) — content is never emitted
 
-environment overrides: CE_WORK_RUNS_ROOT, CE_PEER_IDLE_SECS,
+environment overrides: CE_PEER_JOBS_ROOT, CE_WORK_RUNS_ROOT, CE_PEER_IDLE_SECS,
 CE_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS, CE_PEER_LOG_MAX_BYTES,
 CE_PEER_RESULT_MAX_BYTES, CE_PEER_POLL_SECS, CE_PEER_GRACE_SECS (defaults in
 the module docstring).
@@ -206,11 +208,24 @@ _RUNNER_HARD_GRACE = 30.0
 
 
 def jobs_root_base() -> str:
-    return os.path.abspath(DEFAULT_ROOT)
+    configured = os.environ.get("CE_PEER_JOBS_ROOT")
+    if configured:
+        return os.path.abspath(configured)
+    root = os.path.abspath(DEFAULT_ROOT)
+    scratch_root = os.path.dirname(root)
+    try:
+        os.mkdir(scratch_root, 0o700)
+    except FileExistsError:
+        pass
+    _check_owned_dir(scratch_root)
+    return root
 
 
 def candidate_jobs_root_bases() -> list:
-    """The workspace-local root where existing jobs live."""
+    """The configured root, or the active workspace-local default root."""
+    configured = os.environ.get("CE_PEER_JOBS_ROOT")
+    if configured:
+        return [os.path.abspath(configured)]
     return [os.path.abspath(DEFAULT_ROOT)]
 
 
@@ -699,7 +714,7 @@ def ensure_owned_dirs(base: str, path: str) -> None:
         # only re-ACL a root this runner owns -- one we just created, or the
         # managed default (repairing a default left non-private, which is what
         # the POSIX unconditional chmod is for). A pre-existing user-supplied
-        # A pre-existing caller-selected ce-work root keeps its ACLs and rests on the owner check.
+        # CE_PEER_JOBS_ROOT keeps its ACLs and rests on the owner check.
         default_root = os.path.abspath(DEFAULT_ROOT) if DEFAULT_ROOT else None
         ours = created_base or (
             default_root is not None
@@ -775,12 +790,11 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    directory = os.path.dirname(path)
     fd = None
     tmp = None
     for _ in range(CLAIM_ATTEMPTS):
         candidate = os.path.join(
-            directory, f".tmp-{os.getpid()}-{os.urandom(4).hex()}",
+            os.path.dirname(path), f".tmp-{os.getpid()}-{os.urandom(4).hex()}"
         )
         try:
             fd = os.open(
@@ -793,7 +807,7 @@ def write_atomic(path: str, data: bytes) -> None:
         except FileExistsError:
             continue
     if fd is None or tmp is None:
-        raise RunnerError("could not reserve an atomic workspace-local scratch file")
+        raise OSError("could not reserve an atomic publish file")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -1768,8 +1782,7 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (see "
-            "the native Windows support notes)."
+            "a Windows Python 3 build (see issue #1243)."
         )
 
 
@@ -1964,7 +1977,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace-local path unchecked.
+        # consumer must never read a predictable workspace scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

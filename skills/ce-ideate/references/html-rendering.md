@@ -43,11 +43,6 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
-- **Source / composition signal.** A visible footer at the bottom of
-  the doc carries the composition timestamp and source identifier when
-  the section contract requires them. Include only those functional
-  values. Do not add logos, badges, bylines, product identity, model or
-  agent attribution, or decorative attribution.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -98,7 +93,7 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. JJ workspace root (resolve via `jj workspace root`).
+1. Workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
 3. `.rocketclaw/DESIGN.md`.
 
@@ -222,17 +217,18 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time:
+Resolve the workspace's GitHub URL once at compose time. Read the `origin` entry from:
 
 ```bash
 jj git remote list
 ```
 
+For a non-colocated JJ workspace where `gh` needs repository discovery, run it with `GIT_DIR` set to the value from `jj git root`. GitHub CLI and Jujutsu then operate on the same Git-backed repository without replacing JJ's mutation workflow.
+
 Apply linking to three reference shapes:
 
 - **Repo-relative code/doc paths** (`services/foo.ts`,
-  `<root>/solutions/bar.md`) → the repository host's canonical file URL
-  for the current default bookmark and path.
+  `<root>/solutions/bar.md`) → `<repo-url>/blob/main/<path>`.
 - **Named GitHub PRs/issues** (`PR #636`, `issue #1048`) →
   `<repo-url>/pull/636` or `<repo-url>/issues/1048`.
 - **Named external trackers** (Linear `ESP-1705`, Jira `PROJ-123`) →
@@ -240,11 +236,11 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** Read the remote listing and the project's active
-instructions. If the repository host's file URL pattern or default bookmark
-is not established, leave entries as `<code>` text. If the external tracker
-workspace isn't established, leave as text. A broken or guessed link is worse
-than no link.
+**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
+Bitbucket, internal host) and the equivalent main-tree URL pattern
+isn't obvious, leave entries as `<code>` text. If the external
+tracker workspace isn't established, leave as text. A broken or
+guessed link is worse than no link.
 
 **Scope: reference index only, not inline prose.** Inline `<code>`
 mentions of paths or PRs inside paragraph prose stay as code or text.
@@ -604,9 +600,6 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
-- **Source / composition signal**, when required by the section contract,
-  contains only the composition timestamp and source identifier, with no
-  branding, byline, or model or agent attribution.
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

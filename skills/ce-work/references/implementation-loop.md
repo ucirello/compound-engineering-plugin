@@ -4,13 +4,13 @@
 
 For each task in priority order:
 
-When the selected engine is cross-model execution, this loop still owns unit ordering, evidence selection, actual-scope inspection, authoritative verification, and incremental accepted changes, but worker authoring follows the external-unit protocol in `references/cross-model-execution.md`. Detached process completion is only authoring evidence; do not mark the task complete until the controller records the host-owned accepted change and operation receipt. A preserved or restoration-blocked unit stops this loop before fallback, retry, or the next unit.
+When the selected engine is cross-model execution, this loop still owns unit ordering, evidence selection, actual-scope inspection, authoritative verification, and incremental canonical JJ changes, but worker authoring follows the serial external-unit protocol in `references/cross-model-execution.md`. Detached process completion is only authoring evidence; do not mark the task complete until the controller records the host-owned canonical change. A preserved or restoration-blocked unit stops this loop before fallback, retry, or the next unit.
 
 ```
 while (tasks remain):
   - Mark task as in-progress
   - Read any referenced files from the plan or discovered during Phase 0
-  - **If the unit's work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), locate the supplying change with `jj log` and the relevant fileset. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
+  - **If the unit's work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped in another change or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
   - Look for similar patterns in codebase
   - Find existing test files for implementation files being changed (Test Discovery — see below)
   - Choose the evidence strategy for this task before changing behavior: use an existing failing test, update or strengthen an existing test, add a new failing test, add characterization coverage, or record a deliberate no-test exception with replacement verification
@@ -23,10 +23,10 @@ while (tasks remain):
   - Assess testing coverage: did this task change behavior? If yes, were existing tests inspected and were tests written, updated, strengthened, or deliberately left unchanged with a reason? If no tests were added or changed, is the justification deliberate (e.g., pure config, no behavioral change, manual-only surface) and paired with replacement verification?
   - Record verification evidence for the task: behavior-change signal, existing tests inspected, tests added/changed/used unchanged, red failure or characterization observed when applicable, verification run, and any exception reason
   - Mark task as completed
-  - Evaluate for an incremental accepted change (see below)
+   - Evaluate for an incremental change boundary (see below)
 ```
 
-For a parallel wave, the loop pauses at a host-owned integration stop after every accepted change. Inspect the actual fileset rather than its declared scope, re-run the independence judgment against the advancing graph, and recompute readiness from accepted prerequisite changes. Affected dependents remain queued. An unaffected sibling may continue only after a failed integration operation has been restored through `jj op restore` and the integration lock released. Rebase a stale result on the advancing change, resolve its first-class conflicts explicitly, or finish it serially; absence of recorded conflicts is not semantic proof. Repeated collision or broad edits disable further parallel waves for the run.
+For a parallel wave, the loop pauses at a host-owned integration stop after every canonical result. Inspect the actual result rather than its declared scope, re-run the independence judgment against the advancing tree, and recompute readiness from committed prerequisites. Affected dependents remain queued. An unaffected sibling may continue only after any failed apply or verification has been restored exactly and the prior integration lock released. Re-dispatch a stale or colliding result on the new base, resolve it explicitly, or finish it serially; never treat a conflict-free apply as semantic proof. Repeated collision or broad edits disable further parallel waves for the run.
 
 When a unit carries an `Execution note`, honor its intent rather than matching a fixed vocabulary. For notes that ask for proof-first work, write or identify the relevant failing test before implementation for that unit. For notes that ask for characterization, capture existing behavior before changing it. For notes that point away from unit coverage, run the named replacement verification and record why ordinary tests were not the right proof. For units without an `Execution note`, make the same decision from code and test discovery: upgrade to proof-first or characterization-first when behavior changes and the seam is practical; proceed pragmatically only when the task is non-behavioral or the exception is deliberate.
 
@@ -72,40 +72,39 @@ Guardrails for execution evidence:
 
 **When this matters most:** Any change that touches models with callbacks, error handling with fallback/retry, or functionality exposed through multiple interfaces.
 
-2. **Incremental Changes**
+2. **Incremental JJ Changes**
 
-After completing each task, evaluate whether to finish and describe an incremental change:
+After completing each task, evaluate whether to finalize the current JJ change and start a new one:
 
-| Finish a change when... | Keep editing when... |
+| Finalize when... | Keep editing when... |
 |----------------|---------------------|
 | Logical unit complete (model, service, component) | Small part of a larger unit |
 | Tests pass + meaningful progress | Tests failing |
 | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-| About to attempt risky/uncertain changes | Would need an incomplete change description |
+| About to attempt risky/uncertain changes | The description would only say the work is partial |
 
-**Heuristic:** Can the change description state a complete, valuable outcome? If not, keep editing the same mutable change.
+**Heuristic:** finalize only when the change has one complete, valuable purpose that can be described from the actual diff.
 
-If the plan has Implementation Units, use them as a starting guide for change boundaries, but adapt based on what you find. A unit may need multiple changes, or small related units may form one change. Use each unit's Goal to inform the description.
+If the plan has Implementation Units, use them as a starting guide for change boundaries, adapting to actual cohesion. A unit may need multiple changes, or tightly related units may share one. Use the unit Goal and actual diff to inform the description.
 
-**Change workflow:**
+**Change-finalization workflow:**
 ```bash
-# 1. Verify tests pass (use project's test command)
-# 2. Inspect the unit fileset and conflicts
-jj diff -r @ '<fileset for this logical unit>'
-jj log -r '@ & conflicts()'
-# 3. Split unrelated paths when needed, describe the complete change, then start the next change
-jj split '<fileset that stays in the current change>'
-jj describe -r @- -m '<description composed from local standards>'
-jj new @-
+# Run the project's verification for the unit first.
+jj diff --summary -r @ <unit-fileset>
+jj --config user.name='AI Assistant' --config user.email='ai:assistant' commit -m "<description composed from runtime project conventions and the actual diff>" <unit-fileset>
 ```
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The project's active instructions and the syntax and style observed in `git log` win over every other recommendation. The sentence above supplies composition guidance only; it does not prescribe a type, scope, prefix, or fixed message. In JJ, apply the result as the change description with `jj describe`.
+Runtime repository syntax and conventions win. Apply compatible Go commit-message quality only; do not impose a fixed type, scope, prefix, template, or example. Quote filesets that contain operators or metacharacters, and prefer workspace-relative `root:` patterns when the command may run below the workspace root.
 
-**Handling conflicts:** JJ records conflicts in changes. Detect them with the `conflicts()` revset and inspect them with `jj diff`; resolve in a dedicated working-copy change and use `jj squash` to move the resolution into the conflicted change when appropriate. Do not look for continue/abort sequencer states.
+Use `AI Assistant` / `ai:assistant` as the protocol actor for newly agent-authored JJ changes. Preserve existing human author metadata and any human attribution explicitly required by the project; do not encode the protocol actor in the description.
 
-**Parallel subagent mode:** accepted-change ownership follows the isolation mode chosen at dispatch; see `references/execution-strategy.md`.
+**Handling conflicts:** JJ operations complete even when they create conflicted revisions. Inspect `jj status` and `jj log -r 'conflicts()'`, resolve the conflicted files, and use `jj squash` or `jj commit` with explicit filesets to place the resolution in the intended change before continuing.
+
+**Note:** Change descriptions contain only project-relevant semantic content and human authorship explicitly supplied by the project or user.
+
+**Parallel subagent mode:** canonical change ownership follows the isolation mode chosen at dispatch - see `references/execution-strategy.md`.
 
 3. **Follow Existing Patterns**
 

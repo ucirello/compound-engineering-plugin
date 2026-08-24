@@ -49,7 +49,7 @@ These reviewers cover specialized runtime behavior. Structural and maintainabili
 
 ## Migration-Specific Local Prompt Assets
 
-Use `deployment-verification-agent` when the migration-artifact gate applies **and** the change is risky (destructive DDL, backfills, NOT NULL without default, column renames/drops). Schema drift and migration safety live in the `data-migration` persona — not a separate typed agent.
+Use `deployment-verification-agent` when the migration-artifact gate applies **and** the change is risky (destructive DDL, backfills, NOT NULL without default, column renames/drops). Schema drift and migration safety live in the `data-migration` persona, not a separate typed actor.
 
 | Prompt asset | Focus |
 |-------|-------|

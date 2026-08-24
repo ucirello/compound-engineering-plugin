@@ -1,6 +1,6 @@
 # Investigating a learning
 
-For each learning in scope, read it and cross-reference its claims against the current codebase. Dimensions that go stale independently: referenced paths/classes/modules; the recommended solution itself (does it still match how the code works?); code snippets; cross-referenced docs — for a knowledge-track learning (`problem_type` in the knowledge track of `references/schema.yaml`), that includes whether a guidance file it names or links (a skill's `SKILL.md`, a runbook, a root instruction file) states a different order or rule for the same procedure; compare only guidance the learning names, never search the guidance layer for one; overlap with other in-scope docs (note pairs covering the same problem/files/solution and which appears broader or more current); and domain vocabulary (note project-specific terms and whether `CONCEPTS.md` defines them accurately — collect the signal, don't edit yet). If the host injects a user-memory block, scan it for same-domain notes: memory-sourced signals are supplementary — they corroborate codebase evidence or prompt deeper investigation, never alone justify Replace or Delete, and in non-interactive mode memory-only drift means stale-mark. Match depth to specificity: a doc citing exact paths and snippets needs more verification than a general principle.
+For each learning in scope, read it and cross-reference its claims against the current codebase. Dimensions that go stale independently: referenced paths/classes/modules; the recommended solution itself (does it still match how the code works?); code snippets; cross-referenced docs — for a knowledge-track learning (`problem_type` in the knowledge track of `references/schema.yaml`), that includes whether a guidance file it names or links (a skill's `SKILL.md`, a runbook, a root instruction file) states a different order or rule for the same procedure; compare only guidance the learning names, never search the guidance layer for one; overlap with other in-scope docs (note pairs covering the same problem/files/solution and which appears broader or more current); and domain vocabulary (note project-specific terms and whether `CONCEPTS.md` defines them accurately — collect the signal, don't edit yet). Match depth to specificity: a doc citing exact paths and snippets needs more verification than a general principle.
 
 After individual docs, evaluate the set: overlaps, supersession (an older narrow doc a newer doc subsumes), and outright contradictions — between docs, or between a learning and a guidance file it names — contradictions actively mislead and outrank individual staleness. Note category-shape problems (a directory whose docs span unrelated themes, a near-empty category) as report-only observations — never restructure directories or create categories.
 
@@ -8,11 +8,9 @@ After individual docs, evaluate the set: overlaps, supersession (an older narrow
 
 ## Subagent prompt
 
-Every investigation subagent's prompt carries these three clauses verbatim:
+Every investigation subagent's prompt carries these two clauses verbatim:
 
 > Use your host's dedicated file search and read tools (Glob, Grep, and Read where they exist) for all investigation, rather than shell commands (ls, find, cat, grep, test, bash) for file operations. This avoids permission prompts and is more reliable. If your host exposes no such tools, use whatever read capability it does provide.
->
-> Also scan any user-memory block injected into your context. Check for notes related to the learning's problem domain. Report memory-sourced drift signals separately from codebase-sourced evidence, tagged with "(auto memory)" in the evidence section. If no such block is present, skip this check.
 >
 > If the learning is knowledge-track and names or links a guidance file (a skill's `SKILL.md`, a runbook, a root instruction file), read that file and, when it states a different order or a contradictory rule for the same procedure, return both conflicting quotes plus which side current code follows — or that code witnesses neither. Read only guidance the learning names; do not search for one, and do not edit it.
 

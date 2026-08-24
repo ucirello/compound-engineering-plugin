@@ -15,14 +15,14 @@ citations against the repository:
 
     1. Cited repo-relative paths (backticked, containing at least one '/')
        exist in the working copy; tokens containing '../' resolve from the
-       doc's directory (those escaping the workspace are skipped). Misses tracked
-       at @ or trunk() still count as real paths and
-       are classified (removed from the workspace vs stale workspace). Tokens
+       doc's directory (those escaping the repo are skipped). Misses tracked
+       at `@` or `trunk()` still count as real paths and are classified
+       (deleted/unsnapshotted vs stale workspace). Tokens
        missing everywhere are flagged only when path-shaped; slash-delimited
-       identifiers (bookmark names, provider/model IDs) are skipped.
-    2. Cited commit SHAs (7-40 hex chars with at least one digit and one
-       a-f letter) resolve to commits, classified by reachability from
-        @ and trunk().
+       identifiers (bookmark names, Git refs, provider/model IDs) are skipped.
+    2. Cited Git commit IDs (7-40 hex chars with at least one digit and one
+       a-f letter) resolve through JJ's Git interop and are classified by
+       reachability from `@` and `trunk()`.
     3. Relative markdown link targets resolve from the doc's location.
     4. Dangling drafting scaffold: "Learning(s) N" numbering and
        unresolved {{...}} placeholder tokens. Inline code spans and fenced
@@ -35,8 +35,7 @@ cite a path deleted by the very fix it documents. The calling agent
 decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
-The script never touches the network (no fetch); classification uses
-the local JJ view. Run a best-effort `jj git fetch` first
+The script never touches the network. Run a best-effort `jj git fetch` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -66,7 +65,7 @@ def usage_fail(msg: str) -> "NoReturn":
 def jj(args: list[str], cwd: str) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["jj", *args],
+            ["jj", "--no-pager", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -98,6 +97,8 @@ def is_path_candidate(token: str) -> bool:
         return False
     if "://" in token or token.startswith(("http", "#", "/", "~")):
         return False
+    if token.startswith(("origin/", "upstream/", "refs/")):
+        return False  # Git interop refs, not repo paths
     if PLACEHOLDER_CHARS & set(token):
         return False
     if any(sub in token for sub in PLACEHOLDER_SUBSTRINGS):
@@ -177,51 +178,48 @@ def main(argv: list[str]) -> int:
     infos: list[str] = []
     flags: list[str] = []
 
-    # --- Workspace context ------------------------------------------------
-    code, workspace_root = jj(["workspace", "root"], doc_dir)
-    in_jj = code == 0 and bool(workspace_root)
+    # --- Repo context -----------------------------------------------------
+    code, repo_root = jj(["workspace", "root"], doc_dir)
+    in_jj = code == 0 and bool(repo_root)
+    upstream: str | None = "trunk()" if in_jj else None
     if in_jj:
-        code, behind_output = jj(
-            [
-                "log",
-                "--no-graph",
-                "-r",
-                "@..trunk()",
-                "-T",
-                'commit_id ++ "\\n"',
-            ],
-            workspace_root,
-        )
-        if code == 0:
-            behind = len([line for line in behind_output.splitlines() if line])
-            if behind > 0:
+        code, trunk_count = jj(["log", "-r", "trunk()", "--count"], repo_root)
+        if code != 0 or trunk_count != "1":
+            upstream = None
+            infos.append(
+                "INFO: trunk() does not resolve to one revision — "
+                "path/ID classification limited to @"
+            )
+        else:
+            code, behind = jj(["log", "-r", "@..trunk()", "--count"], repo_root)
+            if code == 0 and behind.isdigit() and int(behind) > 0:
                 infos.append(
                     f"INFO: workspace is {behind} revisions behind trunk() — "
                     "verify merge-state claims against remote truth (gh pr view), "
-                    "not this working copy"
+                    "not this workspace"
                 )
     else:
         infos.append(
-            "INFO: not a JJ workspace — path and SHA classification skipped "
+            "INFO: not a JJ repository — path and commit-ID classification skipped "
             "(scaffold and link checks still apply)"
         )
 
-    def trunk_has_path(path: str) -> bool:
-        if not in_jj:
+    def upstream_has_path(path: str) -> bool:
+        if not (in_jj and upstream):
             return False
-        code, _ = jj(["file", "show", "-r", "trunk()", path], workspace_root)
+        code, _ = jj(["file", "show", "-r", upstream, path], repo_root)
         return code == 0
 
-    def working_copy_has_path(path: str) -> bool:
+    def current_has_path(path: str) -> bool:
         if not in_jj:
             return False
-        code, _ = jj(["file", "show", "-r", "@", path], workspace_root)
+        code, _ = jj(["file", "show", "-r", "@", path], repo_root)
         return code == 0
 
     # --- 1. Cited repo paths ----------------------------------------------
     checked_paths = 0
     seen_paths: set[str] = set()
-    base = workspace_root if in_jj else os.getcwd()
+    base = repo_root if in_jj else os.getcwd()
     for raw in BACKTICK_RE.findall(body):
         token = normalize_path(raw)
         if not is_path_candidate(token):
@@ -229,45 +227,48 @@ def main(argv: list[str]) -> int:
         check = token
         if token.startswith("../") or "/../" in token:
             # A `../` citation is doc-relative (matching how markdown links
-            # resolve), so map it to a workspace-root path before checking.
+            # resolve), so map it to a workspace-relative path before checking.
             if not in_jj:
                 continue
             resolved = os.path.realpath(os.path.join(doc_dir, token))
             check = os.path.relpath(resolved, os.path.realpath(base))
             if check.startswith(".."):
-                continue  # escapes the workspace — not checkable as a workspace path
+                continue  # escapes the repo — not checkable as a repo path
         if check in seen_paths:
             continue
         seen_paths.add(check)
         if os.path.exists(os.path.join(base, check)):
             checked_paths += 1
             continue
-        tracked_working_copy = working_copy_has_path(check)
-        tracked_trunk = trunk_has_path(check)
-        if not (tracked_working_copy or tracked_trunk) and not is_path_shaped(
+        tracked_current = current_has_path(check)
+        tracked_upstream = upstream_has_path(check)
+        if not (tracked_current or tracked_upstream) and not is_path_shaped(
             check, base
         ):
             continue  # bookmark name / provider ID, not a path citation
         checked_paths += 1
         loc = loc_suffix(raw)
-        if tracked_working_copy:
+        if tracked_current:
             flags.append(
-                f"FLAG path `{token}`{loc} — tracked at @ but missing from "
-                "the working copy: removed since the current snapshot? Annotate as "
+                f"FLAG path `{token}`{loc} — present at @ but missing from "
+                "the working copy: deleted or unsnapshotted removal? Annotate as "
                 "historical (e.g. removed by this fix) or restore it."
             )
-        elif tracked_trunk:
+        elif tracked_upstream:
             flags.append(
                 f"FLAG path `{token}`{loc} — not in the working copy but exists at "
-                "trunk(): stale workspace? Annotate or verify against trunk()."
+                f"{upstream}: stale workspace? Annotate or verify against trunk."
             )
         else:
+            where = (
+                f"working copy or {upstream}" if upstream else "working copy"
+            )
             flags.append(
-                f"FLAG path `{token}`{loc} — not found in the working copy or trunk(). Fix the "
+                f"FLAG path `{token}`{loc} — not found in {where}. Fix the "
                 "citation, or annotate it as historical (e.g. removed by this fix)."
             )
 
-    # --- 2. Cited commit SHAs ----------------------------------------------
+    # --- 2. Cited Git commit IDs -------------------------------------------
     checked_shas = 0
     seen_shas: set[str] = set()
     if in_jj:
@@ -280,47 +281,44 @@ def main(argv: list[str]) -> int:
             seen_shas.add(sha)
             checked_shas += 1
             loc = loc_suffix(sha)
-            revision = f"commit_id({sha})"
-            code, resolved = jj(
-                ["log", "--no-graph", "-r", revision, "-T", 'commit_id ++ "\\n"'],
-                workspace_root,
-            )
-            if code != 0 or not resolved:
+            commit_revset = f"commit_id({sha})"
+            code, count = jj(["log", "-r", commit_revset, "--count"], repo_root)
+            if code != 0 or count != "1":
                 flags.append(
                     f"FLAG sha {sha}{loc} — does not resolve to a commit in this "
                     "repository. Replace with the PR number, or drop it."
                 )
                 continue
-            in_working_copy = bool(
-                jj(
-                    ["log", "--no-graph", "-r", f"{revision} & ::@", "-T", 'commit_id ++ "\\n"'],
-                    workspace_root,
+            in_current = jj(
+                ["log", "-r", f"{commit_revset} & ::@", "--count"], repo_root
+            )[1] == "1"
+            in_up = (
+                upstream is not None
+                and jj(
+                    ["log", "-r", f"{commit_revset} & ::{upstream}", "--count"],
+                    repo_root,
                 )[1]
+                == "1"
             )
-            in_trunk = bool(
-                jj(
-                    ["log", "--no-graph", "-r", f"{revision} & ::trunk()", "-T", 'commit_id ++ "\\n"'],
-                    workspace_root,
-                )[1]
-            )
-            if in_working_copy and in_trunk:
+            if in_current and (in_up or upstream is None):
                 continue
-            if in_working_copy and not in_trunk:
+            if in_current and not in_up:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — reachable from @ but not trunk(): "
-                    "local-only commit whose SHA may be rewritten on merge "
+                    f"FLAG sha {sha}{loc} — reachable from @ but not {upstream}: "
+                    "local-only commit whose ID may be rewritten on merge "
                     "(rebase/squash). Prefer citing the PR number."
                 )
-            elif in_trunk:
+            elif in_up:
                 flags.append(
                     f"FLAG sha {sha}{loc} — not reachable from @ but reachable "
-                    "from trunk(): this checkout predates the merge. Add a "
+                    f"from {upstream}: this workspace predates the merge. Add a "
                     "temporal qualifier or verify the claim via gh."
                 )
             else:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — exists but unreachable from @ or trunk(): "
-                    "likely a rebased-away commit. Prefer citing the PR number."
+                    f"FLAG sha {sha}{loc} — exists but unreachable from @"
+                    + (f" or {upstream}" if upstream else "")
+                    + ": likely a rebased-away commit. Prefer citing the PR number."
                 )
 
     # --- 3. Relative markdown links -----------------------------------------

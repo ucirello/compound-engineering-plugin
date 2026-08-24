@@ -1,13 +1,13 @@
 # Dogfood Report — <target>
 
-> Diff-scoped browser QA of the JJ change stack from `<trunk>` through `<target>` on <YYYY-MM-DD>.
+> Diff-scoped browser QA of `<target>` vs the trunk change. Run date: <YYYY-MM-DD>.
 
 <!-- Use repo-relative paths throughout this doc, never absolute paths, so it stays portable. -->
 <!-- This template is the source of truth for the report's sections; build the report to this shape rather than from memory. -->
 
 ## Diff Summary
 
-<What changed in the cumulative tree diff from the trunk through the target revision: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
+<What changed between the target and trunk changes: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
 
 ## Personas
 
@@ -30,10 +30,10 @@ flowchart TD
 
 ## Test Matrix & Results
 
-| # | Flow | Journey / Scenario | Status | Issue | Fix | JJ Change |
+| # | Flow | Journey / Scenario | Status | Issue | Fix | Change |
 |---|------|--------------------|--------|-------|-----|--------|
 | 1 |      |                    | Pass   | -     | -   | -      |
-| 2 |      |                    | Fixed  |       |     | <change-id> |
+| 2 |      |                    | Fixed  |       |     | abc123 |
 | 3 |      |                    | Blocked (needs human verify) | | | |
 
 Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human verify)`, `Blocked (human decision)`. Start every scenario at `Pending` so this table doubles as the resume checkpoint.
@@ -70,7 +70,7 @@ For each issue found and fixed:
 - **What's broken:** <symptom / failing scenario>
 - **Why escalated:** <why it's not a safe autonomous fix — scope, risk, ambiguity, product trade-off>
 - **Options:** <option A (trade-offs) / option B (trade-offs)>
-- **Recommendation:** <the agent's suggested direction, for the human to confirm>
+- **Recommendation:** <the AI Assistant's suggested direction, for the human to confirm>
 
 ## Learnings
 
@@ -78,4 +78,4 @@ For each issue found and fixed:
 
 ## Final Status
 
-<Overall readiness verdict for the target change stack. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run — a green matrix with a red suite is not "ready.">
+<Overall readiness verdict for the target change. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run — a green matrix with a red suite is not "ready.">

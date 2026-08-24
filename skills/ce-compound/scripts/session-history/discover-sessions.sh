@@ -41,7 +41,7 @@ encode_pi_cwd() {
 
 # --- Claude Code ---
 # List every recent jsonl under <config-dir>/projects. Folder names are an
-# undocumented encoder of session CWD; do not invert them. Repo association
+# undocumented encoder of session CWD; do not invert them. Repo attribution
 # is the recorded `cwd` field, applied by extract-metadata.py --cwd-filter.
 # CLAUDE_CONFIG_DIR relocates the whole config tree (official); unset -> ~/.claude.
 discover_claude() {
@@ -123,7 +123,7 @@ discover_pi() {
 # with physical paths so symlinked cwds resolve to the same bucket, mirroring
 # omp's resolveEquivalentPath. Prints nothing when the cwd cannot be resolved.
 encode_omp_raw_cwd() {
-    local cwd canon_home canon_tmp local_tmp rel
+    local cwd canon_home canon_local_tmp rel
     cwd="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
     canon_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || canon_home="$HOME"
     case "$cwd" in
@@ -135,14 +135,13 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
-            local_tmp="$(jj workspace root 2>/dev/null || pwd -P)/.tmp"
-            canon_tmp="$(cd "$local_tmp" 2>/dev/null && pwd -P)" || canon_tmp=""
+            canon_local_tmp="$(cd "${REPO_CWD:-$PWD}/.tmp/rocketclaw" 2>/dev/null && pwd -P)" || canon_local_tmp=""
             case "$cwd" in
-                "$canon_tmp")
+                "$canon_local_tmp")
                     printf -- '-tmp'
                     ;;
-                "$canon_tmp"/*)
-                    rel="$(printf '%s' "${cwd#"$canon_tmp"/}" | sed 's/[/\\:]/-/g')"
+                "$canon_local_tmp"/*)
+                    rel="$(printf '%s' "${cwd#"$canon_local_tmp"/}" | sed 's/[/\\:]/-/g')"
                     printf -- '-tmp-%s' "$rel"
                     ;;
                 *)
@@ -182,7 +181,7 @@ discover_omp() {
     #     "-", edge dashes stripped, capped at the last 80 chars, empty falls
     #     back to "project" — session-paths.ts getDefaultSessionDirName)
     # Scan basename-matching buckets in the default-profile sessions root and
-    # in every named-profile root; exact repo association comes from the
+    # in every named-profile root; exact repo attribution comes from the
     # downstream header `cwd` filter (extract-metadata.py --cwd-filter reads
     # the type:"session" header). Glob the sanitized form so repos whose
     # basename contains characters the hashed scheme normalizes (e.g. spaces)
@@ -254,7 +253,7 @@ case "$PLATFORM" in
         # Pi and omp share the PI_CODING_AGENT_SESSION_DIR override: when it
         # is set, both discover functions emit the same flat-dir files, and
         # the downstream xargs call does not deduplicate. Emit each path once;
-        # platform association is unaffected because extract-metadata.py
+        # platform attribution is unaffected because extract-metadata.py
         # detects the file shape (title slot => omp, otherwise pi).
         { discover_claude; discover_codex; discover_cursor; discover_pi; discover_omp; } | awk '!seen[$0]++'
         ;;

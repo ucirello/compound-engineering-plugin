@@ -1,12 +1,16 @@
 # Prepare the live polish loop
 
-This reference owns workspace safety, server startup, reachability, and browser handoff. It does not own the user's iterative polish decisions.
+This reference owns JJ workspace safety, Git-provider interoperability, server startup, reachability, and browser handoff. It does not own the user's iterative polish decisions.
 
 ## Resolve the workspace
 
-If the user named a PR or bookmark, resolve its target revision while preserving `gh` and GitHub as the PR interface. In a non-colocated Jujutsu workspace, point `gh` at the backing repository reported by `jj git root`. First use `jj workspace list` to locate whether that revision is already the working-copy revision of a workspace. Enter that existing workspace when the harness can; if it cannot, report the blocker and stop. Only edit the target revision in the current workspace when no other workspace owns it. With no argument, stay at the current working-copy revision.
+Require a JJ workspace and resolve its root with `jj workspace root`. Jujutsu has working-copy changes and bookmarks, not a current branch, detached HEAD mode, an index, or a stash. Use JJ for every repository mutation. Read-only Git commands remain valid in a colocated repository when an operational provider needs them, and Git Bash remains a supported shell, but do not substitute a mutating Git command for a JJ operation.
 
-Confirm the resulting working-copy revision is not the revision targeted by the repository's default bookmark. Jujutsu has no active-bookmark concept, so do not infer safety from bookmark presence. Report and stop when a safe feature workspace cannot be reached; do not create another workspace behind the harness or rewrite, abandon, or move the user's existing changes.
+If the user named a GitHub PR, use `gh` to obtain its head repository, head bookmark, and head commit ID. In a non-colocated Git-backed workspace, obtain the backing repository with `jj git root` and expose that path to `gh` as `GIT_DIR`. Fetch the head through `jj git fetch` from a configured remote that matches the head repository; when none exists, use `jj git remote` to add a uniquely named remote for that provider repository before fetching, and remove only that temporary remote after the selected revision is anchored by the new working-copy change. Do not use `gh pr checkout`. For another provider, use its available interface for the same metadata and keep all fetch/import operations in `jj git`. If authentication, provider metadata, remote identity, or the fetched head cannot be established exactly, report the blocker and stop.
+
+Resolve a supplied bookmark, change ID, commit ID, or revset to exactly one revision with `jj log -r`; fetched bookmarks may require their `<bookmark>@<remote>` name. With no argument, select `@`. Inspect `jj workspace list` before changing the current workspace. If a listed workspace's working-copy revision is the selection or contains it in the workspace's unambiguous active mutable stack, enter that workspace when the available filesystem capability permits it; otherwise report the workspace path and stop rather than attaching a second workspace to the same work.
+
+When the selected revision is not already the current workspace's `@`, preserve any existing current work: proceed only when `@` is empty and conflict-free, then start a new working-copy change with `jj new <selected-revision>`. Never use `jj edit` merely to emulate branch checkout because edits would rewrite the selected revision. Confirm the resulting `@` is mutable, conflict-free, and not `trunk()` itself. A selection at `trunk()` is safe only because `jj new` creates a mutable child. If any revset is ambiguous, a workspace is stale, or moving to the target would overwrite or strand work, report the evidence and stop. Do not create, forget, or delete a workspace implicitly.
 
 ## Resolve the start command
 
@@ -21,7 +25,7 @@ bash "$SKILL_DIR/scripts/read-launch-json.sh"
 
 Resolve one startup tuple: command, working directory, environment, and port. A selected launch configuration supplies every usable fact it declares: `runtimeExecutable` plus optional `runtimeArgs` form the command, `cwd` defaults to the workspace root, `env` augments the inherited environment, and `port` must be numeric. Preserve those facts while resolving only what remains unknown. When all four facts are usable, the tuple is complete: skip classification, recipe loading, package-manager resolution, and port resolution, then continue to startup. Ambiguous declarations remain in disambiguation: show their names, ask the user to choose, and rerun with that name. Any operational failure or unresolved tuple fact blocks startup and must be reported.
 
-Run project classification only when an unresolved command or port requires a project type. Classify the selected working directory when a launch configuration supplied one; otherwise classify the workspace root. Omit the path argument for the workspace root:
+Run project classification only when an unresolved command or port requires a project type. Classify the selected working directory when a launch configuration supplied one; otherwise classify the workspace root. Pass that resolved project root explicitly:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
@@ -44,23 +48,24 @@ SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 bash "$SKILL_DIR/scripts/resolve-port.sh" "<project-root>" --type <base-type>
 ```
 
-Startup may proceed only when the tuple has a usable command, working directory, environment, and numeric port. If a classifier, recipe, or resolver fails operationally or leaves its required fact unknown, report that blocker; do not substitute a plausible value. After supported auto-detection supplies a missing fact, offer once to save the completed tuple as `.workspace/launch.json`; write it only when the user accepts, after reading `references/launch-json-schema.md` and any recipe used.
+Startup may proceed only when the tuple has a usable command, working directory, environment, and numeric port. If a classifier, recipe, or resolver fails operationally or leaves its required fact unknown, report that blocker; do not substitute a plausible value. After supported auto-detection supplies a missing fact, offer once to save the completed tuple as `.claude/launch.json`; write it only when the user accepts, after reading `references/launch-json-schema.md` and any recipe used.
 
 ## Start and hand off
 
-Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle. Write its output under the artifact directory named by the project's active conventions; when none is defined, create a unique run directory under `<workspace-root>/.tmp/local`, where `<workspace-root>` is reported by `jj root`. The output path must remain inside the workspace root and outside `.jj/` and `.git/`; otherwise report the blocker instead of choosing an OS-temp path.
+Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle. Write its output only beneath an ignored, non-symlinked `.tmp/rocketclaw/polish/<unique-run>/` directory at the root returned by `jj workspace root`; outside JJ, use the current local workspace's `.tmp/rocketclaw/polish/<unique-run>/`. Reject a `.tmp` path not owned by the effective user, create directories with mode `0700`, atomically reserve a unique log file with mode `0600`, and retry on collision. Never use an operating-system or global temporary directory.
 
 An occupied port that cannot be attributed to the intended project server remains an unresolved collision. Ask the user whether to stop that process, choose another port, or stop this run; never kill it or launch past it.
 
 Resolve the selected instance's actual URL before handoff. The resolved port seeds `http://localhost:<port>` as the default candidate, but server output or a user correction replaces that candidate when it identifies a different URL. Attribute successful reachability at the resolved actual URL to the selected instance by probing for up to 30 seconds; a response from another process is not success.
 
-- **Reachable:** use the browser-opening capability already exposed by the active harness with the verified actual URL. If it has none or the handoff fails, print that URL; browser handoff is a convenience, not a gate.
+- **Reachable:** use an available browser-opening capability with the verified actual URL. If none exists or the handoff fails, print that URL; browser handoff is a convenience, not a gate.
 - **Not reachable:** show diagnostics derived from the selected instance. Include the last 20 log lines only when this run launched it and owns those logs. Ask whether to correct the server URL or start configuration, or stop.
 
 Do not continue into the polish loop unless reachability is attributed to the selected instance.
 
-Tell the user exactly:
+Tell the user:
 
 ```text
-Go to <verified-actual-url> and tell me what could be better.
+Dev server running on <verified-actual-url>
+Browse the feature and tell me what could be better.
 ```

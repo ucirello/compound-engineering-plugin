@@ -51,8 +51,8 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole workspace-local .tmp root instead would
-  # expose every other same-user scratch file and credential to the elevated
+  # via --add-dir. Adding the whole workspace scratch root instead would expose
+  # every other scratch file and credential to the elevated
   # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
@@ -85,7 +85,7 @@ RESULT_PATH="${3:?result-path required}"
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole workspace-local .tmp root. Pure-bash dirname (no
+# to an absolute path), never the whole workspace scratch root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,8 +103,8 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$HANDOFF_DIR/elevation-peer-${CE_PEER_JOB_ID:-$$}.log"
-(umask 077; : > "$PEERLOG")
+PEERLOG="$HANDOFF_DIR/elevation-peer-$$.log"
+(umask 077; set -C; : > "$PEERLOG") 2>/dev/null || { log "cannot reserve peer log: $PEERLOG"; exit 2; }
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a

@@ -168,11 +168,11 @@ has_flat_config_key() {
   ' "$config_file"
 }
 
-# First non-empty ordinary scalar across local then tracked. Empty/commented
-# local continues to tracked. Sets ordinary_value and ordinary_source.
+# First non-empty ordinary scalar across local then recorded. Empty/commented
+# local continues to recorded. Sets ordinary_value and ordinary_source.
 resolve_ordinary_scalar() {
   local local_file="$1"
-  local tracked_file="$2"
+  local recorded_file="$2"
   local config_key="$3"
   local value=""
   ordinary_value=""
@@ -185,8 +185,8 @@ resolve_ordinary_scalar() {
       return
     fi
   fi
-  if [ -f "$tracked_file" ]; then
-    value=$(read_flat_config_value "$tracked_file" "$config_key")
+  if [ -f "$recorded_file" ]; then
+    value=$(read_flat_config_value "$recorded_file" "$config_key")
     if [ -n "$value" ]; then
       ordinary_value="$value"
       ordinary_source="config.yaml"
@@ -198,15 +198,15 @@ resolve_ordinary_scalar() {
 # structured_file, or empty when neither layer sets the key.
 resolve_structured_layer() {
   local local_file="$1"
-  local tracked_file="$2"
+  local recorded_file="$2"
   local config_key="$3"
   structured_file=""
   if [ -f "$local_file" ] && has_flat_config_key "$local_file" "$config_key"; then
     structured_file="$local_file"
     return
   fi
-  if [ -f "$tracked_file" ] && has_flat_config_key "$tracked_file" "$config_key"; then
-    structured_file="$tracked_file"
+  if [ -f "$recorded_file" ] && has_flat_config_key "$recorded_file" "$config_key"; then
+    structured_file="$recorded_file"
   fi
 }
 
@@ -352,21 +352,21 @@ if [ "$in_workspace" = "yes" ]; then
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    jj status 'root-file:.rocketclaw/config.local.yaml' >/dev/null 2>&1
-    if ! jj --ignore-working-copy file list 'root-file:.rocketclaw/config.local.yaml' 2>/dev/null | grep -Fx '.rocketclaw/config.local.yaml' >/dev/null; then
+    jj -R "$workspace_root" status 'root-file:.rocketclaw/config.local.yaml' >/dev/null 2>&1
+    if ! jj -R "$workspace_root" --ignore-working-copy file list 'root-file:.rocketclaw/config.local.yaml' 2>/dev/null | grep -Fx '.rocketclaw/config.local.yaml' >/dev/null; then
       local_config_exclusion="ok"
     else
       local_config_exclusion="missing"
     fi
   fi
 
-  # Jujutsu snapshots new non-ignored files. Existing tracked content under .tmp
-  # proves the scratch root is unsafe; an absent root remains unverified so setup
-  # can offer the supported .gitignore rule before any scratch is created.
+  # Jujutsu snapshots new non-ignored files. Existing tracked content under this
+  # namespace proves it is unsafe; an absent namespace remains unverified so
+  # setup can offer the supported .gitignore rule before scratch is created.
   scratch_exclusion="missing"
-  if [ -d "$workspace_root/.tmp" ]; then
-    jj status 'root:.tmp' >/dev/null 2>&1
-    if ! jj --ignore-working-copy file list 'root:.tmp' 2>/dev/null | grep -q .; then
+  if [ -d "$workspace_root/.tmp/rocketclaw" ]; then
+    jj -R "$workspace_root" status 'root:.tmp/rocketclaw' >/dev/null 2>&1
+    if ! jj -R "$workspace_root" --ignore-working-copy file list 'root:.tmp/rocketclaw' 2>/dev/null | grep -q .; then
       scratch_exclusion="ok"
     fi
   fi
@@ -581,7 +581,7 @@ if [ "$in_workspace" = "yes" ]; then
     ok "Artifact root: ${docs_root_value}/ (from ${docs_root_source})"
   elif [ "$docs_root_status" = "invalid" ]; then
     warn "Invalid docs_root '${docs_root_value}' in ${docs_root_source}: ${docs_root_error}"
-    detail "Rocketclaw artifacts will not be written until docs_root is corrected or removed."
+    detail "Artifacts will not be written until docs_root is corrected or removed."
   fi
   if [ -n "$docs_root_local_ignored" ]; then
     skip "Local docs_root '${docs_root_local_ignored}' is ignored; set docs_root only in config.yaml"

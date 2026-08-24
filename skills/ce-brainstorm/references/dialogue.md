@@ -8,17 +8,14 @@ Scan the repo before substantive brainstorming. Match depth to scope:
 
 **Standard and Deep** — Two passes:
 
-*Constraint Check (inline)* — Use the project's active instructions and conventions already in your context. Read `STRATEGY.md` at the workspace root for product direction and boundaries — a legacy `PRODUCT.md` or `VISION.md` only when `STRATEGY.md` is absent or lacks a meaning you need; go by section meaning, since headings vary by writer — and `CONCEPTS.md` if it exists for canonical vocabulary. Use canonical names in dialogue, approaches, and the Product Contract; if a source adds nothing, move on.
+*Constraint Check (inline)* — Use the project's active instructions and conventions already in your context. Read `STRATEGY.md` at the repo root for product direction and boundaries — a legacy `PRODUCT.md` or `VISION.md` only when `STRATEGY.md` is absent or lacks a meaning you need; go by section meaning, since headings vary by writer — and `CONCEPTS.md` if it exists for canonical vocabulary. Use canonical names in dialogue, approaches, and the Product Contract; if a source adds nothing, move on.
 
-*Topic Scan (grounding scout)* — Create and retain the absolute workspace-local scratch directory with this shell block and a short unique run slug. In a Jujutsu workspace it uses the workspace root; outside Jujutsu it falls back to the current directory's local `.tmp/rocketclaw` tree:
+*Topic Scan (grounding scout)* — Create and retain the absolute scratch directory with this shell block, substituting the absolute path of this skill's directory and a short unique run slug:
 
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; [ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT="$PWD";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
 SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || { [ -e "$SCRATCH_ROOT" ] && [ ! -O "$SCRATCH_ROOT" ]; }; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
 SCRATCH_DIR="$SCRATCH_ROOT/ce-brainstorm/<run-id>";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";

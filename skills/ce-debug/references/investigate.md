@@ -42,7 +42,7 @@ Before deep tracing, confirm the environment is what you think it is — each of
 
 **Existing content in the working-copy change is a suspect, not background.** When `jj status` shows changes in `@`, the user's in-progress edit may have caused the failure. Name that as a hypothesis before tracing ancestor revisions, and test it directly whenever those files could plausibly reach the failing behavior.
 
-Record the original change ID and add an isolated Jujutsu workspace at a unique path under `<workspace-root>/.tmp/local`, editing `@-` so the experiment excludes all content in the original working-copy change. Run the reproduction there. Then forget only the workspace created by this run and remove only its directory. If workspace creation or cleanup fails, stop the experiment and report the exact path and state rather than modifying the original change to simulate isolation.
+Record the original change ID and add an isolated Jujutsu workspace at a unique path under `<workspace-root>/.tmp/rocketclaw`, editing `@-` so the experiment excludes all content in the original working-copy change. Run the reproduction there. Then forget only the workspace created by this run and remove only its directory. If workspace creation or cleanup fails, stop the experiment and report the exact path and state rather than modifying the original change to simulate isolation.
 
 Both results are evidence: the failure vanishing identifies the original working-copy change as the cause; the failure persisting rules that content out. Confirm that the original workspace still edits the recorded change ID after cleanup. Never resolve conflicts or alter content in the user's original change as part of this experiment.
 
@@ -62,7 +62,7 @@ As you trace:
 
 The project's institutional memory often already holds the bug, its cause, or a prior attempt at the fix. This is recorded *human* work, distinct from 1.3's live telemetry and Jujutsu revision history. Skip on the trivial fast-path; run for non-trivial bugs, with regression signals ("it worked before", a reopened or recurring symptom) as the strongest trigger.
 
-Find the tracker and code-review surface from workspace signals — remotes listed by `jj git remote list`, issue-key patterns in recent change descriptions, bookmarks, and PR titles, and the tracker named in the project's active instructions and conventions already in your context. Do not assume a specific tool exists, and do not treat a missing CLI or MCP as proof the capability is absent; use whatever interface that tracker or forge exposes.
+Find the tracker and code-review surface from workspace signals — remotes listed by `jj git remote list`, issue-key patterns in recent change descriptions, bookmarks, and PR titles (`ABC-123` -> Jira/Linear), and the tracker named in the project's active instructions and conventions already in your context. Do not assume a specific tool exists, and do not treat a missing CLI or MCP as proof the capability is absent; use whatever interface that tracker or forge exposes.
 
 Run a few targeted queries on the symptom, the error string, and the affected area — not an exhaustive sweep, and not a re-derivation of what 1.3's revision check already surfaced. Three finds change what you do next:
 

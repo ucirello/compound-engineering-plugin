@@ -58,8 +58,9 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (workspace-root/.tmp/ce-peer-jobs)
-  CE_WORK_RUNS_ROOT         parent ce-work runs dir (workspace-root/.tmp/ce-work/runs)
+  CE_PEER_JOBS_ROOT         compatibility override; production work state lives
+                             under <jj-workspace-root>/.tmp/rocketclaw
+  CE_WORK_RUNS_ROOT         compatibility override for the work run directory
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -75,8 +76,8 @@ Environment overrides (defaults in parentheses):
   CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
                             CE_PEER_BASH is unset (#1268)
 
-Security posture: the job root is an owner-private directory under the current
-JJ workspace's `.tmp`. Every read of job state opens the file first (no-follow) and
+Security posture: the job root is an owner-private directory under the local
+workspace's `.tmp/rocketclaw`. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -109,8 +110,8 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the local JJ workspace's `.tmp`, with local `.tmp`
-            as the fallback before a workspace is available.
+  jobs root defaults under the current workspace's `.tmp\\rocketclaw`,
+             owner-private and local to the run.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -124,7 +125,6 @@ import signal
 import stat
 import subprocess
 import sys
-import secrets
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -141,20 +141,26 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-def _workspace_tmp_root() -> str:
+def _workspace_local_root() -> str:
     try:
         proc = subprocess.run(
-            ["jj", "workspace", "root"], capture_output=True, text=True, check=False,
+            ["jj", "-R", os.getcwd(), "workspace", "root"],
+            capture_output=True, text=True, check=False,
         )
         root = proc.stdout.strip() if proc.returncode == 0 else ""
     except OSError:
         root = ""
-    return os.path.join(os.path.realpath(root) if root else os.path.abspath("."), ".tmp")
+    return os.path.join(os.path.realpath(root or os.getcwd()), ".tmp", "rocketclaw")
 
 
-WORKSPACE_TMP_ROOT = _workspace_tmp_root()
-DEFAULT_ROOT = os.path.join(WORKSPACE_TMP_ROOT, "ce-peer-jobs")
-DEFAULT_WORK_RUNS_ROOT = os.path.join(WORKSPACE_TMP_ROOT, "ce-work", "runs")
+if IS_WINDOWS:
+    # No geteuid on Windows; the current-user SID is the ownership identity
+    # (see the Windows security section below), and the per-user jobs root lives
+    # under LOCALAPPDATA (falling back to the user temp dir) with a hardened ACL
+    # so R6 has a working default rather than a required override.
+    DEFAULT_ROOT = _workspace_local_root()
+else:
+    DEFAULT_ROOT = _workspace_local_root()
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -206,7 +212,10 @@ _RUNNER_HARD_GRACE = 30.0
 
 
 def _private_root_usable(path: str) -> bool:
-    """True when `path` is or can become an owner-private writable directory."""
+    """True when `path` is (or can now be) a directory we own and can write into.
+
+    Creation is the probe: an unwritable local root fails before the first job.
+    """
     try:
         os.mkdir(path, 0o700)
     except FileExistsError:
@@ -223,22 +232,24 @@ def _private_root_usable(path: str) -> bool:
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
-        return os.path.abspath(configured)
-    os.makedirs(WORKSPACE_TMP_ROOT, mode=0o700, exist_ok=True)
-    ignore = os.path.join(WORKSPACE_TMP_ROOT, ".gitignore")
-    if not os.path.lexists(ignore):
-        try:
-            create_exclusive(ignore, b"*\n")
-        except OSError:
-            if not os.path.isfile(ignore):
-                raise RunnerError("could not create the workspace .tmp ignore guard")
-    if IS_WINDOWS or _private_root_usable(DEFAULT_ROOT):
-        return os.path.abspath(DEFAULT_ROOT)
-    raise RunnerError("workspace .tmp is not writable; cannot derive the jobs root")
+        root = os.path.abspath(configured)
+        marker = f"{os.sep}.tmp{os.sep}rocketclaw"
+        if marker not in root:
+            raise RunnerError("CE_PEER_JOBS_ROOT must be below a workspace-local .tmp/rocketclaw directory")
+        return root
+    if not _private_root_usable(DEFAULT_ROOT):
+        raise RunnerError("local .tmp/rocketclaw jobs root is unavailable")
+    return os.path.abspath(DEFAULT_ROOT)
 
 
 def candidate_jobs_root_bases() -> list:
-    """The configured root or current workspace-local root for existing jobs."""
+    """Every root an existing job may live under: the configured root alone, or
+    the workspace-local `.tmp/rocketclaw` root.
+
+    Creation uses jobs_root_base(); lookup of an already-started job must not
+    depend on which root *this* invocation would create under, because a
+    sandboxed session and a later unsandboxed one resolve different roots.
+    """
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]
@@ -247,17 +258,17 @@ def candidate_jobs_root_bases() -> list:
 
 def skill_runs_root(skill: str) -> str:
     if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])
-    if skill == "ce-work":
-        return os.path.abspath(DEFAULT_WORK_RUNS_ROOT)
+        root = os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])
+        marker = f"{os.sep}.tmp{os.sep}rocketclaw{os.sep}"
+        if marker not in root + os.sep:
+            raise RunnerError("CE_WORK_RUNS_ROOT must be below a workspace-local .tmp/rocketclaw directory")
+        return root
     return os.path.join(jobs_root_base(), skill)
 
 
 def candidate_skill_runs_roots(skill: str) -> list:
     if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return [os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])]
-    if skill == "ce-work":
-        return [os.path.abspath(DEFAULT_WORK_RUNS_ROOT)]
+        return [skill_runs_root(skill)]
     return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 
@@ -810,21 +821,21 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    fd = None
+    parent = os.path.dirname(path)
     tmp = None
-    for _ in range(64):
-        candidate = os.path.join(os.path.dirname(path), f".staging-{os.getpid()}-{secrets.token_hex(8)}")
+    for _ in range(128):
+        candidate = os.path.join(parent, f".atomic-{os.getpid()}-{os.urandom(8).hex()}")
         try:
             fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
             tmp = candidate
             break
         except FileExistsError:
             continue
-    if fd is None or tmp is None:
-        raise RunnerError("could not reserve an atomic staging file")
+    if tmp is None:
+        raise RunnerError("could not reserve an atomic local state file")
     try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -1797,7 +1808,7 @@ def _require_detach_support() -> None:
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
             "a Windows Python 3 build (see "
-            "the platform portability guidance)."
+            "the recorded Windows detach compatibility contract)."
         )
 
 
@@ -1813,8 +1824,6 @@ def cmd_start(args, worker_argv) -> int:
 
     base = jobs_root_base()
     skill_dir = skill_runs_root(args.skill)
-    if args.skill == "ce-work":
-        os.environ["CE_WORK_RUNS_ROOT"] = skill_dir
     run_dir = os.path.join(skill_dir, args.run_id)
     jobs_root = os.path.join(run_dir, "jobs")
     ensure_owned_dirs(skill_dir if skill_dir != os.path.join(base, args.skill) else base, jobs_root)
@@ -1994,7 +2003,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace-local path unchecked.
+        # consumer must never read a predictable local scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

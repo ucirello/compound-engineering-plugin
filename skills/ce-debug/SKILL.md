@@ -23,9 +23,15 @@ Default is **interactive**: investigate, run the Phase 2 fix-choice gate, then t
 
 Wherever this skill asks the user something, use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question, and never end a phase without a response.
 
-## Local Artifact Root
+## Workspace Paths
 
-Resolve `<root>` only when you first compose a `<root>/` path. Use the artifact directory named by the project's active conventions; when none is defined, use `<workspace-root>/.tmp/local`, where `<workspace-root>` is reported by `jj root`. The resolved directory must stay inside the workspace root and outside `.jj/` and `.git/`; otherwise stop rather than choosing another location. A run that composes no artifact path skips this entirely.
+Resolve `<workspace-root>` with `jj workspace root`. Outside a Jujutsu workspace, use the current working directory as the local root. Put every temporary file or directory under `<workspace-root>/.tmp/rocketclaw`; never use an OS-global temporary location. Create a unique child when concurrent runs could collide, and remove only paths created by this run.
+
+Resolve `<root>` only when you first compose a durable artifact path; a run that composes none skips this entirely.
+
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `docs`.
+- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 
 ## Execution Flow
 
@@ -93,7 +99,9 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 - No fix-owned file carried pre-existing edits: those filesets are the change scope passed to whichever routing skill acts next.
 - A fix-owned file already carried the user's edits: first determine whether `jj split` can isolate the fix-owned content without ambiguity. If it can, isolate only that content. If it cannot, ask (per **Blocking questions**) before describing or publishing anything: include the user's overlapping edits, leave the mixed change local and undescribed, or stop. Only the first answer continues; say what was left and why on either other answer. Phase 3's confirmation covered editing the file, never publishing the user's edits with the fix.
 
-At every point that composes the Jujutsu change description or a commit message: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local active instructions and syntax observed in `git log` always win over Go guidance. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose a fixed message syntax.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Repository-local active instructions and syntax observed at runtime always win. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose fixed syntax, examples, or templates. Preserve dynamic tracker tokens and other placeholders required by the active provider.
 
 **2. Who describes the change, and whether it ships.** Exactly one of these runs.
 

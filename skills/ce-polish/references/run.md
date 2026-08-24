@@ -4,7 +4,7 @@ This reference owns JJ workspace safety, Git-provider interoperability, server s
 
 ## Resolve the workspace
 
-Require a JJ workspace and resolve its root with `jj workspace root`. Jujutsu has working-copy changes and bookmarks, not a current branch, detached HEAD mode, an index, or a stash. Use JJ for every repository mutation. Read-only Git commands remain valid in a colocated repository when an operational provider needs them, and Git Bash remains a supported shell, but do not substitute a mutating Git command for a JJ operation.
+Require a JJ workspace and resolve its root with `jj workspace root`. Jujutsu has working-copy changes and bookmarks, not a current branch, detached HEAD mode, an index, or a stash. Use JJ for every repository read and mutation. Git Bash remains a supported shell; provider metadata comes through the provider interface described below.
 
 If the user named a GitHub PR, use `gh` to obtain its head repository, head bookmark, and head commit ID. In a non-colocated Git-backed workspace, obtain the backing repository with `jj git root` and expose that path to `gh` as `GIT_DIR`. Fetch the head through `jj git fetch` from a configured remote that matches the head repository; when none exists, use `jj git remote` to add a uniquely named remote for that provider repository before fetching, and remove only that temporary remote after the selected revision is anchored by the new working-copy change. Do not use `gh pr checkout`. For another provider, use its available interface for the same metadata and keep all fetch/import operations in `jj git`. If authentication, provider metadata, remote identity, or the fetched head cannot be established exactly, report the blocker and stop.
 

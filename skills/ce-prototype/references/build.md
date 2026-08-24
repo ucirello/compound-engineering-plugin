@@ -18,7 +18,7 @@ Inside JJ, prefer `<workspace-root>/.rocketclaw/ce-prototype/<date>-<slug>/` so 
 
 Use `jj workspace root` to discover the workspace. Treat `@` as the current working-copy change, not as a named checkout. JJ has no staging area: ordinary file writes are automatically snapshotted into `@`. Use `jj status` or `jj diff -r <revset>` with the narrowest workspace-relative `root:` fileset needed for inspection. Use change IDs and revsets to identify work; use bookmarks only when a provider or remote needs a named pointer.
 
-Prefer JJ for mutations. Git remains valid for read-only inspection in a colocated workspace and where a provider, GitHub, `gh`, or another Git-only integration requires it. Use `jj git import` or `jj git export` when a non-colocated interoperability step needs synchronization. When `gh` needs the underlying Git repository, resolve it with `jj git root` and provide that path as `GIT_DIR` for the invocation. Run shell adapters in the active local shell; POSIX blocks must also remain valid in Git Bash.
+Use JJ for every repository read and mutation. Use `jj git import` or `jj git export` when a non-colocated provider interoperability step needs synchronization. When `gh` needs the underlying repository, resolve it with `jj git root` and provide that path as `GIT_DIR` for the invocation. Run shell adapters in the active local shell; POSIX blocks must also remain valid in Git Bash.
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 

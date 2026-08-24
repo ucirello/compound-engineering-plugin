@@ -6,7 +6,7 @@ This reference owns the path from invocation to a launched app with log capture 
 
 Resolve the workspace root with `jj workspace root`. When the current directory is outside a JJ workspace, use that directory as the local workspace root. Inside a JJ workspace, treat `jj status`, `jj diff`, and `jj log` as authoritative for working-copy state, changed surfaces, and relevant history. Jujutsu has working-copy changes and bookmarks, not a staging area or current branch; do not substitute mutating Git commands for JJ operations.
 
-Preserve operational interoperability rather than translating it into repository mutation. Use `gh` for GitHub metadata when the user's scope names a PR or other GitHub object; in a non-colocated Git-backed JJ workspace, point `GIT_DIR` at the path returned by `jj git root`. Read-only Git commands may remain when an operational provider requires them, and Git Bash remains a supported shell.
+Preserve operational interoperability rather than translating it into repository mutation. Use `gh` for GitHub metadata when the user's scope names a PR or other GitHub object; in a non-colocated Git-backed JJ workspace, point `GIT_DIR` at the path returned by `jj git root`. Keep every repository read and mutation in JJ; Git Bash remains a supported shell.
 
 Create one private run directory under `<workspace-root>/.tmp/rocketclaw/ce-test-xcode/<run-id>/` and retain its absolute path. Store screenshots, captured logs, and other temporary evidence only there; do not use operating-system or global temporary storage. Outside JJ, the same path is rooted at the local workspace directory.
 

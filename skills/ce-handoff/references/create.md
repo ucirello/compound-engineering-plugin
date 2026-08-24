@@ -36,7 +36,7 @@ When the current directory is in a Jujutsu workspace, treat JJ as the source of 
 
 Capture only state needed for continuity. Distinguish the working-copy change from its parents, note unresolved conflicts or divergent bookmarks, and identify any fragile operation-log or workspace dependency. Jujutsu commands normally snapshot the working copy; report the state actually observed rather than claiming separate staged and unstaged snapshots.
 
-Use `jj git` only for Git-backed interoperability. `jj git remote list` and `jj git root` may establish sanitized remote or backend identity. In a colocated repository, Git and JJ can operate side by side and import/export is normally automatic. When an operational Git-only tool is required in a non-colocated repository, export JJ state before that tool and import its changes afterward using the installed JJ version's supported commands. Never use Git `HEAD` or a Git branch to override JJ change and bookmark state.
+Use `jj git` only for Git-backed interoperability. `jj git remote list` and `jj git root` may establish sanitized remote or backend identity. Provider tools may consume state exported with the installed JJ version's supported commands, but every repository read and mutation stays in JJ. Never use Git `HEAD` or a Git branch to override JJ change and bookmark state.
 
 Keep `gh` for GitHub issue, pull-request, repository, and URL evidence. A GitHub head branch corresponds operationally to a pushed JJ bookmark; verify that bookmark and remote rather than inventing a current branch. Preserve provider, model, runtime, Git Bash, or GitHub details only when they materially affect reproduction, access, or continuation, never as creator attribution.
 

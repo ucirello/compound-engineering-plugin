@@ -1,6 +1,6 @@
 # CONCEPTS.md vocabulary rules
 
-`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and AGENTS.md can cite without redefinition. Lives at the repo root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
+`CONCEPTS.md` defines the words that mean something specific in this codebase — substrate that `<root>/solutions/` and AGENTS.md can cite without redefinition. It lives at the workspace root. Terms enter two ways — accretion and seeding (below) — and the file is created the first time either path produces a qualifying entry.
 
 ## How terms enter: accretion and seeding
 
@@ -87,7 +87,7 @@ After the per-doc actions execute, reconcile the domain terms flagged during inv
 2. **If `CONCEPTS.md` exists:** add missing terms, refine entries where the corpus surfaced new precision, then reconcile the in-scope core nouns — re-derive the area's core domain nouns per the reference's **Seed goal** and backfill any central-but-missing ones. Bounded to the area in scope; never a repo-wide sweep.
 3. **If it doesn't exist** and at least one term qualified: bootstrap it — seed the in-scope area's core domain nouns per the Seed goal alongside the surfaced terms, holding the bar conservatively for borderline terms at creation. Start the file with this preamble under a `# Concepts` heading:
 
-   > Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
+   > Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then grows as `ce-compound` and `ce-compound-refresh` process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
 
    1-4 terms → flat headings; more → cluster by domain relationship per the reference.
 4. **Scrub violations** in existing entries per the reference's criteria (implementation specifics, config values that drift, status/owner/date metadata, duplicates, undefined project-specific siblings). The full sweep is appropriate here because refresh is an audit.

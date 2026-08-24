@@ -1,59 +1,53 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communicating message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate message.
+description: Create Jujutsu commits with clear, value-communicating descriptions. Use when the user asks to commit or save working-copy changes with repository-appropriate descriptions.
 ---
 
-# Git Commit
+# Jujutsu Commit
 
-Create well-crafted local commit(s) from the current working tree. No push, no PR — use `ce-commit-push-pr` for the full ship flow.
+Create well-crafted local Jujutsu commits from the current working-copy change. Do not push or open a PR; use `ce-commit-push-pr` for the full ship flow.
 
-**Done when:** each logical change is committed with an explicit file list and a message that states the outcome, and `git status` is clean of those changes. **Stop when:** the tree is clean (nothing to commit).
+**Done when:** each logical change is finalized from an explicit fileset with a description that states the outcome, the appropriate feature bookmark points to the resulting stack, and `jj status` no longer lists those paths in the working-copy change. **Stop when:** the working-copy change is empty.
 
 ## Context
 
-Gather context with each command as its **own** shell tool call (program + args only). Do **not** join with `;`, `&&`, `||`, pipes, `$(...)`, or redirects — that syntax fails under Windows PowerShell. A non-zero exit is a normal state to interpret, not a failure to suppress.
+Gather context with each command as its **own** shell tool call (program plus arguments only). Do not join commands with shell operators, command substitutions, pipes, or redirects. Interpret a non-zero exit as state rather than suppressing it.
 
 | Command | Purpose | Non-zero / empty means |
 | --- | --- | --- |
-| `git status` | Working-tree state | Not a git repo — stop |
-| `git diff HEAD` | Uncommitted changes | Unborn repo / no commits yet |
-| `git branch --show-current` | Current branch | Empty = detached HEAD |
-| `git log --oneline -10` | Recent message style | Unborn repo — no history |
-| `git rev-parse --abbrev-ref origin/HEAD` | Remote default branch | No `origin/HEAD` / bare `HEAD` — try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, else `main` |
+| `jj workspace root` | Workspace root and repository check | Not a Jujutsu workspace; stop |
+| `jj status` | Working-copy change and conflicts | Empty change means nothing to commit |
+| `jj diff` | Current change contents | Empty output means nothing to commit |
+| `jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'json(local_bookmarks) ++ "\n"'` | Nearest local bookmarks in the ancestry | No local bookmark anchors the current stack |
+| `jj log -r 'heads(::@ & remote_bookmarks())' --no-graph -T 'json(remote_bookmarks) ++ "\n"'` | Nearest remote bookmarks in the ancestry | No remote bookmark anchors the current stack |
+| `jj log -r '::@' -n 10 --no-graph` | Recent description style | No usable history to match |
+| `jj log -r 'trunk()' --no-graph` | Default base change | `trunk()` is unresolved; do not guess a default |
+| `jj log -r 'trunk() & tracked_remote_bookmarks()' --no-graph -T 'json(remote_bookmarks.filter(|b| b.tracked())) ++ "\n"'` | Tracked remote bookmarks at the default base | None or multiple means there is no unique default bookmark |
 
-Treat this as a snapshot. Re-read branch and staged set immediately before committing if anything may have changed.
-
-**Default branch name:** strip a leading `origin/` from `origin/HEAD` (so `origin/trunk` → `trunk`). Use that bare name for all “on the default branch?” checks — never compare against `origin/<name>`.
+Treat this as a snapshot. Re-read `jj status`, `jj diff`, and the nearest bookmarks immediately before finalizing if the working copy may have changed.
 
 ## Workflow
 
 0. **Gather** — run every Context command above (own shell call each), then continue.
 
-1. **Nothing to commit** — if `git status` shows no staged, modified, or untracked files, report that and stop. Do not use `git diff HEAD` alone as cleanliness (it misses untracked files).
+1. **Nothing to commit** — if the working-copy change is empty, report that and stop. Jujutsu snapshots non-ignored working-copy files automatically, so `jj status` is the authoritative check.
 
-2. **Branch first** — if detached HEAD, or on the default branch (`main` / `master` / the bare default name above), create a feature branch from the change content (`git checkout -b <name>`), then re-read `git branch --show-current`. Do not ask — commit-only still must not leave work only on a detached HEAD or the default branch. If the derived name exists, pick a non-conflicting suffix.
+2. **Choose the bookmark action** — Jujutsu has no active bookmark. Resolve the default base with `trunk()`; if it does not resolve, stop before changing a bookmark and report the blocker. Recognize its default bookmark only when exactly one tracked remote bookmark points to that change; never infer a name. If exactly one nearest non-default local bookmark identifies the stack, retain it for advancement after finalizing. If only the unique default bookmark or no local bookmark anchors the stack, derive an unused feature bookmark name from the change. If the default or intended feature bookmark remains ambiguous, ask which bookmark to advance. Do not leave completed work reachable only through the default bookmark or an anonymous change.
 
-3. **Convention** — match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). When using conventional commits and `fix`/`feat` both fit, default to `fix:` (remedying broken or missing behavior); reserve `feat:` for new capabilities. User override wins.
+3. **Description convention** — Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The user's instruction wins, followed by the project's active instructions and conventions, then the established syntax in the current `jj log`. Where those sources are silent, use only compatible Go guidance to improve the description's quality. It does not impose a verb tense, punctuation, line width, or first-line/body shape.
 
-4. **Logical commits** — if changed files clearly split into distinct concerns, make separate commits (file level only, 2–3 max, no `git add -p`). If ambiguous, one commit.
+4. **Logical commits** — if changed files clearly split into distinct concerns, finalize separate file-level changes, with two or three as the maximum. Do not split hunks within a file. If the separation is ambiguous, make one commit.
 
-5. **Message** — subject is imperative and names the outcome (what is now possible or fixed), not the file list. Body only when motivation or trade-offs are not obvious from the subject. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+5. **Describe each change** — communicate the outcome rather than enumerate files. When a plan implementation-unit identifier is already in hand and the files belong to exactly that unit, include that identifier using the project's established rendering. Do not search for a plan; omit the identifier when the group spans units, is unclear, or has no known unit.
 
-   - Bad: `Update checkout.rb` / `Add tests and fix stuff`
-   - Good: `Fix double-submit on checkout`
-   - Good: `Add per-subscription mute (U3)`
+6. **Finalize explicit filesets** — honor `exclude:<paths>` from the invocation: those paths must remain in the working-copy change and must be named in the report. For each logical group, pass only that group's paths to `jj commit`; this keeps the selected paths in the finalized commit and moves every remaining path into the new working-copy change.
 
-6. **Stage and commit** — stage **named files only** (never `git add -A` or `git add .`). Honor `exclude:<paths>` when the invocation carries it: those files stay uncommitted no matter what else changed; say in the report that they were left out. Prefer one shell call per commit group:
-
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-type(scope): subject line here
-
-Optional body when the why is not obvious from the subject.
-EOF
-)" -- file1 file2 file3
+```text
+jj commit -m "<description>" <path>...
 ```
 
-The trailing path list on `git commit` is load-bearing: a bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would ride into the commit. Naming the paths commits exactly the group and leaves other index entries alone.
+After each command, inspect the finalized parent with `jj log -r @- --no-graph` and verify with `jj status` that the intended paths left the working-copy change while all other paths, especially exclusions, remain.
 
-7. **Confirm** — `git status`; report hash(es) and subject(s).
+7. **Place the feature bookmark** — after all groups are finalized, run `jj bookmark create <feature-bookmark> -r @-` for a new bookmark or `jj bookmark advance <feature-bookmark> --to @-` for the retained non-default bookmark. Confirm its target with `jj bookmark list -r @-`. Do not move the default bookmark.
+
+8. **Report** — report each change ID, commit ID, and description, the feature bookmark, and any excluded or otherwise remaining working-copy paths.

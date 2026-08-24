@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > CE config cascade >
+#                   resolved preference (conversation > workspace config >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -86,21 +86,16 @@ case "$TRANSIENT_RETRY_DELAY_SECS" in ''|*[!0-9]*) skip "transient retry delay m
 [ "$TRANSIENT_RETRY_DELAY_SECS" -le 60 ] || skip "transient retry delay must be an integer from 0 to 60; skipping"
 
 # --- model + reasoning per provider ----------------------------------------
-# ONE model per provider at high reasoning, except codex on extra-high (supersedes
-# the old per-lens sol/terra split). Concrete IDs are the CURRENT instance of the
-# tier principle and the single maintenance point when model families change.
-# A checkout may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
-# CROSS_MODEL_MODEL_OVERRIDE, same target/family only) and the reasoning effort
-# (CROSS_MODEL_EFFORT_OVERRIDE, validated per route); both fail closed.
-# codex: luna/xhigh is the benchmarked pick on API dollars (~0.30x sol-medium, tied
-# detection, slower tail) -- docs/solutions/skill-design/benchmark-review-peer-model-and-reasoning-tier.md
-M_CODEX="gpt-5.6-luna"         # codex CLI            (-c model_reasoning_effort="xhigh")
-M_CLAUDE="claude-opus-5"       # claude CLI, Opus 5   (--effort high)
-M_GROK="grok-4.6"              # grok CLI             (--effort high)
-M_GROK_CURSOR="cursor-grok-4.6-high"  # fixed cursor-agent Grok route (current id)
-M_COMPOSER="composer-2.5-fast" # cursor-agent composer (no high tier; -fast is the ceiling)
+# One model per provider at high reasoning, except Codex on extra-high.
+# These defaults are the operational mapping; compatible workspace or
+# conversation overrides may replace them for the same target and family.
+M_CODEX="gpt-5.6-luna"
+M_CLAUDE="claude-opus-5"
+M_GROK="grok-4.6"
+M_GROK_CURSOR="cursor-grok-4.6-high"
+M_COMPOSER="composer-2.5-fast"
 
-route_effort() {   # <route> -> requested effort: the override where the route takes one, else editorial
+route_effort() {   # <route> -> requested effort or route-owned tier
   if [ -n "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ]; then
     case "$1" in codex|claude|grok-cli) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;; esac
   fi
@@ -119,7 +114,7 @@ route_effort() {   # <route> -> requested effort: the override where the route t
 # keyed by the full dated id that actually served the run. Match requested vs
 # actual by expected family prefix, delimited on "-": the served id must equal
 # the prefix or continue it with "-" (alias or undated id -> dated id counts
-# as a match; a longer sibling such as claude-opus-50-* does not; never
+# as a match; a longer sibling with the same textual prefix does not; never
 # substring). Every other route records the literal
 # "unverified" — never a fallback to the requested value. Keep this block byte-identical across
 # ce-code-review and ce-doc-review (kernel parity).
@@ -133,7 +128,7 @@ expected_model_prefix() {   # <requested-alias-or-id> -> expected served-id fami
   esac
 }
 
-route_model() {   # <route> -> the M_* constant that route requests
+route_model() {   # <route> -> configured override or route-owned default
   local target
   target="$(route_target "$1")"
   if [ -n "${CROSS_MODEL_MODEL_OVERRIDE:-}" ] &&
@@ -233,18 +228,23 @@ extract_model_receipt() {   # <route>; reads the envelope in $PEERLOG, sets MODE
 adapter_argv() {
   case "$1" in
     codex)
-      printf '%s\0' codex exec - -C "$PEER_WORKDIR" --skip-git-repo-check -s read-only \
-        -o "$RAW_OUT" -m "$(route_model codex)" -c "model_reasoning_effort=\"$(route_effort codex)\"" -c 'hide_agent_reasoning=false'
+      printf '%s\0' codex exec - -C "$PEER_WORKDIR" --skip-git-repo-check -s read-only -o "$RAW_OUT"
+      [ -z "$(route_model codex)" ] || printf '%s\0' -m "$(route_model codex)"
+      [ -z "$(route_effort codex)" ] || printf '%s\0' -c "model_reasoning_effort=\"$(route_effort codex)\""
+      printf '%s\0' -c 'hide_agent_reasoning=false'
       ;;
     claude)
       # --tools "" disables ALL built-in tools (allowlist deny-all, no denylist gap
       # like Glob/Grep); --safe-mode suppresses hooks, MCP, plugins, and other
-      # custom behavior without bypassing Claude Code's normal OAuth/keychain auth.
+      # custom behavior without bypassing the provider's normal authentication.
       # The run cd's into the empty per-peer workspace (claude has no cwd flag), so
       # the peer has no repo -- or sibling peer's fold-in artifact -- in reach.
       # R17 tool-less isolation.
       # stream-json + --verbose for PEERLOG idle (#1270); schema still composes.
-      printf '%s\0' claude -p --model "$(route_model claude)" --effort "$(route_effort claude)" --permission-mode dontAsk \
+      printf '%s\0' claude -p
+      [ -z "$(route_model claude)" ] || printf '%s\0' --model "$(route_model claude)"
+      [ -z "$(route_effort claude)" ] || printf '%s\0' --effort "$(route_effort claude)"
+      printf '%s\0' --permission-mode dontAsk \
         --safe-mode --disable-slash-commands --tools "" \
         --max-turns 15 --no-session-persistence --json-schema "$SCHEMA_REF" \
         --output-format stream-json --verbose
@@ -253,14 +253,18 @@ adapter_argv() {
       # Schema forces buffered json — hard-only, no PEERLOG idle (#1270).
       # --verbatim: without it grok offloads a large prompt to a session file and
       # sends only a preview — unrecoverable here, because Read is denied below.
-      printf '%s\0' grok --prompt-file "$PROMPT_FILE" --verbatim --model "$(route_model grok-cli)" --effort "$(route_effort grok-cli)" \
-        --cwd "$PEER_WORKDIR" --permission-mode dontAsk \
+      printf '%s\0' grok --prompt-file "$PROMPT_FILE" --verbatim
+      [ -z "$(route_model grok-cli)" ] || printf '%s\0' --model "$(route_model grok-cli)"
+      [ -z "$(route_effort grok-cli)" ] || printf '%s\0' --effort "$(route_effort grok-cli)"
+      printf '%s\0' --cwd "$PEER_WORKDIR" --permission-mode dontAsk \
         --deny Read --deny Edit --deny Write --deny Bash --deny Task --deny 'mcp__*' \
         --disable-web-search --no-subagents --max-turns 15 \
         --json-schema "$SCHEMA_REF" --output-format json
       ;;
     grok-cursor)
-      printf '%s\0' cursor-agent -p --model "$(route_model grok-cursor)" --mode ask --trust \
+      printf '%s\0' cursor-agent -p
+      [ -z "$(route_model grok-cursor)" ] || printf '%s\0' --model "$(route_model grok-cursor)"
+      printf '%s\0' --mode ask --trust \
         --sandbox enabled --workspace "$PEER_WORKDIR" --output-format stream-json
       ;;
     cursor)
@@ -268,7 +272,9 @@ adapter_argv() {
         --sandbox enabled --workspace "$PEER_WORKDIR" --output-format stream-json
       ;;
     composer)
-      printf '%s\0' cursor-agent -p --model "$(route_model composer)" --mode ask --trust \
+      printf '%s\0' cursor-agent -p
+      [ -z "$(route_model composer)" ] || printf '%s\0' --model "$(route_model composer)"
+      printf '%s\0' --mode ask --trust \
         --sandbox enabled --workspace "$PEER_WORKDIR" --output-format stream-json
       ;;
     *) return 1 ;;
@@ -347,6 +353,9 @@ RUN_DIR="${7:-}"
 # Requiring it to pre-exist would silently no-op the whole pass (no fold-in files).
 mkdir -p "$RUN_DIR" 2>/dev/null
 [ -d "$RUN_DIR" ] || skip "run-dir '$RUN_DIR' could not be created; skipping"
+TMP_ROOT="$RUN_DIR/tmp"
+mkdir -p "$TMP_ROOT" 2>/dev/null
+[ -d "$TMP_ROOT" ] || skip "local temp dir '$TMP_ROOT' could not be created; skipping"
 command -v jq >/dev/null 2>&1 || skip "jq not installed; skipping"
 
 # Validate the host identity tuple. An unknown serving family is allowed, but
@@ -499,13 +508,13 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+PROMPT_FILE="$(mktemp "$TMP_ROOT/xmodel-doc-prompt-XXXXXX")"
+PEERLOG="$(mktemp "$TMP_ROOT/xmodel-doc-log-XXXXXX")"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-err-XXXXXX")"
+PEERERR="$(mktemp "$TMP_ROOT/xmodel-doc-err-XXXXXX")"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
@@ -525,7 +534,6 @@ DOC_BASENAME="$(basename "$DOC_PATH")"
   # Shared output-contract (confidence rubric + FP catalog) the persona brief defers
   # to, so the peer calibrates like its in-process twin.
   [ -n "$OUTPUT_CONTRACT_RULES" ] && printf '%s\n\n' "$OUTPUT_CONTRACT_RULES"
-  printf 'This is an authorized document review of the maintainer\047s own repository.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
   printf '\n\nSet the top-level "reviewer" field to "%s" (it will be namespaced to the peer provider on fold-in).\n' "$REVIEWER_NAME"
@@ -995,7 +1003,7 @@ parse_structured() {   # <logfile> <outfile>
 
 # Run one route for a provider; leaves a schema-shaped (pre-normalization) $RAW_OUT on success.
 attempt_route() {   # <provider> <route>
-  local provider="$1" route="$2" note
+  local provider="$1" route="$2" note recipients
   local attempt_hard="${ATTEMPT_HARD_SECS:-}"
   [ -n "$attempt_hard" ] || attempt_hard="$(route_hard_budget "$route")"
   PROVIDER_OUTCOME="ok"
@@ -1006,7 +1014,12 @@ attempt_route() {   # <provider> <route>
     grok-cursor|composer)  note="$(route_model "$route")" ;;
     cursor)                note="auto (serving model unverified)" ;;
   esac
-  log "peer run: provider=$provider route=$route model=$note lens=$REVIEWER_NAME read-only least-privilege (idle ${IDLE_SECS}s / attempt hard ${attempt_hard}s); full document content egresses to this provider via this route"
+  case "$route" in
+    grok-cli) recipients="xAI (direct)" ;;
+    grok-cursor) recipients="Cursor intermediary and xAI" ;;
+    *) recipients="$provider" ;;
+  esac
+  log "peer run: provider=$provider route=$route recipients=$recipients model=$note lens=$REVIEWER_NAME read-only least-privilege (idle ${IDLE_SECS}s / attempt hard ${attempt_hard}s); full document content egresses to these recipients via this route"
   case "$route" in
     codex)
       run_codex_cmd "$attempt_hard"
@@ -1062,7 +1075,7 @@ run_provider() {   # <provider>
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
   # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
   # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  PEER_WORKDIR="$(mktemp -d "$TMP_ROOT/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -1119,7 +1132,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
+    _norm="$(mktemp "$TMP_ROOT/xmodel-doc-norm-XXXXXX")"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

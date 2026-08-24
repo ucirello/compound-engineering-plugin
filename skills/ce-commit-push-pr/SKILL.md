@@ -1,10 +1,10 @@
 ---
 name: ce-commit-push-pr
-description: Commit, push, and open a PR. Use when asked to ship/open a PR, or for PR-description-only flows like writing, rewriting, or describing a PR body.
-argument-hint: "[PR ref] [mode:pipeline] [archive:on|off] [branding:on|off] [babysit:off|continuous|checkpoint]"
+description: Commit, push, and open a PR with Jujutsu and GitHub. Use when asked to ship/open a PR, or for PR-description-only flows like writing, rewriting, or describing a PR body.
+argument-hint: "[PR ref] [mode:pipeline] [archive:on|off] [babysit:off|continuous|checkpoint]"
 ---
 
-# Git Commit, Push, and PR
+# Jujutsu Commit, Push, and PR
 
 **Asking the user:** use the host's blocking question tool — `AskUserQuestion` in Claude Code (`ToolSearch` `select:AskUserQuestion` first if unloaded), `request_user_input` in Codex, `ask_question` in Antigravity (`agy`), `ask_user` in Pi (needs the `pi-ask-user` extension). Fall back to the chat surface only when no blocking tool exists or the call errors, never because a schema load is required, and never silently skip the question.
 
@@ -14,7 +14,7 @@ argument-hint: "[PR ref] [mode:pipeline] [archive:on|off] [branding:on|off] [bab
 - **Description update** — refresh or rewrite an existing PR's description, with no commit or push intent. Resolve PR presence by the Context rule below: an exit-0 `[]` is "no open PR" (report it and stop), and a non-zero exit is **unknown** (resolve auth or connectivity, then stop until presence is known). **With an open PR**, run Step 4 in PR mode on that URL, then Step 5 to preview, confirm, and apply via `gh pr edit`.
 - **Full workflow** — otherwise: Steps 1-5. Enter **Stack mode** instead when intent or preference wants a stack.
 
-**`mode:pipeline` modifier**, set by orchestrated callers such as `lfg`. Run the resolved mode non-interactively and suppress every blocking ask; each takes the conservative default: no existing-PR rewrite, the branch kept, an unresolvable base stopping rather than guessed, and a description-update preview applied directly, since that invocation is the apply intent. Pipeline stack mode uses only the intent and scope on the invocation and passes posture into the handoff.
+**`mode:pipeline` modifier**, set by orchestrated callers such as `lfg`. Run the resolved mode non-interactively and suppress every blocking ask; each takes the conservative default: no existing-PR rewrite, the bookmark kept, an unresolvable base stopping rather than guessed, and a description-update preview applied directly, since that invocation is the apply intent. Pipeline stack mode uses only the intent and scope on the invocation and passes posture into the handoff.
 
 ## Stack mode (opt-in)
 
@@ -24,13 +24,13 @@ In stack mode, load `references/stack-submit.md` **before Step 3** and follow on
 
 ## Context
 
-**Read `references/context.md` before Step 1.** It owns the command table, the exit-code meanings, the fork and detached-HEAD traps, and the branch and PR resolution Steps 1-2 use. Two of its rules belong here too. Never ask whether to branch: a detached HEAD, or the default branch with work on it, creates one, and the default branch with no work reports and stops. And with conventional commits, default to `fix:` over `feat:` when ambiguous, unless the user overrides.
+**Read `references/context.md` before Step 1.** It owns the command table, exit-code meanings, fork handling, and bookmark and PR resolution Steps 1-2 use. Never ask whether to create a feature bookmark: work based directly on the default bookmark gets one, and a default-bookmark state with no work reports and stops.
 
 Three rules govern the run.
 
-**Every `git` and `gh` probe is its own argv-form call**, gathering and re-verification alike, and its exit status is control flow. The reference gives the reason and names the two compound recipes this skill pins.
+**Every `jj` and `gh` probe is its own argv-form call**, gathering and re-verification alike, and its exit status is control flow. The reference gives the reason.
 
-**Probe output is a snapshot.** Re-verify branch, remote, and PR state right before each consequential action: Step 3's push, Step 5's create.
+**Probe output is a snapshot.** Re-verify bookmark, remote, and PR state right before each consequential action: Step 3's push, Step 5's create.
 
 **Only an exit-0 `[]` from a query against the base repo means "no open PR."** A non-zero exit is **unknown**, never "none". On a fork checkout, target the base with `-R` and pass the branch name only, since `--head <owner>:<branch>` silently returns `[]`. With results, do **not** blindly take index 0: match head owner and branch, and stop on an ambiguous match. Note the URL and body from that entry — Step 5 routes on the URL, Step 4 rewrites the existing body.
 
@@ -38,23 +38,23 @@ Three rules govern the run.
 
 Resolve `<root>` once when archival is on: it writes an explainer under `<root>/explainers/`.
 
-<!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
 
 ## Step 3: Commit and push
 
-**Read `references/commit-and-push.md`** for branch creation, commit grouping, the message and staging shapes, and the push. Branching off the default branch is the fragile case — stale local base, unpushed commits on it, colliding uncommitted changes — and `references/branch-creation.md` owns that flow. If the stack reference already committed retrospective layers, skip to Step 4; `gh stack submit` pushes in Step 5.
+**Read `references/commit-and-push.md`** for bookmark creation, change grouping, descriptions, and the push. Starting from the default bookmark is the fragile case because its local and remote targets can differ; `references/bookmark-creation.md` owns that flow. If the stack reference already committed retrospective layers, skip to Step 4; `gh stack submit` pushes in Step 5.
 
-Two rules bound this step. Never `git add -A` or `git add .` — name the files, so `.env`, build, and generated files cannot ride along, and pass that same path list to `git commit`, so nothing staged earlier is swept in. Honor `exclude:<paths>`: those files stay uncommitted and the report says so.
+Path-limit every `jj commit` so unrelated working-copy content cannot ride along. Honor `exclude:<paths>`: those files stay in the working-copy change and the report says so.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 ## Step 4: Compose the PR title and body
 
-**You MUST read `references/pr-description-writing.md`** in full — it owns the title and body content rules, including the rule to preserve an existing `Related:` / `Fixes` on rewrite. Then read **`references/compose.md`** for the gates before composition: the evidence decision; the teaching gate, where `pr_teaching_section` defaults **on**, `pr_teaching_archive` defaults **off**, and only an **active (non-commented)** key changes either; and the branding gate, where branding is **off unless** this invocation carries `branding:on` or the user asks for Compound Engineering branding in this prompt.
+**You MUST read `references/pr-description-writing.md`** in full. It owns the title and body content rules, including preservation of an existing `Related:` / `Fixes` on rewrite. Then read **`references/compose.md`** for the evidence decision and teaching gate, where `pr_teaching_section` defaults **on**, `pr_teaching_archive` defaults **off**, and only an **active (non-commented)** key changes either.
 
 If Step 1 found an existing PR, pass its URL to Step 4 so PR mode fetches the existing body.
 
@@ -64,4 +64,4 @@ If Step 1 found an existing PR, pass its URL to Step 4 so PR mode fetches the ex
 
 **The completion gate is here.** In an interactive full workflow, or in `mode:pipeline` when this run submitted a stack, a reported PR URL, a stack submit, or new commits on an open PR leave this run **not done** until `ce-babysit-pr` owns follow-on for that PR. Reporting the PR URL alone is not success.
 
-The only skips are `babysit:off`, a standing `auto_babysit: false` in CE config, and that reference's do-not-fire cases, drafts among them. No other watch substitutes: not `ci-watcher`, not `gh pr checks --watch`, not a hand-rolled poll, not "later". If `ce-babysit-pr` cannot be loaded or started, stop and report it blocked.
+The only skips are `babysit:off`, a standing `auto_babysit: false` in project config, and that reference's do-not-fire cases, drafts among them. No other watch substitutes: not `ci-watcher`, not `gh pr checks --watch`, not a hand-rolled poll, not "later". If `ce-babysit-pr` cannot be loaded or started, stop and report it blocked.

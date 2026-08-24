@@ -14,7 +14,7 @@ Used by `ce-code-review` Interactive mode's routing question, walk-through Defer
 
 - First Defer of the session with a generic (non-named) label confirms the effective tracker choice.
 - Execution failures prompt with Retry / Fall back to next sink / Convert to Skip.
-- Labels in the routing question reflect `named_sink_available` (name the tracker) vs fallback generics.
+- Labels in the routing question reflect `named_sink_available`: name a verified tracker and otherwise use a generic tracker action.
 
 ### Non-interactive mode
 
@@ -68,8 +68,8 @@ When Interactive mode's routing question is skipped entirely (R2 zero-findings c
 
 ## Label logic (Interactive mode)
 
-- When `confidence = high` AND `named_sink_available = true`: the routing question's option C and the walk-through's per-finding Defer option both include the tracker name verbatim. Example: `File a Linear ticket per finding`, `Defer — file a Linear ticket`.
-- When `any_sink_available = true` but either `confidence = low` or `named_sink_available = false` (a fallback tier is working instead): the labels read generically — `File an issue per finding`, `Defer — file a ticket`. Before executing the first Defer of the session, the agent confirms the effective tracker choice with the user using the platform's blocking question tool.
+- When `confidence = high` AND `named_sink_available = true`, both defer choices name the verified tracker.
+- When `any_sink_available = true` but either `confidence = low` or `named_sink_available = false`, both defer choices use generic ticket wording. Before executing the first Defer of the session, the agent confirms the effective tracker choice with the user using the platform's blocking question tool.
 - When `any_sink_available = false`: option C is omitted from the routing question, option B (Defer) is omitted from the walk-through per-finding options, and the agent tells the user why in the routing question's stem.
 
 Non-interactive mode skips label decisions entirely — it acts silently on the detected sink.
@@ -97,10 +97,10 @@ Every Defer action creates a ticket with the following content, adapted to the t
   - Plain-English problem statement — reads the persona-produced `why_it_matters` from the contributing reviewer's artifact file at `<artifact-path>/{reviewer}.json`, using the same `file + line_bucket(line, +/-3) + normalize(title)` matching agent mode uses (see SKILL.md Stage 6 detail enrichment). Falls back to the merged finding's `title`, `severity`, `file`, and `suggested_fix` (when present) when no artifact match is available — these fields are guaranteed in the merge-tier compact return.
   - Suggested fix (when present in the finding's `suggested_fix`).
   - Evidence (direct quotes from the reviewer's artifact).
-  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the branch and head commit SHA, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
+  - Source: a link to the PR carrying this change when one already exists at filing time; otherwise the Jujutsu bookmark and commit ID, so the ticket points at the code even before a PR is opened. When the same run opens a PR after the ticket is filed, back-fill the PR link into the ticket (best-effort; never block shipping on the update).
   - Metadata block: `Severity: <level>`, `Confidence: <score>`, `Reviewer(s): <list>`, `Finding ID: <fingerprint>`.
 - **Labels** (when the tracker supports labels): severity tag (`P0`, `P1`, `P2`, `P3`) and, when the tracker convention supports it, a category label sourced from the reviewer name.
-- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in ce-code-review run artifact: <artifact-path>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
+- **Length cap:** when the composed body would exceed a tracker's body length limit, truncate with `... (continued in review artifact: <artifact-path>/)` and include the finding_id in both the truncated body and the metadata block so the artifact is discoverable.
 
 The finding_id is a stable fingerprint composed as `normalize(file) + line_bucket(line, +/-3) + normalize(title)` — the same fingerprint used by the merge pipeline.
 
@@ -112,13 +112,7 @@ When ticket creation fails at execution (API error, auth expiry mid-session, rat
 
 **Interactive mode:** surface the failure inline and ask the user using the platform's blocking question tool.
 
-Stem:
-> Defer failed: <tracker name> returned <error summary>. How should the agent handle this finding?
-
-Options:
-- `Retry on <tracker>` — re-attempt the same tracker once more (useful for transient errors)
-- `Fall back to next sink` — move this finding's Defer to the next tier in the fallback chain (e.g., from Linear to GitHub Issues)
-- `Convert to Skip — record the failure` — abandon this Defer, note the failure in the completion report's failure section, and continue the walk-through or bulk flow
+State which tracker failed and summarize the error. Offer three decisions: retry that tracker once, continue with the next sink, or skip filing while recording the failure in the completion report. The choices must preserve those actions but need no fixed labels or prompt text.
 
 **Non-interactive mode:** do not prompt. Automatically fall through to the next tier. If every tier fails, record the finding in the `failed` bucket of the structured return and continue. If the chain exhausts with no sink ever available, the finding ends up in the `no_sink` bucket.
 

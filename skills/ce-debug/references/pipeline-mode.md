@@ -1,16 +1,16 @@
-# ce-debug — pipeline mode (non-interactive)
+# Pipeline mode (non-interactive)
 
-Loaded when `ce-debug` is invoked with `mode:pipeline` by an orchestrator (`ce-babysit-pr`, `lfg`). The skill runs to completion without ever asking the user and returns a structured result the caller composes. The investigation rigor is unchanged — only the interaction and the fix-authority boundary change.
+Loaded when `ce-debug` is invoked with `mode:pipeline` by an orchestrator (`ce-babysit-pr`, `lfg`). The skill runs to completion without asking the user and returns a structured result the caller composes. Investigation rigor is unchanged; only interaction and fix authority change.
 
 ## Authority: you act under the orchestrator's inherited scope
 
-Being invoked by an orchestrator is **not** itself authorization. You mutate under the **inherited** scope the orchestrator holds from the user: **actions** = fix / commit / push on the current branch; **exclusions** = merge, rebase, force-push, approve a gated CI run. That envelope is fixed — you may *narrow* it (defer a fix, return `needs-human`) but never *broaden* it. If the only way to make CI green is an excluded action (a rebase or force-push to untangle history, or approving a gated run), that is out of envelope: **defer as `needs-human`** with a `decision_context`, do not perform it. This is a mutation-mechanism boundary and sits alongside the convergent/divergent *content* boundary below — a fix can be convergent in content yet still out of envelope in mechanism.
+Being invoked by an orchestrator is **not** itself authorization. Mutate under the inherited scope the orchestrator holds from the user: **actions** = fix, describe the current working-copy change, move or create its publication bookmark, and push that bookmark; **exclusions** = merge, rebase, bypass Jujutsu push safety, or approve a gated CI run. Narrow or defer this envelope, never broaden it. If completion requires an excluded operation, return `needs-human` with `decision_context`.
 
 ## Non-interactive overrides (per phase)
 
 - **Phase 0 (triage):** If an issue fetch fails, do not ask the user to paste content — proceed with the input you have and note the gap in the return. Do not ask "what have you tried"; infer prior attempts from the input.
 - **Phase 2 (root cause + fix gate):** There is no "Fix it now / Diagnosis only" question. The caller invoked this skill to fix, so **fix by default — but only convergent fixes** (see the boundary below). A divergent fix is deferred, not applied.
-- **Phase 3 (workspace/branch):** Operate on the current branch — the orchestrator owns branch context; never prompt to create a branch, never prompt about uncommitted work. Commit the fix (`fix(ci): <summary>` for a CI failure, else `fix: <summary>`) and push. Never weaken, skip, or mock a failing assertion to make it pass — repair the real issue or defer.
+- **Phase 3 (workspace/change):** Operate in the orchestrator-owned workspace and working-copy change without prompting. Record `@`'s change ID and commit ID, describe the fix, and point the intended publication bookmark at that revision with `jj bookmark set <bookmark> -r <fix-revision>`. Resolve `<publication-remote>` as the unique writable, PR-capable remote by reconciling the bookmark's tracked remote bookmarks with the provider repository; never default to `origin`. If those signals identify multiple remotes or disagree, stop publication and return `fixed-not-pushed` with the ambiguity as the first residual. Otherwise fetch `<publication-remote>`, inspect exactly `<bookmark>@<publication-remote>..<bookmark>`, and publish only that bookmark with `jj git push --remote <publication-remote> --bookmark <bookmark>`. Confirm that remote bookmark moved before returning `fixed-and-pushed`. Never weaken, skip, or mock a failing assertion to make it pass; repair the real issue or defer.
 - **Phase 4 (handoff):** No prompt. Emit the structured return below. Skip the compound offer.
 - **Quality tail (simplify/review):** Skip in pipeline to bound cost and nesting depth; the orchestrator scopes review at its own level. Keep the Phase 3 tests.
 
@@ -22,11 +22,11 @@ Apply a fix only when it **converges to intended behavior** — it repairs the r
 
 ### Emergent trade-offs (when the caller passes a `trajectory`)
 
-Some divergence isn't visible in one pass — it emerges across rounds as **ping-pong**: your fix for A surfaces B, the fix for B brings A back. When the orchestrator seeds you with a `trajectory` (`recurring_checks`, `check_recur_max`, `heads_since_progress`), reason over it before fixing again — and hold the anti-cry-wolf line:
+Some divergence isn't visible in one pass — it emerges across rounds as **ping-pong**: your fix for A surfaces B, the fix for B brings A back. When the orchestrator seeds you with a `trajectory` (`recurring_checks`, `check_recur_max`, `changes_since_progress`), reason over it before fixing again — and hold the anti-cry-wolf line:
 
 - **Progressive failure migration** — A fixed, B appears *once*, you fix B, done — is ordinary multi-step repair. **Keep fixing.** Do not park it.
 - **Oscillation** — the *same* check/invariant returns after a fix aimed at it, defects cycle, or each fix trades one failure for another — means A and B can't both hold without a larger change. That larger change is a **product/design decision**, so **defer**: apply nothing this round and return `needs-human`, with a `decision_context` that names the two failures in tension, why they can't be reconciled without a divergent change, the options, and your lean.
-- **Moving-target guard:** if the recurrence traces to an external cause (a base-branch merge, a dep bump, flaky infra) rather than your fixes fighting each other, it is *not* an emergent trade-off — keep fixing, and note the external cause. Recurrence is only meaningful when your own fixes are what oscillate.
+- **Moving-target guard:** if the recurrence traces to an external cause (a trunk update, a dependency bump, flaky infrastructure) rather than your fixes fighting each other, it is *not* an emergent trade-off — keep fixing, and note the external cause. Recurrence is only meaningful when your own fixes are what oscillate.
 
 To defer, name the invariant the fix would need to satisfy and why no bounded convergent change satisfies it. If unsure it's genuine oscillation vs one more real bug, prefer one more convergent attempt over a premature park.
 
@@ -49,7 +49,8 @@ The skill's final output in pipeline mode is machine-readable (the caller parses
   "summary": "<one line: what happened>",
   "root_cause": "<causal chain, brief>",
   "changed_files": ["..."],
-  "head_sha": "<sha of the fix commit, when fixed-and-pushed or fixed-not-pushed>",
+  "change_id": "<Jujutsu change ID when fixed>",
+  "commit_id": "<Jujutsu commit ID when fixed>",
   "residuals": [
     {
       "type": "needs-human",
@@ -70,8 +71,8 @@ The skill's final output in pipeline mode is machine-readable (the caller parses
 }
 ```
 
-- `fixed-and-pushed` — a convergent fix was applied, tests pass, committed, and the push succeeded.
-- `fixed-not-pushed` — the same fix is applied and committed locally, but the push did not happen — no remote, no push access, an envelope that excludes pushing, a rejected push. `head_sha` is the local commit; the first residual says why. Never report this as `fixed-and-pushed` (the caller re-snapshots a remote head that has not moved) or as `diagnosed-no-fix` (the fix is applied).
+- `fixed-and-pushed` — a convergent fix was applied, tests pass, the change was described, its bookmark was pushed, and remote state confirms the move.
+- `fixed-not-pushed` — the same fix is described locally, but the bookmark was not pushed because no suitable remote/bookmark exists, access is unavailable, the envelope excludes publication, or Jujutsu rejected the push. Include both IDs and make the first residual explain why. Never report this as `fixed-and-pushed` when the remote bookmark did not move, or as `diagnosed-no-fix` when the fix exists locally.
 - `flaky-infra` — a flake or infrastructure failure, not a code defect (the caller may retry).
 - `needs-human` — the failure requires a divergent/product decision; nothing applied; see `residuals`.
 - `diagnosed-no-fix` — root cause found but no safe convergent fix available this run; see `residuals`.

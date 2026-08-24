@@ -17,14 +17,12 @@ Classify a rejected scout dispatch by whether an agent launched: correct a pre-l
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
-(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
-(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/local/rocketclaw/ce-pov";
+umask 077;
+for path in "$WORKSPACE_ROOT/.tmp" "$WORKSPACE_ROOT/.tmp/local" "$WORKSPACE_ROOT/.tmp/local/rocketclaw" "$SCRATCH_ROOT"; do [ ! -L "$path" ] || { echo "unsafe scratch path symlink: $path" >&2; exit 1; }; mkdir -p "$path" || exit 1; [ -d "$path" ] && [ -O "$path" ] || { echo "scratch path is not owned by the current user: $path" >&2; exit 1; }; chmod 700 "$path" || exit 1; done;
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do SCRATCH_DIR="$SCRATCH_ROOT/$(date +%Y%m%dT%H%M%S)-$$-$(openssl rand -hex 4)"; mkdir -m 700 "$SCRATCH_DIR" 2>/dev/null && break; SCRATCH_DIR=""; done;
+[ -n "$SCRATCH_DIR" ] || { echo "could not claim a private scratch directory" >&2; exit 1; };
 echo "$SCRATCH_DIR";
 ```
 

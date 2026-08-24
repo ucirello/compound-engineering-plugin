@@ -10,13 +10,15 @@ Read this before Phase 0 and follow it for the whole run. The body states the in
 
 3. **Re-read from disk at every phase boundary and before every decision** — never trust in-memory state across phase transitions, batch boundaries, or after any operation that might have taken significant time. Re-read the experiment log and strategy digest from disk.
 
-4. **One experiment, one log entry.** Append a new experiment entry on its first measurement. Later ladder samples for that same experiment update that entry's metrics and outcome in place so a crash can resume the ladder without losing samples or duplicating the hypothesis. Never rewrite a different experiment's samples or gate values. Outcome, `best`, and `hypothesis_backlog` are also updated in place at batch evaluation (CP-4). Do not rebuild the file from memory.
+4. **Normalize persisted state on every read.** Apply `read_compatibility` from both schemas before validation or control flow. Aliases exist only in the in-memory normalized view; every subsequent write uses current JJ-native keys and outcomes. Resolve a legacy `commit` value as a JJ revision and record its full change ID rather than relabeling the Git hash. A missing `baseline_change_id` or `optimization_change_id` identifies a legacy log, not an invalid one: recover resolvable revisions from the optimization bookmark, revision history, and normalized retained-change fields before continuing. If a required revision remains ambiguous, stop for user direction without discarding or overwriting the log.
 
-5. **Per-experiment result markers for crash recovery** — each experiment writes a `result.yaml` marker in its worktree immediately after measurement. On resume, scan for these markers to recover experiments that were measured but not yet logged.
+5. **One experiment, one log entry.** Append a new experiment entry on its first measurement. Later ladder samples for that same experiment update that entry's metrics and outcome in place so a crash can resume the ladder without losing samples or duplicating the hypothesis. Never rewrite a different experiment's samples or gate values. Outcome, `best`, and `hypothesis_backlog` are also updated in place at batch evaluation (CP-4). Do not rebuild the file from memory.
 
-6. **Strategy digest is written after every batch, before generating new hypotheses** — the agent reads the digest (not its memory) when deciding what to try next.
+6. **Per-experiment result markers for crash recovery** — each experiment writes a `result.yaml` marker in its workspace immediately after measurement. On resume, scan managed experiment workspaces for these markers to recover experiments that were measured but not yet logged.
 
-7. **Never present results to the user without writing them to disk first** — the pattern is: measure -> write to disk -> verify -> THEN show the user. Not the reverse.
+7. **Strategy digest is written after every batch, before generating new hypotheses** — the agent reads the digest (not its memory) when deciding what to try next.
+
+8. **Never present results to the user without writing them to disk first** — the pattern is: measure -> write to disk -> verify -> THEN show the user. Not the reverse.
 
 ### Mandatory Disk Checkpoints
 
@@ -37,22 +39,22 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 3. Confirm the expected content is present
 4. If verification fails, retry the write. If it fails twice, alert the user.
 
-### File Locations (all under `.context/compound-engineering/ce-optimize/<spec-name>/`)
+### File Locations (all under `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/`, with local `.tmp/rocketclaw/optimize/<spec-name>/` fallback outside Jujutsu)
 
-The scratch space under `.context/` is gitignored: it survives a local resume but does not travel with the branch, so anything needed durably must be exported to a tracked path.
+The `.tmp/` scratch root must be a real, owner-only, ignored directory. It survives a local resume but does not travel with revisions, so anything needed durably must be exported to a tracked path. Reserve each transient filename with exclusive creation and publish rewritten state files by atomic rename in the same directory; do not place scratch data outside the active workspace or local fallback.
 
 | File | Purpose | Written When |
 |------|---------|-------------|
 | `spec.yaml` | Optimization spec (fixed once the Phase 1 approval gate is cleared) | Phase 0 (CP-0) |
 | `experiment-log.yaml` | Full history of all experiments | Initialized at CP-1, appended at first CP-3, updated on later samples and at CP-4 |
 | `strategy-digest.md` | Compressed learnings for hypothesis generation | Written at CP-4 after each batch |
-| `<worktree>/result.yaml` | Per-experiment crash-recovery marker | Immediately after measurement, before CP-3 |
+| `<workspace>/result.yaml` | Per-experiment crash-recovery marker | Immediately after measurement, before CP-3 |
 
 ### On Resume
 
 When Phase 0.4 detects an existing run:
-1. Read the experiment log from disk — this is the ground truth
-2. Scan worktree directories for `result.yaml` markers not yet in the log
+1. Read and normalize the experiment log from disk — the persisted file remains the ground truth
+2. Scan managed experiment workspaces for `result.yaml` markers not yet in the log
 3. Recover any measured-but-unlogged experiments
 4. Continue as the body's resume rule directs: skip the work the log proves finished, and re-enter any gate the log does not prove was cleared
 

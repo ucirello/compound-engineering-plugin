@@ -4,7 +4,7 @@
 
 Engine selection applies only to code execution. Knowledge-work keeps its carve-out. Legacy plans and bare code prompts may select cross-model execution, but otherwise retain the inline/subagent flow in `references/execution-strategy.md`; goal-mode and dynamic-workflow selection remains specific to implementation-ready unified plans.
 
-Invocation origin supplies no routing authority and may not be detectable. Resolve the same inputs whether `ce-work` was explicitly invoked or selected by the host: current-task intent, still-active session intent, typed caller binding, active project instructions, enabled checkout configuration, then native execution.
+Invocation origin supplies no routing authority and may not be detectable. Resolve the same inputs whether `ce-work` was explicitly invoked or selected by the host: current-task intent, still-active session intent, typed caller binding, active project instructions, enabled workspace configuration, then native execution.
 
 ## Resolve cross-model routing before the capability probe
 
@@ -14,7 +14,7 @@ Resolve one implementation binding from applicable authority and scope; do not r
 2. a still-active session preference or constraint;
 3. a typed caller binding at its recorded provenance (for example, an LFG current-task assignment retains current-task authority at the `ce-work` seam);
 4. the project's active instructions and conventions already in context;
-5. enabled per-checkout configuration; then
+5. enabled per-workspace configuration; then
 6. native execution.
 
 Lower sources may fill an unspecified detail but cannot contradict or broaden a higher source. Incidental mentions in feature prose, quoted material, examples, comparisons, filenames, or discussion do not activate routing. If two applicable instructions of equal authority genuinely conflict on recipient or egress, surface the conflict instead of guessing.
@@ -37,15 +37,15 @@ Keep `target`, harness/intermediary route, requested model, served model, and re
 
 When the target resolves to the current host's default execution route and no distinct model or serving route was requested, collapse the request to native execution and record requested-versus-actual identity rather than shelling out to the same host.
 
-### Per-checkout configuration
+### Per-workspace configuration
 
-<!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+<!-- config-layers:start -->
+**Resolve ordinary YAML keys from the two repository files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
-<!-- ce-config-layers:end -->
+<!-- config-layers:end -->
 
 Standing configuration uses one mode plus an ordered route list. Resolve `work_engine_mode` and `work_engine_preferences` independently from the two repo files (`config.local.yaml` then `config.yaml`); a present local list, including `[]`, replaces the team list. Do not pick one file for the whole group.
 
@@ -96,7 +96,7 @@ When more than one engine is callable, choose by the plan's decomposition shape:
 | Sequential or modest U-ID decomposition; units share files or depend on each other | **Inline / subagent** (default), or a **goal-mode** prompt for sustained focus when callable | The DoD already defines the end condition; ordinary persistence finishes it. |
 | Many independent U-IDs with disjoint file ownership; codebase-wide sweep; large migration; adversarial cross-checking | **Dynamic-workflow** when callable; otherwise parallel subagents | Workflow scripts hold branching, loops, and intermediate worker state outside the main context and coordinate many agents. Prefer this over goal-mode for large fan-out. |
 | Host exposes no callable goal/workflow primitive (e.g. Claude Code in-session) | **Inline / subagent** | Preserve the same heading-scan / DoD / U-ID discipline without relying on unavailable host features. |
-| Applicable live intent, a caller binding, or enabled config resolves a qualified fixed external route | **Cross-model execution** | Another harness/model authors bounded units while the host retains canonical integration, verification, commits, and tail ownership. |
+| Applicable live intent, a caller binding, or enabled config resolves a qualified fixed external route | **Cross-model execution** | Another harness/model authors bounded units while the host retains canonical integration, verification, accepted changes, and tail ownership. |
 
 For a bare prompt, cross-model execution is eligible only after Phase 0 has established a concrete goal, bounded scope, and authoritative verification. The cross-model reference turns that discovery into a private prompt brief and conservative P-unit packet. An unclear bare prompt returns to clarification/planning before egress; it does not fall through to a smarter external worker and ask that worker to invent the scope.
 
@@ -106,7 +106,7 @@ Recommend exactly one path. Present a non-default engine as an "advanced / large
 
 ### Inline / subagent (default)
 
-Follow the dispatch strategy in `references/execution-strategy.md` (inline, serial subagents, or parallel subagents) and the Phase 2 execution loop. `ce-work` owns task creation, unit sequencing, dispatch, verification, and commits.
+Follow the dispatch strategy in `references/execution-strategy.md` (inline, serial subagents, or parallel subagents) and the Phase 2 execution loop. `ce-work` owns task creation, unit sequencing, dispatch, verification, and canonical changes.
 
 ### Cross-model execution
 
@@ -151,11 +151,11 @@ After any engine finishes implementation, inspect the diff and continue at the t
 
 | Mode | After implementation, `ce-work` ... |
 |---|---|
-| **Standalone** (user invoked `ce-work` directly, or `ce-plan` handed off interactively) | Resumes its normal post-implementation tail — Phase 3-4 quality gates, simplification, review, commit, and handoff in `references/shipping-workflow.md`. A goal-mode run does not skip these; verify they ran or were explicitly skipped with reason. |
+| **Standalone** (user invoked `ce-work` directly, or `ce-plan` handed off interactively) | Resumes its normal post-implementation tail: Phase 3-4 quality gates, simplification, review, change finalization, and handoff in `references/shipping-workflow.md`. A goal-mode run does not skip these; verify they ran or were explicitly skipped with reason. |
 | **Return-to-caller** (`mode:return-to-caller`, e.g. under `lfg`) | Performs implementation and local verification only, then returns the structured summary in `references/return-to-caller.md` (`standalone_shipping_skipped: true`). Does not run simplify/review/PR/CI — the caller owns those. |
 
 Using goal-mode or a dynamic workflow is a way to get better sustained implementation focus, not a way to skip the owning workflow's finish discipline.
 
 ## Progress visibility (independent of tail ownership)
 
-Tail ownership decides who opens the **final** PR; it does not forbid progress signals during a long run. For multi-hour goals, meaningful commits as units complete and an optional scratch progress artifact (outside the plan body) are encouraged so a long trajectory stays observable. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when it explicitly owns that channel; in return-to-caller mode `ce-work` must not open any PR, but may commit and return a progress report in its structured envelope. Never write progress or status into the plan body — git, commits, and the envelope carry it.
+Tail ownership decides who opens the **final** PR; it does not forbid progress signals during a long run. For multi-hour goals, meaningful described changes as units complete and an optional `.tmp` progress artifact outside the plan body keep the trajectory observable. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when it explicitly owns that channel; in return-to-caller mode `ce-work` must not open any PR, but may describe changes and return a progress report in its structured envelope. Never write progress or status into the plan body; Jujutsu changes and the envelope carry it.

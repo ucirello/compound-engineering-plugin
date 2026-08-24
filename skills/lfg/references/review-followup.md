@@ -1,16 +1,16 @@
 # Pre-ship quality tail (LFG steps 3–6)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then commits.
+`ce-code-review` is review-only. LFG applies eligible fixes itself, then records them as a Jujutsu change.
 
 ## The shipping precondition, in these steps
 
-A missing remote is a terminal local-only state, not an error: never retry a push or hunt for a remote. Steps 5 and 6 still make every commit they call for; only the pushes and the PR-side records drop. With no PR to comment on, the run output is the residual record — state the residuals in the DONE report rather than committing a file nobody will read.
+A missing remote is a terminal local-only state, not an error: never retry a push or hunt for a remote. Steps 5 and 6 still describe every change they call for; only the pushes and the PR-side records drop. With no PR to comment on, the run output is the residual record — state the residuals in the DONE report rather than creating a file nobody will read.
 
 ## Step 3 — simplify before review
 
-Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the branch-diff scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope (the branch diff remains the scope), with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
+Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the change scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope, with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
 
-Do not commit in this step. `ce-simplify-code` leaves its changes in the working tree; step 4's review scopes the working tree (uncommitted changes included), and step 8's `ce-commit-push-pr` commits whatever remains. Committing here would sweep any still-uncommitted `ce-work` edits into a misleading `refactor` commit and could stall on a tree that never goes clean.
+Do not finalize a description or start a new change in this step. Preserve LFG's full change-description policy for the later handoff that owns the description. `ce-simplify-code` leaves its edits in the working-copy change; step 4 reviews that change, and step 8's `ce-commit-push-pr` persists whatever remains. Finalizing here could mix still-undescribed `ce-work` edits into a misleading change.
 
 ## Step 4 — invoke review
 
@@ -30,7 +30,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the working tree only when **all** of the following hold:
+Apply a finding in the Jujutsu working copy only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -49,9 +49,9 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
+2. Apply eligible fixes in the Jujutsu working copy in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files, commit `fix(review): apply review findings`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), resolve a writable remote dynamically: prefer `origin` when present, otherwise use `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push — the local commit suffices. If no eligible fixes were applied, note explicitly and skip commit.
+4. If `jj diff --summary` shows eligible review edits, select only their filesets for the review change, leaving unrelated working-copy content in the new change that `jj commit` creates. Apply LFG's full change-description policy to describe that review change accurately without prescribing a format. Move or create the bookmark that represents the PR at the completed review change and push that bookmark with `jj git push --bookmark <bookmark> --remote <remote>` before step 6 when a remote is configured. Resolve the writable remote from `jj git remote list`, honoring the project's configured push remote and otherwise preferring `origin` when present. If no remote exists, the local described change suffices. If no eligible fixes were applied, note that and create no review-only change.
 
 ## Step 6 — residual handoff
 

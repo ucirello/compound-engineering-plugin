@@ -21,11 +21,11 @@ The skill body carries the ownership-checked block that creates `$RUN_DIR`; run 
 
 ## Grounding by input shape
 
-**Repo-touching inputs** (a concept with footprint in this repo, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or commits. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted root or workspace probe.
+**Workspace-touching inputs** (a concept with footprint in this workspace, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or revisions. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted `jj workspace root` probe.
 
 **Diff mode:** resolve the change (the `diff:` ref, or the most recent substantial change when the request points at one implicitly) and gather its evidence — the diff itself, the files it touches, any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until the Phase 3 ordering rule is satisfied.
 
-**Recap mode:** seed the scout with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the repo root, and `$RUN_DIR`. It returns an evidence summary with commit shas and `file:line` pointers, and writes `recap-evidence.md`. **Empty window** (no git activity, no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
+**Recap mode:** seed the scout with `references/agents/work-recap-scout.md` (extraction tier), passing the resolved window, the workspace root, and `$RUN_DIR`. It returns an evidence summary with change IDs or commit IDs and `file:line` pointers, and writes `recap-evidence.md`. **Empty window** (no local revision activity, no doc changes): say so, offer to widen the window, write no artifact, and end the run after the user responds.
 
 **External concepts** (no footprint in this repo): skip repo grounding entirely — do not force repo context into the output. Research with whatever web tools are reachable. When none are, you may explain from model knowledge, but the artifact must label that content **Unverified — from model knowledge, not checked against current sources** in its metadata header.
 

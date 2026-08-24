@@ -13,6 +13,8 @@ Derive the key screens and flows from the user's request and the changed iOS sur
 
 A simulated action reporting success is not proof of the expected state change; verify the visible result or logs.
 
+Store screenshots, exported logs, and other temporary evidence in a private per-run directory under `<workspace-root>/.tmp/ce-test-xcode/`, where `<workspace-root>` comes from `jj workspace root`. If workspace-root resolution fails, use `<physical-current-directory>/.tmp/ce-test-xcode/`. Capture the directory's absolute path and pass it to evidence-producing tools. Do not use OS temporary storage, and do not modify ignore rules or unrelated working-copy content.
+
 ### SwiftUI inline Text links
 
 Simulated taps do not trigger gesture recognizers on SwiftUI `Text` views with inline `AttributedString` links because the link is not exposed as a separate accessibility element. When such a tap reports success but has no visible effect, ask the user to tap the link manually in the simulator. If the target URL is known, this is the direct fallback:

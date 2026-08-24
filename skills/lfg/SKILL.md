@@ -8,9 +8,15 @@ CRITICAL: You MUST execute every step below IN ORDER. Do NOT jump ahead to codin
 
 LFG runs hands-off, from schedulers, loops, and nested orchestrators with no user to answer, so no step stops to ask. The one exception is the upfront routing question `references/stage-routing.md` defines.
 
-Resolve every skill named below against the host's available-skills list and invoke that exact entry; some hosts namespace it (`compound-engineering:ce-plan`), and a short-form guess that is not in the list fails.
+Resolve every skill named below against the host's available-skills list and invoke that exact entry; some hosts namespace entries, and a short-form guess that is not in the list fails.
 
 Read `references/task-visibility.md` before step 1: it owns the stage-level view this pipeline publishes through the platform's task-tracking capability and hands to each child skill.
+
+## Change-description policy
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+For this Jujutsu workflow, the `git log` wording in that mandated sentence is non-operational: do not run Git commands to inspect history. Follow the project's active instructions first, then the conventions evident in the current `jj log`; apply compatible Go commit-message guidance only as a quality standard where those sources do not decide. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example. Preserve required provider, model, and harness facts plus human authorship data. Apply this policy wherever LFG owns a Jujutsu change description, and pass the exact mandated sentence plus these interpretation constraints to every delegated description-composition, editing, validation, or recommendation site.
 
 ## Per-stage routing carriers
 
@@ -18,7 +24,7 @@ Before step 1, interpret whether the invoking conversation expresses semantic in
 
 **When one exists, read `references/stage-routing.md` before step 1.** Only that file carries which stages are routable, how scope and requirement strength resolve, the `implementation_engine` grammar, the ordered-fallback case, the sanitization that keeps routing out of planning and review inputs, and the carrier strings for both seams. An improvised carrier drops the user's instruction or contaminates the plan with routing.
 
-1. **Read `references/plan-brief.md` first**, then invoke the `ce-plan` skill with the sanitized feature request — or the arguments you were invoked with, unchanged, when no routing directive was present — prefixed with the `plan_model:<alias>` carrier when a planning-stage directive resolved, and with the settled-decisions brief that file specifies. Only it carries the artifact-root rule this step's gate reads, the brief's required fields, demotion rule, topical scope bar, and skip-entirely case, and the readiness values the gate applies.
+1. **Read `references/plan-brief.md` first**, then invoke the `ce-plan` skill with the sanitized feature request — or the arguments you were invoked with, unchanged, when no routing directive was present — prefixed with the `plan_model:<alias>` carrier when a planning-stage directive resolved, and with the settled-decisions brief that file specifies. Only it carries the returned-plan-path rule this step's gate reads, the brief's required fields, demotion rule, topical scope bar, and skip-entirely case, and the readiness values the gate applies.
 
    GATE: STOP. Stop the pipeline and tell the user why when `ce-plan` reports the task is non-software (LFG requires software tasks), returns any explicit `status: blocked` report (including `settled-decision-invalidated`), or when the plan it wrote fails the readiness check in `references/plan-brief.md`. Blocked status outranks an existing artifact and is never retried. Only absence of both a blocker and a plan file `ce-plan` reported writing this run invokes `ce-plan` again with those same arguments, reusing the composed brief verbatim; never proceed to step 2 without a written plan.
 
@@ -28,17 +34,17 @@ Before step 1, interpret whether the invoking conversation expresses semantic in
 
    GATE: STOP. Read the structured return before continuing. Only a valid `status: complete` may advance; every other status or malformed return stops the pipeline.
 
-3. **Read `references/review-followup.md` now**, then invoke the `ce-simplify-code` skill on the branch diff — **skip** only the invocation, never the read, when the change is docs-only (only markdown/docs paths changed) or trivial (roughly under 10 changed lines). That file governs steps 3 through 6, which have no usable form without it: only it carries this step's scope and structure pins, the review read-back, which findings step 5 applies and how they are committed, and the residual record step 6 makes durable.
+3. **Read `references/review-followup.md` now**, then invoke the `ce-simplify-code` skill on the Jujutsu change diff — **skip** only the invocation, never the read, when the change is docs-only (only markdown/docs paths changed) or trivial (roughly under 10 changed lines). That file governs steps 3 through 6, which have no usable form without it: only it carries this step's scope and structure pins, the review read-back, which findings step 5 applies and how they are recorded, and the residual record step 6 makes durable.
 
 4. Invoke the `ce-code-review` skill with `mode:agent plan:<plan-path-from-step-1>`.
 
    GATE: STOP. A `settled_conflict`-stamped finding whose evidence is invalidating — the settled decision cannot work: infeasible, wrong-thing, or destructive — stops the pipeline as blocked, with the finding reported, before the shipping precondition.
 
-**Shipping precondition (steps 5–9).** Run `git remote` once before the shipping steps. No remote means shipping is local-only: make every commit the steps below call for, but **skip every push, PR create/edit, and CI-watch action**, including step 9 in full. That is terminal, not an error.
+**Shipping precondition (steps 5–9).** Run `jj git remote list` once before the shipping steps. No remote means shipping is local-only. Apply the change-description policy above to every change the steps below call for, but **skip every push, PR create/edit, and CI-watch action**, including step 9 in full. That is terminal, not an error.
 
 5. **Apply and persist review fixes** (REQUIRED after step 4, before residual handoff)
 
-   Execute the apply step of `references/review-followup.md`. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working tree uncommitted.
+   Execute the apply step of `references/review-followup.md`. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain in an undescribed working-copy change.
 
 6. **Autonomous residual handoff** — run it whenever anything divergent is left to make durable: an actionable `downstream-resolver` finding step 5 did not apply, a `settled_conflict` stamp from step 4, or a proceeded-and-flagged `settled_decision_conflicts` entry from step 2. Skip only when none of the three exists — `Actionable findings: none.` does not decide it alone.
 
@@ -48,11 +54,11 @@ Before step 1, interpret whether the invoking conversation expresses semantic in
 
 7. Invoke the `ce-test-browser` skill with `mode:pipeline`.
 
-8. Ship: the goal is the remaining work committed, pushed, and in an open PR whose URL you hold. **Read `references/shipping-tail.md` first** — it governs steps 8 through 10 — then invoke the `ce-commit-push-pr` skill with `mode:pipeline branding:on` unless that file routes this run elsewhere. Only it carries when a project-defined process supersedes that default and the blocked stop when it falls short, what LFG threads into it, the `New concepts:` trailer and ticket back-fill, the no-remote substitution, and step 9's stack handoff. Invoking without it overrides a project's shipping process and, with no remote, drives an impossible push.
+8. Ship: the goal is the remaining work described, pushed, and in an open PR whose URL you hold. **Read `references/shipping-tail.md` first** — it governs steps 8 through 10 — then invoke the `ce-commit-push-pr` skill with `mode:pipeline` unless that file routes this run elsewhere. Pass the change-description policy above to whichever handoff owns description composition, editing, validation, or recommendation. Only the reference carries when a project-defined process supersedes the default and the blocked stop when it falls short, what LFG threads into it, ticket back-fill, the no-remote substitution, and step 9's stack handoff. Invoking without it overrides a project's shipping process and, with no remote, drives an impossible push.
 
-9. **Watch the PR to CI-decided via `ce-babysit-pr`** (only when an open PR exists for the current branch)
+9. **Watch the PR to CI-decided via `ce-babysit-pr`** (only when an open PR exists for the pushed bookmark)
 
-   Detect the PR with `gh pr view --json number,url,state`; if none exists or `gh` is unavailable, skip to step 10. When step 8 already handed off a stack babysit, `references/shipping-tail.md` decides this step — never start a second bare pipeline babysit on the current-branch URL. Otherwise invoke **`ce-babysit-pr mode:pipeline <pr-url>`**, and follow that same file for the returned `{ status, fixes_applied, residuals }`. Do not reimplement CI-watching here.
+   Identify the bookmark that step 8 pushed, then detect its PR with `gh pr view <bookmark> --json number,url,state`; if none exists or `gh` is unavailable, skip to step 10. In a non-colocated Jujutsu repository, make `gh` operate on the backing Git repository reported by `jj git root`, as documented by Jujutsu. When step 8 already handed off a stack babysit, `references/shipping-tail.md` decides this step — never start a second bare pipeline babysit on that bookmark's URL. Otherwise invoke **`ce-babysit-pr mode:pipeline <pr-url>`**, and follow that same file for the returned `{ status, fixes_applied, residuals }`. Do not reimplement CI-watching here.
 
 10. Output `<promise>DONE</promise>` when complete, after the close-out in `references/shipping-tail.md`, which owns the two user-runnable handoff lines, their per-host rendering, and the next-work offer gate.
 

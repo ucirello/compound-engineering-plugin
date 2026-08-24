@@ -1,17 +1,18 @@
 # Managed-stack CLI recipes
 
-Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs `gh stack` command recipes. Soft-depend on the CLI: if `gh stack` is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
+Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs Jujutsu propagation or `gh stack` provider recipes. Soft-depend on `gh stack`: if it is missing or unavailable, surface a clear residual; do not invent managed membership from topology.
 
-Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
+Always non-interactive. Prefer JSON/view probes and explicit Jujutsu bookmark names. Substitute `<tracking-remote>` with the stack bookmarks' actual remote; never hard-code `origin` when setup resolved a different remote.
 
-## After an owned push on the active layer (dependents exist)
+## After an owned push on the active layer
 
 ```bash
-gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <tracking-remote>
-gh stack push --remote <tracking-remote>
+jj git fetch --remote <tracking-remote> --branch <active-bookmark> --branch <each-open-dependent-bookmark>
+jj rebase --branch <first-dependent-bookmark> --onto <target-bookmark>
+jj git push --remote <tracking-remote> --bookmark <each-rewritten-dependent-bookmark>
 ```
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+Starting at the first dependent excludes the active target from the cascading rebase, while `--branch` moves that layer's ancestors not already in the destination plus its descendants and advances bookmarks attached to rewritten changes. Quote bookmark names because they may contain shell metacharacters. Immediately record the exact operation ID created by the owned rebase. If the rewritten range contains a conflict, use `jj undo` only when that operation is proven latest and no concurrent operation needs preservation; otherwise use `jj op revert <owned-operation-id>`, or stop with that operation ID in a recoverable `needs-human` / stack-sync residual when safe reversal cannot be established. Push each rewritten bookmark explicitly; never use `--all`.
 
 ## Discover order / next open layer
 
@@ -36,4 +37,4 @@ Re-probe the landed PR before advancing: on merge-queue bases the CLI may succee
 gh pr merge …
 ```
 
-Use `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.
+Use `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it. The merge and sync commands are provider operations, not substitutes for Jujutsu fetch, rebase, bookmark, or push behavior.

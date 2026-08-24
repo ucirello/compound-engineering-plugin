@@ -1,6 +1,6 @@
 # Discoverability check
 
-After the report, check that the project's instruction files would lead an agent to discover `<root>/solutions/` before working in a documented area. Runs every time — the store only compounds value when agents can find it.
+After the report, check that the project's instruction files would lead an agent to discover `<root>/solutions/` before working in a documented area. Run this every time because the store remains valuable only when agents can find it.
 
 1. Find the project's root agent-instruction surface — `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or whatever equivalent this project uses; the substantive file is the target, so ignore a shim that just `@`-includes another. No such file exists: skip this check.
 2. Assess semantically (not by string match) whether a reader would learn: the store exists, enough structure to search it (categories, frontmatter fields like `module`, `tags`, `problem_type`), and when it's relevant. If the spirit is met, done.
@@ -11,5 +11,5 @@ After the report, check that the project's instruction files would lead an agent
    ```
 
 4. Interactive: show the proposed change and where it goes, explain why it matters (fresh sessions and plugin-less collaborators won't find the store otherwise), and get consent via a blocking question before editing. Non-interactive: emit a "Discoverability recommendation" line in the report instead of editing instruction files — non-interactive scope is doc maintenance, not project config.
-5. If `CONCEPTS.md` exists at the repo root, run the same check for it (e.g., a `CONCEPTS.md  # shared domain vocabulary — read when orienting to the codebase` line). Skip entirely when it doesn't exist — never nag for an artifact the project hasn't adopted.
-6. If this check edited an instruction file after Commit already ran, amend the commit (same branch, not yet pushed) or add a small follow-up commit (e.g., `docs: add solutions discoverability to AGENTS.md`), and push it if the branch was already pushed so an open PR includes it. If the user chose "don't commit", leave the edits uncommitted alongside the rest.
+5. If `CONCEPTS.md` exists at the workspace root, run the same check for it (e.g., a `CONCEPTS.md  # shared domain vocabulary — read when orienting to the codebase` line). Skip entirely when it doesn't exist — never nag for an artifact the project hasn't adopted.
+6. If this check edited an instruction file after the refresh change was already described, fold it into that unpublished change or create a separate described change, then move and push the same bookmark when an open PR must include it. If the user chose to leave the work undescribed, leave this edit in the working-copy change as well. Do not prescribe a fixed description; preserve the semantic requirement that it identify the discoverability change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.

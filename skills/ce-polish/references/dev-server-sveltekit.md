@@ -53,6 +53,6 @@ Substitute the resolved package manager (`npm` / `pnpm` / `yarn` / `bun`) and po
 
 ## Common gotchas
 
-- **Vite under the hood:** SvelteKit uses Vite internally -- same port default (5173), same HMR behavior. The `sveltekit` type exists because `svelte.config.js` is a more precise signal than a generic `vite.config.ts`, allowing polish to generate a SvelteKit-specific stub name and label.
+- **Vite under the hood:** SvelteKit uses Vite internally -- same port default (5173), same HMR behavior. The `sveltekit` type exists because `svelte.config.js` is a more precise signal than a generic `vite.config.ts`, allowing a SvelteKit-specific stub name and label.
 - **Adapter does not matter for dev:** `adapter-auto`, `adapter-node`, `adapter-static`, and other adapters all produce the same dev server. The adapter only affects the production build output.
 - **`svelte.config.js` is the primary signature:** `svelte.config.js` always exists in SvelteKit projects, even when `vite.config.ts` also exists. This is the file that distinguishes a SvelteKit project from a plain Vite project.

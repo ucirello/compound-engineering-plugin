@@ -1,4 +1,4 @@
-"""Canonical integration, locking, wave sequencing, and exact restoration."""
+"""Canonical Jujutsu integration, locking, sequencing, and restoration."""
 
 from __future__ import annotations
 
@@ -6,20 +6,15 @@ import json
 import os
 import re
 import secrets
-import shutil
-from pathlib import Path
 
 from unit_workspace_state import *
-from unit_workspace_jobs import find_attempt, parse_diff_paths, scope_expansion_pending
+from unit_workspace_jobs import find_attempt, scope_expansion_pending
 
 
 def integration_lock_path(doc: dict) -> str:
-    ident = doc["repository"]["identity_digest"] + "\0" + doc["branch"]["ref"]
-    # Anchor to the root this run actually lives under (run_dir searches both
-    # candidate roots), never the current invocation's preferred creation root:
-    # a fallback-root run must validate and release the lock it recorded.
-    run_root = os.path.dirname(run_dir(doc["run_id"]))
-    return os.path.join(run_root, ".locks", f"integration-{digest_bytes(ident.encode())}.json")
+    identity = doc["repository"]["identity_digest"]
+    root = os.path.dirname(locate_run_dir(doc["run_id"]))
+    return os.path.join(root, ".locks", f"integration-{digest_bytes(identity.encode())}.json")
 
 
 def read_integration_lock(path: str) -> dict:
@@ -27,13 +22,8 @@ def read_integration_lock(path: str) -> dict:
 
 
 def validated_lock_nonce(doc: dict, unit_id: str, lock: dict) -> str:
-    expected = {
-        "run_id": doc["run_id"],
-        "unit_id": unit_id,
-        "repository": doc["repository"]["identity_digest"],
-        "branch_ref": doc["branch"]["ref"],
-    }
-    if any(lock.get(k) != v for k, v in expected.items()):
+    expected = {"run_id": doc["run_id"], "unit_id": unit_id, "repository": doc["repository"]["identity_digest"]}
+    if any(lock.get(key) != value for key, value in expected.items()):
         raise Operational("BLOCKED", "integration lock identity mismatch")
     nonce = lock.get("nonce")
     if not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{48}", nonce):
@@ -49,8 +39,7 @@ def validate_lock(doc: dict, unit_id: str, token: str) -> tuple[str, dict]:
         if not os.path.lexists(path):
             raise Operational("BLOCKED", "integration lock is missing") from exc
         raise
-    nonce = validated_lock_nonce(doc, unit_id, lock)
-    if nonce != token:
+    if validated_lock_nonce(doc, unit_id, lock) != token:
         raise Operational("BLOCKED", "integration lock token or identity mismatch")
     return path, lock
 
@@ -61,44 +50,38 @@ def cmd_integration_acquire(args) -> tuple[str, dict]:
         unit = doc["units"].get(args.unit_id)
         plan_verification = bool(getattr(args, "plan_verification", False))
         recover_only = bool(getattr(args, "recover_only", False))
-        allowed_states = INTEGRATABLE_STATES | {"preserved", "committed", "cleaned"}
+        allowed = INTEGRATABLE_STATES | {"preserved", "committed", "cleaned"}
         if plan_verification or (recover_only and unit and unit.get("state") == "native-completed"):
-            allowed_states.add("native-completed")
-        if not unit or unit["state"] not in allowed_states:
+            allowed.add("native-completed")
+        if not unit or unit.get("state") not in allowed:
             raise Operational("REFUSED", "unit is not ready for integration")
-        if not plan_verification and unit["state"] != "native-completed":
+        if not plan_verification and unit.get("state") != "native-completed":
             validate_wave_order(doc, unit)
         path = integration_lock_path(doc)
         existing = doc.get("integration_lock")
         if existing:
-            if not args.resume:
-                raise Operational("REFUSED", "integration claim already exists; pass --resume to recover the same claim")
-            if existing.get("phase", "held") != "held":
-                raise Operational("REFUSED", "integration claim is releasing; resume or retry release before acquisition")
+            if not getattr(args, "resume", False):
+                raise Operational("REFUSED", "integration claim already exists; resume the same claim")
             validate_lock(doc, args.unit_id, existing["nonce"])
             return "ACQUIRED", {"lock_token": existing["nonce"], "resumed": True, "path": path}
         nonce = secrets.token_hex(24)
         resumed = False
         if recover_only:
-            lock = read_integration_lock(path)
-            nonce = validated_lock_nonce(doc, args.unit_id, lock)
+            nonce = validated_lock_nonce(doc, args.unit_id, read_integration_lock(path))
             resumed = True
         else:
-            payload = {"run_id": args.run_id, "unit_id": args.unit_id, "nonce": nonce, "repository": doc["repository"]["identity_digest"], "branch_ref": doc["branch"]["ref"], "created_at": now_iso()}
+            payload = {"run_id": args.run_id, "unit_id": args.unit_id, "nonce": nonce, "repository": doc["repository"]["identity_digest"], "created_at": now_iso()}
             try:
                 create_private(path, (json.dumps(payload, sort_keys=True) + "\n").encode())
                 test_fault("integration-lock-after-create")
             except Operational as exc:
                 if exc.word == "INTERRUPTED":
                     raise
-                lock = read_integration_lock(path)
-                if lock.get("run_id") == args.run_id and lock.get("unit_id") == args.unit_id:
-                    if not args.resume:
-                        raise Operational("REFUSED", "integration lock file already exists; pass --resume to recover its claim")
-                    nonce = validated_lock_nonce(doc, args.unit_id, lock)
-                    resumed = True
-                else:
-                    raise Operational("BLOCKED", "another run/unit owns canonical integration", {"owner_run": lock.get("run_id"), "owner_unit": lock.get("unit_id")})
+                observed = read_integration_lock(path)
+                if observed.get("run_id") != args.run_id or observed.get("unit_id") != args.unit_id or not getattr(args, "resume", False):
+                    raise Operational("BLOCKED", "another run or unit owns canonical integration")
+                nonce = validated_lock_nonce(doc, args.unit_id, observed)
+                resumed = True
     with locked_manifest(args.run_id, write=True) as doc:
         doc["integration_lock"] = {"unit_id": args.unit_id, "nonce": nonce, "path": path, "phase": "held"}
         event(doc, "integration-lock-acquired", args.unit_id, {"resumed": resumed})
@@ -106,88 +89,60 @@ def cmd_integration_acquire(args) -> tuple[str, dict]:
 
 
 def semantic_snapshot(repo: str) -> dict:
-    head = git_text(repo, "rev-parse", "HEAD")
-    head_tree = git_text(repo, "rev-parse", "HEAD^{tree}")
-    index_tree = git_text(repo, "write-tree")
-    raw = git(repo, "status", "--porcelain=v2", "-z", "--untracked-files=all")
-    worktree_index = git(repo, "diff", "--name-only", "-z")
+    jj(repo, "status")
+    revision = revision_snapshot(repo)
+    paths = changed_paths(repo)
+    diff = jj(repo, "diff", "--git", "--color", "never")
     return {
-        "head": head,
-        "branch_ref": git_text(repo, "symbolic-ref", "-q", "HEAD", check=False),
-        "head_tree": head_tree,
-        "index_tree": index_tree,
-        "status_sha256": digest_bytes(raw),
-        "status_empty": not bool(raw),
-        "worktree_index_empty": not bool(worktree_index),
+        "operation": operation_id(repo),
+        "change_id": revision["change_id"],
+        "commit": revision["commit"],
+        "parents": revision["parents"],
+        "description": revision["description"],
+        "paths": paths,
+        "diff_sha256": digest_bytes(diff),
+        "empty": not paths,
+        "conflicted": has_conflicts(repo),
     }
 
 
-def expected_apply_snapshot(repo: str, pre_head: str, unit: dict) -> dict:
-    transport = unit["transport"]
-    if pre_head == transport["base"]:
-        tree = transport["tree"]
-    else:
-        # Compute the same semantic three-way result as applying the
-        # base-parented transport commit, without touching the canonical index.
-        merged = git_text(repo, "merge-tree", "--write-tree", pre_head, transport["commit"])
-        tree = merged.splitlines()[0] if merged else ""
-        if not tree:
-            raise Operational("BLOCKED", "could not derive expected canonical apply tree")
-    raw = git(repo, "diff-tree", "-r", "-M", "--name-status", "-z", pre_head, tree)
-    return {"index_tree": tree, "changed_paths": parse_diff_paths(raw)}
+def same_revision_state(left: dict, right: dict) -> bool:
+    keys = ("change_id", "parents", "description", "paths", "diff_sha256", "empty", "conflicted")
+    return all(left.get(key) == right.get(key) for key in keys)
 
 
-def matches_expected_apply(repo: str, unit: dict, snap: dict | None = None) -> bool:
-    snap = snap or semantic_snapshot(repo)
-    pre = unit.get("integration", {}).get("pre_fold")
+def same_exact_revision_state(left: dict, right: dict) -> bool:
+    keys = ("change_id", "commit", "parents", "description", "paths", "diff_sha256", "empty", "conflicted")
+    return isinstance(right, dict) and all(left.get(key) == right.get(key) for key in keys)
+
+
+def matches_expected_apply(repo: str, unit: dict, snapshot: dict | None = None) -> bool:
     expected = unit.get("integration", {}).get("expected_apply")
-    if not pre or not expected:
-        return False
-    return (
-        snap["head"] == pre["head"]
-        and snap["index_tree"] == expected["index_tree"]
-        and snap["worktree_index_empty"]
-        and status_paths(repo) == set(expected["changed_paths"])
-    )
+    current = snapshot or semantic_snapshot(repo)
+    return isinstance(expected, dict) and all(current.get(key) == value for key, value in expected.items() if key != "operation")
 
 
 def wave_members(doc: dict, unit: dict) -> list[dict]:
     wave = unit.get("wave", {})
-    wave_id = wave.get("id")
-    if not wave_id:
+    if not wave.get("id"):
         return []
-    base = wave.get("base")
-    members = [
-        candidate for candidate in doc.get("units", {}).values()
-        if candidate.get("wave", {}).get("id") == wave_id
-    ]
-    positions = [candidate.get("wave", {}).get("position") for candidate in members]
-    if any(candidate.get("wave", {}).get("base") != base for candidate in members):
+    members = [candidate for candidate in doc.get("units", {}).values() if candidate.get("wave", {}).get("id") == wave["id"]]
+    if any(candidate.get("wave", {}).get("base") != wave.get("base") for candidate in members):
         raise Operational("BLOCKED", "wave members do not share one recorded base")
+    positions = [candidate.get("wave", {}).get("position") for candidate in members]
     if len(set(positions)) != len(positions):
         raise Operational("BLOCKED", "wave positions are not unique")
     return sorted(members, key=lambda candidate: candidate["wave"]["position"])
 
 
 def validate_wave_order(doc: dict, unit: dict) -> None:
-    members = wave_members(doc, unit)
-    earlier_unresolved = [
-        candidate["unit_id"] for candidate in members
+    unresolved = [
+        candidate["unit_id"] for candidate in wave_members(doc, unit)
         if candidate["wave"]["position"] < unit["wave"]["position"]
-        and not (
-            candidate.get("state") in {"committed", "preserved", "cleaned"}
-            or (
-                candidate.get("state") == "native-completed"
-                and unit_accepted_commit(candidate) is not None
-            )
-        )
+        and candidate.get("state") not in {"committed", "preserved", "cleaned", "native-completed"}
     ]
-    if earlier_unresolved:
-        raise Operational(
-            "BLOCKED",
-            "earlier wave units must be committed or preserved before this fold-in",
-            {"reason": "earlier wave unit not resolved", "units": earlier_unresolved},
-        )
+    if unresolved:
+        raise Operational("BLOCKED", "earlier wave units must be accepted or preserved before this integration", {"units": unresolved})
 
 
 def wave_member_changed_paths(candidate: dict) -> set[str] | None:
@@ -195,8 +150,6 @@ def wave_member_changed_paths(candidate: dict) -> set[str] | None:
     if transport.get("commit"):
         paths = transport.get("changed_paths")
     elif candidate.get("state") == "native-completed":
-        if unit_accepted_commit(candidate) is None:
-            raise TrustFailure("native wave completion evidence is malformed")
         completion = find_attempt(candidate).get("fallback", {}).get("completed")
         paths = completion.get("changed_paths") if isinstance(completion, dict) else None
     else:
@@ -206,78 +159,53 @@ def wave_member_changed_paths(candidate: dict) -> set[str] | None:
     return set(paths)
 
 
-def validate_wave_collisions(
-    doc: dict,
-    unit: dict,
-    overrides: dict[str, set[str]] | None = None,
-    require_complete: bool = True,
-) -> None:
+def validate_wave_collisions(doc: dict, unit: dict, overrides: dict[str, set[str]] | None = None, require_complete: bool = True) -> None:
     members = wave_members(doc, unit)
     if not members:
         return
     overrides = overrides or {}
-    changed_by_unit: dict[str, set[str]] = {}
-    unterminated: list[str] = []
+    changed: dict[str, set[str]] = {}
+    missing: list[str] = []
     for candidate in members:
-        unit_id = candidate["unit_id"]
-        paths = overrides.get(unit_id)
+        paths = overrides.get(candidate["unit_id"])
         if paths is None:
             paths = wave_member_changed_paths(candidate)
         if paths is None:
-            unterminated.append(unit_id)
+            missing.append(candidate["unit_id"])
         else:
-            changed_by_unit[unit_id] = paths
-    if unterminated:
-        if require_complete:
-            raise Operational(
-                "BLOCKED",
-                "every wave worker must terminalize before the first fold-in",
-                {"reason": "wave not fully terminalized", "units": unterminated},
-            )
+            changed[candidate["unit_id"]] = paths
+    if missing and require_complete:
+        raise Operational("BLOCKED", "every wave worker must terminalize before the first integration", {"units": missing})
     collisions: dict[str, list[str]] = {}
     for index, left in enumerate(members):
         for right in members[index + 1:]:
-            left_paths = changed_by_unit.get(left["unit_id"])
-            right_paths = changed_by_unit.get(right["unit_id"])
-            if left_paths is None or right_paths is None:
-                continue
-            overlap = sorted(left_paths & right_paths)
+            overlap = sorted(changed.get(left["unit_id"], set()) & changed.get(right["unit_id"], set()))
             if overlap:
                 collisions[f'{left["unit_id"]}:{right["unit_id"]}'] = overlap
     if collisions:
-        raise Operational(
-            "BLOCKED",
-            "wave transports have a changed-path collision",
-            {"reason": "changed-path collision", "collisions": collisions},
-        )
+        raise Operational("BLOCKED", "wave transports have a changed-path collision", {"collisions": collisions})
 
 
 def validate_wave_ready(doc: dict, unit: dict) -> None:
-    members = wave_members(doc, unit)
-    if not members:
-        return
     validate_wave_order(doc, unit)
     validate_wave_collisions(doc, unit)
 
 
 def validate_wave_advancement(members: list[dict], unit: dict, parent: str, canonical: str) -> list[str]:
-    position = unit["wave"]["position"]
-    targets = [candidate for candidate in members if candidate["wave"]["position"] > position]
+    targets = [candidate for candidate in members if candidate["wave"]["position"] > unit["wave"]["position"]]
     for candidate in targets:
-        allowed = candidate["wave"].get("allowed_heads", [])
-        if canonical in allowed:
-            continue
-        if not allowed or allowed[-1] != parent:
+        allowed = candidate["wave"].get("allowed_revisions", [])
+        if canonical not in allowed and (not allowed or allowed[-1] != parent):
             raise Operational("BLOCKED", "wave advancement is not the exact recorded canonical chain")
     return [candidate["unit_id"] for candidate in targets]
 
 
-def advance_wave_allowed_heads(members: list[dict], position: int, canonical: str) -> list[str]:
+def advance_wave_allowed_revisions(members: list[dict], position: int, canonical: str) -> list[str]:
     advanced: list[str] = []
     for candidate in members:
         if candidate["wave"]["position"] <= position:
             continue
-        allowed = candidate["wave"].setdefault("allowed_heads", [])
+        allowed = candidate["wave"].setdefault("allowed_revisions", [])
         if canonical not in allowed:
             allowed.append(canonical)
         advanced.append(candidate["unit_id"])
@@ -285,165 +213,119 @@ def advance_wave_allowed_heads(members: list[dict], position: int, canonical: st
 
 
 def validate_dependencies_ready(doc: dict, unit: dict) -> None:
-    missing: list[str] = []
-    unaccepted: list[str] = []
-    for dependency_id in unit.get("dependencies", []):
-        dependency = doc.get("units", {}).get(dependency_id)
-        if dependency is None:
-            missing.append(dependency_id)
-            continue
-        if unit_accepted_commit(dependency) is None:
-            unaccepted.append(dependency_id)
+    missing = [dependency for dependency in unit.get("dependencies", []) if dependency not in doc.get("units", {})]
+    unaccepted = [dependency for dependency in unit.get("dependencies", []) if dependency in doc.get("units", {}) and unit_accepted_commit(doc["units"][dependency]) is None]
     if missing or unaccepted:
-        raise Operational(
-            "BLOCKED",
-            "unit dependencies must have controller-accepted canonical commits before preflight",
-            {
-                "unit_id": unit["unit_id"],
-                "missing_dependencies": missing,
-                "unaccepted_dependencies": unaccepted,
-            },
-        )
+        raise Operational("BLOCKED", "unit dependencies lack accepted canonical changes", {"missing_dependencies": missing, "unaccepted_dependencies": unaccepted})
 
 
-def dependency_advanced_head(doc: dict, unit: dict, head: str) -> bool:
-    dependency_commits = [
-        unit_accepted_commit(doc["units"][dependency_id])
-        for dependency_id in unit.get("dependencies", [])
-    ]
-    if any(commit is None for commit in dependency_commits):
-        return False
-    accepted_heads = {
-        commit
-        for unit_id, candidate in doc.get("units", {}).items()
-        if unit_id != unit.get("unit_id")
-        if (commit := unit_accepted_commit(candidate)) is not None
-    }
-    if head not in accepted_heads:
-        return False
-    allowed_heads = unit.get("wave", {}).get("allowed_heads", [])
-    required_ancestors = {
-        *accepted_heads,
-        *dependency_commits,
-        *allowed_heads,
-        unit.get("workspace", {}).get("base"),
-    }
-    required_ancestors.discard(None)
+def dependency_advanced_revision(doc: dict, unit: dict, revision: str) -> bool:
     repo = doc["repository"]["toplevel"]
-    return all(
-        git_text(repo, "merge-base", commit, head, check=False) == commit
-        for commit in required_ancestors
-    )
-
-
-def validate_preflight_ancestry(doc: dict, unit: dict, heads: set[str]) -> None:
-    required = {
-        commit
-        for unit_id, candidate in doc.get("units", {}).items()
-        if unit_id != unit["unit_id"]
-        and (commit := unit_accepted_commit(candidate)) is not None
-    }
-    wave = unit.get("wave", {})
-    required.update(head for head in wave.get("allowed_heads", []) if head != wave.get("base"))
-
-    repo = doc["repository"]["toplevel"]
-    missing = {
-        head: sorted(
-            commit for commit in required
-            if git_text(repo, "merge-base", commit, head, check=False) != commit
-        )
-        for head in sorted(heads)
-    }
-    missing = {head: commits for head, commits in missing.items() if commits}
-    if missing:
-        raise Operational(
-            "BLOCKED",
-            "preflight HEAD omits controller-accepted prerequisite commits",
-            {"unit_id": unit["unit_id"], "missing_ancestry": missing},
-        )
+    required = [unit_accepted_commit(doc["units"][dependency]) for dependency in unit.get("dependencies", [])]
+    return bool(required) and all(commit is not None and is_ancestor(repo, commit, revision) for commit in required)
 
 
 def cmd_preflight(args) -> tuple[str, dict]:
     with locked_manifest(args.run_id) as doc:
         info = validate_repo(doc)
         unit = doc["units"].get(args.unit_id)
-        if not unit or unit["state"] not in {"integration-pending", "preserved"}:
+        if not unit or unit.get("state") not in {"integration-pending", "preserved"}:
             raise Operational("REFUSED", "unit is not integration-pending")
         validate_lock(doc, args.unit_id, args.lock_token)
         validate_dependencies_ready(doc, unit)
         if scope_expansion_pending(unit):
-            raise Operational(
-                "BLOCKED",
-                "worker requested scope expansion; inspect the retained result and transport, then resolve or re-dispatch explicitly",
-                {
-                    "unit_id": args.unit_id,
-                    "terminal_status": "scope_expansion",
-                    "transport": unit["transport"],
-                    "recovery_path": unit["recovery_path"],
-                },
-            )
+            raise Operational("BLOCKED", "worker requested scope expansion", {"unit_id": args.unit_id, "transport": unit["transport"], "recovery_path": unit["recovery_path"]})
         validate_wave_ready(doc, unit)
-        allowed = set(unit["wave"].get("allowed_heads", []))
-        requested: set[str] = set()
-        if args.allowed_head:
-            requested = {git_text(info["toplevel"], "rev-parse", f"{h}^{{commit}}") for h in args.allowed_head}
-            if any(head not in allowed and not dependency_advanced_head(doc, unit, head) for head in requested):
-                raise Operational("BLOCKED", "unrecorded same-wave HEAD allowance")
-        if info["head"] not in allowed and not dependency_advanced_head(doc, unit, info["head"]):
-            raise Operational("BLOCKED", "canonical HEAD advanced outside the recorded wave")
-        validate_preflight_ancestry(doc, unit, requested | {info["head"]})
-        snap = semantic_snapshot(info["toplevel"])
-        if not snap["status_empty"] or snap["index_tree"] != snap["head_tree"]:
-            raise Operational("BLOCKED", "canonical checkout is not clean at preflight")
-        expected = expected_apply_snapshot(info["toplevel"], snap["head"], unit)
+        snapshot = semantic_snapshot(info["toplevel"])
+        allowed = set(unit["wave"].get("allowed_revisions", []))
+        requested_values = getattr(args, "allowed_change", None) or []
+        requested = {resolve_revision(info["toplevel"], value) for value in requested_values}
+        if any(value not in allowed for value in requested):
+            raise Operational("BLOCKED", "unrecorded same-wave canonical revision allowance")
+        current_allowed = info["commit"] in allowed or (snapshot["empty"] and len(snapshot["parents"]) == 1 and snapshot["parents"][0] in allowed)
+        if not current_allowed:
+            raise Operational("BLOCKED", "canonical working-copy commit advanced outside the recorded wave")
+        dependency_commits = [unit_accepted_commit(doc["units"][dependency]) for dependency in unit.get("dependencies", [])]
+        if any(commit is None or not is_ancestor(info["toplevel"], commit, info["commit"]) for commit in dependency_commits):
+            raise Operational("BLOCKED", "canonical working-copy change omits an accepted dependency")
+        if not snapshot["empty"] or snapshot["conflicted"]:
+            raise Operational("BLOCKED", "canonical working-copy change is not empty and conflict-free at preflight")
         intent_revision = doc["revision"] + 1
     with locked_manifest(args.run_id, write=True) as doc:
         unit = doc["units"][args.unit_id]
         unit["state"] = "integration-pending"
         unit["integration"]["intent_revision"] = intent_revision
-        unit["integration"]["pre_fold"] = snap
-        unit["integration"]["expected_apply"] = expected
-        event(doc, "canonical-apply-intent", args.unit_id, {"transport": unit["transport"]["commit"], "pre_head": snap["head"]})
-    return "PREFLIGHT_OK", {"unit_id": args.unit_id, "pre_fold": snap, "transport": unit["transport"]}
+        unit["integration"]["pre_fold"] = snapshot
+        unit["integration"]["expected_apply"] = None
+        event(doc, "canonical-apply-intent", args.unit_id, {"transport_change": unit["transport"].get("change_id"), "pre_change": snapshot["change_id"]})
+    return "PREFLIGHT_OK", {"unit_id": args.unit_id, "pre_fold": snapshot, "transport": unit["transport"]}
+
+
+def apply_transport(run_id: str, unit_id: str, token: str) -> dict:
+    with locked_manifest(run_id) as doc:
+        validate_lock(doc, unit_id, token)
+        unit = doc["units"][unit_id]
+        repo = doc["repository"]["toplevel"]
+        transport = unit["transport"]["commit"]
+        before_ids = all_commit_ids(repo)
+    jj(repo, "duplicate", transport, "-o", "@")
+    after_ids = all_commit_ids(repo)
+    created = sorted(after_ids - before_ids)
+    if len(created) != 1:
+        raise Operational("BLOCKED", "transport duplication did not create exactly one integration change", {"created": created})
+    try:
+        jj(repo, "squash", "--from", created[0], "--into", "@")
+    except Operational:
+        jj(repo, "abandon", created[0], check=False)
+        raise
+    snapshot = semantic_snapshot(repo)
+    if snapshot["conflicted"]:
+        raise Operational("BLOCKED", "transport integration produced conflicts", {"changed_paths": snapshot["paths"]})
+    expected_paths = set(unit["transport"].get("changed_paths", []))
+    if set(snapshot["paths"]) != expected_paths:
+        raise Operational("BLOCKED", "integrated paths differ from the terminalized transport", {"expected_paths": sorted(expected_paths), "actual_paths": snapshot["paths"]})
+    with locked_manifest(run_id, write=True) as doc:
+        unit = doc["units"][unit_id]
+        unit["state"] = "integrated"
+        unit["integration"]["expected_apply"] = snapshot
+        unit["integration"]["applied"] = {"at": now_iso(), "snapshot": snapshot, "duplicate": created[0]}
+        event(doc, "transport-applied", unit_id, {"change": snapshot["change_id"], "commit": snapshot["commit"]})
+    return snapshot
 
 
 def cmd_mark_applied(args) -> tuple[str, dict]:
-    with locked_manifest(args.run_id) as doc:
+    with locked_manifest(args.run_id, write=True) as doc:
         validate_lock(doc, args.unit_id, args.lock_token)
         unit = doc["units"].get(args.unit_id)
-        if not unit or unit["state"] not in {"integration-pending", "integrated"} or not unit["integration"].get("pre_fold"):
-            raise Operational("REFUSED", "no recorded preflight intent")
-        repo = validate_repo(doc)["toplevel"]
-        snap = semantic_snapshot(repo)
-        if snap["head"] != unit["integration"]["pre_fold"]["head"]:
-            raise Operational("BLOCKED", "canonical HEAD moved before apply was recorded")
-        if not matches_expected_apply(repo, unit, snap):
-            raise Operational("BLOCKED", "canonical state does not match the expected transport application")
-    test_fault("after-apply-observed")
-    with locked_manifest(args.run_id, write=True) as doc:
-        unit = doc["units"][args.unit_id]
-        unit["state"] = "integrated"
-        unit["integration"]["applied"] = {"at": now_iso(), "post_index_tree": snap["index_tree"], "status_sha256": snap["status_sha256"]}
-        event(doc, "transport-applied", args.unit_id, {"post_index_tree": snap["index_tree"]})
-    return "APPLIED", {"unit_id": args.unit_id, "post_index_tree": snap["index_tree"]}
+        if not unit or unit.get("state") not in {"integration-pending", "integrated", "verified"}:
+            raise Operational("REFUSED", "unit has no recorded integration intent")
+        snapshot = semantic_snapshot(doc["repository"]["toplevel"])
+        if unit["integration"].get("expected_apply") is None:
+            pre = unit["integration"].get("pre_fold")
+            expected_paths = set(unit.get("transport", {}).get("changed_paths", []))
+            if (
+                not isinstance(pre, dict)
+                or snapshot["change_id"] != pre["change_id"]
+                or set(snapshot["paths"]) != expected_paths
+                or snapshot["empty"]
+                or snapshot["conflicted"]
+            ):
+                raise Operational("BLOCKED", "canonical state is not a valid applied transport change")
+            unit["integration"]["expected_apply"] = snapshot
+            unit["integration"]["applied"] = {"at": now_iso(), "snapshot": snapshot, "external_transition": True}
+            unit["state"] = "integrated"
+            event(doc, "transport-applied", args.unit_id, {"change": snapshot["change_id"], "commit": snapshot["commit"]})
+        elif not matches_expected_apply(doc["repository"]["toplevel"], unit, snapshot):
+            raise Operational("BLOCKED", "canonical state does not match the recorded Jujutsu integration")
+    return "APPLIED", {"unit_id": args.unit_id, "snapshot": snapshot}
 
 
 def cmd_mark_verified(args) -> tuple[str, dict]:
     with locked_manifest(args.run_id, write=True) as doc:
         validate_lock(doc, args.unit_id, args.lock_token)
         unit = doc["units"].get(args.unit_id)
-        if not unit or unit["state"] not in {"integrated", "verified"}:
-            raise Operational("REFUSED", "unit is not applied")
-        repo = validate_repo(doc)["toplevel"]
-        if not matches_expected_apply(repo, unit):
-            raise Operational(
-                "BLOCKED",
-                "canonical state changed after the recorded transport application",
-                {
-                    "unit_id": args.unit_id,
-                    "reason": "canonical state no longer matches the expected transport application",
-                },
-            )
+        if not unit or unit.get("state") not in {"integrated", "verified"} or not matches_expected_apply(doc["repository"]["toplevel"], unit):
+            raise Operational("BLOCKED", "canonical state changed after the recorded transport application")
         evidence = {"at": now_iso(), "digest": args.evidence_digest, "summary": args.summary}
         ignored_state = getattr(args, "ignored_state", None)
         if isinstance(ignored_state, str):
@@ -458,31 +340,30 @@ def cmd_mark_verified(args) -> tuple[str, dict]:
 
 def reconcile_commit(doc: dict, unit: dict) -> dict | None:
     repo = doc["repository"]["toplevel"]
-    head = git_text(repo, "rev-parse", "HEAD")
-    parents = git_text(repo, "rev-list", "--parents", "-n", "1", head).split()
-    expected_parent = unit["integration"]["pre_fold"]["head"]
-    expected_tree = unit["integration"]["applied"]["post_index_tree"]
-    actual_tree = git_text(repo, "rev-parse", "HEAD^{tree}")
-    if parents == [head, expected_parent] and actual_tree == expected_tree and not status_paths(repo):
-        return {"commit": head, "parent": expected_parent, "tree": actual_tree, "at": now_iso()}
-    return None
+    current = semantic_snapshot(repo)
+    expected = unit.get("integration", {}).get("expected_apply")
+    if not isinstance(expected, dict):
+        return None
+    if current["change_id"] != expected["change_id"] or current["paths"] != expected["paths"] or current["conflicted"]:
+        return None
+    return {"change_id": current["change_id"], "commit": current["commit"], "parents": current["parents"], "description": current["description"], "at": now_iso()}
 
 
 def cmd_mark_committed(args) -> tuple[str, dict]:
     with locked_manifest(args.run_id) as doc:
         validate_lock(doc, args.unit_id, args.lock_token)
         unit = doc["units"].get(args.unit_id)
-        if not unit or unit["state"] not in {"verified", "committed"}:
+        if not unit or unit.get("state") not in {"verified", "committed"}:
             raise Operational("REFUSED", "unit has not passed canonical verification")
-        commit = reconcile_commit(doc, unit)
-        if not commit:
-            raise Operational("BLOCKED", "canonical commit parent/tree/cleanliness do not match recorded integration")
+        canonical = reconcile_commit(doc, unit)
+        if not canonical:
+            raise Operational("BLOCKED", "canonical Jujutsu change does not match recorded integration")
     with locked_manifest(args.run_id, write=True) as doc:
         unit = doc["units"][args.unit_id]
-        unit["integration"]["canonical_commit"] = commit
+        unit["integration"]["canonical_change"] = canonical
         unit["state"] = "committed"
-        event(doc, "canonical-commit-confirmed", args.unit_id, {"commit": commit["commit"]})
-    return "COMMITTED", {"unit_id": args.unit_id, "canonical_commit": commit}
+        event(doc, "canonical-change-confirmed", args.unit_id, {"change": canonical["change_id"], "commit": canonical["commit"]})
+    return "COMMITTED", {"unit_id": args.unit_id, "canonical_change": canonical}
 
 
 def cmd_wave_advance(args) -> tuple[str, dict]:
@@ -490,136 +371,83 @@ def cmd_wave_advance(args) -> tuple[str, dict]:
         info = validate_repo(doc)
         unit = doc["units"].get(args.unit_id)
         if not unit or unit.get("state") != "committed":
-            raise Operational("REFUSED", "only a committed wave unit can advance its siblings")
+            raise Operational("REFUSED", "only an accepted wave unit can advance siblings")
         validate_lock(doc, args.unit_id, args.lock_token)
         members = wave_members(doc, unit)
         if not members:
             raise Operational("REFUSED", "unit does not belong to a parallel wave")
-        validate_wave_ready(doc, unit)
-        canonical = git_text(info["toplevel"], "rev-parse", f"{args.canonical_commit}^{{commit}}")
-        recorded = unit.get("integration", {}).get("canonical_commit", {})
-        if recorded.get("commit") != canonical or info["head"] != canonical:
-            raise Operational("BLOCKED", "canonical wave commit does not match manifest and HEAD")
-        parent = unit.get("integration", {}).get("pre_fold", {}).get("head")
-        if recorded.get("parent") != parent:
-            raise Operational("BLOCKED", "canonical wave commit parent is not the recorded pre-fold HEAD")
+        value = args.canonical_change
+        canonical = resolve_revision(info["toplevel"], value)
+        recorded = unit.get("integration", {}).get("canonical_change", {})
+        if recorded.get("commit") != canonical:
+            raise Operational("BLOCKED", "canonical wave change does not match the manifest")
+        parent = unit.get("integration", {}).get("pre_fold", {}).get("commit")
         validate_wave_advancement(members, unit, parent, canonical)
     with locked_manifest(args.run_id, write=True) as doc:
         unit = doc["units"][args.unit_id]
-        position = unit["wave"]["position"]
-        advanced = advance_wave_allowed_heads(wave_members(doc, unit), position, canonical)
-        event(doc, "wave-advanced", args.unit_id, {"canonical_commit": canonical, "eligible_siblings": advanced})
-    return "WAVE_ADVANCED", {"unit_id": args.unit_id, "canonical_commit": canonical, "eligible_siblings": advanced}
-
-
-def path_in_tree(repo: str, treeish: str, rel: str) -> bool:
-    out = git(repo, "ls-tree", "-z", "--full-tree", treeish, "--", rel)
-    return bool(out)
-
-
-def remove_introduced_paths(repo: str, unit: dict) -> None:
-    pre = unit["integration"]["pre_fold"]["head"]
-    base = unit["transport"]["base"]
-    commit = unit["transport"]["commit"]
-    raw = git(repo, "diff-tree", "-r", "-M", "--name-status", "-z", base, commit)
-    for rel in parse_diff_paths(raw):
-        if path_in_tree(repo, pre, rel):
-            continue
-        target = os.path.abspath(os.path.join(repo, rel))
-        if os.path.commonpath([repo, target]) != repo:
-            raise Operational("BLOCKED", "transport path escaped canonical repository")
-        if os.path.islink(target) or os.path.isfile(target):
-            os.unlink(target)
-        elif os.path.isdir(target):
-            shutil.rmtree(target)
-        parent = os.path.dirname(target)
-        while parent != repo and os.path.commonpath([repo, parent]) == repo:
-            try:
-                os.rmdir(parent)
-            except OSError:
-                break
-            parent = os.path.dirname(parent)
+        advanced = advance_wave_allowed_revisions(wave_members(doc, unit), unit["wave"]["position"], canonical)
+        event(doc, "wave-advanced", args.unit_id, {"canonical_change": canonical, "eligible_siblings": advanced})
+    return "WAVE_ADVANCED", {"unit_id": args.unit_id, "canonical_change": canonical, "eligible_siblings": advanced}
 
 
 def restore(run_id: str, unit_id: str, lock_token: str) -> bool:
     with locked_manifest(run_id) as doc:
         validate_lock(doc, unit_id, lock_token)
         unit = doc["units"].get(unit_id)
-        if not unit or not unit["integration"].get("pre_fold"):
-            raise Operational("REFUSED", "unit has no pre-fold snapshot")
+        if not unit or not unit.get("integration", {}).get("pre_fold"):
+            raise Operational("REFUSED", "unit has no pre-integration snapshot")
         repo = doc["repository"]["toplevel"]
         pre = dict(unit["integration"]["pre_fold"])
-        git_dir = git_text(repo, "rev-parse", "--path-format=absolute", "--absolute-git-dir")
-        cherry_pick_head = os.path.join(git_dir, "CHERRY_PICK_HEAD")
-        expected_conflict = False
-        if os.path.isfile(cherry_pick_head) and git_text(repo, "rev-parse", "HEAD") == pre["head"]:
-            expected_conflict = Path(cherry_pick_head).read_text().strip() == unit["transport"]["commit"]
-        current = None if expected_conflict else semantic_snapshot(repo)
-        already_exact = current == pre if current else False
-        expected_apply = matches_expected_apply(repo, unit, current) if current else False
-        partial_reset = bool(current) and (
-            unit.get("state") == "restoring"
-            and current["head"] == pre["head"]
-            and current["index_tree"] == pre["index_tree"]
-            and current["worktree_index_empty"]
-            and status_paths(repo).issubset(set(unit["integration"]["expected_apply"]["changed_paths"]))
+        integration = unit["integration"]
+        allowed = [
+            candidate for candidate in (
+                integration.get("expected_apply"),
+                integration.get("applied", {}).get("snapshot") if isinstance(integration.get("applied"), dict) else None,
+            ) if isinstance(candidate, dict)
+        ]
+    current = semantic_snapshot(repo)
+    if same_exact_revision_state(current, pre):
+        actual = current
+        exact = True
+    elif not any(same_exact_revision_state(current, candidate) for candidate in allowed):
+        raise Operational(
+            "BLOCKED",
+            "canonical state is neither the recorded pre-integration snapshot nor an exact controller-recorded applied state; refusing to touch @",
+            {"current_snapshot": current, "retain_integration_lock": True},
         )
-        if not (already_exact or expected_apply or partial_reset or expected_conflict):
-            raise Operational("BLOCKED", "canonical state is not a proven in-flight transport state; refusing destructive restoration")
+    else:
+        with locked_manifest(run_id, write=True) as doc:
+            doc["units"][unit_id]["state"] = "restoring"
+            event(doc, "restore-intent", unit_id, {"current_snapshot": current})
+        jj(repo, "restore", "--from", pre["commit"], "--to", "@")
+        # Restoration reuses recorded bytes and therefore does not compose a new description.
+        if revision_snapshot(repo)["description"] != pre["description"]:
+            jj(repo, "describe", "-m", pre["description"])
+        actual = semantic_snapshot(repo)
+        exact = same_exact_revision_state(actual, pre)
     with locked_manifest(run_id, write=True) as doc:
         unit = doc["units"][unit_id]
-        unit["state"] = "restoring"
-        event(doc, "restore-intent", unit_id)
-    if not already_exact:
-        git(repo, "cherry-pick", "--abort", check=False)
-        git(repo, "reset", "--hard", pre["head"])
-        test_fault("restore-after-reset")
-        with locked_manifest(run_id) as doc:
-            unit = doc["units"][unit_id]
-            remove_introduced_paths(repo, unit)
-    test_fault("restore-after-path-removal")
-    actual = semantic_snapshot(repo)
-    exact = actual == pre
-    with locked_manifest(run_id, write=True) as doc:
-        unit = doc["units"][unit_id]
-        unit["integration"]["restore"] = {
-            "at": now_iso(),
-            "exact": exact,
-            "already_exact": already_exact,
-            "snapshot": actual,
-        }
+        unit["integration"]["restore"] = {"at": now_iso(), "exact": exact, "snapshot": actual}
         if exact:
             unit["state"] = "preserved"
             event(doc, "canonical-restored", unit_id)
         else:
-            blocker = {"at": now_iso(), "unit_id": unit_id, "reason": "exact pre-fold restoration could not be proven"}
-            doc["blockers"].append(blocker)
+            doc["blockers"].append({"at": now_iso(), "unit_id": unit_id, "reason": "exact pre-integration restoration could not be proven"})
             event(doc, "restore-blocked", unit_id)
     return exact
 
 
 def cmd_restore(args) -> tuple[str, dict]:
-    exact = restore(args.run_id, args.unit_id, args.lock_token)
-    if not exact:
-        raise Operational("BLOCKED", "exact pre-fold restoration could not be proven")
-    return "PRESERVED", {"unit_id": args.unit_id, "recovery_path": os.path.join(run_dir(args.run_id), "units", args.unit_id)}
-
-
+    if not restore(args.run_id, args.unit_id, args.lock_token):
+        raise Operational("BLOCKED", "exact pre-integration restoration could not be proven")
+    return "PRESERVED", {"unit_id": args.unit_id, "recovery_path": os.path.join(locate_run_dir(args.run_id), "units", args.unit_id)}
 
 
 def release_lock_is_owned(doc: dict, unit_id: str, lock_token: str, lock: dict) -> bool:
-    expected = {
-        "run_id": doc["run_id"],
-        "unit_id": unit_id,
-        "repository": doc["repository"]["identity_digest"],
-        "branch_ref": doc["branch"]["ref"],
-    }
-    if any(lock.get(key) != value for key, value in expected.items()):
+    try:
+        return validated_lock_nonce(doc, unit_id, lock) == lock_token
+    except Operational:
         return False
-    nonce = lock.get("nonce")
-    if not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{48}", nonce):
-        return False
-    return nonce == lock_token
 
 
 def integration_release(run_id: str, unit_id: str, lock_token: str) -> None:
@@ -628,46 +456,23 @@ def integration_release(run_id: str, unit_id: str, lock_token: str) -> None:
         if not held or held.get("unit_id") != unit_id or held.get("nonce") != lock_token:
             raise Operational("REFUSED", "integration lock token or identity mismatch")
         unit = doc["units"].get(unit_id)
-        pre_apply = bool(
-            unit
-            and unit.get("state") == "integration-pending"
-            and not unit.get("integration", {}).get("pre_fold")
-        )
-        if not unit or (unit["state"] not in {"committed", "preserved", "cleaned", "native-completed"} and not pre_apply):
+        pre_apply = bool(unit and unit.get("state") == "integration-pending" and not unit.get("integration", {}).get("pre_fold"))
+        if not unit or (unit.get("state") not in {"committed", "preserved", "cleaned", "native-completed"} and not pre_apply):
             raise Operational("REFUSED", "integration lock releases only before preflight or after accepted completion")
         path = held.get("path")
         if path != integration_lock_path(doc):
             raise Operational("BLOCKED", "manifest integration lock path changed")
-        phase = held.get("phase", "held")
-        if phase == "held":
-            validate_lock(doc, unit_id, lock_token)
-            held["phase"] = "releasing"
-            held["release_started_at"] = now_iso()
-            event(doc, "integration-lock-release-intent", unit_id)
-        elif phase != "releasing":
-            raise Operational("BLOCKED", "manifest integration claim has an unknown phase")
+        validate_lock(doc, unit_id, lock_token)
+        held["phase"] = "releasing"
+        event(doc, "integration-lock-release-intent", unit_id)
     with locked_manifest(run_id, write=True) as doc:
-        held = doc.get("integration_lock")
-        if not held or held.get("unit_id") != unit_id or held.get("nonce") != lock_token or held.get("phase") != "releasing":
-            raise Operational("BLOCKED", "manifest integration claim changed")
-        if held.get("path") != path or path != integration_lock_path(doc):
-            raise Operational("BLOCKED", "manifest integration lock path changed")
-        current = None
-        try:
-            current = read_integration_lock(path)
-        except TrustFailure:
-            if os.path.lexists(path):
-                raise
-        if current is not None and release_lock_is_owned(doc, unit_id, lock_token, current):
-            try:
+        if os.path.lexists(path):
+            observed = read_integration_lock(path)
+            if release_lock_is_owned(doc, unit_id, lock_token, observed):
                 os.unlink(path)
-            except FileNotFoundError:
-                pass
         test_fault("integration-release-after-unlink")
         if os.path.lexists(path):
-            current = read_integration_lock(path)
-            if release_lock_is_owned(doc, unit_id, lock_token, current):
-                raise Operational("BLOCKED", "integration lock file remained after release")
+            raise Operational("BLOCKED", "integration lock file remained after release")
         doc["integration_lock"] = None
         event(doc, "integration-lock-released", unit_id)
 

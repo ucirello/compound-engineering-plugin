@@ -17,7 +17,7 @@ argument-hint: "[optional: brief context] [mode:non-interactive] [depth:lightwei
 
 Document a problem that is solved, verified working, and non-trivial. These are advisory: judge them from the session rather than asking about them. When the session plainly holds no such problem, write nothing and report why.
 
-`ce-compound` is not a `CONCEPTS.md` bootstrap tool — it seeds the learning's own area as a side effect, never the whole repo. Send a standalone request to create or bootstrap that file to `ce-compound-refresh`, then exit.
+`ce-compound` is not a `CONCEPTS.md` bootstrap tool — it seeds the learning's own area as a side effect, never the whole workspace. Send a standalone request to create or bootstrap that file to `ce-compound-refresh`, then exit.
 
 ## Mode Detection
 
@@ -37,17 +37,17 @@ Depth is an explicit non-interactive-only selector, and at most one depth token 
 
 Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a subagent the resolved path rather than the config.
 
-<!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+<!-- rocketclaw-docs-root:start -->
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- ce-docs-root:end -->
+<!-- rocketclaw-docs-root:end -->
 
 ## Write boundary
 
-**Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
+**Only the orchestrator writes product files.** Phase 1 subagents write to the per-run workspace-local temporary directory only, and never touch `<root>/`, project instruction files, or any other tracked path.
 
 The orchestrator writes the one learning under `<root>/solutions/`, plus two maintenance side effects its own step governs: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Creating `CONCEPTS.md` when it is absent is expected rather than a violation. An instruction file is only ever edited, never created. Nothing else in the tree is written: edits to *other* docs belong to `ce-compound-refresh`, which this skill recommends or invokes with a narrow scope but never stands in for.
 

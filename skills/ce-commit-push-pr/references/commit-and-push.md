@@ -1,26 +1,38 @@
-# Committing and pushing
+# Committing and pushing with Jujutsu
 
-If the stack reference constructed and committed retrospective layers before this step, skip ordinary single-branch commit/push and continue to Step 4; `gh stack submit` in Step 5 pushes the stack.
+If the stack reference constructed and committed retrospective layers before this step, skip ordinary single-bookmark commit/push and continue to Step 4; `gh stack submit` in Step 5 pushes the stack.
 
-If on the default branch, branch creation needs to handle stale local `<base>`, unpushed commits on local `<base>`, and uncommitted changes that collide with the fresh remote base. Read `references/branch-creation.md` and follow its decision flow before continuing.
+If the work is based directly on the default bookmark, read `references/bookmark-creation.md` and resolve the base before continuing.
 
-Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate commits (2-3 max). Group at file level only — no `git add -p`. When ambiguous, one commit is fine.
+Inspect the working-copy change with `jj status` and `jj diff`. Group only clearly distinct concerns into separate commits, with no more groups than the work naturally requires. Use whole-file filesets; when a safe split requires hunks, ask before using interactive `jj split`. When ambiguous, one commit is fine.
 
-Stage and commit each group. **Avoid `git add -A` and `git add .`** — they sweep in `.env`, build artifacts, and generated files. **Honor `exclude:<paths>` when the invocation carries it:** a caller names files that must stay uncommitted (typically a user's own in-progress edits it could not separate from its work); never stage or commit them, and say in the report that they were left out. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+Honor `exclude:<paths>` when present. Path-limit every commit to its intended files so excluded or unrelated content remains in the new working-copy change. With filesets, `jj commit` keeps the selected paths in the completed commit and moves the remaining content into a new working-copy commit.
 
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-commit message here
-EOF
-)" -- file1 file2 file3
-```
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-The trailing path list on `git commit` is load-bearing: a bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would ride into the commit. Naming the paths commits exactly the group and leaves other index entries alone.
+The project's active runtime conventions and descriptions visible in current `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure. Do not impose a fixed prefix, type, scope, subject, body, layout, template, tense, punctuation, line length, or example. Preserve any known implementation-unit identifier only when project conventions or the caller require it.
 
-Then push. Immediately before pushing, re-confirm you are on the intended feature branch (`git branch --show-current`) — the branch gathered in Context is a hint, and Step 1 may have created or switched branches since. Push the live `HEAD` so it reflects the current checkout, never a stale branch name:
+For each whole-file group:
 
 ```bash
-git push -u origin HEAD
+jj commit -m "<message-derived-from-current-conventions>" <fileset>...
 ```
 
-If the working tree is clean and all commits are already pushed, this step is a no-op.
+Before creating or updating the feature bookmark, verify the completed top commit and its description with `jj show @-` and verify excluded content remains in `@` with `jj status`.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+If `<bookmark>` does not exist, create it at the completed top commit. If it already identifies this feature line, advance it to the completed top commit. Do not move an unrelated bookmark or move one backward without explicit confirmation.
+
+```bash
+jj bookmark create <bookmark> -r @-
+jj bookmark set <bookmark> -r @-
+```
+
+Run only the applicable bookmark command. Immediately before pushing, separately re-confirm the local target with `jj bookmark list <bookmark>` and remote targets with `jj log -r 'remote_bookmarks(exact:"<bookmark>")' --no-graph -T 'json(remote_bookmarks) ++ "\n"'`. Stop if the intended local target or remote is ambiguous. Then push that bookmark explicitly:
+
+```bash
+jj git push --remote <remote> --bookmark <bookmark>
+```
+
+If push safety checks fail, fetch that remote, resolve bookmark divergence or conflicts, and retry only when the intended target is still clear. If the working-copy change is empty and the bookmark already matches its remote, this step is a no-op.

@@ -10,7 +10,7 @@ Verify the direct CLI is installed:
 command -v agent-browser >/dev/null 2>&1 && echo "Ready" || echo "NOT INSTALLED"
 ```
 
-If it is missing, tell the user: "`agent-browser` is not installed. Use the `ce-setup` skill to print the current install command, then install `agent-browser` and retry." Then stop. An installed discovery skill does not imply that the CLI or its browser runtime is installed.
+If it is missing, tell the user: "`agent-browser` is not installed. Install it using its current official instructions, then retry." Then stop. An installed discovery skill does not imply that the CLI or its browser runtime is installed.
 
 Before running browser actions, load the workflow and troubleshooting content that matches the installed CLI:
 
@@ -24,7 +24,7 @@ If the CLI exists but cannot launch its browser, follow the current core trouble
 
 Add `--headed` to commands when manual mode selected a visible browser. Pipeline mode defaults this fallback driver to headless.
 
-Before capturing file-backed evidence, resolve `<workspace-root>` with `jj workspace root` and create a collision-resistant `.tmp/test-browser/<run-id>/` beneath it. If either step fails, report the blocker instead of writing outside the workspace.
+Before capturing file-backed evidence, resolve `<workspace-root>` with `jj workspace root`, falling back to the current project directory, and reserve a collision-resistant `.tmp/ce-test-browser/<run-id>/` beneath it. If the local directory cannot be reserved safely, report the blocker instead of writing to OS-global storage.
 
 ```bash
 # Navigate and inspect
@@ -38,8 +38,8 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot "<workspace-root>/.tmp/test-browser/<run-id>/screenshot.png"
-agent-browser screenshot --full "<workspace-root>/.tmp/test-browser/<run-id>/screenshot-full.png"
+agent-browser screenshot "<workspace-root>/.tmp/ce-test-browser/<run-id>/screenshot.png"
+agent-browser screenshot --full "<workspace-root>/.tmp/ce-test-browser/<run-id>/screenshot-full.png"
 
 # Navigation and waits
 agent-browser back

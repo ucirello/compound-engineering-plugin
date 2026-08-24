@@ -14,20 +14,20 @@ For planning invocations, do not emit review-style JSON. Convert migration analy
 
 ## Step 0: Schema drift or schema-artifact handling
 
-Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the review-base revision from caller context (`<review-base>`). **Never assume `main`.**
+Run this **first** when the caller provides a concrete diff and `db/schema.rb` or `db/structure.sql` appears in that diff. Use the comparison-base revision from caller context (`<review-base>` — change ID, commit ID, bookmark, or revset resolving to one revision). **Never assume the `main` bookmark.**
 
 ```bash
-jj diff --from <review-base> --to @ --name-only db/migrate/
+jj diff --from <review-base> --to @ --name-only -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the provided diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-jj diff --from <review-base> --to @ db/schema.rb
+jj diff --from <review-base> --to @ -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-jj diff --from <review-base> --to @ db/structure.sql
+jj diff --from <review-base> --to @ -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in the provided diff**:
@@ -40,11 +40,11 @@ When drift is present, call it out as a blocking plan requirement on the affecte
 
 ```bash
 # schema.rb:
-jj restore --from <review-base> --into @ db/schema.rb
+jj restore --from <review-base> -- db/schema.rb
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-jj restore --from <review-base> --into @ db/structure.sql
+jj restore --from <review-base> -- db/structure.sql
 bin/rails db:migrate
 ```
 

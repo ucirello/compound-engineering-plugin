@@ -6,10 +6,10 @@ Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted 
 
 Two claim categories verify against different trees:
 
-- **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working tree** — they describe what this session's work produced and verified here.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the workspace may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local Jujutsu reachability is only the fallback. The script's `INFO: workspace is N revisions behind …` line tells you how much to distrust the local tree for this category.
+- **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working copy** — they describe what this session's work produced and verified here.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the workspace may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local Jujutsu reachability is only the fallback. The script's `INFO: workspace is N revisions behind trunk()` line tells you how much to distrust the local workspace for this category.
 
-Before running the script, optionally run `jj git fetch` (best-effort — skip silently on failure or offline; the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
+Before running the script, optionally run `jj git fetch` when the workspace uses a Git backend (best-effort — skip silently on failure or offline; the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
 ## Step 1: Adjudicate the mechanical flags
 
@@ -20,27 +20,27 @@ The script reports flags; you decide each one. Three resolutions — **fix**, **
 | path not found anywhere | Typo, or drafted from memory | Fix the citation or remove the claim |
 | path missing here, exists at `trunk()` | Stale workspace | Verify the claim against `trunk()`; annotate if the doc implies the file is present locally |
 | path deliberately gone (doc says removed/renamed) | Historical citation | Confirm the surrounding prose marks it as historical ("removed by this fix", "pre-fix state"); add that marker if absent |
-| revision ID does not resolve | Fabricated or from another repo | Replace with the PR number, or drop |
-| revision ID reachable from `@` only | Local-only revision whose commit ID may change when rewritten | Replace with the PR number |
-| revision ID reachable from `trunk()` only | Workspace predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
-| revision ID exists but is unreachable | Rewritten-away revision | Replace with the PR number |
+| revision ID does not resolve | Fabricated or from another workspace | Replace with the PR number, or drop |
+| revision reachable from `@` only | Local-only revision; its commit ID may change when rewritten | Replace with the PR number |
+| revision reachable from `trunk()` only | Workspace predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
+| revision exists but is unreachable | Rewritten-away revision | Replace with the PR number |
 | scaffold ("Learning 3", `{{…}}`) | Drafting-context leak | Always fix — rewrite as a real path or link |
 | relative link unresolved | Wrong target | Fix the path |
 
-If the script cannot be resolved on this platform, apply its checks manually at the same scope — scan the body for cited paths that don't exist, hex revision IDs, `Learning(s) N` / `{{…}}` scaffold, and broken relative links — and note in the run output that the check was manual. Do not silently skip.
+If the script cannot be resolved on this platform, apply its checks manually at the same scope — scan the body for cited paths that don't exist, hexadecimal revision IDs, `Learning(s) N` / `{{…}}` scaffold, and broken relative links — and note in the run output that the check was manual. Do not silently skip.
 
 After any body edit from this step or Step 2, re-run the script until it reports clean or every remaining flag is confirmed intentional.
 
 ## Step 2: Semantic validator subagent (Full and non-interactive; skipped in lightweight)
 
-Dispatch **one generic read-only subagent** covering the written learning plus any `.context/CONCEPTS.md` entries edited this run. Use the same mid-tier model class as other reviewer subagents when available.
+Dispatch **one generic read-only subagent** covering the written solution doc plus any `CONCEPTS.md` entries added or edited this run (Phase 2.4's entries are claims too — a glossary entry written from a session-level summary is exactly how wrong semantics enter the vocabulary). Use the same mid-tier model class as other reviewer subagents when the platform exposes one. Build its prompt from this template:
 
 ```
 You are a grounding validator for documentation about to enter a permanent
 knowledge store. You are read-only: never edit files. Inspect with Read,
 Grep, Glob, jj (non-mutating), and gh when available.
 
-Inputs: the doc content below, the .context/CONCEPTS.md entries below (if any), and
+Inputs: the doc content below, the CONCEPTS.md entries below (if any), and
 this staleness context: <INFO line from the mechanical script, or "none">.
 
 Check every factual claim in three categories:
@@ -54,8 +54,8 @@ Check every factual claim in three categories:
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
    "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
-   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: jj
-   reachability from `trunk()`. Verdict: verified,
+   <n> --json state,mergedAt,baseRefName (remote truth). Fallback: Jujutsu
+   reachability from trunk(). Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no
    gh) — mark unverifiable as "degraded", do not guess.
 

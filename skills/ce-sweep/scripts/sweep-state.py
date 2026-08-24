@@ -8,13 +8,14 @@ merge, the single-writer lease, and the closed-item evidence rule are enforced
 in exactly one place. See `references/state-schema.md` for the cross-agent
 contract this script implements.
 
-Design rules (shared with the workspace's other state helpers):
+Design rules (shared with the repo's other state helpers):
   - Pure Python 3 stdlib. No third-party dependencies.
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are atomic: an exclusively reserved staging file in the state
+    directory + os.replace, so replacement remains on one filesystem and a
+    concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -38,10 +39,12 @@ JSON tokens (strings always double-quoted on one line); lists and empty dicts
 are emitted as inline JSON flow on a single line — itself valid YAML.
 """
 import argparse
+import hashlib
 import json
 import os
-import sys
 import secrets
+import subprocess
+import sys
 from datetime import datetime, timezone
 
 try:
@@ -58,7 +61,7 @@ SCHEMA_VERSION = 1
 
 # A `closed` item MUST carry all three evidence fields; `validate` downgrades
 # any closed item missing any of them back to `fix_pending`.
-EVIDENCE_FIELDS = ("fix_ref", "verified_revision_id", "verified_at")
+EVIDENCE_FIELDS = ("fix_ref", "verified_merge_sha", "verified_at")
 
 DEFAULT_TTL_MINUTES = 60
 
@@ -86,7 +89,7 @@ _DOC_ORDER = ("schema_version", "lease", "sources", "items", "last_run")
 _LEASE_ORDER = ("writer", "timestamp", "ttl_minutes")
 _ITEM_ORDER = (
     "source", "status", "sensitive", "title", "url", "body", "quote",
-    "fix_ref", "verified_revision_id", "verified_at",
+    "fix_ref", "verified_merge_sha", "verified_at",
 )
 _LAST_RUN_ORDER = ("timestamp", "outcome", "writer", "counts")
 
@@ -255,13 +258,10 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # A machine-local state file is still a correctness dependency
-            # (lease, cursors, closed status) as
-            # well as an injection sink (item bodies re-read into agent
-            # context). Reject a file not owned by us so a co-tenant cannot
-            # plant a forged lease/cursor or attacker-authored item text. Skip
-            # where geteuid is unavailable (non-POSIX), where the threat does
-            # not apply.
+            # Workspace-local state is a correctness dependency and an
+            # injection sink because item bodies are read back into agent
+            # context. Reject a file not owned by us where ownership is
+            # available.
             geteuid = getattr(os, "geteuid", None)
             if geteuid is not None and os.fstat(f.fileno()).st_uid != geteuid():
                 return ("corrupt", None)
@@ -280,11 +280,6 @@ def load_state(path):
         return ("corrupt", None)
     data.setdefault("sources", {})
     data.setdefault("items", {})
-    for item in data["items"].values():
-        if isinstance(item, dict) and "verified_revision_id" not in item:
-            legacy_revision = item.pop("verified_merge_sha", None)
-            if legacy_revision:
-                item["verified_revision_id"] = legacy_revision
     return ("ok", data)
 
 
@@ -298,24 +293,20 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    tmp = ""
-    for _ in range(32):
-        candidate = os.path.join(d, ".sweep-write-{}.yml".format(secrets.token_hex(8)))
+    while True:
+        staged = os.path.join(d, f".sweep-write-{secrets.token_hex(12)}.yml")
         try:
-            fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            tmp = candidate
+            fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             break
         except FileExistsError:
             continue
-    else:
-        raise OSError("could not reserve an atomic state-write path")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
-        os.replace(tmp, path)
+        os.replace(staged, path)
     except BaseException:
         try:
-            os.unlink(tmp)
+            os.unlink(staged)
         except OSError:
             pass
         raise
@@ -558,7 +549,7 @@ def cmd_lease_release(args):
 
 def cmd_run_record(args):
     # Intentionally lease-agnostic: an `aborted-locked` run could not acquire
-    # the lease yet must still record its outcome. In local-change mode there
+    # the lease yet must still record its outcome. In local-revision mode there
     # is a single writer per workspace, so this bookkeeping write is safe.
     st, data = load_state(args.state)
     if st == "corrupt":
@@ -777,7 +768,12 @@ _MUTATING = {
 
 
 def _run_locked(handler, args):
-    lock_path = str(args.state) + ".lock"
+    lock_dir = os.path.join(
+        _workspace_root(), ".tmp", "rocketclaw", "ce-sweep", "locks"
+    )
+    os.makedirs(lock_dir, mode=0o700, exist_ok=True)
+    state_key = hashlib.sha256(os.path.abspath(args.state).encode()).hexdigest()
+    lock_path = os.path.join(lock_dir, f"{state_key}.lock")
     try:
         lock_fd = open(lock_path, "w", encoding="utf-8")
     except OSError:
@@ -790,6 +786,23 @@ def _run_locked(handler, args):
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
         finally:
             lock_fd.close()
+
+
+def _workspace_root():
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        root = result.stdout.strip()
+        if result.returncode == 0 and os.path.isabs(root):
+            return root
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.getcwd()
 
 
 def main(argv):

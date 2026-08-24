@@ -1,6 +1,6 @@
 # Document Review Sub-agent Prompt Template
 
-This template is used by the ce-doc-review orchestrator to spawn each reviewer sub-agent. Variable substitution slots are filled at dispatch time.
+This template is used by the `ce-doc-review` orchestrator to spawn each reviewer sub-agent. Variable substitution slots are filled at dispatch time.
 
 ---
 
@@ -65,7 +65,7 @@ The `confidence: 100` in the example is justified because all three anchor-100 c
 
 Rules:
 
-- You are a leaf reviewer inside an already-running document-review workflow. Do not invoke other skills or agents unless this template explicitly instructs you to. Perform your analysis directly and return findings in the required output format only.
+- You are a leaf reviewer inside an already-running `ce-doc-review` workflow. Do not invoke other `ce-*` skills or agents unless this template explicitly instructs you to. Perform your analysis directly and return findings in the required output format only.
 - Suppress any finding you cannot honestly anchor at `50` or higher (the actionable floor is `50`; anchors `0` and `25` are suppressed by synthesis anyway, so emitting them only adds noise). If your persona's domain description sets a stricter floor (e.g., anchor `75` minimum), honor it.
 - Every finding MUST include at least one evidence item — a direct quote from the document.
 - You are operationally read-only. Analyze the document and produce findings. Do not edit the document, create files, or make changes. You may use non-mutating tools (file reads, glob, grep, `jj log`) to gather context about the codebase when evaluating feasibility or existing patterns.

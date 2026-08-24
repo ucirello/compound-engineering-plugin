@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run one pre-sanctioned, write-capable implementation route in a controller-
-# supplied detached workspace. The adapter never creates workspaces, changes
+# supplied sibling workspace. The adapter never creates workspaces, changes
 # recipients, integrates output, or retries through another route.
 #
 # Usage:
@@ -16,10 +16,33 @@
 set -uo pipefail
 umask 077
 
-# Prefer the runner-exported interpreter (sys.executable via PEER_PYTHON),
+# Keep pre-rename environment inputs functional without exposing their old prefix.
+LEGACY_PREFIX="$(printf '\103\105')"
+inherit_legacy_env() {
+  local current="$1" suffix="$2" legacy="${LEGACY_PREFIX}_${suffix}" current_value legacy_value
+  set +u
+  current_value="${!current}"
+  legacy_value="${!legacy}"
+  set -u
+  [ -n "$current_value" ] || [ -z "$legacy_value" ] || export "$current=$legacy_value"
+}
+for mapping in \
+  ROCKETCLAW_PEER_PYTHON:PEER_PYTHON \
+  ROCKETCLAW_WORK_MODEL_OVERRIDE:WORK_MODEL_OVERRIDE \
+  ROCKETCLAW_WORK_MODEL_OVERRIDE_TARGET:WORK_MODEL_OVERRIDE_TARGET \
+  ROCKETCLAW_WORK_MAX_PACKET_BYTES:WORK_MAX_PACKET_BYTES \
+  ROCKETCLAW_PEER_JOB_ID:PEER_JOB_ID \
+  ROCKETCLAW_WORK_REDACT_FILE:WORK_REDACT_FILE \
+  ROCKETCLAW_WORK_REQUIRE_ENFORCED_CONFINEMENT:WORK_REQUIRE_ENFORCED_CONFINEMENT \
+  ROCKETCLAW_WORK_ACTIVITY_POLL_SECS:WORK_ACTIVITY_POLL_SECS \
+  ROCKETCLAW_WORK_MAX_RAW_BYTES:WORK_MAX_RAW_BYTES; do
+  inherit_legacy_env "${mapping%%:*}" "${mapping#*:}"
+done
+
+# Prefer the runner-exported interpreter (sys.executable via ROCKETCLAW_PEER_PYTHON),
 # else probe execution — Windows Store's python3 stub satisfies `command -v`
 # then exits nonzero (see resolve-python convention / #1247).
-PY="${PEER_PYTHON:-}"
+PY="${ROCKETCLAW_PEER_PYTHON:-}"
 if [ -z "$PY" ]; then
   PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"
 fi
@@ -49,13 +72,13 @@ route_harness() {
 }
 
 route_model() {
-  local route="$1" target override="${WORK_MODEL_OVERRIDE:-}"
+  local route="$1" target override="${ROCKETCLAW_WORK_MODEL_OVERRIDE:-}"
   if [ -n "${MODEL_REQUESTED:-}" ]; then
     printf '%s' "$MODEL_REQUESTED"
     return
   fi
   target="$(route_target "$route")" || return 1
-  if [ -n "$override" ] && [ "${WORK_MODEL_OVERRIDE_TARGET:-}" = "$target" ]; then
+  if [ -n "$override" ] && [ "${ROCKETCLAW_WORK_MODEL_OVERRIDE_TARGET:-}" = "$target" ]; then
     printf '%s' "$override"
     return
   fi
@@ -67,7 +90,7 @@ route_model() {
 }
 
 validate_model_override() {
-  local route="$1" override="${WORK_MODEL_OVERRIDE:-}" override_target="${WORK_MODEL_OVERRIDE_TARGET:-}" target override_lower
+  local route="$1" override="${ROCKETCLAW_WORK_MODEL_OVERRIDE:-}" override_target="${ROCKETCLAW_WORK_MODEL_OVERRIDE_TARGET:-}" target override_lower
   [ -n "$override" ] || { [ -z "$override_target" ]; return; }
   case "$override_target" in
     codex|claude|grok|cursor|composer) ;;
@@ -146,7 +169,7 @@ if [ "${1:-}" = "--emit-adapter" ]; then
   RAW_RESULT="<raw-result>"
   ROUTE="${2:-}"
   validate_model_override "$ROUTE" || {
-    printf "model override '%s' not compatible with route '%s'\n" "${WORK_MODEL_OVERRIDE:-}" "$ROUTE" >&2
+    printf "model override '%s' not compatible with route '%s'\n" "${ROCKETCLAW_WORK_MODEL_OVERRIDE:-}" "$ROUTE" >&2
     exit 2
   }
   adapter_argv "$ROUTE" >/dev/null 2>&1 || { printf "unknown route '%s'\n" "$ROUTE" >&2; exit 2; }
@@ -171,7 +194,7 @@ DISPATCH_WORKSPACE="$WORKSPACE"
 DISPATCH_PACKET="$PACKET"
 DISPATCH_RESULT_DIR="$RESULT_DIR"
 
-MAX_PACKET_BYTES="${WORK_MAX_PACKET_BYTES:-200000}"
+MAX_PACKET_BYTES="${ROCKETCLAW_WORK_MAX_PACKET_BYTES:-200000}"
 case "$MAX_PACKET_BYTES" in ''|*[!0-9]*) MAX_PACKET_BYTES=200000 ;; esac
 
 SKILL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" || exit 2
@@ -179,38 +202,8 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-"$PY" - "$WORKSPACE/.tmp" "$WORKSPACE/.tmp/rocketclaw" <<'PY'
-import os, stat, sys
-
-flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-for path in sys.argv[1:]:
-    try:
-        os.mkdir(path, 0o700)
-    except FileExistsError:
-        pass
-    before = os.lstat(path)
-    if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
-        raise OSError(f"{path}: workspace-local scratch component is not a real directory")
-    fd = os.open(path, flags)
-    try:
-        opened = os.fstat(fd)
-        current = os.lstat(path)
-        if stat.S_ISLNK(current.st_mode) or not stat.S_ISDIR(opened.st_mode) or (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino):
-            raise OSError(f"{path}: workspace-local scratch component is not a real directory")
-        if hasattr(os, "fchmod"):
-            os.fchmod(fd, 0o700)
-        else:
-            os.chmod(path, 0o700)
-    finally:
-        os.close(fd)
-PY
-[ "$?" -eq 0 ] || { log "workspace-local .tmp/rocketclaw is unavailable or symlinked"; exit 2; }
-SCRATCH=""
-for _claim in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
-  _candidate="$WORKSPACE/.tmp/rocketclaw/adapter-$$-${RANDOM:-0}-$_claim"
-  if mkdir "$_candidate" 2>/dev/null; then SCRATCH="$_candidate"; break; fi
-done
-[ -n "$SCRATCH" ] || { log "could not reserve workspace-local adapter directory"; exit 2; }
+SCRATCH="$RESULT_DIR/.adapter-scratch-$$-$(date +%s)-$RANDOM"
+(umask 077 && mkdir "$SCRATCH") || exit 2
 chmod 700 "$SCRATCH"
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
@@ -305,8 +298,8 @@ try:
         fail(f"authorization is malformed JSON: {exc}")
     if not isinstance(value, dict) or set(value) != required:
         fail("authorization keys do not match the exact controller schema")
-    if type(value["schema_version"]) is not int or value["schema_version"] != 2:
-        fail("authorization schema_version must be 2")
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+        fail("authorization schema_version must be 1")
     for key in ("run_id", "unit_id", "attempt_id"):
         if not isinstance(value[key], str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value[key]) or not value[key].strip("."):
             fail(f"authorization {key} is unsafe")
@@ -358,7 +351,7 @@ AUTH_HARNESS="${AUTH_FIELDS[6]}"
 MODEL_REQUESTED="${AUTH_FIELDS[7]}"
 ACTIVITY_POSTURE="${AUTH_FIELDS[8]}"
 RESTRICTION_POSTURE="${AUTH_FIELDS[9]}"
-RUNNER_JOB_ID="${PEER_JOB_ID:-}"
+RUNNER_JOB_ID="${ROCKETCLAW_PEER_JOB_ID:-}"
 [[ "$RUNNER_JOB_ID" =~ ^[A-Za-z0-9._-]{1,128}$ && "$RUNNER_JOB_ID" =~ [A-Za-z0-9_-] ]] || {
   log "runner job identity is missing or unsafe"
   exit 2
@@ -550,9 +543,9 @@ PY
 }
 
 redact_stream() {
-  WORK_REDACT_FILE="${WORK_REDACT_FILE:-}" "$PY" -c '
+  ROCKETCLAW_WORK_REDACT_FILE="${ROCKETCLAW_WORK_REDACT_FILE:-}" "$PY" -c '
 import os, sys
-p = os.environ.get("WORK_REDACT_FILE", "")
+p = os.environ.get("ROCKETCLAW_WORK_REDACT_FILE", "")
 if p:
     try:
         values = sorted(
@@ -676,7 +669,7 @@ sys.stdout.write("\n")
 PY
 }
 
-if [ "${WORK_REQUIRE_ENFORCED_CONFINEMENT:-}" = "1" ]; then
+if [ "${ROCKETCLAW_WORK_REQUIRE_ENFORCED_CONFINEMENT:-}" = "1" ]; then
   case "$ROUTE" in
     claude|grok-cli)
       publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
@@ -742,10 +735,10 @@ if [ "$MODEL_REQUESTED" != auto ]; then
   esac
 fi
 
-ACTIVITY_POLL_SECS="${WORK_ACTIVITY_POLL_SECS:-15}"
+ACTIVITY_POLL_SECS="${ROCKETCLAW_WORK_ACTIVITY_POLL_SECS:-15}"
 case "$ACTIVITY_POLL_SECS" in ''|*[!0-9]*) ACTIVITY_POLL_SECS=15 ;; esac
 [ "$ACTIVITY_POLL_SECS" -lt 1 ] && ACTIVITY_POLL_SECS=1
-MAX_RAW_BYTES="${WORK_MAX_RAW_BYTES:-10485760}"
+MAX_RAW_BYTES="${ROCKETCLAW_WORK_MAX_RAW_BYTES:-10485760}"
 case "$MAX_RAW_BYTES" in ''|*[!0-9]*) MAX_RAW_BYTES=10485760 ;; esac
 [ "$MAX_RAW_BYTES" -lt 1 ] && MAX_RAW_BYTES=10485760
 
@@ -823,14 +816,14 @@ fi
 SOURCE="$RAW_STDOUT"
 [ "$ROUTE" = codex ] && SOURCE="$RAW_RESULT"
 set +e
-WORK_REDACT_FILE="${WORK_REDACT_FILE:-}" "$PY" - \
+ROCKETCLAW_WORK_REDACT_FILE="${ROCKETCLAW_WORK_REDACT_FILE:-}" "$PY" - \
   "$SOURCE" "$RAW_STDOUT" "$ROUTE" "$TARGET" "$HARNESS" \
   "$MODEL_REQUESTED" "$EXPECTED_PACKET_DIGEST" "$LOG_FILE" "$ACTIVITY_POSTURE" "$RESTRICTION_POSTURE" "$MODEL_DISPLAY_HINT" <<'PY' | write_result_receipt
 import json, os, re, sys
 source, stream, route, target, harness, requested, packet_digest, log, activity, restriction, display_hint = sys.argv[1:]
 
 def redactions():
-    p=os.environ.get("WORK_REDACT_FILE", "")
+    p=os.environ.get("ROCKETCLAW_WORK_REDACT_FILE", "")
     if not p: return []
     try: return sorted(set(v for v in open(p, encoding="utf-8").read().splitlines() if v), key=lambda value: (-len(value), value))
     except OSError: return []

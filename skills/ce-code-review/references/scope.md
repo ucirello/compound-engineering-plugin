@@ -1,135 +1,87 @@
-# Determining the reviewed diff and scope
+# Determining the reviewed change and scope
 
 Read this at Stage 1. It owns scope resolution for every invocation path and the deterministic scope signals Stage 3 consumes.
 
 ### Stage 1: Determine scope
 
-Compute the diff range, file list, and diff. Minimize permission prompts by combining into as few commands as possible.
+Use Jujutsu for local repository state, revision resolution, history, file content, and diffs. Jujutsu snapshots non-ignored working-copy files into `@`; it has no staging area or current branch. Use `trunk()` for the configured default remote bookmark and `fork_point()` when a review needs the common ancestor of two revisions. Produce Git-format patches with `jj diff --git` because reviewer tooling consumes that patch format; this is an output format, not Git repository behavior.
 
-**If `base:` argument is provided (fast path):**
+**If `base:` is provided:**
 
-The caller already knows the diff base. Skip all trunk detection and remote resolution. Resolve the fork point between the provided revision and the working-copy commit:
+The caller supplied the comparison base for the current workspace. Resolve exactly one fork point between it and `@`; stop if either revision or the fork point is missing or ambiguous.
 
-```
-jj log -r 'exactly(fork_point(@ | <base-revision>), 1)' --no-graph -T 'commit_id ++ "\n"'
-```
-
-Set `BASE` to the returned commit ID. If the command cannot resolve one unique fork point, set `BASE` to the provided revision exactly as before.
-
-Then set `FILES:` and `DIFF:` from these commands:
-
-```
-jj diff --from "$BASE" --to @ --name-only
-jj diff --from "$BASE" --to @ --color never --context 10
+```bash
+BASE_ARG="{base_arg}"
+BASE=$(jj log -r "exactly(fork_point($BASE_ARG | @), 1)" --no-graph -T 'commit_id ++ "\n"')
 ```
 
-This path works with any unambiguous JJ revision expression, including a commit ID, change ID, bookmark, or remote bookmark. Callers reviewing the current workspace should pass explicit `base:` when auto-detection is unnecessary. **Do not combine `base:` with a PR number or bookmark target.** If both are present, stop with an error: "Cannot use `base:` with a PR number or bookmark target — `base:` implies the current workspace is already on the correct line of work. Pass `base:` alone, or pass the target alone and let scope detection resolve the base."
+Then produce the local scope:
 
-**If a PR number or GitHub URL is provided as an argument:**
-
-Do **not** edit the PR head revision. Scope comes from GitHub read APIs plus optional local alignment when the working-copy commit `@` already descends from the PR head.
-
-**Skip-condition pre-check.** Before scope detection, run a PR-state probe:
-
-```
-gh pr view <number-or-url> --json state,title,body,files
+```bash
+printf 'BASE:%s\nFILES:\n' "$BASE"; jj diff --from "$BASE" --to @ --name-only; printf 'DIFF:\n'; jj diff --from "$BASE" --to @ --git --context 10
 ```
 
-Apply skip rules in order:
+Do not combine `base:` with a PR number or bookmark target. If both appear, stop: `base:` means the current workspace is the reviewed source.
 
-- `state` is `CLOSED` or `MERGED` -> stop with reason `PR is closed/merged; not reviewing.`
-- **Trivial-PR judgment**: spawn a lightweight sub-agent on the platform's cheapest capable model when a known override exists; otherwise omit the model override and inherit. Give it the PR title, body, and changed file paths. The agent's task: "Is this an automated or trivial PR that does not warrant a code review? Consider: dependency lock-file or manifest-only bumps, automated release commits, chore version increments with no substantive code changes. When in doubt, answer no — false negatives (skipped reviews that should have run) are more costly than false positives (unnecessary reviews)." If the judgment returns yes: stop with reason `PR appears to be a trivial automated PR; not reviewing. Run without a PR argument to review the current workspace, or pass base:<revision> if review is intended.`
+**If a PR number or GitHub URL is provided:**
 
-When any skip rule fires, stop without dispatching reviewers. **Default mode:** emit the reason as plain text. **`mode:agent`:** emit JSON only — `{"status":"skipped","reason":"<same message>"}` — so programmatic callers can parse the outcome. **Standalone**, **`base:`**, and **bookmark-remote** paths are unaffected. **Draft PRs are reviewed normally.**
+Do not change the working-copy revision. Keep GitHub review/provider operations in `gh`. In a non-colocated Jujutsu repository, set `GIT_DIR="$(jj git root)"` for `gh` commands so GitHub CLI can locate the backing repository.
 
-If no skip rule fires, fetch PR metadata **without changing the working-copy commit**:
+First run `gh pr view <number-or-url> --json state,title,body,files`. Stop without reviewer dispatch when the PR is closed or merged. Use the existing lightweight judgment for trivial automated PRs; draft PRs remain reviewable. Return the existing plain-text or `mode:agent` JSON skip shape.
 
-```
-gh pr view <number-or-url> --json title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,files,reviews,comments --jq '{title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}'
-```
+Fetch metadata without checkout:
 
-Set `BASE:` to `pr:<number-or-url>` (logical marker, not a JJ revision). Set `EXCLUDED:` to any paths JJ reports as untracked while snapshotting the **current** workspace (usually empty during PR-remote review).
-
-**PR scope mode.** Classify as **`local-aligned`** only when **all** of these hold; otherwise use **`pr-remote`**. A matching bookmark name alone is not enough — a fork PR or stale local bookmark can share a name with the PR head while pointing at unrelated code, and trusting the name would diff and inspect the wrong tree.
-
-1. A local bookmark named `headRefName` targets an ancestor of `@`; test the intersection `bookmarks(exact:"<headRefName>") & ::@` and require exactly one revision.
-2. The PR is **not** cross-repository (`isCrossRepository` is false).
-3. The GitHub `headRefOid` resolves to exactly one JJ commit in `::@`; test `exactly(commit_id(<headRefOid>) & ::@, 1)`. This confirms the working-copy commit actually carries the PR head (allowing unpushed local fixes layered on top) rather than an unrelated same-named bookmark.
-
-- **`local-aligned`** — all three checks pass. Local Read/Grep/`jj file annotate` against workspace files are valid for PR changed paths.
-- **`pr-remote`** — any check fails. The working-copy commit is **not** aligned with the PR head; workspace file contents for changed paths may be stale or unrelated.
-
-**Diff by scope mode** (do not mix remote and local diffs — contradictory hunks cause false positives):
-
-- **`local-aligned`:** Resolve `<resolved-base-revision>` from the GitHub `baseRefName` as `<baseRefName>@origin` (run `jj git fetch --remote origin --branch <baseRefName>` if needed). Compute `BASE` as the single revision selected by `fork_point(@ | <resolved-base-revision>)`, then set `FILES:` from `jj diff --from "$BASE" --to @ --name-only` and `DIFF:` from `jj diff --from "$BASE" --to @ --color never --context 10`. This includes all snapshotted changes from the fork point through the working-copy commit; JJ has no staging area, and new non-ignored files are tracked automatically by default. Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local workspace is canonical. Note in Coverage: `scope: local-aligned (PR; local workspace diff)`.
-- **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `gh pr diff <number-or-url> --color=never`. If `gh pr diff` fails, stop with an actionable error — do not fall back to changing `@`.
-
-When **`pr-remote`**, before Stage 4:
-
-1. Best-effort fetch the PR head without editing it: `jj git fetch --remote origin --branch <headRefName>`.
-2. When fetch succeeds and `<headRefName>@origin` resolves to exactly one revision, set `PR_HEAD_REF=<headRefName>@origin` for reviewers and validators. When fetch or resolution fails, omit `PR_HEAD_REF` and note in Coverage — reviewers must rely on diff hunks only.
-3. Best-effort fetch the PR base without editing it: `jj git fetch --remote origin --branch <baseRefName>`. When it succeeds and `<baseRefName>@origin` resolves to exactly one revision, set `PR_BASE_REF=<baseRefName>@origin` — a real JJ revision reviewers and validators use for file-level diffs (e.g. `jj diff --from <PR_BASE_REF> --to <PR_HEAD_REF> -- db/schema.rb` or `structure.sql`). The `pr:<number-or-url>` logical marker in `BASE:` stays the scope marker; `PR_BASE_REF` is the diffable base. When fetch or resolution fails, omit `PR_BASE_REF` and note in Coverage — schema-drift and other JJ diff checks fall back to diff hunks only and must **not** assume `main`.
-4. Include `<pr-scope-mode>pr-remote</pr-scope-mode>` and, when set, `<pr-head-ref>...</pr-head-ref>` and `<pr-base-ref>...</pr-base-ref>` in the Stage 4 review context bundle.
-
-Reviewers and Stage 5b validators in **`pr-remote`** mode must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `jj file show -r <PR_HEAD_REF> <path>` when `PR_HEAD_REF` is set, and compare revisions via `jj diff --from <PR_BASE_REF> --to <PR_HEAD_REF> -- <path>` when both endpoints are set; otherwise use only the provided diff hunks. **`local-aligned`** uses normal workspace inspection.
-
-**If a bookmark name is provided as an argument:**
-
-Substitute the provided bookmark name as `<bookmark>`. Do **not** edit `<bookmark>`.
-
-If `<bookmark>` is one of the closest local bookmarks in the ancestry of `@` (the revset `heads(::@ & bookmarks())`), use the **standalone (current workspace)** path below — same line of work, explicit bookmark name; do not use remote-only diff.
-
-Otherwise diff the remote/local bookmark revision **without editing it**:
-
-1. Try `gh pr view <bookmark> --json baseRefName,url,headRefName` — if a PR exists, prefer the **PR number/URL path** above (same remote diff rules).
-2. Else run `jj git fetch --remote origin --branch <bookmark>` when needed, then resolve `<bookmark-ref>` as `<bookmark>@origin` or the local `<bookmark>`, in that order.
-3. Resolve the default base revision with the same logic as standalone. Compute `BASE` as the single revision selected by `fork_point(<base-revision> | <bookmark-ref>)` and diff from `BASE` to `<bookmark-ref>`.
-4. If `<bookmark-ref>` cannot be resolved to exactly one revision, stop: "Cannot diff bookmark `<bookmark>` without editing it. Edit that bookmark, pass its open PR URL/number, or review the current workspace with `base:`."
-
-On success for a remote bookmark diff, set **`bookmark-remote` scope**. The working-copy commit is **not** `<bookmark-ref>`. Include `<pr-scope-mode>bookmark-remote</pr-scope-mode>` and `<bookmark-head-ref><bookmark-ref></bookmark-head-ref>` in the Stage 4 review context bundle. Reviewers and Stage 5b validators must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `jj file show -r <bookmark-ref> <path>` or diff hunks only.
-
-Produce:
-
-```
-jj diff --from "$BASE" --to <bookmark-ref> --name-only
-jj diff --from "$BASE" --to <bookmark-ref> --color never --context 10
+```bash
+gh pr view <number-or-url> --json number,title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,baseRepository,headRepository,files,reviews,comments --jq '{number, title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, baseRepositoryUrl: .baseRepository.url, headRepositoryUrl: .headRepository.url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}'
 ```
 
-Treat these outputs as `FILES:` and `DIFF:` respectively.
+Resolve the GitHub base and head repository URLs against `jj git remote list` by canonical repository identity, treating equivalent HTTPS, `ssh://`, and SCP-style URLs and an optional `.git` suffix as the same repository. Each URL must map to one remote name. Stop on multiple matches rather than choosing by order or name. When no remote matches a URL, keep that side provider-only and do not invent a remote; this makes the scope `pr-remote` unless the missing side is irrelevant to the required local operation. Record the unique matches as `BASE_REMOTE` and `HEAD_REMOTE` and use those names in every fetch and remote-bookmark revset below; never assume `origin`.
 
-**If no argument (standalone in the current workspace):**
+Set `BASE:` to `pr:<number-or-url>`. When `HEAD_REMOTE` is available, fetch `<headRefName>` from it before testing local alignment. Classify the scope as `local-aligned` only when the PR is not cross-repository, both repository URLs resolved to unique remotes, the PR head commit resolves locally, and it is an ancestor of `@`. Check ancestry by counting `commit_id(<headRefOid>)::@`; a bookmark-name comparison is invalid because Jujutsu has no current bookmark.
 
-Resolve `<base-revision>` from `gh pr view --json baseRefName,url` when GitHub identifies a PR for the current line of work; fetch and use `<baseRefName>@origin`. Otherwise use `trunk()` only when it resolves to exactly one non-root revision. Set `BASE` to the single revision selected by `fork_point(<base-revision> | @)`. This is the same base-resolution policy used by bookmark mode.
+- **`local-aligned`:** Fetch the base bookmark with `jj git fetch --remote "$BASE_REMOTE" --branch <baseRefName>` when needed. Resolve `BASE` as exactly one `fork_point(<baseRefName>@<BASE_REMOTE> | @)`. Set `FILES:` and `DIFF:` with `jj diff --from "$BASE" --to @ --name-only` and `jj diff --from "$BASE" --to @ --git --context 10`. Do not append `gh pr diff`; the workspace revision is canonical and may include local follow-up changes.
+- **`pr-remote`:** Set `FILES:` from the PR `files` array and `DIFF:` from `gh pr diff <number-or-url> --color=never`. If that fails, stop rather than changing revisions. Supply `<pr-head-oid>` and the PR number in review context. Reviewers inspect remote file content with `gh api repos/{owner}/{repo}/contents/<path>?ref=<headRefOid>` and decode the returned content, or rely on supplied diff hunks. They never read changed workspace paths as if those represented the PR.
 
-If no base can be resolved, **stop**. Do not fall back to `jj diff -r @` — a standalone review without the base would show only the working-copy commit's own changes and silently miss earlier commits in the line of work.
+For `pr-remote`, do not fetch a synthetic local ref. The full GitHub patch is authoritative, and provider content APIs supply reviewed-head files. Schema-drift and other file-level comparisons use the supplied patch when the workspace is not aligned.
 
-On success, produce the diff:
+**If a bookmark name is provided:**
 
+Do not change the working-copy revision. First try `gh pr view <bookmark>` and prefer the PR path when it resolves. Otherwise inspect the exact local bookmark and every exact-name remote bookmark from `jj bookmark list --all-remotes <bookmark>`. Reconcile their targets before choosing scope: fetch the named bookmark from each matching remote when refresh is needed, then resolve the local bookmark and all `<bookmark>@<remote>` candidates to commit IDs. Continue only when all surviving candidates identify one commit; stop when they disagree or any candidate is conflicted. If no candidate resolves, stop and ask for an open PR URL/number, an existing Jujutsu revision, or `base:<revision>` for the current workspace. Use the reconciled commit as `<bookmark-revision>`; do not prefer `origin`, the local bookmark, or the first listed remote.
+
+If the target resolves to `@`, use the standalone path. Otherwise resolve `BASE` as exactly one `fork_point(trunk() | <bookmark-revision>)`, set scope to `bookmark-remote`, and produce:
+
+```bash
+printf 'BASE:%s\nFILES:\n' "$BASE"; jj diff --from "$BASE" --to "<bookmark-revision>" --name-only; printf 'DIFF:\n'; jj diff --from "$BASE" --to "<bookmark-revision>" --git --context 10
 ```
-jj diff --from "$BASE" --to @ --name-only
-jj diff --from "$BASE" --to @ --color never --context 10
-```
 
-Treat these outputs as `FILES:` and `DIFF:` respectively. Using `jj diff --from "$BASE" --to @` compares the fork point with the snapshotted working-copy commit, so it includes the complete committed stack plus current working-copy changes. JJ has no staging-area split.
+Include `<pr-scope-mode>bookmark-remote</pr-scope-mode>` and `<bookmark-revision>...</bookmark-revision>` in reviewer context. Reviewers use `jj file show -r <bookmark-revision> <path>`, `jj file annotate -r <bookmark-revision> <path>`, targeted `jj log`, or supplied hunks; they do not inspect changed workspace paths.
 
-**Untracked path handling:** JJ automatically tracks new non-ignored files by default, so they appear in the `@` diff without a staging step. Paths JJ leaves untracked because of `snapshot.auto-track` or size limits are out of scope, as are untracked ignored paths. When JJ reports untracked paths during snapshotting, record them in `EXCLUDED:`, list them in Coverage, and continue on tracked changes only — never stop, prompt, or run `jj file track`.
+**If no target is provided:**
 
-### Stage 1b: Compute scope signals (cheap, deterministic)
+Resolve `BASE` as exactly one `fork_point(trunk() | @)`. If `trunk()` resolves only to the virtual root because no default remote bookmark is configured, stop rather than silently reviewing an incomplete range. Produce the local scope with the same `jj diff --from "$BASE" --to @` commands as the `base:` path.
 
-Derive deterministic signals once with `scripts/review-scope.py` from this skill's directory. The helper owns endpoint validation, executable-line counting, changed-path signals, and the fail-closed lite eligibility calculation; do not reproduce those mechanics in prose or estimate them from diff hunks. The invocation below is the helper's contract: run it directly rather than inspecting the script or probing its `--help`, unless it actually fails with an incompatibility.
+For GitHub metadata discovery, inspect bookmarks on `::@` with `jj bookmark list -r '::@'` and try the relevant local bookmark with `gh pr view`; never infer a current branch. If no associated PR is found, continue as standalone.
 
-Set `SCOPE_MODE` to the Stage 1 scope mode and set `DIFF_A`/`DIFF_B` to its two endpoints:
-- **`local-aligned` / standalone / `base:`** — `DIFF_A="$BASE"` (a resolvable JJ revision), `DIFF_B` empty (diffs base vs working-copy commit).
-- **`pr-remote` / `bookmark-remote`** — `DIFF_A=<PR_BASE_REF>`, `DIFF_B=<PR_HEAD_REF>` (or `<bookmark-head-ref>`) — the fetched remote-bookmark revisions from Stage 1.
+**Tracked-file behavior:** The reviewed local tree is revision `@`, including automatically tracked additions after Jujutsu snapshots the workspace. Ignored or explicitly untracked files are outside the revision and therefore outside review scope. State that exclusion in Coverage when `jj status` reports such paths; do not prompt.
+
+### Stage 1b: Compute scope signals
+
+Run `scripts/review-scope.py` from this skill's directory. It validates Jujutsu revision endpoints, counts executable lines from `jj diff --git`, derives changed-path signals, and fails closed for lite eligibility.
+
+Set `DIFF_A` and `DIFF_B` to the exact endpoints already used:
+
+- **`local-aligned`, standalone, or `base:`:** `DIFF_A="$BASE"`, with no `--to`; the helper compares to `@`.
+- **`bookmark-remote`:** `DIFF_A="$BASE"`, `DIFF_B=<bookmark-revision>`.
+- **`pr-remote`:** Do not call the local helper against unrelated revisions. Derive only path signals from the authoritative GitHub file list and force `lite_eligible:false`; remote patch size or parse uncertainty fails closed to the full roster.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-if [ "$SCOPE_MODE" = "pr-remote" ] || [ "$SCOPE_MODE" = "bookmark-remote" ]; then
-  "$PY" "$SKILL_DIR/scripts/review-scope.py" --base "${DIFF_A:-}" --head "${DIFF_B:-}" --docs-root "<root>";
+if [ "$SCOPE_MODE" = "bookmark-remote" ]; then
+  "$PY" "$SKILL_DIR/scripts/review-scope.py" --base "$DIFF_A" --to "$DIFF_B" --docs-root "<root>";
 else
   "$PY" "$SKILL_DIR/scripts/review-scope.py" --base "$DIFF_A" --docs-root "<root>";
 fi
 ```
 
-Remote scope always passes both endpoint flags, even when a best-effort fetch left one value empty; the helper then fails closed instead of comparing the fetched base to the unrelated working-copy commit. Load the JSON result. `exec_lines: null`, any `uncounted_files > 0`, or helper failure disqualifies the lite path. `signals` are path heuristics, not selection decisions. Stage 3 still judges content-based risk such as auth, payments, mutation, external I/O, concurrency, and process execution. Use `test_files_changed`, `agent_surface`, and `has_learnings_corpus` as inputs to the generic reviewer gates, not as automatic spawn decisions.
+Load the JSON result. `exec_lines:null`, any `uncounted_files > 0`, remote-scope uncertainty, or helper failure disqualifies the lite path. Signals inform reviewer selection but never decide it by themselves.

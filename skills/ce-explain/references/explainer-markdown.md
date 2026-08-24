@@ -38,5 +38,5 @@ When intake resolved another reader, render for that reader instead. What change
 
 - Lead each section with the point, then the mechanism, then the caveat.
 - Dense is good; long is not — one sitting's read.
-- **When the evidence exceeds one sitting** (a busy recap window is routinely 50+ changes), select rather than truncate: lead with the few threads that changed how the project works, carry the rest as a compact roll-up, and say plainly what you set aside so the reader knows the timeline isn't the whole log. Never silently drop the tail.
+- **When the evidence exceeds one sitting** (a busy recap window is routinely 50+ revisions), select rather than truncate: lead with the few threads that changed how the project works, carry the rest as a compact roll-up, and say plainly what you set aside so the reader knows the timeline isn't the whole log. Never silently drop the tail.
 - Real code from the grounding evidence where it exists; language-tagged fences always.

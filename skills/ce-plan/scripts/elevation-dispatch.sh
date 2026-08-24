@@ -51,9 +51,9 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole local scratch root instead would expose
-  # sibling run files to the elevated model; the scoped dir does not. Read-only
-  # (only Read/Glob/Grep available).
+  # via --add-dir. Adding the whole workspace-local `.tmp` root instead would
+  # expose every sibling temporary file and credential to the elevated
+  # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
   # --no-session-persistence: this is a one-shot background model call, so the
@@ -65,7 +65,7 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
        --permission-mode dontAsk
        "${add_dirs[@]}"
        --tools "$csv" --allowedTools "${ALLOWED[@]}"
-       --max-turns "${ELEVATION_MAX_TURNS:-30}")
+        --max-turns "${ROCKETCLAW_ELEVATION_MAX_TURNS-${ELEVATION_MAX_TURNS:-30}}")
 }
 
 # Test hook: print the argv the worker would exec, without calling a model.
@@ -83,9 +83,28 @@ PROMPT_FILE="${2:?prompt-file required}"
 RESULT_PATH="${3:?result-path required}"
 [ -f "$PROMPT_FILE" ] || { log "prompt file not found: $PROMPT_FILE"; exit 2; }
 
+reserve_result_tmp() {
+  local attempt candidate
+  for attempt in 1 2 3 4 5 6 7 8; do
+    candidate="${RESULT_PATH}.rocketclaw-tmp.$$-${RANDOM:-0}-$attempt"
+    if ( set -C; : > "$candidate" ) 2>/dev/null; then
+      chmod 600 "$candidate" 2>/dev/null || true
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+write_result() {   # <json-string> -> atomic publish to RESULT_PATH
+  local tmp
+  tmp="$(reserve_result_tmp)" || return 1
+  printf '%s' "$1" > "$tmp" && mv -f "$tmp" "$RESULT_PATH"
+}
+
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole local scratch root. Pure-bash dirname (no
+# to an absolute path), never the whole workspace-local `.tmp` root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -99,24 +118,31 @@ HANDOFF_DIR="$(cd "$HANDOFF_DIR" 2>/dev/null && pwd || printf '%s' "$HANDOFF_DIR
 # `done`, the envelope's status:failed is read, and it degrades to inline.
 if ! command -v jq >/dev/null 2>&1; then
   log "jq not found on PATH; cannot parse the elevated result — degrading to inline"
-  printf '{"status":"failed","requested_model":"%s","evidence":"jq unavailable on PATH"}' "$MODEL" > "$RESULT_PATH" 2>/dev/null || true
+  write_result "{\"status\":\"failed\",\"requested_model\":\"$MODEL\",\"evidence\":\"jq unavailable on PATH\"}" 2>/dev/null || true
   exit 0
 fi
 
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"
+TMP_BASE="$WORKSPACE_ROOT/.tmp"
 umask 077
-i=0
-while :; do
-  i=$((i + 1))
-  PEERLOG="$HANDOFF_DIR/elevation-peer-$$-$i"
-  (set -o noclobber; : > "$PEERLOG") 2>/dev/null && break
+[ ! -L "$TMP_BASE" ] || { log "refusing symlinked temporary root: $TMP_BASE"; exit 2; }
+mkdir -p "$TMP_BASE" || { log "cannot create temporary root: $TMP_BASE"; exit 2; }
+PEER_DIR=""
+for attempt in 1 2 3 4 5 6 7 8; do
+  candidate="$TMP_BASE/rocketclaw-elevation-peer-$(date +%Y%m%dT%H%M%S)-$$-${RANDOM:-0}-$attempt"
+  if mkdir -m 700 "$candidate" 2>/dev/null; then PEER_DIR="$candidate"; break; fi
 done
+[ -n "$PEER_DIR" ] || { log "cannot claim a private temporary directory under $TMP_BASE"; exit 2; }
+PEERLOG="$PEER_DIR/out.log"
+( set -C; : > "$PEERLOG" ) 2>/dev/null || { log "cannot atomically create peer log"; rmdir "$PEER_DIR" 2>/dev/null || true; exit 2; }
+chmod 600 "$PEERLOG" 2>/dev/null || true
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
-# Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
+# Keep this inner cap >= the runner's ROCKETCLAW_PEER_HARD_SECS so it never reaps a
 # healthy run before the outer supervisor's own raised backstop.
-IDLE_SECS="${CE_ELEVATION_IDLE_SECS:-180}"
-HARD_SECS="${CE_ELEVATION_HARD_SECS:-5400}"
-POLL_SECS="${CE_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
+IDLE_SECS="${ROCKETCLAW_ELEVATION_IDLE_SECS-${CE_ELEVATION_IDLE_SECS:-180}}"
+HARD_SECS="${ROCKETCLAW_ELEVATION_HARD_SECS-${CE_ELEVATION_HARD_SECS:-5400}}"
+POLL_SECS="${ROCKETCLAW_ELEVATION_POLL_SECS-${CE_ELEVATION_POLL_SECS:-5}}"   # $PEERLOG growth poll interval
 
 reap() {
   local pid="$1" grp
@@ -141,11 +167,6 @@ on_term() {
   exit 0
 }
 trap 'on_term' TERM INT
-
-write_result() {   # <json-string> -> atomic publish to RESULT_PATH
-  local tmp="${RESULT_PATH}.tmp.$$"
-  printf '%s' "$1" > "$tmp" && mv -f "$tmp" "$RESULT_PATH"
-}
 
 # Bounded stderr/stdout tail for a failed run. tail -c avoids the macOS bash
 # negative-slice bug that erased sub-300-char evidence in the review worker.
@@ -268,7 +289,7 @@ if [ "$RUN_SUCCEEDED" = true ] && [ "$HAS_OUTPUT" = "yes" ] \
   # Build the envelope by piping the event THROUGH jq, which reads .result
   # internally — never pass the plan text as an argv --arg, which would exceed
   # ARG_MAX for a large Deep plan.
-  tmp="${RESULT_PATH}.tmp.$$"
+  tmp="$(reserve_result_tmp)" || { log "could not reserve result publication file"; exit 0; }
   if printf '%s' "$EVENT" | jq --arg m "$MODEL" --arg s "$SERVED" --arg r "$RECEIPT" \
        '{status:"ok", requested_model:$m, served_model:$s, receipt:$r, output:.result}' \
        > "$tmp" 2>/dev/null; then
@@ -285,3 +306,4 @@ else
   log "elevated step failed; wrote failure envelope"
 fi
 rm -f "$PEERLOG"
+rmdir "$PEER_DIR" 2>/dev/null || true

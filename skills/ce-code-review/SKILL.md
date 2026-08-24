@@ -1,20 +1,21 @@
 ---
 name: ce-code-review
 description: "Structured code review for bugs, regressions, tests, and standards. Use before PRs or when asked to review code. Use when the user asks to apply this review's findings locally. Not for resolving feedback already left on a PR; that is ce-resolve-pr-feedback."
-argument-hint: "[mode:agent] [apply:local] [blank to review current change, or provide PR link]"
+argument-hint: "[mode:agent] [apply:local] [blank to review current workspace, or provide PR link]"
 ---
 
 # Code Review
 
+
 ## Artifact Root
 
-<!-- rocketclaw-docs-root:start -->
+<!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `.context`.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `.context`.
-- **Use** `<root>` as the sole artifact location and never also read a legacy location.
-<!-- rocketclaw-docs-root:end -->
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
+<!-- ce-docs-root:end -->
 
 ## Execution spine
 
@@ -30,10 +31,10 @@ Follow these steps in order; the references supply the detail but never change t
 
 ## Operating principles
 
-- **Report-only by default; never push.** A bare `ce-code-review` invocation produces findings and does not apply them. Entering the apply stage requires `apply:local`, or an explicit user request in the invoking prompt to apply or fix this review's findings; a deprecated `mode:autofix` token is neither. `mode:agent` never mutates the workspace, even when nested inside a workflow that later applies findings. Never push, open PRs, or file tickets in any mode.
-- **No blocking prompts.** Never use `AskUserQuestion`, `request_user_input`, `ask_user`, or other blocking question tools. Infer intent, plan, and scope from explicit tokens, Jujutsu state, PR metadata, and conversation. Note uncertainty in Coverage or the verdict; do not stop to ask.
-- **Explicit mutations only.** Scope discovery must not change `@`, create or describe a revision, or move a bookmark. Passing a PR number, URL, or bookmark name selects review scope, not mutation authority. Local in-flight work can only be reviewed from the workspace that contains it; pass `base:` or no target there.
-- **Report outcomes, not machinery.** Show what is being examined, which coverage is included and why, the independent cross-model pass, and the findings. Name what the user recognizes - a PR number, bookmark, review concern, or peer model - rather than internal labels, dispatch bookkeeping, or setup narration. Never claim more about the peer than its receipt attests.
+- **Report-only by default; never push.** A bare `ce-code-review` invocation produces findings and does not apply them. Entering the apply stage requires `apply:local`, or an explicit user request in the invoking prompt to apply or fix this review's findings; a deprecated `mode:autofix` token is neither. `mode:agent` never mutates the tree, even when nested inside a workflow that later applies findings. Never push, open PRs, or file tickets in any mode.
+- **No blocking prompts.** Never use `AskUserQuestion`, `request_user_input`, `ask_user`, or other blocking question tools. Infer intent, plan, and scope from explicit tokens, Jujutsu state, PR metadata, and conversation. Note uncertainty in Coverage or the verdict — do not stop to ask.
+- **Explicit mutations only.** Never run `gh pr checkout`, `jj edit`, `jj next`, `jj prev`, or another command that changes the working-copy revision. Passing a PR number, URL, or bookmark name selects **review scope**, not permission to mutate the workspace. Review local work only from the workspace whose `@` contains it; use `base:` or no target there.
+- **Report outcomes, not machinery.** What you show the user is about the review: what is being examined, which coverage is included and the one-line reason for each conditional lens, the independent cross-model pass, and the findings. Name what the user would recognize — a PR number, a reviewer's concern, a peer model — rather than this skill's plumbing, whose internal labels, dispatch bookkeeping, and setup narration stay out of user-facing text. Never claim more about the peer than its receipt attests. This governs *what* you surface and suppress, not the wording; use your own voice.
 
 ## Task Visibility
 

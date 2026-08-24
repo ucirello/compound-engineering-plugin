@@ -12,7 +12,7 @@ For the inline/subagent engine, **prefer subagents for any structured multi-unit
 
 **Parallel Safety Check** — scheduling is separate from engine and workspace selection. Apply this gate to native and cross-model candidates before dispatching a wave:
 
-1. Start only with units whose dependencies are already accepted as canonical Jujutsu changes and whose peers in the same readiness layer do not depend on one another.
+1. Start only with units whose dependencies already have accepted canonical changes and whose peers in the same readiness layer do not depend on one another.
 2. Map declared files to units from each candidate's `Files:` section, then reason beyond those declarations. File overlap is necessary but not sufficient: shared types/APIs/interfaces, migrations, lockfiles, generated artifacts/clients, registry or config/schema surfaces, and an environment singleton (one dev server/port, shared database, browser session, package install, or rate limit) all create contention.
 3. Estimate expected merge and verification cost. Even isolated workers serialize when they share a contract or when reconciling their likely outputs is not obviously smaller and safer than serial authoring.
 4. Dispatch together only when dependencies, declared files, semantic surfaces, runtime resources, and expected merge cost all support independence; **decline parallelism on uncertainty**. Speed is optional.
@@ -21,7 +21,7 @@ For the inline/subagent engine, **prefer subagents for any structured multi-unit
 7. Abort criteria: broad unplanned edits, semantic overlap, out-of-scope failures, or repeated collision disables further waves; preserve or finish affected work serially.
 
 Isolation for native workers is the harness's job, under the body's boundary. Probe what your native subagent mechanism provides and pick the parallel path:
-- **Harness-native isolated workers** - each worker edits an isolated Jujutsu-aware workspace the harness manages and returns a receipt confirming that isolation. Parallelize only units that pass the Safety Check; isolation makes recovery possible, not overlap safe.
+- **Harness-native isolated workers** — each worker edits an isolated workspace the harness manages. This works when the canonical location is already one workspace because harness-managed workspaces are siblings, not nested. Parallelize only units that pass the Safety Check; isolation makes recovery possible, not overlap safe.
 - **Shared workspace only** — subagents edit your working directory. Run them serially. Do not infer isolation from the presence of a subagent API; use only a capability the active harness actually exposes.
 - **No subagent mechanism:** run inline.
 
@@ -37,26 +37,28 @@ Give each native worker:
 - Instruction to check whether the unit's test scenarios cover all applicable categories (happy paths, edge cases, error paths, integration) and supplement gaps before writing tests.
 - **Instruction to choose the unit's evidence strategy and gather the evidence** (see Evidence Strategy in Phase 2) — for behavior-bearing changes, honor the Execution note and default to proof-first or characterization-first: create/update/strengthen the test and observe the red failure or characterization baseline **before** changing production code. The worker is the only party that witnesses this, so it must capture it as it goes.
 - **Instruction to report, in its final message, both (a) the file paths it changed and (b) the unit's verification evidence** — `behavior_changed`, existing tests inspected, tests added/changed or used unchanged, the red failure or characterization observed (when applicable), the verification run and result, and any deliberate no-test exception with its reason. The handoff is a text summary on most harnesses with no guaranteed diff, so reported paths are the orchestrator's starting hint (it still verifies the actual tree); the evidence fields are **not** reconstructable from the tree afterward, so a worker that omits them forces the orchestrator to re-derive or leave `verification_evidence` incomplete.
-- **Do not finalize changes.** Ordinary native workers implement and may run their own unit's focused tests in isolation, but the orchestrator owns authoritative verification and final Jujutsu descriptions. External workers leave the working-copy change undescribed; controller snapshots are transport evidence, never canonical accepted changes. If a harness destroys isolated work on completion, follow its explicit persistence contract rather than inventing one.
+- **Do not finalize the change.** Ordinary native workers implement and may run their own unit's focused tests in isolation, but the orchestrator owns splitting, describing, and authoritative verification. An external worker leaves its Jujutsu working-copy change undescribed; its transport change is never canonical. If a harness destroys isolated state on completion, use that harness's documented persistence mechanism rather than inferring one.
 
-**Parallel subagent mode:** Description and composition ownership remains with the orchestrator. Harness-isolated workers return their workspace result for dependency-ordered composition; shared-workspace workers run serially.
+**Parallel subagent mode:** canonical-change ownership follows isolation mode:
+- **Workspace-isolated:** subagents leave their workspace changes for the orchestrator, which integrates them in dependency order after the batch.
+- **Shared-directory fallback:** subagents do not split or describe changes; the orchestrator separates and describes each unit after serial work completes.
 
-**Shared-workspace constraints** - workers must not describe/finalize changes, move bookmarks, rewrite the change graph, or run the full test suite concurrently. A worker may run one focused unit check only when it touches no shared state. Shared-workspace execution is serial.
+**Shared-workspace constraints** — subagents sharing one working directory run serially. They must not split, describe, rebase, squash, bookmark, or publish changes, and must not run stateful verification concurrently. The orchestrator owns those operations. A worker may run one focused unit check only when it touches no shared state.
 
 **Permission mode:** Omit the `mode` parameter when dispatching subagents so the user's configured permission settings apply. Do not pass `mode: "auto"` — it overrides user-level settings like `bypassPermissions`.
 
-**After each serial inline/subagent unit:** inspect `jj diff --summary` and `jj diff` against the unit scope, run authoritative checks, fix before the next unit, record verification evidence, update the task list, and finalize the logical Jujutsu change through `references/implementation-loop.md`. If a native worker ran, retire its handle before dispatching the next unit.
+**After each serial inline/subagent unit:** review `jj diff` against scope, run relevant verification, fix before the next unit, record evidence, update the task list, and finish the canonical change. Retire a worker handle only through a lifecycle operation the harness assigns to the caller; use a fresh worker for the next unit.
 
 **After a parallel inline/subagent batch — the orchestrator integrates; never trust the handoff summary alone:**
 1. Wait for every worker in the batch to finish.
-2. **Inspect the actual change, not reported paths.** Use `jj status`, `jj diff --summary`, and `jj diff` in its workspace. Reported paths are a hint; declared `Files:` are often incomplete.
-3. **Detect real collisions and semantic contention** — compare actual paths plus shared contracts, generated/config surfaces, and verification effects. A clean merge is not proof of compatibility. Preserve or re-run colliding units on the advancing canonical base; never blind-merge them.
-4. **Review, test, compose, describe, and retire each unit in dependency order.** Integrate one result, inspect actual scope, run authoritative verification, accept its canonical Jujutsu change with a dynamic description, then retire that worker. Clean up only when the harness assigns cleanup to the caller and only after proving composition. Revalidate every remaining result against the advancing change graph. Capture worker evidence without fabricating observations the worker omitted.
-5. Update the task list; progress lives in task state and described changes.
+2. **Inspect the actual change, not reported paths.** Determine what each worker really changed with `jj status` and `jj diff` in its workspace. Reported paths are a hint; declared `Files:` are often incomplete.
+3. **Detect real collisions and semantic contention** by comparing actual paths, shared contracts, generated/configuration surfaces, and verification effects. Conflict-free integration is not proof of compatibility. Preserve or rerun colliding units on the advancing canonical change.
+4. **Review, verify, describe, and retire each unit in dependency order.** Integrate one result, inspect actual scope, run authoritative verification, finish its canonical change, then retire that unit's worker. Never reuse the handle. Clean up an isolated workspace only when the harness assigns cleanup to the caller and after proving integration. Revalidate remaining results against the advancing canonical change. Preserve returned evidence and mark observations that cannot be reconstructed as unverified.
+5. Update the task list; progress lives in accepted changes.
 6. Dispatch the next dependency layer only after every unit in the batch has been integrated and its worker retired. Any remaining isolated-workspace cleanup follows the active harness's ownership and lifecycle contract.
 
 **Per-harness integration (examples — the universal flow above is the contract):**
-- **Harness-owned Jujutsu workspace:** compose one working-copy change in dependency order, verify, and describe it before the next; on conflict preserve evidence and rerun or explicitly resolve against the advanced graph.
-- **Harness-owned uploaded change set:** accept one isolated result, inspect and verify it, compose it canonically, then release the worker before the next result.
+- **Harness-owned workspace/change:** integrate one change in dependency order, verify, and describe it before the next; on conflict preserve and rerun or explicitly resolve against the advanced canonical change.
+- **Harness-owned uploaded change set:** accept one isolated result, inspect and verify it, record it canonically, then release the worker before the next result.
 - **Shared workspace:** no parallel batch is permitted; use the serial path.
-- **External cross-model workspace:** follow the conditionally loaded cross-model parallel-wave protocol and controller receipts; ad hoc graph operations do not apply.
+- **External cross-model workspace:** follow the conditionally loaded parallel-wave protocol and controller receipts; ordinary integration shortcuts do not apply.

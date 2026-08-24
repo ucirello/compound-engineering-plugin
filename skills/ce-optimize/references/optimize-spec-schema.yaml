@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for Jujutsu workspace names and paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for Jujutsu bookmark, workspace, and path names)"
     example: "improve-issue-clustering"
 
   description:
@@ -283,7 +283,7 @@ required_fields:
           comparison:
             type: object
             default: { method: "absolute" }
-            description: "How to decide keep / revert / inconclusive. Unset method preserves the legacy absolute noise_threshold rule."
+            description: "How to decide keep / revert / inconclusive. The stable decide.mjs revert token is persisted as the current abandoned outcome. Unset method preserves the legacy absolute noise_threshold rule."
             required_children:
               method:
                 type: enum
@@ -464,16 +464,27 @@ optional_fields:
         default: true
         description: "Stop when the primary metric reaches the target value (if set)"
 
-  max_runner_up_merges_per_batch:
+  max_runner_up_integrations_per_batch:
     type: integer
     default: 1
-    description: "Maximum number of file-disjoint runner-up experiments to attempt merging per batch after keeping the best experiment"
+    description: "Maximum number of file-disjoint runner-up experiments to attempt integrating per batch after keeping the best experiment"
+
+# ============================================================================
+# READ COMPATIBILITY
+# ============================================================================
+
+read_compatibility:
+  max_runner_up_merges_per_batch:
+    normalize_to: max_runner_up_integrations_per_batch
+    precedence: "max_runner_up_integrations_per_batch wins when both keys are present"
+    description: "Accepted only when loading a persisted legacy spec; never emit this key in a new or rewritten spec"
 
 # ============================================================================
 # VALIDATION RULES
 # ============================================================================
 
 validation_rules:
+  - "Before validation, normalize accepted legacy aliases according to read_compatibility; current keys win conflicts"
   - "All required fields must be present"
   - "name must be lowercase kebab-case (`^[a-z0-9]+(?:-[a-z0-9]+)*$`)"
   - "metric.primary.type must be 'hard' or 'judge'"

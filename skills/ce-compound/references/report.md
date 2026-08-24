@@ -13,13 +13,13 @@ For `depth:lightweight`, use this lower-overhead report after the Lightweight Mo
 ```
 ✓ Documentation complete (non-interactive lightweight mode)
 
-File: .context/solutions/<category>/<filename>.md  (created | updated)
+File: <root>/solutions/<category>/<filename>.md  (created | updated)
 Track: <bug | knowledge>
 Category: <category>
 Grounding: <mechanical check clean | N flags adjudicated>
 Discoverability: <no gap | gap noted — instruction-file tip emitted | not applicable — no active project instructions>
-.context/CONCEPTS.md: <not present | scanned, no qualifying terms | updated - N added, N refined>
-.context/CONCEPTS.md discoverability: <not checked | no gap | gap noted | not applicable>
+CONCEPTS.md: <not present | scanned, no qualifying terms | updated — N added, N refined>
+CONCEPTS.md discoverability: <not checked — CONCEPTS.md not refined | no gap | gap noted — instruction-file tip emitted | not applicable — no active project instructions>
 Refresh recommendation: <none | scope hint for /ce-compound-refresh>
 
 Documentation complete
@@ -30,13 +30,13 @@ For `depth:full` or backward-compatible non-interactive calls with no depth toke
 ```
 ✓ Documentation complete (non-interactive mode)
 
-File: .context/solutions/<category>/<filename>.md  (created | updated)
+File: <root>/solutions/<category>/<filename>.md  (created | updated)
 Track: <bug | knowledge>
 Category: <category>
 Overlap: <none | low | moderate — see <path> | high — existing doc updated>
 Grounding: <clean | N flags adjudicated (X fixed, Y annotated, Z confirmed) | N claims softened or corrected | degraded — merge-state claims unverified offline>
 Instruction-file edit: <none needed | gap noted, not applied>
-.context/CONCEPTS.md: <scanned, no qualifying terms | created with N entries | updated - N added, N refined>
+CONCEPTS.md: <scanned, no qualifying terms | created with N entries (M seeded from the learning's area) | updated — N added, N refined>
 Refresh recommendation: <none | scope hint for /ce-compound-refresh>
 
 Documentation complete
@@ -68,7 +68,7 @@ Subagent Results:
   ✓ Session History: 3 prior sessions on the same bookmark lineage, 2 failed approaches surfaced
 
 Grounding Validation:
-  ✓ Mechanical check: 14 paths, 2 SHAs, 3 links checked — 1 flag annotated as historical
+  ✓ Mechanical check: 14 paths, 2 revisions, 3 links checked — 1 flag annotated as historical
   ✓ Semantic validator: 9 claims verified, 1 merge-state claim softened to pending
 
 Specialized Agent Reviews (Auto-Triggered):
@@ -76,8 +76,8 @@ Specialized Agent Reviews (Auto-Triggered):
   ✓ Code simplification review: Code examples are appropriately minimal
 
 Files written:
-- .context/solutions/performance-issues/n-plus-one-brief-generation.md (created)
-- .context/CONCEPTS.md (created with 3 entries: BriefSystem, EmailQueue, Brief Status)
+- <root>/solutions/performance-issues/n-plus-one-brief-generation.md (created)
+- CONCEPTS.md (created with 3 entries: BriefSystem, EmailQueue, Brief Status)
 
 This documentation will be searchable for future reference when similar
 issues occur in the Email Processing or Brief System modules.
@@ -92,12 +92,12 @@ Refresh recommendation: none
 ```
 ✓ Documentation updated (existing doc refreshed with current context)
 
-Overlap detected: .context/solutions/performance-issues/n-plus-one-queries.md
+Overlap detected: <root>/solutions/performance-issues/n-plus-one-queries.md
   Matched dimensions: problem statement, root cause, solution, referenced files
   Action: Updated existing doc with fresher code examples and prevention tips
 
 File updated:
-- .context/solutions/performance-issues/n-plus-one-queries.md (added last_updated: 2026-03-24)
+- <root>/solutions/performance-issues/n-plus-one-queries.md (added last_updated: 2026-03-24)
 ```
 
 ## Common Mistakes to Avoid
@@ -109,5 +109,5 @@ File updated:
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Non-interactive Discoverability Check edits AGENTS.md/CLAUDE.md | non-interactive Full reports `Instruction-file edit: gap noted, not applied`; non-interactive Lightweight emits a discoverability tip; only interactive Full applies the edit after consent |
 | Creating a new doc when an existing doc covers the same problem | Check overlap assessment; update the existing doc when overlap is high |
-| Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over SHAs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
+| Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over revision IDs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
 | Batching several learnings through one run and stitching cross-references between drafts | One learning per run; run the skill sequentially for each additional learning |

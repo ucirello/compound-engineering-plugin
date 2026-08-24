@@ -7,7 +7,7 @@ Required read before running one of these end to end: reviewing a shared doc, cr
 When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 1. Extract the slug and token
-2. Bind presence with the neutral identity defaults
+2. Bind presence with the default actor identity
 3. Read via `v3/document`
 4. Edit with `v3/edit` (narrow content ops; review ops for comments/suggestions)
 
@@ -73,7 +73,7 @@ SLUG=$(echo "$RESPONSE" | jq -r '.slug')
 TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken')
 OWNER_SECRET=$(echo "$RESPONSE" | jq -r '.ownerSecret')   # required for owner delete while unclaimed
 
-# Keep OWNER_SECRET in session memory only — never write it into the workspace tree.
+# Keep OWNER_SECRET in session memory only — never write it into the repo tree.
 
 curl -sS -X POST "https://www.proofeditor.ai/api/agent/$SLUG/presence" \
   -H "Content-Type: application/json" \
@@ -104,18 +104,18 @@ Sync the current Proof doc state to a local markdown file. Used for:
 Canonical read for this workflow: `GET /api/agent/$SLUG/v3/document`.
 
 ```bash
-SLUG="<slug>"
-TOKEN="<access-token>"
-LOCAL="<absolute-path>"
+SLUG=<slug>
+TOKEN=<accessToken>
+LOCAL=<absolute-path>
 
-WORKSPACE_ROOT=$(jj workspace root 2>/dev/null)
+WORKSPACE_ROOT=$(jj --ignore-working-copy workspace root 2>/dev/null)
 if [ -n "$WORKSPACE_ROOT" ]; then
-  STATE_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/proof"
+  STATE_DIR="$WORKSPACE_ROOT/.tmp"
 else
-  STATE_DIR="./.tmp/rocketclaw/proof"
+  STATE_DIR="$(dirname "$LOCAL")/.tmp"
 fi
 mkdir -p "$STATE_DIR"
-STATE_TMP="$STATE_DIR/state.$$"
+STATE_TMP=$(mktemp "$STATE_DIR/proof-state.XXXXXX")
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"
@@ -126,6 +126,6 @@ jq -jr '.markdown' "$STATE_TMP" > "$TMP" && mv "$TMP" "$LOCAL"
 rm "$STATE_TMP"
 ```
 
-`jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive. `mv` within the same filesystem is atomic.
+`jj --ignore-working-copy workspace root` selects the active Jujutsu workspace without snapshotting it. The response scratch file lives in that workspace's `.tmp`, or in `.tmp` beside the destination when no Jujutsu workspace is available. `jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive. `mv` within the same filesystem is atomic.
 
 **Confirm before writing when the pull isn't directly asked for.** If a workflow ends up pulling as a side-effect of a different action, surface the impending write with a short confirm like "Sync Proof doc to `<localPath>`?" A silent overwrite is surprising.

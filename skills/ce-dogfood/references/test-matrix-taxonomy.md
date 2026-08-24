@@ -1,6 +1,6 @@
 # Test Matrix Taxonomy
 
-Use these dimensions to turn a jj target-vs-base diff into an exhaustive browser test matrix. Not every dimension applies to every change — pick the ones the diff actually touches, but err toward coverage. The goal is to test **complete user journeys**, not isolated widgets.
+Use these dimensions to turn a Jujutsu target-versus-base diff into an exhaustive browser test matrix. Not every dimension applies to every change — pick the ones the diff actually touches, but err toward coverage. The goal is to test **complete user journeys**, not isolated widgets.
 
 ## 1. Journeys (the spine of the matrix)
 

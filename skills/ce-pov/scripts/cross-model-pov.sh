@@ -5,7 +5,8 @@
 # process and writes its POV as JSON into the run dir.
 # Every peer receives the canonical POV persona, schema, and a caller-prepared
 # subject payload. The peer also receives the caller-declared repository read
-# scope; private prompt/result scratch stays under the workspace's `.tmp` tree.
+# scope; private prompt/result scratch stays under the workspace's ignored
+# `.tmp/local` namespace.
 #
 # Independence is by PROVIDER, not CLI brand. A provider is reached by a ROUTE:
 # its dedicated CLI, or (for the fixed grok-cursor / composer routes) cursor-agent. All
@@ -29,8 +30,8 @@
 #                   different recipient.
 #   <subject-payload> framed question plus any conversation-only subject material.
 #                     Point to repository files instead of copying their contents;
-#                     the peer grounds itself from the shared working copy.
-#   <run-dir>         existing private dir under the workspace's `.tmp` tree; output ->
+#                     the peer grounds itself from the shared workspace.
+#   <run-dir>         existing private dir under workspace `.tmp/local`; output ->
 #                     <run-dir>/pov-<target>.json, where <target> is the resolved
 #                     <fixed-route> target (grok-cli/grok-cursor both collapse to
 #                     grok) -- NOT the <host-serving-family> key.
@@ -208,9 +209,8 @@ extract_model_receipt() {   # <route>; reads the envelope in $PEERLOG, sets MODE
 adapter_argv() {
   case "$1" in
     codex)
-      printf '%s\0' codex --search exec - -C "$READ_ROOT" -s read-only \
-        -o "$RAW_OUT" -m "$(route_model codex)" -c 'project_root_markers=[".jj"]' \
-        -c 'model_reasoning_effort="high"' -c 'hide_agent_reasoning=false'
+      printf '%s\0' codex --search exec - -C "$READ_ROOT" --skip-git-repo-check -s read-only \
+        -o "$RAW_OUT" -m "$(route_model codex)" -c 'model_reasoning_effort="high"' -c 'hide_agent_reasoning=false'
       ;;
     claude)
       # Keep project auto-discovery disabled while allowing only repository reads
@@ -294,16 +294,18 @@ RUN_DIR="${4:-}"
 READ_ROOT="${CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
 [ -d "$READ_ROOT" ] || skip "declared repository/read root '$READ_ROOT' is not a directory"
 READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve repository/read root '$READ_ROOT'"
-if [ -n "${CROSS_MODEL_REPO_ROOT:-}" ]; then
-  REPO_ROOT="$CROSS_MODEL_REPO_ROOT"
-elif command -v jj >/dev/null 2>&1 && _jj_root="$(jj --repository "$READ_ROOT" workspace root 2>/dev/null)"; then
-  REPO_ROOT="$_jj_root"
+if [ -n "${CROSS_MODEL_WORKSPACE_ROOT:-}" ]; then
+  WORKSPACE_ROOT="$CROSS_MODEL_WORKSPACE_ROOT"
+elif [ -n "${CROSS_MODEL_REPO_ROOT:-}" ]; then
+  WORKSPACE_ROOT="$CROSS_MODEL_REPO_ROOT"
+elif command -v jj >/dev/null 2>&1 && _workspace_root="$(jj -R "$READ_ROOT" workspace root 2>/dev/null)"; then
+  WORKSPACE_ROOT="$_workspace_root"
 else
-  REPO_ROOT="$(pwd -P)"
+  WORKSPACE_ROOT="$(pwd -P)"
 fi
-[ -d "$REPO_ROOT" ] || skip "declared repository root '$REPO_ROOT' is not a directory"
-REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)" || skip "cannot resolve repository root '$REPO_ROOT'"
-case "$READ_ROOT/" in "$REPO_ROOT/"*) ;; *) skip "read root '$READ_ROOT' is outside repository root '$REPO_ROOT'" ;; esac
+[ -d "$WORKSPACE_ROOT" ] || skip "declared workspace root '$WORKSPACE_ROOT' is not a directory"
+WORKSPACE_ROOT="$(cd "$WORKSPACE_ROOT" && pwd -P)" || skip "cannot resolve workspace root '$WORKSPACE_ROOT'"
+case "$READ_ROOT/" in "$WORKSPACE_ROOT/"*) ;; *) skip "read root '$READ_ROOT' is outside workspace root '$WORKSPACE_ROOT'" ;; esac
 
 [ -n "$RUN_DIR" ] || skip "run-dir not given; skipping"
 if [ -d "$RUN_DIR" ]; then
@@ -315,7 +317,8 @@ else
   RUN_PARENT="$(cd "$RUN_PARENT" && pwd -P)" || skip "cannot resolve run-dir parent '$RUN_PARENT'"
   RUN_DIR_RESOLVED="$RUN_PARENT/$RUN_BASENAME"
 fi
-case "$RUN_DIR_RESOLVED/" in "$REPO_ROOT/.tmp/"*) ;; *) skip "run-dir must be under '$REPO_ROOT/.tmp'" ;; esac
+LOCAL_TMP_ROOT="$WORKSPACE_ROOT/.tmp/local"
+case "$RUN_DIR_RESOLVED/" in "$LOCAL_TMP_ROOT/"*) ;; *) skip "run-dir must be under '$LOCAL_TMP_ROOT'" ;; esac
 [ -d "$RUN_DIR_RESOLVED" ] || skip "run-dir '$RUN_DIR' must already exist"
 RUN_DIR="$RUN_DIR_RESOLVED"
 chmod 700 "$RUN_DIR" 2>/dev/null || skip "run-dir '$RUN_DIR' could not be made private"
@@ -424,20 +427,18 @@ log "fixed cross-model POV route: target=$TARGET route=$FIXED_ROUTE (host $HOST_
 # --- compose the peer prompt from the canonical persona (single source) ----
 # The payload is prepared by ce-pov and embeds the framed question plus any
 # conversation-only subject material needed for this round. Repository evidence
-# stays in the shared working copy for the peer to inspect directly.
-SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$REPO_ROOT/.tmp/pov}"
-[ -d "$SCRATCH_PARENT" ] || mkdir -p "$SCRATCH_PARENT" 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
+# stays in the shared workspace for the peer to inspect directly.
+SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$WORKSPACE_ROOT/.tmp/local/rocketclaw/ce-pov}"
+[ ! -L "$SCRATCH_PARENT" ] || skip "private scratch parent '$SCRATCH_PARENT' is a symlink"
+[ -d "$SCRATCH_PARENT" ] || (umask 077; mkdir -p "$SCRATCH_PARENT") 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
 SCRATCH_PARENT="$(cd "$SCRATCH_PARENT" && pwd -P)" || skip "cannot resolve private scratch parent"
-case "$SCRATCH_PARENT/" in "$REPO_ROOT/.tmp/"*) ;; *) skip "private scratch parent must be under '$REPO_ROOT/.tmp'" ;; esac
-_scratch_attempt=0
-while :; do
-  PEER_WORKDIR="$SCRATCH_PARENT/pov-peer-$$-$_scratch_attempt"
-  if (umask 077 && mkdir "$PEER_WORKDIR") 2>/dev/null; then
-    break
-  fi
-  _scratch_attempt=$((_scratch_attempt + 1))
-  [ "$_scratch_attempt" -lt 128 ] || skip "provider $TARGET workspace isolation unavailable; skipping provider"
+case "$SCRATCH_PARENT/" in "$LOCAL_TMP_ROOT/"*) ;; *) skip "private scratch parent must be under '$LOCAL_TMP_ROOT'" ;; esac
+PEER_WORKDIR=""
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
+  candidate="$SCRATCH_PARENT/xmodel-pov-peer-$$-${RANDOM:-0}-$attempt"
+  if (umask 077; mkdir -m 700 "$candidate") 2>/dev/null; then PEER_WORKDIR="$candidate"; break; fi
 done
+[ -n "$PEER_WORKDIR" ] || skip "provider $TARGET workspace isolation unavailable; skipping provider"
 chmod 700 "$PEER_WORKDIR" 2>/dev/null || { cleanup_private_scratch; skip "cannot make peer scratch private"; }
 PROMPT_FILE="$PEER_WORKDIR/prompt.md"
 PEERLOG="$PEER_WORKDIR/stdout.log"
@@ -621,8 +622,8 @@ run_codex_cmd() {   # CMD already built for the codex route; streams to PEERLOG,
 run_timeout_cmd() {
   # $1 = stdin file ("" -> /dev/null). $2 = hard cap secs. $3 = "idle" | "no-idle".
   RUN_SUCCEEDED=false
-  # Run from the declared read root. Private prompt/output paths are absolute
-  # beneath the workspace's `.tmp` tree; route adapters carry the read root.
+  # Run from the declared read root. Private prompt/output paths are absolute and
+  # remain under the private `.tmp/local` namespace; route adapters separately carry the same root.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
   local idle_mode="${3:-idle}"
@@ -859,7 +860,7 @@ run_fixed_route() {
       rm -f "$RAW_OUT"
     else
       log "peer returned a non-final position (\"${position:0:120}\"); retrying once on the same route with a final-answer requirement (${remaining}s left)"
-      printf '\n\nYour previous response set final to false. This response is the final one: inspect the subject and shared working copy now, then return the settled position with its evidence and final set to true.\n' >> "$PROMPT_FILE"
+      printf '\n\nYour previous response set final to false. This response is the final one: inspect the subject and shared workspace now, then return the settled position with its evidence and final set to true.\n' >> "$PROMPT_FILE"
       HARD_SECS="$remaining"; UNGUARDED_HARD_SECS="$remaining"
       attempt_route "$provider" "$FIXED_ROUTE"
       if [ "$RUN_SUCCEEDED" = true ] && ! out_missing_or_invalid && ! out_final; then

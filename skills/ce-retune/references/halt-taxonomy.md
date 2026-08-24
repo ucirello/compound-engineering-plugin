@@ -1,5 +1,7 @@
 # Halt Taxonomy
 
+Preserve required diagnostics, machine-readable values, and operational benchmark, model, and harness references. Fixed replacements, examples, and report wording specify substance, not mandatory syntax unless an exact token is machine-readable. Do not add product branding, generated-by text, or attribution.
+
 ## The mechanism
 
 When a workflow "phase" is invoked by loading its instructions into the **same conversation** — a skill load, an include, a prose route to "the review phase" — rather than by spawning a separate process, the model on both sides of that seam is one model in one turn. In an unattended run there is no second party and no next user message, and a reply that contains no tool call ends the session. So an instruction to return, hand back, or report to a caller has exactly one expressible form at that seam: stop. The prose is not wrong about its protocol; the protocol has no runtime.
@@ -20,7 +22,7 @@ grep -rniE 'return control|hand back|hand off to|the caller (owns|applies)' <cor
 
 **Why it halts:** a mandated fan-out plus a wait ceiling. If the helpers were never spawned concurrently, or the runtime reaped them at turn end, the wait resolves to nothing — and "wait" has no tool call to express it, so the turn ends inside the ceiling.
 
-**Falsifiable check before touching it:** from the archive, measure the maximum number of helpers dispatched *concurrently* per run (see `references/baseline-mining.md` for the extraction). In the engagement, 331 of 332 runs never exceeded one at a time, which falsified the wall-clock justification the corpus had written for its own fan-out machinery.
+**Falsifiable check before touching it:** from the archive, measure the maximum number of helpers dispatched *concurrently* per run (see `references/baseline-mining.md` for the extraction). In one observed corpus, 331 of 332 runs never exceeded one at a time, which falsified the wall-clock justification the corpus had written for its own fan-out machinery.
 
 **Replacement:** dispatch serially, or state parallelism as an allowance rather than a mandate, and delete the wait ceiling with the wall-clock rationale that justified it.
 

@@ -1,5 +1,5 @@
-# RocketClaw -- workspace config
-# Copy to .rocketclaw/config.yaml in your Jujutsu workspace root (team defaults).
+# RocketClaw repo config
+# Copy to .rocketclaw/config.yaml in your workspace root (team defaults).
 # Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # docs_root is workspace layout -- set it only here; local docs_root is ignored.
@@ -13,16 +13,15 @@
 # byte-identical to today. A configured root becomes the sole location RocketClaw
 # reads and writes; RocketClaw never falls back to reading `docs/`.
 #
-# Set this only in this tracked file so every Jujutsu workspace shares one
-# artifact tree. A docs_root in config.local.yaml is ignored.
+# Set this only in this tracked file so each Jujutsu workspace uses its tracked
+# artifact layout. A docs_root in config.local.yaml is ignored.
 #
-# The value must be a workspace-relative directory whose real (symlink-resolved)
-# path stays inside the workspace, is not the workspace root itself, and is not
-# under `.jj/`.
+# The value must be a repo-relative directory whose real (symlink-resolved) path
+# stays inside the workspace, is not the workspace root itself, and is not under
+# `.jj/` or `.git/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- RocketClaw stops with an error so a typo can't silently write
-# artifacts into the location you configured away from. `/ce-setup` reports the
-# resolved root.
+# default -- RocketClaw stops with an error so a typo can't silently write artifacts into
+# the location you configured away from. `/ce-setup` reports the resolved root.
 
 # docs_root: .rocketclaw/artifacts   # workspace-relative dir (default: docs)
 
@@ -170,7 +169,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # shared, or .tmp/rocketclaw/feedback-sweep/state.yml for workspace-local state
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or $(jj workspace root)/.tmp path (solo; local .tmp fallback)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology

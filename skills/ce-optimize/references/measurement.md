@@ -1,6 +1,6 @@
 # Phase 0.3-1.7: prior learnings, identity, and measurement scaffolding
 
-Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the baseline snapshot gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run identity and resume detection, the optimization change and scratch space, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
+Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the baseline gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run identity and resume detection, the optimization bookmark and scratch space, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
 
 ### 0.3 Search Prior Learnings
 
@@ -8,23 +8,23 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 
 ### 0.4 Run Identity Detection
 
-Check for an existing experiment log at `.context/optimize/<spec-name>/experiment-log.yaml`. A resumable run has a recorded current-best Jujutsu change ID that still resolves and the persisted checkpoints required by its phase.
+Check whether the exact local bookmark `optimize/<spec-name>` exists with `jj bookmark list`, then check for `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
-- **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning experiment workspace directories for `result.yaml` markers. Then apply the body's resume rule to decide what is skipped and which gates are re-entered.
-- **Fresh start**: move the previous local state to a timestamped sibling archive, abandon only mutable optimization changes identified by that state, and start from the current working-copy change. Stop for user direction if recorded changes cannot be identified safely.
+- **Resume**: read and normalize ALL state from the experiment log on disk using the schemas' `read_compatibility` rules. Verify that its baseline, current-best, and optimization revisions resolve. For a legacy log that lacks the top-level JJ IDs, recover them as `references/persistence.md` requires rather than rejecting the log. If the log came from the legacy location, atomically publish the normalized state and sibling spec, when present, under the current state directory before continuing; leave the legacy files untouched. Recover any measured-but-unlogged experiments by scanning managed experiment workspaces for `result.yaml` markers. Then apply the body's resume rule to decide what is skipped and which gates are re-entered.
+- **Fresh start**: rename any existing optimization bookmark to a timestamped `optimize-archive/<spec-name>/archived-<timestamp>` bookmark, atomically move the old local state to a timestamped sibling archive, and start from the current working-copy revision. Stop for user direction if the recorded revisions or workspace paths cannot be identified safely.
 
-### 0.5 Create Optimization Change and Scratch Space
+### 0.5 Create Optimization Bookmark and Scratch Space
 
-Snapshot the current working copy and record its full `change_id` as `baseline_change_id`. Ensure `$(jj workspace root)/.tmp` is a real directory path rather than a symlink, is excluded by the workspace's Jujutsu ignore rules, and has owner-only permissions. Outside Jujutsu, scratch-only flows use a real local `.tmp` directory with the same safety checks. Stop before writing scratch data when the applicable `.tmp` path is not ignored. Then create the empty orchestration change:
-
+Snapshot with `jj status`. Record the full change ID from `jj log -r @ --no-graph -T 'change_id ++ "\n"'` as `baseline_change_id`, set `optimize/<spec-name>` to that revision, and create a new empty orchestration change on top:
 ```bash
-jj new @
+jj bookmark set "optimize/<spec-name>" -r @
+jj new "optimize/<spec-name>"
 ```
 
-Record the new working-copy change ID as the run's current optimization change. Create the local state directory:
+Resolve scratch to `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/`; outside Jujutsu, use `.tmp/rocketclaw/optimize/<spec-name>/` relative to the current directory. Reject symlinks at every managed path component, require current-user ownership, use mode `0700`, and stop unless `.tmp/` is ignored. Reserve transient names without overwrite and publish state updates by atomic rename within the same directory. Then create the state directory:
 ```bash
-mkdir -p .context/optimize/<spec-name>/
+mkdir -p "<workspace-root-or-dot>/.tmp/rocketclaw/optimize/<spec-name>/"
 ```
 
 ---
@@ -40,9 +40,9 @@ SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 bash "$SKILL_DIR/scripts/<name>"
 ```
 
-### 1.1 Baseline Snapshot Gate
+### 1.1 Baseline Gate
 
-The body owns this gate. Run `jj diff --summary -r @` and apply the body's rule to the result: if the orchestration change is not empty, name the modified files and move those edits into an intentional baseline or separate change. Do not continue until the orchestration change is empty; experiment workspaces start from `best.change_id`, initially `baseline_change_id`.
+The body owns this gate. Use `jj status` and `jj diff --summary -r <baseline_change_id>` to identify scoped edits in the recorded baseline. If any are accidental or their inclusion is ambiguous, name them and ask the user whether to keep them in the baseline or move them to a separate Jujutsu change. Do not dispatch experiments until the baseline content is intentional and the orchestration change is empty.
 
 ### 1.2 Build or Validate Measurement Harness
 
@@ -108,7 +108,7 @@ Read the JSON output. Present any blockers to the user with suggested mitigation
 
 ### 1.5 Workspace Budget Check
 
-Count existing experiment workspaces:
+Count managed experiment workspaces:
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 bash "$SKILL_DIR/scripts/experiment-workspace.sh" count
@@ -123,7 +123,7 @@ If count + `execution.max_concurrent` would exceed 12:
 
 **MANDATORY CHECKPOINT.** Before presenting results to the user, write the initial experiment log with baseline metrics to disk:
 
-1. Create the experiment log file at `.context/optimize/<spec-name>/experiment-log.yaml`
+1. Create the experiment log file at `<workspace-root>/.tmp/rocketclaw/optimize/<spec-name>/experiment-log.yaml`
 2. Include all required top-level sections from `references/experiment-log-schema.yaml`: `spec`, `run_id`, `started_at`, `baseline_change_id`, `optimization_change_id`, `baseline`, `experiments`, and `best`
 3. Seed `experiments` as an empty array and seed `best` from the baseline snapshot (use `iteration: 0`, `change_id: <baseline_change_id>`, baseline metrics, and baseline judge scores if present) so later phases have a valid current-best state to compare against
 4. Optionally seed `hypothesis_backlog: []` here as well so the log shape is stable before Phase 2 populates it
@@ -132,6 +132,6 @@ If count + `execution.max_concurrent` would exceed 12:
 
 ### 1.7 User Approval Gate
 
-The body owns this gate — what is presented, the options and the condition on adjusting the spec, the uncapped-spend disclosure, and the rule that Phase 2 does not start without explicit approval. A resume that cannot prove the user cleared this gate runs it again, so this phase supplies the same payload then. What this phase supplies to it: the baseline's gate values, diagnostic values, and judge scores; the experiment log path; the probe results with any blockers and mitigations; the empty-orchestration-change confirmation; the workspace count and projection; and the estimated per-experiment judge cost against the configured cap.
+The body owns this gate — what is presented, the options and the condition on adjusting the spec, the uncapped-spend disclosure, and the rule that Phase 2 does not start without explicit approval. A resume that cannot prove the user cleared this gate runs it again, so this phase supplies the same payload then. What this phase supplies to it: the baseline's gate values, diagnostic values, and judge scores; the experiment log path; the probe results with any blockers and mitigations; the intentional-baseline confirmation; the workspace count and projection; and the estimated per-experiment judge cost against the configured cap.
 
 ---

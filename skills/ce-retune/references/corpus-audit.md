@@ -1,5 +1,7 @@
 # Phase 3: Adversarial Corpus Audit
 
+Preserve required evidence, citations, schemas, machine-readable values, and operational benchmark, model, and harness references. Fixed examples and report wording specify substance, not mandatory syntax unless an exact token is machine-readable. Do not add product branding, generated-by text, or attribution.
+
 Produces one finding set per corpus unit, each finding carrying a defender ruling. That ruling set is the input to Phase 4's passes — nothing here edits a file.
 
 The audit is not evidence. It ranks candidates; only the harness says whether a cut helped. Do not let a large finding count imply a large effect — a corpus's run-to-run spread on fixed inputs (`references/noise-floor.md`) is the same whether the audit found 6 findings or 600.
@@ -16,7 +18,7 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite — grep a distinctive substring of the target text.
-3. Version history — `jj log -r 'ancestors(@)' -p -- <path>` for the file's current lineage, locate the patch that introduced a distinctive target substring, then inspect that revision with `jj show <change-id>` and read its change description and linked review.
+3. Jujutsu history — use `jj file annotate <target-path>` to identify the change that introduced the targeted line, then inspect that change and its description with `jj show <change-id>`. If annotation is insufficient, inspect the path's patches with `jj log -r 'ancestors(@)' -p -- <target-path>`. Read the linked review when one exists.
 
 Source 3 is unavailable in a corpus copy with no Jujutsu history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a Jujutsu workspace that has history, or record the whole audit's provenance basis as partial.
 
@@ -70,7 +72,7 @@ Exactly three, one per finding:
 
 - **`cut`** — a real search over all three sources found no provenance. The proposal stands.
 - **`reduce`** — the constraint is real and the prose states it at several times the length needed. The defender returns the minimal form that preserves the constraint.
-- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a change that added it to fix a named bug. The ruling must carry the citation — path, test name, change ID, or commit ID.
+- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a Jujutsu change that added it to fix a named bug. The ruling must carry the citation — path, test name, change ID, or commit ID.
 
 A defender returns one row per finding, in these fields, and nothing else:
 
@@ -97,7 +99,7 @@ For three categories the default inverts: **absence of provenance is not grounds
 
 What *is* cuttable around all three is the justification clause — the sentence explaining that a separate consumer is waiting on the string. Keep the data, cut the story about who wants it. That is usually a `reduce`, and it is frequently also a `phantom-handoff`.
 
-`cross-unit-duplication` collides with this category more than any other class. Before proposing a factor-out, check whether the duplication is mandated: a documented decision, or a test that forbids sharing the block. The most-duplicated block in a corpus is often the one thing that must stay duplicated — in the engagement it was a security guard whose duplication a test explicitly required, and the largest duplication mandate was itself the documented fix for a bug that had regressed twice.
+`cross-unit-duplication` collides with this category more than any other class. Before proposing a factor-out, check whether the duplication is mandated: a documented decision, or a test that forbids sharing the block. The most-duplicated block in a corpus is often the one thing that must stay duplicated. In one observed corpus, it was a security guard whose duplication a test explicitly required, and the largest duplication mandate was itself the documented fix for a bug that had regressed twice.
 
 ## Synthesis: rank contradiction above confirmation
 

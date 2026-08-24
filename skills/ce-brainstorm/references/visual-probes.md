@@ -76,9 +76,12 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-REPO_ROOT="$(jj root 2>/dev/null)" || REPO_ROOT="$PWD";
-SCRATCH_ROOT="$REPO_ROOT/.tmp/rocketclaw";
-if [ -L "$SCRATCH_ROOT" ] || ! (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null; then SCRATCH_ROOT="$PWD/.tmp/rocketclaw"; fi;
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+LOCAL_TMP="$WORKSPACE_ROOT/.tmp";
+if [ -L "$LOCAL_TMP" ] || ! (umask 077; mkdir -p "$LOCAL_TMP") 2>/dev/null || [ ! -O "$LOCAL_TMP" ] || [ ! -w "$LOCAL_TMP" ]; then LOCAL_TMP="$PWD/.tmp"; fi;
+if [ -L "$LOCAL_TMP" ]; then echo "unsafe local temp root symlink: $LOCAL_TMP" >&2; exit 1; fi;
+(umask 077; mkdir -p "$LOCAL_TMP") || exit 1; chmod 700 "$LOCAL_TMP" || exit 1;
+SCRATCH_ROOT="$LOCAL_TMP/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -91,9 +94,12 @@ Append `--foreground` to that `start` command for foreground mode. Status and st
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-REPO_ROOT="$(jj root 2>/dev/null)" || REPO_ROOT="$PWD";
-SCRATCH_ROOT="$REPO_ROOT/.tmp/rocketclaw";
-if [ -L "$SCRATCH_ROOT" ] || ! (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null; then SCRATCH_ROOT="$PWD/.tmp/rocketclaw"; fi;
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+LOCAL_TMP="$WORKSPACE_ROOT/.tmp";
+if [ -L "$LOCAL_TMP" ] || ! (umask 077; mkdir -p "$LOCAL_TMP") 2>/dev/null || [ ! -O "$LOCAL_TMP" ] || [ ! -w "$LOCAL_TMP" ]; then LOCAL_TMP="$PWD/.tmp"; fi;
+if [ -L "$LOCAL_TMP" ]; then echo "unsafe local temp root symlink: $LOCAL_TMP" >&2; exit 1; fi;
+(umask 077; mkdir -p "$LOCAL_TMP") || exit 1; chmod 700 "$LOCAL_TMP" || exit 1;
+SCRATCH_ROOT="$LOCAL_TMP/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -153,9 +159,9 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use the jj workspace's `.tmp/rocketclaw` directory by default, with the current
-directory's `.tmp/rocketclaw` as the no-workspace or unwritable-root fallback,
-because visual probes are disposable scratch:
+Use the Jujutsu workspace's `.tmp/rocketclaw` directory by default, with the
+current directory's `.tmp/rocketclaw` as the no-workspace or unwritable-root
+fallback, because visual probes are disposable scratch:
 
 ```text
 <scratch-root>/ce-brainstorm-visual/<run-id>/
@@ -165,4 +171,7 @@ because visual probes are disposable scratch:
     display-info.json
 ```
 
-Use `.context/brainstorm-visual/<run-id>/` only when the user explicitly wants to inspect, preserve, or curate the sketches after the session. The probe is disposable scratch; the durable artifact is the Phase 3 requirements-only unified plan under `<root>/plans/`.
+When the user explicitly wants to preserve or curate the sketches, move the
+selected output to a durable project location they approve. The probe remains
+disposable scratch under `.tmp`; the durable Phase 3 artifact lives under
+`<root>/plans/`.

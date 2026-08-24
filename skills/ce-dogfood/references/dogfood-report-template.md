@@ -2,12 +2,12 @@
 
 > Diff-scoped browser QA of `<target-revision>` vs `<base-revision>` on <YYYY-MM-DD>.
 
-<!-- Use repo-relative paths throughout this doc, never absolute paths, so it stays portable. -->
+<!-- Use workspace-relative paths throughout this doc, never absolute paths, so it stays portable. -->
 <!-- This template is the source of truth for the report's sections; build the report to this shape rather than from memory. -->
 
 ## Diff Summary
 
-<What changed between the target and its base: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
+<What changed between the target and its base: new features, modified behavior, new/changed routes, views, components, data flows.>
 
 ## Personas
 
@@ -70,7 +70,9 @@ For each issue found and fixed:
 - **What's broken:** <symptom / failing scenario>
 - **Why escalated:** <why it's not a safe autonomous fix — scope, risk, ambiguity, product trade-off>
 - **Options:** <option A (trade-offs) / option B (trade-offs)>
-- **Recommendation:** <the agent's suggested direction, for the human to confirm>
+- **Recommendation:** <the suggested direction for the human to confirm; derive its wording and structure from current project conventions rather than this placeholder>
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply that sentence when composing, validating, or recommending report prose. The required decision facts are not fixed message syntax; do not preserve this template's placeholder wording, impose a fixed prefix or layout, or add branding or attribution.
 
 ## Learnings
 
@@ -78,4 +80,4 @@ For each issue found and fixed:
 
 ## Final Status
 
-<Overall readiness verdict for the target. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run — a green matrix with a red suite is not "ready.">
+<Overall readiness verdict for the target. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run; a green matrix with a red suite is not "ready.">

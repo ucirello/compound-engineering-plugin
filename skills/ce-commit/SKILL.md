@@ -1,52 +1,53 @@
 ---
 name: ce-commit
-description: Create local JJ changes with clear, value-communicating descriptions. Use when the user asks to save current work as one or more repository-appropriate changes.
+description: Create Jujutsu commits with clear, value-communicating descriptions. Use when the user asks to commit or save working-copy changes with repository-appropriate descriptions.
 ---
 
-# JJ Change
+# Jujutsu Commit
 
-Create well-crafted local change(s) from the current working copy. Do not publish or open a review; use `ce-commit-push-pr` for the full ship flow.
+Create well-crafted local Jujutsu commits from the current working-copy change. Do not push or open a PR; use `ce-commit-push-pr` for the full ship flow.
 
-**Done when:** each logical change has an explicit file set, a repository-appropriate description that states its outcome, and an appropriate bookmark, and `jj status` shows none of those files in the new working-copy change. **Stop when:** the working-copy change is empty.
+**Done when:** each logical change is finalized from an explicit fileset with a description that states the outcome, the appropriate feature bookmark points to the resulting stack, and `jj status` no longer lists those paths in the working-copy change. **Stop when:** the working-copy change is empty.
 
 ## Context
 
-Gather context with each command as its **own** shell tool call (program + args only). Do **not** join with `;`, `&&`, `||`, pipes, `$(...)`, or redirects; that syntax is not portable across supported shells. Interpret a non-zero exit as state instead of suppressing it.
+Gather context with each command as its **own** shell tool call (program plus arguments only). Do not join commands with shell operators, command substitutions, pipes, or redirects. Interpret a non-zero exit as state rather than suppressing it.
 
 | Command | Purpose | Non-zero / empty means |
 | --- | --- | --- |
-| `jj root` | Workspace root | Not a JJ workspace; stop |
-| `jj status` | Working-copy change, parents, conflicts, and bookmarks | Not a JJ workspace; stop |
-| `jj diff --summary -r @` | Changed paths in the working-copy change | No path summary |
-| `jj bookmark list -r @` | Local bookmarks currently targeting the working-copy change | No bookmark targets `@` |
-| `jj log -r 'trunk()' --no-graph` | Repository default line of development | Default revision cannot be resolved |
-| `jj log -n 10 --no-graph -T 'description.first_line() ++ "\n"'` | Recent description style | No useful local history |
+| `jj workspace root` | Workspace root and repository check | Not a Jujutsu workspace; stop |
+| `jj status` | Working-copy change and conflicts | Empty change means nothing to commit |
+| `jj diff` | Current change contents | Empty output means nothing to commit |
+| `jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'json(local_bookmarks) ++ "\n"'` | Nearest local bookmarks in the ancestry | No local bookmark anchors the current stack |
+| `jj log -r 'heads(::@ & remote_bookmarks())' --no-graph -T 'json(remote_bookmarks) ++ "\n"'` | Nearest remote bookmarks in the ancestry | No remote bookmark anchors the current stack |
+| `jj log -r '::@' -n 10 --no-graph` | Recent description style | No usable history to match |
+| `jj log -r 'trunk()' --no-graph` | Default base change | `trunk()` is unresolved; do not guess a default |
+| `jj log -r 'trunk() & tracked_remote_bookmarks()' --no-graph -T 'json(remote_bookmarks.filter(|b| b.tracked())) ++ "\n"'` | Tracked remote bookmarks at the default base | None or multiple means there is no unique default bookmark |
 
-Treat this as a snapshot. Re-run `jj status`, `jj diff --summary -r @`, and `jj bookmark list -r @` immediately before each mutation if the working copy may have changed.
-
-If scratch space is necessary, use `<workspace-root>/.tmp/<run-id>/`; if that location cannot be used, fall back to `./.tmp/<run-id>/`. Do not use OS temporary directories, and remove run-only scratch after success.
+Treat this as a snapshot. Re-read `jj status`, `jj diff`, and the nearest bookmarks immediately before finalizing if the working copy may have changed.
 
 ## Workflow
 
-0. **Gather** - run every Context command above in its own shell call, then continue.
+0. **Gather** — run every Context command above (own shell call each), then continue.
 
-1. **Nothing to save** - if `jj status` says the working-copy change is empty, report that and stop. Use this state rather than the path summary alone so conflicts and working-copy metadata remain visible.
+1. **Nothing to commit** — if the working-copy change is empty, report that and stop. Jujutsu snapshots non-ignored working-copy files automatically, so `jj status` is the authoritative check.
 
-2. **Bookmark first** - ensure the work is represented by a non-default local bookmark derived from its content. If no local bookmark targets `@`, create one with `jj bookmark create <name> -r @`. If `@` is the default revision, create the feature bookmark and move each default bookmark back to `@-` with `jj bookmark move <default-bookmark> --to @- --allow-backwards`. Re-run `jj bookmark list -r @`; do not ask unless a collision or conflicted bookmark prevents a safe transition. Pick a non-conflicting suffix when the derived name exists.
+2. **Choose the bookmark action** — Jujutsu has no active bookmark. Resolve the default base with `trunk()`; if it does not resolve, stop before changing a bookmark and report the blocker. Recognize its default bookmark only when exactly one tracked remote bookmark points to that change; never infer a name. If exactly one nearest non-default local bookmark identifies the stack, retain it for advancement after finalizing. If only the unique default bookmark or no local bookmark anchors the stack, derive an unused feature bookmark name from the change. If the default or intended feature bookmark remains ambiguous, ask which bookmark to advance. Do not leave completed work reachable only through the default bookmark or an anonymous change.
 
-3. **Description authority** - A user override wins. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example.
+3. **Description convention** — Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The user's instruction wins, followed by the project's active instructions and conventions, then the established syntax in the current `jj log`. Where those sources are silent, use only compatible Go guidance to improve the description's quality. It does not impose a verb tense, punctuation, line width, or first-line/body shape.
 
-4. **Logical changes** - if changed files clearly separate into distinct concerns, save separate changes at file granularity, 2-3 maximum. If the separation is ambiguous, use one change. Preserve `exclude:<paths>` exactly: excluded paths remain in the working-copy change and are named in the report.
+4. **Logical commits** — if changed files clearly split into distinct concerns, finalize separate file-level changes, with two or three as the maximum. Do not split hunks within a file. If the separation is ambiguous, make one commit.
 
-5. **Compose descriptions** - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Describe the observable outcome rather than listing files. Include a body only when the governing sources or the change's non-obvious motivation, constraints, or consequences call for one. When a plan Implementation Unit ID is already available from the conversation, caller, or files belonging to one unit, retain that semantic association in the form required by local conventions; do not search for a plan, infer an unclear unit, or associate one description with multiple units.
+5. **Describe each change** — communicate the outcome rather than enumerate files. When a plan implementation-unit identifier is already in hand and the files belong to exactly that unit, include that identifier using the project's established rendering. Do not search for a plan; omit the identifier when the group spans units, is unclear, or has no known unit.
 
-6. **Create the changes** - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Never allow excluded or unrelated paths into a described change. For one group that contains every changed path, describe `@`, then create a fresh working-copy change:
+6. **Finalize explicit filesets** — honor `exclude:<paths>` from the invocation: those paths must remain in the working-copy change and must be named in the report. For each logical group, pass only that group's paths to `jj commit`; this keeps the selected paths in the finalized commit and moves every remaining path into the new working-copy change.
 
-```bash
-jj describe -m "<message composed from the standards above>"
-jj new
+```text
+jj commit -m "<description>" <path>...
 ```
 
-When paths must remain out, extract each named group from `@` with `jj split <file1> <file2> -m "<message composed from the standards above>"`. The selected paths become the described parent change and the unselected paths remain in the working-copy child. Move the feature bookmark to that parent with `jj bookmark move <name> --to @- --allow-backwards`, then repeat only for additional groups. This is JJ-native exact file grouping and leaves every excluded path untouched in `@`. Do not use interactive hunk selection.
+After each command, inspect the finalized parent with `jj log -r @- --no-graph` and verify with `jj status` that the intended paths left the working-copy change while all other paths, especially exclusions, remain.
 
-7. **Validate and report** - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Run `jj status`, `jj diff --summary -r @`, `jj bookmark list`, and `jj log -r '::@' -n 4 --no-graph`. For each resulting change, run `jj show -r <change-id> --summary`. Verify that every intended path is in the intended described change, every excluded or unrelated path remains in `@`, and the working-copy change is empty unless paths were intentionally left out. Report the resulting change IDs, descriptions, bookmarks, and intentionally retained paths.
+7. **Place the feature bookmark** — after all groups are finalized, run `jj bookmark create <feature-bookmark> -r @-` for a new bookmark or `jj bookmark advance <feature-bookmark> --to @-` for the retained non-default bookmark. Confirm its target with `jj bookmark list -r @-`. Do not move the default bookmark.
+
+8. **Report** — report each change ID, commit ID, and description, the feature bookmark, and any excluded or otherwise remaining working-copy paths.

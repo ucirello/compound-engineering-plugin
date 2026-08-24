@@ -2,6 +2,7 @@
 name: ce-ideate
 description: "Generate and evaluate grounded ideas. Use when the user wants ideas, improvements, or surprising directions before choosing one to develop. Not for refining an idea they already have (ce-brainstorm) or judging one already on the table (ce-pov)."
 argument-hint: "[feature, focus area, or constraint] [output:md]"
+
 ---
 
 # Generate Improvement Ideas
@@ -11,20 +12,6 @@ argument-hint: "[feature, focus area, or constraint] [output:md]"
 `ce-ideate` runs before `ce-brainstorm`. This skill answers "which ideas are worth exploring?" `ce-brainstorm` then answers what one chosen idea should mean. `ce-plan` answers how it gets built.
 
 **Done:** a ranked ideation artifact is written to `<root>/ideation/` when that root is present, else to a workspace-local `.tmp/rocketclaw` path. Every idea generated has been critiqued, and the survivors are explained. The user is left holding the next-steps menu. No requirements, plans, or code.
-
-## Setup
-
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints. Its output opens with a `=== skill context` header and ends with `IDEATE_CONTEXT_END`; if only one appears, rerun the fence verbatim once. Otherwise do not rerun it within the same invocation. If no Node runtime is available, proceed unchanged.
-
-```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-NODE="$(for c in node nodejs; do command -v "$c" >/dev/null 2>&1 && "$c" -e '' >/dev/null 2>&1 && { echo "$c"; break; }; done)";
-if [ -n "$NODE" ]; then
-"$NODE" "$SKILL_DIR/scripts/context.mjs" || echo "context script failed; continue with the skill's normal behavior";
-else
-echo "no Node runtime; continue with the skill's normal behavior";
-fi
-```
 
 ## Boundaries
 
@@ -38,9 +25,10 @@ fi
 
 The **focus hint** is any optional context this run was invoked with, from the user or from a calling skill. The rest of this skill calls it `{focus_hint}`.
 
+
 ## Artifact Root
 
-This skill writes ideation artifacts under `<root>/ideation/` in workspace mode and reads learnings under `<root>/solutions/`. Resolve `<root>` only when you compose such a path — the no-workspace or elsewhere flow writes beneath local `.tmp/rocketclaw` and never needs it, so do not resolve or create a root before mode classification. Pass the resolved path to any subagent when you do resolve it, not the config.
+Artifacts go under `<root>/ideation/`, and learnings are read from `<root>/solutions/`. Resolve `<root>` only when you are about to compose one of those paths, and never before the mode is classified — an elsewhere or no-workspace run writes beneath local `.tmp/rocketclaw` and never needs it. Pass a subagent the resolved path, not the config.
 
 <!-- artifact-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
@@ -66,7 +54,7 @@ Read `references/output-mode.md` whenever a format is resolved. The read is requ
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- config-layers:end -->
 
-**Non-software routing.** A topic with no software surface runs elsewhere-mode grounding rather than the workspace scan. It then follows `references/universal-ideation.md` in place of Phase 2's frames and the Phase 5 menu. The deliverable is still written automatically.
+**Non-software routing.** A topic with no software surface runs elsewhere-mode grounding rather than the repo scan. It then follows `references/universal-ideation.md` in place of Phase 2's frames and the Phase 5 menu. The deliverable is still written automatically.
 
 **The gates.** `references/scope-gates.md` owns every Phase 0 gate, plus the surprise-me and tactical deltas. Ask when the subject is not identifiable. `go deep` beats a tactical signal.
 

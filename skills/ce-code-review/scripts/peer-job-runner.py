@@ -58,25 +58,25 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  ROCKETCLAW_PEER_JOBS_ROOT base dir (workspace .tmp/rocketclaw)
-  ROCKETCLAW_WORK_RUNS_ROOT parent ce-work dir containing all <run-id>/ dirs
-  ROCKETCLAW_PEER_IDLE_SECS idle window, no out.log growth (240)
-  ROCKETCLAW_PEER_HARD_SECS hard cap on worker wall clock
+  Job state defaults to <jj-workspace-root>/.tmp, or <cwd>/.tmp when outside a
+  Jujutsu workspace.
+  CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
+  CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
                             an explicit value always wins)
-  CROSS_MODEL_HARD_SECS     when ROCKETCLAW_PEER_HARD_SECS is unset, widens the
+  CROSS_MODEL_HARD_SECS     when CE_PEER_HARD_SECS is unset, widens the
                             supervisor hard window (see above)
-  ROCKETCLAW_PEER_LOG_MAX_BYTES     out.log byte cap (10485760)
-  ROCKETCLAW_PEER_RESULT_MAX_BYTES  result byte cap, supervise + read (5242880)
-  ROCKETCLAW_PEER_POLL_SECS         supervisor poll interval (2)
-  ROCKETCLAW_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
-  ROCKETCLAW_PEER_BASH              Windows: absolute bash.exe for peer workers
+  CE_PEER_LOG_MAX_BYTES     out.log byte cap (10485760)
+  CE_PEER_RESULT_MAX_BYTES  result byte cap, supervise + read (5242880)
+  CE_PEER_POLL_SECS         supervisor poll interval (2)
+  CE_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
+  CE_PEER_BASH              Windows: absolute bash.exe for peer workers
                             (preferred over PATH / WSL System32 bash)
   CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
-                             ROCKETCLAW_PEER_BASH is unset (#1268)
+                            CE_PEER_BASH is unset (#1268)
 
-Security posture: the job root is a predictable, owner-private directory under
-the current Jujutsu workspace's `.tmp/rocketclaw`. Every read of job state opens the file first (no-follow) and
+Security posture: the job root is an owner-private workspace-local directory.
+Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -109,8 +109,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root remains under the current Jujutsu workspace on Windows and receives
-             an owner-private hardened ACL.
+  jobs root uses the same workspace-local `.tmp` location as POSIX.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -140,19 +139,6 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-def _jj_workspace_root() -> str | None:
-    try:
-        result = subprocess.run(
-            ["jj", "workspace", "root"], capture_output=True, text=True, check=False
-        )
-    except OSError:
-        return None
-    root = result.stdout.strip()
-    return os.path.abspath(root) if result.returncode == 0 and root else None
-
-
-_WORKSPACE_ROOT = _jj_workspace_root()
-DEFAULT_ROOT = os.path.join(_WORKSPACE_ROOT, ".tmp", "rocketclaw") if _WORKSPACE_ROOT else None
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -178,10 +164,9 @@ exit codes:
   4  ownership check failed (job state or result not owned by the current
      user) — content is never emitted
 
-environment overrides: ROCKETCLAW_PEER_JOBS_ROOT, ROCKETCLAW_WORK_RUNS_ROOT,
-ROCKETCLAW_PEER_IDLE_SECS, ROCKETCLAW_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS,
-ROCKETCLAW_PEER_LOG_MAX_BYTES, ROCKETCLAW_PEER_RESULT_MAX_BYTES,
-ROCKETCLAW_PEER_POLL_SECS, ROCKETCLAW_PEER_GRACE_SECS (defaults in
+environment overrides: CE_PEER_IDLE_SECS,
+CE_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS, CE_PEER_LOG_MAX_BYTES,
+CE_PEER_RESULT_MAX_BYTES, CE_PEER_POLL_SECS, CE_PEER_GRACE_SECS (defaults in
 the module docstring).
 """
 
@@ -204,98 +189,30 @@ _RUNNER_HARD_FLOOR = 1230.0
 _RUNNER_HARD_GRACE = 30.0
 
 
-def _is_managed_workspace_path(path: str) -> bool:
-    if DEFAULT_ROOT is None:
-        return False
-    root = os.path.normcase(os.path.abspath(DEFAULT_ROOT))
-    path = os.path.normcase(os.path.abspath(path))
-    try:
-        return os.path.commonpath((root, path)) == root
-    except ValueError:
-        return False
-
-
-def _private_root_usable(path: str) -> bool:
-    """True when `path` is (or can now be) a directory we own and can write into.
-
-    Creation is the probe. A planted or non-writable workspace-local root fails
-    closed instead of redirecting review content outside the workspace.
-    """
-    try:
-        if os.path.normcase(os.path.abspath(path)) == os.path.normcase(
-            os.path.abspath(DEFAULT_ROOT)
-        ):
-            ensure_owned_dirs(_WORKSPACE_ROOT, path, create_base=False)
-            if IS_WINDOWS:
-                if not _win_harden_acl(path):
-                    return False
-                _check_owned_dir(path, require_private=True)
-                return os.access(path, os.W_OK)
-            else:
-                directory_flags = (
-                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | O_NOFOLLOW
-                )
-                root_fd = os.open(path, directory_flags)
-                try:
-                    os.fchmod(root_fd, 0o700)
-                    _check_owned_dir_fd(root_fd, path, require_private=True)
-                    probe_name = f".probe-{os.urandom(8).hex()}"
-                    probe_fd = None
-                    try:
-                        probe_fd = os.open(
-                            probe_name,
-                            os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY,
-                            0o600,
-                            dir_fd=root_fd,
-                        )
-                        os.unlink(probe_name, dir_fd=root_fd)
-                    finally:
-                        if probe_fd is not None:
-                            os.close(probe_fd)
-                finally:
-                    os.close(root_fd)
-                return True
-        else:
-            ensure_owned_dirs(path, path)
-    except (OSError, RunnerError):
-        return False
-    return os.access(path, os.W_OK)
-
-
 def jobs_root_base() -> str:
-    configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
-    if configured:
-        configured = os.path.abspath(configured)
-        if not _is_managed_workspace_path(configured):
-            raise RunnerError("ROCKETCLAW_PEER_JOBS_ROOT must stay under the workspace .tmp/rocketclaw directory")
-        return configured
-    if DEFAULT_ROOT and _private_root_usable(DEFAULT_ROOT):
-        return os.path.abspath(DEFAULT_ROOT)
-    raise RunnerError("Jujutsu workspace-local jobs root is unavailable or unsafe")
+    """Return workspace-local scratch, with cwd-local fallback outside jj."""
+    try:
+        result = subprocess.run(
+            ["jj", "--ignore-working-copy", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        result = None
+    root = result.stdout.strip() if result and result.returncode == 0 else os.getcwd()
+    return os.path.abspath(os.path.join(root, ".tmp"))
 
 
 def candidate_jobs_root_bases() -> list:
-    """The configured root or the current workspace-local managed root."""
-    configured = os.environ.get("ROCKETCLAW_PEER_JOBS_ROOT")
-    if configured:
-        configured = os.path.abspath(configured)
-        return [configured] if _is_managed_workspace_path(configured) else []
-    return [os.path.abspath(DEFAULT_ROOT)] if DEFAULT_ROOT else []
+    return [jobs_root_base()]
 
 
 def skill_runs_root(skill: str) -> str:
-    if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
-        configured = os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])
-        if not _is_managed_workspace_path(configured):
-            raise RunnerError("ROCKETCLAW_WORK_RUNS_ROOT must stay under the workspace .tmp/rocketclaw directory")
-        return configured
     return os.path.join(jobs_root_base(), skill)
 
 
 def candidate_skill_runs_roots(skill: str) -> list:
-    if skill == "ce-work" and os.environ.get("ROCKETCLAW_WORK_RUNS_ROOT"):
-        configured = os.path.abspath(os.environ["ROCKETCLAW_WORK_RUNS_ROOT"])
-        return [configured] if _is_managed_workspace_path(configured) else []
     return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 
@@ -313,10 +230,10 @@ def _env_num(name: str, default: float, conv, *, allow_zero: bool = False):
 
 
 def _derived_hard_default() -> float:
-    """Outermost supervisor hard window when ROCKETCLAW_PEER_HARD_SECS is unset.
+    """Outermost supervisor hard window when CE_PEER_HARD_SECS is unset.
 
     Reads ambient CROSS_MODEL_HARD_SECS (the runner already forwards os.environ
-    to the worker, so a user-set knob is present here). Explicit ROCKETCLAW_PEER_HARD_SECS
+    to the worker, so a user-set knob is present here). Explicit CE_PEER_HARD_SECS
     still wins via cfg() — ce-work and elevation paths keep their own windows.
     """
     cross = _env_num("CROSS_MODEL_HARD_SECS", 0.0, float)
@@ -325,12 +242,12 @@ def _derived_hard_default() -> float:
 
 def cfg(skill=None) -> dict:
     return {
-        "idle": _env_num("ROCKETCLAW_PEER_IDLE_SECS", 240.0, float, allow_zero=skill == "ce-work"),
-        "hard": _env_num("ROCKETCLAW_PEER_HARD_SECS", _derived_hard_default(), float),
-        "log_max": int(_env_num("ROCKETCLAW_PEER_LOG_MAX_BYTES", 10 * 1024 * 1024, int)),
-        "result_max": int(_env_num("ROCKETCLAW_PEER_RESULT_MAX_BYTES", 5 * 1024 * 1024, int)),
-        "poll": _env_num("ROCKETCLAW_PEER_POLL_SECS", 2.0, float),
-        "grace": _env_num("ROCKETCLAW_PEER_GRACE_SECS", 5.0, float),
+        "idle": _env_num("CE_PEER_IDLE_SECS", 240.0, float, allow_zero=skill == "ce-work"),
+        "hard": _env_num("CE_PEER_HARD_SECS", _derived_hard_default(), float),
+        "log_max": int(_env_num("CE_PEER_LOG_MAX_BYTES", 10 * 1024 * 1024, int)),
+        "result_max": int(_env_num("CE_PEER_RESULT_MAX_BYTES", 5 * 1024 * 1024, int)),
+        "poll": _env_num("CE_PEER_POLL_SECS", 2.0, float),
+        "grace": _env_num("CE_PEER_GRACE_SECS", 5.0, float),
     }
 
 
@@ -754,88 +671,27 @@ def _check_owned_dir(path: str, require_private: bool = False) -> None:
             raise RunnerError(f"{path}: must have mode 0700, found {mode:04o}")
 
 
-def _check_owned_dir_fd(fd: int, path: str, require_private: bool = False) -> None:
-    st = os.fstat(fd)
-    if not stat.S_ISDIR(st.st_mode):
-        raise RunnerError(f"{path}: not a real directory (symlink or file planted?)")
-    euid = _euid()
-    if euid is not None and st.st_uid != euid:
-        raise RunnerError(f"{path}: not owned by the current user")
-    if require_private:
-        mode = stat.S_IMODE(st.st_mode)
-        if mode != 0o700:
-            raise RunnerError(f"{path}: must have mode 0700, found {mode:04o}")
-
-
-def ensure_owned_dirs(base: str, path: str, *, create_base: bool = True) -> None:
+def ensure_owned_dirs(base: str, path: str) -> None:
     """mkdir -p `path` (mode 0700) verifying owner and type on every component
-    from `base` down — a planted symlink or foreign dir aborts, never traversed.
-
-    `create_base=False` treats base as a trusted location that must already be a
-    real owned directory. This lets the workspace-local default create and
-    validate `.tmp`, `rocketclaw`, and every managed descendant separately.
-    """
-    base = os.path.abspath(base)
-    path = os.path.abspath(path)
-    try:
-        contained = os.path.commonpath((base, path)) == base
-    except ValueError:
-        contained = False
-    if not contained:
-        raise RunnerError(f"{path}: directory is outside managed base {base}")
+    from `base` down — a planted symlink or foreign dir aborts, never traversed."""
     rel = os.path.relpath(path, base)
     comps = [] if rel == "." else rel.split(os.sep)
     cur = base
-    created_base = False
-    if create_base:
-        try:
-            os.mkdir(cur, 0o700)
-            created_base = True
-        except FileExistsError:
-            pass
-    if not IS_WINDOWS:
-        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | O_NOFOLLOW
-        fd = os.open(cur, directory_flags)
-        try:
-            _check_owned_dir_fd(fd, cur)
-            if create_base:
-                os.fchmod(fd, 0o700)
-            _check_owned_dir_fd(fd, cur, require_private=create_base)
-            for comp in comps:
-                next_path = os.path.join(cur, comp)
-                created = False
-                try:
-                    os.mkdir(comp, 0o700, dir_fd=fd)
-                    created = True
-                except FileExistsError:
-                    pass
-                next_fd = os.open(comp, directory_flags, dir_fd=fd)
-                try:
-                    if created:
-                        os.fchmod(next_fd, 0o700)
-                    _check_owned_dir_fd(next_fd, next_path)
-                except BaseException:
-                    os.close(next_fd)
-                    raise
-                os.close(fd)
-                fd = next_fd
-                cur = next_path
-        finally:
-            os.close(fd)
-        return
-
+    created_base = True
+    try:
+        os.mkdir(cur, 0o700)
+    except FileExistsError:
+        created_base = False
     _check_owned_dir(cur)
-    if create_base:
+    if IS_WINDOWS:
         # `icacls /inheritance:r` is destructive and irreversible in a way
         # POSIX's chmod 0700 is not: it permanently drops inherited ACEs. So
         # only re-ACL a root this runner owns -- one we just created, or the
         # managed default (repairing a default left non-private, which is what
-        # the POSIX unconditional chmod is for). A pre-existing user-supplied
-        # ROCKETCLAW_PEER_JOBS_ROOT keeps its ACLs and rests on the owner check.
-        default_root = os.path.abspath(DEFAULT_ROOT) if DEFAULT_ROOT else None
-        ours = created_base or (
-            default_root is not None
-            and os.path.normcase(cur) == os.path.normcase(default_root))
+        # the POSIX unconditional chmod is for). A pre-existing workspace-local
+        # root keeps its ACLs and rests on the owner check.
+        default_root = jobs_root_base()
+        ours = created_base or os.path.normcase(cur) == os.path.normcase(default_root)
         if ours and not _win_harden_acl(cur):
             # Never proceed as if hardened: an unverified root is the one case
             # where the privacy half of the model would silently be missing.
@@ -844,7 +700,9 @@ def ensure_owned_dirs(base: str, path: str, *, create_base: bool = True) -> None
                 "is unavailable); refusing to use a root whose privacy is "
                 "unverified"
             )
-    _check_owned_dir(cur, require_private=create_base)
+    else:
+        os.chmod(cur, 0o700)
+    _check_owned_dir(cur, require_private=True)
     for comp in comps:
         cur = os.path.join(cur, comp)
         created = False
@@ -854,7 +712,10 @@ def ensure_owned_dirs(base: str, path: str, *, create_base: bool = True) -> None
         except FileExistsError:
             pass
         if created:
-            _win_harden_acl(cur)
+            if IS_WINDOWS:
+                _win_harden_acl(cur)
+            else:
+                os.chmod(cur, 0o700)
         _check_owned_dir(cur)
 
 
@@ -902,8 +763,22 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    tmp = os.path.join(os.path.dirname(path), f".tmp-{os.urandom(8).hex()}")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
+    directory = os.path.dirname(path)
+    tmp = None
+    for _ in range(CLAIM_ATTEMPTS):
+        candidate = os.path.join(directory, f".atomic-{os.urandom(8).hex()}")
+        try:
+            fd = os.open(
+                candidate,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY,
+                0o600,
+            )
+            tmp = candidate
+            break
+        except FileExistsError:
+            continue
+    if tmp is None:
+        raise RunnerError(f"could not claim atomic write file under {directory}")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -939,39 +814,14 @@ def mint_job_id() -> str:
 def claim_job_dir(jobs_root: str):
     """Atomically claim a fresh job dir: os.mkdir (no -p) fails on collision,
     so the id is regenerated rather than a dir ever being shared."""
-    parent_fd = None
-    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | O_NOFOLLOW
-    if not IS_WINDOWS:
-        parent_fd = os.open(jobs_root, directory_flags)
-        try:
-            _check_owned_dir_fd(parent_fd, jobs_root)
-        except BaseException:
-            os.close(parent_fd)
-            raise
     for _ in range(CLAIM_ATTEMPTS):
         job_id = mint_job_id()
         job_dir = os.path.join(jobs_root, job_id)
         try:
-            if parent_fd is None:
-                os.mkdir(job_dir, 0o700)
-            else:
-                os.mkdir(job_id, 0o700, dir_fd=parent_fd)
-                job_fd = os.open(job_id, directory_flags, dir_fd=parent_fd)
-                try:
-                    os.fchmod(job_fd, 0o700)
-                    _check_owned_dir_fd(job_fd, job_dir, require_private=True)
-                finally:
-                    os.close(job_fd)
-                os.close(parent_fd)
+            os.mkdir(job_dir, 0o700)
             return job_id, job_dir
         except FileExistsError:
             continue
-        except BaseException:
-            if parent_fd is not None:
-                os.close(parent_fd)
-            raise
-    if parent_fd is not None:
-        os.close(parent_fd)
     raise RunnerError(f"could not claim a unique job dir after {CLAIM_ATTEMPTS} attempts")
 
 
@@ -1478,12 +1328,12 @@ def _rewrite_windows_env_bash_argv(argv):
 def _resolve_windows_posix_shell() -> str:
     """Absolute path to a non-WSL POSIX shell for native Windows peer workers.
 
-    Order: ROCKETCLAW_PEER_BASH, CLAUDE_CODE_GIT_BASH_PATH, well-known Git Bash
+    Order: CE_PEER_BASH, CLAUDE_CODE_GIT_BASH_PATH, well-known Git Bash
     installs, then every PATH bash/sh excluding System32 WSL. Fail closed when
     nothing usable remains — never select System32\\bash.exe (#1268).
     """
     candidates = []
-    for key in ("ROCKETCLAW_PEER_BASH", "CLAUDE_CODE_GIT_BASH_PATH"):
+    for key in ("CE_PEER_BASH", "CLAUDE_CODE_GIT_BASH_PATH"):
         val = (os.environ.get(key) or "").strip()
         if val:
             candidates.append(val)
@@ -1505,7 +1355,7 @@ def _resolve_windows_posix_shell() -> str:
 
     raise RunnerError(
         "no usable Git Bash (or other non-WSL POSIX shell) for native Windows "
-        "peer workers; install Git for Windows or set ROCKETCLAW_PEER_BASH / "
+        "peer workers; install Git for Windows or set CE_PEER_BASH / "
         "CLAUDE_CODE_GIT_BASH_PATH to an absolute bash.exe path "
         "(System32\\bash.exe / WSL is not used)"
     )
@@ -1593,8 +1443,8 @@ def supervise(job_dir: str, argv, result_path, conf: dict, ack_fd: int) -> None:
             # python3 stub — see resolve-python convention / #1247.
             worker_env = {
                 **os.environ,
-                "ROCKETCLAW_PEER_JOB_ID": os.path.basename(job_dir),
-                "ROCKETCLAW_PEER_PYTHON": sys.executable,
+                "CE_PEER_JOB_ID": os.path.basename(job_dir),
+                "CE_PEER_PYTHON": sys.executable,
             }
             popen_kwargs = dict(
                 stdin=devnull,
@@ -1903,7 +1753,8 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build."
+            "a Windows Python 3 build (see "
+            "the tracked portability issue)."
         )
 
 
@@ -1921,17 +1772,7 @@ def cmd_start(args, worker_argv) -> int:
     skill_dir = skill_runs_root(args.skill)
     run_dir = os.path.join(skill_dir, args.run_id)
     jobs_root = os.path.join(run_dir, "jobs")
-    if _is_managed_workspace_path(jobs_root):
-        if not _private_root_usable(DEFAULT_ROOT):
-            raise RunnerError(
-                f"workspace-local jobs root is unavailable or unsafe: {DEFAULT_ROOT}"
-            )
-        ensure_owned_dirs(DEFAULT_ROOT, jobs_root)
-    else:
-        creation_base = (
-            skill_dir if skill_dir != os.path.join(base, args.skill) else base
-        )
-        ensure_owned_dirs(creation_base, jobs_root)
+    ensure_owned_dirs(skill_dir if skill_dir != os.path.join(base, args.skill) else base, jobs_root)
     if not args.no_sweep:
         sweep_stale_runs(skill_dir, keep=run_dir)
 

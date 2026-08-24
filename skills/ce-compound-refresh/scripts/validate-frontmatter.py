@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate learning-doc frontmatter for parser-safety issues.
+"""Validate ce-compound learning-doc frontmatter for parser-safety issues.
 
 Usage:
     python3 validate-frontmatter.py <doc-path>
@@ -21,7 +21,7 @@ Checks (regex-based, no YAML parser dependency):
     2. No top-level scalar value contains ` #` unquoted (silent comment
        truncation)
     3. No top-level scalar value contains `: ` unquoted (mapping confusion —
-       observed in malformed scalar values)
+       a scalar value can otherwise be interpreted as a mapping)
 
 The script does NOT flag values starting with YAML reserved indicators
 (`` ` ``, `*`, `&`, `!`, etc.) because those produce loud parser errors

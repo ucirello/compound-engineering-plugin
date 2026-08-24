@@ -1,39 +1,26 @@
 ---
 name: ce-explain
 description: "Create a durable visual teaching artifact for something worth learning. Use when the user wants to be taught, wants a deep explainer, wants to understand a substantial change, or wants a work recap built for retention. Not for ordinary Q&A, operational diagnosis, or a concise trade-off that belongs in chat. For learning, not repo docs or verdicts."
-argument-hint: "[a concept, a jj revset, an idea, or 'what happened this week?'] — or invoke bare to be asked"
+argument-hint: "[a concept, a diff ref, an idea, or 'what happened this week?'] — or invoke bare to be asked"
 ---
 
 # Explain It To Me
 
-Teach the user one thing well: a concept, a change, an idea, or a window of their own recent work. Agent-driven development removed the learning that writing code by hand used to provide; this skill is the replacement. What to explain is the input this skill was invoked with, present in the current prompt or conversation, whether the user asked directly or a calling skill passed it.
+Teach the user one thing well: a concept, a change, an idea, or a window of their own recent work. Agent-driven development removed the learning that writing code by hand used to provide; this skill is the replacement. What to explain is the input this skill was invoked with, present in the current prompt or conversation — whether the user asked directly or a calling skill passed it.
 
-**Done:** a durable artifact exists at `$RUN_DIR`, the user has seen it, the destination they chose has been honored (or declined), and any check-in they accepted has been run and corrected. A run that correctly ends without an artifact — the operational-question gate answered it in chat, an empty window, or a bare invocation the user did not answer — is equally done.
+**Done:** a durable artifact exists at `$RUN_DIR`, the user has seen it, the destination they chose has been honored (or declined), and any check-in they accepted has been run and corrected. A run that correctly ends without an artifact — the operational-question gate answered it in chat, an empty window, a bare invocation the user did not answer — is equally done.
 
 **Note: The current year is 2026.** Use this when weighting external sources and dating artifacts.
 
-## Setup
+**Read `references/orchestration.md` before the first blocking question, subagent dispatch, or run-directory creation** — it owns the per-harness ask tool, the model tiers and their degradation rule, grounding by input shape, and menu sizing.
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints, except where one conflicts with this skill's own question rules. Run the fence exactly as written, as its own command: do not pipe, filter, truncate, or bundle its output. Its output opens with a `=== skill context` header and ends with `SKILL_CONTEXT_END`; if only one appears, rerun the fence verbatim once. Otherwise do not rerun it in this invocation. If no Node runtime is available, proceed unchanged.
-
-```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-NODE="$(for c in node nodejs; do command -v "$c" >/dev/null 2>&1 && "$c" -e '' >/dev/null 2>&1 && { echo "$c"; break; }; done)";
-if [ -n "$NODE" ]; then
-"$NODE" "$SKILL_DIR/scripts/context.mjs" || echo "context script failed; continue with the skill's normal behavior";
-else
-echo "no Node runtime; continue with the skill's normal behavior";
-fi
-```
-
-**Read `references/orchestration.md` before the first blocking question, subagent dispatch, or run-directory creation** — it owns the per-harness ask tool, model tiers and their degradation rule, grounding by input shape, and menu sizing.
 
 ## Artifact Root
 
-An explainer lands under `<root>/explainers/` only when archived to the workspace, and learnings may be read under `<root>/solutions/`. Resolve `<root>` only when you compose such a path; a workspace-scratch-only or external-concept run never composes one. Pass the resolved path to any subagent, not the config.
+An explainer lands under `<root>/explainers/` only when archived to the repo, and learnings may be read under `<root>/solutions/`. Resolve `<root>` only when you compose such a path; a scratch-only or external-concept run never composes one. Pass the resolved path to any subagent, not the config.
 
 <!-- rocketclaw-docs-root:start -->
-**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
@@ -44,55 +31,57 @@ An explainer lands under `<root>/explainers/` only when archived to the workspac
 
 ### Phase 1: Classify the input
 
-Read `references/intake.md` now and classify the request into one of the four input shapes — concept, diff, idea, or work-recap window — plus its audience. It owns the token table, reads-as-a-flag guard, window and audience resolution, concept-vs-diff tiebreak, conflict handling, and operational-question gate that answers a diagnostic question in chat instead of teaching it. Most requests arrive as plain language with no token; classify those by meaning rather than improvising.
+Read `references/intake.md` now and classify the request into one of the four input shapes — concept, diff, idea, or work-recap window — plus its audience. It owns the token table, the reads-as-a-flag guard, window and audience resolution, the concept-vs-diff tiebreak, conflict handling, and the operational-question gate that answers a diagnostic question in chat instead of teaching it. Most requests arrive as plain language with no token; classify those by meaning rather than improvising.
 
-**Bare invocation** (no input at all): ask one blocking question, "What should I explain?", offering a shortcut option for a recap of recent work in this workspace alongside free-text. Do not produce a default artifact unprompted.
+**Bare invocation** (no input at all): ask one blocking question — "What should I explain?" — offering a shortcut option for a recap of recent work in this repo alongside free-text. Do not produce a default artifact unprompted.
 
 ### Phase 2: Ground
 
-Create the run directory first: every artifact-producing run gets one before any artifact exists. It holds the explainer and recap evidence, so run this block as written rather than improvising a `mkdir`; the checks refuse a scratch root you do not own or one reached through a symlink.
+Create the run directory first — every run gets one, before any artifact exists. It holds the explainer and the recap evidence under the Jujutsu workspace's `.tmp`; outside a Jujutsu workspace, the current directory is the local fallback. Run this block as written rather than improvising a `mkdir`: the checks refuse a temporary root you do not own or one reached through a symlink.
 
 ```bash
-if WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; then SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"; else SCRATCH_ROOT=".tmp"; fi;
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD";
+if [ -z "$WORKSPACE_ROOT" ]; then WORKSPACE_ROOT="$PWD"; fi;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUN_DIR="$SCRATCH_ROOT/rocketclaw/explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
+RUN_DIR="$SCRATCH_ROOT/.rocketclaw/ce-explain/$(date +%Y%m%d)-$(openssl rand -hex 3)";
 (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR";
 ```
 
-Then match grounding to the input shape per `references/orchestration.md`, which also owns the empty-window and unreachable-web paths. Two rules govern what reaches the user while gathering:
+Then match grounding to the input shape per `references/orchestration.md`'s grounding section, which also owns the empty-window and unreachable-web paths. Two rules govern what reaches the user while you gather, so they hold here:
 
-- **Diff mode.** Gather silently: nothing learned here is narrated until Phase 3's ordering rule is satisfied. If the revset resolves to no revisions, do not silently explain something else. Say what it resolved to, name the nearest real candidate (the working-copy change or previous revision), and use it only after the user agrees; when they cannot be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject does not exist in this workspace.
-- **Recap mode.** Do not pre-scan, count, or characterize the window in the main conversation: an early all-revisions summary can seed the run with a false line-of-work or activity model. Dispatch a generic subagent at the extraction tier, seeded with `references/agents/work-recap-scout.md` and passed the resolved window, workspace root, and `$RUN_DIR`. If the window contains no Jujutsu activity or doc changes, say so, offer to widen it, write no artifact, and end after the user responds. When no subagent primitive exists, apply the degradation rule: run the scout inline against its prompt's sources and budgets, still write `recap-evidence.md`, and form no view of the window until that evidence pass is done.
+- **Diff mode.** Gather silently: nothing learned here is narrated to the user until Phase 3's ordering rule is satisfied. **Empty selection** (the revset resolves to no revisions, or its selected diff has no content, such as `trunk()..@` with only an empty working-copy commit): do not silently explain something else. Say what the selection resolved to, name the nearest real candidate (the working-copy change or nearest non-empty ancestor), and use it only after the user agrees — or, when they can't be asked, use it and state the substitution in the artifact's `Subject`. Apply the same rule when the named subject doesn't exist in this workspace at all ("the retry logic" where there is none): report that before explaining an adjacent thing.
+- **Recap mode.** Do not pre-scan, count, or characterize the window in the main conversation: an early `jj log -r ::` summary seeds the run with a false stack or activity model. Instead dispatch a generic subagent directly at the extraction tier, seeded with `references/agents/work-recap-scout.md` and passed the resolved window, the workspace root, and `$RUN_DIR`. **Empty window** (no local revision activity, no doc changes): say so, offer to widen it, write no artifact, and end the run after the user responds. **When the harness exposes no subagent primitive**, the degradation rule applies: run the scout inline against its own prompt's sources and budgets, and still write `recap-evidence.md`; the no-pre-scan rule then means what it protects rather than where it runs — do the scout's evidence pass first and form no view of the window until it is done.
 
 ### Phase 3: Check-in gate — before anything is revealed
 
-Read `references/check-in.md` now for the warrant test, offer wording, prediction protocol, and exercise design. Judge whether the material warrants a check-in, then offer it with the blocking question tool. **In diff mode, word the offer without describing the change's content or purpose**. Record the exact choice as **Just the explainer** or **Quiz me**. Only **Quiz me** enables prediction and exercises. If the warrant test skips the offer, proceed without either mechanic; declining is never re-litigated.
+Read `references/check-in.md` now for the warrant test, the offer's wording, the prediction protocol, and exercise design. Judge whether the material warrants a check-in, then offer it with the blocking question tool. **In diff mode, word the offer without describing the change's content or purpose** — an offer that summarizes the change pre-leaks the reveal before the prediction is taken. Record the user's exact Phase 3 choice as **Just the explainer** or **Quiz me** — do not collapse both choices into an "accepted" boolean. Only **Quiz me** enables the prediction and exercise mechanics. **Just the explainer** skips both while still composing and presenting the report. If the warrant test skips the offer, proceed without either mechanic; declining is never re-litigated.
 
-**Diff mode with Quiz me selected — hard ordering rule.** Show no interpretive content before the user's prediction turn ends. Show only the raw change reference (the diff or stat summary), ask what they think the change does and why it was made, and end the turn. When no blocking tool exists, ask in chat and stop. Compose only after the prediction lands; the reveal names gaps between the prediction and evidence.
+**Diff mode with Quiz me selected — hard ordering rule.** No interpretive content — explanation, annotation, diagram, or surfaced opportunity — may be shown before the user's prediction turn ends. Show only the raw change reference (the diff or its stat summary), ask for the prediction ("What do you think this change does, and why was it made?"), and **end the turn there**. When no blocking tool exists, ask in chat and stop — never print the reveal in the same message as the prediction prompt. Compose the explainer only after the prediction lands; the reveal names the gaps between the prediction and what the change actually does.
 
 ### Phase 4: Compose the explainer
 
-Read the rendering reference for the resolved format now, not earlier: `references/explainer-html.md` by default or `references/explainer-markdown.md` for `output:md`. Each owns artifact invariants and voice for the resolved audience. Write `$RUN_DIR/explainer.html` (or `explainer.md`) before anything else happens with it, then display an inline summary and path. A declined destination ask never loses it.
+Read the rendering reference for the resolved format **now**, not earlier: `references/explainer-html.md` (default) or `references/explainer-markdown.md` (when intake resolved `output:md`). Each owns the artifact's invariants and the voice for the audience intake resolved — personal by default, adapted for another reader on request, at unchanged depth. Compose per its contract and write the artifact to `$RUN_DIR/explainer.html` (or `explainer.md`) before anything else happens with it, then display it (inline summary plus the file path). The artifact exists at that stable path from this moment — a declined destination ask never loses it.
 
 ### Phase 5: Exercises (only when Quiz me was selected)
 
-Run this phase only for the exact **Quiz me** choice. Pose the exercises from `references/check-in.md` in chat one at a time, use the blocking question tool where its option shape fits, check each answer, correct it, and name the gap. Do not put exercises inside the artifact. **Just the explainer** skips this phase.
+Run this phase only when the recorded exact Phase 3 choice was **Quiz me**. Pose the exercises from `references/check-in.md` in chat, one at a time, using the blocking question tool where its option shape fits and free chat where the answer is narrative. Check each answer, correct it, and name the gap it exposed. Do not put exercises inside the artifact. When the choice was **Just the explainer**, skip this phase and continue to the destination ask.
 
 ### Phase 6: Destination ask and close
 
-**Read `references/destinations.md` before rendering anything in this phase.** It owns the destination menu, per-option routing, each destination's sub-flow, the audience re-render offer and its ordering against publisher consent, and the closing improvement observations.
+**Required read before you render anything in this phase: `references/destinations.md`.** It owns the destination menu, the per-option routing, each destination's sub-flow, the audience re-render offer and its ordering against a publisher's consent gate, and the improvement observations the run closes on. Read it now; do not render the menu and do not act on the user's selection without it.
 
-Ask for the destination once with the blocking question tool; that governs the menu, not any separate consent a chosen destination requires. Publishing is never headless or inferred. If the required sequence cannot complete, do not publish; preserve the canonical artifact and report its `$RUN_DIR` path. Offers fire only after acceptance, through the skill primitive, except `ce-polish`, which is user-run only.
+Ask for the destination once with the blocking question tool — that governs the menu itself, not the consent a chosen destination then requires. Publishing is never headless and never inferred: ht-ml.app puts the page in public, so it may only publish once the user has seen the full warning and confirmed after it, and a destination they named up front is a choice of destination rather than that confirmation. Reaching that point takes more than one ask, in an order the reference sets — do not run the sequence from this paragraph. If it cannot be completed, do not publish; preserve the canonical HTML and report its local `$RUN_DIR/explainer.html` path. The handoffs the phase closes on are offered before anything fires; once the user accepts one, invoke it through the skill primitive rather than describing it, except `ce-polish`, which is user-run only.
 
-**Non-interactive degradation:** when no interaction is possible at this ask, do not hang or discard the artifact. Report its `$RUN_DIR` path and end, skipping the reference's offers.
+**Non-interactive degradation:** when no interaction is possible at this ask (no blocking tool and no reply), do not hang and do not discard — the artifact is already at `$RUN_DIR`; report that path and end, skipping the reference's offers.
 
 ## Boundaries
 
-- **Not a verdict.** "Should we adopt X?" is `ce-pov`. This skill teaches what X is and how it works.
-- **Not repo memory.** Documenting a solved problem for future work is `ce-compound`. This skill teaches the human, not the repo.
+- **Not a verdict.** "Should we adopt X?" is `ce-pov`. ce-explain teaches what X is and how it works.
+- **Not repo memory.** Documenting a solved problem for future work is `ce-compound`. ce-explain teaches the human, not the repo.
 - **Not ideation or scoping.** An idea input is explained as given — implications and trade-offs — never expanded into options or a requirements dialogue.
 - **The check-in is never headless.** It exists to exercise the human; automating the answers deletes the product.

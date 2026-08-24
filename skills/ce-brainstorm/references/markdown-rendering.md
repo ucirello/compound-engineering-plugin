@@ -18,11 +18,11 @@ These hold regardless of which skill produced the artifact.
 - **ASCII identifiers in anchors.** Markdown headings auto-generate anchors
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
-- **Repo-relative paths for file references.** Always. Never absolute paths
+- **Workspace-relative paths for file references.** Always. Never absolute paths
   — they break portability across machines, workspaces, teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
-  semantic marker such as `<!-- artifact-section: work-relationships -->`; it carries
+  semantic marker such as `<!-- plan-section: work-relationships -->`; it carries
   section meaning for downstream agents and does not create layout. If a layout
   idea only works as HTML, defer it to the HTML rendering. Markdown stays
   markdown.
@@ -224,7 +224,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from jj, not stored in the doc.
+  the work shipped is derived from Jujutsu, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit
@@ -234,7 +234,7 @@ slips:
 
 - All stable IDs are plain-prefix format, not bolded.
 - No HTML elements mixed in.
-- All file paths are repo-relative.
+- All file paths are workspace-relative.
 - Horizontal rule separators between H2s (for Standard / Deep artifacts).
 - No process exhaust (Phase X notes, Next Steps pointers, provenance
   lines).

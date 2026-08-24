@@ -26,14 +26,12 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 
 ## Common rules
 
-- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not include `raw/` or `frames/` directories in a Jujutsu change unless the user explicitly asks and privacy is acceptable.
-- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may remain in the current Jujutsu change when they are needed for traceability and contain no sensitive data.
-- Use repo-relative screenshot paths in any durable document so later agents can open the evidence without absolute local paths.
-
-## Jujutsu workflow
-
-Use `jj status`, `jj diff`, and `jj log -r ::@` for repository inspection. Jujutsu snapshots the working copy automatically, so keep local-only evidence under the workspace's ignored paths or outside the durable artifact tree and verify that it is absent from the intended change before handing off.
-
-When composing a Jujutsu change description, inspect the project's active instructions and the description syntax visible in `jj log -r '::@'`; those runtime-local conventions take precedence. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Use `jj describe -m "<description-composed-from-runtime-conventions>"` to describe the current change, or `jj commit -m "<description-composed-from-runtime-conventions>"` only when the workflow must also start a new change.
+- Resolve the workspace root with `jj workspace root`. If it is unavailable, use the physical current directory only for local `.tmp` scratch; do not treat that fallback as a Jujutsu workspace root.
+- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only and untracked by default. Do not track `raw/` or `frames/` unless the user explicitly asks and privacy is acceptable.
+- Text and metadata artifacts may be tracked when needed for traceability and they contain no sensitive data. Inspect local state with `jj status`; Jujutsu snapshots non-ignored files and has no staged/unstaged split.
+- Use workspace-relative screenshot paths in any tracked document so later agents can open the evidence without absolute local paths.
+- Whenever an output composes, edits, recommends, or validates a commit message or Jujutsu change description, include this exact sentence at that site: "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards." Apply the project's active instructions first and the conventions visible in the current `jj log` second; the quoted `git log` wording is non-operational and does not authorize Git commands. Use compatible Go guidance only for message quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
 
 The output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.
+
+When printing a user-runnable brainstorm handoff, default to `/ce-brainstorm <requirements-kickoff-path>`; use `$ce-brainstorm <requirements-kickoff-path>` only on Codex or a host that documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only. Agent-to-agent routing remains semantic through `ce-brainstorm`.

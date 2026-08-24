@@ -186,4 +186,4 @@ mode: <repo-grounded | elsewhere-software | elsewhere-non-software>
 
 Keep engineering-process metadata out of the artifact — no "captured at
 Phase X" notes, no skill-pointer "next steps", no producer credits, and no
-provenance lines. The reader wants the ideas and their basis.
+process-credit lines. The reader wants the ideas and their basis.

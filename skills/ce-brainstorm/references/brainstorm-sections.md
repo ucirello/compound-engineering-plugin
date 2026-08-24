@@ -61,19 +61,13 @@ inputs. Do not migrate or rewrite them when creating new artifacts.
 
 ## Decide whether a doc is warranted at all
 
-Brainstorm dialogue does not always need to produce a durable document.
-Skip document creation when **both** hold:
-
-- The user only needs brief alignment — no exploration produced novel scope,
-  framing, or decisions worth preserving in IDed shape.
-- Any durable decisions made during the dialogue can flow naturally to
-  downstream artifacts (`ce-plan`, a change description, `<root>/solutions/`)
-  without a brainstorm doc as an intermediary.
-
-The trigger for creating a doc is when the dialogue surfaced enough
-structural decisions, scope boundaries, or acceptance criteria that
-downstream consumers (planner, reviewer, future reader) need them in a
-durable, IDed form — not just as conversational artifacts.
+A brainstorm ends in chat unless a file is earned. A file is earned when the
+dialogue surfaced structural decisions, scope boundaries, or acceptance
+criteria that downstream consumers (planner, reviewer, future reader) need in
+IDed form, or when the user asks for one. Decisions that flow naturally to
+  downstream artifacts (`ce-plan`'s prompt, a change description,
+`<root>/solutions/`) do not earn a file; `phase-0.md` 0.3 states the
+Lightweight case.
 
 **Stress test:** a brainstorm about a tiny bug fix where the user asks "fix
 this with a null check or with upstream validation?" and the agent confirms
@@ -157,8 +151,8 @@ the Phase 4 handoff:
    every Outstanding Question is classified as `Resolve Before Planning` or
    `Deferred to Planning`. When the coherent-work gate split a broader request,
    the `work-relationships` section is present and carries the marker for the
-   resolved output format: `<!-- artifact-section: work-relationships -->` in Markdown
-   or `data-artifact-section="work-relationships"` on its wrapping `<section>` in HTML.
+   resolved output format: `<!-- plan-section: work-relationships -->` in Markdown
+   or `data-plan-section="work-relationships"` on its wrapping `<section>` in HTML.
 2. **Consistent** — Goal Capsule, Requirements, Key Flows, Acceptance Examples,
    Scope Boundaries, and the `work-relationships` section do not contradict one
    another. Could a reader find a contradiction in each section in one pass? A
@@ -238,8 +232,8 @@ worse than omitting it.
   body of separately planned work and the relationship materially orients a
   cold reader. Give this section the semantic role `work-relationships`, which
   remains stable even if its visible heading is renamed: in Markdown, place
-  `<!-- artifact-section: work-relationships -->` immediately before the heading; in
-  HTML, put `data-artifact-section="work-relationships"` on the wrapping `<section>`.
+  `<!-- plan-section: work-relationships -->` immediately before the heading; in
+  HTML, put `data-plan-section="work-relationships"` on the wrapping `<section>`.
   The role identifies meaning, not wording, and is the downstream discovery
   contract. Lead with the one area this plan owns and state that the broader
   breakdown is the current understanding, not a committed roadmap. Then use a
@@ -248,7 +242,7 @@ worse than omitting it.
   of`, and `Still to decide`; indentation groups the prose but never carries the
   relationship by itself. Future areas are contextual candidates, never
   Requirements or implied Implementation Units. A later plan may revise, split,
-  merge, or discard them and cite the earlier plan with a repo-relative path;
+  merge, or discard them and cite the earlier plan with a workspace-relative path;
   do not create or synchronize a separate master map. Keep Scope Boundaries as
   the authority for what this plan excludes rather than duplicating the full
   relationship list there. Use no diagram by default. Add one only when
@@ -380,14 +374,14 @@ artifact.
 - **`artifact_readiness`** — always `requirements-only` for new
   `ce-brainstorm` outputs. Do not use `active`, `in_progress`, `completed`,
   or `done`.
-- **`product_contract_source`** — always `ce-brainstorm`.
+- **`product_contract_source`** — always `brainstorm`.
 
 ### No status field
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
 progress. No artifact carries mutable progress state; whether work shipped is
-derived from jj, not stored in the doc. Do not introduce one.
+derived from Jujutsu, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 
@@ -407,7 +401,7 @@ Same shape as plan rules.
 - **Bold leader labels** inside Flows and Acceptance Examples
   (`**Trigger:**`, `**Covers R4, R8.**`) provide structure without deeper
   heading levels.
-- **Repo-relative paths.** Always. Never absolute paths.
+- **Workspace-relative paths.** Always. Never absolute paths.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to ce-plan, no italic provenance lines. Engineering process
   metadata belongs in change descriptions and tool output, not the artifact.

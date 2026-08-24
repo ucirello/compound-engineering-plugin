@@ -19,8 +19,8 @@ Return:
 - `fallback_reason`: `null` when none, otherwise the observed route-unavailable or substitution reason
 - `run_id`: durable external run identifier, or `null` for native execution
 - `source_kind` and `source_digest`: controller-recorded implementation authority (`plan` plus its digest in Return-to-Caller Mode; standalone bare-prompt runs use `prompt`)
-- `unit_receipts`: route, model, detached-process, composition, verification, canonical-change, and cleanup state for each attempted unit
-- `plan_checkpoint`: the disclosed checkpoint change when the selected plan was the only canonical working-copy change, otherwise `null`
+- `unit_receipts`: route, model, detached-process, transport change, integration, verification, canonical change/commit ids, and cleanup state for each attempted unit
+- `plan_checkpoint`: the disclosed checkpoint change when the selected plan was the only canonical diff, otherwise `null`
 - `blockers`
 - `recovery_path`: preserved owner-checked run/workspace location when recovery remains, otherwise `null`
 - `settled_decision_conflicts`: conflicts with `session-settled:`-labeled KTDs or Key Decisions encountered during implementation — each entry names the labeled entry, the evidence, and how it was routed (proceeded-and-flagged vs blocker); empty when none

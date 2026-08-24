@@ -18,17 +18,20 @@ allowed-tools:
 
 **Done:** a report of 30-40 lines exists at `<root>/pulse-reports/YYYY-MM-DD_HH-MM.md`, its headlines and top followup are in chat, and Phase 3 has been reached.
 
+**Runtime prose conventions.** At every site in this skill and its references that composes, edits, validates, recommends, or emits a user-facing message, persisted text, or Jujutsu change description, apply this exact sentence: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The sentence's `git log` wording is not an operational instruction: inspect the project's active instructions and current `jj log` history; their runtime tone, vocabulary, and syntax take precedence. Preserve required decisions, paths, interaction semantics, and operational data-source, provider, or harness facts while adapting prose dynamically. Fixed stems, examples, placeholders, and invocation tokens define required substance rather than mandatory message syntax. Do not impose a fixed prefix, heading, subject, body, layout, template, or example. Do not add product branding, generated-by text, or creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution; operational references are facts, not attribution.
+
 ## Boundaries
 
-- **Read-only, everywhere.** The skill does not mutate the product, the database, or any external system. Its only writes are pulse settings appended to `.rocketclaw/config.local.yaml` (interview and opt-out writes stay on the local override) and the report file. MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them. A database source must be a read-only connection — the interview refuses read-write credentials, and DB access is optional, since many products complete the pulse with analytics and tracing alone.
+- **Read-only data access.** The skill does not mutate the product, the database, or any external system. Its workspace writes are pulse settings in `.rocketclaw/config.local.yaml`, the report file, and user-approved ignore or tracking changes needed to keep local state out of Jujutsu history. MCP and other data-source tools are invoked read-only; if a tool offers write modes, do not use them. A database source must be a read-only connection — the interview refuses read-write credentials, and DB access is optional, since many products complete the pulse with analytics and tracing alone.
 - **No PII in saved reports.** No user emails, account IDs, or message content in the file written to disk.
 - **Read it like a founder.** No hardcoded thresholds, no default "good"/"bad" labels, no alerting: present the numbers and let the reader judge.
 - **Single page.** Target 30-40 lines. If a section is thin, leave it thin; if the report is getting long, cut.
-- **Not a shipping log or a dashboard replacement.** Shipped work lives in the issue tracker and change history. Deep investigation still uses the native tools; this consolidates a single-page read, and every run is saved so past pulses browse as a timeline.
+- **Not a shipping log or a dashboard replacement.** Shipped work lives in the issue tracker and commit history. Deep investigation still uses the native tools; this consolidates a single-page read, and every run is saved so past pulses browse as a timeline.
+- **Workspace-local scratch only.** Put any temporary or scratch files under `<workspace-root>/.tmp/rocketclaw/ce-product-pulse/`. If `jj workspace root` is unavailable, use the current project's local `.tmp/rocketclaw/ce-product-pulse/`; never use OS or global temporary storage. Before writing there, require `/.tmp/` in the local root's `.gitignore`, offering to append that exact rule without changing unrelated content. If Jujutsu already tracks the selected scratch path, explain that ignore rules do not untrack existing files and offer `jj file untrack` for only that path.
 
 ## Interaction Method
 
-Default to the current harness's blocking question tool. Fall back to numbered options on the host's user-visible chat surface only when no blocking tool exists or the call errors, not merely because its schema must be loaded. Never silently skip the question.
+Default to the harness's blocking-question capability: on Claude Code, use `AskUserQuestion`, calling `ToolSearch` with `select:AskUserQuestion` first when its schema is not loaded; on Codex, use `request_user_input`, with numbered options in user-visible chat as the edit-mode fallback; on Antigravity CLI (`agy`), use `ask_question`; on Pi, use `ask_user` with the `pi-ask-user` extension. If no blocking capability exists or its call fails, present numbered options in user-visible chat and wait. Never silently skip the question.
 
 Ask one question at a time. Reserve multi-select for first-run configuration only.
 
@@ -42,29 +45,29 @@ Apply a **15-minute trailing buffer** to the window's upper bound. Many analytic
 
 ## Artifact Root
 
-This skill writes pulse reports under `<root>/pulse-reports/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it.
+This skill writes pulse reports under `<root>/pulse-reports/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or outside-workspace flow -- skips it.
 
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Phase 0: Route by config state
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary configuration keys from the two repo files.**
+**Resolve ordinary YAML keys from the two workspace files.**
 
-- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj root`). Missing files are skipped. Ignore rules do not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
-Resolve `<repo-root>` with `jj root`, then apply the ordinary-key rule above to the `pulse_*` keys. Read `references/config.md` whenever a `pulse_*` value has to be interpreted — it is the key schema and nothing else: each key, its allowed values, and its default, with an unset or invalid value taking the documented default rather than being guessed.
+Resolve `<workspace-root>` with `jj workspace root`, then apply the ordinary-key rule above to the `pulse_*` keys. If workspace resolution fails, use the current project directory as the local root and continue with the same relative config paths. Read `references/config.md` whenever a `pulse_*` value has to be interpreted — it is the key schema and nothing else: each key, its allowed values, and its default, with an unset or invalid value taking the documented default rather than being guessed.
 
-**Routing:** every run passes through Phase 2 and then Phase 3. Run Phase 1 first when `pulse_product_name` is unset after cascade, when the repo root cannot be resolved, or when the argument was `setup`, `reconfigure`, or `edit config`. Otherwise start at Phase 2.
+**Routing:** every run passes through Phase 2 and then Phase 3. Run Phase 1 first when `pulse_product_name` is unset after cascade, when the Jujutsu workspace root cannot be resolved, or when the argument was `setup`, `reconfigure`, or `edit config`. Otherwise start at Phase 2.
 
 ## Phase 1: First-run interview
 
@@ -72,7 +75,7 @@ Read `references/setup.md` first — a non-optional load. It owns the strategy-d
 
 ## Phase 2: Run the pulse
 
-If Phase 1 ran, re-apply the ordinary-key rule (local then tracked) from the repo root using the native file-read tool before any query, to pick up edits accepted during the Phase 1 review step. Otherwise use the `pulse_*` values already extracted in Phase 0, applying the defaults in `references/config.md` for anything unset.
+If Phase 1 ran, re-apply the ordinary-key rule (local then tracked) from the workspace or local root using the native file-read tool before any query, to pick up edits accepted during the Phase 1 review step. Otherwise use the `pulse_*` values already extracted in Phase 0, applying the defaults in `references/config.md` for anything unset.
 
 Then read `references/run.md` before dispatching any query — a non-optional load. It owns which queries run in parallel and which run serially, the `pulse_db_enabled` gate on database work, the optional quality sampling and its scoring discipline, the four report sections, and where the report is written.
 

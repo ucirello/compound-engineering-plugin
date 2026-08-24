@@ -110,55 +110,9 @@ the sections the task needs — e.g. Goal Capsule, the active U-ID plus its cite
 R/F/AE/KTD, Verification Contract, and Definition of Done. Read the Appendix or
 unrelated units only when a section you are already reading cites them.
 
-## Decide whether a plan doc is warranted at all
+## Whether a plan file is warranted
 
-Not every invocation of `ce-plan` should produce a plan document. For
-genuinely atomic work, the doc is ceremony — the implementer (whether
-`ce-work` or a human) can act directly without IDed units, KTDs, or
-Requirements as a checklist.
-
-**Bias toward producing a plan.** The risk asymmetry favors writing one:
-a thin plan doc for small work is mild ceremony, but skipping a plan when
-one was warranted costs the implementer real time (reinvented decisions,
-lost unit boundaries, no IDed requirements to verify against). When unsure,
-write the plan.
-
-**Skip implementation-ready plan creation only when ALL of these hold:**
-
-- The work is **atomic** — fits in one Jujutsu change, no meaningful unit boundaries
-  to break out independently.
-- There are **no design choices that constrain implementation** — no
-  Key Technical Decisions worth recording. If the work needs the implementer
-  to make a choice between two approaches, those approaches are KTDs and
-  a plan is warranted.
-- There are **no scope boundaries worth pinning** in writing — the work
-  scope is self-evident from the user's request.
-- **No upstream artifact** (a brainstorm with R-IDs, an incident report,
-  a deferred-follow-up item from a prior plan) needs traceability through
-  this plan.
-
-**Stress test the "looks atomic" case.** Many requests look atomic at first
-glance but hide design decisions:
-
-- *"Add caching to this endpoint"* — sounds atomic, but TTL, invalidation,
-  cache key shape, and backend selection are all KTDs. Write the plan.
-- *"Migrate from package A to package B"* — sounds mechanical, but
-  semantic differences between the packages create migration KTDs. Write
-  the plan.
-- *"Add rate limiting"* — sounds small, but algorithm, scope, and
-  configurability are all KTDs. Write the plan.
-
-vs. genuine skip cases:
-
-- *"Fix typo in README line 47"* — atomic, no KTDs, skip the plan.
-- *"Rename `oldFn` to `newFn` across the repo"* — mechanical, no design
-  choices, skip the plan.
-- *"Bump dependency X to v2.3.1"* — mechanical, skip the plan (unless the
-  bump introduces breaking changes that warrant unit-by-unit migration).
-
-When skipping the plan doc, the work proceeds directly to `ce-work` or to
-implementation, and any decisions made along the way land in the change
-description or `<root>/solutions/` if they're worth carrying forward.
+The kernel's Output Contract gate decides this at intake, before any research: Direct and Chat brief results stay in chat (`references/output-contracts.md`); a Durable run writes the file this reference describes.
 
 ## Implementation-ready hard floor
 
@@ -213,7 +167,7 @@ present. They carry the contracts downstream consumers depend on.
   completion contract for `/goal` or equivalent long-running workflows. Include
   a cleanup criterion: a long autonomous run accumulates dead-end and
   experimental code from approaches that did not pan out; declaring done
-  requires that abandoned-attempt code is removed, not left in the diff.
+  requires that abandoned-attempt code is removed, not left in the working-copy change.
 
 ## Include when material
 
@@ -384,7 +338,7 @@ targets the connective tissue around precision, never the precision itself.
 **Resolve in place; don't stratify.** When deepening, a doc-review pass, or a
 later decision supersedes earlier text, rewrite or remove the original — don't
 leave it standing as strikethrough or stack a separate "resolutions" layer on
-top of it. Jujutsu holds the history. Stacked strata double the reading
+top of it. Jujutsu holds the revision history. Stacked strata double the reading
 surface and hide which text is live.
 
 **One owner per rule; cite, don't restate.** A normative rule — a gate, cap,
@@ -427,18 +381,19 @@ plan.
 
 ### Required
 
-- **`title`** — the plan's descriptive name using the repository's plan-title convention, matching the H1 (markdown) or document
+- **`title`** — the plan's descriptive name with a ` - Plan` suffix
+  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
-  across readiness states (it is a plan at every stage). Do not preselect
-  change-description syntax in the title; the `type` field carries intent.
-- **`type`** — repository-aligned intent classification inferred from active
-  instructions and observed history. Carries the intent the eventual change
-  description should reflect without fixing its syntax during planning.
+  across readiness states (it is a plan at every stage). Do not put a
+  change-description prefix in the title — the `type` field carries the repository's classification.
+- **`type`** — classification chosen from the repository's present plan metadata conventions rather than a fixed syntax. It carries the intent the eventual change description should reflect.
+  Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+  Apply the project's active instructions first and the conventions visible in the current `jj log` second; the quoted `git log` wording is non-operational and does not authorize Git commands. Use compatible Go guidance only for message quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example on the eventual change description.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from Jujutsu, not stored in the doc. Do not
+whether a plan shipped is derived from Jujutsu history, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -457,7 +412,7 @@ semantics so downstream tooling can rely on them:
   (the default when absent) or `knowledge-work`. `ce-work`'s input triage
   reads this: a plan marked `execution: knowledge-work` routes to the
   non-code carve-out (read sources, synthesize, produce a deliverable —
-  skipping the bookmark/test/change/CI lifecycle); absent or `code` routes
+  skipping the bookmark/test/change-description/CI lifecycle); absent or `code` routes
   to the normal code path. Written by `ce-plan`'s approach-altitude flow
   (`references/approach-altitude.md`) when a non-code deliverable is
   persisted for execution.
@@ -484,11 +439,10 @@ These apply regardless of rendering format.
   KTD is added, split, or first cited by a unit. Untouched unnumbered KTDs
   in legacy plans stay as they are — readable by label, no mass renumbering.
 - **Repo-relative paths.** Always. Never absolute paths in plan content;
-  they break portability across machines, workspaces, teammates.
+  they break portability across machines, Jujutsu workspaces, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
   metadata belongs in change descriptions and tool output, not the artifact.
-
 - **Session-settled annotations on KTDs.** A Key Technical Decision that
   records a decision settled in the invoking conversation carries an inline
   annotation on its entry:

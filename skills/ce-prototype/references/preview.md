@@ -10,13 +10,13 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
-Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be kept; it sends the run to the workspace-local `.tmp` fallback without touching the rest of the block. Before running the block in a Jujutsu workspace, confirm that its selected `.context/` or `.tmp/` parent is ignored as required by `SKILL.md`.
+Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be kept; it sends the run to the local `.tmp` fallback without changing the rest of the block. Confirm that the selected `.context/` or `.tmp/` parent is ignored as required by `SKILL.md`. Outside a Jujutsu workspace, the physical current directory is the local root and its root `.gitignore` owns the `.tmp/` rule.
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
-LOCAL_ROOT="${WORKSPACE_ROOT:-$PWD}";
+LOCAL_ROOT="${WORKSPACE_ROOT:-$(pwd -P)}";
 FALLBACK_ROOT="$LOCAL_ROOT/.tmp";
 if [ "$RUN_KEEP" = yes ] && [ -n "$WORKSPACE_ROOT" ] && [ ! -L "$WORKSPACE_ROOT/.context" ]; then
 ROOT="$WORKSPACE_ROOT/.context";
@@ -24,7 +24,7 @@ else
 ROOT="$FALLBACK_ROOT";
 fi;
 while :; do
-BASE="$ROOT/prototype";
+BASE="$ROOT/ce-prototype";
 if [ -L "$ROOT" ]; then echo "unsafe root symlink: $ROOT" >&2;
 elif ! (umask 077; mkdir -p "$ROOT"); then echo "could not create $ROOT" >&2;
 elif [ -L "$ROOT" ] || [ ! -O "$ROOT" ]; then echo "root is not owned by the current user: $ROOT" >&2;
@@ -47,7 +47,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-Three things this block is careful about. The symlink and ownership checks run against both the **root** and the `prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe durable path at either level falls back to the workspace-local `.tmp` rather than aborting; only a local fallback that also fails is fatal.
+The symlink and ownership checks run against both the selected root and the `ce-prototype` directory beneath it, because that directory survives between runs: `mkdir -p` follows an existing symlink, and `chmod` would then change the link's target. Every check is inside the retry loop, so an unsafe durable path falls back to local `.tmp` rather than aborting; an unsafe local fallback is fatal. No path outside the Jujutsu workspace, or outside the physical current directory when there is no workspace, is used.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -93,7 +93,7 @@ The browser reloads only when the newest screen changes; it must not continually
 Write screens under:
 
 ```text
-<jj-workspace>/.context/prototype/<YYYY-MM-DD>-<run-slug>/
+<jj-workspace>/.context/ce-prototype/<YYYY-MM-DD>-<run-slug>/
   decisions.md               # run capsule for the next skill; not a plan
   01-<question-slug>/
     screens/
@@ -107,7 +107,7 @@ Write screens under:
     state/
 ```
 
-The fallback root takes the same shape under `<jj-workspace>/.tmp/prototype/`, or `<current-working-directory>/.tmp/prototype/` without a Jujutsu workspace. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The fallback root takes the same shape under `<jj-workspace>/.tmp/ce-prototype/`, or `<physical-current-directory>/.tmp/ce-prototype/` without a Jujutsu workspace. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Launch mode by platform
 

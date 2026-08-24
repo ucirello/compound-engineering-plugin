@@ -4,25 +4,23 @@ LFG's body owns the shipping precondition and the two invocation strings. This f
 
 ## Step 8 — a project-defined process may own the handoff
 
-The goal is the remaining work described and finished, its bookmark pushed, and an open PR whose URL you hold.
+The goal is the remaining work recorded as described Jujutsu changes, pushed through a bookmark, and in an open PR whose URL you hold.
 
-If the project's active instructions name a process that owns that handoff — a named skill or command, a stacking tool, or documented steps, but not change-description or PR-title conventions, which the default already honors, and a skill directory alone is not a directive — run it non-interactively with the same plan path and context below instead of the default. It is done only when the bookmark is pushed and you hold the URL of an open PR containing it — one the process opened, or a PR that already exists for the bookmark. If it cannot run headlessly, is unavailable, or ends short of that state, stop as **blocked** naming the process — do not fall through to the default or to step 9.
+If the project's active instructions name a process that owns that handoff — a named skill or command, a stacking tool, or documented steps, but not change-description or PR-title conventions, which the default already honors, and a skill directory alone is not a directive — run it non-interactively with the same plan path and context below instead of the default. Pass LFG's exact mandated change-description sentence and all of its interpretation constraints unchanged to the process at every description-composition, editing, validation, or recommendation site. It is done only when the Jujutsu changes are described, the intended bookmark is pushed, and you hold the URL of an open PR containing them. If it cannot run headlessly, is unavailable, or ends short of that state, stop as **blocked** naming the process — do not fall through to the default or to step 9.
 
 ## Step 8 — what LFG threads into the default
 
-Thread the recorded plan path from step 1 into the `ce-commit-push-pr` invocation, along with any proceeded-and-flagged `settled_decision_conflicts` entries from step 2, so the PR body's settled-decisions provenance line and its proceed-under-flag clause can fire.
+Thread the recorded plan path from step 1 into the `ce-commit-push-pr` invocation, along with any proceeded-and-flagged `settled_decision_conflicts` entries from step 2, so the PR body's settled-decisions provenance line and its proceed-under-flag clause can fire. Pass LFG's exact mandated change-description sentence and all of its interpretation constraints unchanged as a constraint on every description-composition, editing, validation, or recommendation site.
 
-Compose each change description from the actual change after inspecting the project's active instructions and the description syntax visible in `jj log`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Every Jujutsu command example uses a dynamic placeholder such as `jj commit -m "<description-composed-from-runtime-conventions>"`; never reuse a fixed example message or add attribution.
+This records any remaining changes, pushes the intended bookmark, and opens a pull request non-interactively under that policy. Once the PR URL is known, back-fill it into any residual tickets filed in step 6 so each ticket links to the PR carrying the finding; a failed ticket update does not block completion. If a PR already exists for the pushed bookmark, use `gh pr view <bookmark> --json number,url,state`, skip PR creation, and still describe and push any remaining change. In a non-colocated repository, point `gh` at the backing Git repository reported by `jj git root`.
 
-The default describes and finishes any remaining working-copy change, moves or creates a dynamically named bookmark at the finished change, pushes that bookmark, and opens a pull request — non-interactively, per the mode token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 10. Once the PR URL is known, back-fill it into any residual tickets filed in step 6 (the `filed` list) so each ticket links to the PR carrying the finding — best-effort, and never block DONE on a failed ticket update. If a PR already exists for the bookmark (check with `gh pr view --json number,url,state`), skip PR creation but still finish any non-empty working-copy change, set the existing PR bookmark to the finished revision with `jj bookmark set <bookmark> -r @-`, and push it with `jj git push --bookmark <bookmark> --remote <remote>`.
-
-**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process whose contract requires a remote.** Instead, if `jj diff --summary` reports changes, compose a dynamic description under the rule above and run `jj commit -m "<description-composed-from-runtime-conventions>"`; then skip bookmark push and PR creation entirely.
+**Per the shipping precondition, when no remote is configured, do not invoke `ce-commit-push-pr` or a project-defined shipping process** because those routes require a push. Apply LFG's full change-description policy to describe the non-empty working-copy change accurately, then use `jj commit` to start a new change; skip bookmark push and PR creation.
 
 ## Step 9 — stack handoff from step 8
 
 If step 8's `ce-commit-push-pr` completed a stack-mode submit and handed off `ce-babysit-pr` on the **bottom open non-draft** PR with `posture:stack-ready` or `posture:stack-land`:
 
-- Do **not** start a second bare `mode:pipeline` babysit on the current-bookmark URL (that can supersede the stack-aware run as target-only or watch the wrong layer).
+- Do **not** start a second bare `mode:pipeline` babysit on another bookmark's URL (that can supersede the stack-aware run as target-only or watch the wrong layer).
 - Prefer the structured result already returned from that handoff when it reflects a completed pipeline stop.
 - If step 8 only confirmed babysit **started** (or no structured result is available), re-invoke `ce-babysit-pr mode:pipeline <bottom-pr-url> posture:<same>` and wait for its pipeline completion — never treat "started" as DONE.
 - Record the bottom PR URL and posture for step 10's user-facing resume line.
@@ -48,13 +46,13 @@ For the two handoffs below, default to `/ce-explain <name>` / `/ce-babysit-pr <p
 
 ### New concepts
 
-If step 8 recorded a `New concepts:` trailer, first echo one line per concept: `New concept introduced: <name> — run <rendered ce-explain invocation> to go deeper.`
+If step 8 reported new concepts, name each concept and pair it with the rendered `ce-explain` invocation. Keep the line operational and unbranded.
 
 ### The open PR
 
-If an open PR exists, add one line pointing the user to the interactive watch-to-merge (pipeline mode stopped at "CI decided," not "merged"): `PR is moving — run <rendered ce-babysit-pr invocation> to watch it through review to merge.`
+If an open PR exists, tell the user that pipeline mode stopped at CI-decided rather than merged and provide the rendered interactive watch-to-merge invocation. Do not require fixed wording.
 
-When step 8/9 used a stack handoff, render that invocation for the **bottom open non-draft** PR URL with the same `posture:stack-ready` or `posture:stack-land` token — never a bare current-bookmark URL that would supersede stack scope.
+When step 8/9 used a stack handoff, render that invocation for the **bottom open non-draft** PR URL with the same `posture:stack-ready` or `posture:stack-land` token — never another bookmark's URL that would supersede stack scope.
 
 ### The optional next-work offer
 

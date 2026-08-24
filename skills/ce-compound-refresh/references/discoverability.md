@@ -1,17 +1,15 @@
-# Discoverability
+# Discoverability check
 
-After the report, check semantically whether the project's active instructions lead an agent to `.context/solutions/`, explain its searchable structure, and say when it is relevant. If no substantive project instruction file exists, skip.
+After the report, check that the project's instruction files would lead an agent to discover `<root>/solutions/` before working in a documented area. Run this every time because the store remains valuable only when agents can find it.
 
-When the spirit is missing, draft the smallest style-matching addition, preferably one line in an existing related section:
+1. Find the project's root agent-instruction surface — `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or whatever equivalent this project uses; the substantive file is the target, so ignore a shim that just `@`-includes another. No such file exists: skip this check.
+2. Assess semantically (not by string match) whether a reader would learn: the store exists, enough structure to search it (categories, frontmatter fields like `module`, `tags`, `problem_type`), and when it's relevant. If the spirit is met, done.
+3. If not, draft the smallest addition that communicates those three things, matching the file's style — prefer one line in an existing related section (a directory listing, architecture tree, conventions block) over a new headed section. Keep the tone informational, not imperative ("relevant when implementing or debugging in documented areas", not "always search before implementing" — imperatives cause redundant reads when a workflow already searches). Substitute the resolved concrete root for `<root>` in what you write — readers without this plugin cannot resolve the placeholder. Calibration example for a directory listing:
 
-```text
-.context/solutions/  # documented solutions to past problems, organized by category with YAML frontmatter (module, tags, problem_type)
-```
+   ```
+   <root>/solutions/  # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
+   ```
 
-Interactive mode shows the target and rationale and asks before editing. Non-interactive mode reports the recommendation without editing instructions.
-
-If `.context/CONCEPTS.md` exists, apply the same semantic check for shared domain vocabulary; otherwise skip it.
-
-If an instruction edit happens after the refresh change was described, include it in the same local revision when safe. Otherwise create a new Jujutsu child, describe it, update the existing bookmark, and publish it with `jj git push` only when publication was selected.
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe imperative mood, casing, punctuation, line wrapping, subject/body shape, or any fixed syntax. Compose from the actual change; never reuse a fixed example or add attribution.
+4. Interactive: show the proposed change and where it goes, explain why it matters (fresh sessions and plugin-less collaborators won't find the store otherwise), and get consent via a blocking question before editing. Non-interactive: emit a "Discoverability recommendation" line in the report instead of editing instruction files — non-interactive scope is doc maintenance, not project config.
+5. If `CONCEPTS.md` exists at the workspace root, run the same check for it (e.g., a `CONCEPTS.md  # shared domain vocabulary — read when orienting to the codebase` line). Skip entirely when it doesn't exist — never nag for an artifact the project hasn't adopted.
+6. If this check edited an instruction file after the refresh change was already described, fold it into that unpublished change or create a separate described change, then move and push the same bookmark when an open PR must include it. If the user chose to leave the work undescribed, leave this edit in the working-copy change as well. Do not prescribe a fixed description; preserve the semantic requirement that it identify the discoverability change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.

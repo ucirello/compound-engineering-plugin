@@ -15,26 +15,16 @@ A corpus that degrades on a new model is a measurement problem before it is a wr
 
 **Non-goal:** word reduction. Leanness and performance are separate programs that share a corpus; only one of them is the result here. Report completion, not word count.
 
-## Setup
+For every output, preserve required evidence, machine-readable contracts, and operational benchmark, model, and harness references. Do not add product branding, generated-by text, or creator, model, provider, tool, harness, agent, runtime, workflow, or co-author attribution; operational references are evidence, not attribution. Fixed wording and examples specify required substance rather than mandatory syntax unless a machine-readable contract explicitly requires exact tokens.
 
-Run this once at the start of this invocation, before any subagent dispatch, and follow the directives it prints — except where one conflicts with this skill's own rules on asking the user questions, whether those rules are scoped to a non-interactive mode or apply in every mode, in which case this skill's rules win and no blocking question is asked. Run the fence exactly as written, as its own command: do not pipe or filter it (no `head`, `tail`, or `grep`), do not truncate its output, and do not bundle it into a batch with other commands. Its output opens with a `=== skill context` header and ends with `RETUNE_CONTEXT_END`; if you received one of those lines without the other, the output was truncated — rerun the fence verbatim once. That recovery is the only rerun: otherwise do not rerun it within the same invocation; a later invocation of this or any other skill runs its own. If no Node runtime is available the skill proceeds unchanged.
-
-```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-NODE="$(for c in node nodejs; do command -v "$c" >/dev/null 2>&1 && "$c" -e '' >/dev/null 2>&1 && { echo "$c"; break; }; done)";
-if [ -n "$NODE" ]; then
-"$NODE" "$SKILL_DIR/scripts/context.mjs" || echo "context script failed; continue with the skill's normal behavior";
-else
-echo "no Node runtime; continue with the skill's normal behavior";
-fi
-```
+Keep temporary artifacts under `<workspace-root>/.tmp/retune/<run-id>/`, where `<workspace-root>` is reported by `jj workspace root`. If there is no Jujutsu workspace, stop and report that requirement. Do not use an operating-system temporary directory or API.
 
 ## Phase 0: the measurement gate — check this first
 
 This skill cannot run without a way to observe behavior. Check for all three, and name whichever is missing:
 
 1. **A run archive or a harness that produces one** — per-run logs carrying the tool-call trace, a terminal marker, token counts, and the final message.
-2. **A build selector** — the harness can point a run at a specific source workspace of the corpus (a `--plugin-dir`-style override, a configurable skills path, an env var), so two builds are comparable under one runner.
+2. **A build selector** — the harness can point a run at a specific source workspace or corpus copy (a `--plugin-dir`-style override, a configurable skills path, an env var), so two builds are comparable under one runner.
 3. **A repeatable task** the corpus actually executes end to end.
 
 If any is missing, **stop and say so**, naming what to build. Do not fall back to a static audit and present it as retuning: an audit can say what looks cuttable and never whether cutting helped. An audit-only pass is a legitimate thing to want; it is a different request.
@@ -46,8 +36,8 @@ State the target model and the harness you found before continuing.
 They run in order, and each names the reference it cannot start without. Read `references/workflow-shapes.md` before dispatching any phase: the wrong orchestration shape is the common failure. Fan out by disjoint file ownership, never by item. Items cross files, and agents that share a file lose each other's edits.
 
 1. **Mine the archive** before spending a run — `references/baseline-mining.md`. Historical runs are a free baseline, usually larger than any experiment affordable now.
-2. **Establish the noise floor** — `references/noise-floor.md`. Run the harness against **two identical copies** of the corpus, the same immutable Jujutsu change on both sides; whatever difference appears is the floor every later claim must clear. **Register the bar now, in writing, before any change exists.** A bar chosen after seeing results is not a bar.
+2. **Establish the noise floor** — `references/noise-floor.md`. Run the harness against **two identical copies** of the corpus from the same immutable Jujutsu revision; whatever difference appears is the floor every later claim must clear. **Register the bar now, in writing, before any change exists.** A bar chosen after seeing results is not a bar.
 3. **Audit the corpus adversarially** — `references/corpus-audit.md`. One agent per skill proposes cuts; a second per skill does the opposite and defends the existing prose using the project's documented learnings, tests, and Jujutsu history. **The two passes require independent contexts.** If the host exposes no way to run them as separate agents, report that as a blocker and stop the audit — do not argue both sides in one context and present the result as an audit.
 4. **Cut in surgical passes**, one problem per agent — `references/cut-passes.md`, and `references/halt-taxonomy.md` when the symptom is stalling, halting, or a run that ends while naming work it did not do. Two rules bound every pass, whatever class it is cutting. **Never edit a test to make a suite green**: a removed string a test pins is a finding to report, not a test to weaken. And **not every stop is the enemy.** Some workflows exist to stop and ask; that is the product. Sort every stop by who is actually on the other side before touching it. `references/halt-taxonomy.md` carries the screens that decide, so read them before cutting any stop.
 5. **Measure, then let the failure choose the next fix** — `references/cut-passes.md` again for what each failure site means and for auditing the phases the instrument never enters. Loop 4 and 5 until the registered bar clears. Then stop; a bar cleared is done. Also report what stayed unmeasured: a cleared bar never implies coverage it does not have.
-6. **Ship** — `references/cut-passes.md` carries what each change and the write-up must preserve. Keep each pass in a separate Jujutsu change, describe the current pass before starting the next change, and do not rewrite unrelated changes. At every change-description composition site, inspect the project's active instructions and the description syntax visible in `jj log`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Compose from the actual change; never reuse a fixed example or add attribution.
+6. **Ship** — `references/cut-passes.md` carries what each change and the write-up must preserve. Keep every pass in a separate Jujutsu change, describe the pass before starting the next change, and leave unrelated changes untouched. Before composing, recommending, editing, or validating a change description: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence is guidance, not an operational instruction: inspect the project's active instructions and recent `jj log` descriptions, which determine the runtime convention. Apply compatible Go guidance only to quality, clarity, and structure. Compose from the actual change without a fixed prefix, type, scope, subject, body, layout, template, or example, and add no attribution.

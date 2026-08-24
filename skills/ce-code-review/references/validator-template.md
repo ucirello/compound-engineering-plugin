@@ -32,11 +32,11 @@ Confidence anchor: {finding_confidence}
 </diff>
 
 <scope-context>
-The diff above is the full change being reviewed. The finding is about file {finding_file} around line {finding_line}. If `<diff>` contains an artifact path, Read it first.
+The diff above is the full change being reviewed. The finding is about file {finding_file} around line {finding_line}. (If the `<diff>` block contains a file path rather than inline hunks — large-diff path-staging — Read that file first to get the full diff.)
 
-When `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>` is in context, do **not** Read/Grep the workspace copy of {finding_file}. Inspect via `jj file show -r <pr-head-ref> {finding_file}` or `jj file show -r <bookmark-head-ref> {finding_file}` when a reviewed revision is set; otherwise use diff hunks only.
+When `<pr-scope-mode>pr-remote</pr-scope-mode>` or `<pr-scope-mode>bookmark-remote</pr-scope-mode>` is in context, do **not** Read/Grep the workspace copy of {finding_file}. For bookmark-remote use `jj file show -r <bookmark-revision> {finding_file}`. For pr-remote use the GitHub contents API through `gh api` at `<pr-head-oid>`. Otherwise use diff hunks only.
 
-When scope is local-aligned (default), use read tools plus targeted `jj file annotate` and `jj log` to inspect the cited code and its callers, guards, middleware, or framework defaults.
+When scope is local-aligned (default), use read tools and targeted `jj file annotate` / `jj log` to inspect the cited code and its callers, guards, middleware, or framework defaults that might handle the concern elsewhere.
 </scope-context>
 
 Your task is to answer three questions:
@@ -46,7 +46,7 @@ Your task is to answer three questions:
    - The persona misread types or signatures
    - The persona flagged a pattern that is intentional in this codebase (check comments, parallel handlers, project conventions)
 
-2. **Is the issue introduced by THIS diff?** Use `jj file annotate`, `jj log`, or diff inspection against the reviewed revision. If the cited line predates the reviewed changes and the diff does not interact with it, the finding is pre-existing. When history informs that verdict, cite concise change-ID provenance (for example, `provenance: <change-id> <author> <date> - <description>`). Missing load-bearing provenance weakens confidence but does not alone reject an otherwise-correct finding.
+2. **Is the issue introduced by THIS diff?** Use `jj file annotate` or diff inspection against the reviewed revision. If the cited line predates this PR's changes and the diff does not interact with it, the finding is pre-existing and is not validated for externalization. When annotation/history informs that verdict, cite concise change-id provenance in `reason` rather than a bare year. Missing provenance when history was load-bearing is a soft quality miss; do not reject an otherwise-correct finding solely for that omission.
 
 3. **Is the issue not handled elsewhere?** Look for guards in callers, middleware in the request chain, framework defaults, type system constraints, or parallel handlers that already address the concern. If the issue is functionally prevented by surrounding infrastructure, the finding is invalid.
 
@@ -69,7 +69,7 @@ Examples:
 Rules:
 - Be honest. If the original reviewer was right, validate. If they were wrong, reject. Conservative bias is preferred — when in doubt, reject.
 - Do not invent new findings. Your scope is this one finding; surface anything else as a no-vote with reason.
-- Do not edit files, describe revisions, move bookmarks, push, or otherwise mutate workspace or repository state.
+- Do not edit, commit, push, or modify any files. You are operationally read-only.
 - If you cannot read the cited file, return `{ "validated": false, "reason": "Could not access file path to verify." }` rather than guessing.
 - Return JSON only. No prose, no markdown, no explanation outside the JSON object.
 ```

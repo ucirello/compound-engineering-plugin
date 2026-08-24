@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# read-launch-json.sh — read .rocketclaw/launch.json from the Jujutsu workspace root and emit
-# the selected configuration as JSON on stdout, or a sentinel on failure.
+# read-launch-json.sh — read the preferred .rocketclaw/launch.json or fall back
+# to .claude/launch.json at the Jujutsu workspace root, then emit the selected
+# configuration as JSON on stdout or a sentinel on failure.
 #
 # Usage:
 #   read-launch-json.sh [config-name]
@@ -45,6 +46,9 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 LAUNCH_PATH="$WORKSPACE_ROOT/.rocketclaw/launch.json"
+if [ ! -f "$LAUNCH_PATH" ]; then
+  LAUNCH_PATH="$WORKSPACE_ROOT/.claude/launch.json"
+fi
 
 if [ ! -f "$LAUNCH_PATH" ]; then
   echo "__NO_LAUNCH_JSON__"

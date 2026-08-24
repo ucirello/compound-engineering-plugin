@@ -46,7 +46,7 @@ The topic surface is the user-supplied content the web research is grounded on:
 - **Elsewhere modes (`elsewhere-software`, `elsewhere-non-software`):** the user's topic prompt plus any Phase 0.4 intake answers (the actual subject the agent is researching). The two sub-modes are keyed separately — a reclassification between software and non-software for the same topic hash must force a fresh dispatch, since the research domain differs.
 - **Repo mode:** the focus hint plus the absolute path returned by `jj workspace root`. This keeps the cache key meaningful when focus is empty while workspace-local storage already separates unrelated repositories. If no workspace root is available, use the current working directory's absolute path. Hash the discriminator; the first 8 hex characters of SHA-256 are sufficient.
 
-Normalize before hashing: lowercase, collapse whitespace. (The repo discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
+Normalize before hashing: lowercase, collapse whitespace. (The workspace discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
 
 ## Degradation
 

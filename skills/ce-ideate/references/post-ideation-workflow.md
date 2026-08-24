@@ -92,7 +92,7 @@ Offer four options (self-contained labels with the distinguishing word front-loa
 1. *(when `OUTPUT_FORMAT=html`)* **Open in browser** — open the saved HTML deliverable (re-open if it was already opened).
    *(when `OUTPUT_FORMAT=md`)* **Publish a shareable document** — use `ce-proof` to publish the saved markdown and get a shareable link; one-way, the local file stays canonical.
 2. **Brainstorm one idea with `ce-brainstorm`** — develop a chosen idea into a requirements-only unified plan under `<root>/plans/`; leaves ce-ideate. Asks which idea first.
-3. **Discuss or refine the ideas first** — stay here to think across the set before choosing: adjust or interrogate one idea, compare several, or combine/merge them. Asks what you want to work on.
+3. **Discuss or refine the ideas first** — stay here to think across the set before committing: adjust or interrogate one idea, compare several, or combine/merge them. Asks what you want to work on.
 4. **Done — keep the file and stop.**
 
 **Adjacent nudge (prose, not a slot):** "Don't want it kept? Say 'discard' and the agent deletes the file." Handled via free text (see §5.5); it is create-only and never deletes a resumed or pre-existing doc.
@@ -105,6 +105,7 @@ If the user already named what they want to work on inline (e.g. "brainstorm the
 - **Markdown — Publish a shareable document.** The local markdown file already exists (Phase 4) and stays canonical; the published document is a one-way copy, not a sync target. Load the `ce-proof` skill to publish, passing:
   - **source file:** the saved `.md` file from Phase 4.
   - **doc title:** `Ideation: <topic>` or the doc's H1.
+  - **identity:** `ai:assistant` / `AI Assistant`.
 
   `ce-proof` creates a shared document and returns the share URL. Surface it to the user, then return to the Phase 5 menu — nothing syncs back to disk. If the handoff fails after the skill's internal retry plus one orchestrator-side retry, tell the user publishing is unavailable and that the local file is intact at `<path>`, then return to the menu. If the user explicitly requests publishing during an HTML run, render a disposable markdown copy of the survivors as the handoff source and do not upload the `.html`.
 
@@ -122,7 +123,7 @@ If the user already named what they want to work on inline (e.g. "brainstorm the
 
 ### 5.3 Discuss or Refine the Ideas First
 
-This stays in ce-ideate — no skill handoff. It is the "think across the set before choosing" step, and it is a normal, expected outcome of ideation: seeing several strong candidates and wanting to deliberate is more common than instantly choosing one. The orchestrator still holds the full grounding and generation context, so it can reason across every survivor — this is where that context pays off. The work here is either **single-idea** (sharpen or interrogate one) or **cross-idea** (compare, combine, or merge several); do not force the user to name a single idea before they can engage.
+This stays in ce-ideate — no skill handoff. It is the "think across the set before committing" step, and it is a normal, expected outcome of ideation: seeing several strong candidates and wanting to deliberate is more common than instantly committing one. The orchestrator still holds the full grounding and generation context, so it can reason across every survivor — this is where that context pays off. The work here is either **single-idea** (sharpen or interrogate one) or **cross-idea** (compare, combine, or merge several); do not force the user to name a single idea before they can engage.
 
 1. **Establish what the user wants to work on and how.** Infer from their phrasing when given; otherwise ask one open question ("What do you want to work on?") rather than assuming a single idea. The scope may be one idea, a subset, or the whole set.
 2. **Route by intent:**
@@ -137,7 +138,7 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a `jj` workspace:** offer to isolate only the ideation document in a change when needed and describe that change; do not create or move bookmarks, and do not push. Before composing, editing, validating, or recommending its description, inspect the project's active instructions and conventions already in context and descriptions visible in `jj log`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Resolve the operation and neutral placeholders such as `<revision>`, `<fileset>`, and `<description-composed-from-runtime-conventions>` from current state plus `jj help describe`, `jj help commit`, and any project-owned aliases. If the user declines, leave the working-copy change undescribed.
+- **Inside a `jj` workspace:** offer to isolate only the ideation document in a change when needed and describe that change; do not create or move bookmarks, and do not push. Before composing, editing, validating, or recommending its description, inspect the project's active instructions and conventions already in context and descriptions visible in `jj log`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax. Resolve the operation and neutral placeholders such as `<revision>`, `<fileset>`, and `<description-composed-from-runtime-conventions>` from current state plus `jj help describe`, `jj help commit`, and any project-owned aliases. If the user declines, leave the working-copy change undescribed.
 - **Workspace-local `.tmp` or non-workspace file:** skip the change-description offer.
 
 Then narrate the path and end the session — do not return to the menu.

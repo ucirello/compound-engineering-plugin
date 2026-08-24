@@ -16,7 +16,7 @@ Read this when Phase 0 classifies a bare prompt, and again at Phase 1 before rea
 |-----------|---------|--------|
 | **Trivial** | 1-2 files, no behavioral change (typo, config, rename) | Proceed to Phase 1 step 2 (environment setup) and implement directly under the body's Trivial rule. Apply Test Discovery if the change touches behavior-bearing code |
 | **Small / Medium** | Clear scope, under ~10 files | Build a task list from discovery. Proceed to Phase 1 step 2 |
-| **Large** | Cross-cutting, architectural decisions, 10+ files, touches auth/payments/migrations | Inform the user this would benefit from `ce-brainstorm` or `ce-plan` to surface edge cases and scope boundaries. Honor their choice. If proceeding, build a task list and continue to Phase 1 step 2 |
+| **Large** | Cross-cutting, architectural decisions, 10+ files, touches auth/payments/migrations | Unless `ce-plan` already sized this prompt in this session, inform the user this would benefit from `ce-brainstorm` or `ce-plan` to surface edge cases and scope boundaries, and honor their choice. When proceeding, build a task list and continue to Phase 1 step 2; when implementation surfaces a decision the user would weigh, stop before the write and ask or return the finding |
 
 ## Read the plan and clarify
 
@@ -49,4 +49,4 @@ Read this when Phase 0 classifies a bare prompt, and again at Phase 1 before rea
 
 ## Do not re-scope the plan into human-time phases
 
-The plan's Implementation Units define the scope of execution. Do not estimate human-hours per unit, propose multi-day breakdowns, or ask the user to pick a subset of units for "this session". Agents execute at agent speed, and context-window pressure is addressed by subagent dispatch, not by phased sessions. If a plan-file input is genuinely too large for a single execution, say so plainly and suggest the user return to `ce-plan` to reduce scope -- don't invent session phases as a workaround. For bare-prompt input, Phase 0's Large routing already handles oversized work.
+The plan's Implementation Units define the scope of execution. Do not estimate human-hours per unit, propose multi-day breakdowns, or ask the user to pick a subset of units for "this session". Agents execute at agent speed, and context-window pressure is addressed by subagent dispatch (Phase 1 Step 4), not by phased sessions. If a plan-file input is genuinely too large for a single execution, say so plainly and suggest the user return to `ce-plan` to reduce scope -- don't invent session phases as a workaround. For bare-prompt input, Phase 0's Large routing already handles oversized work.

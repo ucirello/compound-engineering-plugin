@@ -1,47 +1,56 @@
 ---
 name: ce-worktree
-description: Set up isolated JJ workspaces for fresh work or an existing bookmark, pull request, or revision. Use when starting isolated work or isolating an existing revision; detects existing isolation first.
+description: Set up isolated Jujutsu workspaces with bookmarks for fresh work or an existing revision or pull request. Use when starting isolated work or isolating an existing target.
 ---
 
-# Workspace Isolation
+# Jujutsu Workspace Isolation
 
-Ensure the current work happens in an isolated JJ workspace without disturbing the user's primary workspace. Many coding harnesses create an isolated workspace at session start, so the common case is that isolation already exists.
+Ensure the current work happens in an isolated Jujutsu workspace without disturbing the user's primary workspace. Reuse isolation already supplied by the harness instead of creating another workspace.
 
-**Done when:** the caller is working in an existing or newly created isolated workspace and its path, workspace name, working-copy change, and relevant bookmark or pull-request head have been reported, or a blocker has been reported instead.
+**Done when:** the caller is working in an existing or newly created isolated workspace, and the workspace path, workspace name, and associated bookmark or revision have been reported. Report a blocker instead if isolation cannot be established safely.
 
-**Order of operations: detect existing isolation -> prefer a JJ-aware native workspace tool -> fall back to `jj workspace`.** Never create a workspace the harness cannot enter or manage.
+**Order of operations:** detect existing isolation, prefer a harness-native Jujutsu workspace primitive, then use `jj workspace`. Never create a workspace the harness cannot enter or manage.
 
-**Two modes, set by the caller's need:**
+**Modes:**
 
-- **New work (default).** No revision named: create a fresh working-copy change and meaningful bookmark on the project's trunk revision. This is what `ce-work` and `ce-code-review` use when the user picks workspace isolation.
-- **Isolate existing work.** The caller names a pull-request head, bookmark, tag, change ID, or commit ID: create the workspace with a fresh working-copy change whose parent is that revision. Separate JJ workspaces may use the same parent, so an existing workspace at that revision is not a conflict.
+- **New work (default).** With no target named, create a workspace on a fresh working-copy commit based on the requested revision or `trunk()`, and create a meaningful bookmark at `@`. This is the mode used by `ce-work` and `ce-code-review` when the user selects isolated work.
+- **Existing target.** For a bookmark, tag, commit, or pull-request head, create a workspace whose working-copy commit is a child of that revision. Do not invent a second bookmark when the caller supplied one. Jujutsu has no active bookmark and permits multiple workspaces based on the same revision, so do not apply Git's one-branch-per-worktree restriction.
 
-## Step 0: Detect Existing Isolation
+## Detect Existing Isolation
 
-Resolve the current root with `jj workspace root` and inspect `jj workspace list`, including each available root. Use the harness's workspace context to determine whether the current workspace is the isolation created for this task; the existence of another workspace alone does not make the current one isolated.
+Run `jj workspace root`, `jj workspace list`, and `jj status`. If the current session is already in an isolated workspace supplied by the harness, work there and report its root and workspace entry. In existing-target mode, move the workspace to a fresh child of the target only when its current working-copy commit is not already suitable and doing so will not overwrite changes.
 
-- If the current workspace is already the task's isolation, report its root, workspace name, `@` change ID, and bookmarks from `jj log`, then work in place. Creating another workspace can put the caller in a path the harness does not manage.
-- In isolate-existing-work mode, first verify with `jj log` that the current working-copy change is based on the requested revision. If it is not and the current change contains work, stop and report the conflict rather than switching away from that work. If it is empty, create a new working-copy change on the requested revision with `jj new <target-revision>` and continue in place.
-- If `jj workspace root` fails, no JJ workspace has been established. Use the current directory only as the local fallback root for `.tmp`; report the missing repository as a blocker unless a JJ-aware native tool can establish the requested workspace.
+If `jj workspace root` fails, this is not a Jujutsu workspace. Stop and report the blocker; do not silently fall back to Git worktrees or modify the current checkout.
 
-## Step 1: Prefer a Native Workspace Tool
+## Prefer Native Isolation
 
-If the harness provides a JJ-aware native workspace primitive, use it when it can create the workspace under `<workspace-root>/.tmp/ce-worktree/workspaces/<workspace-name>` and expose the resulting path to the current session. Native tools own their placement, navigation, and cleanup contracts; use the same base or target revision rules as the fallback below. If the primitive cannot satisfy the JJ or path contract, continue only when the `jj workspace` result will be visible to the harness; otherwise report the incompatibility as a blocker.
+If the harness provides a native primitive that creates a Jujutsu workspace backed by the same repository and makes the new path available to the session, use it and stop after verifying the result with `jj workspace list`. Do not use a native Git-worktree primitive as a substitute.
 
-## Step 2: JJ Fallback
+## Create A Workspace
 
-Only when there is no suitable native tool and Step 0 found no existing isolation:
+Use `jj workspace` only when no suitable isolated workspace already exists.
 
-1. Resolve `<workspace-root>` with `jj workspace root`; use the current directory only if that lookup fails. All temporary workspace state belongs under `<workspace-root>/.tmp/ce-worktree`, with this workflow's workspaces under `<workspace-root>/.tmp/ce-worktree/workspaces/`. When no workspace root resolves, use `./.tmp/ce-worktree/` as the local fallback. Do not use OS-global temporary storage or a user-global cache.
-2. Before creating the destination, ensure `.tmp/` is ignored according to the project's active ignore conventions. If it is not ignored, add the minimal `.tmp/` ignore entry before creating the directory so JJ does not snapshot workspace internals.
-3. Use the project's active instructions and relevant `jj log` history to determine the trunk revision, remote, workspace name, bookmark conventions, and description style. Choose meaningful values from the work rather than opaque generated values, and use neutral dynamic placeholders in commands.
-4. When composing or validating the initial change description, project-local conventions take precedence. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example.
+1. Choose a meaningful, filesystem-safe workspace name and bookmark name from the work description. Keep a caller-supplied bookmark name unchanged.
+2. Use `$(jj workspace root)/.tmp` as the workspace parent. If `jj workspace root` is temporarily unavailable after repository identity has already been established, use local `.tmp` as the fallback. Ensure the workspace root's `.gitignore` ignores `/.tmp/` before creating the destination because Jujutsu snapshots new files automatically.
+3. Refresh remote state with `jj git fetch`. A fetch failure is non-fatal when the selected base or target already resolves locally; otherwise report the unresolved target.
+4. Resolve the base or target to exactly one revision. For new work, prefer the caller's base, then `trunk()`, then a uniquely resolved local `main`. Stop on an ambiguous or conflicted bookmark.
+5. Create the isolated working copy with `jj workspace add --name <workspace-name> --revision <revision> <destination>`, where `<destination>` is under the workspace parent selected above.
+6. For new work, enter the new workspace and run `jj bookmark create <bookmark-name> --revision @`. For an existing local bookmark, retain it as the associated bookmark without moving it. For a remote bookmark, track it when updates must be pushed back to that remote.
+7. Verify the new path with `jj workspace root`, `jj workspace list`, and `jj status`, then continue work from that path.
 
-5. Resolve the target revision:
-   - **New work:** use the trunk revision established by the active project instructions and `jj log`; `trunk()` is acceptable when the repository config resolves it correctly. Refresh a configured remote bookmark with `jj git fetch --remote <remote-name> --branch <remote-branch>` when one exists. Fetch failure is non-fatal when the local revision is valid.
-   - **Existing local work:** resolve the supplied bookmark, tag, change ID, or commit ID with `jj log -r <target-revision>`. Stop rather than guessing if it is absent or ambiguous.
-   - **Pull request:** use `gh pr view <pull-request> --json headRefName,headRefOid,headRepository,headRepositoryOwner` to identify the exact head commit, head branch, and head repository. Reuse a matching configured JJ remote, or add a meaningfully named remote with `jj git remote add <remote-name> <head-repository-url>`, then import the head with `jj git fetch --remote <remote-name> --branch <head-branch>`. Verify the exact head commit with `jj log` and use it as the target. Preserve the remote and head-branch mapping in the handoff so later updates can move or create the corresponding bookmark and use `jj git push --remote <remote-name> --bookmark <bookmark-name>` without orphaning the work.
-6. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Create the parent directory under `<workspace-root>/.tmp/ce-worktree/workspaces/`, then create one workspace with `jj workspace add --name <workspace-name> --revision <target-revision> --message <description> <workspace-root>/.tmp/ce-worktree/workspaces/<workspace-name>`. This creates a fresh working-copy change on the selected revision; do not edit an immutable target directly. For new work, create the selected bookmark at `@` with `jj bookmark create <bookmark-name> --revision @`. For existing work, retain the resolved bookmark or pull-request mapping for the later bookmark update rather than inventing a disconnected name.
-7. Enter the new workspace through the harness-supported navigation mechanism. Confirm its root and working-copy change with `jj workspace root`, `jj workspace list`, `jj status`, and `jj log`, then report the path, workspace name, `@` change ID, parent revision, and any relevant bookmark or pull-request remote mapping.
+Bookmarks do not advance merely because new descendant commits are created. Before a push, explicitly move the work bookmark to the intended revision and inspect `jj status` plus `jj log`; use `jj git push --bookmark <bookmark-name> --remote <remote>` so Jujutsu performs its remote-state safety checks.
 
-If workspace creation fails because of permissions, stale workspace state, revision resolution, or remote import, the requested isolation does not exist. Do **not** proceed in the current workspace: report the command and failure, then ask whether to work in the current workspace or stop and resolve the blocker through the harness's blocking question capability. Only when no blocking capability exists or the call errors, present numbered options in chat and wait for the reply. Never infer consent or retry outside the workspace-local `.tmp` path or its `./.tmp` fallback.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Apply the project's active instructions first and the conventions visible in the current `jj log` second; the quoted `git log` wording is non-operational and does not authorize Git commands. Use compatible Go guidance only for message quality, clarity, and structure. Do not impose any fixed prefix, type, scope, subject, body, layout, template, or example.
+
+## Pull Requests And GitHub
+
+Keep GitHub operations in `gh`. Use `gh pr view` or `gh api` to resolve the pull request's head repository, head bookmark name, and commit. Fetch that head with `jj git fetch` from an existing matching remote; if the head belongs to a fork with no matching remote, add a clearly named Jujutsu Git remote for that fork before fetching.
+
+Create the workspace from the fetched `<head-bookmark>@<remote>` revision. Track the remote bookmark when the caller intends to update the pull request, and push it with `jj git push --bookmark <head-bookmark> --remote <remote>`. Continue to use `gh` for viewing, creating, or editing the pull request. In a non-colocated repository, provide `GIT_DIR=$(jj git root)` to read-only `gh` operations that require Git repository discovery. Do not use `gh pr checkout` or another mutating Git command to create or move the Jujutsu workspace.
+
+## Failure Safety
+
+If `jj workspace add` fails, the requested isolation does not exist. Do not continue in the current workspace. Report the command failure and ask whether to work in the current workspace or stop and resolve the isolation problem through the harness's blocking-question capability: on Claude Code, use `AskUserQuestion`, calling `ToolSearch` with `select:AskUserQuestion` first when its schema is not loaded; on Codex, use `request_user_input`, with numbered options in user-visible chat as the edit-mode fallback; on Antigravity CLI (`agy`), use `ask_question`; on Pi, use `ask_user` with the `pi-ask-user` extension. If no blocking capability exists or its call fails, present numbered options in user-visible chat and wait. Never skip the confirmation or retry another path automatically.
+
+If creation partially succeeds, inspect `jj workspace list` before retrying. Never overwrite a destination, forget a workspace, delete files, move an existing bookmark backward or sideways, or replace a conflicting bookmark merely to make setup succeed. Report the partial state and let the caller choose the cleanup or recovery action.

@@ -34,6 +34,7 @@ Attest the host harness and its serving family as two separate tokens:
 ```bash
 if [ "${CLAUDECODE:-}" = "1" ]; then XHOST_HARNESS=claude; XHOST_FAMILY=claude;
 elif [ -n "${CODEX_SANDBOX:-}${CODEX_SANDBOX_NETWORK_DISABLED:-}${CODEX_SESSION_ID:-}${CODEX_THREAD_ID:-}${CODEX_CI:-}" ]; then XHOST_HARNESS=codex; XHOST_FAMILY=codex;
+elif [ "${GROK_AGENT:-}" = "1" ] || [ -n "${GROK_SESSION_ID:-}" ]; then XHOST_HARNESS=grok; XHOST_FAMILY=grok;
 elif [ -n "${CURSOR_AGENT:-}${CURSOR_CONVERSATION_ID:-}" ]; then XHOST_HARNESS=cursor; XHOST_FAMILY=unknown;
 else XHOST_HARNESS=unknown; XHOST_FAMILY=unknown; fi
 ```
@@ -41,14 +42,22 @@ else XHOST_HARNESS=unknown; XHOST_FAMILY=unknown; fi
 Both tokens come from the same peer-key vocabulary as the targets above, never
 from a provider's corporate name: `<host-serving-family>` (`XHOST_FAMILY`) is
 `codex`, `claude`, `grok`, `composer`, or `unknown`. `<host-harness>`
-(`XHOST_HARNESS`) is `codex`, `claude`, `grok`, `cursor`, or `unknown`. Claude
-Code maps to harness/family `claude`; Codex maps to `codex`. Cursor maps to
-harness `cursor` and family `unknown` unless an observable serving-family
-attestation lets you set `XHOST_FAMILY` to `codex`, `claude`, `grok`, or
-`composer`. Never infer serving family from the Cursor brand. Section 4 passes
-`XHOST_FAMILY` as the worker's first argument and `XHOST_HARNESS` as
-`CROSS_MODEL_HOST_HARNESS`; a provider name such as `anthropic`, `openai`, or
-`xai` in either slot fail-closes the job with no artifact.
+(`XHOST_HARNESS`) is `codex`, `claude`, `grok`, `cursor`, or `unknown`. The
+snippet is evidence, not the verdict: it resolves the harnesses whose
+environment markers it already names, and where it yields `unknown` on a harness
+you can identify from your own runtime, attest what you know instead. A harness
+the snippet does not name needs no new branch here.
+
+Cursor is the one identity self-knowledge cannot complete, because the harness
+does not determine the serving model: it keeps harness `cursor` and family
+`unknown` unless an observable serving-family attestation lets you set
+`XHOST_FAMILY` to `codex`, `claude`, `grok`, or `composer`.
+Never infer serving family from the Cursor brand.
+
+Section 4 passes `XHOST_FAMILY` as the worker's first argument and
+`XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; a provider name such as
+`anthropic`, `openai`, or `xai` in either slot fail-closes the job with no
+artifact.
 
 `Cursor` and `Composer` are distinct targets:
 
@@ -58,8 +67,8 @@ attestation lets you set `XHOST_FAMILY` to `codex`, `claude`, `grok`, or
   `independence_verified: false`.
 - `composer` requests the current compatible Composer model through
   `cursor-agent`.
-- `grok` prefers the native Grok CLI and may use a Grok model through Cursor
-  only when that intermediary is separately allowed and sanctioned.
+- `grok` prefers the native Grok CLI; Grok through Cursor is a different route
+  and recipient. Section 3 binds which token.
 
 Apply exactly one participation branch:
 
@@ -111,7 +120,7 @@ Normalize the allowed read scope once as:
 Pass that identical representation to every peer prompt and route adapter. The
 default is the repository root. A narrower user- or host-supplied scope is
 binding and is never broadened. Peers launched on the same host inspect existing
-subject files and supporting evidence directly from this shared working copy;
+subject files and supporting evidence directly from this shared workspace;
 point them to those files instead of copying their contents into the payload.
 Pass material inline only when it exists solely in the conversation or is
 otherwise unavailable in the workspace.
@@ -124,8 +133,8 @@ search and read within the declared scope but may not mutate the project or
 intentionally inspect outside it.
 
 Before initial dispatch, capture one **repository-scope identity**: the current
-Jujutsu change and commit IDs plus a digest of working-copy content inside the
-normalized scope. Include it in every peer payload. Revalidate it before every reconcile
+Jujutsu change and commit IDs plus a digest of its content inside the normalized
+scope. Include it in every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
 voices into the current project: disclose the change and either restart all
 voices on the new identity or return an incomplete panel result.
@@ -166,6 +175,8 @@ fail-closes on anything else (including route-shaped guesses like `codex-cli`):
 | `cursor` | `cursor` |
 | `composer` | `composer` |
 
+The host harness does not choose the Grok route. Target `grok` binds `grok-cli` when that CLI is installed. Bind `grok-cursor` only when the user asked for Grok through Cursor, or when the grok CLI is absent and Cursor is a sanctioned recipient.
+
 Binary presence proves only that a route is a candidate. Pre-dispatch capability
 evidence may refine the fixed route only when the current host context makes that
 evidence authoritative. Do not preflight authentication there: the
@@ -185,7 +196,7 @@ within these rules is reported, never silently replaced or dropped.
 The pre-dispatch update should say who will inspect the subject and that the
 review is read-only. Do not recite scope mechanics, promise that repository
 secrets are inaccessible, or describe probe results, CLI versions, model tiers,
-change IDs, repository identity, route health, job lifecycle, or scratch
+change or commit IDs, repository identity, route health, job lifecycle, or scratch
 paths. Mention a cooperative scope restriction only when it materially changes
 the user's choice. Refer to the codebase as "this project" or "the repository"
 unless the user supplied a recognizable name.
@@ -196,7 +207,7 @@ Prepare one complete canonical payload containing the framed question, subject
 shape, normalized read scope, repository-scope identity, mode, paths to subject
 material already in the workspace, and required conversational material that is
 not available there. Let peers inspect and ground against the shared working
-copy. Do not duplicate readable files or add a host-curated architecture summary
+tree. Do not duplicate readable files or add a host-curated architecture summary
 merely to brief the peer.
 
 For an initial `independent` round, exclude ce-pov's position and every other
@@ -231,9 +242,9 @@ partial-panel degradation rule.
 Use `scripts/cross-model-pov.sh` from this skill's directory to run one resolved
 fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Fill in the start command below rather than reconstructing the worker's
-arguments from its usage header. Pass the actual repository root separately from
+arguments from its usage header. Pass the actual workspace root separately from
 any narrower read root, and pre-create the round output directory as private
-scratch under `<workspace-root>/.tmp/pov/`. For named peers, start one job per exact target;
+scratch beneath the workspace's `.tmp/local/rocketclaw/ce-pov/` namespace. For named peers, start one job per exact target;
 for a selected panel, start one job per selected peer. Start all jobs before
 waiting.
 
@@ -243,8 +254,8 @@ runner window already sits outside the worker's cap and reaps nothing healthy.
 
 **Raising `CROSS_MODEL_HARD_SECS` widens the runner window automatically.** The
 runner derives its supervisor hard cap from the ambient knob
-(`max(1230, knob + 30)`). Do not set a numeric `POV_PEER_HARD_SECS` here — and
-clear any ambient one on the start prefix (`POV_PEER_HARD_SECS=`) so a stale
+(`max(1230, knob + 30)`). Do not set a numeric `ROCKETCLAW_PEER_HARD_SECS` here — and
+clear any ambient one on the start prefix (`ROCKETCLAW_PEER_HARD_SECS=`) so a stale
 export cannot undercut the derivation. Do not re-export a *resolved*
 `CROSS_MODEL_HARD_SECS` onto the worker's command line: that converts a
 fallback into an override and strips the worker of its route-aware default
@@ -302,7 +313,7 @@ tool's CWD is the user's project on every host, not the skill directory.
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-POV_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_REPO_ROOT="<repo-root>" CROSS_MODEL_READ_ROOT="<read-root>" CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
+ROCKETCLAW_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_WORKSPACE_ROOT="<workspace-root>" CROSS_MODEL_READ_ROOT="<read-root>" CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
 ```
 
 - `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or
@@ -314,8 +325,8 @@ POV_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill 
 - `<payload-path>` is this round's mode-600 payload and `<run-dir>` the
   pre-created round output directory; `<scratch-dir>` is the Phase 1 scratch
   root, and `<run-id>` its basename.
-- `<read-root>` is Section 2's normalized workspace root and `<repo-root>` the
-  actual repository root containing it.
+- `<read-root>` is Section 2's normalized read root and `<workspace-root>` the
+  actual Jujutsu workspace root containing it.
 - Add `CROSS_MODEL_INCLUDE_PATHS` / `CROSS_MODEL_EXCLUDE_PATHS` only when
   Section 2 resolved patterns, and `CROSS_MODEL_MODEL_OVERRIDE_TARGET` /
   `CROSS_MODEL_MODEL_OVERRIDE` only for a Section 3 same-family substitution.
@@ -499,6 +510,6 @@ and project context must not outlive their use.
 ## Participation, announcement, and disclosure (relocated from the body)
 
 A summons is an **affirmative** request to consult or reconcile peers, detected by reasoning over the invocation context — the user's wording or a calling skill's args. Wording that declines consultation ("solo POV, do not cross-check") or merely recounts a past cross-check names the same terms without asking for one, and is not a summons: peers are not dispatched and no project context leaves the run. For an affirmative request, a caller's paraphrase in one channel never cancels a summons still present in another; only a summons erased from every readable channel upstream is unrecoverable here.
-Invoking a named peer, an explicit cross-check, or `oracle` authorizes the panel protocol's normal read-only consultation against this project. Announce the selected peers before dispatch; ask only when a retry adds an unexpected recipient or intermediary, or an active instruction requires separate approval. Peers inspect the shared working tree directly and cannot edit it. The panel protocol preserves an unbiased initial round, bounds evidence-based reconciliation while honoring user-supplied pass limits, and attributes only receipt-supported independence.
+Invoking a named peer, an explicit cross-check, or `oracle` authorizes the panel protocol's normal read-only consultation against this project. Announce the selected peers before dispatch; ask only when a retry adds an unexpected recipient or intermediary, or an active instruction requires separate approval. Peers inspect the shared workspace directly and cannot edit it. The panel protocol preserves an unbiased initial round, bounds evidence-based reconciliation while honoring user-supplied pass limits, and reports only receipt-supported independence.
 Any POV delivered after a summons states which peers ran, or that none did and the observed reason; if no panel runs after a summons, keep the verdict content unchanged but add that panel-status line rather than shipping a bare solo verdict. A POV with no summons keeps the solo result unchanged with no panel note.
 Keep the host's own frozen position out of an independent peer's initial context; expose it only when the requested task is to critique that position or when a later reconciliation round compares already-formed views.

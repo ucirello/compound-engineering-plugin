@@ -24,9 +24,9 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 ### Check the opt-out
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary project YAML keys from the two workspace files.**
+**Resolve ordinary project YAML keys from workspace-local files.**
 
-- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then its `.tmp/local/.rocketclaw/config.local.yaml` fallback, then `.rocketclaw/config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution. Use the fallback only when the preferred local file cannot be kept outside the working-copy change.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -64,14 +64,16 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the workspace root, then add `promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+Resolve the workspace root with `jj workspace root`, then add `promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
 
 - **File already exists:** ensure an **uncommented** `promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it (and its `.rocketclaw/` directory) with the key, AND make sure the machine-local config won't be tracked. Resolve the backing repository with `jj git root`, inspect its `info/exclude`, and append `.rocketclaw/*.local.yaml` when that rule is absent. This is correct for colocated and non-colocated Jujutsu workspaces; do **not** hardcode a workspace-relative backing-repository path. Use the local exclude, not a tracked ignore file: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared ignore entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally track machine-local opt-out state.
+- **File absent:** create it and its `.rocketclaw/` directory with the key. Run `jj status 'root-file:.rocketclaw/config.local.yaml'`; no reported file means an ignore rule already keeps it outside the working-copy change.
+- **Preferred file is reported:** resolve the backing repository with `jj git root`, append `.rocketclaw/*.local.yaml` to its `info/exclude`, then run `jj file untrack 'root-file:.rocketclaw/config.local.yaml'`. This is the Jujutsu-native local-exclude path for both colocated and non-colocated Git-backed workspaces. Do not hardcode `.git` under the workspace root or change a tracked ignore file for this drafts-only action.
+- **No writable backing-repository exclude:** remove only the newly created preferred file and use `<root>/.tmp/local/.rocketclaw/config.local.yaml`. Verify with `jj status 'root-file:.tmp/local/.rocketclaw/config.local.yaml'` that the fallback remains outside the working-copy change; otherwise remove it and continue without persistence. Never use OS or user-global temporary storage. `ce-setup` remains the route for adding a shared ignore rule for teammates.
 
 If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of version control). Want it back later? Just ask, or remove the `promote_spiral_optout` key." Keep it to a single line; don't belabor it.
+After recording, confirm the selected workspace-local path and explain that removing `promote_spiral_optout` restores the offer. Do not use a fixed response template.
 
 ## Generate
 

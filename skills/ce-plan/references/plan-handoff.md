@@ -1,6 +1,6 @@
 # Plan Handoff
 
-This file contains post-plan-writing instructions: document review, post-generation options, and issue creation. Load it after the plan file has been written and the confidence check (5.3.1-5.3.7) is complete.
+This file contains post-plan-writing instructions for the Durable path: document review, post-generation options, and issue creation. Load it after the plan file has been written and the confidence check (5.3.1-5.3.7) is complete. Direct and Chat brief results never reach it.
 
 ## 5.3.8 Document Review
 
@@ -82,18 +82,13 @@ Before acting on any selection received after a user turn, reload this file. The
 - **Start `ce-work`** -> Classify the artifact first. If it is not `artifact_readiness: implementation-ready` plus `execution: code`, do not execute it; route requirements-only artifacts back to `ce-plan` enrichment and non-code artifacts to their own workflow. If it is executable, invoke the `ce-work` skill under the cross-skill invocation rule, passing the plan path as the skill argument; `ce-work` then owns engine selection (inline/subagent vs goal-mode vs dynamic-workflow) and the implementation tail. If `ce-work` cannot be invoked, print the existing `ce-work` fallback prompt for the user to run; in that prompt, tell the executor to read Goal Capsule, Verification Contract, Definition of Done, and active U-IDs (scanning headings to find them) rather than the whole document first. Do not merely tell the user to type an invocation when the host can invoke it directly.
 - **Run it as a `/goal`** -> Build a **thin** implementation objective from the plan (generated here at handoff, never written into the doc). It points to the plan's sections; do **not** copy the plan's resolved decisions, exact verification commands, or requirements into the prompt. **Deletion test:** if your draft names a specific command, file path, U-ID dependency relationship, stop condition, or DoD item, cut it — the objective should read identically for any plan except the substituted path. Don't hardcode an open-a-PR or do-not-open-a-PR directive; carry the PR-precedence line instead. The objective: *implement `<plan-path>` to its Definition of Done; the plan is the authority — scan headings, don't read it whole; read the Goal Capsule, then work the units in dependency order, reading each unit plus its cited R/F/AE/KTD and any Product Contract Key Decision whose exact `Governs R…` links name that unit's cited R-IDs; run the plan's Verification Contract gates and satisfy each unit's test scenarios; track progress outside the plan file; follow the plan's PR/landing strategy if it defines one, with the repo's conventions and the user's preferences overriding it; surface a genuine blocker (something that changes scope or contradicts the plan) instead of guessing, using judgment on details the plan leaves open.* Then, by host capability — either way `ce-work` does **not** also run (that would double-execute and split tail ownership):
   - **If `create_goal` is in the available tool list (Codex):** call `create_goal` with that objective. The current session works toward it; do **not** call `update_goal` (the goal session marks its own completion). No copy-paste.
-  - **If only a user-typed `/goal` exists (Claude Code):** print that objective as a single copyable `/goal …` block and tell the user to paste it at the start of a message (a skill cannot issue `/goal` itself there). **Best-effort clipboard copy:** also put the exact prompt on the OS clipboard so the user only has to paste. **Never interpolate the prompt into the command** — the plan path and the prompt's own backticks/`$` would be evaluated or mangled by the shell. Hand it off as data: write it to a local `.tmp/rocketclaw/` file via a **quoted-sentinel** here-doc (the quotes stop all expansion), then pipe that file to the first available tool:
+  - **If only a user-typed `/goal` exists (Claude Code):** print that objective as a single copyable `/goal …` block and tell the user to paste it at the start of a message (a skill cannot issue `/goal` itself there). **Best-effort clipboard copy:** also put the exact prompt on the OS clipboard so the user only has to paste. **Never interpolate the prompt into the command** — the plan path and the prompt's own backticks/`$` would be evaluated or mangled by the shell. Hand it off as data: write it to a temp file via a **quoted-sentinel** here-doc (the quotes stop all expansion), then pipe that file to the first available tool:
 
     ```bash
-    WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
-    LOCAL_TMP="$WORKSPACE_ROOT/.tmp";
-    SCRATCH_ROOT="$LOCAL_TMP/rocketclaw";
-    umask 077; [ ! -L "$LOCAL_TMP" ] || exit 1; [ -d "$LOCAL_TMP" ] || mkdir "$LOCAL_TMP" || exit 1;
-    [ ! -L "$SCRATCH_ROOT" ] || exit 1; [ -d "$SCRATCH_ROOT" ] || mkdir "$SCRATCH_ROOT" || exit 1;
-    i=0; while :; do i=$((i + 1)); PROMPT_FILE="$SCRATCH_ROOT/goal-prompt-$$-$i"; (set -o noclobber; : > "$PROMPT_FILE") 2>/dev/null && break; done;
-    cat >> "$PROMPT_FILE" <<'__GOAL_PROMPT_END__'
+    WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)"; TMP_BASE="$WORKSPACE_ROOT/.tmp"; umask 077; [ ! -L "$TMP_BASE" ] || exit 1; mkdir -p "$TMP_BASE" || exit 1; PROMPT_DIR="$TMP_BASE/rocketclaw-goal-prompt-$(date +%Y%m%dT%H%M%S)-$$-${RANDOM:-0}"; mkdir -m 700 "$PROMPT_DIR" || exit 1; PROMPT_FILE="$PROMPT_DIR/prompt.txt"; (set -C; : > "$PROMPT_FILE") || exit 1; chmod 600 "$PROMPT_FILE" 2>/dev/null || true
+    cat >> "$PROMPT_FILE" <<'__ROCKETCLAW_GOAL_PROMPT_END__'
     <the exact /goal prompt goes here, verbatim>
-    __GOAL_PROMPT_END__
+    __ROCKETCLAW_GOAL_PROMPT_END__
     if   command -v pbcopy   >/dev/null 2>&1; then pbcopy   < "$PROMPT_FILE"                    # macOS
     elif command -v wl-copy  >/dev/null 2>&1; then wl-copy  < "$PROMPT_FILE"                    # Linux/Wayland
     elif command -v xclip    >/dev/null 2>&1; then xclip -selection clipboard < "$PROMPT_FILE"  # Linux/X11
@@ -103,6 +98,7 @@ Before acting on any selection received after a user turn, reload this file. The
     fi
     copy_status=$?
     rm -f "$PROMPT_FILE"
+    rmdir "$PROMPT_DIR" 2>/dev/null || true
     exit "$copy_status"
     ```
 
@@ -123,7 +119,7 @@ When the user selects "Create Issue":
 1. **Identify the project's issue tracker from the active instructions and conventions already in your context** — the issue / project-management tool the project uses (e.g., GitHub Issues, Linear, Jira). Don't open or name specific instruction files to do this; the project's instructions are already available to you. Look for an explicit `project_tracker:` declaration (`github`, `linear`, …) or any documented tracker convention. Only if your context doesn't already carry the project's instructions (e.g., you're a fresh subagent) or they're silent, consult supplementary signals: `README.md`, `CONTRIBUTING.md`, PR templates under `.github/`, or visible tracker URLs.
 
 2. **Create the issue through whatever interface that tracker actually exposes in this environment** — a platform connector/MCP tool, documented API/GraphQL credentials, or a documented CLI. First actively discover what's available: use the platform's tool-discovery primitive (e.g., `ToolSearch` in Claude Code) to look for a tracker connector or MCP tool before assuming none exists — lazy-loaded connectors and credentials stored outside the shell won't surface in a passive check. Do not assume a tracker means a particular CLI, and do not treat a missing binary, env var, or unloaded MCP server as proof the tracker is unavailable — those are false negatives when access comes through a connector or a raw API with credentials stored outside the shell. When using a direct API, never print secret values; read the plan body from disk and send it as the issue's markdown/description per the API contract. Worked examples for the common cases:
-   - **GitHub** — `gh issue create --title "<repository-aligned issue title>" --body-file <plan_path>`
+   - **GitHub** — `gh issue create --title "<type>: <title>" --body-file <plan_path>`
    - **Linear** (no guaranteed first-party CLI) — prefer, in order: a Linear connector or MCP tool that can create issues → documented direct API/GraphQL credentials and endpoint → a documented local Linear CLI, only when the project or user explicitly states it is installed and authenticated.
 
 3. If no tracker is configured, ask the user which tracker they use with the platform's blocking question tool: `AskUserQuestion` in Claude Code (call `ToolSearch` with `select:AskUserQuestion` first if its schema isn't loaded), `request_user_input` in Codex, `ask_question` in Antigravity CLI (`agy`), `ask_user` in Pi (requires the `pi-ask-user` extension). Fall back to asking on the host's user-visible chat surface only when no blocking tool exists or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip. Offer three explicit options — `GitHub`, `Linear`, `Skip` — and let the user name a different tracker (Jira, etc.) through the tool's built-in free-form / "Other" input: `AskUserQuestion` always provides it, and `request_user_input` / `ask_user` supply their own. Don't add an explicit fourth `Other` option — that's redundant where the tool already offers free-form and can exceed the option cap on tools that accept only 2–3 explicit choices (e.g., Codex `request_user_input`). When the tool exposes no free-form path, capture the other-tracker name via the chat fallback. Then:

@@ -17,7 +17,7 @@ SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ideate";
 if [ -L "$WORKSPACE_ROOT/.tmp" ] || [ -L "$WORKSPACE_ROOT/.tmp/rocketclaw" ] || [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch path symlink under $WORKSPACE_ROOT/.tmp" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 SCRATCH_DIR="$SCRATCH_ROOT/<run-id>";
-(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
+(umask 077; mkdir "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
 

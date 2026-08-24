@@ -11,7 +11,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 ```markdown
 ## Code Review Results
 
-**Scope:** Jujutsu fork point with trunk -> reviewed revision (14 files, 342 lines)
+**Scope:** fork point with `trunk()` -> working-copy commit (14 files, 342 lines)
 **Intent:** Add order export endpoint with CSV and JSON format support
 **Mode:** markdown + explicit local apply
 
@@ -27,7 +27,7 @@ This is the **canonical skeleton** for *which sections appear and in what order*
 | 7 | `orders_controller.rb:88` (+test) | Tightened export file perms `0644 -> 0600` (security-posture — verify in diff) | security |
 
 Validation: export tests 11 -> 13; suite 214 pass, lint clean.
-Revision described using the workspace's locally observed convention because `@` was empty before apply.
+Change status: described and advanced because `@` was empty before review.
 
 ### Triage Groups
 
@@ -78,7 +78,7 @@ Revision described using the workspace's locally observed convention because `@`
 |---|------|-------|----------|
 | 1 | `orders_controller.rb:12` | Broad rescue masking failed permission check | correctness |
 
-Detail lines for Pre-existing and history-dependent P0/P1 findings may include the same concise Jujutsu change-ID provenance carried by artifact evidence when history was load-bearing.
+Detail lines for Pre-existing and history-dependent P0/P1 findings may include the same short change-id provenance string the artifact `evidence` carries when that history was load-bearing. Do not dump full-file annotations into the report.
 
 ### Learnings & Past Solutions
 
@@ -145,7 +145,8 @@ This fails because of the **box-drawing `────` separators between items*
 - **Header includes** scope, intent, and reviewer team with per-conditional justifications
 - **Mode line** -- include `markdown report-only`, `markdown local-apply`, or `agent report-only`
 - **Triage Groups section (when groups exist)** -- pipe table `| Group | Findings | Context | Preferred Resolution | Why |` rendered after Applied and before the severity tables. The `Findings` cell lists stable `#`s (e.g. `#2, #3`); every referenced `#` must appear in a severity table below. Groups are a triage lens over the findings -- they never replace the severity tables, merge findings, or renumber them. Omit when `grouping:off` is active or no groups survived Stage 5b/5c pruning.
-- **Applied section (explicit local apply only)** -- list fixes, validation, and revision-description status. Derive description conventions from the project's active instructions and description syntax visible in `jj log`, and resolve editing syntax from local `jj help`; those runtime conventions win. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content, and use neutral revision and description placeholders. Describe an isolated revision only when `@` was empty before apply; otherwise leave fixes in the existing working-copy revision.
+- **Applied section (explicit local apply only)** -- when Stage 5c was authorized and applied fixes, list them first, before the severity tables, as `# | File | Fix | Reviewer` followed by a one-line validation outcome and the **change status** — described and advanced with `jj commit` when `@` was empty before review, or retained in the user's existing working-copy change when it was non-empty. A fix spanning multiple files is **one row with one `#`** (e.g. `controller.rb:88 (+test)`) -- never duplicate the number across rows. Flag green-but-unverifiable edits (auth/contract/concurrency) inline in the `Fix` cell. Applied findings keep their stable `#` and appear only here, not in the severity tables. Omit when local apply was not authorized or nothing was applied.
+  Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Compose the change description from the project's active instructions and conventions already in your context plus current descriptions visible in `jj log`. Active instructions take precedence over repository history, and the sentence's `git log` wording is non-operational. Use the Go guidance only for message quality, clarity, and structure, never as a source of repository format. Do not impose or supply any fixed prefix, type, scope, subject, body, layout, template, or example.
 - **Actionable Findings section** -- include when the actionable queue is non-empty (findings for the caller to handle)
 - **Pre-existing section** -- separate table, no confidence column (these are informational)
 - **Learnings & Past Solutions section** -- results from the `learnings-researcher` local prompt asset, with links to <root>/solutions/ files

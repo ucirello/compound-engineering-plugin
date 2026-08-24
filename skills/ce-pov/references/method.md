@@ -71,8 +71,6 @@ Choose an approach and recommend it when verified project facts and the material
 
 `ce-pov` writes no document, so the chat block *is* the whole deliverable — make it a tight POV, not a transcript of the investigation.
 
-Preserve human and research-source citations and the panel disclosure required by `references/cross-model-panel.md`. Do not add RocketClaw branding, generated-by text, badges, sign-offs, or any other creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution.
-
 Lead with the grade for an external-adoption question and with the bottom line or position for the other shapes. Keep each schema field to one line or a few bullets. The `Verified facts` field **cites** from the dossiers (`file:line`, issue/PR number, url) rather than reproducing them, and the dossiers themselves are never printed to chat.
 
 **Name what identifiers refer to.** When the POV references an identifier the subject defines rather than the reader — a supplied option label like "Option A", a document requirement or unit ID like `R8` or `U3` — pair it with a short distinguishing gloss at first mention (`R8 (elevated-call read access)`, not bare `R8`), so the block stands alone for someone who never saw the option list or does not have the document open. Keep the identifier; keep the gloss to a few words. Resolve the gloss from the material already in context — the supplied list, or the document `ce-pov` read. This governs the whole delivered block, including any peer position folded in during reconciliation: a peer that wrote a bare label does not license relaying one.

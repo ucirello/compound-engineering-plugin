@@ -12,7 +12,7 @@ Confirm the resulting change is mutable and is not `trunk()`. Report and stop wh
 
 The commands below execute scripts bundled with this skill. For every self-contained shell call, set `SKILL_DIR` to the absolute directory containing the loaded `ce-polish` `SKILL.md`; shell state does not carry between calls.
 
-First inspect the workspace-root launch configuration:
+First inspect the workspace-root launch configuration. The reader prefers `.rocketclaw/launch.json` and falls back read-only to `.claude/launch.json` when the preferred file is absent:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
@@ -44,7 +44,7 @@ SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 bash "$SKILL_DIR/scripts/resolve-port.sh" "<project-root>" --type <base-type>
 ```
 
-Startup may proceed only when the tuple has a usable command, working directory, environment, and numeric port. If a classifier, recipe, or resolver fails operationally or leaves its required fact unknown, report that blocker; do not substitute a plausible value. After supported auto-detection supplies a missing fact, offer once to save the completed tuple as `.rocketclaw/launch.json`; write it only when the user accepts, after reading `references/launch-json-schema.md` and any recipe used.
+Startup may proceed only when the tuple has a usable command, working directory, environment, and numeric port. If a classifier, recipe, or resolver fails operationally or leaves its required fact unknown, report that blocker; do not substitute a plausible value. After supported auto-detection supplies a missing fact, offer once to save the completed tuple as `.rocketclaw/launch.json`; write it only when the user accepts, after reading `references/launch-json-schema.md` and any recipe used. Never write or update the fallback `.claude/launch.json`.
 
 ## Start and hand off
 

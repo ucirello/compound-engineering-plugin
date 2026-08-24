@@ -1,6 +1,6 @@
 # Fix: workspace safety, test-first, and what a failed fix means
 
-Read this before editing any file in Phase 3. The workspace check and pre-fix scope record belong to the body; do not repeat them or re-ask about a file whose existing edits were already confirmed.
+Read this before editing any file in Phase 3. The working-copy check and pre-fix scope record belong to the body; do not repeat them or re-ask about a file whose existing edits were already confirmed.
 
 *One change at a time. If you are changing multiple things, stop.*
 

@@ -212,7 +212,7 @@ After the config is written and shown to the user, make a scheduling offer befor
 
 **Handling the answer:**
 
-- **Yes (daily or weekly)** -> "I'll hand this to the `schedule` skill. Confirm the time/day and it'll set up the recurring job." Do not schedule inline - hand off to the `schedule` skill explicitly, which is the single source of truth for recurring tasks. Use the current harness's recurring-task capability.
+- **Yes (daily or weekly)** -> tell the user that the confirmed time or day will be handed to the `schedule` skill to set up the recurring job. Do not schedule inline; invoke the `schedule` skill through the active harness's callable skill mechanism because it is the single source of truth for recurring tasks.
 - **Not now** -> capture `schedule: manual` in the config. No nag.
 - **Later** -> capture `schedule: ask-again-after-3-runs` in the config. The Phase 3 rule in `SKILL.md` re-surfaces the offer after 3 manual runs.
 
@@ -224,9 +224,9 @@ Skipping this entirely is fine - the skill does not require a schedule to functi
 
 ## Config File Shape
 
-After the interview completes, merge a `pulse_*` block into `<repo-root>/.rocketclaw/config.local.yaml`. Resolve the repo root with `jj root`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
+After the interview completes, merge a `pulse_*` block into `<workspace-root>/.rocketclaw/config.local.yaml`. Resolve the workspace root with `jj workspace root`; if that fails, use the current project directory as the local root. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
 
-If the file does not yet exist, create the directory and file. If `.rocketclaw/config.local.yaml` is not already covered by the repo's ignore configuration, offer to add the entry before writing.
+Before writing, check whether the root `.gitignore` contains `.rocketclaw/*.local.yaml`. If not, offer to append that exact rule without changing unrelated content. If the user declines, stop rather than create unignored machine-local config. Use `jj file list --ignore-working-copy -r @ 'root-file:.rocketclaw/config.local.yaml'` to determine whether Jujutsu already tracks an existing config. An ignore rule does not untrack it; offer `jj file untrack .rocketclaw/config.local.yaml` separately and stop if the user declines. Create the `.rocketclaw/` directory and file when absent, or merge the pulse keys when it exists.
 
 The pulse block uses skill-prefixed flat keys so it can share the config file without owning unrelated settings:
 

@@ -1,32 +1,41 @@
-# Workspace context, bookmark, and PR state
+# Repository context, bookmark, and PR state
 
-Gather this before Step 1 and re-verify before each push or `gh pr create`. Run each command as its own argv-style shell call and interpret non-zero status as state.
+Gather this before Step 1, and re-verify bookmark, remote, and PR state immediately before each consequential step: the push in Step 3 and `gh pr create` in Step 5.
 
-| Command | Purpose | Non-zero / empty means |
+Run every command below as its own shell tool call. Do not join probes with shell operators, substitutions, pipes, or redirects. Read each exit status directly; a non-zero exit is a state to interpret, not a failure to suppress.
+
+| Command | Purpose | Non-zero exit / empty output means |
 | --- | --- | --- |
-| `jj root` | Workspace root | Not a JJ workspace; stop |
-| `jj status` | Working-copy state | Not a JJ workspace; stop |
-| `jj diff` | Current changes | No file changes |
-| `jj bookmark list -r @ -T 'name ++ "\n"'` | Bookmarks on `@` | No attached bookmark |
-| `jj bookmark list -r 'heads(::@ & bookmarks())' -T 'name ++ "\n"'` | Nearest ancestor bookmarks | No unique ancestor bookmark |
-| `jj log -r ::@ -n 10` | Local description style | No meaningful history |
-| `jj git remote list` | Configured remote names and URLs | No configured remote |
-| `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | Remote default bookmark | Lookup unavailable; inspect remote bookmarks |
-| `gh pr list --head <bookmark> --state open --json number,url,title,body,state,isDraft,headRefName,headRepositoryOwner` | Open PR | Exit 0 with `[]` means none; non-zero means unknown |
+| `jj workspace root` | Workspace root | Not a Jujutsu workspace; report and stop for VCS-changing modes |
+| `jj status` | Working-copy change, parent, conflicts, and bookmark conflicts | Outside a workspace |
+| `jj diff` | Current working-copy diff | Empty output means no content in `@` |
+| `jj log -r 'ancestors(@, 10)' --no-graph` | Recent description style and ancestry | No usable history |
+| `jj log -r 'heads(::@ & bookmarks())' --no-graph -T 'json(local_bookmarks) ++ "\n"'` | Closest local bookmarks behind `@` | No local bookmark identifies the current line |
+| `jj log -r 'heads(::@ & remote_bookmarks())' --no-graph -T 'json(remote_bookmarks) ++ "\n"'` | Closest remote bookmarks behind `@` | No remote bookmark identifies the current line |
+| `jj git remote list` | Git remotes available to Jujutsu | No Git remote is configured |
+| `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | GitHub default branch name (`<base>`) | Provider/auth/connectivity unavailable; resolve from tracked remote bookmarks or ask |
+| `gh pr list --head <bookmark> --state open --json number,url,title,body,state,isDraft,headRefName,headRepositoryOwner` | Open PR for the feature bookmark | Exit 0 with `[]` = no open PR. Non-zero = unknown; re-check before creating |
 
-Pass the uniquely selected bookmark name only. With no bookmark, skip the PR query because an empty `--head` lists unrelated PRs. On a fork, target the base repository with `-R` rather than passing `<owner>:<bookmark>`, which `gh pr list --head` does not support.
+Run the PR query only after `<bookmark>` is known, and pass the bookmark name only. An unnamed working-copy change skips the PR query until Step 3 creates its feature bookmark. On a fork, target the base repository with `-R <base-owner>/<repo>` because `gh pr list --head` does not accept `<owner>:<bookmark>`.
 
-## Step 1 Detail
+Everything gathered here is a snapshot. Immediately before an action they guard, separately re-run `jj bookmark list <bookmark>` for the local target, `jj log -r 'remote_bookmarks(exact:"<bookmark>")' --no-graph -T 'json(remote_bookmarks) ++ "\n"'` for remote targets, `jj git remote list`, and the existing-PR query.
 
-Use the default bookmark from `gh repo view`. If unavailable, inspect `jj bookmark list --all-remotes` and use only a uniquely identifiable default. Resolve the remote whose URL owns the base repository; stop if no unique configured remote matches.
+## Step 1 detail: resolve bookmark and PR state
 
-- **No attached bookmark** - if the unique nearest ancestor is the default, derive a feature bookmark and let Step 3 root it safely. Otherwise create the derived bookmark at `@`. Stop on ambiguous ancestry.
-- **Default bookmark with work** - derive a feature bookmark and let Step 3 root it safely.
-- **Default bookmark without work** - report no feature work and stop.
-- **Feature bookmark** - continue.
+Treat the provider's default branch as the default bookmark name. Resolve its tracked remote targets with `jj log -r 'tracked_remote_bookmarks(exact:"<base>")' --no-graph -T 'json(remote_bookmarks.filter(|b| b.tracked())) ++ "\n"'`; accept the default only when exactly one matching remote bookmark identifies `<base>@<remote>`. If provider resolution fails, use a uniquely identifiable tracked remote bookmark that the project's active conventions designate as default; otherwise ask rather than guessing.
 
-For a non-empty PR result, match `headRepositoryOwner` and `headRefName` to the remote and bookmark being pushed. Never select index 0 blindly. Stop when ownership cannot disambiguate matches. Preserve the selected URL and body for Steps 4-5.
+Bookmark routing:
 
-## Step 2 Detail
+- **Unnamed work based on the default bookmark**: derive a feature bookmark name from the change and continue. Step 3 creates it at the completed top commit. Do not ask whether to create it because the requested full workflow already authorizes a pushable PR head.
+- **Default bookmark with work**: do not push the default bookmark. Continue through `references/bookmark-creation.md`, then create the feature bookmark in Step 3.
+- **Default bookmark with no work and no unpublished descendants**: report no feature work and stop.
+- **Feature bookmark in the ancestry of `@`**: continue with that bookmark.
+- **Ambiguous or conflicting bookmarks**: stop and ask rather than selecting or moving one.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; it does not prescribe any fixed syntax or example. Derive PR titles independently from project PR conventions and the change outcome.
+Only an exit-0 `[]` from the base-repository PR query means no open PR. With results, match both `headRepositoryOwner` and `headRefName` to the head this workflow can push. If exactly one entry matches, retain its URL and body. If ownership cannot disambiguate multiple matches, stop instead of acting on the wrong PR.
+
+## Step 2 detail: conventions
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+The project's active runtime conventions and recent repository history win over generic guidance for commit descriptions and PR titles. Apply only compatible Go quality guidance, and do not impose a fixed message prefix, type, scope, or template.

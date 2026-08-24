@@ -7,11 +7,13 @@ This reference owns evidence collection after the app launches.
 Derive the key screens and flows from the user's request and the changed iOS surface. For each one:
 
 - Navigate through the running app and record what was exercised.
-- Capture a descriptively named, collision-safe screenshot under `<workspace-root>/.tmp` for the resulting state.
+- Capture a descriptively named screenshot of the resulting state.
 - Check that expected content and controls render without visible error or broken layout.
 - Read the captured simulator logs for crashes, exceptions, error-level messages, and failed network requests attributable to the flow.
 
 A simulated action reporting success is not proof of the expected state change; verify the visible result or logs.
+
+Store screenshots, exported logs, and other temporary evidence in a private per-run directory under `<workspace-root>/.tmp/ce-test-xcode/`, where `<workspace-root>` comes from `jj workspace root`. If workspace-root resolution fails, use `<physical-current-directory>/.tmp/ce-test-xcode/`. Capture the directory's absolute path and pass it to evidence-producing tools. Do not use OS temporary storage, and do not modify ignore rules or unrelated working-copy content.
 
 ### SwiftUI inline Text links
 

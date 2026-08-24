@@ -1,6 +1,6 @@
 # `.rocketclaw/launch.json` schema
 
-Polish reads `.rocketclaw/launch.json` at the Jujutsu workspace root to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format.
+Polish prefers `.rocketclaw/launch.json` at the Jujutsu workspace root to resolve the dev-server start command. When that file is absent, it reads the established `.claude/launch.json` at the same root as a read-only fallback. The schema is a subset of VS Code's `launch.json` format.
 
 ## Top-level shape
 
@@ -169,9 +169,6 @@ Polish does not use `type`, `request`, `console`, `stopOnEntry`, or any of the o
 
 ## Cross-IDE notes
 
-`.rocketclaw/launch.json` is the project-local launch contract used by polish because:
-- It preserves the requested command, working directory, environment, and port as one tuple
-- It sits at a clean Jujutsu-workspace-root trust boundary (user-authored, not auto-detected)
-- Users who prefer `.vscode/launch.json` can mirror the two files manually
+`.rocketclaw/launch.json` is polish's preferred project-local launch contract. It preserves the requested command, working directory, environment, and port as one tuple at the Jujutsu workspace root. Polish writes generated configurations only there.
 
-If a cross-IDE standard emerges (e.g., `.workspace/launch.json`), the stub writer and reader can swap paths without touching the rest of the skill.
+The read-only `.claude/launch.json` fallback preserves the established cross-IDE launch configuration understood by Claude Code, Cursor, and VS Code. Both paths use the same schema subset, so an existing compatible configuration can start the server without duplication while RocketClaw-specific saves remain isolated from IDE-managed configuration.

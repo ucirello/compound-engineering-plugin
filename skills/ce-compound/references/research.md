@@ -25,26 +25,25 @@ If no relevant entries are found, proceed to Phase 1 without passing memory cont
 
 ### Phase 1: Research
 
-Launch research subagents. Each writes its full output to a per-run scratch artifact and returns only the artifact path to the orchestrator.
+Launch research subagents. Each writes its full output to a per-run workspace-local temporary artifact and returns only the artifact path to the orchestrator.
 
 **Run ID and run dir (before dispatching any subagent):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-WORKSPACE_ROOT=$(jj root 2>/dev/null || pwd);
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"; TMP_BASE="$WORKSPACE_ROOT/.tmp"; SCRATCH_ROOT="$TMP_BASE/rocketclaw/ce-compound";
+if [ -L "$TMP_BASE" ] || [ -L "$TMP_BASE/rocketclaw" ] || [ -L "$SCRATCH_ROOT" ]; then echo "unsafe temporary path symlink under $TMP_BASE" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+if [ ! -O "$SCRATCH_ROOT" ]; then echo "temporary root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ');
-RUN_DIR="$SCRATCH_ROOT/ce-compound/$RUN_ID";
-(umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
-echo "$RUN_DIR";
+RUN_ID="$(date +%Y%m%dT%H%M%S)-$$-${RANDOM:-0}";
+RUN_DIR="$SCRATCH_ROOT/$RUN_ID";
+(umask 077; mkdir "$RUN_DIR") || exit 1;
+printf '%s\n' "$RUN_DIR";
 ```
 
-**Resolve current vocabulary and conventions before dispatching subagents.** Use active project instructions. If `.context/CONCEPTS.md` exists, pass relevant terms to the Context Analyzer.
+**Resolve current vocabulary and conventions before dispatching subagents.** Use the project's active instructions and conventions already in your context. If `CONCEPTS.md` exists, read its relevant terms and pass them to the Context Analyzer.
 
-**CRITICAL - glob `.context/solutions/` fresh every run.** Current vocabulary does not substitute for live-tree search.
+**CRITICAL — glob `<root>/solutions/` fresh every run.** The current vocabulary and conventions above do not substitute for the live-tree search in step 3.
 
 Pass `{run_id}` and the resolved absolute `{run_dir}` into every Phase 1 subagent prompt. Each subagent **writes its full structured output** to its own file under `{run_dir}/`, **confirms the write succeeded** (the file exists and is non-empty), and then **returns only a one-line confirmation containing the artifact path** — not the prose body inline. Artifact filenames by subagent:
 
@@ -67,12 +66,12 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
    - Extracts conversation history
    - Reads `references/schema.yaml` for field rules and **track classification**
    - Determines the track (bug or knowledge) from the problem_type
-   - Samples `.context/solutions/` before choosing vocabulary and records whether values came from corpus or defaults.
+   - **Samples the corpus before choosing vocabulary.** Reads existing docs under `<root>/solutions/` (frontmatter and directory names) and applies the corpus-first rule in `references/yaml-schema.md` for `component`/`root_cause` and for the directory. Records in `context.json` whether each came from the corpus or the default
    - Identifies problem type, component, and track-appropriate fields:
      - **Bug track**: symptoms, root_cause, resolution_type
      - **Knowledge track**: applies_when (symptoms/root_cause/resolution_type optional)
    - Incorporates auto memory excerpts (if provided by the orchestrator) as supplementary evidence
-   - Reads `references/yaml-schema.md` for fallback category mapping when the corpus has no directory for this area.
+   - Reads `references/yaml-schema.md` for the default category mapping into `<root>/solutions/` (used when the corpus has no directory for this area — see the corpus-sampling bullet above)
    - Suggests a filename using the pattern `[sanitized-problem-slug].md` — no date suffix, even if existing files in the target directory have one; the `date:` frontmatter field is the canonical creation date
    - Writes to `context.json`: YAML frontmatter skeleton (must include `category:` — the corpus directory when one covers this area, else the directory mapped from problem_type), category directory path, suggested filename, and which track applies. Returns only the artifact path.
    - Does not invent enum values, categories, or frontmatter fields from memory; takes the category/directory from the corpus sample first, falling back to the schema and mapping files above, and takes open-vocabulary values from the corpus sample
@@ -84,7 +83,8 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
    - **Writes the full doc-body prose** (all track-appropriate sections below) to `solution.md` and returns only the artifact path. This is the subagent most prone to the issue #956 summary-collapse, so its prose must land on disk rather than only in the inline return.
    - Incorporates auto memory excerpts (if provided by the orchestrator) as supplementary evidence -- conversation history and the verified fix take priority; if memory notes contradict the conversation, note the contradiction as cautionary context
    - **Grounds code-behavior claims in source, not conversation memory.** Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree and cite `file:line` alongside the claim. A claim that cannot be verified against the tree is softened or attributed ("per this session's conclusion…"), never stated as fact
-   - **Writes merge-state claims for time.** Cite PR numbers rather than bare revision IDs, which may be rewritten. A "fixed in X" claim requires reachability from the current tree; otherwise phrase it as pending.
+   - **Writes merge-state claims for time.** Cite PR numbers rather than bare revision IDs, whose commit IDs can change and may not exist in other workspaces. A "fixed in X" claim requires the fix to be reachable from the current tree; otherwise phrase it as pending ("fix opened in #1608, unmerged as of this writing")
+   - When the learning includes guidance for composing commit or change descriptions, include this sentence exactly: "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards." Inspect local descriptions with `jj log -r '::@'`, broadening to `jj log -r 'all()'` only when local ancestry does not reveal a standard. Local repository syntax and history take precedence; apply only compatible Go guidance, and do not prescribe a fixed message syntax or examples.
 
    **Bug track output sections:**
 
@@ -104,7 +104,7 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
    - **Examples**: Concrete before/after or usage examples showing the practice in action
 
 #### 3. **Related Docs Finder**
-   - Searches `.context/solutions/` for related documentation
+   - Searches `<root>/solutions/` for related documentation
    - Identifies cross-references and links
    - Finds related GitHub issues
    - Flags any related learning or pattern docs that may now be stale, contradicted, or overly broad
@@ -117,7 +117,7 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
    **Search strategy (grep-first filtering for efficiency):**
 
    1. Extract keywords from the problem context: module names, technical terms, error messages, component types
-   2. If the category is clear, narrow search to `.context/solutions/<category>/`
+   2. If the problem category is clear, narrow search to the matching `<root>/solutions/<category>/` directory
    3. Use the native content-search tool (e.g., Grep in Claude Code) to pre-filter candidate files BEFORE reading any content. Run multiple searches in parallel, case-insensitive, targeting frontmatter fields. These are template patterns -- substitute actual keywords:
       - `title:.*<keyword>`
       - `tags:.*(<keyword1>|<keyword2>)`

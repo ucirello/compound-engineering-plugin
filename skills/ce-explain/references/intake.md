@@ -8,7 +8,7 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 
 | Token | Example | Effect |
 |-------|---------|--------|
-| `diff:<revset>` | `diff:<change-id>`, `diff:<base>..<change>`, `diff:PR#<number>` | Forces diff mode on the revisions selected by that Jujutsu revset or provider reference |
+| `diff:<revset-or-PR>` | `diff:kxyw`, `diff:trunk()..@`, `diff:PR#42` | Forces diff mode on that change |
 | `since:<window-or-ref>` | `since:monday`, `since:7d`, `since:v2.1.0` | Forces recap mode over that window |
 | `output:<md\|html>` | `output:md` | Overrides the artifact format (default `html`) |
 | `audience:<who>` | `audience:team`, `audience:"the design review"` | Renders for that reader instead of the user personally |
@@ -18,11 +18,11 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 - "walk me through the diff: why did we split the parser" — stripping `diff:why` leaves "walk me through the did we split the parser". Garbled, so this is prose. Classify by meaning (a diff request about the parser split), and never let the bogus ref `why` outrank that.
 - "explain how we pick the audience: engineers vs designers" — a concept request about audience selection, rendered personally. Not an `audience:` flag naming "engineers".
 - "teach me how our renderer decides output: html or terminal escape codes" — prose. Note this one fails quietly if mis-parsed, because `html` is already the default format, so nothing visible contradicts it.
-- `diff:<base>..<change>`, or `audience:team` leading a request — genuine flags: nothing is left to garble.
+- `diff:trunk()..@`, or `audience:team` leading a request — genuine flags: nothing is left to garble.
 
 - A token in flag position beats inference. A colon inside prose does not.
 - `diff:` and `since:` together conflict — say so and ask which mode the user wants.
-- An unrecognized `<word>:<word>` token (including a change-description prefix appearing inside a topic) is not a flag — it passes through verbatim as request text. The same holds for a *recognized* token that fails the reads-as-a-flag test above.
+- An unrecognized `<word>:<word>` token is not a flag — it passes through verbatim as request text. The same holds for a *recognized* token that fails the reads-as-a-flag test above.
 - A token with an empty or missing value is not a flag — treat it as prose.
 - `output:` with an unknown value: drop the token, note `Ignored unknown output: value '<value>' — using html`, and continue.
 
@@ -30,7 +30,7 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 
 Classify the remaining text by shape:
 
-- **Diff** — the request names a resolvable change: a change ID, revset, bookmark, PR, "the previous change", "what you just did", "this change".
+- **Diff** — the request names a resolvable change: a change ID, commit ID, bookmark, revset, PR, "the last change", "what you just did", "this change".
 - **Recap** — the request asks what happened over time ("what did I do this week", "catch me up", "prep me for standup"), **or names a time window and little else** ("since last Monday", "last week", "the past 3 days", "this sprint"). A bare window is a recap request, not a topic to be explained — do not read "since last Monday" as a concept called "since last Monday".
 - **Idea** — the request presents a proposal or notion of the user's to be understood: "explain my idea of X", "what would Y imply". The idea is a fixed given (see SKILL.md Boundaries).
 - **Concept** — everything else: a topic, pattern, subsystem, or external subject to learn.

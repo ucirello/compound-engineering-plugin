@@ -16,13 +16,13 @@ Ask each question below using the platform's blocking question tool: `AskUserQue
 
 Every RocketClaw skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other RocketClaw-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
 
-<!-- rocketclaw-docs-root:start -->
+<!-- ce-docs-root:start -->
 **Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- rocketclaw-docs-root:end -->
+<!-- ce-docs-root:end -->
 
 ## Phase 1: Diagnose
 
@@ -55,12 +55,12 @@ Display the diagnostic output to the user. Missing optional tools are not setup 
 
 ### Step 3: Decide Whether Fixes Are Needed
 
-Report-gated workspace-local remediations apply only to the workspace the health report diagnosed; if Phase 2 will write a different writable workspace, diagnose that workspace first, while session-level findings such as plugin version and optional tools remain from this session's Phase 1.
+Report-gated workspace-local remediations apply only to the Jujutsu workspace the health report diagnosed; if Phase 2 will write a different writable workspace, diagnose that workspace first, while session-level findings such as plugin version and optional tools remain from this session's Phase 1.
 
 After the health report, decide Phase 2 from writable-workspace availability:
 
 - If this session has a writable Jujutsu workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
-- If this session has no writable workspace, but the user named a repository and the harness exposes a remote repository surface with a writable Jujutsu workspace, run Phase 2 on that surface instead and report the remote workspace-local fixes in Phase 3.
+- If this session has no writable workspace, but the user named a repository and the harness exposes a remote repo-work surface with a writable Jujutsu workspace, run Phase 2 on that surface instead and report the remote workspace-local fixes in Phase 3.
 - Otherwise skip Phase 2 and go to Phase 3, saying workspace-local writes were skipped because no writable Jujutsu workspace is available.
 
 Also remediate these project issues when the report names them:
@@ -77,7 +77,13 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 Read `references/repo-fixes.md` from this skill's directory before making any workspace-local change. It carries Steps 4-8: removing the obsolete `rocketclaw.local.md`, refreshing the example config, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, and the two `.gitignore` offers.
 
-All paths there resolve from the workspace root (`jj root`), not the current working directory. Maintaining the generated example files is the work Phase 2 does on its own — refreshing `config.example.yaml` and removing the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
+All paths there resolve from the Jujutsu workspace root (`jj workspace root`), not the current working directory. Inspect `jj status` before and after Phase 2. Maintaining the generated example files is the work Phase 2 does on its own: refreshing `config.example.yaml` and removing the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
+
+If a change description or commit message is composed, use the installed Jujutsu command's live `--help` only to confirm command syntax, because that syntax can vary by version. Use `jj describe` when naming the current working-copy change and `jj commit` only when the requested operation should also create a new change.
+
+Description style follows the project's active instructions and conventions first, then current descriptions visible in `jj log`. Only compatible guidance from https://go.dev/wiki/CommitMessage may then inform quality, clarity, and structure. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The mandated sentence's `git log` wording is non-operational: inspect history with `jj log`, and do not treat the wording as authorization to run Git. Do not impose a fixed prefix, type, scope, subject, body, layout, template, or example.
+
+Keep GitHub provider operations on `gh`; using Jujutsu for local version-control state does not replace GitHub's API and authentication surface.
 
 ## Phase 3: Summary
 
@@ -86,7 +92,7 @@ All paths there resolve from the workspace root (`jj root`), not the current wor
 Display a brief summary:
 
 ```text
-✅ RocketClaw setup complete
+RocketClaw setup complete
 
 Fixed:     <workspace-local fixes applied, or none>
 Skipped:   <workspace-local fixes declined, or none>

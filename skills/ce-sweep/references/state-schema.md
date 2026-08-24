@@ -80,8 +80,8 @@ holds it to proof. An item may only remain `closed` if it carries all three:
 
 | field | meaning |
 | --- | --- |
-| `fix_ref` | Reference to the fix (PR/change/issue link). |
-| `verified_revision_id` | The revision id verified on the default bookmark. |
+| `fix_ref` | Reference to the fix (PR/revision/issue link). |
+| `verified_merge_sha` | Stable commit ID for the verified Jujutsu revision. The v1 storage key is retained so existing state remains valid. |
 | `verified_at` | ISO timestamp the fix was verified. |
 
 `validate` scans every item and downgrades any `closed` item missing (or with a
@@ -145,8 +145,8 @@ The lease's guarantee depends on where the state file lives:
 
 | topology | lease scope | protocol |
 | --- | --- | --- |
-| local-change mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same working copy (e.g. a scheduled sweep and a manual one). The file is written in-workspace and may be included in a local change. No cross-machine guarantee. |
-| published shared bookmark | One writer **per repository**. | The state file is published through a tracked bookmark shared by multiple workspaces. `lease-acquire` must be recorded, published, and confirmed after a fetch **before any source-side write**. This makes the lease a repository-wide mutex across machines. |
+| local-revision mode (default) | Single writer **per workspace**. | The lease serializes overlapping sweeps in the same workspace (e.g. a cron sweep and a manual one). The file is written in-tree and may be recorded in a local Jujutsu revision. No cross-machine guarantee. |
+| published-shared-bookmark | One writer **per repository**. | The state file is published through a shared bookmark used by multiple workspaces. `lease-acquire` must be recorded in a path-limited revision, the bookmark moved to that revision, published, and confirmed after fetch **before any source-side write**. This makes the lease a repository-wide mutex across machines. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's
 lease be taken over after `ttl_minutes` without manual cleanup.
@@ -166,12 +166,13 @@ Records the outcome of a sweep run under `last_run`.
 because the lease was `LOCKED` (`outcome: aborted-locked`) must still be able to
 record that fact — but that write happens while the lease holder is mid-sweep.
 To keep it from clobbering the holder's concurrent upserts, every mutating
-subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its
-whole load-modify-write, so two concurrent invocations serialize their writes
+subcommand holds an **OS advisory lock** (`flock` on a state-keyed file under
+`<workspace-root>/.tmp/rocketclaw/ce-sweep/locks/`) across its whole
+load-modify-write, so two concurrent invocations serialize their writes
 regardless of lease ownership. The lease decides *who owns the sweep*; the file
-lock decides *who is writing the file right now*. The `.lock` file is ephemeral
-and never tracked (the skill's change-recording step names only the state file
-and plan filesets).
+lock decides *who is writing the file right now*. The lock file is
+workspace-local and never recorded; path-limited revision recording includes
+only the state file and plan.
 
 ## Engine status words
 

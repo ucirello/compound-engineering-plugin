@@ -16,14 +16,13 @@ The verdict, expanded — lead with the decision, then the evidence the TL;DR om
 ## Format and economy
 
 - **HTML by default** — a single self-contained file (a verdict is a thing people share). Use markdown when the user asks, or when the write-up will feed `ce-brainstorm`/`ce-plan`.
-- Write transient output under `<workspace-root>/.tmp/pov/`, where `<workspace-root>` is `jj workspace root` or the current directory when no Jujutsu workspace exists. Write under `docs/` only when the user wants it kept; announce the absolute path. Do **not** introduce another mandated `docs/` location.
+- Write ephemeral output under `$(jj workspace root)/.tmp/local/rocketclaw/ce-pov/`, falling back to `$(pwd)/.tmp/local/rocketclaw/ce-pov/` when workspace-root resolution fails, or under `docs/` when the user wants it kept; announce the absolute path. Atomically claim a unique mode-`0700` run directory and create files with mode `0600`. Do **not** introduce a new mandated `docs/` location — that store is deferred.
 - Lead with the verdict, and **cite** evidence rather than pasting dossiers wholesale — the report is a tighter case for a human, not a research dump.
-- Preserve human and research-source citations and any required panel disclosure. Do not add RocketClaw branding, generated-by text, badges, sign-offs, or any other creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution.
 
 ## Sharing
 
 Publish via whatever the user has — best available, never required:
 
-- `ce-proof` (Proof) — markdown-only, so if the report is HTML, render a throwaway markdown copy of it as the Proof source.
+- `ce-proof` (Proof) — markdown-only, so if the report is HTML, render an ephemeral markdown copy under the same private run directory as the Proof source.
 - Otherwise an available HTML publishing tool the user has connected.
 - If neither is reachable, the local file is the deliverable — announce its path.

@@ -1,85 +1,82 @@
 ---
 name: ce-compound-refresh
 description: Refresh the repo's captured learnings against the current codebase. Use when auditing stale, overlapping, superseded, or drifted learnings; avoid general refactor, debugging, or code review unless the learnings store is explicit.
-argument-hint: "[optional: scope hint - directory, filename, module, or keyword] [mode:non-interactive]"
+argument-hint: "[optional: scope hint — directory, filename, module, or keyword] [mode:non-interactive] "
 ---
 
 # Learning Refresh
 
-**Outcome:** every learning in scope under `.context/solutions/` is checked against the current codebase and receives an evidence-backed maintenance outcome.
+Audit the learnings under `<root>/solutions/` against the current codebase, apply the maintenance actions the evidence supports, and deliver a complete per-doc report plus described changes. The report and the corrected document set are the deliverables. The store remains valuable only while every doc can be trusted.
 
-**Done:** supported edits are applied, vocabulary and discoverability are reconciled, the full per-doc report is printed, and changed files are described and routed according to the selected mode.
-
-## Setup
-
-Run this once at the start, before subagent dispatch, and follow its directives except where this skill's interaction rules override them. Run it as its own unfiltered command. Its output begins with `=== skill context` and ends with `ROCKETCLAW_CONTEXT_END`; if only one appears, rerun once verbatim. If Node is unavailable, proceed unchanged.
-
-```bash
-SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-NODE="$(for c in node nodejs; do command -v "$c" >/dev/null 2>&1 && "$c" -e '' >/dev/null 2>&1 && { echo "$c"; break; }; done)";
-if [ -n "$NODE" ]; then
-"$NODE" "$SKILL_DIR/scripts/context.mjs" || echo "context script failed; continue with the skill's normal behavior";
-else
-echo "no Node runtime; continue with the skill's normal behavior";
-fi
-```
 
 ## Mode
 
-**Read `references/modes.md` now.** It owns argument parsing, unattended actions, stale-marking fallback, question interfaces, and `.context/CONCEPTS.md` bootstrap routing.
+**Read `references/modes.md` now.** It reads the mode off the arguments and owns what each mode may apply unattended, the stale-marking fallback, the question tools, and the `CONCEPTS.md` bootstrap.
 
-In both modes, a failed write is **recommended** and the run continues. Never silently skip a required question.
+Two rules hold in both modes. A failed write is recorded as **recommended**, and the run continues. And a question is asked through the host's blocking tool, or through the numbered-options fallback that reference defines — never silently skipped.
 
-## Repository Paths
+## Artifact Root
 
-Resolve `<jj-root>` with `jj root`; if it fails, stop because version-control and artifact boundaries cannot be established. Pass concrete resolved paths, not configuration, to subagents. Every subagent spawn omits the `mode` parameter so user permission settings apply.
+Resolve `<workspace-root>` with `jj workspace root`, then resolve `<root>` when you first compose a `<root>/solutions/` path. Pass the resolved `<root>/solutions/` path to any subagent, not the config. Every subagent spawn omits the `mode` parameter, so the user's permission settings apply.
 
-Repository-local configuration is under `<jj-root>/.rocketclaw/`; this skill reads only `<jj-root>/.rocketclaw/config.yaml` when configuration is needed. Durable artifacts map directly to `<jj-root>/.context/`.
+Classify a rejected subagent dispatch by whether an agent launched: correct a pre-launch argument rejection once, leave capacity-limited work queued, and if another launch failure survives correction, perform that pass in the orchestrator with the same inputs and report the substitution.
 
-All scratch output stays under `<jj-root>/.tmp/rocketclaw/refresh/`. During preflight only, if `jj root` is unavailable, use `<current-working-directory>/.tmp/rocketclaw/refresh/` long enough to report the blocker. Never use host-wide temporary storage.
+<!-- ce-docs-root:start -->
+**Resolve the learning artifact root `<root>` before composing any artifact path.**
 
-Correct a rejected pre-launch argument once, queue capacity-limited work until a slot frees, and substitute the orchestrator for another launch failure with the same inputs. Report any substitution.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml`. Unset -> `<root>` is `docs`.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.tmp/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
+<!-- ce-docs-root:end -->
+
+Put every temporary artifact under `<workspace-root>/.tmp/ce-compound-refresh/<run-id>/`. Never include `.tmp/` content in a change, and remove the run directory after successful completion.
 
 ## Scope
 
-Candidates are `.md` files under `.context/solutions/`, excluding `README.md` and `_archived/`. A hint that matches nothing never widens scope. **Read `references/scope.md`** for narrowing, misses, empty-store behavior, triage, and README cleanup.
+Candidates are the `.md` files under `<root>/solutions/`, excluding `README.md` and anything under `_archived/`. A hint that matches nothing never widens the scope. **Read `references/scope.md`** for the narrowing strategy, what each mode does on a miss, the empty-store message, triage order, and the README-row cleanup each action carries.
 
 ## Investigate
 
-**Read `references/investigate.md`** for staleness dimensions, auto-memory rules, subagent roles, and category-shape notes.
+**Read `references/investigate.md`** for the staleness dimensions, auto-memory rules, subagent roles, and category-shape notes.
 
-Check each learning against current code, then the set for overlap, supersession, and contradiction. A contradiction outranks individual staleness. Compare only guidance a knowledge-track learning names; never search the guidance layer for one.
+Check each learning against the current codebase, then check the set for overlap, supersession, and contradiction. A contradiction misleads actively, so it outranks individual staleness.
 
-Every investigation subagent prompt carries the reference's three **Subagent prompt** clauses verbatim.
+A knowledge-track learning sometimes points at a guidance file it names or links — a skill's `SKILL.md`, a runbook, an instruction file. Compare only guidance the learning names. Never search the guidance layer for one.
+
+Every investigation subagent's prompt carries that reference's three **Subagent prompt** clauses verbatim. Two are search tools and auto-memory. The third is this:
+
+> If the learning is knowledge-track and names or links a guidance file (a skill's `SKILL.md`, a runbook, a root instruction file), read that file and, when it states a different order or a contradictory rule for the same procedure, return both conflicting quotes plus which side current code follows — or that code witnesses neither. Read only guidance the learning names; do not search for one, and do not edit it.
 
 ## Classify
 
-Every doc gets exactly one outcome: **Keep**, **Update**, **Consolidate**, **Replace**, or **Delete**. There is no `_archived/`; Jujutsu history is the archive.
+Every doc gets exactly one outcome: **Keep**, **Update**, **Consolidate**, **Replace**, or **Delete**. A doc is never archived in place: there is no `_archived/`, since version history is the archive.
 
-**Read `references/classify.md` before assigning outcomes.** It owns outcome meanings, evidence boundaries, auto-delete, relocation, split, retrieval value, pattern docs, and interactive decisions.
+**Read `references/classify.md` before assigning any of them.** It owns each outcome's meaning, the Update/Replace boundary, the auto-delete gate and its pre-checks, the relocation and split rules, the retrieval-value test, unverifiable-is-not-false, pattern docs, and what interactive mode asks.
 
-When code and doc disagree, the doc changes and code does not. When a learning contradicts guidance, report it; never edit a skill, runbook, or instruction file in this workflow.
+Two boundaries hold whatever the evidence says. When code and doc disagree, the doc changes and the code does not — code review is out of scope. And when a learning contradicts guidance, the refresh reports that; it must never edit a skill, runbook, or instruction file.
 
 ## Execute
 
-Read `references/per-action-flows.md` and follow the matching flow once per doc.
+Read `references/per-action-flows.md` and follow the section matching each doc's classification, one flow per doc. It owns the criteria, the relocation and split procedures, the replacement subagent contract, and citation cleanup.
 
 ## Vocabulary Capture
 
-After per-doc actions, reconcile flagged terms with `.context/CONCEPTS.md`. **Read `references/concepts-vocabulary.md` unconditionally.** Apply edits silently in every mode. The report records the scan even when no term qualifies.
+After the per-doc actions, reconcile the domain terms flagged during investigation with `CONCEPTS.md`. **Read `references/concepts-vocabulary.md` unconditionally.** Its qualifying criteria are non-obvious, so a "nothing qualifies" judgment reached without reading it is a shortcut, not a result.
+
+Edits apply silently in every mode. The report's `CONCEPTS.md` line records what the scan found, including "scanned, no qualifying terms".
 
 ## Report
 
-**Print the full report as markdown.** It is the deliverable and, in non-interactive mode, the only one. Keep it self-contained and unabridged, split into **Applied** and **Recommended**. **Read `references/report.md`** for the summary and per-file requirements.
+**Print the full report as markdown.** It is the deliverable, not an internal summary, and in non-interactive mode it is the only one. Keep it self-contained and never abbreviated, split into **Applied** and **Recommended**. **Read `references/report.md`** for the summary block, per-file detail, and what belongs under Recommended.
 
-## Describe And Publish
+## Describe Change
 
-Skip if nothing changed. Otherwise **read `references/commit.md`** for Jujutsu description, bookmark, publication, and failure behavior. Keep only this refresh's files in its described change.
+Skip if nothing changed. Otherwise include **only** the files this refresh modified in its Jujutsu change and follow the repository's description convention. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. **Read `references/commit.md`** for the per-mode bookmark decision and the Jujutsu-failure fallback.
 
 ## Discoverability Check
 
-After the report, check whether the project's instructions lead agents to `.context/solutions/` before documented work. **Read `references/discoverability.md`** for the semantic bar, smallest addition, `.context/CONCEPTS.md` variant, mode-specific consent, and late-edit publication.
+After the report, check that the project's instructions would lead an agent to `<root>/solutions/` before working in a documented area. Do this every time: the store remains valuable only when agents can find it. **Read `references/discoverability.md`** for what the reader must learn, the smallest-addition rule and its tone, the `CONCEPTS.md` variant, consent versus a report line per mode, and folding a late edit into the change.
 
-## Relationship To `ce-compound`
+## Relationship to ce-compound
 
-`ce-compound` captures a newly solved problem. This skill maintains the store as code evolves. Replace only on evidence; otherwise stale-mark and point to `ce-compound`. Consolidate proactively because redundant docs drift.
+`ce-compound` captures a newly solved problem. This skill maintains the store as the codebase evolves: each doc's accuracy, and the design of the set. Replace only on real evidence; without it, stale-mark the doc and point the user at `ce-compound`. Consolidate proactively, because every capture adds a doc and redundant docs drift.

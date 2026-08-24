@@ -15,8 +15,14 @@ if [ -n "$2" ]; then
     OWNER=$(echo "$2" | cut -d/ -f1)
     REPO=$(echo "$2" | cut -d/ -f2)
 else
+    if [ -z "$GIT_DIR" ]; then
+        JJ_GIT_DIR=$(jj git root 2>/dev/null || true)
+        if [ -n "$JJ_GIT_DIR" ]; then
+            export GIT_DIR="$JJ_GIT_DIR"
+        fi
+    fi
     # `|| true` is load-bearing: under `set -e`, a failed command substitution
-    # in an assignment aborts the script immediately. Run outside the target workspace,
+    # in an assignment aborts the script immediately. Run outside a workspace,
     # `gh repo view` exits 1, its stderr is swallowed by `2>/dev/null`, and the
     # script would die here with rc=1 and no output -- making the friendly error
     # below unreachable. Keep `|| true` so detection failure falls through to it.
@@ -25,7 +31,7 @@ else
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-pr-comments from inside the target jj workspace, or pass OWNER/REPO as the second argument." >&2
+    echo "Error: could not resolve owner/repo. Run get-pr-comments from inside the target Jujutsu workspace, or pass OWNER/REPO as the second argument." >&2
     exit 1
 fi
 
@@ -65,63 +71,17 @@ fi
 # resolver can weigh identity as evidence, including recognizing its own prior
 # replies as already-handled.
 
-JJ_ROOT=$(jj workspace root 2>/dev/null) || {
-    echo "Error: could not resolve the Jujutsu workspace root for local scratch storage." >&2
-    exit 1
-}
-TMP_ROOT="$JJ_ROOT/.tmp"
-effective_uid=$(id -u)
-if [ -L "$TMP_ROOT" ]; then
-    echo "Error: local scratch root is a symlink: $TMP_ROOT" >&2
-    exit 1
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || true)
+if [ -n "$WORKSPACE_ROOT" ]; then
+    TMP_ROOT="$WORKSPACE_ROOT/.tmp"
+else
+    TMP_ROOT=".tmp"
 fi
-if [ ! -e "$TMP_ROOT" ]; then
-    if ! (umask 077 && mkdir -m 700 -- "$TMP_ROOT") 2>/dev/null; then
-        echo "Error: could not create local scratch root: $TMP_ROOT" >&2
-        exit 1
-    fi
-fi
-if [ -L "$TMP_ROOT" ] || [ ! -d "$TMP_ROOT" ]; then
-    echo "Error: local scratch root is not a real directory: $TMP_ROOT" >&2
-    exit 1
-fi
-tmp_owner=$(stat -f '%u' "$TMP_ROOT" 2>/dev/null || true)
-case "$tmp_owner" in
-''|*[!0-9]*)
-    tmp_owner=$(stat -c '%u' "$TMP_ROOT" 2>/dev/null) || {
-        echo "Error: could not verify local scratch ownership: $TMP_ROOT" >&2
-        exit 1
-    }
-    ;;
-esac
-if [ "$tmp_owner" != "$effective_uid" ]; then
-    echo "Error: local scratch root is not owned by the effective user: $TMP_ROOT" >&2
-    exit 1
-fi
-chmod 700 -- "$TMP_ROOT" || {
-    echo "Error: could not secure local scratch root: $TMP_ROOT" >&2
-    exit 1
-}
-TMP_ROOT=$(cd -P -- "$TMP_ROOT" && pwd) || {
-    echo "Error: could not resolve local scratch root: $TMP_ROOT" >&2
-    exit 1
-}
-attempt=0
-while :; do
-    run_dir="$TMP_ROOT/ce-pr-comments-$$-$attempt"
-    if (umask 077 && mkdir "$run_dir") 2>/dev/null; then break; fi
-    attempt=$((attempt + 1))
-    [ "$attempt" -lt 128 ] || { echo "Error: could not reserve local scratch" >&2; exit 1; }
-done
-tmp_threads="$run_dir/threads.json"
-tmp_comments="$run_dir/comments.json"
-tmp_reviews="$run_dir/reviews.json"
-cleanup() {
-    case "$run_dir" in
-        "$TMP_ROOT"/ce-pr-comments-*) rm -rf -- "$run_dir" ;;
-    esac
-}
-trap cleanup EXIT
+mkdir -p "$TMP_ROOT"
+tmp_threads=$(mktemp "$TMP_ROOT/pr-threads.XXXXXX")
+tmp_comments=$(mktemp "$TMP_ROOT/pr-comments.XXXXXX")
+tmp_reviews=$(mktemp "$TMP_ROOT/pr-reviews.XXXXXX")
+trap 'rm -f "$tmp_threads" "$tmp_comments" "$tmp_reviews"' EXIT
 
 gh api graphql --paginate --slurp \
   -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUMBER" \

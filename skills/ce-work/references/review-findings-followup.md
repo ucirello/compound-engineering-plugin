@@ -1,56 +1,104 @@
-# Apply Code Review Findings
+# Apply Code Review Findings (after `ce-code-review`)
 
-Load when `ce-code-review` has finished and the caller should apply fixes before the Residual Work Gate. Review is read-only in this context; the caller owns apply policy, authoritative verification, and Jujutsu change descriptions.
+Load this reference when `ce-code-review` has finished and **ce-work** (or another caller) should apply fixes before the Residual Work Gate.
 
-## Consume The Existing Review
+`ce-code-review` is invoked here with `mode:agent`, so it is review-only: it reports findings and writes artifacts but does not mutate the workspace, describe or publish changes, or file tickets. The caller owns apply/fix policy. Standalone review is also report-only unless local apply was explicitly authorized.
 
-Do not rerun review when its output is already in hand. Reuse parsed `mode:agent` JSON or the markdown Actionable Findings summary plus the artifact directory. If status is `failed`, stop shipping and surface the reason. If it is `degraded`, preserve the lost-coverage disclosure before applying anything.
+## Consume the completed review (do not re-run it)
 
-Only a cold caller with no review output invokes `ce-code-review` once:
+This reference loads **after** review has run. In the ce-work shipping flow, step 3a already invoked `ce-code-review`; this apply step **consumes that output** — do not start a second review, which would waste reviewer dispatches and risk overwriting the artifact the Residual Work Gate reconciles.
 
-```text
-ce-code-review mode:agent plan:<plan-path> base:<merge-base-or-revision>
+Reuse the review output already in hand:
+
+- Parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path`, `run_id`) **or** the markdown Actionable Findings summary captured by the caller
+- Run artifact dir: `<artifact-path>/` (`review.json`, per-reviewer JSON for `why_it_matters`)
+
+If `status` is `failed`, stop shipping and surface `reason`. If `degraded`, note partial reviewer coverage before applying anything.
+
+### Fallback — invoke review only for cold callers
+
+Only when the caller reached this file **without** already running review (no review output in hand): invoke `ce-code-review` once, then proceed to apply. Do not invoke when the caller already ran review (e.g., ce-work shipping step 3a).
+
+Invoke the skill explicitly — do not treat a casual "review my changes" prompt as a substitute unless the harness routed it to `ce-code-review`.
+
+```
+ce-code-review mode:agent plan:<plan-path> base:<base-revision>
 ```
 
-Use `plan:` when a plan governed implementation, `base:` when the comparison base is already resolved, and never pass deprecated autofix modes. Human-facing callers may use the default markdown output but must retain its Actionable Findings and artifact path.
+- `mode:agent` — JSON output (`review.json` + primary JSON response) for programmatic parsing; same review pipeline as default.
+- `plan:` — when Phase 1 used a plan file (requirements completeness).
+- `base:` — when the diff base revision is already resolved in the current workspace; omit when reviewing a PR number/URL or standalone current bookmark.
+- Do **not** pass deprecated `mode:autofix`.
 
-## Inputs
+For human-facing shipping, invoke `ce-code-review` without `mode:agent` if markdown tables are preferred. It still reports only unless the invocation explicitly authorizes local apply. Capture the Actionable Findings and artifact dir before caller-owned apply.
 
-- `actionable_findings` from JSON or the markdown Actionable Findings section
-- Full finding details from `review.json` or the relevant reviewer artifact when needed
-- Stable finding number/fingerprint for worker prompts, descriptions, and residual sinks
+## Inputs for apply
 
-## Apply Or Defer
+- `actionable_findings` from JSON, or the Actionable Findings section from markdown
+- Full finding detail when needed: `review.json` / artifact `findings`, or `{reviewer}.json` for `why_it_matters` and `evidence`
+- Stable finding `#` — reuse in change descriptions, residual sinks, and subagent prompts
 
-Default to applying every actionable finding whose evidence still matches and whose concrete suggested fix is a clear improvement. Confidence and autofix classification prioritize and flag work; they do not grant authority. Push back when the reviewer is wrong. Apply clear fixes involving sensitive surfaces only with prominent verification evidence.
+## What to apply
 
-Defer advisory findings, findings without a concrete fix, and findings whose correct resolution needs product, design, architecture, or contract authority. Surface each deferral and its reason; never silently drop one.
+Default to applying every actionable finding. Applying is a reversible edit to the working-copy change; diffs are reviewed before finalization and verification runs afterward, so leaving a clear fix unapplied "to be safe" is the failure mode.
 
-## Batched Fix Workers
+- **Apply** any finding with a concrete `suggested_fix` that is a clear improvement — the common case. `confidence` and `autofix_class` tell you what to prioritize and what to flag, not whether you may apply: `autofix_class` is signal, **never permission**.
+- **Push back** — keep the finding, don't apply — when the reviewer is wrong; note why.
+- **Flag, don't block, green-but-unverifiable edits** — when an applied fix touches auth/authz, a public or cross-service contract/schema, or concurrency, a passing test does not prove safety; apply it when there is a clear `suggested_fix` and confidence, and call it out prominently in the diff review.
 
-The orchestrator filters structured fields, groups eligible findings by file, dispatches disjoint file groups in parallel only when the active harness provides isolated Jujutsu-aware workspaces, inspects actual changes, verifies them, and dynamically describes accepted fix changes. It does not pre-investigate cited files merely to decide whether to dispatch.
+There is no precondition safety checklist or deny-list. Diff review, verification, and the Jujutsu operation log control the downside of reversible edits.
 
-For each batch, give the worker only assigned finding IDs, severity, file/line, title, suggested fix, verification requirement, and useful evidence. The worker:
+**Evidence still matches the code** — the fix subagent confirms at `file:line` before editing. The orchestrator does **not** open files just to decide eligibility or dispatch.
 
-- processes findings in severity order;
-- confirms evidence still matches before editing;
-- applies only fixes within inherited authority and skips others with a reason;
-- does not rerun `ce-code-review`;
-- does not describe/finalize changes, move bookmarks, publish, or ship; and
-- returns applied/skipped IDs, reasons, and changed paths.
+## What to defer (to the Residual Work Gate)
 
-Group all eligible findings for one file into one worker. Split more than about eight findings for one file into serial passes. Co-batch multiple files only when findings explicitly share one small edit surface. Shared-workspace execution is serial.
+- `autofix_class: advisory` — report-only.
+- Findings with no concrete `suggested_fix` to act on.
+- Findings whose right fix depends on a design or product decision — architecture direction, contract shape, or a behavior change needing sign-off. These need a human call before code changes.
 
-After each wave, inspect `jj diff --summary` and `jj diff` against assigned findings, run targeted checks whenever an applied finding requires verification and broader checks for multi-file behavior changes, then finalize the accepted logical fix change with a dynamic description.
+Surface what was deferred and why; never silently drop.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+## Execution — orchestrator batches, subagents apply
 
-The project's active instructions and the description syntax observed at runtime in `jj log` win. Apply compatible Go guidance only to quality, clarity, and structure; do not impose fixed syntax or content. Use `jj describe -m "<description derived from active project instructions and runtime jj log>"`, followed by `jj new` only after the accepted change is described.
+The orchestrator **does not investigate findings** (no pre-read of cited files to judge complexity or inline vs subagent). That would spend the context window you are trying to protect.
 
-## Optional Inline Shortcut
+**Orchestrator owns:** parse review output -> eligibility filter on JSON fields only -> build batches -> dispatch fix subagents -> review diffs -> verification -> canonical change description -> Residual Work Gate.
 
-Apply inline only when exactly one eligible finding remains and the orchestrator already has that file's relevant region in context from this run. Otherwise dispatch a worker, even for one finding.
+**Fix subagents own:** read `file:line`, confirm evidence still matches, apply or skip with reason, return summary.
 
-## Required Summary And Handoff
+### Default: batched fix subagents
 
-Report batches, finding IDs applied or skipped with reasons, review artifact, checks, and resulting change IDs. Every actionable finding not applied enters the Residual Work Gate. Rerun review only after fixes materially changed the reviewed delta.
+After eligibility filtering, **dispatch subagents for all remaining applicable findings** unless the optional inline shortcut below applies. Do not classify findings by complexity in the parent thread.
+
+**Batching (primary rule — group by file):**
+
+1. Sort applicable findings by severity (P0 first).
+2. **Group by `file`.** All eligible findings on the same file → **one subagent** (it loads the file once and works through its `#` list in severity order).
+3. **Parallel waves:** batches with disjoint file sets may run in parallel under the same isolated-workspace rules as Phase 1.
+4. **Same file, many findings:** keep one subagent per file. If the prompt would exceed a comfortable size (~8 findings), split into **serial** subagent passes on that file (first batch highest severity, then next batch after merge or after the prior agent returns).
+5. **Cross-file coupling:** do not merge unrelated files into one subagent just to reduce agent count — file grouping is the default. Only co-batch multiple files when findings explicitly reference the same small edit surface (rare); when in doubt, separate by file.
+
+**Subagent prompt (per batch):** the assigned findings only (`#`, severity, file, line, title, `suggested_fix`, `requires_verification`; add `why_it_matters` from `{reviewer}.json` in the run artifact when useful), plus:
+- Work through assigned `#` in severity order; at each `file:line`, skip with a one-line reason if evidence no longer matches
+- Apply the mechanical bar from § What to apply / What not to apply — skip anything that needs design judgment
+- Do not re-run `ce-code-review`
+- Shared-directory fallback: do not split, describe, bookmark, or publish the change; return which `#` were applied or skipped and which files changed
+
+**After each wave:** the orchestrator reviews assigned diffs, runs targeted or broader verification according to `requires_verification`, and finishes a dynamically described Jujutsu change unless isolated workspace integration is still pending. Repeat until all batches complete.
+
+### Optional inline shortcut (skip subagent spawn)
+
+Use **only** when **all** of the following hold:
+
+- Exactly **one** eligible finding after JSON filtering, **and**
+- The orchestrator **already** has that file's relevant region in context from Phase 2 work this session (no new Read/Grep expedition)
+
+Otherwise dispatch a subagent — even for a single finding. When unsure, dispatch.
+
+### Summary (required)
+
+Report: batches dispatched, `#` applied vs skipped (with reasons from subagents), artifact path, tests run.
+
+## Handoff to Residual Work Gate
+
+Any actionable finding not applied in this pass is **residual work** — proceed to the Residual Work Gate with an updated count. Do not re-invoke `ce-code-review` solely to re-apply the same findings unless the diff changed materially after fixes.

@@ -22,10 +22,8 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 ## Discover and launch
 
-Resolve the artifact root with `jj workspace root`. If it does not return a workspace root, stop with that prerequisite blocker. Store screenshots, captured logs, and other temporary test artifacts under `<workspace-root>/.tmp`, creating only the required directories there. Do not use OS-global temporary storage.
-
 1. Discover projects and workspaces, then list schemes for the selected project. An empty argument or `current` selects the default or last-used scheme; a named argument selects that scheme. Ask only when no such scheme can be resolved or project discovery itself remains materially ambiguous.
-2. List simulators. Choose a compatible simulator from the requested target and project requirements, reusing an already booted one when practical. Ask only when those inputs do not determine a safe choice, then boot the selected simulator by UUID and wait until it is ready.
+2. List simulators. Reuse a compatible booted simulator when practical; otherwise prefer an available iPhone 15 Pro and boot it by UUID. Wait until it is ready.
 3. Build the simulator app with the selected project/workspace and scheme. On failure, report the relevant build errors and stop; do not install or launch a missing artifact.
 4. From the successful build result, retain the app path and bundle identifier. Install the app, launch it, and start simulator log capture for that bundle.
 

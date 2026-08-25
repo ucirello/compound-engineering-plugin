@@ -84,7 +84,7 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
    - **Grounds code-behavior claims in source, not conversation memory.** Before asserting how code behaves (enum values, status semantics, limits, defaults), Read the defining line at the current tree and cite `file:line` alongside the claim. A claim that cannot be verified against the tree is softened or attributed ("per this session's conclusion…"), never stated as fact
    - **Writes merge-state claims for time.** Cite PR numbers rather than bare commit IDs because rewritten changes may not retain the same ID on other workspaces. A landed claim requires remote confirmation; otherwise identify it as pending with neutral placeholders.
    - Repo-local runtime syntax always wins. Apply Go quality guidance only when the documented project and change use Go.
-   - When the learning composes, edits, validates, or recommends a commit message or JJ description, preserve this sentence verbatim: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+   - When the learning composes, edits, validates, or recommends a commit message or JJ description, preserve this sentence verbatim: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repo-local runtime syntax always wins; apply compatible Go guidance to message quality, clarity, and structure.
 
    **Bug track output sections:**
 

@@ -8,11 +8,49 @@
 
 Emit a structured terminal report and end the turn. No "What's next?" question, no blocking prompt. End with `Documentation complete` as the terminal signal so callers can detect completion.
 
-For `depth:lightweight`, report the mode, artifact path and write result, track, category, mechanical grounding result, solution-store discoverability result, vocabulary result and discoverability result, and any narrowly scoped refresh recommendation. End with the literal terminal signal `Documentation complete`.
+For `depth:lightweight`, use this lower-overhead report after the Lightweight Mode workflow:
 
-For `depth:full` or a backward-compatible non-interactive call with no depth token, report the mode, artifact path and write result, track, category, overlap decision, grounding adjudication, instruction-file result, vocabulary result, and any narrowly scoped refresh recommendation. End with the literal terminal signal `Documentation complete`.
+```
+✓ Documentation complete (non-interactive lightweight mode)
 
-When no doc was written, report non-interactive mode and one sentence naming the unmet precondition. End with the literal terminal signal `Documentation skipped` so callers can distinguish success from no-op.
+File: <root>/solutions/<category>/<filename>.md  (created | updated)
+Track: <bug | knowledge>
+Category: <category>
+Grounding: <mechanical check clean | N flags adjudicated>
+Discoverability: <no gap | gap noted — instruction-file tip emitted | not applicable — no active project instructions>
+CONCEPTS.md: <not present | scanned, no qualifying terms | updated — N added, N refined, N folded, N scrubbed>
+CONCEPTS.md discoverability: <not checked — CONCEPTS.md unchanged | no gap | gap noted — instruction-file tip emitted | not applicable — no active project instructions>
+Refresh recommendation: <none | scope hint for /ce-compound-refresh>
+
+Documentation complete
+```
+
+For `depth:full` or backward-compatible non-interactive calls with no depth token, use the Full report:
+
+```
+✓ Documentation complete (non-interactive mode)
+
+File: <root>/solutions/<category>/<filename>.md  (created | updated)
+Track: <bug | knowledge>
+Category: <category>
+Overlap: <none | low | moderate — see <path> | high — existing doc updated>
+Grounding: <clean | N flags adjudicated (X fixed, Y annotated, Z confirmed) | N claims softened or corrected | degraded — change-state claims unverified offline>
+Instruction-file edit: <none needed | gap noted, not applied>
+CONCEPTS.md: <scanned, no qualifying terms | created with N entries (M seeded from the learning's area) | updated — N added, N refined, N folded, N scrubbed>
+Refresh recommendation: <none | scope hint for /ce-compound-refresh>
+
+Documentation complete
+```
+
+When no doc was written, emit a structured failure and end with `Documentation skipped` so callers can distinguish success from no-op:
+
+```
+✗ Documentation skipped (non-interactive mode)
+
+Reason: <one-sentence explanation>
+
+Documentation skipped
+```
 
 ### Interactive mode
 
@@ -31,5 +69,5 @@ Report the selected mode, supplementary evidence used, each Phase 1 result, grou
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Non-interactive Discoverability Check edits AGENTS.md/CLAUDE.md | non-interactive Full reports `Instruction-file edit: gap noted, not applied`; non-interactive Lightweight emits a discoverability tip; only interactive Full applies the edit after consent |
 | Creating a new doc when an existing doc covers the same problem | Check overlap assessment; update the existing doc when overlap is high |
-| Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over SHAs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
+| Asserting code behavior or change-state from conversation memory | Read the defining source line before asserting; cite PR numbers over bare commit IDs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
 | Batching several learnings through one run and stitching cross-references between drafts | One learning per run; run the skill sequentially for each additional learning |

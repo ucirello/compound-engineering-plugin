@@ -45,7 +45,7 @@ Give each native worker:
 
 **Permission mode:** Omit the `mode` parameter when dispatching subagents so the user's configured permission settings apply. Do not pass `mode: "auto"` — it overrides user-level settings like `bypassPermissions`.
 
-**After each serial inline/subagent unit:** review `jj diff` against the unit scope, run relevant checks, fix before the next unit, record verification evidence, update the task list, and finalize the unit with explicit filesets. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime conventions win and no fixed message shape is implied. Progress lives in JJ changes, never the plan body. Retire a worker handle only when the harness assigns that lifecycle action to the caller.
+**After each serial inline/subagent unit:** review `jj diff` against the unit scope, run relevant checks, fix before the next unit, record verification evidence, update the task list, and finalize the unit with explicit filesets. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime conventions win; apply compatible Go guidance to message quality, clarity, and structure, and impose no fixed message shape. Progress lives in JJ changes, never the plan body. Retire a worker handle only when the harness assigns that lifecycle action to the caller.
 
 **After a parallel inline/subagent batch — the orchestrator integrates; never trust the handoff summary alone:**
 1. Wait for every worker in the batch to finish.

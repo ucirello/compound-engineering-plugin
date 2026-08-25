@@ -67,7 +67,7 @@ Edits apply silently in every mode. The report's `CONCEPTS.md` line records what
 
 **Print the full report as markdown.** It is the deliverable, not an internal summary, and in non-interactive mode it is the only one. Keep it self-contained and never abbreviated, split into **Applied** and **Recommended**. **Read `references/report.md`** for the summary block, per-file detail, and what belongs under Recommended.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax and active instructions win; apply compatible Go guidance to message quality, clarity, and structure without imposing a fixed message shape.
 
 ## Commit
 

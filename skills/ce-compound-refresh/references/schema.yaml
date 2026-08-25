@@ -99,7 +99,7 @@ required_fields:
   ai:
     type: enum
     values:
-      - assistant
+      - "ai:assistant"
     description: "Neutral protocol identity. Render as AI Assistant in prose when a display label is required."
 
 # --- Track-specific rules ----------------------------------------------------
@@ -211,7 +211,7 @@ bug_optional_fields:
 #   - Bug-track fields present on a knowledge-track doc are harmless. Do not
 #     strip them during refresh unless the doc is being rewritten for other reasons.
 #   - When creating NEW docs, follow the track rules above.
-# Existing docs without ai remain valid. Add ai: assistant when replacing a doc,
+# Existing docs without ai remain valid. Add ai: "ai:assistant" when replacing a doc,
 # not during an otherwise unrelated refresh.
 # Docs written before component/root_cause became open vocabulary may carry
 # values from the earlier closed list (rails_*, hotwire_turbo, missing_include,

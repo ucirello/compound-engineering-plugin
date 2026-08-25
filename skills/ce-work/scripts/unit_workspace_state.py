@@ -27,7 +27,7 @@ UNIT_STATES = {
     "queued", "authoring", "authored", "integration-pending", "integrated",
     "restoring", "verified", "committed", "preserved", "cleaned", "native-completed",
 }
-COMMIT_GUIDANCE = "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards."
+COMMIT_GUIDANCE = "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax and active instructions win; apply compatible Go guidance to message quality, clarity, and structure without imposing a fixed message shape."
 PROTOCOL_ACTOR = ("AI Assistant", "ai:assistant")
 
 

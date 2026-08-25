@@ -84,7 +84,7 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not describe, split, squash, duplicate, rebase, abandon, or bookmark a change; return which findings were applied or skipped and which files changed
 
-**After each wave:** the orchestrator reviews `jj diff` against assigned findings, runs the required verification, and finalizes the accepted fixes with explicit filesets unless isolated JJ workspace integration applies. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime conventions and actual changes determine the description; do not impose a fixed message, type, scope, prefix, template, or example. Repeat until all batches complete.
+**After each wave:** the orchestrator reviews `jj diff` against assigned findings, runs the required verification, and finalizes the accepted fixes with explicit filesets unless isolated JJ workspace integration applies. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime conventions and actual changes determine the description; apply compatible Go guidance to message quality, clarity, and structure, and do not impose a fixed message, type, scope, prefix, template, or example. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

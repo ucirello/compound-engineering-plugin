@@ -11,7 +11,7 @@
 
 Archive only in full workflow when teaching archival is on, a new-concepts section exists, and body application is authorized. Resolve all paths from `jj workspace root`. If `<root>/explainers/<date>-<concept-slug>.md` is ignored by repository policy, skip archival without forcing it. Write one file per concept with the project's accepted metadata and teaching content.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax and active instructions win; apply compatible Go guidance to message quality, clarity, and structure without imposing a fixed message shape.
 
 Commit archive files as one JJ change using explicit filesets and a dynamic message derived from runtime instructions and recent history:
 

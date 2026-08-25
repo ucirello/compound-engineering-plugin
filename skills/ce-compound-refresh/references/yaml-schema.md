@@ -31,7 +31,7 @@ The `problem_type` determines which **track** applies. Each track has different 
 - **problem_type**: One of the values listed in the Tracks table above
 - **component**: Component or area involved — open vocabulary (see Corpus-First Vocabulary). Suggested defaults when the corpus has no value for the area: `data_model`, `api_layer`, `service_layer`, `background_job`, `database`, `frontend`, `messaging`, `infrastructure`, `observability`, `authentication`, `payments`, `development_workflow`, `testing_framework`, `documentation`, `tooling`
 - **severity**: One of `critical`, `high`, `medium`, `low`
-- **ai**: The neutral protocol identity `assistant`; render it as `AI Assistant` only when a prose display label is required
+- **ai**: The neutral protocol identity `ai:assistant`; render it as `AI Assistant` only when a prose display label is required
 
 ## Bug Track Fields
 
@@ -65,7 +65,7 @@ Docs created before the track system may have `symptoms`/`root_cause`/`resolutio
 - Bug-track fields present on a knowledge-track doc are harmless. Do not strip them during refresh unless the doc is being rewritten for other reasons.
 - Docs written before `component`/`root_cause` became open vocabulary may carry values from the earlier closed list or the earlier `rails_version` field (now `framework_version`). They stay valid, and a corpus that consistently uses them keeps using them.
 - When creating **new** docs, follow the track rules above.
-- Existing docs without `ai` remain valid; add `ai: assistant` when a doc is replaced, not during an otherwise unrelated refresh.
+- Existing docs without `ai` remain valid; add `ai: "ai:assistant"` when a doc is replaced, not during an otherwise unrelated refresh.
 
 ## Category Mapping
 

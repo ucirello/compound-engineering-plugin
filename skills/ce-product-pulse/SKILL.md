@@ -24,7 +24,7 @@ allowed-tools:
 - **No PII in saved reports.** No user emails, account IDs, or message content in the file written to disk.
 - **Read it like a founder.** No hardcoded thresholds, no default "good"/"bad" labels, no alerting: present the numbers and let the reader judge.
 - **Single page.** Target 30-40 lines. If a section is thin, leave it thin; if the report is getting long, cut.
-- **Not a shipping log or a dashboard replacement.** Shipped work lives in the issue tracker and JJ change history. Deep investigation still uses the native tools; this consolidates a single-page read, and every run is saved so past pulses browse as a timeline. If a followup recommends composing, editing, or validating a change description, include this guidance exactly: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+- **Not a shipping log or a dashboard replacement.** Shipped work lives in the issue tracker and JJ change history. Deep investigation still uses the native tools; this consolidates a single-page read, and every run is saved so past pulses browse as a timeline. If a followup recommends composing, editing, or validating a change description, include this guidance exactly: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax and active instructions win; apply compatible Go guidance to message quality, clarity, and structure without imposing a fixed message shape.
 
 ## Interaction Method
 

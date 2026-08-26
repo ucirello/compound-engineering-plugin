@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > checkout config cascade >
+#                   resolved preference (conversation > workspace config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -89,7 +89,7 @@ case "$TRANSIENT_RETRY_DELAY_SECS" in ''|*[!0-9]*) skip "transient retry delay m
 # ONE model per provider at high reasoning, except codex on extra-high (supersedes
 # the old per-lens sol/terra split). Concrete IDs are the CURRENT instance of the
 # tier principle and the single maintenance point when model families change.
-# A checkout may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
+# A workspace may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
 # CROSS_MODEL_MODEL_OVERRIDE, same target/family only) and the reasoning effort
 # (CROSS_MODEL_EFFORT_OVERRIDE, validated per route); both fail closed.
 # codex: luna/xhigh is the benchmarked pick on API dollars (~0.30x sol-medium, tied
@@ -345,39 +345,9 @@ RUN_DIR="${7:-}"
 # ce-doc-review (unlike ce-code-review) has no pre-existing run-artifact dir, and
 # the caller passes the fresh absolute run dir resolved by the skill.
 # Requiring it to pre-exist would silently no-op the whole pass (no fold-in files).
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD"
-EXPECTED_SCRATCH="$WORKSPACE_ROOT/.tmp/rocketclaw"
-case "$RUN_DIR" in "$EXPECTED_SCRATCH"/*) ;; *) skip "run-dir must stay under '$EXPECTED_SCRATCH'; skipping" ;; esac
 mkdir -p "$RUN_DIR" 2>/dev/null
 [ -d "$RUN_DIR" ] || skip "run-dir '$RUN_DIR' could not be created; skipping"
-WORKSPACE_REAL="$(cd "$WORKSPACE_ROOT" 2>/dev/null && pwd -P)" || skip "workspace root '$WORKSPACE_ROOT' is unreadable; skipping"
-SCRATCH_REAL="$(cd "$EXPECTED_SCRATCH" 2>/dev/null && pwd -P)" || skip "scratch root '$EXPECTED_SCRATCH' is unreadable; skipping"
-case "$SCRATCH_REAL" in "$WORKSPACE_REAL"/.tmp/rocketclaw) ;; *) skip "scratch root escapes the workspace; skipping" ;; esac
 command -v jq >/dev/null 2>&1 || skip "jq not installed; skipping"
-
-# Keep every transient file inside the JJ workspace. The caller normally passes
-# <workspace-root>/.tmp/rocketclaw/ce-doc-review/<run-id>; outside JJ it passes
-# <current-dir>/.tmp/rocketclaw/ce-doc-review/<run-id>.
-LOCAL_TMP="$RUN_DIR/tmp"
-(umask 077; mkdir -p "$LOCAL_TMP") 2>/dev/null || skip "local scratch '$LOCAL_TMP' could not be created; skipping"
-claim_file() {
-  local prefix="$1" n=0 path
-  while [ "$n" -lt 32 ]; do
-    path="$LOCAL_TMP/$prefix-$$-$n"
-    if (set -C; umask 077; : > "$path") 2>/dev/null; then printf '%s' "$path"; return 0; fi
-    n=$((n + 1))
-  done
-  return 1
-}
-claim_dir() {
-  local prefix="$1" n=0 path
-  while [ "$n" -lt 32 ]; do
-    path="$LOCAL_TMP/$prefix-$$-$n"
-    if (umask 077; mkdir "$path") 2>/dev/null; then printf '%s' "$path"; return 0; fi
-    n=$((n + 1))
-  done
-  return 1
-}
 
 # Validate the host identity tuple. An unknown serving family is allowed, but
 # normalization marks every result non-independent.
@@ -413,7 +383,7 @@ SCHEMA_REF="$SCHEMA_CONTENT"   # adapter_argv references SCHEMA_REF for --json-s
 # The peer adapts on the same context slots (Document type / Origin) the in-process
 # reviewer does, but the trio persona briefs only define adaptation for the bare
 # `requirements`/`plan` values. The canonical context-slot rules -- which map
-# `unified-*` onto their base branch, carry the unified slice-suppression rules, and
+# `unified-*` onto their base classification, carry the unified slice-suppression rules, and
 # define how to read non-path Origin values -- live only in the subagent template, so
 # extract them from there (single source of truth) and fold them into the peer prompt.
 # Best-effort: a missing block degrades unified/Origin scoping but must not fail the pass.
@@ -529,21 +499,22 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(claim_file xmodel-doc-prompt)" || skip "could not reserve local prompt file; skipping"
-PEERLOG="$(claim_file xmodel-doc-log)" || skip "could not reserve local log file; skipping"
+TEMP_DIR="$RUN_DIR/worker-$REVIEWER_NAME-$$"
+(umask 077; mkdir -p "$TEMP_DIR") || skip "could not create workspace-local scratch dir; skipping"
+PROMPT_FILE="$TEMP_DIR/prompt"
+PEERLOG="$TEMP_DIR/out.log"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(claim_file xmodel-doc-err)" || skip "could not reserve local error file; skipping"
+PEERERR="$TEMP_DIR/err.log"
+: > "$PROMPT_FILE"; : > "$PEERLOG"; : > "$PEERERR"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
 PROVIDER_OUTCOME="ok"
 cleanup_temp() {
-  rm -f "$PROMPT_FILE" "$PEERLOG" "$PEERERR"
-  [ -n "$RAW_OUT" ] && rm -f "$RAW_OUT"
-  [ -n "$PEER_WORKDIR" ] && [ "$PEER_WORKDIR" != "${RUN_DIR:-}" ] && rm -rf "$PEER_WORKDIR"
+  rm -rf "$TEMP_DIR"
 }
 trap 'cleanup_temp' EXIT
 # Basename only in the peer prompt: content is already embedded (KTD3). An absolute
@@ -555,7 +526,7 @@ DOC_BASENAME="$(basename "$DOC_PATH")"
   # Shared output-contract (confidence rubric + FP catalog) the persona brief defers
   # to, so the peer calibrates like its in-process twin.
   [ -n "$OUTPUT_CONTRACT_RULES" ] && printf '%s\n\n' "$OUTPUT_CONTRACT_RULES"
-  printf 'Protocol identity: ai:assistant (AI Assistant). This is an authorized read-only document review.\n'
+  printf 'This is an authorized document review of the maintainer\047s own repository.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
   printf '\n\nSet the top-level "reviewer" field to "%s" (it will be namespaced to the peer provider on fold-in).\n' "$REVIEWER_NAME"
@@ -1097,9 +1068,9 @@ run_provider() {   # <provider>
   # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
   # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself. Fail closed if a private local
-  # peer workspace cannot be reserved.
-  PEER_WORKDIR="$(claim_dir xmodel-doc-peer)" || { log "could not reserve local peer workspace; skipping"; rm -f "$OUT"; return 0; }
+  # never written into RUN_DIR by the peer itself.
+  PEER_WORKDIR="$TEMP_DIR/peer-$provider"
+  (umask 077; mkdir -p "$PEER_WORKDIR") || { log "could not create peer workspace; skipping"; rm -f "$OUT"; return 0; }
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -1156,7 +1127,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(claim_file xmodel-doc-norm)" || { log "could not reserve local normalization file; skipping"; rm -f "$OUT" "$RAW_OUT"; return 0; }
+    _norm="$TEMP_DIR/$REVIEWER_NAME-$provider.norm.json"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

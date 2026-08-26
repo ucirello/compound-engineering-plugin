@@ -1,5 +1,5 @@
 # Optimization Spec Schema
-# This is the canonical schema for optimization spec files
+# This is the canonical schema for optimization spec files created by users
 # to configure a /ce-optimize run. The orchestrating agent validates specs
 # against this schema before proceeding.
 #
@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for bookmark names and workspace paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
     example: "improve-issue-clustering"
 
   description:
@@ -249,7 +249,7 @@ required_fields:
       working_directory:
         type: string
         default: "."
-        description: "Working directory for the measurement command, relative to the workspace root"
+        description: "Working directory for the measurement command, relative to the repo root"
       stability:
         type: object
         default: { mode: "stable" }
@@ -336,7 +336,7 @@ required_fields:
         description: "Files and directories the agent MAY modify during experiments"
         items:
           type: string
-          description: "File path or directory (relative to the workspace root). Directories match all files within."
+          description: "File path or directory (relative to repo root). Directories match all files within."
         example:
           - "src/clustering/"
           - "src/preprocessing/"
@@ -371,14 +371,14 @@ optional_fields:
       backend:
         type: enum
         values:
-          - workspace # Jujutsu workspaces for isolation (default)
+          - workspace # JJ workspaces for isolation (default)
           - codex     # Codex sandboxes for isolation
         default: workspace
       max_concurrent:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for workspace backend. 8+ only valid for Codex backend."
+        description: "Maximum experiments to run in parallel. Capped at 6 for the workspace backend. 8+ is only valid for the Codex backend."
       codex_security:
         type: enum
         values:
@@ -464,10 +464,10 @@ optional_fields:
         default: true
         description: "Stop when the primary metric reaches the target value (if set)"
 
-  max_runner_up_combinations_per_batch:
+  max_runner_up_merges_per_batch:
     type: integer
     default: 1
-    description: "Maximum number of file-disjoint runner-up experiments to combine and re-measure per batch after keeping the best experiment"
+    description: "Maximum number of file-disjoint runner-up experiments to attempt merging per batch after keeping the best experiment"
 
 # ============================================================================
 # VALIDATION RULES

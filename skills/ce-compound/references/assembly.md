@@ -19,15 +19,14 @@ The orchestrating agent (main conversation) performs these steps:
 
    The reason to update rather than create: two docs describing the same problem and solution will inevitably drift apart. The newer context is fresher and more trustworthy, so fold it into the existing doc rather than creating a second one that immediately needs consolidation.
 
-   When updating an existing doc, preserve its file path, frontmatter structure, and human authorship fields; remove non-human creation attribution. Update the solution, project-native evidence, prevention tips, and stale references. Add a `last_updated: YYYY-MM-DD` field without adding workflow attribution. Do not change the title unless the problem framing has materially shifted.
+   When updating an existing doc, preserve its file path and frontmatter structure. Update the solution, code examples, prevention tips, and any stale references. Add a `last_updated: YYYY-MM-DD` field to the frontmatter. Do not change the title unless the problem framing has materially shifted.
 
 3. **Incorporate session history findings** (if available). When the internal session-history flow returned relevant prior-session context:
    - Fold investigation dead ends and failed approaches into the **What Didn't Work** section (bug track) or **Context** section (knowledge track)
    - Use cross-session patterns to enrich the **Prevention** or **Why This Matters** sections
    - Tag session-sourced content with "(session history)" so its origin is clear to future readers
    - If findings are thin or "no relevant prior sessions," proceed without session context
-4. Assemble the complete markdown file from the collected pieces, reading `assets/resolution-template.md` for the semantic section order of new docs.
-   Repo-local runtime syntax always wins. Apply compatible Go guidance to message quality, clarity, and structure. When the assembled learning composes, edits, validates, or recommends a commit message or JJ description, preserve this sentence verbatim: Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+4. Assemble complete markdown file from the collected pieces, reading `assets/resolution-template.md` for the section structure of new docs
 5. Validate YAML frontmatter against `references/schema.yaml`, including the YAML-safety quoting rule for array items (see `references/yaml-schema.md` > YAML Safety Rules)
 6. Create directory if needed: `mkdir -p <root>/solutions/[category]/`
 7. Write the file: either the updated existing doc or the new `<root>/solutions/[category]/[filename].md`
@@ -51,7 +50,7 @@ The orchestrating agent (main conversation) performs these steps:
 
    The validator does not enforce schema rules and does not flag YAML reserved-indicator characters (those produce loud parser errors downstream rather than silent corruption — out of scope). Uses Python 3 stdlib only (no PyYAML or other deps).
 
-When creating a new doc, preserve the semantic section order from `assets/resolution-template.md` unless the user explicitly asks for a different structure.
+When creating a new doc, preserve the section order from `assets/resolution-template.md` unless the user explicitly asks for a different structure.
 
 </sequential_tasks>
 
@@ -69,7 +68,7 @@ Then, applying those criteria, scan the new doc **and** the surrounding conversa
 
 **When bootstrapping the file, start with this preamble under the `# Concepts` heading**, then add the qualifying entries below it:
 
-> Shared domain vocabulary for this project: entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then expanded as learning workflows process new evidence; direct human edits are welcome. Glossary only, not a spec or catch-all.
+> Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
 
 **Refresh the coherence neighborhood of the area this learning touched.** Inspect that *coherence neighborhood* — defined, with its bounds, in `references/concepts-vocabulary.md` — whether or not this run added, edited, or folded anything. A run that surfaces no qualifying term still leaves its neighborhood correct; that is the pass that keeps violations from accumulating between audits. Within that neighborhood, do three things: fix glossary violations (implementation specifics — file paths, class names, function signatures, current-config values), refresh entries the learning's own evidence shows have drifted, and fold an entry whose whole meaning a neighbor already carries into that neighbor, repointing the terms that cross-reference it. Retiring an entry outright belongs to `ce-compound-refresh`, which investigates; this run folds or leaves standing. Bounds: neighborhood only, never a full-file audit; act only on evidence already in hand; if judging a neighbor would require investigation this learning did not do, flag it for `ce-compound-refresh` rather than editing on a guess. The test: does every entry in the neighborhood still hold a heading a reader needs, and read consistently with this learning's terms? Broader audit is `ce-compound-refresh`'s job.
 
@@ -81,7 +80,7 @@ Report what this run did to `CONCEPTS.md` in the success output. "Vocabulary cap
 
 The doc (and any `CONCEPTS.md` entries from Phase 2.4) is about to become permanent, trusted knowledge. Validate its claims against the tree before it compounds. **Read `references/grounding-validation.md` now** — it holds the adjudication rules and the validator prompt; the steps below are only the trigger.
 
-1. **Mechanical claims check (every mode, including non-interactive).** Optionally run `jj git fetch` first as a best-effort Git-interop refresh; skip silently offline because the network is never a correctness dependency. Then run the bundled validator against the written doc:
+1. **Mechanical claims check (every mode, including non-interactive).** Optionally run `jj git fetch` first (best-effort — skip silently offline; the network is never a correctness dependency). Then run the bundled validator against the written doc:
 
    ```bash
    SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -93,9 +92,9 @@ The doc (and any `CONCEPTS.md` entries from Phase 2.4) is about to become perman
    fi
    ```
 
-   Exit 0 means nothing flagged. Exit 1 means flags to **adjudicate, not auto-fix** — each flagged path, SHA, link, or scaffold pattern is fixed, annotated as historical, or confirmed intentional per the reference's adjudication table. A doc may legitimately cite a path deleted by the very fix it documents; a flag is a question, not a failure. If the script cannot be resolved on this platform, apply the reference's manual checklist and say so in the output — never silently skip.
+   Exit 0 means nothing flagged. Exit 1 means flags to **adjudicate, not auto-fix** — each flagged path, commit ID, link, or scaffold pattern is fixed, annotated as historical, or confirmed intentional per the reference's adjudication table. A doc may legitimately cite a path deleted by the very fix it documents; a flag is a question, not a failure. If the script cannot be resolved on this platform, apply the reference's manual checklist and say so in the output — never silently skip.
 
-2. **Semantic grounding validator (Full mode, including non-interactive Full; lightweight skips it).** Dispatch one read-only generic subagent built from the prompt template in the reference, covering the written doc plus any `CONCEPTS.md` entries added or edited this run. It verifies code-behavior claims by quoting the defining source line, merge-state claims against remote truth (`gh` primary, JJ reachability fallback), and internal completeness of countable assertions. Apply its verdicts per the reference, then re-run the mechanical check if the body changed.
+2. **Semantic grounding validator (Full mode, including non-interactive Full; lightweight skips it).** Dispatch one read-only generic subagent built from the prompt template in the reference, covering the written doc plus any `CONCEPTS.md` entries added or edited this run. It verifies code-behavior claims by quoting the defining source line, merge-state claims against remote truth (`gh` primary, JJ revset reachability fallback), and internal completeness of countable assertions. Apply its verdicts per the reference (fix contradicted claims from the quoted evidence; soften or drop unverifiable ones; mark offline merge-state checks as degraded), then re-run the mechanical check if the body changed.
 
 ## What It Creates
 

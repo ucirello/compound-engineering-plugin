@@ -146,7 +146,7 @@ experiment_entry:
       values:
         - measured                # measurement finished and metrics were persisted, awaiting batch evaluation / integration
         - promising               # eligible on current samples but the ladder still needs confirmation before keep
-        - kept                    # eligible, confirmed, and targeted by the optimization bookmark
+        - kept                    # eligible, confirmed, and integrated into the optimization change
         - not_selected            # eligible after comparison but not integrated (not the winner, overlapping, or past the runner-up cap)
         - reverted                # compared and not eligible (regressed a required objective, or none improved)
         - inconclusive            # delta inside the comparison threshold; not a keep and not a demonstrated regression
@@ -155,14 +155,14 @@ experiment_entry:
         - error                   # measurement command crashed, timed out, or produced malformed output
         - deferred_needs_approval # experiment needs an unapproved dependency -> set aside for batch approval
         - timeout                 # measurement command exceeded timeout_seconds
-        - runner_up_kept          # file-disjoint runner-up rebased onto the current best and re-measured successfully
-        - runner_up_reverted      # file-disjoint runner-up rebased onto the current best but not better in combination
+        - runner_up_kept          # file-disjoint runner-up that was rebased and re-measured successfully
+        - runner_up_reverted      # file-disjoint runner-up that was rebased but combined measurement was not better
       description: >
-        Load-bearing state: this value determines the loop transition.
+        Load-bearing state: the loop branches on this value.
         'measured' and 'promising' are non-terminal: CP-3 persists raw metrics
         before batch-level comparison, and 'promising' means the ladder still
         needs confirmation samples. An eligible decide `keep` stays `measured`
-        until its change is targeted by the optimization bookmark. 'kept' and 'runner_up_kept'
+        until its JJ change is selected by the optimization bookmark. 'kept' and 'runner_up_kept'
         mean that integration happened. 'not_selected' is terminal for an
         eligible candidate that was not integrated. 'deferred_needs_approval'
         items are re-presented at wrap-up. All other states are terminal for
@@ -230,7 +230,7 @@ experiment_entry:
 
     change_id:
       type: string
-      description: "Jujutsu change ID targeted by the optimization bookmark (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "JJ change ID after integration into the optimization change (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string
@@ -261,16 +261,16 @@ experiment_entry:
 #           -> persist raw metrics   -> outcome: measured or promising
 #           -> judge evaluated (if type: judge)
 #             -> decide.mjs eligible, next_measurement none -> stay measured until integration
-#               -> optimization bookmark targets change -> outcome: kept
+#               -> change selected by optimization bookmark -> outcome: kept
 #               -> eligible leftover             -> outcome: not_selected
-#             -> runner-up, file-disjoint -> rebase onto current best + re-measure
+#             -> runner-up, file-disjoint -> rebase + re-measure
 #               -> combined eligible and integrated -> outcome: runner_up_kept
 #               -> combined not kept              -> outcome: runner_up_reverted
 #             -> inconclusive             -> outcome: inconclusive
 #             -> not eligible             -> outcome: reverted
 #       -> needs unapproved dep    -> outcome: deferred_needs_approval
 #
-# Only 'kept' and 'runner_up_kept' leave a described change on the optimization bookmark stack.
+# Only 'kept' and 'runner_up_kept' integrate content into the optimization change.
 # Only 'deferred_needs_approval' items are re-presented at wrap-up for approval.
 
 # ============================================================================

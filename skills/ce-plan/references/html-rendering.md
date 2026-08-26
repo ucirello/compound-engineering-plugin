@@ -43,6 +43,15 @@ These hold regardless of which skill produced the artifact.
   element AND appears as visible text inside the element (e.g., the
   text "R1." inside the table cell or heading). Downstream agents find
   the ID in source the same way they find it in markdown.
+- **Source / composition signal.** A visible footer at the bottom of
+  the doc names the composition timestamp and the source identifier
+  (the user prompt context, the upstream brainstorm doc when one
+  exists, or just the composing skill name when there's no external
+  source). Example shape:
+  `<footer class="composition-signal">Composed 2026-05-17T14:23Z from <code>docs/brainstorms/...-requirements.md</code></footer>`.
+  Under exclusive output mode this signal is the artifact's own
+  provenance — there's no markdown sibling to reference. Omitting it
+  leaves readers unable to tell how stale the rendering is.
 - **ASCII identifiers.** Class names, element IDs, data attribute names
   are ASCII-only.
 - **Unified plan navigation.** Unified plan artifacts include a visible
@@ -99,8 +108,9 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to another workspace. Users who
-want HTML defaults can add DESIGN.md to the active workspace.
+Workspace-root only — do not fall through to another workspace. Users
+working from a Jujutsu workspace who want HTML defaults can add DESIGN.md
+to that workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -216,10 +226,10 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time through JJ's Git interoperability:
+Resolve the repository URL and default bookmark once at compose time through `gh`:
 
 ```bash
-jj git remote list
+gh repo view --json url,defaultBranchRef
 ```
 
 Apply linking to three reference shapes:
@@ -233,8 +243,8 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
-Bitbucket, internal host) and the equivalent main-tree URL pattern
+**Do not invent URLs.** If the repository is not hosted on GitHub and the
+equivalent default-tree URL pattern
 isn't obvious, leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.
@@ -265,8 +275,8 @@ a browser. Keep the heading text visible and adjacent to the `id`; do not rely
 on a nav link alone to carry the section name.
 
 Optional sections with a contract-defined semantic role put that role on their
-wrapping `<section>` with `data-ce-section`. For example, the broader-work
-relationship section uses `data-ce-section="work-relationships"`. The role is
+wrapping `<section>` with `data-plan-section`. For example, the broader-work
+relationship section uses `data-plan-section="work-relationships"`. The role is
 stable even when the visible heading changes; it supplements, rather than
 replaces, readable heading text and any useful anchor.
 
@@ -298,7 +308,7 @@ chip) is being styled.
 Status chips, ID chips, and metric pills in the same row share one shape
 — same border-radius, border weight, and fill treatment. Differentiate
 categories only by the chip's overall fill/text color (applied to the
-whole pill with a soft tint), never by an accent on one edge. A
+whole pill, like a soft-tint marker), never by an accent on one edge. A
 colored stripe or arc on a single side of a pill reads as broken and
 asymmetric — as if a border half-failed to render — so avoid it. The same
 holds for any element, not just chips: differentiate by a full tint, not
@@ -597,6 +607,8 @@ Before returning the artifact, scan it for common slips:
 - **All stable IDs** appear as both `id=""` and visible text.
 - **Section heading vocabulary** matches the section contract names
   (downstream agents grep these).
+- **Source / composition signal** is present as a visible footer at
+  the bottom of the doc (composition timestamp + source identifier).
 - **Repeating cards with 3+ instances put secondary content inside
   default-closed `<details>`.** Fully-expanded unit cards in a long
   Implementation Units section is a failure mode — the reader can't see

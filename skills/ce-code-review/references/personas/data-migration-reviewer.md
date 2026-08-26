@@ -10,7 +10,7 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base revision from caller context (`<review-base>`). **Never assume `main`.**
+Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — common-ancestor commit ID or ref). **Never assume `main`.**
 
 ```bash
 jj diff --from <review-base> --name-only -- db/migrate/

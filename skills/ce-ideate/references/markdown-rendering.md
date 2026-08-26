@@ -18,8 +18,8 @@ These hold regardless of which skill produced the artifact.
 - **ASCII identifiers in anchors.** Markdown headings auto-generate anchors
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
-- **Workspace-relative paths for file references.** Always. Never absolute paths
-  — they break portability across machines, workspaces, and teammates.
+- **Repo-relative paths for file references.** Always. Never absolute paths
+  — they break portability across machines, workspaces, teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
   semantic marker such as `<!-- ce-section: work-relationships -->`; it carries
@@ -208,7 +208,7 @@ Engineering process metadata stays out of the artifact:
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in version-control history, tool output, and agent
+This information belongs in JJ change descriptions, tool output, and agent
 transcripts — not in the artifact a reader returns to weeks later.
 
 ## Frontmatter shape

@@ -1,63 +1,178 @@
-# PR description writing
+# PR Description Writing
 
-## Outcome
+## The core principle
 
-Explain what the diff cannot: the outcome now possible, the failure now removed, the important design decision, evidence that changes confidence, and known residual scope. Do not narrate file operations a reviewer can read from the diff.
+The diff is already visible on GitHub. The description exists to explain what the diff cannot show: what was impossible before and is now possible, what was broken and is now fixed, what shape changed. Cut any sentence a reader could reconstruct from the diff itself.
 
-Use short direct sentences and one stable term per concept. Keep technical names when they are the claim or review target. State user-visible before and after before implementation cause when that is what reviewers must assess.
+- Bad: "Adds `evidence-decider.ts`, modifies `ce-commit-push-pr/SKILL.md` to call it, and updates two test files."
+- Good: "Evidence capture now decides automatically whether a change has observable behavior. CLI tools and libraries are now eligible alongside web UIs."
 
-## Project contract
+If the lead describes moves/renames/adds rather than what's now possible or fixed, rewrite it — restating the diff is the failure mode this skill exists to prevent. For user-facing bugs, name the visible before/after first; mention the technical cause only if it helps assess risk.
 
-Resolve required PR headings, fields, order, checklists, and boilerplate from the project's active instructions and standard PR-template or contribution locations. That contract wins. Treat it as a minimum unless it explicitly requires exact/template-only content or forbids additions.
+**Prose (STE-inspired, scoped).** Write framing and connective prose in an ASD-STE100 Simplified Technical English (STE)-inspired style: short, direct sentences; one idea per sentence; one consistent term per concept. Prefer plain wording wherever domain terms are not load-bearing. Keep necessary technical jargon, identifiers, paths, protocols, and error text where they *are* the claim or the review target — do not dilute mechanism language into vague plain English. Shorten sentences, not content.
 
-Do not add creator identity. For a required neutral actor field use `ai:assistant` as a machine value or `AI Assistant` as prose. Keep any explicitly required model/provider/harness disclosure according to the runtime project contract.
+- Bad (jargon without need): "This advances the modularized invalidation surface for progressive revocation semantics."
+- Good (plain frame / jargon is the claim): "This is the second slice of the session-revocation rewrite." / "`TokenStore.invalidate` is now atomic under concurrent refresh."
 
-## Resolve range and evidence
+## Project PR-body contract
 
-PR mode starts with:
+Before composing, resolve PR-body requirements from the project's active instructions and conventions already in context, then check standard PR-template locations (repo root, `docs/`, `.github/`, `.github/PULL_REQUEST_TEMPLATE/`) and any contribution guidance they reference. Required headings, fields, order, checklists, and boilerplate define the structural contract. Treat a template as a minimum unless the project explicitly requires an exact/template-only body or forbids additions; only then add no sections beyond those the project permits. Within every permitted section, apply this reference's value-first, decision-cost, evidence, and editing rules. When those defaults conflict with the project's PR-body contract, the project contract wins.
+
+---
+
+## Step Pre-A: Resolve the range and base
+
+Two modes:
+
+- **Current-bookmark mode** (default) — describe the feature bookmark target versus the repository's default base.
+- **PR mode** — describe a specific PR when the caller passes a PR ref.
+
+For PR mode, fetch metadata first:
 
 ```bash
 gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
 ```
 
-Require an open PR. Fetch the base bookmark from the named Git remote that represents the PR base, then inspect the exact PR head when it is available in JJ:
+If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
+
+For current-bookmark mode, resolve `<base>` with `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, then verify `<base>@<base-remote>` with `jj bookmark list --all-remotes`. If it cannot be resolved unambiguously, ask the user. Resolve `<head>` from the feature bookmark target; use `@-` only when this workflow just completed the change and the bookmark has not yet been set.
+
+**Base remote:** `origin` for current-bookmark mode and same-repository PRs unless JJ configuration names another fetch remote. For fork PRs, match the PR's base owner/repository against `jj git remote list`. If no local remote matches, use the `gh` fallback; never diff against the wrong remote.
 
 ```bash
 jj git fetch --remote <base-remote> --branch <base>
-jj log -r '<base>@<base-remote>..<head>'
+jj log -r '<base>@<base-remote>..<head>' --no-graph
+jj log -r '<base>@<base-remote>..<head>' --no-graph -T builtin_log_detailed
 jj diff --from '<base>@<base-remote>' --to '<head>'
 ```
 
-For current-workspace mode, resolve the provider default branch through `gh repo view`, select the matching JJ remote bookmark, and use the feature bookmark target as `<head>`. Never use Git `HEAD` as the JJ head.
+If the commit list is empty, report "No commits to describe" and stop.
 
-For a fork, match the base repository to a named remote URL. If the PR head commit is not present after normal remote fetch, use `gh pr diff <ref>` and `gh pr view <ref> --json commits`; do not diff against a wrong remote. Report API fallback use. If the range contains no changes, report that and stop.
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when JJ cannot reach the revisions, including a fork PR with no matching remote, a shallow clone, offline state, or unrelated histories.
 
-## Build the scope map
+Note in the user-facing summary when the API fallback was used.
 
-Write a compact internal map before composition: umbrella outcome; material outcome clusters and claims; program placement or `none`. Derive it from the complete range log and final diff, not only the latest change, bookmark name, request, or tracker title. Classify files by runtime purpose rather than extension.
+---
 
-When known context places this PR in a larger series, add the program outcome, this PR's contribution, and known prior or residual work. Do not scan unrelated PRs solely to invent series context. The opening states this PR's umbrella outcome; a separate short block may place it in the larger program without repeating the opening.
+## Step A: Size the description
 
-Size content by reviewer decision cost. Simple work may need one value-led sentence. Higher uncertainty adds only the design choices, evidence, and residual risk needed to decide. Large diffs require more selection, not diff narration. Use a table, diagram, or navigation hint only when it resolves a reviewer question faster than prose.
+**Size by decision cost, not diff shape** — not changed-line count, file extension, or visual surface. A 5-line ranking or deploy change can carry more reviewer uncertainty than a 500-line mechanical rename.
 
-## Compose the title
+Build a compact internal **scope map** from the complete JJ change list and final range diff. Use concise descriptions for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale descriptions. Group material outcome clusters, name one umbrella outcome, and identify claims the reviewer must assess. Derive this map from the full range, never from only the latest change, tracker title, bookmark name, original request, or origin story. Classify each changed file by runtime purpose, not extension. Surface claims the diff alone cannot establish and leave the rest implicit.
 
-Derive title structure from runtime project instructions and recent repository history. Use the scope map's umbrella outcome, keep peer outcomes at parity, and satisfy the host's title limits. Do not impose a fixed prefix, type, scope, capitalization, mood, subject form, or example. Never add release-triggering syntax without explicit user confirmation.
+**Program altitude (multi-PR / series).** After the PR-local map, check whether this PR sits inside a larger program (multi-PR project, stack, series, multi-unit plan). Use only signals already in hand: user prompt/conversation, a known plan path, existing PR body, change descriptions, or sibling/series language in context. Do not invent a series or run a repository-wide open-PR scan solely for this step.
 
-## Related work
+When program context is present, extend the map with: (1) **Program outcome** — end-to-end delivery in one sentence; (2) **This PR's contribution** — the local umbrella; (3) **Neighbors** — prior work (**lead-in**) and/or residual work (**lead-out**), each only when known. The map's order is **program → lead-in (if any) → this contribution → lead-out (if any)**; in the body the opening states this contribution and a short block after it supplies the rest (Step C). Early PRs need lead-out; middle need both; late need lead-in (and say the arc completes when true). Omit prior or next when unknown — never invent either. Program placement the reviewer cannot get from this PR's diff alone is decision cost. When program context is absent, keep the single-PR umbrella only.
 
-Gather candidate work-item references from supplied context, the complete change descriptions, existing body, template, and visible plans or URLs. Preserve existing references on rewrite unless asked to remove them.
+- Bad (too local for a middle PR): the opening "Issue-close now revokes the active session on the server." with no placement anywhere in the body.
+- Good: that same opening, then a block: "Continues the session-revocation rewrite after refresh-path rejection; multi-device revocation remains follow-on." — the block adds the program and its neighbors, not a second copy of the outcome.
+- Early/late: name first-slice + residual, or complete-the-arc + what already landed — same three fields, omit the unknown neighbor.
 
-Use a closing reference only when the PR fully resolves the item and the tracker's documented closing syntax is known. Otherwise use the project's neutral related-reference convention or a plain full URL. Unknown close semantics never become a guessed workflow action. Keep a non-closing identifier out of outcome prose so it cannot imply closure.
+**Write the finished map down before composing** — after the program-altitude check, so it carries both halves: umbrella; clusters with their claims; program placement or "none" (three or four lines). Step E audits the opening against this written map, not against memory.
 
-## New concepts
+> Prefer the shortest description that still lets a reviewer decide — context (including program placement when present), evidence, and residual uncertainty they can't get from the diff, and nothing they can.
 
-When the teaching gate is on, derive at most two candidate concepts from the diff. A concept qualifies only when it is new relative to the base and transferable beyond this patch. Check the base with JJ's file search or a fileset-scoped repository search; do not inspect the working-copy version as proof of prior presence. Omit established patterns, ordinary refactors, internal plumbing, and uncertain candidates.
+Decision cost raises the content floor, not the length ceiling (high-uncertainty *small* diffs get a sharper lead, not an essay). Uncertainty moves a change at most one size row. Fold risk into the narrative unless the PR is already large. Include evidence only when it changes confidence in a material claim. Subtract fix-up commits when sizing. Large PRs need more selectivity, not more content.
 
-For each qualifying concept, explain what it is, why it fits here, how this change uses it, and when not to use it. Preserve an existing `## New concepts` section and explainer links on rewrite unless the requested focus changes them. Description-only and update modes never write repository files.
+| Change profile | Description approach |
+|---|---|
+| Small + simple (typo, config, dep bump) | 1-2 sentences, no headers. Under ~300 characters. |
+| Small + non-trivial (bug fix, behavioral change) | 3-5 sentences. No headers unless two distinct concerns. User-visible before/after when the bug was observable. |
+| Medium feature or refactor | Opening (one or two sentences), then only sections that each answer one remaining reviewer question; call out design decisions. |
+| Large or architecturally significant | Same, plus 3-5 design-decision callouts and a brief test summary. Target ~100 lines, cap ~150. Many mechanisms → Summary table, not an H3 per mechanism. |
+| Performance improvement | Before/after measurements as a markdown table. |
 
-## Assemble and audit
+A project PR-body contract sets the structural floor; this table sizes the content within it, never against it. Small + simple: the value-led sentence is the whole description.
 
-Honor the project template's structure. Otherwise use an opening, then only sections that answer remaining reviewer questions, related references, validation when useful, supplied planning provenance when already in hand, new concepts, and evidence. Do not append creator identity or product-marketing material.
+**Medium and large: a reader can stop anywhere.** The opening is one or two sentences carrying one idea — what is now different and the gap or failure it replaces — so a reviewer who stops there knows what the PR does. Program or series context, when present, is a short additive block after it (Step C), never part of the opening's sentence. Each further section exists to answer one remaining reviewer question; a bullet is one clause, with reasoning under design decisions rather than inside the bullet. Deliberately deferred scope is stated once, not woven into the opening. Which sections and devices appear is decided by what the reviewer still cannot get from the diff (Visual aids, Step C) — this is not a section list.
 
-Before returning, verify that the title and opening express the scope map's umbrella outcome; every material claim is represented or intentionally supporting-only; program context is accurate; evidence states results and limitations; related references have the right semantics; and no sentence merely restates the diff. Remove optional content that does not improve reviewer confidence, while retaining project-required fields.
+---
+
+## Step B: Compose the title
+
+Compose the title from the scope map's umbrella outcome rather than imposing a fixed type, scope, or conventional template. Project PR-title instructions and observed repository practice win. With program context, the title may name this PR's contribution without restating the whole series, but it must not make another material outcome sound incidental. Keep any required length or breaking-change policy from the project; do not invent one.
+
+---
+
+## Step B1: Resolve related work references
+
+Before writing the body, gather candidate work-item references from the user prompt, caller handoff, bookmark name, full change descriptions, existing PR body, PR template, plan/debug notes, and visible URLs or IDs in context. Preserve existing related references when rewriting a PR unless the user asks to remove them.
+
+This step owns **tracker** close-vs-link semantics. Sibling PR / series narrative belongs in Step A's program altitude, not here — a sibling PR number already in context may still appear as a non-closing related reference when useful.
+
+Classify each candidate as:
+
+- **closing reference** — the PR fully resolves the item and the tracker's closing syntax is known.
+- **non-closing reference** — related, partial, investigative, follow-up, validation-only, or tracker semantics unknown.
+- **uncertain** — tracked bug/incident/investigation is clear but ID or close-vs-link intent is missing. Ask (interactive) or use non-closing / omit (non-interactive); never invent a close.
+
+Do not invent a closing keyword. Magic words are workflow actions, not decoration. If ambiguous, neutral related reference or omit — do not scatter the ID through the summary.
+
+Do not put a non-closing reference next to close/fix/resolve/address/report wording in prose. Write behavioral scope in one sentence; put the tracker ID separately. Use the table's non-closing reference labels exactly; do not substitute synonyms like `Refs`, `References`, or `Toward` unless the project's documented tracker convention requires one. For a non-closing reference, the tracker ID appears only in that related-reference sentence or block, never in the summary/opening/body prose.
+
+- Bad: "closing one corruption path from #123"
+- Bad: "This addresses the retry-related corruption path reported in #123."
+- Good: "This covers the duplicate-row retry path; concurrent cancellation remains follow-up work."
+- Good: "Related: #123"
+
+| Tracker | Closing reference | Non-closing reference | Notes |
+|---|---|---|---|
+| GitHub Issues | `Fixes #123`; cross-repo: `Fixes owner/repo#123` | `Related: #123`; cross-repo: `Related: owner/repo#123` | Closing keywords: `close(s/d)`, `fix(es/ed)`, `resolve(s/d)`. Use closing only when the PR targets the default bookmark and truly resolves the issue. Repeat the keyword per closing issue. |
+| Linear | `Fixes ENG-123` | `Related to ENG-123` | Magic words in the PR description, not a PR comment. Multiple issues may share one magic word when intent matches, e.g. `Fixes ENG-123, DES-5 and ENG-256`. |
+| Other trackers | Project-documented closing keyword only when known. | Full URL or tracker ID under `Related`. | Never guess a closing action. |
+
+Closing references may live in the opening when the body is tiny. Non-closing references always get their own sentence or `## Related` block before validation/evidence. One true close can be a single line (`Fixes ENG-123.`); mixed items separate closing and non-closing bullets.
+
+---
+
+## Step B2: Judge new concepts
+
+Decide whether the change introduces a concept (pattern, technique, library, domain idea) a reader of this repo would plausibly not know. Skip entirely when the skill's concept teaching gate is off (SKILL.md Step 4).
+
+**Gather candidates from the Pre-A diff first** (first real use of a dependency, a technique the diff introduces, a domain idea the code now encodes). Most PRs surface none — stop; absence is the common case.
+
+**Check each candidate against the base revision, never the working copy** (the working copy contains this PR's own code):
+
+```bash
+jj file search -r '<base>@<base-remote>' --pattern '<term>'
+```
+
+One call per candidate (cap two). Empty output → absent from the base. Teachable only when new *and* transferable. Never teach: established patterns, ordinary refactors/renames/dep bumps, project-internal plumbing. When in doubt, omit. On the `gh`-fallback path, judge from diff context alone and lean conservative.
+
+- Bad: teaching "dependency injection" for one new constructor arg in a DI-heavy codebase.
+- Good: teaching infinite scroll on the PR that first replaces pagination with it.
+
+**Compose** under `## New concepts` (Step C places it), at most 2 concepts (~10-25 lines each): (1) what it is in plain words, (2) why here vs the obvious alternative, (3) one example from this PR, (4) when not to use it. Prefer mermaid for architecture, a short code block for mechanics, a table for trade-offs. Dense is good; long is not. Never hand-draw box-drawing diagrams. Additive to Step A's sizing — does not count against size rows.
+
+Preserve an existing `## New concepts` section and explainer-doc link verbatim on rewrite (same rule as `## Demo`) unless the user's focus asks to refresh. Description-only/update never write repo files. **Archival** when Step 5 confirms apply and `pr_teaching_archive` is on: content → `<root>/explainers/` per SKILL.md Step 5.
+
+---
+
+## Step C: Assemble the body
+
+When a project PR-body contract supplies headings or order, preserve that structure and place the applicable elements below within the sections it permits. Otherwise: opening -> body sections that earn their keep -> related references when they need their own block -> test plan if non-obvious -> session-settled provenance when a labeled plan is in hand -> New concepts section when Step B2 produced one -> evidence block if one exists.
+
+When the project PR-body contract supplies a heading or location for the opening, place it there without inventing or renaming a heading. Otherwise, the opening goes under `## Summary` if the body uses any `##` headings; bare paragraph otherwise. No orphaned opening above the first heading. The opening carries one idea — this PR's outcome; it is the map's "this contribution" slot. When program context is present, a short block immediately after it adds only what the opening cannot: the program outcome and the known lead-in and lead-out. It never restates the outcome, and the program is never folded into the opening's sentence.
+
+**Session-settled provenance:** when a plan is already in hand (caller path or conversation) with `session-settled:`-labeled KTDs, one static sentence naming settled decisions and classes (e.g. "Session-settled decisions carried from planning: X (user-directed, over Y); Z (user-approved)."). Add proceed-under-conflict clauses only when the caller flagged them. Never an outstanding-items ledger; never hunt for plans when none is in hand.
+
+**Evidence:** preserve existing `## Demo` / `## Screenshots` unless focus asks to refresh. Splice caller-passed capture as `## Demo`. Never label test output as "Demo" or "Screenshots." SKILL.md Step 4 owns whether to include validation notes versus skip.
+
+**Visual aids:** diagram or table when faster than prose (flows, trade-offs, a before/after comparison when observable behavior changed); a navigation hint (which file to start in, or the small load-bearing hunk a reviewer would otherwise miss) only when the reviewer would start in the wrong place — never a list of changed files, which the diff already shows; skip all of these for simple/rename/dep-bump. Content pattern decides, never size or file count. Prose wins on conflict. **GitHub:** never prefix list items with `#` (auto-links as issues); use `org/repo#123` or full URL for real refs.
+
+---
+
+## Step D: Pre-apply coverage audit
+
+Before returning the title and body, check against the scope map and material claims from Step A and revise if wrong:
+
+- Does the title express the umbrella outcome rather than one cluster or mechanism?
+- Does the opening express the same umbrella — every peer outcome the map names, at parity — rather than the cluster the work started from? If the map has three peer outcomes and the opening leads with one and mentions the others as "also" or "comes with", rewrite it from the map.
+- Does the opening carry one idea in one or two sentences, and could a reviewer stop there and know what the PR does? If it also carries program context, deferrals, or implementation detail the diff already supplies, move those out; mechanism that is itself the outcome (an atomicity, protocol, or API guarantee) stays in the opening, per the prose rule above.
+- Does any section, table, or hint restate what the Files-changed tab or diff already shows? Cut it. Does any section answer no remaining reviewer question? Cut it.
+- Is every material outcome represented by the umbrella framing or body, or intentionally omitted because it is supporting-only?
+- Is every claim the diff can't establish present — and any claim the diff *does* show restated needlessly?
+- Was program altitude actually checked (the map says "none" or names the program)? When program context was present: does the lead place this PR on the arc (program + this contribution, with lead-in and/or lead-out when known)? When program context was absent: does the body invent a multi-PR series? If so, cut it.
+- Does any sentence use domain jargon that is not load-bearing for its claim? If so, rewrite in plain framing (keep jargon where it *is* the claim).
+- Is decision-changing evidence a stated result (not unexplained "tests passed"), with demonstrated results distinct from assumptions and mixed/negative outcomes?
+- Can any sentence or section of the description be cut without lowering reviewer confidence? If so, cut it, except for headings, fields, checklists, or boilerplate the project's PR-body contract requires. Retain the session-settled provenance sentence when Step C included one.

@@ -8,7 +8,7 @@ Resolve the workspace root with `jj workspace root`. When the current directory 
 
 Preserve operational interoperability rather than translating it into repository mutation. Use `gh` for GitHub metadata when the user's scope names a PR or other GitHub object; in a non-colocated Git-backed JJ workspace, point `GIT_DIR` at the path returned by `jj git root`. Keep every repository read and mutation in JJ; Git Bash remains a supported shell.
 
-Create one private run directory under `<workspace-root>/.tmp/rocketclaw/ce-test-xcode/<run-id>/` and retain its absolute path. Store screenshots, captured logs, and other temporary evidence only there; do not use operating-system or global temporary storage. Outside JJ, the same path is rooted at the local workspace directory.
+Create one private run directory under `<workspace-root>/.tmp/rocketclaw/ce-test-xcode/<run-id>/` and retain its absolute path. Store screenshots, captured logs, and other temporary evidence only there; do not use operating-system or global temporary storage. Inside JJ, first confirm existing ignore rules exclude `.tmp/` from working-copy snapshots; if they do not, stop with that blocker rather than editing ignore configuration or recording evidence in the change. Outside JJ, the same path is rooted at the local workspace directory.
 
 ## Availability gate
 

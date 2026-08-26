@@ -8,7 +8,7 @@ argument-hint: "[issue reference, error message, test path, or description of br
 
 Find the root cause of a failure, then — when the user chooses to — fix it with test-first discipline.
 
-**Done when:** the causal chain from trigger to symptom is stated with no gaps and file:line evidence, and either a verified fix has been handed off as a described Jujutsu change, a PR, or the user's chosen stop, or a diagnosis-only summary has been delivered. **Escalate rather than persist:** 2-3 hypotheses exhausted without confirmation, or 3 failed fix attempts, means diagnose *why* instead of trying again — that is the smart escalation `references/investigate.md` describes. One hypothesis, one change at a time; changing several to see what helps is shotgun debugging.
+**Done when:** the causal chain from trigger to symptom is stated with no gaps and file:line evidence, and either a verified fix has been handed off (PR, described JJ change, or the user's chosen stop) or a diagnosis-only summary has been delivered. **Escalate rather than persist:** 2-3 hypotheses exhausted without confirmation, or 3 failed fix attempts, means diagnose *why* instead of trying again — that is the smart escalation `references/investigate.md` describes. One hypothesis, one change at a time; changing several to see what helps is shotgun debugging.
 
 `<bug_description>` is whatever this skill was invoked with — a failure description, a `mode:` token, or an issue reference (`#123`, `org/repo#123`, an issue URL) — from the user or from a calling skill (`ce-babysit-pr` / `lfg` in `mode:pipeline` pass the failing jobs and log tails). Blank if nothing was provided.
 
@@ -23,15 +23,17 @@ Default is **interactive**: investigate, run the Phase 2 fix-choice gate, then t
 
 Wherever this skill asks the user something, use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question, and never end a phase without a response.
 
-## Workspace Paths
+## Artifact Root
 
-Resolve `<workspace-root>` with `jj workspace root`. Outside a Jujutsu workspace, use the current working directory as the local root. Put every temporary file or directory under `<workspace-root>/.tmp/rocketclaw`; never use an OS-global temporary location. Create a unique child when concurrent runs could collide, and remove only paths created by this run.
+Resolve `<root>` only when you first compose a `<root>/` path — a run that composes none skips this entirely.
 
-Resolve `<root>` only when you first compose a durable artifact path; a run that composes none skips this entirely.
+<!-- ce-docs-root:start -->
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
+<!-- ce-docs-root:end -->
 
 ## Execution Flow
 
@@ -67,12 +69,12 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **Read `references/fix.md` before editing any file** — the test-first sequence, the failed-fix rule, and the defense-in-depth and post-mortem triggers. Two rules decide whether the fix may start at all, so they stay here:
 
-- **Working-copy change.** Check `jj status`. If the working-copy revision already contains user changes in files that need modification, confirm before editing. Jujutsu has no current bookmark: when `@` is the trunk revision, start a new empty change with `jj new 'trunk()'` and report its change ID. Do not create or move a bookmark until publication requires one.
-- **Record the pre-fix scope:** the change ID and commit ID of `@`, the output of `jj status`, and every pre-existing changed file. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
+- **Bookmark.** Check `jj status`; if the working-copy change already modifies files that need modification, confirm before editing. Jujutsu has no current bookmark. When `@` is at `trunk()` or a local default-line bookmark points at `@`, create a feature bookmark at `@` without asking, derive its name from the bug, and say which bookmark will carry the work. Do not move an unrelated bookmark.
+- **Record the pre-fix scope:** current change ID and commit ID from `jj log -r @`, whether `jj status` is clean, and any pre-existing changed files from `jj diff --summary -r @`. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
 
 ### Phase 4: Handoff
 
-**`mode:pipeline` — skip this entire interactive handoff.** No polish/review tail, no residual questions, no preview, no learning-capture offer. Describe and publish the convergent change per `references/pipeline-mode.md`, then emit that reference's **structured return** as the final output. Divergent / needs-human items are deferred there (open thread or the caller's run-report comment — never a PR-body section). The rest of this section is the interactive path only.
+**`mode:pipeline` — skip this entire interactive handoff.** No polish/review tail, no residual questions, no preview, no learning-capture offer. Describe the convergent fix, advance its bookmark, and push per `references/pipeline-mode.md`, then emit that reference's **structured return** as the final output. Divergent / needs-human items are deferred there (open thread or the caller's run-report comment — never a PR-body section). The rest of this section is the interactive path only.
 
 **Structured summary** — always write this first:
 
@@ -88,27 +90,27 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **If Phase 3 was skipped**, stop after the summary — the user already said they were taking it from here. Do not prompt.
 
-**If Phase 3 ran, read `references/post-fix-handoff.md` now and follow it before routing below.** It owns this phase's quality tail — the contextual-override checks, the skip-for-mechanical-fixes rule, the scoping that keeps `ce-simplify-code` and `ce-code-review` off unrelated revision content, residual handling, the `## Post-Fix Quality` block, and the learning-capture criteria — and none of that appears in this body. The routing below names *which* action fires, never the scope rules that make it safe, so it cannot be improvised from. Skipping the read ships an unreviewed fix, lets review reach into unrelated revision content, and strands accepted findings in the session.
+**If Phase 3 ran, read `references/post-fix-handoff.md` now and follow it before routing below.** It owns this phase's quality tail — the contextual-override checks, the skip-for-mechanical-fixes rule, the scoping that keeps `ce-simplify-code` and `ce-code-review` off unrelated work, residual handling, the `## Post-Fix Quality` block, and the learning-capture criteria — and none of that appears in this body. The routing below names *which* action fires, never the scope rules that make it safe, so it cannot be improvised from. Skipping the read ships an unreviewed fix, lets review reach into unrelated work, and strands accepted findings in the session.
 
 #### Routing
 
-**Land the fix without carrying along anything the user did not offer up** — not into the described change, a published bookmark, or a PR. Do not ask whether to open a PR; permission is not the gate. Two questions decide the handoff, answered from the pre-fix scope Phase 3 recorded rather than inferred from bookmark state. **Fire the action itself** via the platform's skill-invocation primitive — never merely tell the user to type a command.
+**Land the fix without carrying along anything the user did not offer up** — not into a described change, bookmark push, or PR. Do not ask whether to open a PR; permission is not the gate. Two questions decide the handoff, answered from the pre-fix scope Phase 3 recorded rather than inferred from bookmark placement. **Fire the action itself** via the platform's skill-invocation primitive — never merely tell the user to type a command.
 
-**1. What may go into the change — the fix-owned content and nothing else.** This is a constraint on whichever skill describes the change in question 2, never an action of its own. It holds on every route, remote or not. Do not describe or split the change here.
+**1. What may go into the fix change — the fix-owned files and nothing else.** This is a constraint on whichever skill describes the JJ change in question 2, never an action of its own. It holds on every route, remote or not. Do not describe or split the change here.
 
-- No fix-owned file carried pre-existing edits: those filesets are the change scope passed to whichever routing skill acts next.
-- A fix-owned file already carried the user's edits: first determine whether `jj split` can isolate the fix-owned content without ambiguity. If it can, isolate only that content. If it cannot, ask (per **Blocking questions**) before describing or publishing anything: include the user's overlapping edits, leave the mixed change local and undescribed, or stop. Only the first answer continues; say what was left and why on either other answer. Phase 3's confirmation covered editing the file, never publishing the user's edits with the fix.
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Repository-local active instructions and syntax observed at runtime always win. Apply compatible Go guidance only to message quality, clarity, and structure; do not impose fixed syntax, examples, or templates. Preserve dynamic tracker tokens and other placeholders required by the active provider.
+- No fix-owned file carried pre-existing edits: those files are the change scope passed to whichever skill describes the JJ change.
+- A fix-owned file already carried the user's edits: file-level scope cannot separate those hunks automatically. Ask (per **Blocking questions**) *before* anything is described: include that file with their edits, leave the fix in the working-copy change, or stop. Only the first answer continues; the other two end the handoff, so question 2 never runs and nothing is described. Say what was left and why. Every option loses something the agent cannot choose on the user's behalf, which is why this question survives. Phase 3's confirmation covered editing the file, never publishing the user's edits with the fix.
 
 **2. Who describes the change, and whether it ships.** Exactly one of these runs.
 
-- **Ships** — the pre-fix change was empty, the publication stack contains no work the user has not already offered, and a configured remote is **PR-capable**: `jj git push` can publish a bookmark there and `gh` can open or update its PR. Establish those however fits the workspace. A PR spans every revision between its base and published bookmark, so inspect that revset rather than only `jj diff`; already published revisions count as offered only when they belong to an open PR. If these conditions do not all hold, take the local route. Otherwise preview the fix-owned content, target bookmark, publication revset, and whether a PR opens or updates, then invoke `ce-commit-push-pr` under question 1's scope. Surface the resulting PR URL.
-- **Stays local** — any of those conditions fails. Invoke `ce-commit` under question 1's scope and publish no bookmark. Say what stayed local and why, and that you will publish it and open the PR on request. A local Jujutsu operation can be recovered through the operation log, so do not ask first.
-- **Not a Jujutsu workspace** — nothing is described or published. Stop after the summary and the quality block.
+- **Ships** — the pre-fix working-copy change was clean, the bookmark's publication range contains no work the user has not already offered, and the remote is **PR-capable**: somewhere `gh` can actually open a PR. Establish those however fits the repo in front of you. Two facts make it less obvious than it looks.
+  - `ce-commit-push-pr` pushes the **whole bookmark**, and its PR spans every change in the publication range, not just your fix, so the question is about bookmark reachability rather than one diff. It also pushes before creating the PR, so a remote where `gh` cannot open a PR may be left with a published bookmark and no PR.
+  - Already pushed is not already **offered**. Changes in an open PR are under review, so they are offered and this run updates that PR rather than opening a second one; changes pushed for backup or to trigger CI are not, and a first PR would publish them. Compare against the remote bookmark rather than only its local counterpart, which can be ahead of what was pushed.
 
-**Contextual override** ("don't open PRs from skills", "keep the change local", "stop after the fix") — follow what the user said, and **Stop here** without describing or publishing when that is what they asked for. A vague tonal cue is not an override.
+  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be described, which bookmark will be pushed, and whether a PR opens or updates, then invoke the `ce-commit-push-pr` skill. It owns the description and publication under question 1's scope, so do not describe the change first. The preview is a statement, not a question. Surface the resulting PR URL.
+- **Stays local** — any of those fails. Invoke the `ce-commit` skill under question 1's scope and push nothing. Say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first because a local described change is reversible.
+- **Not a JJ workspace** — nothing is described or published. Stop after the summary and the quality block.
 
-**After a PR is open** — apply the reference's learning-capture criteria; if the user accepts, invoke `ce-compound`, include the learning document in the same published change stack, move the PR bookmark to its new tip, and publish it with `jj git push`.
+**Contextual override** ("don't open PRs from skills", "describe locally only", "stop after the fix") — follow what the user said, and **Stop here** without describing the change when that is what they asked for. A vague tonal cue is not an override.
+
+**After a PR is open** — apply the reference's learning-capture criteria; if the user accepts, invoke the `ce-compound` skill, then fold the learning doc into the same JJ change or describe a follow-up change as appropriate, advance the same bookmark, and push so the open PR picks it up. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.

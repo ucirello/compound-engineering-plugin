@@ -224,9 +224,9 @@ Skipping this entirely is fine - the skill does not require a schedule to functi
 
 ## Config File Shape
 
-After the interview completes, merge a `pulse_*` block into `<workspace-root>/.rocketclaw/config.local.yaml`. Resolve the workspace root with `jj workspace root`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
+After the interview completes, merge a `pulse_*` block into `<repo-root>/.rocketclaw/config.local.yaml`. Resolve the repo root with `jj workspace root`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
 
-If the file does not yet exist, create the directory and file. If `.rocketclaw/config.local.yaml` is not already covered by `.gitignore`, offer to add the entry before writing. JJ uses Git ignore files, including in non-colocated workspaces; if the file was already tracked before the ignore rule, use `jj file untrack <config-path>` after adding the rule.
+If the file does not yet exist, create the directory and file. If `.rocketclaw/config.local.yaml` is not already covered by the repository's JJ-compatible ignore rules, offer to add the entry before writing.
 
 The pulse block uses skill-prefixed flat keys so it can share the config file without owning unrelated settings:
 

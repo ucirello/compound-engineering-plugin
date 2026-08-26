@@ -12,7 +12,7 @@ Read this before Phase 0 and follow it for the whole run. The body states the in
 
 4. **One experiment, one log entry.** Append a new experiment entry on its first measurement. Later ladder samples for that same experiment update that entry's metrics and outcome in place so a crash can resume the ladder without losing samples or duplicating the hypothesis. Never rewrite a different experiment's samples or gate values. Outcome, `best`, and `hypothesis_backlog` are also updated in place at batch evaluation (CP-4). Do not rebuild the file from memory.
 
-5. **Per-experiment result markers for crash recovery** — each experiment writes a `result.yaml` marker in its workspace immediately after measurement. On resume, scan for these markers to recover experiments that were measured but not yet logged.
+5. **Per-experiment result markers for crash recovery** — each experiment writes a `result.yaml` marker in its JJ workspace immediately after measurement. On resume, scan registered experiment workspaces for these markers to recover experiments that were measured but not yet logged.
 
 6. **Strategy digest is written after every batch, before generating new hypotheses** — the agent reads the digest (not its memory) when deciding what to try next.
 
@@ -39,7 +39,7 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 
 ### File Locations (all under `.context/ce-optimize/<spec-name>/`)
 
-The local state under `.context/` is ignored by the repository: it survives a local resume but does not travel with the optimization bookmark, so anything needed durably must be exported to a tracked path.
+The state under `.context/` is ignored: it survives a local resume but does not travel with the bookmark, so anything needed durably must be exported to a tracked path.
 
 | File | Purpose | Written When |
 |------|---------|-------------|
@@ -52,7 +52,7 @@ The local state under `.context/` is ignored by the repository: it survives a lo
 
 When Phase 0.4 detects an existing run:
 1. Read the experiment log from disk — this is the ground truth
-2. Scan experiment workspace directories for `result.yaml` markers not yet in the log
+2. Scan registered experiment workspaces under `$(jj workspace root)/.tmp/ce-optimize/workspaces/` for `result.yaml` markers not yet in the log
 3. Recover any measured-but-unlogged experiments
 4. Continue as the body's resume rule directs: skip the work the log proves finished, and re-enter any gate the log does not prove was cleared
 

@@ -51,10 +51,10 @@ Routing:
 
 | Phase | Delta |
 |---|---|
-| 0.3 mode | **Deterministic — skip Decision 1/2.** CWD inside a JJ workspace → repo-grounded; otherwise elsewhere-software. Never elsewhere-non-software: with no subject there is no naming/narrative/personal intent to infer. No ambiguity-confirmation question. |
-| 0.4 substance | Required, not optional, when routed to elsewhere-software: with no subject *and* no JJ workspace, Phase 1 has nothing to discover from. One ask; if the user still has no URL, description, or paste, end cleanly so they can re-invoke with material. |
+| 0.3 mode | **Deterministic — skip Decision 1/2.** CWD inside a JJ repo -> repo-grounded; otherwise elsewhere-software. Never elsewhere-non-software: with no subject there is no naming/narrative/personal intent to infer. No ambiguity-confirmation question. |
+| 0.4 substance | Required, not optional, when routed to elsewhere-software: with no subject *and* no repo, Phase 1 has nothing to discover from. One ask; if the user still has no URL, description, or paste, end cleanly so they can re-invoke with material. |
 | Model tiers | Whole ideation fleet moves to the ceiling tier — subject discovery is judgment-heavy and is the mode's whole value. |
-| 1 grounding | Go deeper, because Phase 2 discovers subjects from what Phase 1 returns. Workspace: sample representative files per top-level area and surface recent PR/change activity, bounded — representative, not exhaustive. Elsewhere: extract themes, recurring language, tensions, and omissions rather than restating the user's context; broaden web research to the domain's landscape. |
+| 1 grounding | Go deeper, because Phase 2 discovers subjects from what Phase 1 returns. Repo: sample representative files per top-level area and surface recent PR/change activity, bounded — representative, not exhaustive. Elsewhere: extract themes, recurring language, tensions, and omissions rather than restating the user's context; broaden web research to the domain's landscape. |
 | 1.5 axes | Skipped — no settled subject to decompose. Note `Decomposition skipped — surprise-me mode`. |
 | 2 generation | Each frame picks its own subject (see `references/divergent-ideation.md`); cross-cutting synthesis carries the coverage role Phase 1.5 would have, so expect 5-8 combinations rather than 3-5. No axis-coverage recovery dispatch. |
 
@@ -62,9 +62,9 @@ The user can correct at any point by interrupting and re-invoking with a named s
 
 #### 0.3 Mode Classification
 
-Do not resolve or create the artifact root before mode is classified — an elsewhere or no-workspace run never needs it.
+Do not resolve or create the artifact root before mode is classified — an elsewhere or no-repo run never needs it.
 
-Classify the **subject of ideation** (settled in 0.2) into one of three modes for dispatch routing. A user inside any workspace can ideate about something unrelated to it; a user outside a JJ workspace can ideate about code they hold in their head.
+Classify the **subject of ideation** (settled in 0.2) into one of three modes for dispatch routing. A user inside any repo can ideate about something unrelated to that repo; a user outside a repo can ideate about code they hold in their head.
 
 **Surprise-me short-circuit.** In surprise-me mode, skip the two decisions below and the ambiguity-confirmation step; apply the 0.2 table's `0.3 mode` row. State the chosen mode in one sentence and proceed to 0.4.
 

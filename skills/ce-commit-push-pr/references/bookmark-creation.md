@@ -1,15 +1,42 @@
-# Bookmark creation from trunk
+# Bookmark creation from the default bookmark
 
-Jujutsu has no current branch and needs no stash before changing topology. A bookmark names the change that GitHub will expose as a branch; it does not own the working copy.
+The local default bookmark may differ from its remote bookmark because another workspace advanced it or local changes were intentionally based on unpublished work. Resolve that ancestry before choosing the feature change's parent.
 
-Fetch the selected base remote with `jj git fetch --remote <remote>`. If fetch succeeds, use the resolved `trunk()` target or the explicitly resolved base remote bookmark as the parent. Before moving work, inspect `jj log -r '<base>@<remote>..<local-base>'` when a local base bookmark exists. If it contains unpublished changes, show them and ask whether the feature should include them or start at the remote base. Never silently include unrelated local changes.
+## Decision flow
 
-Create or rebase the feature change on the chosen parent with Jujutsu operations. Preserve the current change ID when the work already exists; use `jj rebase -r @ -o <parent>` rather than copying its diff. If the work has not started, use `jj new <parent>`. Create the publication bookmark only after the target change is known:
+### 1. Fetch the remote base
 
 ```bash
-jj bookmark create <bookmark> -r <target>
+jj git fetch --remote origin --branch <base>
 ```
 
-If the bookmark already exists, verify its target and ownership. Move it with `jj bookmark move <bookmark> --to <target>` only when advancing the intended publication line; a backward or sideways move requires explicit confirmation and `--allow-backwards`.
+If fetch fails because of network, authentication, or a missing remote, use the fallback below.
 
-If fetch fails, retain the existing parent and report that remote-base freshness was not verified. Do not invent a remote target or rewrite the change onto an unverified base.
+### 2. Check local-only changes on the default bookmark
+
+```bash
+jj log -r '<base>@origin..<base>'
+```
+
+- Empty output: use `<base>@origin` as `<base-revision>`.
+- Non-empty output: show the changes and ask whether the feature should include them or start from `<base>@origin`. Including them uses `<base>` as `<base-revision>`; leaving them on the local default uses `<base>@origin`. Never guess because including unrelated local changes changes the PR.
+
+### 3. Root the work and create its bookmark
+
+JJ's working-copy change can be rebased without stashing. If the current change should move to the selected base, run:
+
+```bash
+jj rebase -s @ -o <base-revision>
+```
+
+After the work is described and `jj commit` has created a fresh empty change, create or update the feature bookmark at the completed parent:
+
+```bash
+jj bookmark set <bookmark-name> -r @-
+```
+
+If the bookmark already exists at an unrelated revision, stop rather than moving it. JJ automatically rebases descendants and records operations, but a bookmark collision still represents ambiguous user intent.
+
+## Fetch failure fallback
+
+Keep the current change's existing parent and create the feature bookmark at the completed change after committing. Report that remote-base freshness was not verified. Do not run the local-only comparison without a fresh remote bookmark.

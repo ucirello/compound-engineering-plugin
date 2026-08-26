@@ -1,33 +1,32 @@
 # Repository context, bookmark, and PR state
 
-Gather this before Step 1. Run each command as its own argv-style shell call. Do not join probes with shell operators, substitutions, pipes, or redirects; separate calls work in POSIX shells, Git Bash, and PowerShell, and expose each exit status.
+Gather this before Step 1, then re-verify bookmark, remote, and PR state immediately before the push in Step 3 and `gh pr create` in Step 5.
 
-| Command | Purpose | Non-zero or empty result |
+Run each command as its own argv-style shell call. Do not join calls with shell operators, pipes, substitutions, or redirects. Read each exit status directly; non-zero is state to interpret.
+
+| Command | Purpose | Non-zero or empty means |
 | --- | --- | --- |
-| `jj workspace root` | Workspace root | Not in a JJ workspace; use description-only API fallback or report and stop |
-| `jj status` | Working-copy change and conflicts | Repository unavailable |
-| `jj diff` | Current change content | Empty means no current diff |
-| `jj log -r ::@ -n 10` | Recent local history | No useful history |
-| `jj bookmark list --all-remotes` | Local and remote bookmark state | Bookmark state unknown |
-| `jj git remote list` | Named Git remotes and URLs | Remote state unknown |
-| `gh repo view --json nameWithOwner,defaultBranchRef` | Base repository and provider default branch | Resolve from known remote bookmarks or ask; do not guess before mutation |
-| `gh pr list --head <bookmark> --state open --json number,url,title,body,state,isDraft,headRefName,headRepositoryOwner` | Open PR for the publish bookmark | Exit 0 with `[]` means none; non-zero means unknown |
+| `jj workspace root` | Workspace root | Not a JJ workspace; stop |
+| `jj status` | Working-copy state | Not a JJ workspace; stop |
+| `jj diff` | Current working-copy change | Empty change |
+| `jj log -r '@ | @-' --no-graph` | Current and parent change identity | Repository state unavailable |
+| `jj bookmark list -r @` | Local bookmarks at the working-copy change | No bookmark targets `@` |
+| `jj bookmark list --all-remotes` | Local and remote bookmark state | Remote state unavailable |
+| `jj log -r 'ancestors(@, 10)' --no-graph` | Recent change-description style | No local JJ history available |
+| `jj git remote list` | Remote names and GitHub repository URLs | No usable GitHub remote; stop |
+| `gh repo view <repository-url> --json defaultBranchRef --jq '.defaultBranchRef.name'` | Remote default bookmark | Unavailable; inspect tracked remote bookmarks and ask rather than guessing |
+| `gh pr list --head <bookmark> --state open --json number,url,title,body,state,isDraft,headRefName,headRepositoryOwner` | Open PR for this bookmark, once known | Exit 0 with `[]` means none. Non-zero means unknown and blocks creation until resolved |
 
-Use `jj bookmark list -r <revision>` to determine which local bookmark points to a change. Do not infer a current branch from Git `HEAD`: JJ workspaces edit changes, and bookmarks do not automatically follow the working-copy change.
+Pass the bookmark name only to `--head`. On a fork workspace, target the base repository with `-R <base-owner>/<repo>`; do not use `<owner>:<bookmark>`, which can silently return `[]`. When multiple results share a bookmark name, match `headRepositoryOwner` and the exact API `headRefName`; stop if ownership cannot be resolved unambiguously.
 
-For a fork, run the PR query against the base repository with `-R <base-owner>/<repo>` and pass only `<bookmark>` to `--head`. Match `headRepositoryOwner` and `headRefName` to the selected push remote. Multiple or unconfirmed matches block mutation.
+## Step 1: resolve bookmark and PR state
 
-## Route the working state
+JJ's working copy is a change, not a checkout of a bookmark. Determine whether a local bookmark already targets the work or one of its ancestors and whether it corresponds to the intended PR. If no feature bookmark exists and work is present, derive a non-conflicting name from the change content but create it only after the completed change target is known. If the work is empty and only the default bookmark is relevant, report no feature work and stop.
 
-- A feature bookmark already identifies the intended publish line: continue.
-- Work based directly on the default bookmark without a feature bookmark: derive a feature bookmark name from the outcome and let Step 3 place it on the final intended change.
-- No current diff and no unpublished changes beyond the default remote bookmark: report no feature work and stop.
-- Divergent changes, conflicted bookmarks, conflicted working-copy changes, or an unresolved remote base: surface the state and stop rather than selecting a head or rewriting history.
+Resolve the default bookmark from `gh repo view`; if unavailable, use an unambiguous tracked remote default. Ask rather than inventing a default. A feature bookmark may not overwrite or move an unrelated existing bookmark.
 
-Everything here is a snapshot. Immediately before push, re-run `jj status`, `jj bookmark list --all-remotes`, and `jj git remote list`. Immediately before PR creation, repeat the exact `gh pr list` query.
+Run the existing-PR check only after `<bookmark>` is known. Record the matching URL and body. Step 5 routes on the URL and Step 4 uses the body as rewrite context.
 
-## Message and title conventions
+## Step 2: conventions
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Project instructions already in runtime context win, followed by recent repository history. Apply compatible Go quality guidance only: a concise summary line and an explanatory body when motivation or behavior is not obvious. Derive any prefix, type, scope, capitalization, mood, and body shape dynamically; do not default to a fixed convention.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Project instructions and runtime `git log` syntax win. PR titles follow the project's observed title conventions independently of the JJ change description.

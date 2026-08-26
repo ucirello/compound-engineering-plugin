@@ -132,10 +132,9 @@ never promise that secrets inside the readable scope are inaccessible. Peers may
 search and read within the declared scope but may not mutate the project or
 intentionally inspect outside it.
 
-Before initial dispatch, capture one **repository-scope identity** from the
-working-copy change and commit IDs in `jj --config 'snapshot.auto-track="all() ~ root:.tmp"' log -r @`, plus a digest of
-`jj --config 'snapshot.auto-track="all() ~ root:.tmp"' diff` and
-`jj --config 'snapshot.auto-track="all() ~ root:.tmp"' file list` inside the normalized scope. Include it in every peer payload. Revalidate it before every reconcile
+Before initial dispatch, capture one **repository-scope identity**: the current
+Jujutsu change ID and commit ID plus a digest of `jj diff` inside the normalized
+scope. Include it in every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
 voices into the current project: disclose the change and either restart all
 voices on the new identity or return an incomplete panel result.
@@ -197,7 +196,7 @@ within these rules is reported, never silently replaced or dropped.
 The pre-dispatch update should say who will inspect the subject and that the
 review is read-only. Do not recite scope mechanics, promise that repository
 secrets are inaccessible, or describe probe results, CLI versions, model tiers,
-revision IDs, repository identity, route health, job lifecycle, or scratch
+change IDs, repository identity, route health, job lifecycle, or scratch
 paths. Mention a cooperative scope restriction only when it materially changes
 the user's choice. Refer to the codebase as "this project" or "the repository"
 unless the user supplied a recognizable name.
@@ -208,7 +207,7 @@ Prepare one complete canonical payload containing the framed question, subject
 shape, normalized read scope, repository-scope identity, mode, paths to subject
 material already in the workspace, and required conversational material that is
 not available there. Let peers inspect and ground against the shared working
-copy. Do not duplicate readable files or add a host-curated architecture summary
+tree. Do not duplicate readable files or add a host-curated architecture summary
 merely to brief the peer.
 
 For an initial `independent` round, exclude ce-pov's position and every other
@@ -243,9 +242,9 @@ partial-panel degradation rule.
 Use `scripts/cross-model-pov.sh` from this skill's directory to run one resolved
 fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Fill in the start command below rather than reconstructing the worker's
-arguments from its usage header. Pass the actual workspace root separately from
+arguments from its usage header. Pass the actual repository root separately from
 any narrower read root, and pre-create the round output directory as private
-scratch under `<workspace-root>/.tmp/rocketclaw/`. For named peers, start one job per exact target;
+scratch outside the repository. For named peers, start one job per exact target;
 for a selected panel, start one job per selected peer. Start all jobs before
 waiting.
 
@@ -376,12 +375,12 @@ peer voice. Initial responses require `movement: initial`; reconcile
 responses require `moved` or `held` plus what changed or why the new evidence
 was insufficient.
 
-Attribute from the receipt, never expectation. Record target, actual
+Use the receipt, never expectation. Record target, actual
 harness/intermediary route, requested model, served model, and
 `independence_verified` separately. A served model of `unverified` remains
 unverified. If a job yields no usable artifact, use bounded `peer skip evidence`
 from its log to state an observed quota, authentication, or route failure; never
-invent a cause. Attribute an account authentication failure only after
+invent a cause. Report an account authentication failure only after
 provider-capable dispatch is positively established by the launch context or
 provider response; then report the observed failure and login or
 credential-refresh remediation. Without that proof, authentication-shaped peer
@@ -412,7 +411,7 @@ For each reconcile exchange:
 4. Build one common evidence delta. Send the identical complete delta to every
    surviving peer—never route-specific truncation—along with the full original
    subject and every surviving voice's current position and reasoning, capped at
-   five succinct source-attributed evidence bullets per voice.
+   five succinct source-cited evidence bullets per voice.
 5. Re-resolve every fixed route under Section 3, then dispatch a fresh stateless
    round. The same recipients need no question; an unexpected new recipient or
    intermediary does. A failed peer is dropped for later rounds; do not reuse its
@@ -469,7 +468,7 @@ Retain target, route, requested model, served model, and independence receipts i
 the panel record, but keep the default chat note decision-relevant: name the
 peer, its position and movement, any observed failure, and an independence caveat
 when it affects credibility. Do not dump route or model diagnostics unless they
-materially change the conclusion or the user asks. Never attribute a position to
+materially change the conclusion or the user asks. Never assign a position to
 a model that did not run.
 
 The panel itself never mutates. After delivery, apply SKILL.md Phase 4's
@@ -481,7 +480,7 @@ for handoff; otherwise offer one logical next step and wait.
 ## 7. Skeptic mode and degradation
 
 When asked to challenge ce-pov rather than form an independent POV, set
-`mode: skeptic`. Fold a valid attributed critique into ce-pov once, but do not
+`mode: skeptic`. Fold a valid evidence-backed critique into ce-pov once, but do not
 put that voice into convergence. Disclose whether it changed the POV. A failed
 skeptic degrades like any unavailable peer.
 
@@ -511,6 +510,6 @@ and project context must not outlive their use.
 ## Participation, announcement, and disclosure (relocated from the body)
 
 A summons is an **affirmative** request to consult or reconcile peers, detected by reasoning over the invocation context — the user's wording or a calling skill's args. Wording that declines consultation ("solo POV, do not cross-check") or merely recounts a past cross-check names the same terms without asking for one, and is not a summons: peers are not dispatched and no project context leaves the run. For an affirmative request, a caller's paraphrase in one channel never cancels a summons still present in another; only a summons erased from every readable channel upstream is unrecoverable here.
-Invoking a named peer, an explicit cross-check, or `oracle` authorizes the panel protocol's normal read-only consultation against this project. Announce the selected peers before dispatch; ask only when a retry adds an unexpected recipient or intermediary, or an active instruction requires separate approval. Peers inspect the shared working copy directly and cannot edit it. The panel protocol preserves an unbiased initial round, bounds evidence-based reconciliation while honoring user-supplied pass limits, and attributes only receipt-supported independence.
+Invoking a named peer, an explicit cross-check, or `oracle` authorizes the panel protocol's normal read-only consultation against this project. Announce the selected peers before dispatch; ask only when a retry adds an unexpected recipient or intermediary, or an active instruction requires separate approval. Peers inspect the shared workspace directly and cannot edit it. The panel protocol preserves an unbiased initial round, bounds evidence-based reconciliation while honoring user-supplied pass limits, and claims independence only when receipts support it.
 Any POV delivered after a summons states which peers ran, or that none did and the observed reason; if no panel runs after a summons, keep the verdict content unchanged but add that panel-status line rather than shipping a bare solo verdict. A POV with no summons keeps the solo result unchanged with no panel note.
 Keep the host's own frozen position out of an independent peer's initial context; expose it only when the requested task is to critique that position or when a later reconciliation round compares already-formed views.

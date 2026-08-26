@@ -4,10 +4,10 @@ Read this at Stage 2. It owns the intent summary, plan discovery, reviewer groun
 
 ## Plan Requirements Completeness
 
-When a plan is provided via `plan:<path>` or discovered from PR/bookmark context,
+When a plan is provided via `plan:<path>` or discovered from PR/branch context,
 classify readiness before checking completeness:
 
-- Unified artifact: metadata includes `artifact_contract: rocketclaw-unified-plan/v1`.
+- Unified artifact: metadata includes `artifact_contract: ce-unified-plan/v1`.
   - `artifact_readiness: requirements-only` can inform product intent, but it
     must not trigger implementation-unit completeness findings. Report that the
     artifact was not implementation-ready if the diff appears to implement it.
@@ -24,7 +24,7 @@ Extract requirements from these shapes, in order:
 3. Legacy `## Requirements Trace`
 
 For unified implementation-ready plans, also extract U-IDs from
-`## Implementation Units` and compare against PR body/bookmark context when
+`## Implementation Units` and compare against PR body/branch context when
 available. Do not require every Product Contract R-ID to map one-to-one to a
 single U-ID; verify that implemented U-IDs cite the relevant R/F/AE/KTD IDs and
 that no claimed U-ID is missing from the plan.
@@ -33,14 +33,14 @@ that no claimed U-ID is missing from the plan.
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with change descriptions from the PR if the body is sparse.
 
-**Bookmark mode:** Run `jj log -r "${BASE}..<bookmark-ref>"` using the resolved common ancestor and bookmark from Stage 1. Use `<bookmark-ref>` rather than the raw argument so a remote-only bookmark cannot resolve to a stale local bookmark.
+**Bookmark mode:** Run `jj log -r "$BASE::<branch-ref>" --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved common ancestor and bookmark revision from Stage 1.
 
-**Standalone (current workspace):** Run:
+**Standalone (current working copy):** Run:
 
 ```
-jj bookmark list -r @ && jj log -r "${BASE}..@"
+echo "BOOKMARKS:" && jj log -r @ --no-graph -T 'local_bookmarks.map(|b| b.name()).join(",") ++ "\n"' && echo "CHANGES:" && jj log -r "$BASE::@" --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:
@@ -52,7 +52,7 @@ with a flat-rate computation. Must not regress edge cases in tax-exempt handling
 
 Pass this to every reviewer in their spawn prompt. Intent shapes *how hard each reviewer looks*, not which reviewers are selected. Keep any `session-settled:` annotations (from a plan or the conversation) out of this summary — reviewers stay blind to settlement (Stage 2b).
 
-**When intent is ambiguous:** Infer from bookmark name, JJ changes, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage; never block on a clarifying question.
+**When intent is ambiguous:** Infer from bookmark name, change descriptions, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage; never block on a clarifying question.
 
 ### Stage 2b: Plan discovery (requirements verification)
 

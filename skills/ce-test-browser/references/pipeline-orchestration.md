@@ -15,20 +15,16 @@ Multiple agents may run on the same machine, so never assume the resolved port i
 
 Run the whole thing as **one** command. Shell variables do not survive between separate Bash calls, so the port resolution, the free scan, and the startup all happen inside this block — it seeds `PORT` by capturing the script's output, not from anything an earlier step printed. Add the explicit port as a second argument when the user gave `--port N` or your in-context project instructions state the dev-server port.
 
-Server logs belong in `$(jj workspace root)/.tmp`; outside a JJ workspace, use `.tmp` under the current directory. In a JJ workspace, first confirm the existing ignore rules exclude `.tmp/` from working-copy snapshots. If they do not, stop and report the blocker rather than editing ignore configuration or recording server logs in the change. The shell block is compatible with Git Bash and does not use OS-global temporary storage.
+Server logs belong under `$(jj workspace root)/.tmp/rocketclaw/ce-test-browser/<run-id>/`; outside a JJ workspace, use the same `.tmp/rocketclaw` namespace under the current directory. In a JJ workspace, first confirm the existing ignore rules exclude `.tmp/` from working-copy snapshots. If they do not, stop and report the blocker rather than editing ignore configuration or recording server logs in the change. The shell block is compatible with Git Bash and does not use OS-global temporary storage.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh" --free);   # append the explicit port as a further argument when you have one
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD";
-mkdir -p "$WORKSPACE_ROOT/.tmp" || exit 1;
-LOG_FILE="$WORKSPACE_ROOT/.tmp/dev-server-${PORT}.log";
+RUN_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-test-browser/$(date +%Y%m%d-%H%M%S)-$$";
+(umask 077; mkdir -p "$RUN_DIR") || exit 1;
+LOG_FILE="$RUN_DIR/dev-server-${PORT}.log";
 echo "Using dev server port: $PORT"
-
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$(pwd -P)"
-TMP_DIR="$WORKSPACE_ROOT/.tmp/ce-test-browser"
-mkdir -p "$TMP_DIR"
-LOG_FILE="$TMP_DIR/dev-server-${PORT}.log"
 
 # start in the background (the scan guarantees this port is free), then wait up to 30s
 echo "Starting dev server on port ${PORT}..."

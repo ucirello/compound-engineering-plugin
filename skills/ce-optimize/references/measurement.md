@@ -1,6 +1,6 @@
-# Phase 0.3-1.7: prior learnings, run state, and measurement scaffolding
+# Phase 0.3-1.7: prior learnings, identity, and measurement scaffolding
 
-Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the clean-change gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run detection, the optimization bookmark and local state, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
+Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the clean-change gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run identity and resume detection, the optimization change and bookmark, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
 
 ### 0.3 Search Prior Learnings
 
@@ -8,28 +8,33 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 
 ### 0.4 Run Identity Detection
 
-Resolve the run bookmark with a revset:
+Check whether the local `optimize/<spec-name>` bookmark already exists:
 
 ```bash
-jj log -r 'bookmarks(exact:"optimize/<spec-name>")' --no-graph -T 'change_id ++ "\n"'
+jj bookmark list "exact:optimize/<spec-name>"
 ```
 
-If the revset resolves, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
+**If the bookmark exists**, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
-- **Resume**: read all state from the experiment log on disk. Recover measured-but-unlogged experiments by scanning experiment workspaces for `result.yaml` markers. Then apply the body's resume rule to decide what is skipped and which gates are re-entered.
-- **Fresh start**: move the existing bookmark to a dynamically named archive bookmark that preserves the spec and archival time, clear the experiment log, and start from the current working-copy change.
+- **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning registered experiment workspaces under `$(jj workspace root)/.tmp/ce-optimize/workspaces/` for `result.yaml` markers. Then apply the body's resume rule to decide what is skipped and which gates are re-entered.
+- **Fresh start**: preserve the old target with an archive bookmark whose neutral name includes the spec and current timestamp, forget the active optimization bookmark without scheduling a remote deletion, clear the experiment log, and start from scratch.
 
-### 0.5 Create Optimization Bookmark and Local State
+### 0.5 Create Optimization Change, Bookmark, and State Directory
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Repository-local style wins. Create a new JJ change from the intended base, describe it, and create or update the local optimization bookmark to point to it:
 
 ```bash
-jj bookmark create "optimize/<spec-name>" -r @
+jj new <base-revision>
+jj describe -m "<message composed from the standards above>"
+jj bookmark set "optimize/<spec-name>" -r @
 ```
 
-On resume, use the existing bookmark rather than creating it. Create local state under `.context` and repository-local transient files under `.tmp/rocketclaw`:
+Create scratch directory:
 ```bash
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
-mkdir -p "$WORKSPACE_ROOT/.context/ce-optimize/<spec-name>" "$WORKSPACE_ROOT/.tmp/rocketclaw/ce-optimize"
+mkdir -p .context/ce-optimize/<spec-name>/
 ```
 
 ---
@@ -47,7 +52,7 @@ bash "$SKILL_DIR/scripts/<name>"
 
 ### 1.1 Clean-Change Gate
 
-The body owns this gate. Convert `scope.mutable` and `scope.immutable` into one workspace-rooted fileset, then run `jj diff -r @ --summary <fileset>`. Apply the body's rule to the result: name the modified in-scope files and ask the user to move them into a separate change or finish the current change before continuing. Jujutsu snapshots the working copy automatically; there is no staging index or stash gate.
+The body owns this gate. Run `jj diff --name-only -r @`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result: name the modified in-scope files and ask the user to move them to a separate JJ change or finish them, and do not continue until the optimization change is clean in those paths.
 
 ### 1.2 Build or Validate Measurement Harness
 

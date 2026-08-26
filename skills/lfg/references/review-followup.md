@@ -1,16 +1,16 @@
 # Pre-ship quality tail (LFG steps 3–6)
 
-`ce-code-review` is review-only. LFG applies eligible fixes itself, then separates and describes them as a JJ change.
+`ce-code-review` is review-only. LFG applies eligible fixes and finishes them as focused Jujutsu changes.
 
 ## The shipping precondition, in these steps
 
-A missing remote is a terminal local-only state, not an error: never retry a bookmark push or hunt for a remote. Steps 5 and 6 still finalize every JJ change they call for; only bookmark publication and the PR-side records drop. With no PR to comment on, the run output is the residual record — state the residuals in the DONE report rather than adding a file nobody will read.
+A missing remote is a terminal local-only state, not an error. Steps 5 and 6 still finish their local changes; pushes and PR-side records drop. With no PR, state residuals in the DONE report rather than creating a tracked report file.
 
 ## Step 3 — simplify before review
 
-Simplification runs before review so the code-review in step 4 covers the simplified code. Give `ce-simplify-code` the stack scope selected by `jj diff -r 'trunk()..@'`; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope, with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
+Simplification runs before review so step 4 covers the simplified code. Let `ce-simplify-code` resolve the active Jujutsu stack diff. Pass the plan path as structure-pin context, with the constraint that `session-settled:` KTDs remain structure pins.
 
-Do not finalize a change in this step. `ce-simplify-code` leaves its edits in the JJ working-copy change; step 4 reviews `trunk()..@`, including that change, and step 8 finalizes whatever remains. Describing or splitting here could mix still-open implementation work with simplification before review establishes the correct boundary.
+Do not describe or advance the working-copy change in this step. Step 4 reviews the full active diff, and step 5 separates review fixes before step 8 finalizes anything remaining.
 
 ## Step 4 — invoke `ce-code-review`
 
@@ -32,7 +32,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the JJ working-copy change only when **all** of the following hold:
+Apply a finding in the working copy only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -51,11 +51,9 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the JJ working-copy change in severity order (`#` stable from the review).
+2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If no eligible fixes were applied, note that and leave `@` unchanged. Otherwise inspect the review-driven edits with `jj diff -r @`. When `@` also contains other work, run `jj split -i --editor` and select only the review-driven hunks or workspace-rooted filesets into the described revision. When `@` contains only review-driven edits, use `jj commit` to describe that change and create a new empty working-copy change above it. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The project's active repo-local instructions and the syntax visible in its history take precedence; apply Go guidance only where compatible. Do not impose a fixed prefix, type, scope, subject, body, example, or template. Validate the resulting description with `jj log -r <review-revision>` and the isolated content with `jj diff -r <review-revision>`.
-
-Before step 6, publish the review revision when a remote is configured. Move the current work's existing bookmark to the stack head with `jj bookmark move <bookmark> --to <stack-head>`, or create a semantically named bookmark there with `jj bookmark create <bookmark> -r <stack-head>` when none exists. Resolve the destination from `jj config get git.push` when configured; otherwise use `origin` when present in `jj git remote list`, use the sole configured remote, or stop as blocked when multiple non-`origin` remotes leave the destination ambiguous. Push only that bookmark with `jj git push --bookmark <bookmark> --remote <remote>`. If no remote exists, keep the finalized local change and bookmark without pushing.
+4. If `jj diff -r @ --name-only` shows review-driven changes, separate only that fileset with `jj split` when it is mixed with other work, describe the completed review change, and start a new empty change with `jj new`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local conventions and visible history win. When a remote and stable bookmark are already configured, push that bookmark with `jj git push --remote <remote> --bookmark <bookmark>` before step 6. Do not invent a bookmark merely for this intermediate push; the final shipping step owns bookmark creation. If no eligible fixes were applied, note that and leave the revision structure unchanged.
 
 ## Step 6 — residual handoff
 
@@ -73,4 +71,4 @@ Two further triggers also require step 6, both outside the apply path: step 4 em
    - For each proceeded-and-flagged `settled_decision_conflicts` entry from step 2: a bullet with the KTD, the evidence, and how it was routed.
 4. Never write the `## Residual Review Findings` section into the PR description: it duplicates GitHub's own tracking and goes stale as items resolve. Review residuals have no GitHub thread of their own, so they are made durable by the tracker tickets filed above plus **one run-report comment on the PR** carrying the composed section (ticket links included) and the source run context — the same surface `ce-babysit-pr` already uses for unfixable CI. Post it with `gh pr comment`; a point-in-time comment does not go stale as items resolve, the way a body section or a committed file does.
 
-When no PR exists at all (no remote, per LFG's shipping precondition), the run output is the record: state the residuals in the DONE report rather than adding a file nobody will read.
+When no PR exists because no remote is configured, the run output is the record: state residuals in the DONE report rather than creating a tracked file nobody will read.

@@ -2,9 +2,9 @@
 
 #### 0.1 Resume Existing Work When Appropriate
 
-This resume scan needs `<root>/plans/`, so it applies only to a JJ-workspace-backed run. If there is no JJ workspace, or resolving `<root>` fails (a bad `docs_root`), skip the scan and continue — do not fail the run here, since Phase 0.1b may route non-software work to `references/universal-brainstorming.md`, whose contract does not write a unified plan under `<root>/plans/`.
+This resume scan needs `<root>/plans/`, so it applies only to a JJ-backed run. If there is no JJ repository, or resolving `<root>` fails, skip the scan and continue; the non-software route does not write a unified plan under `<root>/plans/`.
 
-Only when that gate passes — a JJ-workspace-backed run whose `<root>` resolved — evaluate this resume condition; never resolve `<root>` here on a run the gate told you to skip. When it applies, if the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `<root>/plans/` with `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`:
+Only when that gate passes — a repo-backed run whose `<root>` resolved — evaluate this resume condition; never resolve `<root>` here on a run the gate told you to skip. When it applies, if the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `<root>/plans/` with `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: requirements-only`, and `product_contract_source: ce-brainstorm`:
 - Read the document
 - Confirm with the user before resuming: "Found an existing requirements-only plan for [topic]. Should I continue from this, or start fresh?"
 - If resuming, summarize the current state briefly, continue from its existing decisions and outstanding questions, and update the existing document instead of creating a duplicate
@@ -56,7 +56,7 @@ Use the feature description plus a light repo scan to classify the work:
 
 If the scope is unclear, ask one targeted question to disambiguate and then proceed; when it stays uncertain, take the heavier tier.
 
-**Lightweight ends in chat.** The result is a paragraph in the synthesis: what is being built, the one or two decisions made, and where they go next (`ce-plan`'s prompt, the JJ change description). No file is written, and Phase 1.1's scout, Phase 2's approach generation, and Phase 2.6's verifier do not run. A file is earned only by a decision a downstream consumer needs in IDed form, or by the user asking for one; then Phase 3 writes it from the dialogue's decisions, and the Ready for Planning Check covers what the dialogue established.
+**Lightweight ends in chat.** The result is a paragraph in the synthesis: what is being built, the one or two decisions made, and where they go next (`ce-plan`'s prompt, the commit message). No file is written, and Phase 1.1's scout, Phase 2's approach generation, and Phase 2.6's verifier do not run. A file is earned only by a decision a downstream consumer needs in IDed form, or by the user asking for one; then Phase 3 writes it from the dialogue's decisions, and the Ready for Planning Check covers what the dialogue established.
 
 **Coherent-work gate.** Before entering Phase 1, check whether the request contains more than one independently plannable product outcome: each has its own user value or acceptance boundary and could be delivered without completing the others. Shared actors, one end-to-end outcome, or coverage across named devices/providers do not by themselves justify a split.
 

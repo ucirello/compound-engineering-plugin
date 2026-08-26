@@ -6,11 +6,12 @@ The shape: **fetch once, judge centrally, fan out only the fixes.** The orchestr
 
 ## 1. Fetch Unresolved Threads
 
-If no PR number was provided, identify the nearest local bookmark on the ancestry of the working-copy change, then resolve its PR. The revset must resolve to exactly one bookmark; if no bookmark or several equally-near bookmarks identify PRs, stop and ask the user for the PR URL or number rather than choosing one.
+If no PR number was provided, detect from the current bookmark and GitHub repository context:
 ```bash
-jj bookmark list -r 'heads(::@ & bookmarks())'
-gh pr view <current-bookmark> --json number -q .number
+gh pr view -R OWNER/REPO --json number -q .number
 ```
+
+Resolve `headRefName` and `headRefOid` for the PR, fetch its head remote with `jj git fetch`, and map that commit ID into JJ before any fix. The working-copy change must be the PR head or a direct mutable descendant created with `jj new <head-revision>`. If unrelated working-copy content would be displaced, stop and report it rather than moving or combining that work. Carry the resolved `<pr-bookmark>`, `<head-revision>`, and `<head-remote>` through Step 6.
 
 Then fetch all feedback using the GraphQL script at [scripts/get-pr-comments](../scripts/get-pr-comments). Set `SKILL_DIR` to the absolute directory you loaded the ce-resolve-pr-feedback SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, and shell state does not persist between Bash calls, so set it inline in each block below that runs a bundled script. If the bundled script is missing on disk the call fails plainly; fall back to the `gh` commands shown after this block.
 
@@ -61,7 +62,7 @@ Before processing, reconcile the reply and resolution state of each piece of fee
 
 **PR comments and review bodies**: These have no resolve mechanism, so they reappear on every run. Apply two filters in order:
 
-1. **Actionability**: An item is actionable when it is someone's open request to this PR — something to fix, answer, or decide. This is also what keeps the run from looping on its own output: a reply posted by this run or an earlier one is a record of handling, not a request, so it drops here whether it reports a fix or carries a parked `needs-human` decision — that parked item is already tracked as itself, and re-reading its own write-up as fresh feedback is how the loop would never settle. Who posted an item never decides this, including the account that opened the PR. Examples: review wrapper text ("Here are some automated review suggestions..."), approvals ("this looks great!"), and CI summaries with no follow-up asks. If there's nothing to fix, answer, or decide, it's not actionable -- drop it from the count entirely.
+1. **Actionability**: An item is actionable when it is someone's open request to this PR: something to fix, answer, or decide. A reply posted by this run or an earlier one is a handling record, not a new request. Who posted an item never decides this. Review wrappers, approvals, and CI summaries without follow-up asks are non-actionable and drop from the count.
 2. **Already replied**: For actionable items, check the PR conversation for an existing reply that quotes and addresses the feedback. If a reply already exists, skip. If not, it's new.
 
 The distinction is about content, not who posted what. A deferral from a teammate, a previous skill run, or a manual reply all count. Similarly, actionability is about content -- bot feedback that requests a specific code change is actionable; a bot's boilerplate header wrapping those requests is not.
@@ -77,7 +78,7 @@ This is the gate. Judge every **new** item here, in your own context, before any
 Working over the full set lets you do what a per-thread subagent can't:
 - **Dedup reads by file** — read a file once and judge all its threads together.
 - **Cross-item reasoning** — cluster findings by root assumption; a source (often a bot) that's wrong in one place is suspect across its siblings; converging requests from independent reviewers are a strong fix signal.
-- **Selective depth** — clear nits need only the comment plus the diff line; deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
+- **Selective depth** — clear nits need only the comment plus the diff line; deep-read callers, invariants, `jj file annotate`, `jj log`, and PR rationale only where a finding is contestable or the code looks deliberate. That deep read on the contestable minority is what catches a confidently-wrong reviewer.
 
 Produce a verdict per item and sort into three lists:
 
@@ -108,7 +109,7 @@ Each fixer receives:
 
 For `pr_comment` / `review_body` fix-list items (no file/line), the fixer identifies the relevant files from the comment text and the PR diff.
 
-**No subagent capability — apply the fixes yourself, sequentially.** When the harness exposes no way to dispatch (or a dispatch fails), work the fix-list in this context one item at a time, using the fixer prompt as your own instructions and producing the same per-item result. This is a supported path, not a degradation to disclose as lost coverage: the legitimacy judgment already happened centrally in step 3, and fixers only *implement* changes you approved, so running them here costs parallelism and context headroom — never correctness. Keep the dispatch path's discipline: one item at a time, re-read each file before editing it, and stop to re-evaluate if implementing surfaces a contradiction (the `blocked` handling applies unchanged).
+**No subagent capability — apply the fixes yourself, sequentially.** When dispatch is unavailable or fails, work the fix-list in this context one item at a time, using the fixer prompt as your own instructions and producing the same per-item result. This costs parallelism and context headroom, not coverage. Re-read each file before editing and re-evaluate any surfaced contradiction.
 
 This skill therefore does not depend on agent-tool authorization to complete a review. That is deliberate: it runs unattended under `ce-babysit-pr`, where a permission prompt would stall the whole loop, so its tool surface stays narrow and its fix path stays viable without dispatch.
 
@@ -142,34 +143,33 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 2. **Green** -> proceed to step 6.
 
-3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** record or push the change.
+3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and include that validation context in the change description without imposing a fixed footer.
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and record the pre-existing failure in the change description. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Project instructions and runtime `git log` syntax win. Preserve the semantic fact without imposing fixed footer wording.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
-## 6. Record the Change and Push the PR Bookmark
+## 6. Describe, Commit, and Push
 
-JJ has no staging index. Use `jj status` and `jj diff`, then build a fileset containing exactly the paths reported by fixers. Use workspace-rooted `root-file:` terms when a path needs disambiguation, and pass only that fileset to `jj commit`; selected paths stay in the described revision and every other working-copy change moves to the new `@` on top. Stop if the fileset contains a path outside the fixer summaries or omits one of their paths.
+1. Verify the PR head bookmark from `gh pr view PR_NUMBER --json headRefName,headRefOid`, fetch its remote state with `jj git fetch`, and ensure the local bookmark identifies the current review lineage. Stop if the bookmark or head revision is ambiguous.
 
-Derive the PR bookmark from `gh pr view --json headRefName` and the push remote by matching `jj git remote list` against the PR head repository. Require exactly one local bookmark with that name on the ancestry of `@`, and exactly one matching remote. Do not create a replacement bookmark, move another bookmark, or guess a remote when either check fails.
+2. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Project instructions and runtime `git log` syntax win. Describe the review outcome and retain the PR reference when repository practice supports it.
 
-Compose and validate a description that preserves the PR/issue/fix semantics required by the runtime repository, including relevant validation context, without imposing a fixed prefix, type, scope, subject, or body shape. Runtime repository syntax wins; apply compatible Go quality guidance only. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+3. Commit only files reported by fixers, leaving every other working-copy path in the new current change:
 
 ```bash
-jj status
-jj diff <fixer-fileset>
-jj commit -m "<repository-conformant description>" <fixer-fileset>
-jj log -r @-
-jj bookmark advance <pr-bookmark> --to @-
-jj git push --remote <pr-head-remote> --bookmark <pr-bookmark>
+jj commit <fixer-filesets> -m "<message composed from the standards above>"
 ```
 
-`jj commit` leaves a new working-copy change at `@`; the recorded fix revision is `@-`. `jj bookmark advance` moves only the named PR bookmark and refuses a backward move. `jj git push` performs lease-like safety checks against the last fetched remote bookmark; do not bypass them.
+4. Move the PR bookmark to the completed parent and push only that bookmark. JJ bookmarks do not advance automatically:
+```bash
+jj bookmark set <pr-bookmark> -r @-
+jj git push --bookmark <pr-bookmark> --remote <head-remote>
+```
 
 ## 7. Reply and Resolve
 
-After `jj git push` succeeds, post replies and resolve where applicable. The done condition for an ordinary review thread is one visible, submitted substantive reply plus authoritative resolution; satisfy each condition independently and never repeat a satisfied half. Post for every newly handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. A **class item** carries multiple covered feedback IDs (`feedback_ids`/`feedback_types` from its fixer) — reply to and resolve *every* one, posting the shared `reply_text` on each thread, not just the first; a covered thread left unresolved re-actionizes in the next babysit loop. The mechanism depends on the feedback type.
+After the push succeeds, post replies and resolve where applicable. The done condition for an ordinary review thread is one visible, submitted substantive reply plus authoritative resolution; satisfy each condition independently and never repeat a satisfied half. Post for every newly handled item: fix-list items use the fixer's `reply_text`; reply-list and human-list items use the reply text you composed in step 3. A **class item** carries multiple covered feedback IDs (`feedback_ids`/`feedback_types` from its fixer) — reply to and resolve *every* one, posting the shared `reply_text` on each thread, not just the first; a covered thread left unresolved re-actionizes in the next babysit loop. The mechanism depends on the feedback type.
 
 ### Reply format
 
@@ -261,7 +261,7 @@ GH_HOST=<derived-host> bash "$SKILL_DIR/scripts/get-pr-comments" PR_NUMBER OWNER
 
 The `review_threads` array should be empty (except `needs-human` items).
 
-**If new threads remain**, check the iteration count -- counting rounds **for this PR**, not just this invocation. An orchestrator such as `ce-babysit-pr` re-invokes this skill fresh each round, so a per-invocation counter never trips; count instead the earlier review-fix revisions in `jj log -r '<base-bookmark>@<base-remote>..@'` whose descriptions address review feedback, plus this run's own cycles. Derive both placeholders from the PR and its tracked remote bookmark rather than assuming `trunk()`.
+**If new threads remain**, check the iteration count for this PR, not just this invocation. Count earlier review-fix changes in `jj log -r '<base-revision>..<pr-bookmark>'` plus this run's cycles.
 
 - **First or second fix-verify cycle**: Repeat from step 2 for the remaining threads.
 
@@ -284,7 +284,7 @@ Replied (count): [what questions were answered]
 Not addressing (count): [what was skipped and the evidence]
 Declined (count): [what was declined and the harm cited]
 
-Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were recorded]
+Validation: [one line -- e.g., "bun test passed (893/893)" or "bun test passed with pre-existing failure in X noted"; omit when no code changes were committed]
 ```
 
 If any item is `needs-human`, append a decisions section. These are rare but high-signal. Each carries the typed residual composed in step 3: quoted feedback, investigation, the reason autonomous action is unsafe or ambiguous, concrete options with tradeoffs, a recommendation if any, and links to every still-open thread it covers.
@@ -318,4 +318,4 @@ If a blocking question tool is available, use it to ask about all pending decisi
 
 Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Use it to present the decisions and wait for the user's response. After they decide, process the remaining items: fix the code, compose the reply, post it, and resolve the thread.
 
-Fall back to presenting the decisions in user-visible summary output and waiting in conversation only when no blocking tool exists in the harness or the call errors (e.g., Codex edit modes) — not because a schema load is required. Never silently skip. If the user doesn't respond, the items remain open on the PR for later handling.
+Fall back to presenting the decisions in user-visible summary output and waiting in conversation only when no blocking tool exists or the call errors. Never silently skip. If the user does not respond, the items remain open on the PR for later handling.

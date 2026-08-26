@@ -4,18 +4,18 @@ Phase 2 protocol. Measure what changing nothing produces, then write down the ba
 
 ## What the A/A run buys
 
-Two builds of the corpus at the same source revision, run under one harness on one task, produce a distribution rather than a result. That distribution is the floor: any later claim smaller than it is unsupported no matter how confidently it was reported. In the engagement this was the single most valuable measurement of the session — 12 runs across two identical builds gave workflow adherence 7 of 12 and output tokens from 21,872 to 155,682, a 7.12x spread on identical code. It retired every small-sample claim in flight, including an outside analyst's "2 of 8 improved to 5 of 8", which sits entirely inside the envelope of doing nothing.
+Two builds of the corpus at the same JJ revision, run under one harness on one task, produce a distribution rather than a result. That distribution is the floor: any later claim smaller than it is unsupported no matter how confidently it was reported. In the engagement this was the single most valuable measurement of the session — 12 runs across two identical builds gave workflow adherence 7 of 12 and output tokens from 21,872 to 155,682, a 7.12x spread on identical code. It retired every small-sample claim in flight, including an outside analyst's "2 of 8 improved to 5 of 8", which sits entirely inside the envelope of doing nothing.
 
 The A/A also tests the instrument. Identical builds that differ significantly are not evidence about the corpus; they are a harness, provenance, or scoring bug. Chase that before continuing.
 
 ## Setup
 
-Required capability: a harness that can point a run at a specific JJ workspace root or corpus source directory (Phase 0's build selector) and writes a per-run artifact you can parse. Both arms must go through the *same* runner, task, and model configuration.
+Required capability: a harness that can point a run at a specific JJ workspace containing the corpus (Phase 0's build selector) and writes a per-run artifact you can parse. Both arms must go through the *same* runner, task, and model configuration.
 
-1. Resolve the engagement scratch root as specified in `references/workflow-shapes.md`. Materialize two JJ workspaces there from the same source revset, using `jj workspace add --name <arm-name> -r <source-revset> <destination>`. Record the resolved source revision and each workspace name.
-2. In each workspace, enumerate the versioned corpus with `jj file list -R <workspace> 'all()'`, hash the listed contents, and assert that both path lists and hashes are equal before the first run. An accidental difference between arms gets read as noise and poisons the floor silently.
+1. Resolve one source revision, then materialize both arms with `jj workspace add --revision <source-revision> <destination>` under `<workspace-root>/.tmp/rocketclaw/ce-retune/<run-id>/`. Record the change ID and commit ID for each arm. When there is no JJ repository, stop: identical source provenance and JJ workspaces are unavailable.
+2. Hash both trees and assert equality before the first run (`find <dir> -type f | sort` then a checksum over the file list and contents). An accidental difference between arms gets read as noise and poisons the floor silently.
 3. Label the arms concretely by path, not by intent (`build-a`, `build-b`). Nothing downstream should be able to guess an arm from a filename that also encodes a hypothesis.
-4. **Prove the selector is honored, in one run, before planning any.** Point a single run at one arm workspace, then open the finished artifact and confirm it names that workspace in the durable field below. Two failures both look like a normal run: a harness that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all 12 runs unlabeled and unusable, and both are invisible until you try to score. If you want a positive control, put a harmless unique string in a **third**, disposable JJ workspace under the engagement scratch root and confirm it reaches that run's trace — never in either arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.
+4. **Prove the selector is honored, in one run, before planning any.** Point a single run at `build-a`, then open the finished artifact and confirm it names `build-a` in the durable field below. Two failures both look like a normal run: a harness that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all 12 runs unlabeled and unusable, and both are invisible until you try to score. If you want a positive control, put a harmless unique string in a **third**, throwaway JJ workspace and confirm it reaches that run's trace — never in either arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.
 5. Plan 12 or more runs total, split evenly. Below about 10 the floor estimate is itself noise; the spread ratio in particular needs the tails.
 
 ## Interleave, never batch
@@ -46,7 +46,7 @@ Minimum row schema:
 |---|---|
 | `run_id` | join key back to the raw trace |
 | `build` | arm, from the durable field |
-| `source_revision` | proves the arms were the same source revset |
+| `change_id`, `commit_id` | prove the arms were the same source revision |
 | `pair_index`, `position_in_pair` | recovers the interleave for paired analysis |
 | `adherence` | followed the workflow (separate from outcome) |
 | `outcome` | did the job |

@@ -5,7 +5,7 @@
 # process and writes its POV as JSON into the run dir.
 # Every peer receives the canonical POV persona, schema, and a caller-prepared
 # subject payload. The peer also receives the caller-declared repository read
-# scope; private prompt/result scratch stays under the workspace's `.tmp` tree.
+# scope; private prompt/result scratch stays outside that repository.
 #
 # Independence is by PROVIDER, not CLI brand. A provider is reached by a ROUTE:
 # its dedicated CLI, or (for the fixed grok-cursor / composer routes) cursor-agent. All
@@ -30,7 +30,8 @@
 #   <subject-payload> framed question plus any conversation-only subject material.
 #                     Point to repository files instead of copying their contents;
 #                     the peer grounds itself from the shared working copy.
-#   <run-dir>         existing private dir under the workspace's `.tmp` tree; output ->
+#   <run-dir>         existing private dir under the workspace's
+#                     `.tmp/rocketclaw/ce-pov/` namespace; output ->
 #                     <run-dir>/pov-<target>.json, where <target> is the resolved
 #                     <fixed-route> target (grok-cli/grok-cursor both collapse to
 #                     grok) -- NOT the <host-serving-family> key.
@@ -295,10 +296,10 @@ READ_ROOT="${CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
 READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve repository/read root '$READ_ROOT'"
 if [ -n "${CROSS_MODEL_REPO_ROOT:-}" ]; then
   REPO_ROOT="$CROSS_MODEL_REPO_ROOT"
-elif command -v jj >/dev/null 2>&1 && _jj_root="$(jj --ignore-working-copy -R "$READ_ROOT" workspace root 2>/dev/null)"; then
+elif command -v jj >/dev/null 2>&1 && _jj_root="$(jj -R "$READ_ROOT" workspace root 2>/dev/null)"; then
   REPO_ROOT="$_jj_root"
 else
-  REPO_ROOT="$READ_ROOT"
+  REPO_ROOT="$(pwd -P)"
 fi
 [ -d "$REPO_ROOT" ] || skip "declared repository root '$REPO_ROOT' is not a directory"
 REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)" || skip "cannot resolve repository root '$REPO_ROOT'"
@@ -314,7 +315,7 @@ else
   RUN_PARENT="$(cd "$RUN_PARENT" && pwd -P)" || skip "cannot resolve run-dir parent '$RUN_PARENT'"
   RUN_DIR_RESOLVED="$RUN_PARENT/$RUN_BASENAME"
 fi
-case "$RUN_DIR_RESOLVED/" in "$REPO_ROOT/.tmp/"*) ;; *) skip "run-dir must be under the workspace .tmp directory" ;; esac
+case "$RUN_DIR_RESOLVED/" in "$REPO_ROOT/.tmp/rocketclaw/ce-pov/"*) ;; *) skip "run-dir must be under '$REPO_ROOT/.tmp/rocketclaw/ce-pov'" ;; esac
 [ -d "$RUN_DIR_RESOLVED" ] || skip "run-dir '$RUN_DIR' must already exist"
 RUN_DIR="$RUN_DIR_RESOLVED"
 chmod 700 "$RUN_DIR" 2>/dev/null || skip "run-dir '$RUN_DIR' could not be made private"
@@ -424,16 +425,12 @@ log "fixed cross-model POV route: target=$TARGET route=$FIXED_ROUTE (host $HOST_
 # The payload is prepared by ce-pov and embeds the framed question plus any
 # conversation-only subject material needed for this round. Repository evidence
 # stays in the shared working copy for the peer to inspect directly.
-SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$REPO_ROOT/.tmp/rocketclaw/ce-pov}"
+SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$RUN_DIR}"
 [ -d "$SCRATCH_PARENT" ] || mkdir -p "$SCRATCH_PARENT" 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
 SCRATCH_PARENT="$(cd "$SCRATCH_PARENT" && pwd -P)" || skip "cannot resolve private scratch parent"
-case "$SCRATCH_PARENT/" in "$REPO_ROOT/.tmp/"*) ;; *) skip "private scratch parent must be under the workspace .tmp directory" ;; esac
-PEER_WORKDIR=""
-for attempt in 1 2 3 4 5 6 7 8; do
-  candidate="$SCRATCH_PARENT/xmodel-pov-peer-$(date +%Y%m%dT%H%M%S)-$$-$attempt"
-  if (umask 077; mkdir "$candidate") 2>/dev/null; then PEER_WORKDIR="$candidate"; break; fi
-done
-if [ -z "$PEER_WORKDIR" ]; then
+case "$SCRATCH_PARENT/" in "$REPO_ROOT/.tmp/rocketclaw/"*) ;; *) skip "private scratch parent must remain under '$REPO_ROOT/.tmp/rocketclaw'" ;; esac
+PEER_WORKDIR="$SCRATCH_PARENT/xmodel-pov-peer-$(date +%Y%m%dT%H%M%S)-$$-$RANDOM"
+if ! (umask 077; mkdir "$PEER_WORKDIR"); then
   skip "provider $TARGET workspace isolation unavailable; skipping provider"
 fi
 chmod 700 "$PEER_WORKDIR" 2>/dev/null || { cleanup_private_scratch; skip "cannot make peer scratch private"; }
@@ -451,7 +448,7 @@ trap 'cleanup_private_scratch' EXIT
 {
   cat "$PERSONA"
   printf '\n\n---\n\n'
-  printf 'This is an authorized, read-only point-of-view cross-check on this project.\n'
+  printf 'This is an authorized, read-only point-of-view cross-check on the maintainer\047s own project.\n'
   printf 'Return ONE JSON object and nothing else (no prose, no code fence) matching this schema:\n\n'
   printf '%s' "$SCHEMA_CONTENT"
   printf '\n\nSet the top-level "voice" field to "peer" (it will be namespaced to the provider on fold-in).\n'
@@ -627,7 +624,7 @@ run_timeout_cmd() {
   # $1 = stdin file ("" -> /dev/null). $2 = hard cap secs. $3 = "idle" | "no-idle".
   RUN_SUCCEEDED=false
   # Run from the declared read root. Private prompt/output paths are absolute and
-  # remain under the workspace-local scratch tree; route adapters separately carry the same root.
+  # remain outside the repository; route adapters separately carry the same root.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
   local idle_mode="${3:-idle}"
@@ -876,7 +873,7 @@ run_fixed_route() {
 
   # --- normalize + validate against the peer POV contract ------------------
   # Force voice = peer-<provider>, preserve the POV fields, and add route/model
-  # receipts from the route that actually ran. The peer never self-attributes an
+  # receipts from the route that actually ran. The peer never self-assigns an
   # unverifiable serving model.
   # Publish ONLY the normalized OUT into RUN_DIR. RAW_OUT lives in the per-peer
   # workspace and is never a fold-in artifact — if this script dies before normalize

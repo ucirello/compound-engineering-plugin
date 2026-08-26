@@ -52,7 +52,7 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
   # via --add-dir. Adding the whole workspace scratch root instead would expose
-  # every other scratch file and credential to the elevated
+  # every other same-user scratch file and credential to the elevated
   # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
@@ -103,15 +103,18 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$HANDOFF_DIR/elevation-peer-$$.log"
-(umask 077; set -C; : > "$PEERLOG") 2>/dev/null || { log "cannot reserve peer log: $PEERLOG"; exit 2; }
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)"
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/elevation"
+(umask 077; mkdir -p "$SCRATCH_ROOT") || { log "cannot create workspace scratch root: $SCRATCH_ROOT"; exit 2; }
+PEERLOG="$SCRATCH_ROOT/peer-$(date +%Y%m%dT%H%M%S)-$$-$RANDOM.log"
+(umask 077; set -C; : > "$PEERLOG") || { log "cannot reserve peer log: $PEERLOG"; exit 2; }
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
-# Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
+# Keep this inner cap >= the runner's ROCKETCLAW_PEER_HARD_SECS so it never reaps a
 # healthy run before the outer supervisor's own raised backstop.
-IDLE_SECS="${CE_ELEVATION_IDLE_SECS:-180}"
-HARD_SECS="${CE_ELEVATION_HARD_SECS:-5400}"
-POLL_SECS="${CE_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
+IDLE_SECS="${ROCKETCLAW_ELEVATION_IDLE_SECS:-180}"
+HARD_SECS="${ROCKETCLAW_ELEVATION_HARD_SECS:-5400}"
+POLL_SECS="${ROCKETCLAW_ELEVATION_POLL_SECS:-5}"   # $PEERLOG growth poll interval
 
 reap() {
   local pid="$1" grp

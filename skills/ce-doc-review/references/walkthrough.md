@@ -23,7 +23,7 @@ C. Apply none of them
 ```
 
 - **A** — apply the batch in one pass, as the Apply step does. Track each for the "Applied changes" section. Recommended because 3.7 already established each member has one sensible remedy.
-- **B** — step through the batch only, using the per-finding presentation below. **In batch context that loop is a subroutine:** exactly one exit — run the accumulated Apply set against the document, **clear it**, then return to the routing question — and it never emits the completion report, including via `Auto-resolve with best judgment on the rest`, which is scoped to the remaining batch and returns here. **Flushing the edits is part of the exit, not of the report.** The walk-through normally defers them to a single pass at its terminal path, which this exit skips; leaving them staged means fixes the reader approved never land. Clearing is the other half: the decision pass runs that same terminal dispatch later, so a set still holding batch members would write them a second time. An exit that ends the run from inside the batch pass is a bug whatever its name.
+- **B** — step through the batch only, using the per-finding presentation below. **In batch context that loop is a subroutine:** exactly one exit — run the accumulated Apply set against the document, **clear it**, then return to the routing question — and it never emits the completion report, including via `Auto-resolve with best judgment on the rest`, which is scoped to the remaining batch and returns here. **Flushing the edits is part of the exit, not of the report.** The walk-through normally defers them to a single pass at its terminal path, which this exit skips; leaving them queued means fixes the reader approved never land. Clearing is the other half: the decision pass runs that same terminal dispatch later, so a set still holding batch members would write them a second time. An exit that ends the run from inside the batch pass is a bug whatever its name.
 - **C** — apply none; every member is reported as skipped in the completion report.
 
 ---
@@ -125,7 +125,7 @@ Substitutions:
 - **`suggested_fix`** — from the merged finding's `suggested_fix` field. Render as prose describing intent, not as raw markup. The user's job is to trust or reject the action — they don't need to review exact text. Rules:
   - **Default — one sentence describing the effect.** What does the fix achieve, and where does it live? Prefer intent language over quoted text.
     - Good: `Drop the Advisory tier from the enum; advisory-style findings surface in an FYI subsection at the presentation layer.`
-    - Good: `Add a deployment-ordering constraint requiring <dependent units> to land in one change.`
+    - Good: `Add a deployment-ordering constraint requiring Units 3 and 4 in one atomic change.`
     - Bad: `Change "autofix_class: [auto, gated_auto, advisory, present]" to "autofix_class: [safe_auto, gated_auto, manual]" in findings-schema.json on line 48.` — too syntax-focused for a decision loop
   - **Code-span budget** — at most 2 inline backtick spans per sentence, each a single identifier, flag, or short phrase (e.g., `` `safe_auto` ``, `` `<work-context>` ``). Always leave a space before and after each backtick span.
   - **Raw code blocks** — only for short (≤5-line) genuinely additive content where no before-state exists. Above 5 lines, switch to a summary.
@@ -157,7 +157,7 @@ If the blocking-question tool rejects the multi-line question string (schema / l
 
 ### Confirmation between findings
 
-After the user answers and before printing the next finding's terminal block, emit a one-line confirmation of the action taken. Examples: `→ Applied. Edit staged at "Scope Boundaries" section.`, `→ Deferred. Entry appended to "## Deferred / Open Questions".`, `→ Skipped.`
+After the user answers and before printing the next finding's terminal block, emit a one-line confirmation of the action taken. Examples: `→ Applied. Edit queued for the "Scope Boundaries" section.`, `→ Deferred. Entry appended to "## Deferred / Open Questions".`, `→ Skipped.`
 
 ### Options (four; adapted as noted)
 
@@ -183,7 +183,7 @@ When reviewers disagreed or evidence cuts against the default, still mark one op
 
 ### Remedy sub-question (fires before the regular menu)
 
-Fire this only when the finding actually carries competing remedies. **The reviewer contract does not produce them in the ordinary case** — `suggested_fix` is a single committed recommendation and `references/subagent-template.md` forbids alternative menus outright, so a plain `manual` finding arrives with one fix or none, and there is nothing to choose between.
+Fire this only when the finding actually carries competing remedies. **The reviewer contract does not produce them in the ordinary case** — `suggested_fix` selects one recommendation and `references/subagent-template.md` forbids alternative menus outright, so a plain `manual` finding arrives with one fix or none, and there is nothing to choose between.
 
 The source that does carry them is synthesis step 3.5: a contradiction between personas becomes one combined finding holding both perspectives, framed as a tradeoff for the user to settle. That is a genuine fork, and it is what this sub-question exists for. Ask which perspective to take **before** the regular menu, rather than presenting one as though it were the only one.
 
@@ -194,8 +194,8 @@ This is a sub-question in the same sense as the no-fix `Acknowledge` sub-questio
 ```
 This problem is settled; the remedy is not. Which do you want?
 
-A. <first remedy, one line of what it commits to>
-B. <second remedy, one line of what it commits to>
+A. <first remedy, one line of what it selects>
+B. <second remedy, one line of what it selects>
 ```
 
 Name what *differs* between the options, not what they share — the reader already accepted the problem. Carry the answer into the regular menu as "the proposed fix," then run A-D as normal, so Defer and Skip stay reachable after a remedy is chosen.
@@ -263,7 +263,7 @@ Evaluate lazily, at the point the finding would have been presented — do not s
 
 Record each as `withdrawn` in the decision list, noting which decision retired it. Withdrawn is its own completion-report bucket. It carries forward in the decision primer as a rejected-class decision — alongside Skip, Defer, and Acknowledge — **only when a user decision durably settled it**: a settled premise (Skip/Defer) or a user-asserted fact. Those are user judgments that the finding needn't be actioned, so R29 should suppress a round N+1 re-raise since the document itself never changed.
 
-**An Apply-triggered withdrawal never carries forward as rejected-class.** It is a *prediction* that a staged fix will resolve the finding, not a user judgment that it needn't be. The Apply runs only at end-of-walk-through, and its landing is neither certain nor proof of semantic resolution — it can fail outright, or land in the wrong place and leave the withdrawn finding's evidence untouched (R30 verifies the applied fix's own fingerprint, not the withdrawn finding's). So round N+1 re-synthesis, not R29, is the check: if the fix genuinely resolved the finding, fresh personas won't regenerate it against the edited document; if it didn't — whether the Apply failed or landed ineffectively — the finding resurfaces for the user instead of being silently suppressed. When such an Apply fails outright during execution (write error, or the defensive no-fix fallback), also list its reverted withdrawals in the completion report's failure section as returned to scope, so the user sees them in-run rather than only next round.
+**An Apply-triggered withdrawal never carries forward as rejected-class.** It is a *prediction* that a queued fix will resolve the finding, not a user judgment that it needn't be. The Apply runs only at end-of-walk-through, and its landing is neither certain nor proof of semantic resolution — it can fail outright, or land in the wrong place and leave the withdrawn finding's evidence untouched (R30 verifies the applied fix's own fingerprint, not the withdrawn finding's). So round N+1 re-synthesis, not R29, is the check: if the fix genuinely resolved the finding, fresh personas won't regenerate it against the edited document; if it didn't — whether the Apply failed or landed ineffectively — the finding resurfaces for the user instead of being silently suppressed. When such an Apply fails outright during execution (write error, or the defensive no-fix fallback), also list its reverted withdrawals in the completion report's failure section as returned to scope, so the user sees them in-run rather than only next round.
 
 ---
 

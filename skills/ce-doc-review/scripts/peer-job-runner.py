@@ -60,9 +60,9 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         optional workspace-local jobs root override
-                            (default: <jj-workspace>/.tmp/rocketclaw; outside a
-                            JJ workspace: <current-dir>/.tmp/rocketclaw)
+  CE_PEER_JOBS_ROOT         base dir (defaults to
+                            <workspace-root>/.tmp/rocketclaw; when `jj root`
+                            fails, defaults to <cwd>/.tmp/rocketclaw)
   CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
@@ -80,7 +80,7 @@ Environment overrides (defaults in parentheses):
                             CE_PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
-the current workspace's local scratch tree. Every read of job state opens the file first (no-follow) and
+the current JJ workspace. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -116,7 +116,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root uses the same workspace-local `.tmp\\rocketclaw` namespace.
+  jobs root uses the same workspace-local `.tmp/rocketclaw` default as POSIX.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -148,23 +148,17 @@ _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
 def _workspace_root() -> str:
     try:
-        proc = subprocess.run(
-            ["jj", "workspace", "root"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
+        resolved = subprocess.run(
+            ["jj", "root"], capture_output=True, text=True, check=False,
         )
-        root = proc.stdout.strip()
-        if root:
-            return os.path.abspath(root)
-    except (OSError, subprocess.SubprocessError):
-        pass
+    except OSError:
+        resolved = None
+    if resolved is not None and resolved.returncode == 0 and resolved.stdout.strip():
+        return os.path.abspath(resolved.stdout.strip())
     return os.path.abspath(os.getcwd())
 
 
-WORKSPACE_ROOT = _workspace_root()
-DEFAULT_ROOT = os.path.join(WORKSPACE_ROOT, ".tmp", "rocketclaw")
+DEFAULT_ROOT = os.path.join(_workspace_root(), ".tmp", "rocketclaw")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -217,28 +211,20 @@ _RUNNER_HARD_GRACE = 30.0
 
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
-    root = os.path.abspath(configured) if configured else os.path.abspath(DEFAULT_ROOT)
-    local_root = os.path.realpath(DEFAULT_ROOT)
-    try:
-        root_is_local = os.path.commonpath((os.path.realpath(root), local_root)) == local_root
-    except ValueError:
-        root_is_local = False
-    if not root_is_local:
-        raise RunnerError(f"jobs root must stay under {DEFAULT_ROOT}")
-    scratch_parent = os.path.dirname(DEFAULT_ROOT)
-    os.makedirs(scratch_parent, mode=0o700, exist_ok=True)
-    try:
-        scratch_is_local = os.path.commonpath((os.path.realpath(scratch_parent), os.path.realpath(WORKSPACE_ROOT))) == os.path.realpath(WORKSPACE_ROOT)
-    except ValueError:
-        scratch_is_local = False
-    if not scratch_is_local:
-        raise RunnerError(f"workspace scratch escapes through a symlink: {scratch_parent}")
-    return root
+    if configured:
+        return os.path.abspath(configured)
+    parent = os.path.dirname(DEFAULT_ROOT)
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    _check_owned_dir(parent)
+    return os.path.abspath(DEFAULT_ROOT)
 
 
 def candidate_jobs_root_bases() -> list:
-    """The configured root or the current workspace-local scratch root."""
-    return [jobs_root_base()]
+    """The configured root, or the workspace-local default."""
+    configured = os.environ.get("CE_PEER_JOBS_ROOT")
+    if configured:
+        return [os.path.abspath(configured)]
+    return [os.path.abspath(DEFAULT_ROOT)]
 
 
 def skill_runs_root(skill: str) -> str:
@@ -912,7 +898,7 @@ def write_atomic(path: str, data: bytes) -> None:
         except FileExistsError:
             continue
     else:
-        raise OSError(f"could not reserve atomic file beside {path}")
+        raise RunnerError(f"cannot reserve atomic sibling for {path}")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -1923,7 +1909,8 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (see issue #1243)."
+            "a Windows Python 3 build (see "
+            "the recorded native-Windows detach contract)."
         )
 
 
@@ -2118,7 +2105,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace-scratch path unchecked.
+            # consumer must never read a predictable scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

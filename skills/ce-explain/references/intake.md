@@ -8,8 +8,8 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 
 | Token | Example | Effect |
 |-------|---------|--------|
-| `diff:<revision-or-revset>` | `diff:@`, `diff:<bookmark>..@`, `diff:PR#<number>` | Forces diff mode on that change |
-| `since:<window-or-revision>` | `since:<day>`, `since:<duration>`, `since:<tag>` | Forces recap mode over that window |
+| `diff:<revision-or-revset>` | `diff:<change-id>`, `diff:trunk()..@`, `diff:PR#42` | Forces diff mode on that change |
+| `since:<window-or-ref>` | `since:monday`, `since:7d`, `since:v2.1.0` | Forces recap mode over that window |
 | `output:<md\|html>` | `output:md` | Overrides the artifact format (default `html`) |
 | `audience:<who>` | `audience:team`, `audience:"the design review"` | Renders for that reader instead of the user personally |
 
@@ -18,11 +18,11 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 - "walk me through the diff: why did we split the parser" — stripping `diff:why` leaves "walk me through the did we split the parser". Garbled, so this is prose. Classify by meaning (a diff request about the parser split), and never let the bogus ref `why` outrank that.
 - "explain how we pick the audience: engineers vs designers" — a concept request about audience selection, rendered personally. Not an `audience:` flag naming "engineers".
 - "teach me how our renderer decides output: html or terminal escape codes" — prose. Note this one fails quietly if mis-parsed, because `html` is already the default format, so nothing visible contradicts it.
-- `diff:<bookmark>..@`, or `audience:<reader>` leading a request — genuine flags: nothing is left to garble.
+- `diff:trunk()..@`, or `audience:team` leading a request — genuine flags: nothing is left to garble.
 
 - A token in flag position beats inference. A colon inside prose does not.
 - `diff:` and `since:` together conflict — say so and ask which mode the user wants.
-- An unrecognized `<word>:<word>` token appearing inside a topic is not a flag — it passes through verbatim as request text. The same holds for a *recognized* token that fails the reads-as-a-flag test above.
+- An unrecognized `<word>:<word>` token (including a repository-specific description prefix such as `<local-prefix>:` appearing inside a topic) is not a flag — it passes through verbatim as request text. The same holds for a *recognized* token that fails the reads-as-a-flag test above.
 - A token with an empty or missing value is not a flag — treat it as prose.
 - `output:` with an unknown value: drop the token, note `Ignored unknown output: value '<value>' — using html`, and continue.
 
@@ -30,7 +30,7 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 
 Classify the remaining text by shape:
 
-- **Diff** — the request names a resolvable JJ revision or revision set: a change ID, commit ID, bookmark, revset, GitHub PR, `@`, "the previous change", "what you just did", or "this change".
+- **Diff** — the request names a resolvable JJ change or revset: a change ID, commit ID, bookmark, PR, "the parent change", "what you just did", "this change".
 - **Recap** — the request asks what happened over time ("what did I do this week", "catch me up", "prep me for standup"), **or names a time window and little else** ("since last Monday", "last week", "the past 3 days", "this sprint"). A bare window is a recap request, not a topic to be explained — do not read "since last Monday" as a concept called "since last Monday".
 - **Idea** — the request presents a proposal or notion of the user's to be understood: "explain my idea of X", "what would Y imply". The idea is a fixed given (see SKILL.md Boundaries).
 - **Concept** — everything else: a topic, pattern, subsystem, or external subject to learn.
@@ -38,14 +38,6 @@ Classify the remaining text by shape:
 **Resolving the window (recap mode).** A window arrives either as a token value (`since:monday`) or as prose ("since last Monday", "the past 3 days") — resolve both the same way, to a concrete date range, and name that resolved range in the artifact's `Subject`. `since last Monday` and `since:monday` mean the same thing; a colon must not change the answer. Fall back to the last 7 days only when the request names no window at all, and never silently substitute that default for a window the user did name — if a named window can't be resolved confidently, say what you used.
 
 **Tiebreak — concept vs diff:** when the request is plausibly both (a repo topic that also names an identifiable recent change, e.g. "explain the retry logic we just added"), a concretely resolvable change wins: diff mode, with the concept as framing context. A topic with no resolvable change is a concept.
-
-## Revision namespace mapping
-
-Resolve native JJ symbols directly. When the user supplies a Git-shaped compatibility name, translate its semantics before resolution: `HEAD` -> `@-`; explicit working-copy or working-tree content -> `@`; a local branch or `refs/heads/<name>` -> the same-named local bookmark; `<remote>/<branch>` or `refs/remotes/<remote>/<branch>` -> `<branch>@<remote>`; and `refs/tags/<name>` -> the same-named tag. A full or unique Git commit hash is a JJ commit ID in a Git-backed repository. Never infer a current bookmark because JJ has none.
-
-Preserve range meaning rather than spelling. `A..B` has the same ancestry-set meaning in JJ. Git log's symmetric `A...B` maps to `(A..B) | (B..A)`, while Git diff's `A...B` maps to the tree comparison from `fork_point(A | B)` to `B`; do not treat the two forms as interchangeable. Because JJ's `-` selects all parents, translate first-parent forms by meaning too: `HEAD^` -> `first_parent(@-)` and `HEAD~n` -> `first_parent(@-, n)`, rather than blindly appending hyphens across merges. Resolve remote names from `jj git remote list`; do not assume `origin`.
-
-For a GitHub PR, keep PR number, repository, base, head, and state in the GitHub namespace through `gh` or another GitHub interface. Map the returned base/head commit IDs or branch names to JJ commit IDs or `<bookmark>@<remote>` only for local revision inspection. In a non-colocated JJ repository, point `GIT_DIR` at `jj git root` for `gh` when needed.
 
 **Repo footprint check (concept mode):** a concept grounds in the repo only when it actually touches it. An external subject (a language feature, an interview topic, a paper) gets no repo grounding — do not force it.
 

@@ -12,13 +12,13 @@ Invocation origin is not observable or relevant: apply the same source-resolutio
 
 This skill discovers plans under `<root>/plans/`. Resolve `<root>` when you first compose a `<root>/` path (per the block below), never before you need it. A write to `<root>/...` and a read of `<root>/solutions/` both count as composing a `<root>/` path, so either one triggers resolution; only a run that touches no `<root>/` path at all -- a scratch-only or no-repo flow -- skips it; pass the resolved path to any subagent, not the config.
 
-<!-- artifact-root:start -->
+<!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`.
-- **Validate** a set value: a repository-relative directory whose real, symlink-resolved path stays inside the workspace and is not the workspace root, `.jj/`, `.git/`, `.tmp/`, or `.rocketclaw/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
-<!-- artifact-root:end -->
+<!-- ce-docs-root:end -->
 
 ## Recovery and Control Grammar
 
@@ -28,7 +28,7 @@ This skill discovers plans under `<root>/plans/`. Resolve `<root>` when you firs
 
 When `implementation_run:<safe-id>` is present, recovery wins over ordinary input classification: read `references/cross-model-execution.md`, use `resume --run-id <safe-id>` as the authoritative entrypoint, and return the normal Return-to-Caller envelope after reconciliation. Preserve the supplied `implementation_engine` binding when present. Do not resolve a different route, redispatch, reimplement, rerun completed verification, or start another caller tail.
 
-When a valid `implementation_engine:` binding is present without recovery, **pre-controller discovery is read-only**. Do not run baseline, test, build, format, install, or generation commands in the canonical workspace before resolving the binding and initializing the external controller: those commands can create artifacts before the controller records its clean starting point. Limit triage to metadata, source, configuration, JJ log/status/diff, and command-availability probes. If a non-read probe is required, suppress artifacts and prove the canonical JJ change and operation are unchanged before continuing; otherwise stop with a route blocker.
+When a valid `implementation_engine:` binding is present without recovery, **pre-controller discovery is read-only**. Do not run baseline, test, build, format, install, or generation commands in the canonical workspace before resolving the binding and initializing the external controller: those commands can create ignored artifacts or rewrite the working-copy revision before the controller records its starting point. Limit triage to metadata, source, configuration, revision, status, and command-availability reads. If a mutating probe is genuinely required, suppress artifacts and prove the canonical Jujutsu revision is unchanged before continuing; otherwise stop with a route blocker.
 
 **Resolve a session-carried plan before blank or bare-prompt classification.** When the current request is continuation language such as "proceed" and the conversation identifies exactly one current plan for this work — a plan/spec path or an in-conversation brief from `ce-plan` — that was authored, selected, or accepted, treat it as `<input_document>`; a brief enters as a bare prompt with `source_kind: prompt`. If multiple session plans are plausible, ask which one; do not choose by recency. Do not replace a concrete new work request with an unrelated earlier plan. This rule depends only on visible conversation state, never on whether invocation was explicit or automatic.
 

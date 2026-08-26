@@ -88,7 +88,7 @@ For email sources there are no source-side actions, so approval is moot — reco
 
 Ask where the sweep's state file lives:
 
-- **Recorded in the JJ workspace** (recommended when multiple AI Assistants or machines share a bookmark, so every workspace sees one source of truth). Sets `sweep_state_path` to the default under the artifact root's `feedback-sweep/` — resolve `<root>` to its concrete value first (e.g. the default `docs`), so the persisted value is `<resolved-root>/feedback-sweep/state.yml`, never the literal `<root>` placeholder.
+- **Recorded in the JJ workspace** (recommended when multiple agents or machines share a bookmark, so every workspace sees one source of truth). Sets `sweep_state_path` to the default under the artifact root's `feedback-sweep/` — resolve `<root>` to its concrete value first (e.g. the default `docs`), so the persisted value is `<resolved-root>/feedback-sweep/state.yml`, never the literal `<root>` placeholder.
 - **Workspace-local under `.tmp/rocketclaw`** (solo setups; keeps sweep bookkeeping outside JJ working-copy changes). In a JJ workspace, first confirm existing ignore rules exclude `.tmp/`; if they do not, offer to add that top-level ignore and stop this path when the user declines. Then resolve the path with this POSIX and Git Bash compatible shell block, substituting a sanitized workspace slug:
 
   ```bash
@@ -123,7 +123,7 @@ Let the user override the path only within the resolved workspace-local `.tmp/ro
 
 **Skip this section entirely if the user chose workspace-local state in section 4** — the shared-bookmark topology only applies to state recorded in JJ changes.
 
-**Ask:** "Is this a multi-assistant setup where several JJ workspaces push the sweep state through one shared bookmark? Answer yes only if more than one machine or AI Assistant publishes to that bookmark. Default is no — one workspace records changes locally."
+**Ask:** "Is this a multi-agent setup where several JJ workspaces push the sweep state through one shared bookmark? Answer yes only if more than one machine or agent publishes to that bookmark. Default is no — one workspace records changes locally."
 
 - **No** (default) -> `sweep_shared_bookmark: false`. The single-writer lease serializes overlapping sweeps within one workspace.
 - **Yes** -> `sweep_shared_bookmark: true`. Ask for the publication bookmark and Git remote. Explain that the lease becomes **push-gated**: before any source-side write, the sweep finalizes the lease acquisition in a JJ change, moves the publication bookmark to it, pushes only that bookmark through `jj git push`, and confirms the remote bookmark resolves to that change.

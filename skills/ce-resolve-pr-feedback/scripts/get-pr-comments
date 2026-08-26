@@ -16,7 +16,7 @@ if [ -n "$2" ]; then
     REPO=$(echo "$2" | cut -d/ -f2)
 else
     # `|| true` is load-bearing: under `set -e`, a failed command substitution
-    # in an assignment aborts the script immediately. Run outside a JJ workspace,
+    # in an assignment aborts the script immediately. Run outside the target workspace,
     # `gh repo view` exits 1, its stderr is swallowed by `2>/dev/null`, and the
     # script would die here with rc=1 and no output -- making the friendly error
     # below unreachable. Keep `|| true` so detection failure falls through to it.
@@ -65,16 +65,12 @@ fi
 # resolver can weigh identity as evidence, including recognizing its own prior
 # replies as already-handled.
 
-if workspace_root=$(jj workspace root 2>/dev/null); then
-    :
-else
-    workspace_root=$PWD
-fi
-tmp_root="$workspace_root/.tmp/rocketclaw"
+workspace_root=$(jj workspace root 2>/dev/null || pwd)
+tmp_root="$workspace_root/.tmp"
 mkdir -p "$tmp_root"
-tmp_threads=$(mktemp "$tmp_root/pr-threads.XXXXXX")
-tmp_comments=$(mktemp "$tmp_root/pr-comments.XXXXXX")
-tmp_reviews=$(mktemp "$tmp_root/pr-reviews.XXXXXX")
+tmp_threads="$tmp_root/pr-threads-$$.json"
+tmp_comments="$tmp_root/pr-comments-$$.json"
+tmp_reviews="$tmp_root/pr-reviews-$$.json"
 trap 'rm -f "$tmp_threads" "$tmp_comments" "$tmp_reviews"' EXIT
 
 gh api graphql --paginate --slurp \

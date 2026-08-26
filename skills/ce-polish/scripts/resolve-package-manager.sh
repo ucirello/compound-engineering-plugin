@@ -32,13 +32,13 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          no positional arg and not inside a JJ workspace
+#                          no positional arg and not inside a Jujutsu workspace
 
 set -u
 
 TARGET_PATH="${1:-}"
 
-# Resolve target directory: positional arg or JJ workspace root.
+# Resolve target directory: positional arg or Jujutsu workspace root.
 if [ -n "$TARGET_PATH" ]; then
   if [ ! -d "$TARGET_PATH" ]; then
     echo "ERROR: path does not exist or is not a directory: $TARGET_PATH" >&2
@@ -47,7 +47,7 @@ if [ -n "$TARGET_PATH" ]; then
 else
   TARGET_PATH=$(jj workspace root 2>/dev/null)
   if [ -z "$TARGET_PATH" ]; then
-    echo "ERROR: not in a JJ workspace and no path argument provided" >&2
+    echo "ERROR: not in a Jujutsu workspace and no path argument provided" >&2
     exit 1
   fi
 fi

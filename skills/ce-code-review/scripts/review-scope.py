@@ -53,11 +53,15 @@ def jj(*args: str) -> subprocess.CompletedProcess[str]:
 def valid_revision(ref: str | None) -> bool:
     if not ref:
         return False
-    return jj("log", "-r", ref, "--no-graph", "-T", "commit_id ++ '\n'").returncode == 0
+    result = jj("log", "-r", ref, "--no-graph", "-T", 'commit_id ++ "\\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = jj("log", "-r", f"heads(::{base} & ::{head})", "--no-graph", "-T", "commit_id ++ '\n'")
+    result = jj(
+        "log", "-r", f"heads(::{base} & ::{head})", "--no-graph", "-T",
+        'commit_id ++ "\\n"',
+    )
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -87,9 +91,9 @@ def repo_root() -> Path:
 
     docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
     check must resolve against the JJ workspace root, not the current working
-    directory. The skill can run from a subdirectory, where ``Path.cwd()`` would
-    join docs_root under the subdir and wrongly report the corpus absent. Fall
-    back to cwd when JJ cannot answer.
+    directory. ce-code-review can run from a subdirectory (``jj diff`` still
+    works there), where ``Path.cwd()`` would join docs_root under the subdir and
+    wrongly report the corpus absent. Fall back to cwd when JJ cannot answer.
     """
     result = jj("workspace", "root")
     if result.returncode == 0 and result.stdout.strip():
@@ -162,13 +166,18 @@ def main() -> int:
 
     files = sorted(line for line in names.stdout.splitlines() if line)
     executable_lines = 0
-    current_file = ""
+    counted_file = False
     for line in patch.stdout.splitlines():
-        if line.startswith("diff --git a/"):
-            current_file = line.split(" b/", 1)[-1]
-        elif current_file and Path(current_file).suffix.lower() in CODE_EXTENSIONS:
-            if (line.startswith("+") and not line.startswith("+++")) or (line.startswith("-") and not line.startswith("---")):
-                executable_lines += 1
+        if line.startswith("diff --git "):
+            match = re.search(r" b/(.+)$", line)
+            counted_file = bool(
+                match and Path(match.group(1)).suffix.lower() in CODE_EXTENSIONS
+            )
+        elif counted_file and (
+            (line.startswith("+") and not line.startswith("+++"))
+            or (line.startswith("-") and not line.startswith("---"))
+        ):
+            executable_lines += 1
 
     uncounted = sum(
         1 for file in files if Path(file).suffix.lower() not in CODE_EXTENSIONS

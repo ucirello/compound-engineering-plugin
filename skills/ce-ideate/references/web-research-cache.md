@@ -44,12 +44,12 @@ After a fresh dispatch, append the new result to the current run's cache file at
 
 The topic surface is the user-supplied content the web research is grounded on:
 - **Elsewhere modes (`elsewhere-software`, `elsewhere-non-software`):** the user's topic prompt plus any Phase 0.4 intake answers (the actual subject the agent is researching). The two sub-modes are keyed separately — a reclassification between software and non-software for the same topic hash must force a fresh dispatch, since the research domain differs.
-- **Repo mode:** the focus hint plus a stable workspace discriminator. This keeps the cache key meaningful when focus is empty — two bare-prompt invocations in the same workspace legitimately share research, but the key still differentiates projects. Resolve the discriminator with this fallback chain and hash the result (first 8 hex chars of SHA-256 is sufficient):
-    1. The `origin` URL from `jj git remote list` — stable across machines and correct for collaborators on the same Git-backed remote.
-    2. `jj workspace root` — absolute workspace path; machine-local but available in a JJ workspace.
-    3. The current working directory's absolute path — fallback outside a JJ workspace.
+- **Repo mode:** the focus hint plus a stable repo discriminator. This keeps the cache key meaningful when focus is empty — two bare-prompt invocations in the same repo legitimately share research, but the key still differentiates repos. Resolve the discriminator with this fallback chain and hash the result (first 8 hex chars of sha256 is sufficient):
+    1. The matching repository URL from `jj git remote list` — stable across machines, correct for collaborators on the same remote.
+    2. `jj workspace root` — absolute workspace path; machine-local but available in a JJ checkout.
+    3. The current working directory's absolute path — last resort outside a JJ workspace.
 
-Normalize before hashing: lowercase, collapse whitespace. (The workspace discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
+Normalize before hashing: lowercase, collapse whitespace. (The repo discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
 
 ## Degradation
 

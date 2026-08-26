@@ -1,6 +1,6 @@
 ---
 name: lfg
-description: "Run the full autonomous shipping pipeline end-to-end, hands-off with no check-ins. Use only when the user explicitly asks to build or ship something autonomously all the way to an open PR, or invokes lfg directly — it publishes a JJ bookmark and opens a PR without stopping. Not for in-the-loop work where the user reviews each step: use ce-plan, ce-work, ce-debug, or ce-commit-push-pr instead."
+description: "Run the full autonomous shipping pipeline end-to-end, hands-off with no check-ins. Use only when the user explicitly asks to build or ship something autonomously all the way to an open PR, or invokes lfg directly — it pushes and opens a PR without stopping. Not for in-the-loop work where the user reviews each step: use ce-plan, ce-work, ce-debug, or ce-commit-push-pr instead."
 argument-hint: "[feature description; optionally assign planning and/or implementation to a model or harness]"
 ---
 
@@ -8,9 +8,7 @@ CRITICAL: You MUST execute every step below IN ORDER. Do NOT jump ahead to codin
 
 LFG runs hands-off, from schedulers, loops, and nested orchestrators with no user to answer, so no step stops to ask. The one exception is the upfront routing question `references/stage-routing.md` defines.
 
-Resolve every skill named below against the host's available-skills list and invoke that exact entry; some hosts namespace entries, and a short-form guess that is not in the list fails.
-
-Use JJ for every repository operation. Resolve the workspace with `jj workspace root`; if that fails before repository work begins, use the current directory as the local root and stop before any repository-dependent stage. Put all scratch files under `<workspace-root>/.tmp/rocketclaw/<run-id>/`, or `./.tmp/rocketclaw/<run-id>/` outside a JJ workspace. Do not use an OS or global temporary directory.
+Resolve every skill named below against the host's available-skills list and invoke that exact entry. Preserve `ce-*` route names; do not invent a namespaced alias that is absent from the list.
 
 Read `references/task-visibility.md` before step 1: it owns the stage-level view this pipeline publishes through the platform's task-tracking capability and hands to each child skill.
 
@@ -30,17 +28,17 @@ Before step 1, interpret whether the invoking conversation expresses semantic in
 
    GATE: STOP. Read the structured return before continuing. Only a valid `status: complete` may advance; every other status or malformed return stops the pipeline.
 
-3. **Read `references/review-followup.md` now**, then invoke the `ce-simplify-code` skill on the current stack diff selected by the revset `trunk()..@` — **skip** only the invocation, never the read, when `jj diff -r 'trunk()..@' --name-only` shows only markdown/docs paths or `jj diff -r 'trunk()..@' --stat` shows a trivial change (roughly under 10 changed lines). That file governs steps 3 through 6, which have no usable form without it: only it carries this step's scope and structure pins, the review read-back, which findings step 5 applies and how they are described and separated, and the residual record step 6 makes durable.
+3. **Read `references/review-followup.md` now**, then invoke `ce-simplify-code` on the active Jujutsu stack diff. Skip only the invocation, never the read, when the change is docs-only or trivial (roughly under 10 changed lines). That file governs steps 3 through 6, including scope, structure pins, review read-back, focused review changes, and the durable residual record.
 
 4. Invoke the `ce-code-review` skill with `mode:agent plan:<plan-path-from-step-1>`.
 
    GATE: STOP. A `settled_conflict`-stamped finding whose evidence is invalidating — the settled decision cannot work: infeasible, wrong-thing, or destructive — stops the pipeline as blocked, with the finding reported, before the shipping precondition.
 
-**Shipping precondition (steps 5–9).** Run `jj git remote list` once before the shipping steps. No remote means shipping is local-only: finalize every JJ change the steps below call for, but **skip every bookmark push, PR create/edit, and CI-watch action**, including step 9 in full. That is terminal, not an error.
+**Shipping precondition (steps 5–9).** Run `jj git remote list` once before shipping. No remote means shipping is local-only: finish every local Jujutsu change the steps require, but skip every push, PR create/edit, and CI-watch action, including step 9. That is terminal, not an error.
 
 5. **Apply and persist review fixes** (REQUIRED after step 4, before residual handoff)
 
-   Execute the apply step of `references/review-followup.md`. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain undescribed or unseparated in the working-copy change.
+   Execute the apply step of `references/review-followup.md`. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain mixed into an unfinished working-copy change.
 
 6. **Autonomous residual handoff** — run it whenever anything divergent is left to make durable: an actionable `downstream-resolver` finding step 5 did not apply, a `settled_conflict` stamp from step 4, or a proceeded-and-flagged `settled_decision_conflicts` entry from step 2. Skip only when none of the three exists — `Actionable findings: none.` does not decide it alone.
 
@@ -50,11 +48,11 @@ Before step 1, interpret whether the invoking conversation expresses semantic in
 
 7. Invoke the `ce-test-browser` skill with `mode:pipeline`.
 
-8. Ship: the goal is the remaining work described as JJ changes, published through a bookmark, and in an open PR whose URL you hold. **Read `references/shipping-tail.md` first** — it governs steps 8 through 10 — then invoke the `ce-commit-push-pr` skill with `mode:pipeline` and the JJ-only repository constraint that file defines unless it routes this run elsewhere. Only it carries when a project-defined process supersedes that default and the blocked stop when it falls short, what LFG threads into it, the `New concepts:` trailer and ticket back-fill, the no-remote substitution, and step 9's stack handoff. Invoking without it overrides a project's shipping process and, with no remote, drives an impossible push.
+8. Ship: the goal is the remaining work described, pushed with Jujutsu, and in an open PR whose URL you hold. **Read `references/shipping-tail.md` first**, then invoke `ce-commit-push-pr mode:pipeline` unless that file routes elsewhere. It owns project-defined process precedence, context, ticket back-fill, the no-remote substitution, and stack handoff.
 
-9. **Watch the PR to CI-decided via `ce-babysit-pr`** (only when an open PR exists for the published bookmark)
+9. **Watch the PR to CI-decided via `ce-babysit-pr`** only when an open PR exists for the pushed bookmark.
 
-   Detect the PR with `gh pr view <bookmark> --json number,url,state`; in a non-colocated JJ repository, first run `jj git root` and supply that result as `GIT_DIR` to `gh`. If no PR exists or `gh` is unavailable, skip to step 10. When step 8 already handed off a stack babysit, `references/shipping-tail.md` decides this step — never start a second bare pipeline babysit on the published-bookmark URL. Otherwise invoke **`ce-babysit-pr mode:pipeline <pr-url>`**, and follow that same file for the returned `{ status, fixes_applied, residuals }`. Do not reimplement CI-watching here.
+   Detect the PR with `gh pr view --json number,url,state`; if none exists or `gh` is unavailable, skip to step 10. When step 8 already handed off a stack babysit, `references/shipping-tail.md` decides this step. Otherwise invoke **`ce-babysit-pr mode:pipeline <pr-url>`** and preserve its structured result.
 
 10. Output `<promise>DONE</promise>` when complete, after the close-out in `references/shipping-tail.md`, which owns the two user-runnable handoff lines, their per-host rendering, and the next-work offer gate.
 

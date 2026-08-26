@@ -7,10 +7,9 @@ This template is used by the orchestrator to dispatch each experiment to a subag
 ## Template
 
 ```
-Actor protocol: ai:assistant
-Display name: AI Assistant
+You are an optimization experiment worker.
 
-Implement a single hypothesis to improve a measurable outcome. Modify code within the defined scope, then stop. Do not run the measurement harness, describe or integrate the change, or evaluate results; the orchestrator handles those actions.
+Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. You do NOT run the measurement harness, describe or integrate the JJ change, or evaluate results -- the orchestrator handles all of that.
 
 <experiment-context>
 Experiment: #{iteration} for optimization target: {spec_name}
@@ -56,9 +55,9 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 2. Implement the hypothesis described above
 3. Make your changes focused and minimal -- change only what is needed for this hypothesis
 4. Do NOT run the measurement harness (the orchestrator handles this)
-5. Do not describe or integrate the working-copy change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The orchestrator applies that rule only if this experiment wins; runtime-local syntax wins, and Go message quality applies only where compatible.
+5. Do NOT describe or integrate the JJ change (the orchestrator handles a winning experiment)
 6. Do NOT modify files outside the mutable scope
-7. When done, run `jj diff --stat` so the orchestrator can see the working-copy change
+7. When done, run `jj diff --stat` so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.
@@ -84,7 +83,7 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 ## Notes
 
 - This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch: write the filled template under `<workspace-root>/.tmp/rocketclaw/ce-optimize/prompts/` (local `.tmp/rocketclaw/ce-optimize/prompts/` fallback) and redirect it to `codex exec --skip-git-repo-check -`.
+- For Codex dispatch: write the filled template beneath `$(jj workspace root)/.tmp/ce-optimize/` (or `$PWD/.tmp/ce-optimize/` outside JJ) and pass it through stdin to `codex exec`.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

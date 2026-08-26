@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run one pre-sanctioned, write-capable implementation route in a controller-
-# supplied JJ workspace. The adapter never creates workspaces, changes
+# supplied isolated workspace. The adapter never creates workspaces, changes
 # recipients, integrates output, or retries through another route.
 #
 # Usage:
@@ -179,17 +179,16 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-SCRATCH_PARENT="$RESULT_DIR/.tmp/rocketclaw"
-mkdir -p "$SCRATCH_PARENT" || exit 2
-chmod 700 "$RESULT_DIR/.tmp" "$SCRATCH_PARENT" 2>/dev/null || exit 2
+SCRATCH_ROOT="$WORKSPACE/.tmp/rocketclaw/ce-work-adapter"
+mkdir -p "$SCRATCH_ROOT" || exit 2
+chmod 700 "$WORKSPACE/.tmp" "$WORKSPACE/.tmp/rocketclaw" "$SCRATCH_ROOT" 2>/dev/null || true
 SCRATCH=""
-scratch_attempt=0
-while [ "$scratch_attempt" -lt 64 ]; do
-  scratch_attempt=$((scratch_attempt + 1))
-  candidate="$SCRATCH_PARENT/adapter-$$-$RANDOM-$RANDOM"
-  if mkdir -m 700 "$candidate" 2>/dev/null; then SCRATCH="$candidate"; break; fi
+for _ in {1..16}; do
+  candidate="$SCRATCH_ROOT/run-$$-$RANDOM-$RANDOM"
+  if (umask 077; mkdir "$candidate") 2>/dev/null; then SCRATCH="$candidate"; break; fi
 done
-[ -n "$SCRATCH" ] || { log "could not reserve local adapter scratch"; exit 2; }
+[ -n "$SCRATCH" ] || { log "cannot create private workspace scratch directory"; exit 2; }
+chmod 700 "$SCRATCH"
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
 RAW_STDERR="$SCRATCH/stderr.log"
@@ -369,7 +368,7 @@ PACKET="$(cd "$(dirname "$PACKET")" && pwd -P)/$(basename "$PACKET")" || exit 2
 RESULT_DIR="$(cd "$RESULT_DIR" && pwd -P)" || exit 2
 case "$RESULT_DIR/" in "$WORKSPACE/"*) log "result dir must be outside the worker workspace"; exit 2 ;; esac
 case "$PACKET" in "$WORKSPACE"/*) log "unit packet must be outside the worker workspace"; exit 2 ;; esac
-jj -R "$WORKSPACE" workspace root >/dev/null 2>&1 || { log "workspace is not a JJ workspace"; exit 2; }
+jj -R "$WORKSPACE" workspace root >/dev/null 2>&1 || { log "workspace is not a Jujutsu workspace"; exit 2; }
 chmod 700 "$RESULT_DIR" 2>/dev/null || { log "result dir could not be made private"; exit 2; }
 RESULT_DIR_IDENTITY="$("$PY" - "$RESULT_DIR" <<'PY'
 import os, stat, sys
@@ -691,7 +690,7 @@ while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROU
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-MIN_ENV+=("TMPDIR=$SCRATCH_PARENT")
+MIN_ENV+=("TMPDIR=$WORKSPACE/.tmp")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")

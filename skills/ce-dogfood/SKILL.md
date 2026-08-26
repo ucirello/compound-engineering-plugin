@@ -1,27 +1,27 @@
 ---
 name: ce-dogfood
-description: "Hands-off, diff-scoped browser QA of the active JJ change: maps user flows, drives a real browser, autonomously fixes small breakages with regression tests and changes, judges experience against product personas, and writes a durable dogfood report. Manual invocation only."
+description: "Hands-off, diff-scoped browser QA of the active JJ change or bookmark: maps user flows, drives a real browser, autonomously fixes small breakages with regression tests and JJ changes, judges experience against product personas, and writes a durable dogfood report. Manual invocation only."
 disable-model-invocation: true
-argument-hint: "[PR number, bookmark name, or blank for current change] [--port PORT]"
+argument-hint: "[PR number, bookmark/revision, or blank for @] [--port PORT]"
 ---
 
 # Dogfood
 
 Act as a QA engineer who dogfoods the **active JJ change** end-to-end, autonomously, until it is genuinely ready.
 
-**Outcome:** every user-visible difference this JJ change introduced has been driven in a real browser along its whole journey, judged for correctness and for how it feels to the product's personas, with small breakages fixed, regression-tested, and recorded as logical changes. **Done:** every matrix scenario is `Pass`, `Fixed`, `Skipped`, or in a terminal `Blocked` state; the project's automated suite has been run once and its result recorded; and the report at `<root>/dogfood-reports/<YYYY-MM-DD>-<target-slug>-dogfood.md` is finalized against its template. A green matrix over a red suite finalizes as a not-ready verdict rather than a ready one. Chasing that suite green is not this run's job.
+**Outcome:** every user-visible change in scope has been driven in a real browser along its whole journey, judged for correctness and for how it feels to the product's personas, with small breakages fixed, regression-tested, and recorded as described JJ changes. **Done:** every matrix scenario is `Pass`, `Fixed`, `Skipped`, or in a terminal `Blocked` state; the project's automated suite has been run once and its result recorded; and the report at `<root>/dogfood-reports/<YYYY-MM-DD>-<target-slug>-dogfood.md` is finalized against its template. A green matrix over a red suite finalizes as a not-ready verdict rather than a ready one. Chasing that suite green is not this run's job.
 
-This is **diff-scoped**, not whole-app exploration. You test what *this change* introduced or modified versus the trunk change.
+This is **diff-scoped**, not whole-app exploration. You test what the selected revision introduced or modified versus its trunk revision.
 
 **Read `references/phases.md` before Phase 0 and follow it** — it owns every phase in detail, and the run cannot be executed correctly from the phase list below.
 
 ## Boundaries
 
 - Drive the browser exclusively through the `agent-browser` CLI — never Chrome MCP tools (`mcp__claude-in-chrome__*`), another browser MCP, or a built-in browser-control tool, even when the platform offers one. Use the direct binary, never `npx agent-browser` (the direct binary uses the fast Rust client).
-- Never dogfood the trunk on a bookmark-name or blank target — there is no diff. A PR target always has a provider base ref, so it is always diffable even when its head ref is named `main`.
-- A numeric target stays a PR identity through isolation and target selection — never collapse it to its head ref, whose name may itself be `main`.
-- Never move the user's primary JJ workspace to another change. This skill decides only whether to offer isolation: no for a blank or current-change target, and yes for a PR or another named ref. `ce-worktree` owns supported isolation mechanics and its verdict; if it cannot provide a JJ workspace, use `jj workspace add -r <target> <destination>` without changing the primary workspace. On a declined offer, start a new working-copy change on `<target>` in place with JJ; the previous change remains in the repository.
-- Screenshots and other transient artifacts go under `<workspace-root>/.tmp/rocketclaw/dogfood/<run-id>/`, where `<workspace-root>` comes from `jj workspace root` and falls back to the current workspace's local `.`. Copy one elsewhere only to embed it in the report.
+- Never dogfood the trunk on a bookmark/revision or blank target when the selected revision has no changes relative to trunk. A PR target always has a base, so evaluate its explicit base/head pair even when its head bookmark is named `main`.
+- A numeric target stays a PR identity through isolation and revision selection; never collapse it to a head-bookmark name whose spelling may itself be `main`.
+- Never switch the primary workspace out from under the user. This skill decides only whether to offer isolation — no for a blank target already at `@`, yes for a PR or another named revision — and `ce-worktree` owns the workspace mechanics and verdict. On a declined offer, use `jj edit <target-revision>` in place; JJ preserves the prior working-copy change instead of discarding it.
+- Screenshots and other transient artifacts go under `<workspace-root>/.tmp/rocketclaw/ce-dogfood/`, with `./.tmp/rocketclaw/ce-dogfood/` as the fallback when `jj root` fails; copy one elsewhere only to embed it in the report.
 - Auto-fix only what is small, well-understood, and low-risk. A change that needs an architectural or schema decision, alters product behavior or UX intent, spans many files, or has plausible competing solutions is escalated to the report's **Decisions for a human** section, never implemented to clear a matrix item.
 
 ## Prerequisites
@@ -44,19 +44,19 @@ Reports live under `<root>/dogfood-reports/` and personas under `<root>/personas
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or the colocated `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Delegation
 
-`ce-dogfood` is an orchestrator: prefer an existing applicable skill over re-deriving its behavior. Route supported PR or named-bookmark isolation through `ce-worktree`; take a non-obvious root cause to `ce-debug`; finalize each logical fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
+`ce-dogfood` is an orchestrator: prefer an existing skill over re-deriving its behavior. Isolate a PR or named-revision target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; describe each fix change with `ce-commit`; capture a reusable lesson with `ce-compound`.
 
 ## Phase order
 
 Scope -> analyze the diff -> map the flows -> derive the matrix -> serve -> execute -> fix loop -> report. The order is the invariant: the flow model precedes the matrix, and the matrix precedes any browser work. Each phase's conditions are in `references/phases.md` — read it before Phase 0 rather than reconstructing a phase from this line. Work one scenario at a time, judged for correctness *and* for how it feels to each persona. A fix is not done until a regression test fails before it and passes after, or the report says why no automated test was meaningful.
 
-**Checkpoint, not a final write.** Create the report from `references/dogfood-report-template.md` as soon as the matrix exists, with every scenario at `Pending`, and update it after each scenario is judged and each fix is finalized. `<target-slug>` is the PR number, bookmark name, or current change ID lowercased, with every run of non-alphanumeric characters collapsed to one `-`. Find a prior run by globbing `<root>/dogfood-reports/*-<target-slug>-dogfood.md`. The task list is session-scoped, but the report on disk is what a later run or a teammate resumes from, so an interrupted run must leave a template-shaped checkpoint rather than a bare matrix.
+**Checkpoint, not a final write.** Create the report from `references/dogfood-report-template.md` as soon as the matrix exists, with every scenario at `Pending`, and update it after each scenario is judged and each fix change is described. `<target-slug>` comes from the PR head bookmark, named JJ bookmark/revision, or current change ID, lowercased with each run of non-alphanumeric characters collapsed to one `-`. Find a prior run by globbing `<root>/dogfood-reports/*-<target-slug>-dogfood.md`. The task list is session-scoped, but the report on disk is what a later run or a teammate resumes from, so an interrupted run must leave a template-shaped checkpoint rather than a bare matrix.
 
 **Terminal states.** `Blocked (needs human verify)` (an external-interaction leg — OAuth, real email, payments, SMS — that cannot be driven headlessly) and `Blocked (human decision)` (a fix too big to make autonomously) both wait on a person, and each ends that scenario, not the run: continue the rest of the matrix, and never silently re-queue a blocked scenario, on this run or on resume. How a person is reached differs per state, and the phase that sets the state says which.

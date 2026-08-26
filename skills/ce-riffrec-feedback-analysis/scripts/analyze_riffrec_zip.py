@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and workflow-ready markdown
+transcript, high-signal video frames when available, and structured markdown
 artifacts.
 """
 
@@ -14,10 +14,10 @@ import argparse
 import json
 import os
 import re
-import secrets
 import shutil
 import subprocess
 import sys
+import uuid
 import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -59,31 +59,6 @@ class SourceInputError(ValueError):
     pass
 
 
-def workspace_root() -> Path:
-    if shutil.which("jj"):
-        result = subprocess.run(
-            ["jj", "workspace", "root"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return Path(result.stdout.strip()).resolve()
-    return Path.cwd().resolve()
-
-
-def create_staging_dir(parent: Path, name: str) -> Path:
-    parent.mkdir(parents=True, exist_ok=True)
-    for _ in range(100):
-        path = parent / f".{name}.staging-{secrets.token_hex(8)}"
-        try:
-            path.mkdir(mode=0o700)
-            return path
-        except FileExistsError:
-            continue
-    raise RuntimeError(f"Could not reserve a staging directory under {parent}")
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analyze a product feedback source")
     parser.add_argument(
@@ -110,6 +85,29 @@ def parse_args() -> argparse.Namespace:
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return re.sub(r"-{2,}", "-", slug) or "riffrec-feedback"
+
+
+def workspace_root() -> Path:
+    try:
+        result = subprocess.run(["jj", "root"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return Path.cwd()
+    return Path(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip() else Path.cwd()
+
+
+def scratch_directory(prefix: str) -> Path:
+    root = workspace_root() / ".tmp" / "rocketclaw" / "ce-riffrec-feedback-analysis"
+    if root.is_symlink():
+        raise SourceInputError(f"Scratch root must not be a symlink: {root}")
+    root.mkdir(parents=True, exist_ok=True)
+    for _ in range(100):
+        candidate = root / f"{prefix}-{uuid.uuid4().hex}"
+        try:
+            candidate.mkdir(mode=0o700)
+            return candidate
+        except FileExistsError:
+            continue
+    raise SourceInputError(f"Could not reserve a scratch directory under {root}")
 
 
 def read_json(path: Path, default: Any) -> Any:
@@ -185,12 +183,14 @@ def promote_raw_snapshot(staging_dir: Path, raw_dir: Path) -> None:
 
     had_previous = raw_dir.exists()
     if had_previous:
-        os.replace(raw_dir, previous_dir)
+        shutil.move(raw_dir, previous_dir)
     try:
-        os.replace(staging_dir, raw_dir)
+        shutil.move(staging_dir, raw_dir)
     except BaseException:
         if had_previous:
-            os.replace(previous_dir, raw_dir)
+            if raw_dir.exists() and not raw_dir.is_symlink():
+                shutil.rmtree(raw_dir, ignore_errors=True)
+            shutil.move(previous_dir, raw_dir)
         raise
 
     if had_previous:
@@ -217,12 +217,14 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
 
     had_previous = frames_dir.exists()
     if had_previous:
-        os.replace(frames_dir, previous_dir)
+        shutil.move(frames_dir, previous_dir)
     try:
-        os.replace(staging_dir, frames_dir)
+        shutil.move(staging_dir, frames_dir)
     except BaseException:
         if had_previous:
-            os.replace(previous_dir, frames_dir)
+            if frames_dir.exists() and not frames_dir.is_symlink():
+                shutil.rmtree(frames_dir, ignore_errors=True)
+            shutil.move(previous_dir, frames_dir)
         raise
 
     if had_previous:
@@ -230,11 +232,11 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
 
 
 def default_output_dir(source_path: Path) -> Path:
-    root = workspace_root()
+    cwd = Path.cwd()
     stem = slugify(source_path.stem)
-    if (root / "docs" / "brainstorms").is_dir():
-        return root / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return root / "riffrec-feedback" / stem
+    if (cwd / "docs" / "brainstorms").is_dir():
+        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
+    return cwd / "riffrec-feedback" / stem
 
 
 def classify_source(source_path: Path) -> str:
@@ -390,7 +392,7 @@ def populate_source_snapshot(source_path: Path, snapshot_dir: Path, source_kind:
 def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = None) -> dict[str, Any]:
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir = create_staging_dir(raw_dir.parent, raw_dir.name)
+    staging_dir = scratch_directory(f".{raw_dir.name}.staging")
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
         promote_raw_snapshot(staging_dir, raw_dir)
@@ -678,7 +680,7 @@ def select_moments(
 def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[dict[str, Any]]) -> None:
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
-    staging_dir = create_staging_dir(frames_dir.parent, frames_dir.name)
+    staging_dir = scratch_directory(f".{frames_dir.name}.staging")
     try:
         if not recording_path or not recording_path.exists():
             for moment in moments:
@@ -854,7 +856,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use workspace-relative screenshot paths when moving evidence into a requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -874,7 +876,6 @@ def write_requirements_kickoff(
         if moment.get("screenshot"):
             screenshot_refs.append(f"{moment['id']}: `{markdown_link(moment['screenshot'], output_path.parent, repo_root)}`")
     evidence_text = "; ".join(screenshot_refs[:6]) or "See analysis.md selected moments."
-    primary_finding_title = findings[0]["title"] if findings else "the confirmed product problem"
     source_materials = markdown_link(str(output_path.parent / "source-materials.md"), output_path.parent, repo_root)
     analysis_path = markdown_link(str(output_path.parent / "analysis.md"), output_path.parent, repo_root)
     problem_analysis_path = markdown_link(str(output_path.parent / "problem-analysis.md"), output_path.parent, repo_root)
@@ -904,7 +905,7 @@ def write_requirements_kickoff(
         "",
         "- A1. User: Operates the product in the recorded session and verbalizes friction.",
         "- A2. Product surface: The UI and backend behavior visible in the recording.",
-        "- A3. AI Assistant (`ai:assistant`): Uses the evidence bundle to confirm, correct, and group requirements before planning.",
+        "- A3. Brainstorm agent: Uses the evidence bundle to confirm, correct, and group requirements before planning.",
         "",
         "---",
         "",
@@ -939,7 +940,7 @@ def write_requirements_kickoff(
             "## Acceptance Examples",
             "",
             "- AE1. **Covers R1, R2.** Given a feedback source with voice, video, or notes, when the analysis is complete, each promoted issue includes source evidence rather than prose-only claims.",
-            f"- AE2. **Covers R3.** Given evidence for `{primary_finding_title}`, when requirements are finalized, the requirement identifies the affected product surface and the expected behavior.",
+            "- AE2. **Covers R3.** Given the user reports that a button is weird or unclickable, when requirements are finalized, the requirement identifies the specific control and the expected available/unavailable behavior.",
             "",
             "---",
             "",
@@ -1028,7 +1029,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- JJ change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots stay outside the working-copy change by default; include generated Markdown, JSON, and manifests when useful for traceability.",
+        "- JJ change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; retain generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -1049,10 +1050,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; keep outside the JJ working-copy change by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; exclude from lasting JJ changes by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for inspection and should stay outside the JJ working-copy change by default.")
+    lines.append("Extracted screenshots are retained locally for agent inspection and should not remain in lasting JJ changes by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -1071,7 +1072,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Keep them outside the JJ working-copy change unless the user explicitly requests versioning and privacy and security are acceptable.")
+    lines.append("Raw files are intentionally local-only by default. Do not retain them in a JJ change unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")

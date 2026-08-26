@@ -67,15 +67,20 @@ When no runnable hypothesis is left — the backlog is empty and no new one can 
 
 For each hypothesis in the batch, dispatch according to `execution.mode`. In `serial` mode, run exactly one experiment to completion before selecting the next hypothesis. In `parallel` mode, dispatch the batch concurrently.
 
-**Bounded dispatch.** Do not assume the host will accept all concurrent subagents at once; the active-subagent cap varies by host and profile and is independent of `execution.max_concurrent` (which caps experiment workspaces, a separate budget). Queue the selected experiments, dispatch only as many as the host accepts, and when a capacity or active-agent-limit error appears, treat it as backpressure — retry the queued experiment after a slot frees rather than marking it failed. Mark an experiment failed only when dispatch fails for a non-capacity reason that survives correcting the invocation, or a successfully dispatched experiment errors/times out.
+**Bounded dispatch.** Do not assume the host will accept all concurrent subagents at once; the active-subagent cap varies by host and profile and is independent of `execution.max_concurrent` (which caps JJ workspaces, a separate budget). Queue the selected experiments, dispatch only as many as the host accepts, and when a capacity or active-agent-limit error appears, treat it as backpressure — retry the queued experiment after a slot frees rather than marking it failed. Mark an experiment failed only when dispatch fails for a non-capacity reason that survives correcting the invocation, or a successfully dispatched experiment errors/times out.
 
 The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-optimize` skill directory; see the Bundled scripts note in Phase 1) — shell state does not persist from Phase 1, so each block carries its own assignment.
 
 **Workspace backend:**
-1. Create an experiment workspace whose working-copy change is based on the optimization bookmark:
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Repository-local style wins. Preserve each hypothesis's experiment intent in its message.
+
+1. Create an experiment JJ workspace, change, and local bookmark from the current optimization bookmark:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-   WORKSPACE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)
+   WORKSPACE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" "<message composed from the standards above>" <shared_files...>)
    ```
 2. Apply port parameterization if configured (set env vars for the measurement script)
 3. Fill the experiment prompt template (`references/experiment-prompt-template.md`) with:
@@ -85,7 +90,7 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
    - Mutable and immutable scope
    - Constraints and approved dependencies
    - Rolling window of last 10 experiments (concise summaries)
-4. Dispatch a subagent with the filled prompt, working in the experiment workspace
+4. Dispatch a subagent with the filled prompt, working in the experiment JJ workspace
 
 **Codex backend:**
 1. Check environment guard -- do NOT delegate if already inside a Codex sandbox:
@@ -94,10 +99,10 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
    test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .jj
    ```
 2. Fill the experiment prompt template
-3. Write the filled prompt under `$(jj workspace root)/.tmp/rocketclaw/ce-optimize/prompts/`; if workspace-root discovery fails, use local `.tmp/rocketclaw/ce-optimize/prompts/`.
+3. Write the filled prompt beneath `$(jj workspace root)/.tmp/ce-optimize/`, with `$PWD/.tmp/ce-optimize/` as the fallback outside JJ
 4. Dispatch via Codex:
    ```bash
-   codex exec --skip-git-repo-check - < "<workspace-root-or-local>/.tmp/rocketclaw/ce-optimize/prompts/<dynamic-experiment-prompt>.txt"
+   codex exec --skip-git-repo-check - < "<local-.tmp-prompt-path>"
    ```
 5. Security posture: use the user's selection (ask once per session if not set in spec)
 
@@ -107,14 +112,14 @@ Process experiments as they complete — do NOT wait for the entire batch to fin
 
 For each completed experiment, **immediately**:
 
-1. **Run measurement** in the experiment's workspace. Spend only the measurement the current decision needs (see Phase 1). When `stability.mode` is `ladder` and a smoke command is set, run that smoke check first: failure is terminally `degenerate`, and success proceeds to the first exploratory sample of `measurement.command` before comparison. Otherwise start with one exploratory sample. Pass `ROCKETCLAW_OPTIMIZE_CENSOR_AFTER` to `measure.sh` only when elapsed wall time itself proves the candidate cannot become eligible — every required objective is already hopeless, not merely the primary. Otherwise let measurement finish so other required objectives can still win, and let `decide.mjs` assess futility after the payload is complete.
+1. **Run measurement** in the experiment's JJ workspace. Spend only the measurement the current decision needs (see Phase 1). When `stability.mode` is `ladder` and a smoke command is set, run that smoke check first: failure is terminally `degenerate`, and success proceeds to the first exploratory sample of `measurement.command` before comparison. Otherwise start with one exploratory sample. Pass `CE_OPTIMIZE_CENSOR_AFTER` to `measure.sh` only when elapsed wall time itself proves the candidate cannot become eligible — every required objective is already hopeless, not merely the primary. Otherwise let measurement finish so other required objectives can still win, and let `decide.mjs` assess futility after the payload is complete.
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
    bash "$SKILL_DIR/scripts/measure.sh" "<measurement.command>" <timeout_seconds> "<workspace_path>/<measurement.working_directory or .>" <env_vars...>
    ```
    When mode is `repeat`, keep running `repeat_count` times and aggregating as in Phase 1. When mode is `stable`, run once.
 
-2. **Write crash-recovery marker** — immediately after measurement, write `result.yaml` in the experiment workspace containing the raw metrics. This ensures the measurement is recoverable even if the agent crashes before updating the main log.
+2. **Write crash-recovery marker** — immediately after measurement, write `result.yaml` in the experiment JJ workspace containing the raw metrics. This ensures the measurement is recoverable even if the agent crashes before updating the main log.
 
 3. **Read raw JSON output** from the measurement script
 
@@ -143,7 +148,7 @@ For each completed experiment, **immediately**:
    ```
    If that probe finds no runtime, do not invoke an empty command: mark the experiment `error` with that reason and continue the batch. Use `decision` and `next_measurement`. Collect the requested measurement and repeat this sequence whenever `next_measurement` is not `none`. Do not keep a candidate until `next_measurement` is `none`. Record `inconclusive` and `censored` as those outcomes, not as `reverted`. Each extra sample belongs to this same experiment: write it onto the existing entry at CP-3, then decide again.
 
-7. **IMMEDIATELY persist this experiment on disk (CP-3)** — do not defer this to batch evaluation. The durable unit is one log entry per experiment at `.context/ce-optimize/<spec-name>/experiment-log.yaml`. After the first measurement, append that entry. After every later ladder sample for the same experiment, write the accumulated metrics and current outcome onto that same entry. Do not append a second entry for the same hypothesis, and do not rewrite a different experiment's samples. Write a decide terminal only when `next_measurement` is `none`. Until then the entry stays nonterminal: `promising` while the keep path still needs samples, `measured` otherwise (including an inconclusive result that still wants samples). When `next_measurement` is `none`, an eligible result stays `measured` until its change is the optimization bookmark target; a non-eligible result gets the decide terminal (`reverted`, `inconclusive`, `censored`, `degenerate`). `kept` and `runner_up_kept` wait until that integration. The raw metrics are on disk and safe from context compaction.
+7. **IMMEDIATELY persist this experiment on disk (CP-3)** — do not defer this to batch evaluation. The durable unit is one log entry per experiment at `.context/ce-optimize/<spec-name>/experiment-log.yaml`. After the first measurement, append that entry. After every later ladder sample for the same experiment, write the accumulated metrics and current outcome onto that same entry. Do not append a second entry for the same hypothesis, and do not rewrite a different experiment's samples. Write a decide terminal only when `next_measurement` is `none`. Until then the entry stays nonterminal: `promising` while the keep path still needs samples, `measured` otherwise (including an inconclusive result that still wants samples). When `next_measurement` is `none`, an eligible result stays `measured` until its JJ change is selected by the optimization bookmark; a non-eligible result gets the decide terminal (`reverted`, `inconclusive`, `censored`, `degenerate`). `kept` and `runner_up_kept` wait until that integration. The raw metrics are on disk and safe from context compaction.
 
 8. **VERIFY the write (CP-3 verification)** — read the experiment log back from disk and confirm the entry just written is present. If verification fails, retry the write. Do NOT proceed to the next experiment until this entry is confirmed on disk.
 
@@ -158,25 +163,22 @@ After all experiments in the batch have been measured:
 2. **Rank** the eligible experiments in the batch by the script's `rank_score` (primary relative gain when the primary moved; otherwise the strongest required-objective relative gain). Identify that winner as the experiment to keep. An eligible experiment may be kept even if the ranking primary did not move.
 
 3. **If `decide.mjs` returns `keep` for that winner: KEEP**
-   - Use `jj diff -r '<experiment-workspace>@' --summary` and a fileset built from `scope.mutable` to verify that the working-copy change contains only mutable-scope files; if no eligible change remains, treat the experiment as non-improving and abandon it
-   - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-   - Runtime-local description syntax and conventions win. Apply Go message quality only where compatible. Do not impose a fixed prefix, type, scope, template, or example; compose a dynamic description from the actual winning change and its intent.
-   - Set that description with `jj describe -r '<experiment-workspace>@' -m '<dynamic description>'`, then verify it with `jj log -r '<experiment-workspace>@' --no-graph`.
-   - Advance the optimization bookmark with `jj bookmark move 'optimize/<spec-name>' --to '<experiment-workspace>@'`; this preserves the winner as a distinct change without a synthetic integration change
-   - After the bookmark move succeeds, record the winner's Jujutsu change ID in `change_id`, then forget and remove the winner's experiment workspace without abandoning the bookmarked change; the bookmarked change is the durable artifact
+   - Verify the experiment bookmark's JJ change contains only mutable-scope changes; if no eligible diff remains, treat the experiment as non-improving and abandon it
+   - Advance `optimize/<spec-name>` to the experiment bookmark's change with `jj bookmark set "optimize/<spec-name>" -r "optimize-exp/<spec-name>/exp-<NNN>"`
+   - After the bookmark advances, release the winner's workspace and experiment bookmark with the bundled workspace manager, then run `jj edit "optimize/<spec-name>"` in the orchestrator workspace; the described JJ change now checked out there is the durable artifact
    - This is now the new baseline for subsequent batches
 
-4. **Check file-disjoint runners-up** (up to `max_runner_up_combinations_per_batch`):
+4. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
-   - **File-level disjointness**: use `jj diff -r '<workspace>@' --name-only` for each change, represent each path set as a workspace-rooted fileset, and require the intersection to be empty. Same file = overlapping, even if different lines.
-   - If disjoint: rebase the runner-up change onto the optimization bookmark with `jj rebase -r '<runner-up-workspace>@' -o 'optimize/<spec-name>'` and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot. Do not reuse the standalone experiment's accumulated samples, whose meaning is against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Keep the original standalone log entry for audit.
-   - Keep the rebased runner-up only when that result is eligible and `next_measurement` is `none` (outcome: `runner_up_kept`). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime-local description syntax and conventions win; apply Go message quality only where compatible, use dynamic content from the actual runner-up change, and impose no fixed prefix, type, scope, template, or example. Set and verify the description as for the winner, move the optimization bookmark to the runner-up change, then clean up its workspace without abandoning the bookmarked change.
-   - Otherwise: abandon the rebased runner-up change, log it as promising alone but neutral or harmful in combination (outcome: `runner_up_reverted`), then clean up its workspace
+   - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
+   - If disjoint: rebase the runner-up change onto the new optimization bookmark with `jj rebase -r "optimize-exp/<spec-name>/exp-<NNN>" -o "optimize/<spec-name>"`, update its stale workspace with `jj workspace update-stale`, and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot — do not reuse the standalone experiment's accumulated samples, whose meaning is against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Keep the original standalone log entry for audit.
+   - Keep the rebased change only when that result is eligible and `next_measurement` is `none` (outcome: `runner_up_kept`): advance the optimization bookmark to it, release that runner-up's workspace and experiment bookmark, then run `jj edit "optimize/<spec-name>"` in the orchestrator workspace
+   - Otherwise: abandon the rebased runner-up change, log as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's workspace and bookmark
    - Stop after first failed combination
 
 5. **Handle deferred deps**: experiments that need unapproved dependencies get outcome `deferred_needs_approval`
 
-6. **Close the rest.** Clean up experiment workspaces. `kept` and `runner_up_kept` are only for changes targeted by the optimization bookmark. Eligible candidates that were not integrated become `not_selected`. Leave `inconclusive`, `censored`, and `degenerate` as `decide.mjs` returned them.
+6. **Close the rest.** Abandon rejected experiment changes and clean up their workspaces and local experiment bookmarks. `kept` and `runner_up_kept` are only for changes reachable from the optimization bookmark. Eligible candidates that were not integrated become `not_selected`. Leave `inconclusive`, `censored`, and `degenerate` as `decide.mjs` returned them.
 
 ### 3.5 Update State (CP-4)
 
@@ -224,7 +226,7 @@ If none is met, proceed to the next batch (3.1).
 
 **Codex failure cascade**: Track consecutive Codex delegation failures. After 3 consecutive failures, auto-disable Codex for remaining experiments and fall back to subagent dispatch. Log the switch.
 
-**Error handling**: Classify a failed measurement from what `measure.sh` actually signaled. The censored stderr marker (with exit 125) is `censored`. Exit 124 is `timeout`. Any other non-zero exit — including 125 without that marker — is `error`. Log that outcome with the error message, revert the experiment, and continue the batch.
+**Error handling**: Classify a failed measurement from what `measure.sh` actually signaled. The censored stderr marker (with exit 125) is `censored`. Exit 124 is `timeout`. Any other non-zero exit — including 125 without that marker — is `error`. Log that outcome with the error message, abandon the experiment change, and continue the batch.
 
 **Progress reporting**: After each batch, report:
 - Batch N of estimated M (based on backlog size)
@@ -232,6 +234,6 @@ If none is met, proceed to the next batch (3.1).
 - Current best metric and improvement from baseline
 - Cumulative judge cost (if applicable)
 
-**Crash recovery**: See Persistence Discipline section. Per-experiment `result.yaml` markers are written in step 3.3. Individual experiment results are appended to the log immediately in step 3.3. Batch-level state (outcomes, best, digest) is written in step 3.5. On resume (Phase 0.4), the log on disk is the ground truth — scan experiment workspaces for any `result.yaml` markers not yet reflected in the log.
+**Crash recovery**: See Persistence Discipline section. Per-experiment `result.yaml` markers are written in step 3.3. Individual experiment results are appended to the log immediately in step 3.3. Batch-level state (outcomes, best, digest) is written in step 3.5. On resume (Phase 0.4), the log on disk is the ground truth — scan registered experiment workspaces for any `result.yaml` markers not yet reflected in the log.
 
 ---

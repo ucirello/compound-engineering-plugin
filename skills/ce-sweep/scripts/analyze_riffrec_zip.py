@@ -910,7 +910,7 @@ def write_requirements_kickoff(
         "",
         "- A1. User: Operates the product in the recorded session and verbalizes friction.",
         "- A2. Product surface: The UI and backend behavior visible in the recording.",
-        "- A3. AI Assistant (`ai:assistant`): Uses the evidence bundle to confirm, correct, and group requirements before planning.",
+        "- A3. Planning agent: Uses the evidence bundle to confirm, correct, and group requirements before planning.",
         "",
         "---",
         "",

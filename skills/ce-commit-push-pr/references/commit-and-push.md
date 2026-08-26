@@ -1,35 +1,26 @@
-# Describing changes and pushing a bookmark
+# Describing changes and pushing
 
-If stack construction already described all retrospective layers, skip this file's single-bookmark flow and continue to PR composition.
+If the stack reference constructed retrospective layers before this step, skip ordinary single-bookmark commit/push and continue to Step 4; `gh stack submit` in Step 5 pushes the stack.
 
-When work is based on the default bookmark, read `references/branch-creation.md` and resolve the exact parent before publication. A JJ working-copy change is already tracked without staging; never introduce an index or stash workflow.
+If the work is rooted on the default bookmark, feature-bookmark creation must account for local-only changes and a fresh remote base. Read `references/bookmark-creation.md` and follow its decision flow before continuing.
 
-## Group and describe
+Scan the working-copy change for naturally distinct concerns. If files clearly group into separate logical changes, create two or three changes at most. Group at file level only; when ambiguous, keep one change.
 
-Use `jj status`, `jj diff --summary`, and `jj diff` to identify the complete work. Group naturally separate concerns into the smallest useful set of linear changes, normally no more than three. Use whole-path filesets; do not use interactive hunk selection merely to manufacture a split. One change is correct when boundaries are ambiguous.
+Use explicit filesets for each group. **Honor `exclude:<paths>` when the invocation carries it:** excluded files remain in the working-copy change and never enter a completed fileset. When a plan Implementation Unit ID is already in hand and maps unambiguously to a change, preserve that semantic reference without forcing fixed syntax. Do not hunt for a plan.
 
-`exclude:<paths>` removes those paths from every fileset in this run. Because `jj commit <filesets>` leaves unselected content in the new working-copy change, verify after each commit that excluded content remains only there and that the published ancestry does not contain it.
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Runtime project instructions and recent history determine the message. Compatible Go guidance means a concise summary and, when useful, a body that explains why and the resulting behavior. Use dynamic `<message-derived-from-local-standards>` content; do not impose a fixed prefix, type, scope, subject, or body template. Append a known Implementation Unit ID only when runtime conventions permit it and the change maps unambiguously to one supplied unit; do not search for a plan.
-
-Commit each whole-path fileset:
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Project instructions and runtime `git log` syntax win.
 
 ```bash
-jj commit -m "<message-derived-from-local-standards>" <fileset>...
+jj commit <included-filesets> -m "<message composed from the standards above>"
 ```
 
-After each command, use `jj show <created-change>` and `jj status` to validate content and residual paths. If the description needs correction, the same message rule above governs `jj describe <created-change> -m "<revised-message-derived-from-local-standards>"`.
+With filesets, selected paths stay in the completed change and all other paths move to the new working-copy change. Repeat for each group. Do not use an unbounded fileset while excluded or unrelated work exists.
 
-## Place and push
-
-Set `<publish-change>` to the final intended described change, not automatically `@`: after `jj commit`, `@` is the new working-copy change and the committed change is its parent. Create or safely advance the feature bookmark per `references/branch-creation.md`.
-
-Re-verify bookmark target and remote, then push exactly that bookmark:
+After the final `jj commit`, set the feature bookmark to `@-`; bookmarks do not advance automatically. Immediately before pushing, verify that the intended bookmark targets the completed change and that its remote state is current:
 
 ```bash
-jj git push --remote <remote> --bookmark <bookmark>
+jj bookmark set <bookmark> -r @-
+jj git push --bookmark <bookmark> --remote origin
 ```
 
-JJ push safety is lease-like and depends on fetched remote state. On a rejection, fetch the same named remote, resolve bookmark conflicts or changed remote state, and retry only after the intended target is still proven. Do not switch to an all-bookmark push. A clean working-copy change does not prove the bookmark is already pushed; compare local and remote bookmark targets.
+If the working-copy change is empty and the bookmark already matches its remote bookmark, this step is a no-op.

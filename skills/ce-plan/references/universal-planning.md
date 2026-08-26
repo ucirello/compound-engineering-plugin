@@ -156,9 +156,9 @@ After structuring the plan, ask the user how they want to receive it using the h
 1. **Save to disk** — Write the plan as a markdown file. Ask where:
    - `<root>/plans/` (only show if this directory exists)
    - Current working directory
-   - `<workspace-root>/.tmp/rocketclaw` (`<workspace-root>` from `jj workspace root`, current directory fallback outside JJ)
+   - Workspace-root `.tmp/rocketclaw/` (resolve with `jj workspace root`; without Jujutsu, use the current local directory's `.tmp/rocketclaw/`)
    - A custom path
-   - Use filename convention: `YYYY-MM-DD-HHMM-<descriptive-name>-plan.md`, taking `HHMM` from the local wall-clock time at write; reserve the path atomically and, on collision, retry with the smallest available numeric suffix before the extension rather than overwriting
+   - Derive the filename from the project's runtime convention, using dynamic placeholders such as `<project-conventional-plan-name>.md` rather than a fixed timestamp, type, scope, or prefix template; reserve the path atomically and, on collision, retry with the smallest available numeric suffix before the extension rather than overwriting
    - Start the document with a `# Title` heading, followed by `Created: YYYY-MM-DD` on the next line. No YAML frontmatter.
 
 2. **Publish to Proof — shareable link** — Publish the doc to Every's Proof editor and get a shareable link to read, comment on, or share with others. Load the `ce-proof` skill to create the shared document and return the URL. One-way: nothing syncs back to disk.

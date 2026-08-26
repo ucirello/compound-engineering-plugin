@@ -4,7 +4,7 @@
 
 `SKILL.md` owns the two rules that must hold without this read: the mode is exclusive, and pipeline mode forces `md`. This file owns the precedence that decides the rest — in-prompt request > user-stated preference > config > default (`md`) — and the token-parsing convention.
 
-**Read config.** Resolve `<repo-root>` with `git rev-parse --show-toplevel`, then apply the ordinary-key rule stated in `SKILL.md`. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
+**Read config.** Resolve `<repo-root>` with `jj workspace root`, then apply the ordinary-key rule stated in `SKILL.md`. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
 
 Resolution steps:
 

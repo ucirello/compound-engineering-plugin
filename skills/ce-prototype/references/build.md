@@ -12,13 +12,13 @@ On the web path the artifact is whatever a browser can display and you can autho
 
 ## Which run root
 
-Prefer `.context/compound-engineering/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/` when the user declines the `.gitignore` append, when they ask that this run not be left in their repo, when the run is not inside a git repository, or when the path fails the safety checks; survival there is best-effort, so do not promise it a lifetime. Calling the prototype throwaway is not a request to leave the repo — throwaway describes the code, and a kept prototype is never deleted.
+Prefer `.context/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Use `<workspace-root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` when the user declines the `.gitignore` append, asks that the run remain scratch-only, or the durable path fails its safety checks. When `jj root` reports no repository, use local `.tmp/rocketclaw/ce-prototype/<date>-<slug>/`. Scratch survival is best-effort, so do not promise it a lifetime. Calling the prototype throwaway is not a request to leave the workspace; throwaway describes the code, and a kept prototype is never deleted.
 
 ## Recreate, do not rebuild the app
 
 Recreate what this question needs from the current product. Do not stand up the full app unless the question is the whole-product feel.
 
-Scale into the existing app only as a throwaway overlay when the user asks or the question is density or chrome on an existing page — an isolated page will hide that. That overlay is not the shipped feature. Do not commit prototype code on the product branch. Undo those edits when the try ends — restore only the files you changed, never work you did not make. An overlay run therefore leaves no artifact behind; nothing survives it. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty tree.
+Scale into the existing app only as a throwaway overlay when the user asks or the question is density or chrome on an existing page — an isolated page will hide that. That overlay is not the shipped feature. Do not retain prototype code in the lasting JJ change. Undo those edits with `jj restore <paths>` when the try ends, naming only files you changed. An overlay run therefore leaves no artifact behind. If you cannot undo it without replacing someone else's work, name the files you left modified rather than handing off a dirty working copy.
 
 ## Showing it
 

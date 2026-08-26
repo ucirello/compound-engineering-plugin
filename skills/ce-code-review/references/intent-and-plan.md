@@ -33,14 +33,14 @@ that no claimed U-ID is missing from the plan.
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with change descriptions from the PR if the body is sparse.
 
-**Branch mode:** Run `git log --oneline ${BASE}..<branch-ref>` using the resolved merge-base and resolved branch ref from Stage 1. Use `<branch-ref>` (the resolved `origin/<branch>` or fetched ref), not the raw `<branch>` argument — a remote-only branch has no matching local ref, so the raw name would fail or read a stale same-named local branch.
+**Bookmark mode:** Run `jj log -r "$BASE::<branch-ref>" --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved common ancestor and bookmark revision from Stage 1.
 
-**Standalone (current branch):** Run:
+**Standalone (current working copy):** Run:
 
 ```
-echo "BRANCH:" && git rev-parse --abbrev-ref HEAD && echo "COMMITS:" && git log --oneline ${BASE}..HEAD
+echo "BOOKMARKS:" && jj log -r @ --no-graph -T 'local_bookmarks.map(|b| b.name()).join(",") ++ "\n"' && echo "CHANGES:" && jj log -r "$BASE::@" --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:
@@ -52,7 +52,7 @@ with a flat-rate computation. Must not regress edge cases in tax-exempt handling
 
 Pass this to every reviewer in their spawn prompt. Intent shapes *how hard each reviewer looks*, not which reviewers are selected. Keep any `session-settled:` annotations (from a plan or the conversation) out of this summary — reviewers stay blind to settlement (Stage 2b).
 
-**When intent is ambiguous:** Infer from branch name, commits, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage — never block on a clarifying question.
+**When intent is ambiguous:** Infer from bookmark name, change descriptions, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage; never block on a clarifying question.
 
 ### Stage 2b: Plan discovery (requirements verification)
 
@@ -76,4 +76,4 @@ When the discovered plan's Key Technical Decisions carry `session-settled:` anno
 
 Use the project's active instructions already in context plus the current diff and source. Give each reviewer only the task-relevant context for its lens; the `project-standards` reviewer reads the actual standards sources. If a reviewer cannot scope the affected area from the diff and supplied context, allow one targeted probe.
 
-In `pr-remote` / `branch-remote`, current source and any targeted probe must use `git show` against the supplied reviewed head ref, or the supplied diff hunks when no head ref is available; never inspect workspace paths.
+In `pr-remote` / `branch-remote`, current source and any targeted probe must use `jj file show -r` against the supplied reviewed head revision, or the supplied diff hunks when no head revision is available; never inspect workspace paths.

@@ -8,7 +8,7 @@ argument-hint: "[create [focus] | resume [source or keywords]]"
 
 Preserve enough session context for a fresh agent to orient quickly, then keep the user in control of what happens next.
 
-Creation and resume are deliberately open at their edges. The managed store and `ce-handoff/v1` metadata are defaults that make CE-created handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
+Creation and resume are deliberately open at their edges. The managed store and `ce-handoff/v1` metadata are defaults that make handoffs easy to find; they do not restrict where a handoff may be created or what a user may resume from. A resume source may come from any person, agent, or system and may use any readable format.
 
 ## Route the invocation
 
@@ -23,9 +23,9 @@ Read `references/create.md` before writing anything — a non-optional load. It 
 
 Create one immutable handoff at the destination the user requested, or use the managed temporary store by default. The handoff supplements authoritative artifacts; it does not replace them. Write or publish it with existing capabilities. When the user named another path, folder, format, or publication destination, honor it using an appropriate available capability, including an installed publishing skill. Do not also create a persistent managed-store copy unless the user asks.
 
-Point at plans, issues, commits, diffs, documentation, and files rather than reproducing them, and redact secrets, credentials, and unrelated personal information. Keep the handoff pointer-first: for each load-bearing reference, name what specifically matters there — not only the path. Prefer repository-relative paths for repository files; use absolute paths only for machine-local state and label them as machine-local.
+Point at plans, issues, changes, diffs, documentation, and files rather than reproducing them, and redact secrets, credentials, and unrelated personal information. Keep the handoff pointer-first: for each load-bearing reference, name what specifically matters there — not only the path. Prefer repository-relative paths for repository files; use absolute paths only for machine-local state and label them as machine-local.
 
-Creation is complete only after confirming the destination contains the handoff. Then report its final path or URL, retention or access limits, and continuity warnings together. Give a succinct, context-specific summary of what the generated handoff captures, so the user can verify its substance without opening it. Managed `/tmp` storage is OS-managed and not permanent. If continuity depends on a fragile worktree, warn the user without mutation: do not commit, stash, copy, preserve, or tear down anything automatically.
+Creation is complete only after confirming the destination contains the handoff. Then report its final path or URL, retention or access limits, and continuity warnings together. Give a succinct, context-specific summary of what the generated handoff captures, so the user can verify its substance without opening it. Managed `.tmp` storage is local and not permanent. If continuity depends on a fragile JJ workspace or anonymous change, warn the user without mutation: do not describe, bookmark, copy, preserve, or tear down anything automatically.
 
 **User-runnable invocation rendering.** For the copyable resume command below, default to `/ce-handoff resume <source>`; use `$ce-handoff resume <source>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render it as the fenced command below and output one form only.
 

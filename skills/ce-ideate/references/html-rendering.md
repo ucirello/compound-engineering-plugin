@@ -102,15 +102,15 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Worktree root (resolve via `git rev-parse --show-toplevel`).
+1. JJ workspace root (resolve via `jj workspace root`).
 2. `docs/DESIGN.md`.
-3. `.compound-engineering/DESIGN.md`.
+3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Worktree-root only — do not fall through to a main checkout. Users
-working from a worktree who want HTML defaults can add DESIGN.md to the
-worktree.
+Workspace-root only — do not fall through to another workspace. Users
+working from a JJ workspace who want HTML defaults can add DESIGN.md to that
+workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -226,10 +226,10 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time:
+Resolve the repo's GitHub URL once at compose time with `gh`:
 
 ```bash
-git remote get-url origin
+gh repo view --json url --jq .url
 ```
 
 Apply linking to three reference shapes:
@@ -243,9 +243,9 @@ Apply linking to three reference shapes:
   (e.g., a `linear.app/<workspace>/...` URL appeared earlier in the
   session or in `AGENTS.md`); otherwise leave as text.
 
-**Do not invent URLs.** If `origin` isn't a GitHub URL (GitLab,
-Bitbucket, internal host) and the equivalent main-tree URL pattern
-isn't obvious, leave entries as `<code>` text. If the external
+**Do not invent URLs.** If `gh` cannot resolve a GitHub repository and
+the equivalent main-tree URL pattern for another host is not obvious,
+leave entries as `<code>` text. If the external
 tracker workspace isn't established, leave as text. A broken or
 guessed link is worse than no link.
 
@@ -308,7 +308,7 @@ chip) is being styled.
 Status chips, ID chips, and metric pills in the same row share one shape
 — same border-radius, border weight, and fill treatment. Differentiate
 categories only by the chip's overall fill/text color (applied to the
-whole pill, like a soft-tint badge), never by an accent on one edge. A
+  whole pill, like a soft tint), never by an accent on one edge. A
 colored stripe or arc on a single side of a pill reads as broken and
 asymmetric — as if a border half-failed to render — so avoid it. The same
 holds for any element, not just chips: differentiate by a full tint, not
@@ -444,7 +444,7 @@ labeled arrow, each shape edge, and each text label:
 - **Avoid long curves that traverse the diagram** to connect a
   component on one side to one on the other. If A and D need a labeled
   connection across a multi-component layout, prefer reordering boxes
-  so A and D are adjacent, numbered step badges next to each
+  so A and D are adjacent, numbered step markers next to each
   participant that the caption ties together, or a short
   labeled-channel notation — rather than one curve crossing multiple
   unrelated elements.

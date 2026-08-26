@@ -1,7 +1,7 @@
 ---
 name: ce-babysit-pr
 description: "Babysits an open GitHub PR until merge-ready. Use when asked to watch a PR over time — not for one-shot comment resolution or one CI failure. GitHub (incl. Enterprise) only."
-argument-hint: "[PR number|URL|blank=current branch] [watch|checkpoint] [duration] [posture:target|stack-ready|stack-land]"
+argument-hint: "[PR number|URL|blank=current bookmark] [watch|checkpoint] [duration] [posture:target|stack-ready|stack-land]"
 ---
 
 # Babysit a PR
@@ -33,9 +33,9 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); ow
 ## Step 1: Resolve and arm
 
 1. `gh repo view` must succeed, else say GitHub-only, stop.
-2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
+2. Resolve the PR from the argument or local bookmark on `@` (`references/setup.md`); none → report, stop.
 3. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-4. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+4. **The workspace must be aligned to the PR head bookmark and its tracked remote** before any delegated mutation; the default GitHub operation is `gh pr checkout <ref>`. No push access or a non-empty working-copy change → stop, say so.
 5. **Sustain mode** (`references/watch-loop.md`): default is the self-sustaining in-session watch — background `pr-snapshot watch`, wait on its `BABYSIT_WAKE` sentinel with your harness's background-and-wake tool, one tick per wake; never collapse the loop into a script. **Checkpoint** only when no such capability exists: one tick, report, say monitoring is paused, print the resume invocation — default to `/ce-babysit-pr <url>` (+ non-target posture), `$ce-babysit-pr <url>` on Codex; render only the invocation as inline code, output one form only. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)

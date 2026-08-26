@@ -110,7 +110,7 @@ Strong answers stay at 2-4 (not 8, not 1), connect clearly back to the approach,
 - **Too vague** ("improve the product") -> "Every track is 'improve the product.' What's the specific investment area that's different from the others?"
 - **One track only** -> "With one track, there's no real choice being made. What are the 2-3 things the product needs to be good at, and how are they different?"
 
-Recent commits or PRs show where attention has gone lately, so this is the one section where they help. Offer what they show as a question ("most recent work is in X - is that a track, a temporary push, or unrelated?"), and take the user's answer: a burst of work in one area does not make it a track.
+Recent Jujutsu changes from `jj log -r :: -n <history-depth>`, choosing enough history for the project's pace, or PRs show where attention has gone lately, so this is the one section where they help. Offer what they show as a question ("most recent work is in X - is that a track, a temporary push, or unrelated?"), and take the user's answer: a burst of work in one area does not make it a track.
 
 **Capture:** 2-4 tracks. For each: a name, a one-line purpose, and a short note on why this serves the approach.
 
@@ -173,7 +173,3 @@ Ask one question at a time. Prefer free-form answers for the substantive section
 For each section, ask the opening question, apply the pushback rules above, and capture the final answer in the user's own language. Where the repo model bears on the section, open with what it suggests and ask the user to confirm or correct, and use repo specifics in pushback ("the README says X; you just said Y - which is it?"). Do not skip pushback - it is the core of the skill, and existing weak content is not rubber-stamped because it is already written. Two rounds per section maximum; capture what the user has given after that and note the section as worth revisiting next run.
 
 The **stress test** (step 6) checks that the captured answers actually decide things: a few concrete proposals aimed at the draft's fault lines, each answered by the user. An answer the strategy already decides confirms it; one it cannot decide sharpens the approach or tracks; a proposal the user resists is a candidate for Boundaries.
-
-## Why these questions
-
-The "Purpose / Positioning / Tracks" structure is informed by Richard Rumelt's *Good Strategy Bad Strategy* - specifically his kernel of diagnosis, guiding policy, and coherent action. The questions above are designed to push past the patterns he calls "bad strategy": fluff, goals dressed up as strategy, and feature lists in place of a guiding choice. The book is the recommended follow-up reading if the distinction between a slogan and a strategy is not yet sharp.

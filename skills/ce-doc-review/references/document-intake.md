@@ -4,10 +4,10 @@
 - **No path, interactive:** ask which document to review, or find the most recent under `<root>/plans/` with a file-search/glob tool.
 - **No path, non-interactive:** output "Review failed: non-interactive mode requires a document path. Expected arguments: mode:non-interactive <path>" and stop without dispatching reviewers.
 
-**Missing-document gate — verify before any dispatch.** Persona reviewers read from the filesystem and several run without Bash, so they cannot read git refs: a path that exists only on an unchecked-out branch wastes the entire persona team discovering they cannot proceed (issue #925). Confirm every resolved path is readable on disk before Phase 2. Location does not matter — an absolute path outside the checkout or a doc in another checkout reviews fine. If any path is unreadable, dispatch **no** personas:
+**Missing-document gate — verify before any dispatch.** Persona reviewers read from the filesystem and several run without Bash, so they cannot read JJ revisions: a path that exists only in another revision wastes the entire persona team discovering they cannot proceed (issue #925). Confirm every resolved path is readable on disk before Phase 2. Location does not matter — an absolute path outside the workspace or a doc in another workspace reviews fine. If any path is unreadable, dispatch **no** personas:
 
-- **Interactive:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Check out the branch containing them, use a worktree, or provide corrected readable paths before retrying the review."
-- **Non-interactive:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; check out the branch containing them or provide corrected paths." and return without dispatching reviewers.
+- **Interactive:** stop and name the missing path(s): "Document(s) not found on disk: <paths>. Edit the revision containing them, use another JJ workspace, or provide corrected readable paths before retrying the review."
+- **Non-interactive:** output "Review failed: document(s) not found on disk: <paths>. Expected input: paths to readable files on disk; edit the revision containing them or provide corrected paths." and return without dispatching reviewers.
 
 ### Classify Document Type
 

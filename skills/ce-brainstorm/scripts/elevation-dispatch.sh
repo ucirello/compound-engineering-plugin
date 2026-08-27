@@ -51,9 +51,9 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole OS temp root ($TMPDIR / /tmp) instead would
-  # expose every other same-user scratch file and credential to the elevated
-  # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
+  # via --add-dir. Adding the whole workspace scratch root instead would expose
+  # every other run's same-user scratch files to the elevated model; the scoped
+  # dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
   # --no-session-persistence: this is a one-shot background model call, so the
@@ -85,7 +85,7 @@ RESULT_PATH="${3:?result-path required}"
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole OS temp root. Pure-bash dirname (no
+# to an absolute path), never the whole workspace scratch root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,7 +103,12 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/elevation-peer-XXXXXX")"
+PEERLOG=""
+for _ in {1..16}; do
+  candidate="$HANDOFF_DIR/.elevation-peer-$$-$RANDOM-$RANDOM"
+  if (umask 077; set -o noclobber; : > "$candidate") 2>/dev/null; then PEERLOG="$candidate"; break; fi
+done
+[ -n "$PEERLOG" ] || { log "cannot create private peer log in handoff directory"; exit 2; }
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a

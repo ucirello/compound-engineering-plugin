@@ -70,33 +70,21 @@ security find-identity -v
 codesign --sign "$IDENTITY" --verbose=4 "$APP"
 ```
 
-One run, and the log shows precisely which layer drops the value — secrets → workflow ✓, workflow → build ✗ → focus investigation on the workflow-to-build-script inheritance, not on signing.
+One run, and the log shows precisely which layer drops the value: secrets reach the workflow, but the workflow value does not reach the build. Focus investigation on workflow-to-build-script inheritance, not signing.
 
 **When this beats backward tracing:** When the symptom is far from the trigger (many components apart), when components are owned by different systems (CI vs app code), when the "call stack" is conceptual rather than literal (message bus, HTTP, process boundaries). Backward tracing still applies within each layer once the failing layer is identified.
 
 ---
 
-## Git Bisect for Regressions
+## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), use Jujutsu's automated binary search to find the first bad revision. The command exits 0 for good, 125 to skip, 127 to abort, and any other non-zero status for bad:
 
 ```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
+jj bisect run --range '<known-good-revision>..@' -- <test-command>
 ```
 
-The test command should exit 0 for good, non-zero for bad.
+`jj bisect run` directly edits each candidate revision while testing and restores the original working-copy revision when it completes. Use `--find-good` only when searching for the first good revision instead. Preserve any in-progress change by running the bisection in a dedicated JJ workspace under `$(jj workspace root)/.tmp`; outside a JJ workspace, use `$PWD/.tmp` for local scratch and skip bisection.
 
 ---
 
@@ -132,7 +120,7 @@ A 5% reproduction rate confirms the bug exists but suggests timing or data sensi
 - Run the suite with randomized test order (most runners support a seed flag) — a different failing-test neighbor each run implies global state mutation
 - Bisect the preceding tests: run the failing test with just the first half of the earlier tests, then the second half, then narrow
 
-Common culprits once isolated: module-level state, mocks not torn down, temp files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
+Common culprits once isolated: module-level state, mocks not torn down, workspace-local `.tmp` files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
 
 ---
 
@@ -312,7 +300,7 @@ One traced request usually reveals the root cause faster than a dozen attempts t
 
 **Timestamp triangulation.** When the failing operation has no shared ID, timestamps are the fallback. Constrain every log query to a narrow window around the observed failure, then look for the first anomaly in order. Watch for clock skew between services — a 30-second drift between two hosts reorders evidence and misleads triangulation.
 
-**Error tracker payloads.** Sentry, Bugsnag, Honeybadger, AppSignal and similar tools capture stack traces, breadcrumbs, user context, request state, and release metadata at the moment of failure. Read the full payload before tracing code — it often contains the exact file:line, the variable state, and the breadcrumbs leading to the error. Grouping rules sometimes hide frequency and variant information; expand to see every instance rather than just the representative one.
+**Error tracker payloads.** Sentry, Bugsnag, AppSignal and similar tools capture stack traces, breadcrumbs, user context, request state, and release metadata at the moment of failure. Read the full payload before tracing code — it often contains the exact file:line, the variable state, and the breadcrumbs leading to the error. Grouping rules sometimes hide frequency and variant information; expand to see every instance rather than just the representative one.
 
 **APM / distributed traces.** When the project has Datadog APM, Honeycomb, New Relic, or an OpenTelemetry collector, the trace view shows the full call tree across services with timings. Look for: unexpectedly long spans (blocking or slow dependency), failed spans in the middle of the chain, spans that should exist but don't (missing instrumentation also masks bugs).
 

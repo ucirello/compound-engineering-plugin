@@ -357,15 +357,15 @@ pairs or a stats strip). Field names and semantics are the same across both
 formats so consumers can locate them without knowing which format produced the
 artifact.
 
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the repository's present syntax when these metadata fields carry change-message semantics.
+
 ### Required
 
 - **`title`** — the artifact's descriptive name with a ` - Plan` suffix
   (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML). It is a unified plan at every readiness state, so the title
-  stays stable when `ce-plan` enriches it. Do not put a conventional-commit
-  prefix (`feat:`/`fix:`) in the title — the `type` field carries that.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `docs`, etc.).
+  stays stable when `ce-plan` enriches it.
+- **`type`** — the repository-derived change classification.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
   Matches the calendar date in the filename
   (`<root>/plans/YYYY-MM-DD-HHMM-<type>-<topic>-plan.<md|html>`), which adds the
@@ -384,8 +384,8 @@ artifact.
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No CE artifact carries mutable progress state; whether work shipped
-is derived from git, not stored in the doc. Do not introduce one.
+progress. No artifact carries mutable progress state; whether work shipped
+is derived from JJ, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 

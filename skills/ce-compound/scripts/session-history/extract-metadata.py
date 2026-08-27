@@ -32,7 +32,7 @@ def try_claude(lines):
         if result is None and obj.get("type") == "user" and "gitBranch" in obj:
             result = {
                 "platform": "claude",
-                "branch": obj["gitBranch"],
+                "legacy_branch": obj["gitBranch"],
                 "ts": obj.get("timestamp", ""),
                 "session": obj.get("sessionId", ""),
             }
@@ -240,13 +240,13 @@ def _append_pi_tool_call_targets(chunks, content):
                 chunks.append(value)
 
 
-def _extract_user_assistant_text(filepath):
-    """Return concatenated user + assistant text content from a session JSONL.
+def _extract_protocol_actor_text(filepath):
+    """Return concatenated user and AI Assistant text from a session JSONL.
 
     Skips JSONL metadata field names and values (sessionId, gitBranch, uuid,
     timestamps, type tags), tool_use blocks (tool names + tool inputs),
     tool_result blocks (tool outputs), and thinking/reasoning blocks. Only
-    content the user or assistant actually said is included.
+    Only content the user or AI Assistant actually said is included.
 
     Without this filtering, common topic words like "session" would match every
     JSONL file via the sessionId field, drowning out real content matches.
@@ -359,14 +359,14 @@ def _extract_user_assistant_text(filepath):
 
 
 def count_keyword_matches(filepath, keywords):
-    """Case-insensitive substring count for each keyword in user/assistant text.
+    """Case-insensitive substring count for each keyword in protocol-actor text.
 
     Returns a dict {original_keyword: count}. Scans only content the user or
-    assistant said — not JSONL metadata, tool calls, tool outputs, or thinking
+    AI Assistant said, not JSONL metadata, tool calls, tool outputs, or thinking
     blocks — so common topic words like "session" do not false-match against
     the sessionId field.
     """
-    text_lower = _extract_user_assistant_text(filepath).lower()
+    text_lower = _extract_protocol_actor_text(filepath).lower()
     return {kw: text_lower.count(kw.lower()) for kw in keywords}
 
 

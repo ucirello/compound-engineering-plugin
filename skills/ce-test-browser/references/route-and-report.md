@@ -25,7 +25,7 @@ Map each changed file to the route(s) that render it, then build the list of URL
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh");
-if lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
+if bash "$SKILL_DIR/scripts/resolve-port.sh" --check "$PORT"; then
   echo "Server running on port ${PORT}";
 else
   echo "Server not running on port ${PORT}";
@@ -50,7 +50,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots beneath the run's workspace-local `.tmp/rocketclaw/ce-test-browser/` directory when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
 
 ## Human verification (when required)
 
@@ -103,7 +103,7 @@ Did it work correctly?
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / JJ [change, revision, or bookmark]
 **Server:** http://localhost:<port>
 
 ### Pages Tested: [count]

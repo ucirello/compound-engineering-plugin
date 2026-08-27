@@ -41,7 +41,6 @@ import re
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import uuid
@@ -289,18 +288,16 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
+    if cmd and cmd[0] == "gh":
+        git_root = subprocess.run(
+            ["jj", "git", "root"], capture_output=True, text=True, encoding="utf-8"
+        )
+        if git_root.returncode != 0:
+            return subprocess.CompletedProcess(
+                cmd, git_root.returncode, "", "jj git root failed: " + git_root.stderr.strip()
+            )
+        env["GIT_DIR"] = git_root.stdout.strip()
     return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
 
 
 def _run_checked(cmd, label):
@@ -323,11 +320,11 @@ def _split_repo(repo):
 
 
 def _resolve_repo_ref(repo, url):
-    """Resolve (owner, name, host) from --repo + the PR url, else one `gh repo view` call.
+    """Resolve (owner, name, host) from --repo + the PR url, else one `GIT_DIR="$(jj git root)" gh repo view` call.
     The host is parsed from the url and threaded into every `gh api` call so a GitHub Enterprise
     PR queries the right host — without it, `gh api` defaults to github.com and a GHE babysitter
-    fetches the PR via `gh pr view` but then reads review threads / workflow runs from github.com.
-    Parsing the url (already fetched by `fetch`) also avoids a redundant `gh repo view` per tick."""
+    fetches the PR via `GIT_DIR="$(jj git root)" gh pr view` but then reads review threads / workflow runs from github.com.
+    Parsing the url (already fetched by `fetch`) also avoids a redundant `GIT_DIR="$(jj git root)" gh repo view` per tick."""
     owner, name = _split_repo(repo)
     host = None
     if url:
@@ -348,7 +345,7 @@ def _resolve_repo_ref(repo, url):
 
 
 def _host_args(host):
-    """`gh api --hostname` selector so GHE calls hit the PR's host, not the default github.com."""
+    """`GIT_DIR="$(jj git root)" gh api --hostname` selector so GHE calls hit the PR's host, not the default github.com."""
     return ["--hostname", host] if host else []
 
 
@@ -383,10 +380,10 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     """Bind GitHub's mergeability observation to an independently probed current base ref.
 
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
-    PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
+    PR's `baseRef.target.oid` and an exact ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST ref endpoint, so that response falls back to the REST branch
+    endpoint while preserving exact-ref matching and non-interactive failure behavior.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -423,30 +420,12 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     ])
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+        r = _run([
+            "gh", "api", *_host_args(host),
+            f"repos/{owner}/{name}/branches/{encoded_ref}",
+            "--jq", ".commit.sha",
+        ])
+        current_oid = (r.stdout or "").strip()
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -514,7 +493,7 @@ def _eyes_reaction_identities(reaction_pages):
 
 
 def fetch_eyes_reactors(pr, owner, name, host=None):
-    """Fetch every current PR-body eyes reactor; `gh pr view` exposes only their count."""
+    """Fetch every current PR-body eyes reactor; `GIT_DIR="$(jj git root)" gh pr view` exposes only their count."""
     r = _run_checked([
         "gh", "api", *_host_args(host), "--paginate", "--slurp",
         f"repos/{owner}/{name}/issues/{pr}/reactions?content=eyes&per_page=100",
@@ -742,7 +721,7 @@ def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, hos
     """Classify manager membership and ordinary dependency relationships without mutation.
 
     The local manager is the fast/rich path, but its output is accepted only when it contains the
-    requested PR. `gh stack view` has no target argument and may describe a different current stack.
+    requested PR. `GIT_DIR="$(jj git root)" gh stack view` has no target argument and may describe a different current stack.
     """
     local = _run(["gh", "stack", "view", "--json"])
     if local.returncode == 0:
@@ -882,7 +861,7 @@ def fetch(pr, repo, light=False):
 
 
 def _body_hash(body):
-    """Edit identity for a top-level comment / review body: `gh pr view --json` exposes no
+    """Edit identity for a top-level comment / review body: `GIT_DIR="$(jj git root)" gh pr view --json` exposes no
     updatedAt, so hash the body. Feeds the external_review_moved activity signal (an edit wakes
     the watch and extends the settle clock) and `needs-human` reactivation (a human may answer a
     parked question by editing the same comment), but deliberately NOT `dispatched` reactivation:
@@ -893,7 +872,7 @@ def _body_hash(body):
 
 def _extract_feedback(v):
     """Every non-empty top-level PR comment and review body, whoever wrote it.
-    `gh pr view --json comments,reviews` returns flat arrays (not GraphQL {nodes}). Content,
+    `GIT_DIR="$(jj git root)" gh pr view --json comments,reviews` returns flat arrays (not GraphQL {nodes}). Content,
     identity, and surface are evidence for the resolver to judge, not deterministic exclusions --
     and that includes the PR author, whose own top-level "please rename X" is the ordinary way a
     human asks an agent-opened PR for a change. Excluding the author here made that request
@@ -1339,7 +1318,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace-local `.tmp` across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -2416,12 +2395,20 @@ def locked_state(state_dir, pr, repo, now):
         state.setdefault("invocation_backstop_seconds", DEFAULT_INVOCATION_BACKSTOP_SECONDS)
         box = {"state": state}
         yield box
-        tmp = tempfile.NamedTemporaryFile("w", dir=state_dir, delete=False)
-        json.dump(box["state"], tmp, indent=2)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp.close()
-        _replace_atomic(tmp.name, state_path)
+        tmp_path = os.path.join(state_dir, f".state-{uuid.uuid4().hex}")
+        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(fd, "w") as tmp:
+                json.dump(box["state"], tmp, indent=2)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            _replace_atomic(tmp_path, state_path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
+            raise
 
 
 def _fetch_snapshot(args):
@@ -2700,12 +2687,20 @@ def _reserve_watch_candidate(args, generation):
     }
     with _state_lock(args.state_dir, exclusive=True):
         previous = _read_watch_candidate(args)
-        tmp = tempfile.NamedTemporaryFile("w", dir=args.state_dir, delete=False)
-        json.dump(candidate, tmp)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        tmp.close()
-        _replace_atomic(tmp.name, _watch_candidate_path(args))
+        tmp_path = os.path.join(args.state_dir, f".watch-candidate-{uuid.uuid4().hex}")
+        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(fd, "w") as tmp:
+                json.dump(candidate, tmp)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            _replace_atomic(tmp_path, _watch_candidate_path(args))
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except FileNotFoundError:
+                pass
+            raise
     return previous
 
 

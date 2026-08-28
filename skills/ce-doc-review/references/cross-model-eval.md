@@ -23,7 +23,7 @@ as specified.
 Cases 11-14 cover the detached launch->wait lifecycle and model-identity
 receipts. Case 15 covers U8's fixed-route and bounded-adaptability contract.
 Run them with the fake-CLI harness pattern — stub peer CLIs placed first on
-PATH — and cross-host per the repo's eval default: Claude Code AND Codex.
+PATH — and cross-host per the repository's eval default.
 
 1. **Activation gate — fires (R1, R2).** A document that activates at least one
    trio lens (e.g. a greenfield plan with a high-stakes domain activating

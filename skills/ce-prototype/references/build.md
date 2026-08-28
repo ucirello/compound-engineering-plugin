@@ -12,7 +12,7 @@ On the web path the artifact is whatever a browser can display and you can autho
 
 ## Which run root
 
-Prefer `.context/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Use `<workspace-root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` when the user declines the `.gitignore` append, asks that the run remain scratch-only, or the durable path fails its safety checks. When `jj root` reports no repository, use local `.tmp/rocketclaw/ce-prototype/<date>-<slug>/`. Scratch survival is best-effort, so do not promise it a lifetime. Calling the prototype throwaway is not a request to leave the workspace; throwaway describes the code, and a kept prototype is never deleted.
+Prefer `.context/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Use `<workspace-root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` when the user declines the `.gitignore` append, asks that the run remain scratch-only, or the durable path fails its safety checks. When `jj workspace root` reports no repository, use local `.tmp/rocketclaw/ce-prototype/<date>-<slug>/`. Scratch survival is best-effort, so do not promise it a lifetime. Calling the prototype throwaway is not a request to leave the workspace; throwaway describes the code, and a kept prototype is never deleted.
 
 ## Recreate, do not rebuild the app
 

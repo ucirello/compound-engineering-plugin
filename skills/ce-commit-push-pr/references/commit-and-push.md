@@ -1,6 +1,6 @@
 # Describing changes and pushing
 
-If the stack reference constructed retrospective layers before this step, skip ordinary single-bookmark commit/push and continue to Step 4; `gh stack submit` in Step 5 pushes the stack.
+If the stack reference constructed retrospective layers before this step, skip ordinary single-bookmark commit/push and continue to Step 4; `GIT_DIR="$(jj git root)" gh stack submit` in Step 5 pushes the stack.
 
 If the work is rooted on the default bookmark, feature-bookmark creation must account for local-only changes and a fresh remote base. Read `references/bookmark-creation.md` and follow its decision flow before continuing.
 

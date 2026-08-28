@@ -15,7 +15,7 @@ Settle durability before you run this block; it reads the choice once. Set `RUN_
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
-WORKSPACE_ROOT="$(jj root 2>/dev/null || pwd)";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
 SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ "$RUN_KEEP" = yes ] && jj -R "$WORKSPACE_ROOT" root >/dev/null 2>&1 && [ ! -L "$WORKSPACE_ROOT/.context" ]; then
 ROOT="$WORKSPACE_ROOT/.context";

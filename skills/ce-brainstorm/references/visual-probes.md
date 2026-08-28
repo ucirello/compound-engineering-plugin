@@ -151,7 +151,7 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use OS temp by default because visual probes are disposable scratch:
+Use workspace-local `.tmp` by default because visual probes are disposable scratch:
 
 ```text
 <scratch-root>/ce-brainstorm-visual/<run-id>/

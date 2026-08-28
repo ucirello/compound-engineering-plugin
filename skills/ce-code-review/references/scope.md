@@ -31,7 +31,7 @@ Do **not** move the working-copy revision to the PR head. Scope comes from GitHu
 **Skip-condition pre-check.** Before scope detection, run a PR-state probe:
 
 ```
-gh pr view <number-or-url> --json state,title,body,files
+GIT_DIR="$(jj git root)" gh pr view <number-or-url> --json state,title,body,files
 ```
 
 Apply skip rules in order:
@@ -44,7 +44,7 @@ When any skip rule fires, stop without dispatching reviewers. **Default mode:** 
 If no skip rule fires, fetch PR metadata **without moving the working-copy revision**:
 
 ```
-gh pr view <number-or-url> --json title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,files,reviews,comments --jq '{title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}'
+GIT_DIR="$(jj git root)" gh pr view <number-or-url> --json title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,files,reviews,comments --jq '{title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}'
 ```
 
 Set `BASE:` to `pr:<number-or-url>` as a logical marker, not a JJ revision. Set `UNTRACKED:` empty; JJ snapshots non-ignored working-copy files automatically.
@@ -61,7 +61,7 @@ Set `BASE:` to `pr:<number-or-url>` as a logical marker, not a JJ revision. Set 
 **Diff by scope mode** (do not mix remote and local diffs — contradictory hunks cause false positives):
 
 - **`local-aligned`:** Resolve `<resolved-base-ref>` from `baseRefName` with `jj git fetch --branch <baseRefName>` when needed. Resolve the unique common ancestor with `heads(::<resolved-base-ref> & ::@)`, then set `FILES:` and `DIFF:` with `jj diff --from "$BASE" --name-only` and `jj diff --from "$BASE" --git`. Do not append remote hunks; the local working copy is canonical. Note in Coverage: `scope: local-aligned (PR; local working-copy diff)`.
-- **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `gh pr diff <number-or-url> --color=never`. If `gh pr diff` fails, stop with an actionable error — do not move the workspace to the PR revision.
+- **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `GIT_DIR="$(jj git root)" gh pr diff <number-or-url> --color=never`. If `GIT_DIR="$(jj git root)" gh pr diff` fails, stop with an actionable error — do not move the workspace to the PR revision.
 
 When **`pr-remote`**, before Stage 4:
 
@@ -80,7 +80,7 @@ If `<branch>` is a local bookmark on `@`, use the **standalone (current bookmark
 
 Otherwise diff the remote/local ref **without moving the working-copy revision**:
 
-1. Try `gh pr view <branch> --json baseRefName,url,headRefName` — if a PR exists, prefer the **PR number/URL path** above (same remote diff rules).
+1. Try `GIT_DIR="$(jj git root)" gh pr view <branch> --json baseRefName,url,headRefName` — if a PR exists, prefer the **PR number/URL path** above (same remote diff rules).
 2. Otherwise resolve `<branch>` as `<branch>@origin` or `<branch>` after `jj git fetch --branch <branch>` when needed.
 3. Resolve the default base bookmark using the standalone logic. Resolve `BASE` as the unique `heads(::<base-ref> & ::<branch-ref>)`, then run `jj diff --from "$BASE" --to <branch-ref> --git`.
 4. If `<branch-ref>` cannot be resolved locally, stop: "Cannot diff bookmark `<branch>` without moving the working-copy revision. Pass its open PR URL/number, enter a workspace at that bookmark, or review the current working copy with `base:`."
@@ -95,7 +95,7 @@ echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --to <branch-ref> -
 
 **If no argument (standalone on the current working copy):**
 
-Apply the same base-detection logic as bookmark mode above. When one local bookmark points at `@`, pass that bookmark explicitly to `gh pr view --json baseRefName,url`; otherwise resolve the default base bookmark without relying on implicit Git branch state.
+Apply the same base-detection logic as bookmark mode above. When one local bookmark points at `@`, pass that bookmark explicitly to `GIT_DIR="$(jj git root)" gh pr view --json baseRefName,url`; otherwise resolve the default base bookmark without relying on implicit Git branch state.
 
 If no base can be resolved, stop. Do not fall back to `jj diff`; a standalone review without the base would silently miss earlier changes on the bookmark.
 

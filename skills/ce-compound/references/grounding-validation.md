@@ -7,7 +7,7 @@ Read this when Phase 2.45 runs. The doc just written becomes permanent, trusted 
 Two claim categories verify against different trees:
 
 - **Code-behavior claims** (enum values, status semantics, limits, defaults) verify against the **local working copy** — they describe what this session's work produced and verified here.
-- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the workspace may predate a merge, so `gh pr view` (or the tracker equivalent) is primary and local JJ revset reachability is only the fallback. The script's `INFO: workspace is N changes behind …` line tells you how much to distrust the local tree for this category.
+- **Merge-state claims** ("fixed in #1608", "landed", "shipped") verify against **remote truth** — the workspace may predate a merge, so `GIT_DIR="$(jj git root)" gh pr view` (or the tracker equivalent) is primary and local JJ revset reachability is only the fallback. The script's `INFO: workspace is N changes behind …` line tells you how much to distrust the local tree for this category.
 
 Before running the script, optionally run `jj git fetch` (best-effort — skip silently on failure or offline; the network is never a correctness dependency). When remote state cannot be checked at all, keep the claim, add an as-of qualifier ("as of this writing"), and record degraded verification in the run report.
 
@@ -53,7 +53,7 @@ Check every factual claim in three categories:
    (defining source not found).
 
 2. MERGE-STATE CLAIMS — assertions that a change landed ("fixed in",
-   "merged", "shipped in", "resolved by #N"). Primary check: gh pr view
+   "merged", "shipped in", "resolved by #N"). Primary check: GIT_DIR="$(jj git root)" gh pr view
    <n> --json state,mergedAt,baseRefName (remote truth). Fallback: JJ revset
    reachability from `trunk()`. Verdict: verified,
    contradicted (e.g. PR open, not merged), or unverifiable (offline / no

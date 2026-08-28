@@ -61,7 +61,7 @@ supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
   CE_PEER_JOBS_ROOT         base dir (defaults to
-                            <workspace-root>/.tmp/rocketclaw; when `jj root`
+                            <workspace-root>/.tmp/rocketclaw; when `jj workspace root`
                             fails, defaults to <cwd>/.tmp/rocketclaw)
   CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
@@ -149,7 +149,7 @@ _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
 def _workspace_root() -> str:
     try:
         resolved = subprocess.run(
-            ["jj", "root"], capture_output=True, text=True, check=False,
+            ["jj", "workspace", "root"], capture_output=True, text=True, check=False,
         )
     except OSError:
         resolved = None

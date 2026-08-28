@@ -8,7 +8,7 @@ Parse the input and reach a clear problem statement.
 
 **If the input references an issue in a tracker or an error/alert monitor**, fetch it:
 
-- GitHub (`#123`, `org/repo#123`, a github.com or GitHub Enterprise issue URL): `gh issue view <number> --json title,body,comments,labels`. For URLs, pass the URL directly to `gh` (it targets whatever host it is configured for, GHE included).
+- GitHub (`#123`, `org/repo#123`, a github.com or GitHub Enterprise issue URL): `GIT_DIR="$(jj git root)" gh issue view <number> --json title,body,comments,labels`. For URLs, pass the URL directly to `gh` (it targets whatever host it is configured for, GHE included).
 - Anything else (Linear, Jira, Sentry, or any tracker/monitor URL): fetch via available MCP tools or by fetching the URL content, ensuring the fetch returns the **full comment thread** and not just the opening description — the read below cannot recover comments the fetch never retrieved. If the fetch fails — auth, missing tool, non-public page — ask the user to paste the relevant issue content.
 
 **Record what you fetched as the issue of record**, per the body's rule, which owns what counts as one and what a run without one does.

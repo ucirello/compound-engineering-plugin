@@ -7,7 +7,7 @@ Required read before Phase 0. Full detail for every phase; the skill body carrie
 Parse the arguments you were invoked with: a PR number, a JJ bookmark/revision, or blank (use `@`). Strip `--port PORT` if present.
 
 1. **Identify the target without changing `@`.**
-   - **PR number:** keep the PR number as the target identity. Read `headRefName`, `headRefOid`, `baseRefName`, and `isCrossRepository` with `gh pr view`; the OIDs/revisions drive JJ, while bookmark names are display metadata.
+   - **PR number:** keep the PR number as the target identity. Read `headRefName`, `headRefOid`, `baseRefName`, and `isCrossRepository` with `GIT_DIR="$(jj git root)" gh pr view`; the OIDs/revisions drive JJ, while bookmark names are display metadata.
    - **Bookmark/revision:** resolve it with `jj log -r <revision>` and retain the user's expression.
    - **Blank:** the target is `@`.
 2. **Refuse an empty non-PR scope.** Resolve trunk with `trunk()` and verify the selected revision has a non-empty `jj diff --from 'trunk()' --to <revision>`. A PR uses its explicit base/head revisions, so never reject it because its head bookmark happens to be named `main`.
@@ -91,11 +91,11 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
    agent-browser snapshot -i
    agent-browser click @e1
    agent-browser fill @e2 "value"
-   WORKSPACE_ROOT="$(jj root 2>/dev/null)"; WORKSPACE_ROOT="${WORKSPACE_ROOT:-$PWD}"; SCREENSHOT_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-dogfood/<run-id>"; mkdir -p "$SCREENSHOT_DIR"; agent-browser screenshot "$SCREENSHOT_DIR/<scenario>.png"
+   WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; WORKSPACE_ROOT="${WORKSPACE_ROOT:-$PWD}"; SCREENSHOT_DIR="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-dogfood/<run-id>"; mkdir -p "$SCREENSHOT_DIR"; agent-browser screenshot "$SCREENSHOT_DIR/<scenario>.png"
    agent-browser errors      # check console/page errors
    ```
 
-   Write transient screenshots under `<workspace-root>/.tmp/rocketclaw/ce-dogfood/<run-id>/`, falling back to `./.tmp/rocketclaw/ce-dogfood/<run-id>/` when `jj root` fails. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+   Write transient screenshots under `<workspace-root>/.tmp/rocketclaw/ce-dogfood/<run-id>/`, falling back to `./.tmp/rocketclaw/ce-dogfood/<run-id>/` when `jj workspace root` fails. Only copy a screenshot into the report's location if you intend to embed it in the final report.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product?
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity.

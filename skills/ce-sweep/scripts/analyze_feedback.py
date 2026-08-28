@@ -95,7 +95,7 @@ def slugify(value: str) -> str:
 def workspace_root() -> Path:
     try:
         result = subprocess.run(
-            ["jj", "root"], capture_output=True, text=True, timeout=10, check=False
+            ["jj", "workspace", "root"], capture_output=True, text=True, timeout=10, check=False
         )
     except (OSError, subprocess.TimeoutExpired):
         result = None

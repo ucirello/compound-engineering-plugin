@@ -16,7 +16,7 @@ Keep an open PR moving toward merge by reacting to three streams as each arrives
 
 - `target` — only the named PR; stop at looks-ready; never merges; offer stack-wide once if a confirmed managed stack needs work.
 - `stack-ready` — once a layer has zero actionable backlog (CI may still run), advance to the next open non-draft upstack layer needing work; lower layers stay probed and the lowest that re-opens pulls the walk back; never merges.
-- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `gh stack merge` it + `gh stack sync`.
+- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, merge it with `GIT_DIR="$(jj git root)" gh stack merge`, then refresh JJ with `jj git fetch`.
 
 One PR named → `target` (ask once if a confirmed multi-layer stack exists); own the stack → `stack-ready`; land → `stack-land`. `mode:pipeline` never asks. Restate posture per transition.
 
@@ -32,10 +32,10 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); ow
 
 ## Step 1: Resolve and arm
 
-1. `gh repo view` must succeed, else say GitHub-only, stop.
+1. `GIT_DIR="$(jj git root)" gh repo view` must succeed, else say GitHub-only, stop.
 2. Resolve the PR from the argument or local bookmark on `@` (`references/setup.md`); none → report, stop.
 3. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-4. **The workspace must be aligned to the PR head bookmark and its tracked remote** before any delegated mutation; the default GitHub operation is `gh pr checkout <ref>`. No push access or a non-empty working-copy change → stop, say so.
+4. **The workspace must be aligned to the PR head bookmark and its tracked remote** before any delegated mutation. If it is not aligned, or there is no push access or the working-copy change is non-empty, stop and say so; do not switch revisions or import a branch while babysitting.
 5. **Sustain mode** (`references/watch-loop.md`): default is the self-sustaining in-session watch — background `pr-snapshot watch`, wait on its `BABYSIT_WAKE` sentinel with your harness's background-and-wake tool, one tick per wake; never collapse the loop into a script. **Checkpoint** only when no such capability exists: one tick, report, say monitoring is paused, print the resume invocation — default to `/ce-babysit-pr <url>` (+ non-target posture), `$ce-babysit-pr <url>` on Codex; render only the invocation as inline code, output one form only. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
@@ -46,7 +46,7 @@ Snapshot first, then in this order:
 2. **Capture the head SHA**; in a confirmed managed stack also record the pre-push baseline (`references/stack.md`).
 3. **Feedback before CI.** Threads or non-thread candidates present → invoke `ce-resolve-pr-feedback mode:pipeline` once with the PR ref; persist typed decisions through the shared atomic mark and dispatch every other passed comment; pass `trajectory` when a trigger is crossed; never declare non-convergence yourself.
 4. **Stale-SHA cancellation.** Head moved since step 2 → this snapshot's CI is dead; skip.
-5. **CI on the current head**, one pass for all failures: flaky/infra → `gh run rerun <run-id> --failed -R <host>/<owner>/<repo>`; real failure → `ce-debug mode:pipeline` once; mark each check acted on; unfixed checks stay red residuals.
+5. **CI on the current head**, one pass for all failures: flaky/infra → `GIT_DIR="$(jj git root)" gh run rerun <run-id> --failed -R <host>/<owner>/<repo>`; real failure → `ce-debug mode:pipeline` once; mark each check acted on; unfixed checks stay red residuals.
 6. **Branch currency** — consume the exact emitted item (`references/branch-currency.md`); no item → nothing. `unrequested_base_merge` is a defect to report, never undo.
 7. **Managed upstack maintenance** after a delegate pushed a confirmed managed target (`references/stack.md`).
 

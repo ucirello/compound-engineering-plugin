@@ -4,7 +4,7 @@ Read this after input triage identifies code work and before any revision move, 
 
 ## Writable Workspace
 
-Repo-local writes require a writable Jujutsu workspace. Confirm with `jj root`, `jj workspace root`, and `jj status`. Ensure `.tmp/` is ignored before any controller or isolated-workspace state is created there. Outside Jujutsu, report that repository state is unavailable rather than initializing or substituting another VCS. A remote work surface is eligible only when it provides a writable Jujutsu workspace that can remain canonical for verification and handoff.
+Repo-local writes require a writable Jujutsu workspace. Confirm with `jj workspace root`, `jj workspace root`, and `jj status`. Ensure `.tmp/` is ignored before any controller or isolated-workspace state is created there. Outside Jujutsu, report that repository state is unavailable rather than initializing or substituting another VCS. A remote work surface is eligible only when it provides a writable Jujutsu workspace that can remain canonical for verification and handoff.
 
 ## Prepare
 

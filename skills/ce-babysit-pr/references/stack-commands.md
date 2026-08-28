@@ -1,6 +1,6 @@
 # Managed-stack CLI recipes
 
-Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs manager discovery or JJ propagation recipes. Soft-depend on `gh stack view` / `gh stack merge`: if the extension is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
+Load this file when the active run uses a confirmed managed stack (`manager_status == "confirmed"`) and needs manager discovery or JJ propagation recipes. Soft-depend on `GIT_DIR="$(jj git root)" gh stack view` / `GIT_DIR="$(jj git root)" gh stack merge`: if the extension is missing or exits unavailable (e.g. code 9), surface a clear residual — do not invent managed membership from topology.
 
 Always non-interactive. Prefer JSON/view probes and explicit bookmark names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack bookmarks' actual tracking remote — never assume a remote name when SKILL.md already resolved a different one.
 
@@ -18,15 +18,15 @@ Starting at the first dependent excludes the active target from the cascading re
 ## Discover order / next open layer
 
 ```bash
-gh stack view --json
+GIT_DIR="$(jj git root)" gh stack view --json
 ```
 
 ## Land one prefix (only under `posture:stack-land`)
 
-Merge the **bottom-most open settled** PR — `gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
+Merge the **bottom-most open settled** PR — `GIT_DIR="$(jj git root)" gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
 
 ```bash
-gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
+GIT_DIR="$(jj git root)" gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
 jj git fetch --remote <tracking-remote>
 ```
 
@@ -35,7 +35,7 @@ Re-probe the landed PR before advancing: on merge-queue bases the CLI may succee
 ## Forbidden on managed stack members
 
 ```bash
-gh pr merge …
+GIT_DIR="$(jj git root)" gh pr merge …
 ```
 
-Use the manager's provider-side `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.
+Use the manager's provider-side `GIT_DIR="$(jj git root)" gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.

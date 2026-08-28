@@ -22,7 +22,7 @@ Gather context with each command as its own shell tool call (program and argumen
 | `jj bookmark list -r @` | Bookmarks currently targeting the working-copy change | Empty means no local bookmark targets `@` |
 | `jj bookmark list --all-remotes` | Local and remote bookmark state | Remote state is unavailable |
 | `jj log -r 'ancestors(@, 10)' --no-graph` | Recent description style | No local JJ history is available |
-| `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | Remote default bookmark | Unavailable; inspect tracked remote bookmarks and ask rather than guessing |
+| `GIT_DIR="$(jj git root)" gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | Remote default bookmark | Unavailable; inspect tracked remote bookmarks and ask rather than guessing |
 
 Treat this as a snapshot. Re-read the working-copy change and bookmarks immediately before describing or committing if anything may have changed.
 

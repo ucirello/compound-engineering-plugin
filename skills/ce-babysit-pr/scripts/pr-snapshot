@@ -288,6 +288,15 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
+    if cmd and cmd[0] == "gh":
+        git_root = subprocess.run(
+            ["jj", "git", "root"], capture_output=True, text=True, encoding="utf-8"
+        )
+        if git_root.returncode != 0:
+            return subprocess.CompletedProcess(
+                cmd, git_root.returncode, "", "jj git root failed: " + git_root.stderr.strip()
+            )
+        env["GIT_DIR"] = git_root.stdout.strip()
     return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
 
 
@@ -311,11 +320,11 @@ def _split_repo(repo):
 
 
 def _resolve_repo_ref(repo, url):
-    """Resolve (owner, name, host) from --repo + the PR url, else one `gh repo view` call.
+    """Resolve (owner, name, host) from --repo + the PR url, else one `GIT_DIR="$(jj git root)" gh repo view` call.
     The host is parsed from the url and threaded into every `gh api` call so a GitHub Enterprise
     PR queries the right host — without it, `gh api` defaults to github.com and a GHE babysitter
-    fetches the PR via `gh pr view` but then reads review threads / workflow runs from github.com.
-    Parsing the url (already fetched by `fetch`) also avoids a redundant `gh repo view` per tick."""
+    fetches the PR via `GIT_DIR="$(jj git root)" gh pr view` but then reads review threads / workflow runs from github.com.
+    Parsing the url (already fetched by `fetch`) also avoids a redundant `GIT_DIR="$(jj git root)" gh repo view` per tick."""
     owner, name = _split_repo(repo)
     host = None
     if url:
@@ -336,7 +345,7 @@ def _resolve_repo_ref(repo, url):
 
 
 def _host_args(host):
-    """`gh api --hostname` selector so GHE calls hit the PR's host, not the default github.com."""
+    """`GIT_DIR="$(jj git root)" gh api --hostname` selector so GHE calls hit the PR's host, not the default github.com."""
     return ["--hostname", host] if host else []
 
 
@@ -484,7 +493,7 @@ def _eyes_reaction_identities(reaction_pages):
 
 
 def fetch_eyes_reactors(pr, owner, name, host=None):
-    """Fetch every current PR-body eyes reactor; `gh pr view` exposes only their count."""
+    """Fetch every current PR-body eyes reactor; `GIT_DIR="$(jj git root)" gh pr view` exposes only their count."""
     r = _run_checked([
         "gh", "api", *_host_args(host), "--paginate", "--slurp",
         f"repos/{owner}/{name}/issues/{pr}/reactions?content=eyes&per_page=100",
@@ -712,7 +721,7 @@ def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, hos
     """Classify manager membership and ordinary dependency relationships without mutation.
 
     The local manager is the fast/rich path, but its output is accepted only when it contains the
-    requested PR. `gh stack view` has no target argument and may describe a different current stack.
+    requested PR. `GIT_DIR="$(jj git root)" gh stack view` has no target argument and may describe a different current stack.
     """
     local = _run(["gh", "stack", "view", "--json"])
     if local.returncode == 0:
@@ -852,7 +861,7 @@ def fetch(pr, repo, light=False):
 
 
 def _body_hash(body):
-    """Edit identity for a top-level comment / review body: `gh pr view --json` exposes no
+    """Edit identity for a top-level comment / review body: `GIT_DIR="$(jj git root)" gh pr view --json` exposes no
     updatedAt, so hash the body. Feeds the external_review_moved activity signal (an edit wakes
     the watch and extends the settle clock) and `needs-human` reactivation (a human may answer a
     parked question by editing the same comment), but deliberately NOT `dispatched` reactivation:
@@ -863,7 +872,7 @@ def _body_hash(body):
 
 def _extract_feedback(v):
     """Every non-empty top-level PR comment and review body, whoever wrote it.
-    `gh pr view --json comments,reviews` returns flat arrays (not GraphQL {nodes}). Content,
+    `GIT_DIR="$(jj git root)" gh pr view --json comments,reviews` returns flat arrays (not GraphQL {nodes}). Content,
     identity, and surface are evidence for the resolver to judge, not deterministic exclusions --
     and that includes the PR author, whose own top-level "please rename X" is the ordinary way a
     human asks an agent-opened PR for a change. Excluding the author here made that request

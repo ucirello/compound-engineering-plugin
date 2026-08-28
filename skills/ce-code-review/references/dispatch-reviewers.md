@@ -73,7 +73,7 @@ For each selected reviewer, and only for those, read the corresponding local pro
 
 Persona sub-agents are **read-only** with respect to the project: they review and return structured JSON. They do not edit project files or propose refactors. The one permitted write is saving their full analysis to the resolved run-artifact path specified in the output contract.
 
-Read-only here means **non-mutating**, not "no shell access." Reviewer sub-agents may use non-mutating `jj` and `gh` inspection commands such as `jj diff`, `jj file show`, `jj file annotate`, `jj log`, and `gh pr view`. When a claim depends on line history, attach one concise provenance evidence line from targeted annotation and log inspection. In remote scope, inspect changed files with `jj file show -r <remote-head-ref> <path>` or diff hunks. Do not mutate the workspace or repository state.
+Read-only here means **non-mutating**, not "no shell access." Reviewer sub-agents may use non-mutating `jj` and `gh` inspection commands such as `jj diff`, `jj file show`, `jj file annotate`, `jj log`, and `GIT_DIR="$(jj git root)" gh pr view`. When a claim depends on line history, attach one concise provenance evidence line from targeted annotation and log inspection. In remote scope, inspect changed files with `jj file show -r <remote-head-ref> <path>` or diff hunks. Do not mutate the workspace or repository state.
 
 Each persona sub-agent writes full JSON (all schema fields) to `{run_dir}/{reviewer_name}.json` and returns compact JSON with merge-tier fields only:
 

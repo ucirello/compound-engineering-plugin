@@ -4,7 +4,7 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Resolve `WORKSPACE_ROOT` with `jj root`; when there is no JJ repository, use the current directory. Atomically create a unique `OUTPUT_DIR` under `$WORKSPACE_ROOT/.tmp/rocketclaw/ce-riffrec-feedback-analysis/`, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
+1. Resolve `WORKSPACE_ROOT` with `jj workspace root`; when there is no JJ repository, use the current directory. Atomically create a unique `OUTPUT_DIR` under `$WORKSPACE_ROOT/.tmp/rocketclaw/ce-riffrec-feedback-analysis/`, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
 
 2. Read only `analysis.md` from the scratch output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 

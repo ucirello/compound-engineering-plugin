@@ -21,7 +21,7 @@ The skill body carries the ownership-checked block that creates `$RUN_DIR`; run 
 
 ## Grounding by input shape
 
-**Workspace-touching inputs** (a concept with footprint in this workspace, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or JJ changes. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted `jj root` probe.
+**Workspace-touching inputs** (a concept with footprint in this workspace, a diff, a recap): use the project's active instructions already in context and go directly to the diff, call-sites, current source, or JJ changes. Read `CONCEPTS.md` when canonical vocabulary matters. If the topic cannot be scoped from the input and existing context, allow one targeted `jj workspace root` probe.
 
 **Diff mode:** resolve the change (the `diff:` ref, or the most recent substantial change when the request points at one implicitly) and gather its evidence — the diff itself, the files it touches, any plan or solution doc that motivated it. Gather silently: nothing learned here is narrated to the user until the Phase 3 ordering rule is satisfied.
 

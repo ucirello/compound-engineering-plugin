@@ -22,7 +22,7 @@ An explainer lands under `<root>/explainers/` only when archived to the repo, an
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
@@ -40,7 +40,7 @@ Read `references/intake.md` now and classify the request into one of the four in
 Create the run directory first — every run gets one, before any artifact exists. It holds the explainer and the recap evidence, so run this block as written rather than improvising a `mkdir`: the checks it makes refuse a scratch root you do not own or one reached through a symlink.
 
 ```bash
-WORKSPACE_ROOT="$(jj root 2>/dev/null)"; WORKSPACE_ROOT="${WORKSPACE_ROOT:-$PWD}";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)"; WORKSPACE_ROOT="${WORKSPACE_ROOT:-$PWD}";
 SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;

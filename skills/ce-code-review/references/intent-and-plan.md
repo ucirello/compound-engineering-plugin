@@ -33,7 +33,7 @@ that no claimed U-ID is missing from the plan.
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with change descriptions from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `GIT_DIR="$(jj git root)" gh pr view` metadata. Supplement with change descriptions from the PR if the body is sparse.
 
 **Bookmark mode:** Run `jj log -r "$BASE::<branch-ref>" --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved common ancestor and bookmark revision from Stage 1.
 

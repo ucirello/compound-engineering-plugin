@@ -2,6 +2,9 @@
 
 set -e
 
+GIT_DIR=$(jj git root)
+export GIT_DIR
+
 if [ $# -eq 0 ]; then
     echo "Usage: resolve-pr-thread THREAD_ID"
     exit 1
@@ -9,7 +12,7 @@ fi
 
 THREAD_ID=$1
 
-gh api graphql -f threadId="$THREAD_ID" -f query='
+GIT_DIR="$(jj git root)" gh api graphql -f threadId="$THREAD_ID" -f query='
 mutation ResolveReviewThread($threadId: ID!) {
   resolveReviewThread(input: {threadId: $threadId}) {
     thread {

@@ -51,7 +51,7 @@ Treat changed persistence writes, event publication, retry/partial-failure behav
 
 **`previous-comments` is PR-only AND comment-gated.** Only select this persona when both conditions hold:
 
-1. Stage 1 gathered PR metadata (PR number or URL was provided as an argument, or `gh pr view` returned metadata for the local bookmark on `@`).
+1. Stage 1 gathered PR metadata (PR number or URL was provided as an argument, or `GIT_DIR="$(jj git root)" gh pr view` returned metadata for the local bookmark on `@`).
 2. `hasPriorComments` from Stage 1 is true (the PR has at least one review submission or issue comment).
 
 Skip it for standalone branch reviews with no associated PR, and skip it for PRs with no prior feedback yet -- there is nothing for the persona to verify, and a spawned subagent that returns empty findings still costs the full subagent startup overhead (persona spec, diff, schema, plus its own gh calls).

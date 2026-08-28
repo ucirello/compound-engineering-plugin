@@ -9,11 +9,11 @@ Parse the URL to extract HOST, OWNER, REPO, PR number, and comment REST ID:
 https://HOST/OWNER/REPO/pull/NUMBER#discussion_rCOMMENT_ID
 ```
 
-**GitHub Enterprise host.** Take the host from the URL (targeted mode is always URL-triggered). When it is **not** `github.com`, pass it as a `GH_HOST=<host>` env prefix inline on **every** `gh api` / bundled-script call below (`gh api` honors `GH_HOST` as the request host) so an enterprise thread is fetched, replied to, and resolved on the right host instead of `github.com`. On `github.com`, drop the `GH_HOST=<host> ` prefix. Carry the same host into the reply/resolve calls you run from Full Mode steps 5-7.
+**GitHub Enterprise host.** Take the host from the URL (targeted mode is always URL-triggered). Every API or bundled-script call carries `GIT_DIR="$(jj git root)"`. When the host is **not** `github.com`, also pass `GH_HOST=<host>` inline on every call (`gh api` honors `GH_HOST` as the request host) so an enterprise thread is fetched, replied to, and resolved on the right host instead of `github.com`. On `github.com`, omit only the `GH_HOST=<host>` prefix. Carry the same host into the reply/resolve calls you run from Full Mode steps 5-7.
 
 **Step 1** -- Get comment details and GraphQL node ID via REST (cheap, single comment):
 ```bash
-GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
+GIT_DIR="$(jj git root)" GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
   --jq '{node_id, path, line, body}'   # omit GH_HOST=<host> on github.com
 ```
 
@@ -27,7 +27,7 @@ This fetches thread IDs and their first comment IDs (minimal fields, no bodies) 
 
 **Step 3** -- Check for your own unsubmitted review before doing any work. A reply posted while you hold one is absorbed into that draft: the call returns a comment ID and URL as if it succeeded, but the reviewer sees nothing until the draft is submitted. Full Mode gets this free from `get-pr-comments`; targeted mode never calls that script, so check directly (PENDING reviews are only visible to their author, so any hit is yours):
 ```bash
-GH_HOST=<host> gh api --paginate repos/OWNER/REPO/pulls/PR_NUMBER/reviews --jq '.[] | select(.state == "PENDING") | .id'
+GIT_DIR="$(jj git root)" GH_HOST=<host> gh api --paginate repos/OWNER/REPO/pulls/PR_NUMBER/reviews --jq '.[] | select(.state == "PENDING") | .id'
 ```
 `--paginate` is required: this endpoint is chronological and pages at 30, so a draft can sort past page 1. Print IDs rather than a count — `--jq` runs per page, so a count emits one number per page, but IDs simply concatenate and stay empty when there is no draft. (`--slurp` is not an option; `gh` rejects it alongside `--jq`.)
 

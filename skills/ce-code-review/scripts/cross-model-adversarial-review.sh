@@ -220,7 +220,7 @@ extract_model_receipt() {   # <route>; reads the envelope in $PEERLOG, sets MODE
 # Emits the CLI + flags NUL-delimited. Read-only / no-prompt (codex xhigh, others high).
 # Code-review isolation is IN-TREE (repo root), not empty-scratch tool-less:
 # peers may Read surrounding code. PEER_WORKDIR is the repo root; RAW_OUT lives
-# outside the repo (temp) and is published to RUN_DIR only after normalize.
+# under the workspace-local .tmp tree and is published to RUN_DIR only after normalize.
 # NEVER emit: codex without `-s read-only`; grok `--always-approve` /
 # `--permission-mode bypassPermissions`; cursor-agent `-f` / `--force` / `--yolo`.
 adapter_argv() {

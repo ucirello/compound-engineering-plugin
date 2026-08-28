@@ -30,12 +30,12 @@ Two modes:
 For PR mode, fetch metadata first:
 
 ```bash
-gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
+GIT_DIR="$(jj git root)" gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
 ```
 
 If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-bookmark mode, resolve `<base>` with `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, then verify `<base>@<base-remote>` with `jj bookmark list --all-remotes`. If it cannot be resolved unambiguously, ask the user. Resolve `<head>` from the feature bookmark target; use `@-` only when this workflow just completed the change and the bookmark has not yet been set.
+For current-bookmark mode, resolve `<base>` with `GIT_DIR="$(jj git root)" gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, then verify `<base>@<base-remote>` with `jj bookmark list --all-remotes`. If it cannot be resolved unambiguously, ask the user. Resolve `<head>` from the feature bookmark target; use `@-` only when this workflow just completed the change and the bookmark has not yet been set.
 
 **Base remote:** `origin` for current-bookmark mode and same-repository PRs unless JJ configuration names another fetch remote. For fork PRs, match the PR's base owner/repository against `jj git remote list`. If no local remote matches, use the `gh` fallback; never diff against the wrong remote.
 
@@ -48,7 +48,7 @@ jj diff --from '<base>@<base-remote>' --to '<head>'
 
 If the commit list is empty, report "No commits to describe" and stop.
 
-**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` when JJ cannot reach the revisions, including a fork PR with no matching remote, a shallow clone, offline state, or unrelated histories.
+**Fallback** — use `GIT_DIR="$(jj git root)" gh pr diff <ref>` and `GIT_DIR="$(jj git root)" gh pr view <ref> --json commits` when JJ cannot reach the revisions, including a fork PR with no matching remote, a shallow clone, offline state, or unrelated histories.
 
 Note in the user-facing summary when the API fallback was used.
 

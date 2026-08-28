@@ -13,7 +13,7 @@ When the user picks an option, fire its action rather than acknowledging the cho
 - **Local file** — copy it out of `$RUN_DIR` to the path the user names, then offer to open it where the platform exposes `open` / `xdg-open` / `start`; otherwise print the absolute path.
 - **Publish to Proof** (markdown only) — publish per that destination's section below and surface the share URL; on failure retry once, then report and move on.
 - **Send to Thinkroom** (only when a Thinkroom capability is detected) — send per that destination's section below.
-- **Leave it** — report the `$RUN_DIR` path, noting it is temporary and does not survive reboot; nothing else is written.
+- **Leave it** — report the workspace-local `.tmp` `$RUN_DIR` path, noting that it remains scratch rather than a durable artifact; nothing else is written.
 
 ## Audience mismatch — offered before the destination's own consent gate
 

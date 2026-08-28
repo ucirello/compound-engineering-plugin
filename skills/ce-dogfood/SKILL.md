@@ -21,7 +21,7 @@ This is **diff-scoped**, not whole-app exploration. You test what the selected r
 - Never dogfood the trunk on a bookmark/revision or blank target when the selected revision has no changes relative to trunk. A PR target always has a base, so evaluate its explicit base/head pair even when its head bookmark is named `main`.
 - A numeric target stays a PR identity through isolation and revision selection; never collapse it to a head-bookmark name whose spelling may itself be `main`.
 - Never switch the primary workspace out from under the user. This skill decides only whether to offer isolation — no for a blank target already at `@`, yes for a PR or another named revision — and `ce-worktree` owns the workspace mechanics and verdict. On a declined offer, use `jj edit <target-revision>` in place; JJ preserves the prior working-copy change instead of discarding it.
-- Screenshots and other transient artifacts go under `<workspace-root>/.tmp/rocketclaw/ce-dogfood/`, with `./.tmp/rocketclaw/ce-dogfood/` as the fallback when `jj root` fails; copy one elsewhere only to embed it in the report.
+- Screenshots and other transient artifacts go under `<workspace-root>/.tmp/rocketclaw/ce-dogfood/`, with `./.tmp/rocketclaw/ce-dogfood/` as the fallback when `jj workspace root` fails; copy one elsewhere only to embed it in the report.
 - Auto-fix only what is small, well-understood, and low-risk. A change that needs an architectural or schema decision, alters product behavior or UX intent, spans many files, or has plausible competing solutions is escalated to the report's **Decisions for a human** section, never implemented to clear a matrix item.
 
 ## Prerequisites
@@ -44,7 +44,7 @@ Reports live under `<root>/dogfood-reports/` and personas under `<root>/personas
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
 - **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->

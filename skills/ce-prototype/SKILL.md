@@ -31,7 +31,7 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. It yields in exactly two cases: the user names a technology, or the dimension cannot be rendered in a browser without faking it. In that second case, build in the medium the dimension requires, and name that choice before you build. If a named technology also cannot render the dimension, say so rather than yielding silently. `references/build.md` owns what the artifact may be on either path.
 
-Build under `.context/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Use `<workspace-root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` for scratch output, with local `.tmp/rocketclaw/ce-prototype/<date>-<slug>/` when `jj root` reports no repository. `references/build.md` owns the choice.
+Build under `.context/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Use `<workspace-root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` for scratch output, with local `.tmp/rocketclaw/ce-prototype/<date>-<slug>/` when `jj workspace root` reports no repository. `references/build.md` owns the choice.
 
 The `.context/` and `.tmp/` paths must be ignored before use because JJ automatically tracks new files. Follow the repository's existing ignore syntax. When either rule is absent, offer to append only the missing rule to the workspace-root `.gitignore` before resolving the root.
 

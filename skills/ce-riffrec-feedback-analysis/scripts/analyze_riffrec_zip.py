@@ -89,7 +89,9 @@ def slugify(value: str) -> str:
 
 def workspace_root() -> Path:
     try:
-        result = subprocess.run(["jj", "root"], capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            ["jj", "workspace", "root"], capture_output=True, text=True, timeout=10
+        )
     except (OSError, subprocess.SubprocessError):
         return Path.cwd()
     return Path(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip() else Path.cwd()

@@ -200,7 +200,7 @@ def main(argv: list[str]) -> int:
             if behind_count > 0:
                 infos.append(
                     f"INFO: workspace is {behind_count} changes behind {upstream} — "
-                    "verify merge-state claims against remote truth (gh pr view), "
+                    "verify merge-state claims against remote truth (GIT_DIR=$(jj git root) gh pr view), "
                     "not this workspace"
                 )
         else:

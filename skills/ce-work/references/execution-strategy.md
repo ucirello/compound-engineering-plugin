@@ -26,6 +26,10 @@ Local project conventions and visible history win.
 
 Inspect actual Jujutsu filesets rather than trusting reported paths. Same-path edits or shared-contract contention stop automatic integration. Integrate one accepted result at a time, revalidate remaining results against the advancing canonical revision, run authoritative checks, describe the focused canonical change, and release the worker only after integration is proven.
 
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Local project conventions and visible history win.
+
 In a shared canonical workspace, workers never describe, split, squash, rebase, bookmark, or advance changes. The orchestrator separates each owned fileset after the wave. In isolated workspaces, workers leave their working-copy changes undescribed unless the host's isolation contract explicitly requires a described revision for return; even then, the orchestrator applies local description standards before publication.
 
 On conflict, preserve the isolated revision and either rerun it on the new base or resolve it explicitly. Never treat a conflict-free fileset application as semantic compatibility.

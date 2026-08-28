@@ -186,6 +186,5 @@ mode: <repo-grounded | elsewhere-software | elsewhere-non-software>
 
 Keep engineering-process metadata out of the artifact — no "captured at
 Phase X" notes, no skill-pointer "next steps", and no italic provenance
-lines. The reader wants the ideas and their basis. Research sources and
-model/provider attribution that support evidence or delegated output remain
-intact.
+lines. The reader wants the ideas and their basis. Research source attribution
+that supports evidence remains intact.

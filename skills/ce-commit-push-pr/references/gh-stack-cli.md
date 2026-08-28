@@ -1,7 +1,7 @@
 # `gh stack` semantics this skill relies on
 
-Verified against `gh stack version 0.1.0`. `gh stack <command> --help` is authoritative — if it
-disagrees with anything here, follow `--help` and say so in your report. (`gh stack help <command>`
+Verified against `GIT_DIR="$(jj git root)" gh stack version 0.1.0`. `GIT_DIR="$(jj git root)" gh stack <command> --help` is authoritative — if it
+disagrees with anything here, follow `--help` and say so in your report. (`GIT_DIR="$(jj git root)" gh stack help <command>`
 does not work; it prints top-level help.)
 
 Only the behavior that changes a decision in stack mode is listed. This file is self-contained on
@@ -10,7 +10,7 @@ purpose: do not depend on the user having a separate `gh-stack` skill installed.
 ## Classifying a parent
 
 ```bash
-gh stack checkout "<parent-pr-number>"
+GIT_DIR="$(jj git root)" gh stack checkout "<parent-pr-number>"
 ```
 
 Resolve a parent by **PR number** whenever one exists; that is what pulls a stack down from
@@ -28,7 +28,7 @@ Route on the exit code; status text goes to stderr and must not be parsed.
 | 9 | Stacked PRs unavailable | Not enabled on this repository; tell the user and stop |
 
 ```bash
-gh stack view --json    # JSON on stdout: trunk, currentBranch,
+GIT_DIR="$(jj git root)" gh stack view --json    # JSON on stdout: trunk, currentBranch,
                         # branches[] { name, head, base, isCurrent, isMerged, needsRebase,
                         #              pr { number, url, state } }
 ```
@@ -40,7 +40,7 @@ the stack and no documented layer ordering, so do not derive position from this 
 
 ## Resolving a PR head bookmark
 
-`gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head; the API field
+`GIT_DIR="$(jj git root)" gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head; the API field
 `headRefName` alone does not, because a same-repository bookmark can be absent or stale locally and
 can collide with an unrelated bookmark. After `jj git fetch`, create a local bookmark at the
 revision corresponding to `headRefOid` only when it can be resolved and does not collide.
@@ -48,7 +48,7 @@ revision corresponding to `headRefOid` only when it can be resolved and does not
 ## Building
 
 ```bash
-gh stack init [--base "<trunk>"] "<bookmark>"...
+GIT_DIR="$(jj git root)" gh stack init [--base "<trunk>"] "<bookmark>"...
 ```
 
 Processes bookmarks bottom to top and selects the **last** one. **Existing bookmarks are adopted;
@@ -57,17 +57,17 @@ There is no separate adopt mode: existence decides. `--base` selects a non-defau
 parent bookmark can serve as the trunk without joining the stack.
 
 ```bash
-gh stack add "<bookmark>"
+GIT_DIR="$(jj git root)" gh stack add "<bookmark>"
 ```
 
 Must run from the **top** bookmark of the stack (or the trunk while it is still empty); anywhere else
-exits **5**. Exit 5 here means "you are not on the top", and moving there with `gh stack top` is a
+exits **5**. Exit 5 here means "you are not on the top", and moving there with `GIT_DIR="$(jj git root)" gh stack top` is a
 decision, not a fix: it changes which layer the new bookmark is parented to. Whether that is correct
 belongs to the caller — when a specific parent was named, it is not. Without `-Am`, `add` does not
 does not alter working-copy content, so the current JJ change remains present.
 
 ```bash
-gh stack submit --auto [--open]
+GIT_DIR="$(jj git root)" gh stack submit --auto [--open]
 ```
 
 `--auto` avoids a title prompt per new PR. `--open` creates PRs ready for review instead of drafts,
@@ -75,9 +75,9 @@ and also marks pre-existing drafts ready.
 
 ## Never
 
-- **`gh stack link`** — GitHub-only by design, creates no local tracking, so a later
-  `gh stack submit`, `gh stack view`, or `gh stack merge` will not see the layer. It exists for
+- **`GIT_DIR="$(jj git root)" gh stack link`** — GitHub-only by design, creates no local tracking, so a later
+  `GIT_DIR="$(jj git root)" gh stack submit`, `GIT_DIR="$(jj git root)" gh stack view`, or `GIT_DIR="$(jj git root)" gh stack merge` will not see the layer. It exists for
   bookmarks managed by external tools.
-- **`gh pr merge`** on a stack member — it cannot merge a stack. Landing uses `gh stack merge`.
+- **`GIT_DIR="$(jj git root)" gh pr merge`** on a stack member — it cannot merge a stack. Landing uses `GIT_DIR="$(jj git root)" gh stack merge`.
 - **Bare `view` / `submit` / `init` / `add` / `checkout`** — each prompts or opens a TUI that
   blocks under a PTY. Always pass the arguments and flags shown above.

@@ -52,7 +52,7 @@ Before step 1, interpret whether the invoking conversation expresses semantic in
 
 9. **Watch the PR to CI-decided via `ce-babysit-pr`** only when an open PR exists for the pushed bookmark.
 
-   Detect the PR with `gh pr view --json number,url,state`; if none exists or `gh` is unavailable, skip to step 10. When step 8 already handed off a stack babysit, `references/shipping-tail.md` decides this step. Otherwise invoke **`ce-babysit-pr mode:pipeline <pr-url>`** and preserve its structured result.
+   Detect the PR with `GIT_DIR="$(jj git root)" gh pr view --json number,url,state`; if none exists or `gh` is unavailable, skip to step 10. When step 8 already handed off a stack babysit, `references/shipping-tail.md` decides this step. Otherwise invoke **`ce-babysit-pr mode:pipeline <pr-url>`** and preserve its structured result.
 
 10. Output `<promise>DONE</promise>` when complete, after the close-out in `references/shipping-tail.md`, which owns the two user-runnable handoff lines, their per-host rendering, and the next-work offer gate.
 

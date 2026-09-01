@@ -34,7 +34,7 @@ Each entry teaches its concept to a reader with no access to anything else — n
 
 - Implementation specifics (file paths, class names, function signatures, table names, library calls)
 - Status fields, dates, owners on the entries
-- Examples or current-config values drawn from the code — specific thresholds, counts, or enum values that will change. State the behavior, not the number: "each skill sets its own actionable threshold" rather than "surfaces at 50, fixes at 75."
+- Current-config values drawn from the code, including thresholds, counts, or enum values that will change. State the durable behavior rather than a fixed sample value.
 - Links to PRs, issues, channels, or roadmap milestones
 - Version-specific claims ("currently uses X; migrating to Y")
 
@@ -71,6 +71,10 @@ Cluster concepts by domain relationship — entities with their states, processe
 ## Flagged ambiguities (tail of file)
 
 When two terms were used interchangeably and the team settled on a distinction, record the resolution as a one-line note: *"'account' had been used for both Customer and User — these are distinct."* This section is the audit trail for opinions the team has formed.
+
+## Entry shape
+
+Use the project term as the heading, followed by its one-sentence domain definition. Add an `Avoid` line only for retired synonyms, and add a second paragraph only for non-obvious lifecycle, ownership, or relationship rules.
 
 ## Retired (tail of file, present only when it has entries)
 

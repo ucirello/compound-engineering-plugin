@@ -7,9 +7,12 @@
 
 set -e
 
+GIT_DIR=$(jj git root)
+export GIT_DIR
+
 if [ $# -lt 2 ]; then
     echo "Usage: reply-to-pr-thread PR_NUMBER ROOT_COMMENT_ID [OWNER/REPO] < reply-body.md"
-    echo "Example: reply-to-pr-thread 123 456789 EveryInc/cora < reply-body.md"
+    echo "Example: reply-to-pr-thread PR_NUMBER ROOT_COMMENT_ID OWNER/REPO < REPLY_BODY_FILE"
     exit 1
 fi
 
@@ -21,8 +24,8 @@ if [ -n "$3" ]; then
     OWNER=$(echo "$3" | cut -d/ -f1)
     REPO=$(echo "$3" | cut -d/ -f2)
 else
-    OWNER=$(gh repo view --json owner -q .owner.login 2>/dev/null || true)
-    REPO=$(gh repo view --json name -q .name 2>/dev/null || true)
+    OWNER=$(GIT_DIR="$(jj git root)" gh repo view --json owner -q .owner.login 2>/dev/null || true)
+    REPO=$(GIT_DIR="$(jj git root)" gh repo view --json name -q .name 2>/dev/null || true)
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
@@ -43,11 +46,11 @@ if [ -z "$BODY" ]; then
     exit 1
 fi
 
-gh api --method POST \
+GIT_DIR="$(jj git root)" gh api --method POST \
   "repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments/$ROOT_COMMENT_ID/replies" \
   -f body="$BODY"
 
-PENDING_REVIEW=$(gh api --paginate \
+PENDING_REVIEW=$(GIT_DIR="$(jj git root)" gh api --paginate \
   "repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews" \
   --jq '.[] | select(.state == "PENDING") | .id')
 

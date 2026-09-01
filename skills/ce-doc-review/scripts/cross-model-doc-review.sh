@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > CE config cascade >
+#                   resolved preference (conversation > workspace config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -89,7 +89,7 @@ case "$TRANSIENT_RETRY_DELAY_SECS" in ''|*[!0-9]*) skip "transient retry delay m
 # ONE model per provider at high reasoning, except codex on extra-high (supersedes
 # the old per-lens sol/terra split). Concrete IDs are the CURRENT instance of the
 # tier principle and the single maintenance point when model families change.
-# A checkout may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
+# A workspace may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
 # CROSS_MODEL_MODEL_OVERRIDE, same target/family only) and the reasoning effort
 # (CROSS_MODEL_EFFORT_OVERRIDE, validated per route); both fail closed.
 # codex: luna/xhigh is the benchmarked pick on API dollars (~0.30x sol-medium, tied
@@ -408,7 +408,7 @@ SCHEMA_REF="$SCHEMA_CONTENT"   # adapter_argv references SCHEMA_REF for --json-s
 # The peer adapts on the same context slots (Document type / Origin) the in-process
 # reviewer does, but the trio persona briefs only define adaptation for the bare
 # `requirements`/`plan` values. The canonical context-slot rules -- which map
-# `unified-*` onto their base branch, carry the unified slice-suppression rules, and
+# `unified-*` onto their base classification, carry the unified slice-suppression rules, and
 # define how to read non-path Origin values -- live only in the subagent template, so
 # extract them from there (single source of truth) and fold them into the peer prompt.
 # Best-effort: a missing block degrades unified/Origin scoping but must not fail the pass.
@@ -525,21 +525,22 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+TEMP_DIR="$RUN_DIR/worker-$REVIEWER_NAME-$$"
+(umask 077; mkdir -p "$TEMP_DIR") || skip "could not create workspace-local scratch dir; skipping"
+PROMPT_FILE="$TEMP_DIR/prompt"
+PEERLOG="$TEMP_DIR/out.log"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-err-XXXXXX")"
+PEERERR="$TEMP_DIR/err.log"
+: > "$PROMPT_FILE"; : > "$PEERLOG"; : > "$PEERERR"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
 PROVIDER_OUTCOME="ok"
 cleanup_temp() {
-  rm -f "$PROMPT_FILE" "$PEERLOG" "$PEERERR"
-  [ -n "$RAW_OUT" ] && rm -f "$RAW_OUT"
-  [ -n "$PEER_WORKDIR" ] && [ "$PEER_WORKDIR" != "${RUN_DIR:-}" ] && rm -rf "$PEER_WORKDIR"
+  rm -rf "$TEMP_DIR"
 }
 trap 'cleanup_temp' EXIT
 # Basename only in the peer prompt: content is already embedded (KTD3). An absolute
@@ -1031,7 +1032,7 @@ parse_opencode_events() {  # <logfile> <outfile>
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e 'select((.findings|type)=="array")' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "${TMPDIR:-/tmp}/ce-opencode-text-XXXXXX")" || return 1
+  tmp="$(mktemp "$TEMP_DIR/opencode-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_findings_json "$tmp" "$2"
   local st=$?
@@ -1110,9 +1111,9 @@ run_provider() {   # <provider>
   # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
   # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
-  # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  # never written into RUN_DIR by the peer itself.
+  PEER_WORKDIR="$TEMP_DIR/peer-$provider"
+  (umask 077; mkdir -p "$PEER_WORKDIR") || { log "could not create peer workspace; skipping"; rm -f "$OUT"; return 0; }
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -1169,7 +1170,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
+    _norm="$TEMP_DIR/$REVIEWER_NAME-$provider.norm.json"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

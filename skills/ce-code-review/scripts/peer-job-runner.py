@@ -60,11 +60,8 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (/tmp/compound-engineering-<effective-uid>,
-                            or $TMPDIR/compound-engineering-<effective-uid> when
-                            /tmp cannot host a writable private root, e.g. under
-                            a sandbox that only allowlists $TMPDIR)
-  CE_WORK_RUNS_ROOT         parent CE Work dir containing all <run-id>/ dirs
+  CE_PEER_JOBS_ROOT         base dir under the active workspace's .tmp directory
+  CE_WORK_RUNS_ROOT         parent ce-work dir under that .tmp directory
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -77,11 +74,11 @@ Environment overrides (defaults in parentheses):
   CE_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
   CE_PEER_BASH              Windows: absolute bash.exe for peer workers
                             (preferred over PATH / WSL System32 bash)
-  CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
-                            CE_PEER_BASH is unset (#1268)
+  CLAUDE_CODE_GIT_BASH_PATH compatibility path for a Windows POSIX shell when
+                            CE_PEER_BASH is unset
 
-Security posture: the job root is a predictable, owner-private directory under
-world-shared /tmp. Every read of job state opens the file first (no-follow) and
+Security posture: the job root is a predictable workspace-local directory.
+Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -117,8 +114,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under %LOCALAPPDATA%\\compound-engineering-jobs (then the
-            user temp dir), owner-private, since there is no shared /tmp.
+  jobs root defaults to the workspace-local `.tmp` directory.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -132,7 +128,6 @@ import signal
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -149,17 +144,19 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-if IS_WINDOWS:
-    # No geteuid on Windows; the current-user SID is the ownership identity
-    # (see the Windows security section below), and the per-user jobs root lives
-    # under LOCALAPPDATA (falling back to the user temp dir) with a hardened ACL
-    # so R6 has a working default rather than a required override.
-    _WIN_ROOT_BASE = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
-    DEFAULT_ROOT = os.path.join(_WIN_ROOT_BASE, "compound-engineering-jobs")
-elif _EFFECTIVE_UID is not None:
-    DEFAULT_ROOT = os.path.join("/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
-else:
-    DEFAULT_ROOT = None
+def _workspace_tmp_root() -> str:
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"], capture_output=True, text=True,
+            check=False,
+        )
+    except OSError:
+        result = None
+    root = result.stdout.strip() if result and result.returncode == 0 else os.getcwd()
+    return os.path.join(os.path.abspath(root), ".tmp")
+
+
+DEFAULT_ROOT = _workspace_tmp_root()
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -213,9 +210,8 @@ _RUNNER_HARD_GRACE = 30.0
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe: a sandbox that denies writes under /tmp refuses the
-    mkdir, and one that lets a pre-existing root stand still fails the access
-    check, so both land on the fallback instead of failing at the first job.
+    Creation is the probe; a pre-existing root must still pass ownership and
+    writability checks.
     """
     try:
         os.mkdir(path, 0o700)
@@ -230,53 +226,44 @@ def _private_root_usable(path: str) -> bool:
     return os.access(path, os.W_OK)
 
 
-def _fallback_root() -> str:
-    return os.path.join(os.environ.get("TMPDIR") or "/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
+def _workspace_tmp_path(path: str, label: str) -> str:
+    absolute = os.path.realpath(os.path.abspath(path))
+    allowed = os.path.realpath(DEFAULT_ROOT)
+    try:
+        contained = os.path.commonpath([allowed, absolute]) == allowed
+    except ValueError:
+        contained = False
+    if not contained:
+        raise RunnerError(f"{label} must stay under the active workspace's .tmp directory")
+    return absolute
 
 
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
-        return os.path.abspath(configured)
-    if DEFAULT_ROOT is None:
-        raise RunnerError("effective user ID is unavailable; cannot derive the jobs root")
-    if IS_WINDOWS or _private_root_usable(DEFAULT_ROOT):
+        return _workspace_tmp_path(configured, "CE_PEER_JOBS_ROOT")
+    if _private_root_usable(DEFAULT_ROOT):
         return os.path.abspath(DEFAULT_ROOT)
-    # Same order and candidates as the skills' shell preamble, so a job started
-    # there is found here.
-    return os.path.abspath(_fallback_root())
+    raise RunnerError(f"workspace-local jobs root is unavailable: {DEFAULT_ROOT}")
 
 
 def candidate_jobs_root_bases() -> list:
-    """Every root an existing job may live under: the configured root alone, or
-    both the /tmp root and the $TMPDIR fallback (deduplicated, primary first).
-
-    Creation uses jobs_root_base(); lookup of an already-started job must not
-    depend on which root *this* invocation would create under, because a
-    sandboxed session and a later unsandboxed one resolve different roots.
-    """
+    """Every workspace-local root an existing job may live under."""
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
-        return [os.path.abspath(configured)]
-    if DEFAULT_ROOT is None:
-        raise RunnerError("effective user ID is unavailable; cannot derive the jobs root")
-    bases = [os.path.abspath(DEFAULT_ROOT)]
-    if not IS_WINDOWS:
-        fallback = os.path.abspath(_fallback_root())
-        if fallback not in bases:
-            bases.append(fallback)
-    return bases
+        return [_workspace_tmp_path(configured, "CE_PEER_JOBS_ROOT")]
+    return [os.path.abspath(DEFAULT_ROOT)]
 
 
 def skill_runs_root(skill: str) -> str:
     if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])
+        return _workspace_tmp_path(os.environ["CE_WORK_RUNS_ROOT"], "CE_WORK_RUNS_ROOT")
     return os.path.join(jobs_root_base(), skill)
 
 
 def candidate_skill_runs_roots(skill: str) -> list:
     if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return [os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])]
+        return [_workspace_tmp_path(os.environ["CE_WORK_RUNS_ROOT"], "CE_WORK_RUNS_ROOT")]
     return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 
@@ -930,7 +917,16 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
+    directory = os.path.dirname(path)
+    for _ in range(CLAIM_ATTEMPTS):
+        tmp = os.path.join(directory, f".atomic-{os.urandom(8).hex()}")
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise RunnerError(f"cannot reserve atomic sibling for {path}")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -1357,7 +1353,7 @@ def _env_option_advance(tok: str) -> int:
     the rest of the token as an
     attached operand or the next argv slot. Unsupported options fail closed
     before worker detach.
-    (#1292 Codex P2)
+    (portability regression coverage)
     """
     if tok in ("-u", "--unset", "-C", "--chdir"):
         return 2
@@ -1472,7 +1468,7 @@ def _prefer_windows_posix_shell(token: str) -> str:
     """Absolute non-WSL bash/sh kept; bare names and System32 go through resolve.
 
     Explicit absolute paths (portable Git, custom installs) must not be
-    substituted by the preferred resolver (#1292 Codex P2). Bare `bash`/`sh`
+    substituted by the preferred resolver. Bare `bash`/`sh`
     and System32 WSL launchers still use `_resolve_windows_posix_shell()`.
     """
     if _windows_path_is_absolute(token):
@@ -1942,7 +1938,7 @@ def _require_detach_support() -> None:
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
             "a Windows Python 3 build (see "
-            "EveryInc/compound-engineering-plugin#1243)."
+            "the tracked portability issue)."
         )
 
 
@@ -2137,7 +2133,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable /tmp path unchecked.
+        # consumer must never read a predictable scratch path unchecked.
         try:
             data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
         except Unreadable as exc:

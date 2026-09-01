@@ -4,13 +4,13 @@
 
 For each task in priority order:
 
-When the selected engine is cross-model execution, this loop still owns unit ordering, evidence selection, actual-scope inspection, authoritative verification, and incremental canonical commits, but worker authoring follows the serial external-unit protocol in `references/cross-model-execution.md`. Detached process completion is only authoring evidence; do not mark the task complete until the controller records the host-owned canonical commit. A preserved or restoration-blocked unit stops this loop before fallback, retry, or the next unit.
+When the selected engine is cross-model execution, this loop still owns unit ordering, evidence selection, actual-scope inspection, authoritative verification, and incremental canonical changes, but worker authoring follows `references/cross-model-execution.md`. Detached process completion is only authoring evidence; do not mark the task complete until the controller records the host-owned canonical revision. A preserved or restoration-blocked unit stops this loop before fallback, retry, or the next unit.
 
 ```
 while (tasks remain):
   - Mark task as in-progress
   - Read any referenced files from the plan or discovered during Phase 0
-  - **If any part of the unit's completion depends on out-of-repo state** (a console setting, DNS record, CMS object, live-system rows), that part has no git-derived completion signal: decide it from the observed state of the deliverable, never from a clean tree or a tracker write. Mark it complete only when that state is already satisfied; execute only when it is observably unsatisfied and re-applying is safe or the user has authorized it; otherwise ask or block.
+  - **If any part of the unit's completion depends on out-of-repo state** (a console setting, DNS record, CMS object, live-system rows), that part has no repository-derived completion signal: decide it from the observed state of the deliverable, never from a clean tree or a tracker write. Mark it complete only when that state is already satisfied; execute only when it is observably unsatisfied and re-applying is safe or the user has authorized it; otherwise ask or block.
   - **If the unit's entire completion signal is repository-derived and that work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped on a prior branch or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
   - Look for similar patterns in codebase
   - Find existing test files for implementation files being changed (Test Discovery — see below)
@@ -24,12 +24,12 @@ while (tasks remain):
   - Assess testing coverage: did this task change behavior? If yes, were existing tests inspected and were tests written, updated, strengthened, or deliberately left unchanged with a reason? If no tests were added or changed, is the justification deliberate (e.g., pure config, no behavioral change, manual-only surface) and paired with replacement verification?
   - Record verification evidence for the task: behavior-change signal, existing tests inspected, tests added/changed/used unchanged, red failure or characterization observed when applicable, verification run, and any exception reason
   - Mark task as completed
-  - Evaluate for incremental commit (see below)
+  - Evaluate whether to finish an incremental change (see below)
 ```
 
 Batch independent reads within a task: the plan's referenced files, pattern searches, and test discovery don't depend on one another — request them all in one response rather than one per turn. Only the write-and-verify steps are inherently sequential.
 
-For a parallel wave, the loop pauses at a host-owned integration stop after every canonical result. Inspect the actual result rather than its declared scope, re-run the independence judgment against the advancing tree, and recompute readiness from committed prerequisites. Affected dependents remain queued. An unaffected sibling may continue only after any failed apply or verification has been restored exactly and the prior integration lock released. Re-dispatch a stale or colliding result on the new base, resolve it explicitly, or finish it serially; never treat a conflict-free apply as semantic proof. Repeated collision or broad edits disable further parallel waves for the run.
+For a parallel wave, pause at a host-owned integration stop after every canonical result. Inspect the actual fileset, re-run the independence judgment against the advancing revision, and recompute readiness from accepted prerequisites. Affected dependents remain queued. An unaffected sibling may continue only after any failed application or verification has been restored exactly and the prior integration lock released. Re-dispatch stale or colliding work on the new base, resolve it explicitly, or finish it serially; a conflict-free application is not semantic proof. Repeated collision or broad edits disable further parallel waves for the run.
 
 When a unit carries an `Execution note`, honor its intent rather than matching a fixed vocabulary. For notes that ask for proof-first work, write or identify the relevant failing test before implementation for that unit. For notes that ask for characterization, capture existing behavior before changing it. For notes that point away from unit coverage, run the named replacement verification and record why ordinary tests were not the right proof. For units without an `Execution note`, make the same decision from code and test discovery: upgrade to proof-first or characterization-first when behavior changes and the seam is practical; proceed pragmatically only when the task is non-behavioral or the exception is deliberate.
 
@@ -75,38 +75,36 @@ Guardrails for execution evidence:
 
 **When this matters most:** Any change that touches models with callbacks, error handling with fallback/retry, or functionality exposed through multiple interfaces.
 
-2. **Incremental Commits**
+2. **Incremental Changes**
 
-After completing each task, evaluate whether to create an incremental commit:
+After completing each task, evaluate whether to finish an incremental Jujutsu change:
 
-| Commit when... | Don't commit when... |
+| Finish the change when... | Keep editing when... |
 |----------------|---------------------|
 | Logical unit complete (model, service, component) | Small part of a larger unit |
 | Tests pass + meaningful progress | Tests failing |
 | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-| About to attempt risky/uncertain changes | Would need a "WIP" commit message |
+| About to attempt risky/uncertain changes | Would need a "WIP" description |
 
-**Heuristic:** "Can I write a commit message that describes a complete, valuable change? If yes, commit. If the message would be 'WIP' or 'partial X', wait."
+**Heuristic:** finish a change only when its description can state a complete, valuable result.
 
-If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
+If the plan has Implementation Units, use them as a starting guide for change boundaries, adapting to discovered dependencies. Use each unit's Goal to inform its description.
 
-**Commit workflow:**
+**Change workflow:**
 ```bash
-# 1. Verify tests pass (use project's test command)
-# Examples: bin/rails test, npm test, pytest, go test, etc.
-
-# 2. Stage only files related to this logical unit (not `git add .`)
-git add <files related to this logical unit>
-
-# 3. Commit with conventional message, limited to those same paths
-git commit -m "feat(scope): description of this unit" -- <files related to this logical unit>
+jj diff -r @ <owned-fileset>
+jj split <owned-fileset> -m '<message composed at runtime>'
 ```
 
-**Handling merge conflicts:** If conflicts arise during rebasing or merging, resolve them immediately. Incremental commits make conflict resolution easier since each commit is small and focused.
+The selected files become the described parent change and the remaining work stays in the working-copy child. If all current work belongs to the completed unit, use the runtime-local `jj commit` syntax for that fileset instead; both forms leave a fresh working-copy child without an extra `jj new`.
 
-**Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template.
 
-**Parallel subagent mode:** commit ownership follows the isolation mode chosen at dispatch — see `references/execution-strategy.md`.
+**Handling conflicts:** Jujutsu records conflicts in revisions. Resolve them before declaring the affected change complete, inspect with `jj status` and `jj diff`, then fold the resolution into the intended revision with `jj squash` or edit that revision directly when appropriate.
+
+Descriptions and pull requests contain only project-relevant change and verification context.
+
+**Parallel subagent mode:** change ownership follows the isolation mode chosen at dispatch; see `references/execution-strategy.md`.
 
 3. **Follow Existing Patterns**
 

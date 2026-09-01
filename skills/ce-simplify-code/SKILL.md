@@ -1,7 +1,7 @@
 ---
 name: ce-simplify-code
 description: "Simplify settled, recently changed code for clarity, reuse, quality, and efficiency while preserving behavior. Use after implementation and before review; use ce-debug for bugs."
-argument-hint: "[blank to simplify current branch changes, or describe what to simplify]"
+argument-hint: "[blank to simplify the current change, or describe what to simplify]"
 ---
 
 Simplify recently changed code for clarity, reuse, quality, and efficiency while preserving exact behavior. Prioritize readable, explicit code over compact code — fewer lines is not the goal.
@@ -12,8 +12,8 @@ Simplify recently changed code for clarity, reuse, quality, and efficiency while
 Resolve the simplification scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it.
-2. **Otherwise, in git**, use the current branch versus its base. Without a usable base, use staged and unstaged changes (`git diff HEAD`).
-3. **Outside git or without a diff**, use files the user named or that were edited earlier in the conversation.
+2. **Otherwise, in Jujutsu**, use the current change relative to its parent (`jj diff -r @`). If the conversation or caller identifies a broader change revset, use `jj diff -r <revset>` after validating it with `jj log -r <revset>`.
+3. **Outside Jujutsu or without a diff**, use files the user named or that were edited earlier in the conversation.
 
 If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question.
 
@@ -45,7 +45,7 @@ Inspect beyond the resolved scope when needed to evaluate a finding, but edit on
 
 Each fix must preserve outputs, errors, side effects, and ordering. If that cannot be established, skip it.
 
-An interface or data shape that existed only in an earlier iteration of the current unshipped scope is not protected behavior once you verify it has no deployed, persisted, public, external, dependent-branch, or in-repo caller outside the resolved scope. Remove that compatibility path only when every required caller update fits the existing mutation boundary; otherwise preserve it.
+An interface or data shape that existed only in an earlier iteration of the current unshipped scope is not protected behavior once you verify it has no deployed, persisted, public, external, dependent-change, or in-repo caller outside the resolved scope. Remove that compatibility path only when every required caller update fits the existing mutation boundary; otherwise preserve it.
 
 **Never simplify away a safety check.** Preserve trust-boundary validation, data-loss protection, security checks, and accessibility affordances. Skip any finding that would thin or remove one.
 

@@ -23,6 +23,7 @@ symptoms:
 root_cause: [corpus value, else schema suggested default]
 resolution_type: [schema enum]
 severity: [schema enum]
+ai: "ai:assistant"
 tags: [keyword-one, keyword-two]
 ---
 
@@ -67,6 +68,7 @@ module: [Module or area]
 problem_type: [schema enum]
 component: [corpus value, else schema suggested default]
 severity: [schema enum]
+ai: "ai:assistant"
 applies_when:
   - [Condition where this applies]
 tags: [keyword-one, keyword-two]

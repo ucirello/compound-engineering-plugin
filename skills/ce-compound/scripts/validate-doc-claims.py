@@ -360,7 +360,7 @@ def main(argv: list[str]) -> int:
                 flags.append(
                     f"FLAG commit ID {commit_id}{loc} — not reachable from @ but reachable "
                     f"from {upstream}: this workspace predates the merge. Add a "
-                    "temporal qualifier or verify the claim via gh."
+                    'temporal qualifier or verify the claim via GIT_DIR="$(jj git root)" gh.'
                 )
             else:
                 flags.append(

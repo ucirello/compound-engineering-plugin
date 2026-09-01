@@ -22,7 +22,7 @@ The script reports flags; you decide each one. Three resolutions — **fix**, **
 | path deliberately gone (doc says removed/renamed) | Historical citation | Confirm the surrounding prose marks it as historical ("removed by this fix", "pre-fix state"); add that marker if absent |
 | Commit ID does not resolve | Fabricated or from another repo | Replace with the PR number, or drop |
 | Commit ID reachable from `@` only | Local-only revision whose commit ID can change when rewritten | Replace with the PR number |
-| Commit ID reachable from upstream only | Workspace predates the merge | Keep, with a temporal qualifier; verify the landed claim via `gh` |
+| Commit ID reachable from upstream only | Workspace predates the merge | Keep, with a temporal qualifier; verify the landed claim via the anchored `GIT_DIR="$(jj git root)" gh` command above |
 | Commit ID exists but unreachable | Rewritten-away commit | Replace with the PR number |
 | scaffold ("Learning 3", `{{…}}`) | Drafting-context leak | Always fix — rewrite as a real path or link |
 | relative link unresolved | Wrong target | Fix the path |

@@ -18,9 +18,7 @@ Marked stale: S
 CONCEPTS.md: <scanned, no qualifying terms | created with N entries (M seeded) | updated — N added, N refined, N reconciled, N folded, N retired, N deleted, N scrubbed | repo-wide map created with N entries>
 ```
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Apply that sentence when composing or validating every report summary, action description, and recommendation. Local wording conventions win; Go guidance is only a compatible quality bar. Use dynamic placeholders for unresolved paths, bookmarks, counts, and provider values, and do not force a fixed syntax, example, or template.
+Use dynamic placeholders for unresolved paths, bookmarks, counts, and provider values.
 
 Then, for EVERY file processed: path, classification, evidence found, and the action taken or recommended; for Consolidate, which doc was canonical, what was merged, what was deleted. Group Keeps under a reviewed-without-edits section.
 

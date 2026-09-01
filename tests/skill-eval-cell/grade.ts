@@ -48,6 +48,19 @@ function lastTrailer(text: string, name: string): string {
   return ""
 }
 
+/** Read a standalone labeled field while ignoring Markdown heading/bold decoration. */
+function lastField(text: string, name: string): string {
+  const prefix = `${name}:`
+  for (const line of text.split("\n").reverse()) {
+    const plain = line.trim().replace(/^#{1,6}\s+/, "").replaceAll("**", "")
+    if (!plain.toUpperCase().startsWith(prefix)) continue
+    const value = plain.slice(prefix.length).trim()
+    if (isPlaceholder(value)) continue
+    return value
+  }
+  return ""
+}
+
 function trailersIn(text: string): Trailer | null {
   const files = lastTrailer(text, TRAILER_NAMES.files_read)
   const actions = lastTrailer(text, TRAILER_NAMES.actions)
@@ -164,13 +177,28 @@ export function gradeHost(opts: {
   // and fails when the run declared none, so a run cannot pass by staying quiet.
   // must_include reads that trailer when present and the whole answer otherwise.
   const team = lastTrailer(decision, "TEAM")
-  const textScope = team || decision
-  for (const needle of opts.grade.must_include ?? []) {
+  // must_include_field scopes the needles to one delimited field of the answer. The
+  // trailers wrapPrompt mandates are part of stdout, so an unscoped needle can be
+  // satisfied by a read path or a branch name instead of the text under test. A run
+  // that emitted no such field fails rather than passing on the trailers.
+  const scopeField = opts.grade.must_include_field
+  const scopedText = scopeField ? lastField(stdout, scopeField).toLowerCase() : ""
+  if (scopeField && !scopedText) reasons.push(`missing ${scopeField} field`)
+  const textScope = scopeField ? scopedText : team || decision
+  for (const needle of scopeField && !scopedText ? [] : opts.grade.must_include ?? []) {
     if (!textScope.includes(needle.toLowerCase())) reasons.push(`missing required text: ${needle}`)
   }
   if (opts.grade.must_not_include?.length && !team) reasons.push("missing TEAM trailer")
   for (const needle of team ? opts.grade.must_not_include ?? [] : []) {
     if (team.includes(needle.toLowerCase())) reasons.push(`forbidden text in TEAM trailer: ${needle}`)
+  }
+  if (opts.grade.classification) {
+    const actual = lastField(stdout, "CLASSIFICATION")
+    if (actual !== opts.grade.classification) {
+      reasons.push(
+        `expected Classification: ${opts.grade.classification}, got ${actual || "no classification"}`,
+      )
+    }
   }
   for (const needle of hasActions ? opts.grade.must_exclude ?? [] : []) {
     if (actions.includes(needle)) {

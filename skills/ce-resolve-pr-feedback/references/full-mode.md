@@ -145,7 +145,7 @@ Fixers run only targeted tests on their own changes. This step runs the project'
 
 3. **Red, failures touch files fixers changed** -> one inline diagnose-and-fix pass. Re-run validation. If still red, escalate with a `needs-human` item containing the test output; do **not** commit.
 
-4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and record the pre-existing failure in the change description. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Project instructions and runtime `git log` syntax win. Preserve the semantic fact without imposing fixed footer wording.
+4. **Red, failures touch only files no fixer changed** -> treat as pre-existing. Proceed to step 6 and record the pre-existing failure in the change description. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template. Preserve the semantic fact.
 
 Record the validation outcome (command run, pass/fail counts, any pre-existing failures noted) for the step 9 summary.
 
@@ -153,7 +153,7 @@ Record the validation outcome (command run, pass/fail counts, any pre-existing f
 
 1. Verify the PR head bookmark from `GIT_DIR="$(jj git root)" gh pr view PR_NUMBER -R OWNER/REPO --json headRefName,headRefOid`, fetch its remote state with `jj git fetch`, and ensure the local bookmark identifies the current review lineage. Stop if the bookmark or head revision is ambiguous.
 
-2. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Project instructions and runtime `git log` syntax win. Describe the review outcome and retain the PR reference when repository practice supports it.
+2. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template. Describe the review outcome and retain the PR reference when repository practice supports it.
 
 3. Commit only files reported by fixers, leaving every other working-copy path in the new current change:
 

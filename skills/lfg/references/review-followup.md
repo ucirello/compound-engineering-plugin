@@ -4,7 +4,7 @@
 
 ## The shipping precondition, in these steps
 
-A missing remote is a terminal local-only state, not an error. Steps 5 and 6 still finish their local changes; pushes and PR-side records drop. With no PR, state residuals in the DONE report rather than creating a tracked report file.
+A missing remote is a terminal local-only state, not an error: never retry a push or hunt for a remote. Step 5 still describes every JJ change it calls for; only the pushes and the PR-side records drop. With no PR to carry the residuals, step 6 files them as tracker tickets and the DONE report states the rest — never a tracked file nobody will read.
 
 ## Step 3 — simplify before review
 
@@ -53,7 +53,7 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `jj diff -r @ --name-only` shows review-driven changes, separate only that fileset with `jj split` when it is mixed with other work, describe the completed review change, and start a new empty change with `jj new`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local conventions and visible history win. When a remote and stable bookmark are already configured, push that bookmark with `jj git push --remote <remote> --bookmark <bookmark>` before step 6. Do not invent a bookmark merely for this intermediate push; the final shipping step owns bookmark creation. If no eligible fixes were applied, note that and leave the revision structure unchanged.
+4. If `jj diff -r @ --name-only` shows review-driven changes, separate only that fileset with `jj split` when it is mixed with other work, describe the completed review change, and start a new empty change with `jj new`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template. When a remote and stable bookmark are already configured, push that bookmark with `jj git push --remote <remote> --bookmark <bookmark>` before step 6. Do not invent a bookmark merely for this intermediate push; the final shipping step owns bookmark creation. If no eligible fixes were applied, note that and leave the revision structure unchanged.
 
 ## Step 6 — residual handoff
 
@@ -61,14 +61,14 @@ Residuals are actionable findings **not** applied in step 5 — not leftovers fr
 
 Two further triggers also require step 6, both outside the apply path: step 4 emitted any `settled_conflict`-stamped findings, or step 2's return carried proceeded-and-flagged `settled_decision_conflicts` entries. They are the divergent class and must be made durable here.
 
-1. Load `references/tracker-defer.md` in **non-interactive mode**. Pass the residual actionable findings from step 4/5 (or the run artifact when the summary was truncated).
-2. Collect the structured return: `{ filed: [...], failed: [...], no_sink: [...] }`.
-3. Compose a `## Residual Review Findings` markdown section from the structured return (this goes into the run-report PR comment, **not** the PR body):
-   - For each item in `filed`: a bullet with severity, file:line, title, and a link to the tracker ticket URL.
-   - For each item in `failed`: a bullet with severity, file:line, title, and the failure reason (e.g., `Defer failed: gh returned 401 — tracker unavailable`).
-   - For each item in `no_sink`: a bullet with severity, file:line, and title inlined verbatim, since the comment is the only record these get.
-   - For each `settled_conflict`-stamped finding from step 4: a bullet with severity, file:line, title, and the conflicting KTD the stamp names — included even though the finding is report-only.
-   - For each proceeded-and-flagged `settled_decision_conflicts` entry from step 2: a bullet with the KTD, the evidence, and how it was routed.
-4. Never write the `## Residual Review Findings` section into the PR description: it duplicates GitHub's own tracking and goes stale as items resolve. Review residuals have no GitHub thread of their own, so they are made durable by the tracker tickets filed above plus **one run-report comment on the PR** carrying the composed section (ticket links included) and the source run context — the same surface `ce-babysit-pr` already uses for unfixable CI. Post it with `GIT_DIR="$(jj git root)" gh pr comment`; a point-in-time comment does not go stale as items resolve, the way a body section or a committed file does.
+A residual at this point is undecided, not accepted debt: step 5 declined it because it needs judgment, and the pipeline never merges, so the human reviewing the PR supplies that judgment — fix it in this branch, dismiss it, or file it to carry past merge. The record therefore goes where that reviewer already looks, the PR body, and the pipeline files no tickets on its behalf; one ticket per finding, decided by nobody, is how a run of small nits floods a tracker.
 
-When no PR exists because no remote is configured, the run output is the record: state residuals in the DONE report rather than creating a tracked file nobody will read.
+**When a PR will exist (a remote is configured):** compose a `## Unapplied review findings` section, one checkbox bullet per item so a human ticks it when they close it:
+
+- For each unapplied actionable finding: `- [ ] <severity> — <file:line> — <title>`, plus the reviewer's `suggested_fix` on the next line when present.
+- For each `settled_conflict`-stamped finding from step 4: the same bullet plus the conflicting KTD the stamp names — included even though the finding is report-only.
+- For each proceeded-and-flagged `settled_decision_conflicts` entry from step 2: a bullet with the KTD, the evidence, and how it was routed.
+
+Close the section with the review run context (`run_id`, `artifact_path`). Hand the section to step 8 as PR-description context; `references/shipping-tail.md` names the seam. Step 8 writes the body, so nothing here edits the PR directly, and nothing posts a PR comment for these.
+
+**When no PR will exist (no remote):** load `references/tracker-defer.md` in **non-interactive mode** with the same items, collect `{ filed: [...], failed: [...], no_sink: [...] }`, and state every `failed` and `no_sink` item verbatim in the DONE report — the report is the only record those get.

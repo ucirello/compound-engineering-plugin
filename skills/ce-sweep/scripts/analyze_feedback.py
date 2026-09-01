@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted evidence artifacts. Defaults to <workspace-root>/.tmp/feedback-analysis/<source-stem>.",
+        help="Directory for extracted evidence artifacts. Defaults to <workspace-root>/.tmp/rocketclaw/feedback-analysis/<source-stem>.",
     )
     parser.add_argument("--topic", help="Kebab-case topic for requirements-kickoff frontmatter")
     parser.add_argument(
@@ -105,25 +105,21 @@ def workspace_root() -> Path:
 
 
 def create_local_work_dir(destination_parent: Path, label: str) -> Path:
-    """Create workspace-root .tmp storage, falling back beside the destination."""
-    candidates = (
-        workspace_root() / ".tmp" / "feedback-analysis",
-        destination_parent / ".tmp",
-    )
-    for root in candidates:
-        try:
-            root.mkdir(parents=True, exist_ok=True, mode=0o700)
-            if root.is_symlink() or root.stat().st_dev != destination_parent.stat().st_dev:
+    """Create workspace-local scratch under the Rocketclaw namespace."""
+    root = workspace_root() / ".tmp" / "rocketclaw" / "feedback-analysis"
+    try:
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if root.is_symlink() or root.stat().st_dev != destination_parent.stat().st_dev:
+            raise SourceInputError("Workspace-local scratch must share the destination filesystem")
+        for _ in range(32):
+            path = root / f"{label}-{secrets.token_hex(8)}"
+            try:
+                path.mkdir(mode=0o700)
+                return path
+            except FileExistsError:
                 continue
-            for _ in range(32):
-                path = root / f"{label}-{secrets.token_hex(8)}"
-                try:
-                    path.mkdir(mode=0o700)
-                    return path
-                except FileExistsError:
-                    continue
-        except OSError:
-            continue
+    except OSError as exc:
+        raise SourceInputError("Unable to create workspace-local .tmp storage") from exc
     raise SourceInputError("Unable to create workspace-local .tmp storage")
 
 
@@ -248,7 +244,7 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
 
 def default_output_dir(source_path: Path) -> Path:
     stem = slugify(source_path.stem)
-    return workspace_root() / ".tmp" / "feedback-analysis" / stem
+    return workspace_root() / ".tmp" / "rocketclaw" / "feedback-analysis" / stem
 
 
 def classify_source(source_path: Path) -> str:
@@ -1042,7 +1038,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots stay under workspace-local `.tmp`; include generated Markdown/JSON/manifests in a change only when useful for planning traceability.",
+        "- Change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots stay under workspace-local `.tmp/rocketclaw`; include generated Markdown/JSON/manifests in a change only when useful for planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",

@@ -41,7 +41,7 @@ fi
 # thread. Per-thread comments are still capped at 100 -- threads exceeding
 # that depth are not paginated here.
 workspace_root=$(jj workspace root 2>/dev/null || pwd)
-tmp_root="$workspace_root/.tmp"
+tmp_root="$workspace_root/.tmp/rocketclaw/ce-resolve-pr-feedback"
 mkdir -p "$tmp_root"
 tmp_threads="$tmp_root/pr-threads-$$.json"
 trap 'rm -f "$tmp_threads"' EXIT

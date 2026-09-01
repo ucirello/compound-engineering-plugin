@@ -170,7 +170,7 @@ def _integration_recovery_failure(args, original: Operational, failure: Operatio
 def cmd_integrate(args) -> tuple[str, dict]:
     command = _verification_command(args)
     if not args.description.strip() or len(args.description.encode()) > 65536:
-        raise Operational("REFUSED", "change description must be non-empty and at most 65536 bytes. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.")
+        raise Operational("REFUSED", "change description must be non-empty and at most 65536 bytes. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template.")
     token = None
     applied = False
     completed = False

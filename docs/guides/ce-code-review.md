@@ -6,6 +6,8 @@
 
 Review is report-only by default. Local fixes require `apply:local` or an explicit request to apply this review's findings. `mode:agent` always reports and leaves mutation to the caller.
 
+What it enforces is yours to set. Write a rule in a `CODING_STANDARDS.md` file in your repository and the review checks against it from then on (see [Repo-owned review criteria](#repo-owned-review-criteria)).
+
 It is not a verdict on a document (`ce-pov`), not findings on a planning doc (`ce-doc-review`), and not an investigation of broken behavior (`ce-debug`).
 
 `ce-work` invokes it as the portable review path before shipping. `ce-optimize` and `ce-debug` also call it on the diffs they produce. You can invoke it directly any time you want a structured review.
@@ -19,6 +21,7 @@ It is not a verdict on a document (`ce-pov`), not findings on a planning doc (`c
 | What does it do? | Selects reviewer personas from the diff, dispatches them, merges findings into one report with confidence gating |
 | When to use it | Before opening a PR, after a large or sensitive change, or when the harness has no built-in `/review` |
 | What it produces | A structured findings report. With explicit local-apply authority it can also apply verified fixes and add an Applied section. It never pushes |
+| How to customize it | Write rules in `CODING_STANDARDS.md`. The review discovers the file and enforces what it says |
 | Modes | Markdown report (default) and `mode:agent` JSON handoff. Both are report-only unless local apply is separately authorized |
 
 ---
@@ -98,7 +101,7 @@ Generalist code review prompts collapse in predictable ways:
 A small low-risk change runs correctness (and project-standards if applicable files exist). A Rails auth feature with migrations adds the relevant domain lenses. The skill decides which personas fit the diff:
 
 - **Always-on:** `correctness-reviewer`
-- **Standards:** `project-standards-reviewer` only when at least one applicable standards file exists
+- **Standards:** `project-standards-reviewer` only when at least one criteria file governs a changed file (see [Repo-owned review criteria](#repo-owned-review-criteria))
 - **Generic conditional:** testing for changed tests/harnesses or meaningful runtime behavior with no corresponding test work; maintainability for large or structural work; agent-native for agent-facing surfaces; learnings only when an existing `docs/solutions/` corpus has plausible matches
 - **Cross-cutting conditional:** security, performance, API contract, data migrations, reliability, adversarial, previous-comments. Each selected only when the diff touches its concern
 - **Stack-specific:** Julik frontend races, Swift/iOS. Only when the matching runtime domain is touched
@@ -110,6 +113,30 @@ When you pass a PR number or URL, trivial automated PRs (lockfile bumps, chore v
 
 `depth:auto` (the default) collapses a 1-39-line, low-risk, code-only diff to a lite roster. `depth:full` disables that path so the full always-on roster runs regardless of size. Neither token invents irrelevant domains.
 
+### Repo-owned review criteria
+
+Everything else the skill checks is what we ship. This is the part you own.
+
+Put a `CODING_STANDARDS.md` in your repository, write the rules your team actually cares about, and the review enforces them. A finding from that file cites the rule it broke, so it arrives as "this violates the rule you wrote" rather than someone's taste.
+
+```markdown
+# Coding Standards
+
+- Every exported function declares an explicit return type.
+- Nothing in `src/` calls `console.log` directly; route it through the `log()` helper.
+```
+
+Four things worth knowing:
+
+- **Placement scopes it.** A file at the repo root governs the whole checkout. One at `skills/CODING_STANDARDS.md` governs only what is under `skills/`. Several can apply to the same file at once.
+- **Any format works.** Prose, bullets, tables, nested headings, with or without frontmatter. The content is the contract; there is no schema to satisfy and no identifiers to assign. A paragraph of plain English is a valid rules file.
+- **It replaces the instruction file as criteria, per changed file.** `CLAUDE.md` and `AGENTS.md` remain the criteria for any changed file that no `CODING_STANDARDS.md` governs, so a repo that has never written one keeps the review it already had. No file is ever graded against both kinds, and the report names the fallback in Coverage when it supplies the criteria.
+- **It can grow.** An instruction file is loaded into every agent's context on every turn, so it stays short and rules get cut for space. A criteria file is read once, by one reviewer, at review time. That is the reason to keep enforceable rules here rather than in `AGENTS.md`: this file has room, and adding to it costs nothing until review runs.
+
+That last point is what makes review strictness compound. Notice a mistake worth preventing, write the rule down, and every review after that catches it.
+
+---
+
 ### Cross-model adversarial pass
 
 When adversarial is selected and the working tree is the reviewed head (current branch, or a PR whose local tree already matches the PR head), the adversarial lens runs through **one different model provider than the host** in a separate read-only process. A started peer **replaces** the in-process `adversarial` persona. They never both receive the same brief. The in-process persona runs if the peer cannot start, or if the started peer returns only session-quota or auth-context failure — in that case the next announced different-family peer is tried when one is eligible, otherwise the local persona covers the lens. An exact provider-overload 529 gets one same-route retry; repeated overload, another stubborn transient rate limit, or max-turn exhaustion falls back locally without an unbounded retry loop. Remote PR or branch diffs stay on the in-process persona, because that reviewer can inspect the fetched refs.
@@ -118,7 +145,7 @@ Agreement between the peer and another in-process reviewer is a strong promotion
 
 `cross_model_review_mode: off` in CE config keeps this pass from running at all — no peer is resolved and nothing leaves the host; the in-process reviewers cover the lens and Coverage says the pass was disabled by checkout config. A direct request in conversation for a peer overrides it for one run. Which target runs the peer is auto-chosen and overridable: conversation, `cross_model_peer:` in CE config, active project instructions, then `codex → claude → grok → composer`. `Cursor` means `cursor-agent` using its configured default/Auto model. `Composer` means a Composer model through Cursor. `Grok` binds the native grok CLI when it is installed; Grok through Cursor is a different route, used when asked or when the grok CLI is missing and Cursor is allowed. Cursor Auto does not count as independent agreement unless its serving family is verified different from the host. `cross_model_model:` and `cross_model_effort:` in CE config pin that target's model (e.g. `fable` for claude or `gpt-5.6-sol` for codex, or a namespace-qualified codex id such as `openai.gpt-5.6-sol` when that CLI routes through a non-default `model_provider`) and reasoning effort; a value the peer cannot honor skips the pass with a stated reason rather than substituting. See the [configuration reference](./configuration.md).
 
-**Prerequisite: a peer agent CLI.** The pass drives a read-only *agent* CLI (`codex`, `claude`, `grok`, or `cursor-agent`) so the peer can inspect the tree itself; a bare `OPENAI_API_KEY`, Anthropic key, or Gemini key does not enable it. Peers are discovered on `PATH`, plus the CLI bundled inside the Codex desktop app (`ChatGPT.app/Contents/Resources/codex` since the July 2026 app merger, or `Codex.app/…` on older installs; the app does not link it onto `PATH`). Gemini has no standalone peer target — it participates only through Cursor when `cursor-agent` attests a Gemini serving family. With no peer CLI installed the skill runs the in-process adversarial reviewer and reports "cross-model pass: not run"; the skip reason names what to install.
+**Prerequisite: a peer agent CLI.** The pass drives a read-only *agent* CLI (`codex`, `claude`, `grok`, `cursor-agent`, or `opencode`) so the peer can inspect the tree itself; a bare `OPENAI_API_KEY`, Anthropic key, or Gemini key does not enable it. Peers are discovered on `PATH`, plus the CLI bundled inside the Codex desktop app (`ChatGPT.app/Contents/Resources/codex` since the July 2026 app merger, or `Codex.app/…` on older installs; the app does not link it onto `PATH`). Gemini has no standalone peer target — it participates only through Cursor when `cursor-agent` attests a Gemini serving family. With no peer CLI installed the skill runs the in-process adversarial reviewer and reports "cross-model pass: not run"; the skip reason names what to install.
 
 This shares the provider/route kernel with `ce-doc-review` but keeps a narrower product scope: adversarial-only, diff/work-tree delivery, not doc-review's judgment trio or whole-doc sweep.
 
@@ -243,7 +270,7 @@ Conflicting mode flags (or conflicting grouping flags) stop with an error. Combi
 Use it when it is the right tool. The quick-review short-circuit defers to it explicitly. `ce-code-review` is for cases where you want diff-aware persona selection, structured findings with calibrated severity, autofix routing, and a residual handoff the caller can act on.
 
 **How does it decide which personas to dispatch?**
-Agent judgment over the actual diff, not keyword matching. Correctness runs for every multi-agent review. Project-standards runs when applicable standards files exist. Generic, cross-cutting, and stack-specific personas are added only when their concern is present. Production-file presence alone and non-behavioral edits do not select testing. A silent-pass verification mechanism gets adversarial (and the cross-model pass, when the tree is local) regardless of size.
+Agent judgment over the actual diff, not keyword matching. Correctness runs for every multi-agent review. Project-standards runs when a criteria file governs at least one changed file. Generic, cross-cutting, and stack-specific personas are added only when their concern is present. Production-file presence alone and non-behavioral edits do not select testing. A silent-pass verification mechanism gets adversarial (and the cross-model pass, when the tree is local) regardless of size.
 
 **What's the difference between default, `mode:agent`, and `apply:local`?**
 Default is a human-facing markdown report and is report-only. `mode:agent` is the same pipeline serialized as one JSON object for a caller. It is always report-only. `apply:local` is separate authority for the markdown run to apply verified findings locally. `mode:headless` is a deprecated alias for `mode:agent`. `mode:non-interactive` means "suppress prompts" in other CE skills and is not valid here.

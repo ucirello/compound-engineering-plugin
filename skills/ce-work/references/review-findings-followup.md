@@ -84,7 +84,7 @@ After eligibility filtering, **dispatch subagents for all remaining applicable f
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not split, squash, or describe changes; return which findings were applied or skipped and which files changed
 
-**After each wave:** the orchestrator reviews diffs for the assigned findings, runs the required verification, and records a focused Jujutsu change unless isolated workers already returned focused changes. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Local conventions and runtime history win. Repeat until all batches complete.
+**After each wave:** the orchestrator reviews diffs for the assigned findings, runs the required verification, and records a focused Jujutsu change unless isolated workers already returned focused changes. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

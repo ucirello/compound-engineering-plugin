@@ -12,7 +12,7 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides, each prompt carrying: the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5), describe the pass as one JJ change, and start a new change before the next pass. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5), describe the pass as one JJ change, and start a new change before the next pass. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template.
 
 Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
 
@@ -124,6 +124,6 @@ A failure that moves to a later phase is progress and names the next target. A f
 
 ## Ship (Phase 6)
 
-Keep each pass as one described JJ change so history says what changed and why. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the repository's current local syntax rather than a fixed convention, run `jj describe` for the completed pass, and run `jj new` before editing the next pass. Keep the measurement artifacts.
+Keep each pass as one described JJ change so history says what changed and why. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template. Run `jj describe` for the completed pass, and run `jj new` before editing the next pass. Keep the measurement artifacts.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

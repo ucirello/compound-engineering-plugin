@@ -10,7 +10,8 @@ When the selected engine is cross-model execution, this loop still owns unit ord
 while (tasks remain):
   - Mark task as in-progress
   - Read any referenced files from the plan or discovered during Phase 0
-  - **If the unit's work is already present and matches the plan's intent**, verify it against the current revision, mark the task complete, and move on. Do not silently reimplement.
+  - **If any part of the unit's completion depends on out-of-repo state** (a console setting, DNS record, CMS object, live-system rows), that part has no repository-derived completion signal: decide it from the observed state of the deliverable, never from a clean tree or a tracker write. Mark it complete only when that state is already satisfied; execute only when it is observably unsatisfied and re-applying is safe or the user has authorized it; otherwise ask or block.
+  - **If the unit's entire completion signal is repository-derived and that work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped on a prior branch or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
   - Look for similar patterns in codebase
   - Find existing test files for implementation files being changed (Test Discovery — see below)
   - Choose the evidence strategy for this task before changing behavior: use an existing failing test, update or strengthen an existing test, add a new failing test, add characterization coverage, or record a deliberate no-test exception with replacement verification
@@ -26,7 +27,9 @@ while (tasks remain):
   - Evaluate whether to finish an incremental change (see below)
 ```
 
-For a parallel wave, pause at a host-owned integration stop after every canonical result. Inspect the actual fileset, re-run the independence judgment against the advancing revision, and recompute readiness from accepted prerequisites. A sibling may continue only after any failed application or verification has been restored exactly and the prior integration lock released. Re-dispatch stale or colliding work on the new base, resolve it explicitly, or finish it serially; a conflict-free application is not semantic proof.
+Batch independent reads within a task: the plan's referenced files, pattern searches, and test discovery don't depend on one another — request them all in one response rather than one per turn. Only the write-and-verify steps are inherently sequential.
+
+For a parallel wave, pause at a host-owned integration stop after every canonical result. Inspect the actual fileset, re-run the independence judgment against the advancing revision, and recompute readiness from accepted prerequisites. Affected dependents remain queued. An unaffected sibling may continue only after any failed application or verification has been restored exactly and the prior integration lock released. Re-dispatch stale or colliding work on the new base, resolve it explicitly, or finish it serially; a conflict-free application is not semantic proof. Repeated collision or broad edits disable further parallel waves for the run.
 
 When a unit carries an `Execution note`, honor its intent rather than matching a fixed vocabulary. For notes that ask for proof-first work, write or identify the relevant failing test before implementation for that unit. For notes that ask for characterization, capture existing behavior before changing it. For notes that point away from unit coverage, run the named replacement verification and record why ordinary tests were not the right proof. For units without an `Execution note`, make the same decision from code and test discovery: upgrade to proof-first or characterization-first when behavior changes and the seam is practical; proceed pragmatically only when the task is non-behavioral or the exception is deliberate.
 
@@ -90,14 +93,12 @@ If the plan has Implementation Units, use them as a starting guide for change bo
 **Change workflow:**
 ```bash
 jj diff -r @ <owned-fileset>
-jj split <owned-fileset> -m '<message composed from the standards above>'
+jj split <owned-fileset> -m '<message composed at runtime>'
 ```
 
-The selected files become the described parent change and the remaining work stays in the working-copy child. If all current work belongs to the completed unit, use `jj commit <owned-fileset> -m '<message composed from the standards above>'` instead; both forms leave a fresh working-copy child without an extra `jj new`.
+The selected files become the described parent change and the remaining work stays in the working-copy child. If all current work belongs to the completed unit, use the runtime-local `jj commit` syntax for that fileset instead; both forms leave a fresh working-copy child without an extra `jj new`.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Local project conventions and the runtime history win.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template.
 
 **Handling conflicts:** Jujutsu records conflicts in revisions. Resolve them before declaring the affected change complete, inspect with `jj status` and `jj diff`, then fold the resolution into the intended revision with `jj squash` or edit that revision directly when appropriate.
 

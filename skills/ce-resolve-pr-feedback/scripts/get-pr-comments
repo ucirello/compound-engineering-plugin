@@ -69,7 +69,7 @@ fi
 # replies as already-handled.
 
 workspace_root=$(jj workspace root 2>/dev/null || pwd)
-tmp_root="$workspace_root/.tmp"
+tmp_root="$workspace_root/.tmp/rocketclaw/ce-resolve-pr-feedback"
 mkdir -p "$tmp_root"
 tmp_threads="$tmp_root/pr-threads-$$.json"
 tmp_comments="$tmp_root/pr-comments-$$.json"

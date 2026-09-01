@@ -14,13 +14,15 @@ validate-frontmatter.py (parser-safety) — this script checks the body's
 citations against the repository:
 
     1. Cited repo-relative paths (backticked, containing at least one '/')
-       exist in the working tree; tokens containing '../' resolve from the
-       doc's directory (those escaping the repo are skipped). Misses tracked
-       at `@-` or `trunk()` still count as real paths and are classified
-       (deleted by the working-copy change vs absent from this workspace).
-       Tokens
-       missing everywhere are flagged only when path-shaped; slash-delimited
-       identifiers (bookmark names, revsets, provider/model IDs) are skipped.
+       exist in the working tree, including already-absolute citations that
+       fall inside the workspace (rewritten to workspace-relative before
+       candidacy). Tokens containing '../' resolve from the doc's directory
+       (those escaping the workspace are skipped). Misses tracked at `@-` or
+       `trunk()` still count as real paths and are classified (deleted by the
+       working-copy change vs absent from this workspace). Tokens missing
+       everywhere are flagged only when path-shaped; slash-delimited
+       identifiers (bookmark names, revsets, provider/model IDs) and
+       slash-prefixed URL routes are skipped.
     2. Cited commit IDs (7-64 hex chars with at least one digit and one
        a-f letter) resolve to commits, classified by reachability from
        the working-copy revision and `trunk()`.
@@ -92,10 +94,10 @@ def split_body(text: str) -> tuple[str, int]:
     return text, 1
 
 
-def is_path_candidate(token: str) -> bool:
+def is_path_candidate(token: str, *, known_path: bool = False) -> bool:
     if any(ch.isspace() for ch in token):
         return False
-    if "/" not in token:
+    if not known_path and "/" not in token:
         return False
     if "://" in token or token.startswith(("http", "#", "/", "~")):
         return False
@@ -156,6 +158,26 @@ def normalize_path(token: str) -> str:
     return token
 
 
+def strip_repo_prefix(token: str, base: str) -> str:
+    """Rewrite an already-absolute path inside the repo to repo-relative.
+
+    Relative tokens, URL routes, and out-of-repo absolute paths are
+    unchanged so the existing candidacy guard still drops them. Realpath
+    both sides so equivalent paths reached through aliases still match. A
+    successful rewrite is slash-normalized so Windows relpath output
+    stays a candidate.
+    """
+    if not os.path.isabs(token):
+        return token
+    try:
+        rel = os.path.relpath(os.path.realpath(token), os.path.realpath(base))
+    except ValueError:
+        return token
+    if rel == ".." or rel.startswith(".." + os.sep):
+        return token
+    return rel.replace("\\", "/")
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         usage_fail(f"usage: {os.path.basename(argv[0])} <doc-path>")
@@ -200,7 +222,7 @@ def main(argv: list[str]) -> int:
             if behind_count > 0:
                 infos.append(
                     f"INFO: workspace is {behind_count} changes behind {upstream} — "
-                    "verify merge-state claims against remote truth (GIT_DIR=$(jj git root) gh pr view), "
+                    "verify merge-state claims against remote truth (GIT_DIR=\"$(jj git root)\" gh pr view), "
                     "not this workspace"
                 )
         else:
@@ -232,7 +254,12 @@ def main(argv: list[str]) -> int:
     base = repo_root if in_jj else os.getcwd()
     for raw in BACKTICK_RE.findall(body):
         token = normalize_path(raw)
-        if not is_path_candidate(token):
+        rewritten_abs = False
+        if in_jj:
+            before = token
+            token = strip_repo_prefix(token, base)
+            rewritten_abs = token != before
+        if not is_path_candidate(token, known_path=rewritten_abs):
             continue
         check = token
         if token.startswith("../") or "/../" in token:

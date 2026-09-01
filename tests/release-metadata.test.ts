@@ -1,3 +1,4 @@
+import { existsSync } from "fs"
 import { mkdtemp, mkdir, writeFile } from "fs/promises"
 import os from "os"
 import path from "path"
@@ -220,7 +221,7 @@ describe("release metadata", () => {
   })
 
   // The root README carries skill *names* in its grouped overview while
-  // docs/skills/README.md owns the descriptions. That split only holds if the
+  // docs/guides/README.md owns the descriptions. That split only holds if the
   // names and the stated count cannot drift, so both are pinned here rather
   // than left to convention -- the three-way prose sync this replaced had
   // already drifted before anyone noticed.
@@ -233,8 +234,11 @@ describe("release metadata", () => {
     expect(section.length).toBeGreaterThan(0)
 
     const { readdir } = await import("fs/promises")
-    const skills = (await readdir(path.join(process.cwd(), "skills"), { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory())
+    const skillsRoot = path.join(process.cwd(), "skills")
+    const skills = (await readdir(skillsRoot, { withFileTypes: true }))
+      .filter((entry) =>
+        entry.isDirectory() && existsSync(path.join(skillsRoot, entry.name, "SKILL.md"))
+      )
       .map((entry) => entry.name)
       .sort()
 
@@ -257,8 +261,11 @@ describe("release metadata", () => {
   test("every skill count stated in the README matches the skills directory", async () => {
     const readme = await Bun.file(path.join(process.cwd(), "README.md")).text()
     const { readdir } = await import("fs/promises")
-    const skillCount = (await readdir(path.join(process.cwd(), "skills"), { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory()).length
+    const skillsRoot = path.join(process.cwd(), "skills")
+    const skillCount = (await readdir(skillsRoot, { withFileTypes: true }))
+      .filter((entry) =>
+        entry.isDirectory() && existsSync(path.join(skillsRoot, entry.name, "SKILL.md"))
+      ).length
 
     const stated = [
       readme.match(/badge\/skills-(\d+)-/)?.[1],
@@ -268,6 +275,21 @@ describe("release metadata", () => {
 
     expect(stated.every((value) => value !== undefined)).toBe(true)
     expect(stated.map(Number)).toEqual([skillCount, skillCount, skillCount])
+  })
+
+  // Hosts install the repo's skills/ tree as the plugin payload. A sibling
+  // directory without SKILL.md (the #1551 catalog landing under skills/guides)
+  // ships user docs with every install. The catalog lives in docs/guides/.
+  test("skills/ contains only skill directories", async () => {
+    const { readdir } = await import("fs/promises")
+    const skillsRoot = path.join(process.cwd(), "skills")
+    const extras = (await readdir(skillsRoot, { withFileTypes: true }))
+      .filter((entry) =>
+        entry.isDirectory() && !existsSync(path.join(skillsRoot, entry.name, "SKILL.md"))
+      )
+      .map((entry) => entry.name)
+      .sort()
+    expect(extras).toEqual([])
   })
 
   test("builds a stable compound-engineering manifest description", async () => {

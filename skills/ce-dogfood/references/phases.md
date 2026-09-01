@@ -114,7 +114,7 @@ When a scenario fails — or a passing scenario carries a sharp paper cut worth 
 1. Investigate the root cause. If it's non-obvious, use `ce-debug`.
 2. Apply the fix in the code.
 3. **Add an automated regression test** that fails before the fix and passes after, so the bug can't return. This is the default for behavioral and code bugs. When an automated test is genuinely impractical — a pure copy, spacing, or visual fix with no behavioral assertion to make — substitute a documented browser-replay or screenshot check and **state in the report why no automated test was meaningful**. Do not invent a hollow test just to satisfy the step.
-4. Keep one logical fix per JJ change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use `ce-commit` to inspect local history, compose and validate the description, and finish the fix as its own change before the next fix starts.
+4. Keep one logical fix per JJ change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and `git log` syntax win; do not impose a fixed type, scope, prefix, footer, or body template. Use `ce-commit` to inspect local history, compose and validate the description, and finish the fix as its own change before the next fix starts.
 5. Re-run the failing scenario in the browser to confirm it now passes; then continue the matrix.
 6. If the bug carried a reusable lesson, capture it with `ce-compound`.
 

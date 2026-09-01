@@ -17,7 +17,7 @@ It is **spiral-agnostic**: with nothing installed it drafts directly from the ed
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what's available and blocking on no single source:
 
-- **Merged/active PR** — `GIT_DIR=$(jj git root) gh pr view --json title,body,url` (the title and body usually state the user-facing value)
+- **Merged/active PR** — `GIT_DIR="$(jj git root)" gh pr view --json title,body,url` (the title and body usually state the user-facing value)
 - **The diff** — `jj diff --from <main-bookmark> --to @ --stat`, skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
 - **Recent changes** — `jj log -r ::@ -n 15` for the arc of the change

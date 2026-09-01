@@ -122,7 +122,7 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
    ```
 
    Exit 1 flags are **adjudication input, not failures** — a successor doc describing removed code legitimately cites paths that no longer exist. Resolve each flag by fixing the citation, annotating it as historical, or confirming it intentional; always fix scaffold flags. If the script is not resolvable on this platform, scan the body for those same patterns manually and say so in the report.
-5. After the subagent completes, the orchestrator deletes the old learning file and updates any catalog README row that lists the old filename to point at the successor. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional because JJ history and the change description provide the same information. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+5. After the subagent completes, the orchestrator deletes the old learning file and updates any catalog README row that lists the old filename to point at the successor. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional because JJ history and the change description provide the same information. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and `git log` syntax win; do not impose a fixed type, scope, prefix, footer, or body template.
 
 **When evidence is insufficient:**
 

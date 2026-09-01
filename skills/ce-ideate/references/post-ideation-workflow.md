@@ -137,7 +137,7 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a JJ repo:** offer to describe only the ideation doc's change through `ce-commit` (do not create a bookmark or push; if the user declines, leave the change undescribed). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+- **Inside a JJ repo:** offer to describe only the ideation doc's change through `ce-commit` (do not create a bookmark or push; if the user declines, leave the change undescribed). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and `git log` syntax win; do not impose a fixed type, scope, prefix, footer, or body template.
 - **Local `.tmp` or non-repo file:** skip the change-description offer.
 
 Then narrate the path and end the session — do not return to the menu.

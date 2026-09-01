@@ -178,6 +178,8 @@ If yes, it is likely **protocol**. Keep it explicit and falsifiable.
 
 If removal mainly gives a capable model more freedom to reason, it is likely **judgment**. First try deleting it. If the outcome spine already guides the work and the realistic floor does not drift, leave it out. If observed behavior shows the guidance is needed, compress it to the smallest principle or contrast pair that closes the gap.
 
+**A placement or format absolute is protocol-shaped and is usually judgment wearing protocol's clothes.** A rule that constrains where text may sit or what a section may contain — "never part of the opening", "always its own block", "must come after" — is normally a proxy for a coherence condition the author stated correctly right beside it. The proxy agrees with the condition on the cases the author had in mind and forbids the input for which the condition demands the opposite form, so it does not merely miss bad work: an audit built on it instructs a reader to degrade correct work. State the condition and let placement fall out of it, at the one layer that owns the decision; a copy at a site that does not own it makes the shared absolute the only clause every site agrees on. Two tells that the proxy, not the condition, is now the operative rule: the same decision restated at more than one site in a procedure, and a maintainer rejecting output the skill was followed exactly to produce. Absolutes also read differently across hosts — a literal host obeys one where a permissive host treats it as style — so verify a placement rule on both rather than assuming a single-host pass generalizes. Worked case: `state-the-condition-not-a-placement-absolute.md`.
+
 | Usually protocol | Usually judgment |
 |---|---|
 | Output paths and stable file shapes | Long menus of possible reasoning approaches |
@@ -226,6 +228,14 @@ Avoid open-ended instructions such as "continue until good" or "be thorough." De
 Do not request hidden reasoning or chain-of-thought. Ask for decisions, evidence, assumptions, material rejected alternatives, and next actions.
 
 Every skill needs one skill-level done bar. Add local done checks only where skipping the check can produce an unsafe action, fragile transition, scope expansion, mutation, auth mistake, irreversible external effect, or silent handoff failure. A "Done when" on every paragraph is over-prescription, not rigor.
+
+## Instruct long-running execution: batch, narrate, finish
+
+In long agent loops, current models drift in three ways the skill's prose must counter: implied-parallel tool calls get issued one per turn, user-facing narration goes quiet for minutes at a time, and turns end with work described rather than performed. A skill that owns a long-running or orchestrating workflow states all three disciplines; a skill that runs a few calls and returns needs none of them.
+
+- **Batching.** Instruct the agent to first privately list what it needs next, then issue every call that does not depend on another's result in one response. For work dispatched to subagents, the same rule schedules a wave: dispatch every independent unit together, and serialize only where the dependency graph actually demands it — uncertainty is resolved by inspecting the contested files and contracts, not by defaulting to serial.
+- **Narration.** Say what user-facing text the workflow produces and when: a line before a step starts naming what it should produce, brief updates at meaningful boundaries naming what actually happened, and a closing recap that stands on its own. Name the fields each of these carries; "keep the user informed" is an effort instruction, not a contract.
+- **Finishing.** Gate completion claims on performed work: a step is done only after it actually ran, describing what a step would do is not doing it, and the turn does not end while in-scope work remains undone or merely described. Pair this with the skill-level done bar rather than adding per-step ceremony.
 
 ## Describe capabilities before tools
 
@@ -384,6 +394,7 @@ Measure the outcome the skill exists to improve, not proxy volume:
 - [ ] Cross-model output guidance names must-preserve content instead of using blanket "be concise" / "keep it short" slogans.
 - [ ] Vendor guidance conflicts resolve Sol-first for this org's multi-model skills; Fable-only deletions do not strip Sol-critical determinism.
 - [ ] Generic quality exhortations and motivational rationale are absent.
+- [ ] Long-running or orchestrating workflows state batching, narration, and finish-fully discipline; skills that run a few calls and return omit them.
 
 ### Protocol and judgment
 

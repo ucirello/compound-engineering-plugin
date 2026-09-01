@@ -227,9 +227,9 @@ def _fallback_root() -> str:
 
 def _workspace_tmp_path(path: str, label: str) -> str:
     absolute = os.path.abspath(path)
-    allowed = os.path.dirname(_workspace_local_root())
+    allowed = _workspace_local_root()
     if os.path.commonpath([allowed, absolute]) != allowed:
-        raise RunnerError(f"{label} must stay under the active workspace's .tmp directory")
+        raise RunnerError(f"{label} must stay under the active workspace's .tmp/rocketclaw directory")
     return absolute
 
 

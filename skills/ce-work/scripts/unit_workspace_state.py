@@ -55,6 +55,9 @@ VCS_LOCAL_ENV_VARS = frozenset({
     "GIT_GRAFT_FILE",
     "GIT_IMPLICIT_WORK_TREE",
     "GIT_INDEX_FILE",
+    # Older backing-repository clients exported this local variable. Scrub it
+    # so an inherited value cannot leak into unit verification.
+    "GIT_INTERNAL_SUPER_PREFIX",
     "GIT_NO_REPLACE_OBJECTS",
     "GIT_OBJECT_DIRECTORY",
     "GIT_PREFIX",
@@ -125,9 +128,9 @@ def owner_scratch_root() -> str:
 
 def workspace_tmp_path(path: str, label: str) -> str:
     absolute = os.path.abspath(path)
-    allowed = os.path.join(os.path.realpath(jj_workspace_root()), ".tmp")
+    allowed = os.path.join(os.path.realpath(jj_workspace_root()), ".tmp", "rocketclaw")
     if os.path.commonpath([allowed, absolute]) != allowed:
-        raise Operational("REFUSED", f"{label} must stay under the active workspace's .tmp directory")
+        raise Operational("REFUSED", f"{label} must stay under the active workspace's .tmp/rocketclaw directory")
     return absolute
 
 
@@ -537,7 +540,7 @@ def revision_is_ancestor(repo: str, ancestor: str, descendant: str) -> bool:
 
 def describe_change(repo: str, description: str, revision: str = "@") -> dict:
     if not description.strip() or "\0" in description or len(description.encode()) > 65536:
-        raise Operational("REFUSED", "change description must be non-empty, contain no NUL, and be at most 65536 bytes. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.")
+        raise Operational("REFUSED", "change description must be non-empty, contain no NUL, and be at most 65536 bytes. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template.")
     jj(repo, "describe", "-r", revision, "-m", description.rstrip())
     return revision_info(repo, revision)
 
@@ -638,6 +641,7 @@ ROUTE_CONTRACTS = {
     "cursor": {"target": "cursor", "harness": "cursor-agent", "intermediaries": [], "default_model": "auto", "restriction_posture": "adapter-enforced"},
     "composer": {"target": "composer", "harness": "cursor-agent", "intermediaries": ["cursor"], "default_model": "composer-2.5-fast", "restriction_posture": "adapter-enforced"},
     "grok-cursor": {"target": "grok", "harness": "cursor-agent", "intermediaries": ["cursor"], "default_model": "cursor-grok-4.6-high", "restriction_posture": "adapter-enforced"},
+    "opencode": {"target": "opencode", "harness": "opencode", "intermediaries": [], "default_model": "auto", "restriction_posture": "cooperative"},
 }
 
 
@@ -658,6 +662,8 @@ def route_model_allowed(route: str, model: str) -> bool:
         return bool(re.fullmatch(r"composer-[A-Za-z0-9._-]+", model))
     if route == "grok-cursor":
         return bool(re.fullmatch(r"cursor-grok-[A-Za-z0-9._-]+", model))
+    if route == "opencode":
+        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+", model))
     return False
 
 

@@ -29,11 +29,11 @@ Reviewer personas are selected in layers. The persona catalog in `references/per
 
 **Stack-specific conditional (per diff):** `julik-frontend-races-reviewer` (Stimulus/Turbo, DOM events, async UI) and `swift-ios-reviewer` (Swift/SwiftUI/UIKit, entitlements, Core Data, `.pbxproj`).
 
-**CE conditional (migration-specific):** local prompt asset `deployment-verification-agent` — deployment checklist + rollback when the migration gate applies and the change is risky.
+**Conditional (migration-specific):** local prompt asset `deployment-verification-agent` — deployment checklist + rollback when the migration gate applies and the change is risky.
 
 ## Review Scope
 
-A full review always spawns correctness, adds project-standards when applicable files exist, then adds only the generic, cross-cutting, stack-specific, and CE conditionals justified by the diff. `depth:full` disables the small-diff lite path; it does not invent irrelevant domains. A Rails auth feature might add security, reliability, and adversarial while still skipping agent-native and learnings when those surfaces are absent.
+A full review always spawns correctness, adds project-standards when applicable files exist, then adds only the generic, cross-cutting, stack-specific, and plugin conditionals justified by the diff. `depth:full` disables the small-diff lite path; it does not invent irrelevant domains. A Rails auth feature might add security, reliability, and adversarial while still skipping agent-native and learnings when those surfaces are absent.
 
 ## Language-Aware Conditionals
 
@@ -51,7 +51,7 @@ Treat changed persistence writes, event publication, retry/partial-failure behav
 
 **`previous-comments` is PR-only AND comment-gated.** Only select this persona when both conditions hold:
 
-1. Stage 1 gathered PR metadata (PR number or URL was provided as an argument, or `gh pr view` returned metadata for the current branch).
+1. Stage 1 gathered PR metadata (PR number or URL was provided as an argument, or `GIT_DIR="$(jj git root)" gh pr view` returned metadata for the local bookmark on `@`).
 2. `hasPriorComments` from Stage 1 is true (the PR has at least one review submission or issue comment).
 
 Skip it for standalone branch reviews with no associated PR, and skip it for PRs with no prior feedback yet -- there is nothing for the persona to verify, and a spawned subagent that returns empty findings still costs the full subagent startup overhead (persona spec, diff, schema, plus its own gh calls).
@@ -68,7 +68,7 @@ For `deployment-verification-agent`, use the same migration-artifact gate when t
 
 Enumerate the candidates from **the tree under review**, never from whichever tree happens to be checked out: the workspace only in `local-aligned` scope, and the reviewed head ref in `pr-remote` and `branch-remote` (Stage 1 resolved which). A criteria file that exists only in the reviewed tree must appear, and one deleted there must not, or the persona enforces criteria the change never had.
 
-Candidates are `CODING_STANDARDS.md`, `CLAUDE.md`, and `AGENTS.md` at any depth. Keep those whose directory is an ancestor of a changed file — a root-level file governs the whole checkout, `skills/AGENTS.md` only what is under `skills/`.
+Candidates are `CODING_STANDARDS.md`, `CLAUDE.md`, and `AGENTS.md` at any depth. Keep those whose directory is an ancestor of a changed file — a root-level file governs the whole workspace, `skills/AGENTS.md` only what is under `skills/`.
 
 `CODING_STANDARDS.md` is the designated criteria source, so an instruction file supplies criteria only for changed files that no `CODING_STANDARDS.md` governs, and no file is graded against both kinds. Every governing `CODING_STANDARDS.md` still applies together. When the instruction-file fallback supplied the criteria for any changed file, name it as the fallback in Coverage.
 
@@ -102,8 +102,8 @@ Complete this stage **before reading persona prompt assets, `references/dispatch
 Generate the review run ID now so both routes share one artifact directory:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="$PWD";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"; (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;

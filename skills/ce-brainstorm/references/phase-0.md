@@ -56,7 +56,7 @@ Use the feature description plus a light repo scan to classify the work:
 
 If the scope is unclear, ask one targeted question to disambiguate and then proceed; when it stays uncertain, take the heavier tier.
 
-**Lightweight ends in chat.** The result is a paragraph in the synthesis: what is being built, the one or two decisions made, and where they go next (`ce-plan`'s prompt, the commit message). No file is written, and Phase 1.1's scout, Phase 2's approach generation, and Phase 2.6's verifier do not run. A file is earned only by a decision a downstream consumer needs in IDed form, or by the user asking for one; then Phase 3 writes it from the dialogue's decisions, and the Ready for Planning Check covers what the dialogue established.
+**Lightweight ends in chat.** The result is a paragraph in the synthesis: what is being built, the one or two decisions made, and where they go next (`ce-plan`'s prompt, the JJ change description). No file is written, and Phase 1.1's scout, Phase 2's approach generation, and Phase 2.6's verifier do not run. A file is earned only by a decision a downstream consumer needs in IDed form, or by the user asking for one; then Phase 3 writes it from the dialogue's decisions, and the Ready for Planning Check covers what the dialogue established.
 
 **Coherent-work gate.** Before entering Phase 1, check whether the request contains more than one independently plannable product outcome: each has its own user value or acceptance boundary and could be delivered without completing the others. Shared actors, one end-to-end outcome, or coverage across named devices/providers do not by themselves justify a split.
 

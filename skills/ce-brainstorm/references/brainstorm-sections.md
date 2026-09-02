@@ -72,14 +72,14 @@ A brainstorm ends in chat unless a file is earned. A file is earned when the
 dialogue surfaced structural decisions, scope boundaries, or acceptance
 criteria that downstream consumers (planner, reviewer, future reader) need in
 IDed form, or when the user asks for one. Decisions that flow naturally to
-downstream artifacts (`ce-plan`'s prompt, the commit message,
+downstream artifacts (`ce-plan`'s prompt, the JJ change description,
 `<root>/solutions/`) do not earn a file; `phase-0.md` 0.3 states the
 Lightweight case.
 
 **Stress test:** a brainstorm about a tiny bug fix where the user asks "fix
 this with a null check or with upstream validation?" and the agent confirms
 "upstream validation, here's why" doesn't need a brainstorm doc. The
-decision flows to `ce-plan` (or directly to commit message, or to
+decision flows to `ce-plan` (or directly to a JJ change description, or to
 `<root>/solutions/` if it's a pattern worth carrying) without a brainstorm
 artifact in the middle.
 
@@ -414,7 +414,7 @@ Same shape as plan rules.
 - **Repo-relative paths.** Always. Never absolute paths.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to ce-plan, no italic provenance lines. Engineering process
-  metadata belongs in commit messages and tool output, not the artifact.
+  metadata belongs in JJ change descriptions and tool output, not the artifact.
 - **No implementation details by default.** Libraries, schemas, endpoints,
   file layouts, code structure stay out unless the brainstorm itself is
   inherently about a technical or architectural change and those details are

@@ -21,11 +21,15 @@ if [ "${CLAUDECODE:-}" = "1" ]; then XHOST_HARNESS=claude; XHOST_FAMILY=claude;
 elif [ -n "${CODEX_SANDBOX:-}${CODEX_SANDBOX_NETWORK_DISABLED:-}${CODEX_SESSION_ID:-}${CODEX_THREAD_ID:-}${CODEX_CI:-}" ]; then XHOST_HARNESS=codex; XHOST_FAMILY=codex;
 elif [ "${GROK_AGENT:-}" = "1" ] || [ -n "${GROK_SESSION_ID:-}" ]; then XHOST_HARNESS=grok; XHOST_FAMILY=grok;
 elif [ -n "${CURSOR_AGENT:-}${CURSOR_CONVERSATION_ID:-}" ]; then XHOST_HARNESS=cursor; XHOST_FAMILY=unknown;
-elif [ -n "${OPENCODE_TERMINAL:-}" ]; then XHOST_HARNESS=opencode; XHOST_FAMILY=unknown;
+elif [ -n "${OPENCODE_TERMINAL:-}" ]; then
+  case "$(ps -p "${PPID:-0}" -o comm= 2>/dev/null)" in
+    *opencode2*) XHOST_HARNESS=opencode2; XHOST_FAMILY=unknown ;;
+    *) XHOST_HARNESS=opencode; XHOST_FAMILY=unknown ;;
+  esac
 else XHOST_HARNESS=unknown; XHOST_FAMILY=unknown; fi
 ```
 
-Pass `XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; pass `XHOST_FAMILY` as the first worker argument. The snippet is evidence, not the verdict: it resolves the harnesses whose environment markers it already names, and where it yields `unknown` on a harness you can identify from your own runtime, attest what you know instead. A harness the snippet does not name needs no new branch here. Both tokens come from the peer-key vocabulary the worker accepts, never a provider's corporate name — family `codex`, `claude`, `grok`, `composer`, or `unknown`; harness `codex`, `claude`, `grok`, `cursor`, `opencode`, or `unknown` — and a name such as `anthropic`, `openai`, or `xai` in either slot fail-closes the job with no artifact.
+Pass `XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; pass `XHOST_FAMILY` as the first worker argument. The snippet is evidence, not the verdict: it resolves the harnesses whose environment markers it already names, and where it yields `unknown` on a harness you can identify from your own runtime, attest what you know instead. A harness the snippet does not name needs no new branch here. Both tokens come from the peer-key vocabulary the worker accepts, never a provider's corporate name — family `codex`, `claude`, `grok`, `composer`, or `unknown`; harness `codex`, `claude`, `grok`, `cursor`, `opencode`, `opencode2`, or `unknown` — and a name such as `anthropic`, `openai`, or `xai` in either slot fail-closes the job with no artifact.
 
 Cursor is the one identity self-knowledge cannot complete, because the harness does not determine the serving model: it keeps family `unknown` unless an observable serving-family attestation supplies `codex`, `claude`, `grok`, or `composer`. Never infer serving family from the Cursor brand. An unknown host family cannot satisfy automatic same-family exclusion, so skip the automatic cross-model pass.
 
@@ -56,6 +60,7 @@ Before content egresses, resolve each selected target to one concrete installed 
 | `cursor` | `cursor` |
 | `composer` | `composer` |
 | `opencode` | `opencode` |
+| `opencode2` | `opencode2` |
 
 The host harness does not choose the Grok route. Target `grok` binds `grok-cli` when that CLI is installed. Bind `grok-cursor` only when the user asked for Grok through Cursor, or when the grok CLI is absent and Cursor is a sanctioned recipient.
 
@@ -137,7 +142,7 @@ The nested windows are one budget with one knob, `CROSS_MODEL_HARD_SECS`. The ru
 Omit `--result-path`; `done` means only that the worker exited. The fixed target determines the expected `<reviewer-name>-<target>.json` filename.
 
 - `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`, or `unknown`.
-- `<target>` is exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, or `opencode`; `<fixed-route>` is its already-sanctioned concrete route token from the Step 1 table (`codex`, `claude`, `grok-cli`, `grok-cursor`, `cursor`, `composer`, or `opencode`).
+- `<target>` is exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, `opencode`, or `opencode2`; `<fixed-route>` is its already-sanctioned concrete route token from the Step 1 table (`codex`, `claude`, `grok-cli`, `grok-cursor`, `cursor`, `composer`, `opencode`, or `opencode2`).
 - `<reviewer-name>` = the activated lens (`security-lens`, `adversarial`, or `product-lens`). The script derives the persona-brief filename and (per provider) model from this allowlisted value — the brief path is never caller-controlled.
 - `<document-path>` = the document under review.
 - `<document-type>` = the Phase 1 classification (`requirements` / `plan` / `unified-requirements` / `unified-plan`).
@@ -181,3 +186,5 @@ The cross-model pass does **not** receive the accumulated decision primer that i
 The script embeds the **full document content** into the peer prompt and sends it to an external model provider (OpenAI, Anthropic, xAI, or Cursor, depending on the resolved peer). This is a wider egress than a diff-only review. `CROSS_MODEL_PEERS` restricts which providers may receive content. The peer runs strictly read-only, from an empty scratch run-dir, with no project context — every route denies writes, network, MCP, and subagents. On **reads** the routes split into two tiers: **truly tool-less** — claude (`--safe-mode --tools ""`, all built-in tools disabled and custom behavior suppressed, run from the scratch dir) and grok (`--deny Read`/`Edit`/`Write`/`Bash`/`Task`/web/`mcp__*` with `--cwd <scratch>`), which have no read tool at all; and **read-only residual** — codex (`-s read-only -C <scratch>`) and cursor-agent (`--mode ask --sandbox enabled --workspace <scratch>`), which still permit *read* tools (see the accepted residual below). Impact is bounded to disclosure, not repo mutation — and because the reviewed document is the maintainer's own and the host agent already has more repo access than any peer, the read residual adds no material exposure.
 
 **Accepted read residual (codex + cursor-agent routes):** codex (`-s read-only`) and cursor-agent (`--mode ask`) are read-only but retain a *read* tool — codex can also run read-only shell commands and read outside the scratch dir; cursor-agent can Read. Neither can be made truly tool-less (read-only is codex's sandbox floor; ask-mode is cursor-agent's), so they are a weaker isolation posture than the tool-less claude/grok routes. This is an **accepted** risk for ce-doc-review's own-document threat model — the reviewed documents are the maintainer's own planning docs (low injection surface), and the host agent already runs in-repo with strictly more privilege than any peer, so a peer that can read a file the host could already read (and send it to a provider the document already egresses to) adds no materially new exposure. The routes are kept, not fail-closed; the script's stderr audit log records each send so the egress is auditable even in non-interactive mode.
+
+- **opencode2:** Distinct from `opencode`; not backward compatible. Binary `opencode2`; `opencode2 run --standalone --format json --file ... --model provider/model#variant`. No `--dir`, no `--variant`, no v1 `OPENCODE_CONFIG_CONTENT` denylist. CWD is the handoff directory. Review/elevation: do not pass `--auto` (cooperative read-only). Work engine: pass `--auto`.

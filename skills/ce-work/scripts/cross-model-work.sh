@@ -6,7 +6,7 @@
 # Usage:
 #   cross-model-work.sh <authorization-json> <workspace> <unit-packet> <expected-packet-sha256> <result-dir>
 #
-# Routes: codex | claude | grok-cli | cursor | composer | grok-cursor | opencode
+# Routes: codex | claude | grok-cli | cursor | composer | grok-cursor | opencode | opencode2
 # Output: <result-dir>/implementation-result.json and redacted adapter.log
 # Exit: 0 host-resolvable terminal result, 1 failed/schema-invalid, 2 unavailable
 #
@@ -35,6 +35,7 @@ route_target() {
     codex|claude|cursor|composer) printf '%s' "$1" ;;
     grok-cli|grok-cursor) printf 'grok' ;;
     opencode) printf 'opencode' ;;
+    opencode2) printf 'opencode2' ;;
     *) return 1 ;;
   esac
 }
@@ -46,6 +47,7 @@ route_harness() {
     grok-cli) printf 'grok' ;;
     cursor|composer|grok-cursor) printf 'cursor-agent' ;;
     opencode) printf 'opencode' ;;
+    opencode2) printf 'opencode2' ;;
     *) return 1 ;;
   esac
 }
@@ -66,6 +68,7 @@ route_model() {
     grok-cursor) printf '%s' "$M_GROK_CURSOR" ;;
     composer) printf '%s' "$M_COMPOSER" ;;
     opencode) printf 'auto' ;;
+    opencode2) printf 'auto' ;;
   esac
 }
 
@@ -73,7 +76,7 @@ validate_model_override() {
   local route="$1" override="${CE_WORK_MODEL_OVERRIDE:-}" override_target="${CE_WORK_MODEL_OVERRIDE_TARGET:-}" target override_lower
   [ -n "$override" ] || { [ -z "$override_target" ]; return; }
   case "$override_target" in
-    codex|claude|grok|cursor|composer|opencode) ;;
+    codex|claude|grok|cursor|composer|opencode|opencode2) ;;
     *) return 1 ;;
   esac
   target="$(route_target "$route")" || return 1
@@ -90,7 +93,7 @@ validate_model_override() {
     esac
   fi
   case "$route:$override" in
-    codex:gpt-*|codex:o[0-9]*|claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|composer:composer-*|opencode:*/*) ;;
+    codex:gpt-*|codex:o[0-9]*|claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|composer:composer-*|opencode:*/*|opencode2:*/*) ;;
     *) return 1 ;;
   esac
 }
@@ -143,6 +146,10 @@ adapter_argv() {
       printf '%s\0' opencode run --dir "$WORKSPACE" --format json --auto --file "$PROMPT_FILE"
       printf '%s\0' "Follow the attached unit packet. Return only the implementation result JSON."
       [ "$(route_model opencode)" = auto ] || printf '%s\0' --model "$(route_model opencode)"
+      ;;
+    opencode2)
+      printf '%s\0' bash -c 'cd "$1" && shift && exec "$@"' _ "$WORKSPACE" opencode2 run --standalone --auto --format json --file "$PROMPT_FILE"
+      [ "$(route_model opencode2)" = auto ] || printf '%s\0' --model "$(route_model opencode2)"
       ;;
     *) return 1 ;;
   esac
@@ -230,6 +237,7 @@ contracts = {
     "composer": ("composer", "cursor-agent", ["cursor"], "adapter-enforced"),
     "grok-cursor": ("grok", "cursor-agent", ["cursor"], "adapter-enforced"),
     "opencode": ("opencode", "opencode", [], "cooperative"),
+    "opencode2": ("opencode2", "opencode2", [], "cooperative"),
 }
 
 def fail(message):
@@ -255,6 +263,8 @@ def model_allowed(route, model):
         return bool(re.fullmatch(r"cursor-grok-[A-Za-z0-9._-]+", model))
     if route == "opencode":
         return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+", model))
+    if route == "opencode2":
+        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(#[A-Za-z0-9._-]+)?", model))
     return False
 
 try:
@@ -674,6 +684,10 @@ if [ "${CE_WORK_REQUIRE_ENFORCED_CONFINEMENT:-}" = "1" ]; then
       publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
       exit 2
       ;;
+    opencode2)
+      publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
+      exit 2
+      ;;
   esac
 fi
 
@@ -683,6 +697,7 @@ case "$ROUTE" in
   grok-cli) BINARY=grok ;;
   cursor|composer|grok-cursor) BINARY=cursor-agent ;;
   opencode) BINARY=opencode ;;
+  opencode2) BINARY=opencode2 ;;
 esac
 # The Codex desktop app (Codex.app, or ChatGPT.app since the July 2026 merger)
 # ships `codex` at Contents/Resources without linking it onto PATH (#1272).
@@ -720,6 +735,8 @@ case "$ROUTE" in
   opencode)
     [ -n "${OPENCODE_CONFIG_DIR:-}" ] && MIN_ENV+=("OPENCODE_CONFIG_DIR=$OPENCODE_CONFIG_DIR")
     [ -n "${OPENCODE_CONFIG:-}" ] && MIN_ENV+=("OPENCODE_CONFIG=$OPENCODE_CONFIG")
+    ;;
+  opencode2)
     ;;
   cursor|composer|grok-cursor)
     [ -n "${CURSOR_CONFIG_DIR:-}" ] && MIN_ENV+=("CURSOR_CONFIG_DIR=$CURSOR_CONFIG_DIR")
@@ -879,6 +896,18 @@ def normalize_served_model(value):
 try: raw=open(source, encoding="utf-8", errors="replace").read()
 except OSError: raw=""
 if route == "opencode":
+    parts=[]
+    for line in raw.splitlines():
+        try: event=json.loads(line)
+        except Exception: continue
+        if not isinstance(event, dict) or event.get("type") != "text":
+            continue
+        part=event.get("part") if isinstance(event.get("part"), dict) else {}
+        chunk=part.get("text") if isinstance(part.get("text"), str) else None
+        if chunk:
+            parts.append(chunk)
+    worker=parse_text("".join(parts)) if parts else None
+elif route == "opencode2":
     parts=[]
     for line in raw.splitlines():
         try: event=json.loads(line)

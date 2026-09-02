@@ -4,7 +4,7 @@ Load this reference only after the cross-model engine is selected or recovery of
 
 ## Resolve One Route
 
-Use only the existing `codex`, `claude`, `grok`, `cursor`, `composer`, and `opencode` targets. Keep target, serving route, requested model, actual model, and receipt status separate. The controller route tokens remain `codex`, `claude`, `grok-cli`, `cursor`, `composer`, `grok-cursor`, and `opencode`; they preserve the existing provider mappings and intermediary restrictions.
+Use only the existing `codex`, `claude`, `grok`, `cursor`, `composer`, `opencode`, and `opencode2` targets. Keep target, serving route, requested model, actual model, and receipt status separate. The controller route tokens remain `codex`, `claude`, `grok-cli`, `cursor`, `composer`, `grok-cursor`, `opencode`, and `opencode2`; they preserve the existing provider mappings and intermediary restrictions.
 
 - `cursor` means the Cursor harness with its configured default model.
 - `composer` means a Composer-family model through Cursor.

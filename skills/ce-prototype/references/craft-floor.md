@@ -23,16 +23,9 @@ Read the rendered result before handing it over — measured, not assumed. A sty
 
 ## Make it specific, not only clean
 
-A surface can clear every item above and still be a template — the arrangement any product would get for any subject. That is the failure this floor exists to catch, so judge specificity as well as cleanliness.
+A surface can clear every item above and still be generic — an arrangement that could belong to any product or subject. That is the failure this floor exists to catch, so judge specificity as well as cleanliness.
 
-Treat these as evidence the arrangement was reached for rather than chosen, and rework rather than soften:
-
-- A full-width opening block with a centered headline, a subhead, and two buttons.
-- A row of equal cards, each an icon in a circle above a heading and a line of text.
-- A gradient behind headline text.
-- Small uppercase letter-spaced labels above every section.
-- One corner radius applied to every surface regardless of what the surface is.
-- A numbered sequence over things that are not a sequence.
+Rework any arrangement whose hierarchy, grouping, decoration, or sequence comes from a reusable presentation pattern rather than this product's content and interaction. Follow the product's local visual language instead of importing a fixed template.
 
 The test: with the product's name and copy removed, could a reader tell which product this is? If the honest answer is no, the direction has not been decided yet.
 

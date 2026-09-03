@@ -1,12 +1,12 @@
 # Prepare the live polish loop
 
-This reference owns checkout safety, server startup, reachability, and browser handoff. It does not own the user's iterative polish decisions.
+This reference owns workspace safety, server startup, reachability, and browser handoff. It does not own the user's iterative polish decisions.
 
 ## Resolve the workspace
 
-If the user named a PR or branch, first locate whether its branch is already checked out in a worktree. Enter that existing worktree when the harness can; if it cannot, report the blocker and stop. Only use the harness's checkout capability in the current workspace when no other worktree owns the target. With no argument, stay in the current checkout.
+If the user named a PR or bookmark, first locate the corresponding revision and inspect `jj workspace list` for a workspace already editing it. Enter that workspace when the harness can; if it cannot, report the blocker and stop. When no workspace owns the target, use the harness's workspace capability or `jj workspace add <destination> --revision <revision>` without moving another workspace's working-copy change. With no argument, stay in the current workspace.
 
-Confirm the resulting branch is neither the repository's default branch nor detached. Report and stop when a safe feature-branch workspace cannot be reached; do not create another worktree behind the harness or move uncommitted user changes.
+Confirm the working-copy revision is mutable and is not the repository's default bookmark target. Report and stop when a safe feature workspace cannot be reached; do not move or rewrite another workspace's working-copy change.
 
 ## Resolve the start command
 
@@ -48,16 +48,16 @@ Startup may proceed only when the tuple has a usable command, working directory,
 
 ## Start and hand off
 
-Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mktemp -d "${TMPDIR:-/tmp}/ce-polish-XXXXXX"`.
+Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle. Resolve the workspace root with `jj workspace root`; when Jujutsu is unavailable, use the current local directory. Create an owner-private unique directory under `<resolved-root>/.tmp/rocketclaw/ce-polish/` and write the server output there.
 
-An occupied port that cannot be attributed to the intended project server remains an unresolved collision. Ask the user whether to stop that process, choose another port, or stop this run; never kill it or launch past it.
+An occupied port that cannot be linked by evidence to the intended project server remains an unresolved collision. Ask the user whether to stop that process, choose another port, or stop this run; never kill it or launch past it.
 
-Resolve the selected instance's actual URL before handoff. The resolved port seeds `http://localhost:<port>` as the default candidate, but server output or a user correction replaces that candidate when it identifies a different URL. Attribute successful reachability at the resolved actual URL to the selected instance by probing for up to 30 seconds; a response from another process is not success.
+Resolve the selected instance's actual URL before handoff. The resolved port seeds `http://localhost:<port>` as the default candidate, but server output or a user correction replaces that candidate when it identifies a different URL. Link successful reachability at the resolved actual URL to the selected instance by probing for up to 30 seconds; a response from another process is not success.
 
 - **Reachable:** use the browser-opening capability already exposed by the active harness with the verified actual URL. If it has none or the handoff fails, print that URL; browser handoff is a convenience, not a gate.
 - **Not reachable:** show diagnostics derived from the selected instance. Include the last 20 log lines only when this run launched it and owns those logs. Ask whether to correct the server URL or start configuration, or stop.
 
-Do not continue into the polish loop unless reachability is attributed to the selected instance.
+Do not continue into the polish loop unless evidence links reachability to the selected instance.
 
 Tell the user:
 

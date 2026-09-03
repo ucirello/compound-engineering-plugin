@@ -2,6 +2,8 @@
 
 Required read before dispatching any query.
 
+Preserve the report's required facts and human or research-source attribution. Do not add project or workflow branding, generated-by text, visual badges, or creator, model, provider, tool, agent, harness, runtime, workflow, or co-author attribution.
+
 Before dispatching, make sure the `pulse_*` values in hand are current: if the interview just ran, re-apply the ordinary-key cascade (local then tracked) so edits accepted during its review step are picked up.
 
 ## Dispatch

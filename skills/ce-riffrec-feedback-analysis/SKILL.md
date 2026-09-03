@@ -26,8 +26,8 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 
 ## Common rules
 
-- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not commit `raw/` or `frames/` directories unless the user explicitly asks and privacy is acceptable.
-- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may be committed when they are needed for traceability and contain no sensitive data.
-- Use repo-relative screenshot paths in any committed doc so later agents can open the evidence without absolute local paths.
+- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not include `raw/` or `frames/` in a lasting JJ change unless the user explicitly asks and privacy is acceptable.
+- Text and metadata artifacts may remain in a described JJ change when traceability needs them and they contain no sensitive data.
+- Use workspace-relative screenshot paths in any retained document so later agents can open the evidence without absolute local paths.
 
-The Compound Engineering output format used by the extensive path is documented in `references/compound-engineering-feedback-format.md`.
+The output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.

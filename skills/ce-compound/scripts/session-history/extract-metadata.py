@@ -32,7 +32,7 @@ def try_claude(lines):
         if result is None and obj.get("type") == "user" and "gitBranch" in obj:
             result = {
                 "platform": "claude",
-                "branch": obj["gitBranch"],
+                "legacy_branch": obj["gitBranch"],
                 "ts": obj.get("timestamp", ""),
                 "session": obj.get("sessionId", ""),
             }
@@ -362,7 +362,7 @@ def count_keyword_matches(filepath, keywords):
     """Case-insensitive substring count for each keyword in user/assistant text.
 
     Returns a dict {original_keyword: count}. Scans only content the user or
-    assistant said — not JSONL metadata, tool calls, tool outputs, or thinking
+    assistant said, not JSONL metadata, tool calls, tool outputs, or thinking
     blocks — so common topic words like "session" do not false-match against
     the sessionId field.
     """

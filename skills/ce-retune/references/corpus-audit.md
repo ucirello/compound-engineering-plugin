@@ -16,13 +16,13 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite — grep a distinctive substring of the target text.
-3. Version history — `git log -S '<substring>'` for the commit that introduced the line, then read that commit message and the PR it belongs to.
+3. Version history — use `jj log -r 'diff_lines_added(substring:"<distinctive substring>")'` to find the revision that introduced the line, then read that change description and its PR when one exists.
 
-Source 3 is unavailable in a corpus checkout with no history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a checkout that has history, or record the whole audit's provenance basis as partial.
+Source 3 is unavailable in a corpus copy with no JJ history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone — that combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a JJ workspace that has history, or record the whole audit's provenance basis as partial.
 
 **Pipeline the waves.** Start a unit's defense as soon as its proposal set returns; do not wait for wave 1 to finish — the two waves share no state across units. It is 2N dispatches on N units, so plan the wave count against the host's concurrency cap (`references/workflow-shapes.md`).
 
-Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a commit message returns "no provenance found" for everything, which silently converts the audit into a demolition.
+Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a JJ change description returns "no provenance found" for everything, which silently converts the audit into a demolition.
 
 ## Finding schema
 
@@ -70,7 +70,7 @@ Exactly three, one per finding:
 
 - **`cut`** — a real search over all three sources found no provenance. The proposal stands.
 - **`reduce`** — the constraint is real and the prose states it at several times the length needed. The defender returns the minimal form that preserves the constraint.
-- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a commit that added it to fix a named bug. The ruling must carry the citation — path, test name, or sha.
+- **`keep`** — concrete citable provenance a capable model could not infer: a test asserting it, a documented learning, or a revision that added it to fix a named bug. The ruling must carry the citation: path, test name, change ID, or commit ID.
 
 A defender returns one row per finding, in these fields, and nothing else:
 
@@ -125,4 +125,4 @@ Expect roughly half of `reduce` items to be pinned by a test asserting exact str
 - **A cut with no provenance found after a real search is a confident cut. A cut the defender saves with a citation is off the list.** Do not relitigate a defended keep.
 - **Absence of evidence is weaker than the project's own standard for a change.** Where the guidance requires a reproduced failure or an exact failing path, a search that found nothing is a verification task, not a change. Say which of your cuts rest on that weaker basis.
 
-Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite — **defend the existing prose** using the project's own documented learnings, its tests, and git history. Expect the audit to contradict the premise you started with. That is its value.
+Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite — **defend the existing prose** using the project's own documented learnings, its tests, and JJ history. Expect the audit to contradict the premise you started with. That is its value.

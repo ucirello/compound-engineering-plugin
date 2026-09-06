@@ -60,10 +60,10 @@ the artifact's native format while preserving its existing structure.
 Use the Write tool to save the complete plan to the resolved format's extension:
 
 ```text
-<root>/plans/YYYY-MM-DD-HHMM-<type>-<descriptive-name>-plan.<md|html>
+<root>/plans/<project-conventional-plan-name>.<md|html>
 ```
 
-Extension follows `OUTPUT_FORMAT` from Phase 0.0 — `.md` when markdown, `.html` when HTML. The filename prefix is the local wall-clock time at write, so ordering comes from the clock rather than a daily counter. Reserve the final path atomically; when creating a new artifact, an exact-path collision retries with the smallest available numeric suffix rather than overwriting. Explicit format conversion is not a new artifact and is exempt from that suffix: it keeps the existing basename, changes only the extension, and writes that exact sibling path, updating it in place when it already exists. A suffixed conversion output would break the same-basename staleness signal Phase 0.2 and `ce-work` discovery depend on.
+Extension follows `OUTPUT_FORMAT` from Phase 0.0 — `.md` when markdown, `.html` when HTML. Derive the filename shape from the project's runtime convention, using dynamic placeholders for any timestamp or change-kind component rather than a fixed prefix template. Reserve the final path atomically; when creating a new artifact, an exact-path collision retries with the smallest available numeric suffix rather than overwriting. Explicit format conversion is not a new artifact and is exempt from that suffix: it keeps the existing basename, changes only the extension, and writes that exact sibling path, updating it in place when it already exists. A suffixed conversion output would break the same-basename staleness signal Phase 0.2 and `ce-work` discovery depend on.
 
 Compose the plan using the content from `references/plan-sections.md` and the format-specific principles from the rendering reference loaded at Phase 0.0 (`markdown-rendering.md` OR `html-rendering.md`).
 
@@ -74,8 +74,8 @@ Write the unified plan artifact according to `references/plan-sections.md`.
 - If the source is a requirements-only unified plan, update that file in place unless `OUTPUT_FORMAT`, pipeline mode, or an explicit conversion requires a new canonical path. Preserve Product Contract meaning and stable IDs under Phase 0.3 step 3; sanctioned meaning-preserving restructuring remains allowed and carries its preservation-note and citation-repointing obligations. Add Planning Contract, Implementation Units, Verification Contract, and Definition of Done. When a new canonical path *is* required (format conversion), the original artifact is left in place but is **no longer canonical** — it keeps its `requirements-only` metadata, so discovery treats a requirements-only artifact that has an implementation-ready same-basename sibling as superseded (see Phase 0.2 step 2 and `ce-work`'s blank-invocation discovery) rather than re-enriching or stopping on it.
 - If the source is a legacy requirements doc, create a new unified plan in `<root>/plans/` and carry the legacy path in `origin:`.
 - If this is direct planning, create a complete unified plan in `<root>/plans/` with `product_contract_source: ce-plan-bootstrap`.
-- Set `artifact_contract: ce-unified-plan/v1`, `artifact_readiness: implementation-ready`, and `execution: code` for software implementation plans.
-- Do not set `artifact_contract: ce-unified-plan/v1` on universal-planning outputs, answer-seeking outputs, or approach-plans unless they include the full software implementation contract.
+- Set `artifact_contract: unified-plan/v1`, `artifact_readiness: implementation-ready`, and `execution: code` for software implementation plans.
+- Do not set `artifact_contract: unified-plan/v1` on universal-planning outputs, answer-seeking outputs, or approach-plans unless they include the full software implementation contract.
 - Do not write a launch prompt into the doc. The launch prompt is generated at handoff (Phase 5.4 menu — `/goal` copy-paste on Claude Code, `create_goal` on Codex) from the plan's current content, so it never goes stale; it points to Goal Capsule, Verification Contract, Definition of Done, and U-IDs rather than duplicating them.
 
 **Session-settled decisions at plan-write.** A settled *planning* decision (a how-level choice made this session) is authored as a numbered, labeled Key Technical Decision carrying the annotation `(session-settled: user-directed — chosen over <alternative>: <one-line reason>)` (class per `references/settled-decisions.md`: `user-directed` or `user-approved`). A settled *product* decision already lives on its Product Contract Key Decision with `Governs R…` links — do **not** mirror it into a KTD; a KTD that makes the how-level choice instantiating it inherits the label and cites the governed R-IDs.
@@ -98,7 +98,7 @@ A deepen run enters here from Phase 0.1 without passing intake. For a material D
 
 Auto mode is the default during plan generation and synthesizes subagent findings directly into the plan. Interactive mode is activated by the Phase 0.1 re-deepen fast path and presents each finding for the user to accept or reject. Pipeline runs always use auto mode.
 
-Interactive mode exists because on-demand deepening is a different user posture — the user already has a plan they are invested in and wants to be surgical about what changes. This applies whether the plan was generated by this skill, written by hand, or produced by another tool.
+Interactive mode exists because on-demand deepening is a different user posture — the user already has a plan they are invested in and wants to be surgical about what changes. This includes hand-written plans.
 
 ##### 5.3.1 Classify Plan Depth and Topic Risk
 

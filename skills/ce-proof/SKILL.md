@@ -26,7 +26,7 @@ Delete authority is unchanged in MCP mode. An unclaimed doc still needs its `own
 
 ## Identity
 
-Every write is attributed with both fields, and they do not vary. The machine ID is `ai:compound-engineering`, sent as `by` on every op and as the `X-Agent-Id` header. The display name is `Compound Engineering`, sent as `name` on `POST /presence`, set once per doc session so Proof binds it to that agent ID. A caller may pass a different `identity` pair when a distinct sub-agent should own the doc. Never improvise a variant such as `ai:compound`.
+Every write is attributed with both fields, and they do not vary. The machine ID is `ai:assistant`, sent as `by` on every op and as the `X-Agent-Id` header. The display name is `AI Assistant`, sent as `name` on `POST /presence`, set once per doc session so Proof binds it to that agent ID. A caller may pass a different `identity` pair when a distinct sub-agent should own the doc. Never improvise another default identity.
 
 ## Credentials and boundaries
 

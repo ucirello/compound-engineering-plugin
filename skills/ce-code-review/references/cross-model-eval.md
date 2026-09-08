@@ -1,10 +1,10 @@
-# Cross-Model Adversarial Pass — Skill-Creator Eval Spec
+# Cross-Model Adversarial Pass Eval Spec
 
 This is the load-bearing behavioral eval for ce-code-review's cross-model
 adversarial pass. Deterministic route tests cover the worker; these cases cover
 the SKILL.md/reference orchestration that only a fresh agent can execute. Inject
 the current `SKILL.md`, `references/cross-model-review.md`, and the relevant
-Stage 5 synthesis prose through the `skill-creator` workflow. Run on Claude Code
+Stage 5 synthesis prose through a fresh-agent evaluation workflow. Run on Claude Code
 and Codex with fake peer CLIs first on PATH.
 
 ## Eval cases

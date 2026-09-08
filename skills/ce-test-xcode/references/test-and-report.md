@@ -4,10 +4,10 @@ This reference owns evidence collection after the app launches.
 
 ## Exercise the requested surfaces
 
-Derive the key screens and flows from the user's request and the changed iOS surface. For each one:
+Derive the key screens and flows from the user's request and the changed iOS surface identified through the JJ evidence gathered during setup. For each one:
 
 - Navigate through the running app and record what was exercised.
-- Capture a descriptively named screenshot of the resulting state.
+- Capture a descriptively named screenshot of the resulting state in the run's evidence directory.
 - Check that expected content and controls render without visible error or broken layout.
 - Read the captured simulator logs for crashes, exceptions, error-level messages, and failed network requests attributable to the flow.
 
@@ -33,12 +33,12 @@ State the exact action and expected observation, then ask whether it worked. Sta
 
 For a failed screen or flow, preserve its screenshot, relevant logs, and reproduction steps. Ask whether to investigate now or continue testing the remaining scope without investigation. That routing choice does not change the observed `FAIL`.
 
-- **Investigate now:** invoke `ce-debug` with the failure evidence and simulator reproduction context. Narrow its inherited authority to diagnosis and any fix the user approves at `ce-debug`'s informed fix gate, with no commit, push, or PR authority. Let it complete its owned quality and summary work, then return here. Only an applied fix triggers rebuild and retest. Derive any replacement status from the completed retest evidence; until that evidence exists, retain `FAIL` and continue the remaining scoped checks.
+- **Investigate now:** invoke `ce-debug` with the failure evidence and simulator reproduction context. Narrow its inherited authority to diagnosis and any fix the user approves at `ce-debug`'s informed fix gate, with no authority to describe, finalize, bookmark, or publish a JJ change or open a PR. Let it complete its owned quality and summary work, then return here. Only an applied fix triggers rebuild and retest. Derive any replacement status from the completed retest evidence; until that evidence exists, retain `FAIL` and continue the remaining scoped checks.
 - **Continue without investigation:** retain `FAIL`, preserve the observed failure evidence in its notes, and proceed with the rest of the scoped checks.
 
 ## Cleanup and summary
 
-Stop the log capture started by this run. Leave a simulator that was already booted as found; a simulator booted only for this run may be shut down after evidence is saved.
+Stop the log capture started by this run and save its relevant output in the run's evidence directory. Leave a simulator that was already booted as found; a simulator booted only for this run may be shut down after evidence is saved.
 
 Report these fields, omitting no field even when its value is `None` or `0`:
 
@@ -51,6 +51,7 @@ Roll up the evidence statuses: any residual `FAIL` makes the result `FAIL`; othe
 **Scheme:** <scheme>
 **Simulator:** <name>
 **Build:** Success | Failed
+**Evidence directory:** <workspace-root>/.tmp/rocketclaw/ce-test-xcode/<run-id>
 **Screens tested:** <count>
 
 | Screen or flow | Status | Evidence / notes |

@@ -55,14 +55,14 @@ No additional required fields beyond the shared ones. All fields below are optio
 
 ## Optional Fields (bug track only)
 
-- **framework_version**: Framework or runtime name and version the bug was observed on, e.g. `rails 7.1.2` or `node 22.4.0`
+- **framework_version**: Framework or runtime name and version the bug was observed on
 
 ## Backward Compatibility
 
 Docs created before the track system may have `symptoms`/`root_cause`/`resolution_type` on knowledge-type problem_types. These are valid legacy docs:
 
 - Bug-track fields present on a knowledge-track doc are harmless. Do not strip them during refresh unless the doc is being rewritten for other reasons.
-- Docs written before `component`/`root_cause` became open vocabulary may carry values from the earlier closed list or the earlier `rails_version` field (now `framework_version`). They stay valid, and a corpus that consistently uses them keeps using them.
+- Docs written before `component`/`root_cause` became open vocabulary may carry values from an earlier closed list or legacy framework-version field. They stay valid, and a corpus that consistently uses them keeps using them.
 - When creating **new** docs, follow the track rules above.
 
 ## Category Mapping
@@ -113,15 +113,15 @@ double quotes if it starts with any of:
 Also quote if the value contains the substring `": "` — that punctuation
 confuses flow-style parsers.
 
-Example — before (breaks strict YAML):
+Neutral invalid shape:
 
     symptoms:
-      - `sudo dscacheutil -flushcache` does not restore in-container mDNS
+      - [reserved-indicator-leading value]
 
-Example — after (parses cleanly):
+Neutral valid shape:
 
     symptoms:
-      - "`sudo dscacheutil -flushcache` does not restore in-container mDNS"
+      - "[reserved-indicator-leading value]"
 
 This rule applies to all array-of-strings frontmatter fields. Scalar string
 fields like `description:` have their own quoting rules (see plugin

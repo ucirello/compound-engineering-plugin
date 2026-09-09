@@ -11,7 +11,7 @@ Emit a structured terminal report and end the turn. No "What's next?" question, 
 For `depth:lightweight`, use this lower-overhead report after the Lightweight Mode workflow:
 
 ```
-✓ Documentation complete (non-interactive lightweight mode)
+Documentation complete (non-interactive lightweight mode)
 
 File: <root>/solutions/<category>/<filename>.md  (created | updated)
 Track: <bug | knowledge>
@@ -28,7 +28,7 @@ Documentation complete
 For `depth:full` or backward-compatible non-interactive calls with no depth token, use the Full report:
 
 ```
-✓ Documentation complete (non-interactive mode)
+Documentation complete (non-interactive mode)
 
 File: <root>/solutions/<category>/<filename>.md  (created | updated)
 Track: <bug | knowledge>
@@ -45,7 +45,7 @@ Documentation complete
 When no doc was written (e.g., non-interactive invoked on a session where the problem is not yet solved), emit a structured failure instead and end with `Documentation skipped` so callers can distinguish success from no-op:
 
 ```
-✗ Documentation skipped (non-interactive mode)
+Documentation skipped (non-interactive mode)
 
 Reason: <one-sentence explanation — e.g., "no solved problem detected in
 conversation history" or "solution not yet verified">
@@ -56,24 +56,24 @@ Documentation skipped
 ### Interactive mode
 
 ```
-✓ Documentation complete
+Documentation complete
 
 Ran Full mode.
 Auto memory: 2 relevant entries used as supplementary evidence
 
 Subagent Results:
-  ✓ Context Analyzer: Identified performance_issue in background_job (component from corpus), category: performance-issues/
-  ✓ Solution Extractor: 3 code fixes, prevention strategies
-  ✓ Related Docs Finder: 2 related issues
-  ✓ Session History: 3 prior sessions on same branch, 2 failed approaches surfaced
+  Context Analyzer: Identified performance_issue in background_job (component from corpus), category: performance-issues/
+  Solution Extractor: 3 code fixes, prevention strategies
+  Related Docs Finder: 2 related issues
+  Session History: 3 prior sessions on the same line of work, 2 failed approaches surfaced
 
 Grounding Validation:
-  ✓ Mechanical check: 14 paths, 2 SHAs, 3 links checked — 1 flag annotated as historical
-  ✓ Semantic validator: 9 claims verified, 1 merge-state claim softened to pending
+  Mechanical check: 14 paths, 2 commit IDs, 3 links checked — 1 flag annotated as historical
+  Semantic validator: 9 claims verified, 1 merge-state claim softened to pending
 
 Specialized Agent Reviews (Auto-Triggered):
-  ✓ performance-oracle: Validated query optimization approach
-  ✓ Code simplification review: Code examples are appropriately minimal
+  performance-oracle: Validated query optimization approach
+  Code simplification review: Code examples are appropriately minimal
 
 Files written:
 - <root>/solutions/performance-issues/n-plus-one-brief-generation.md (created)
@@ -90,7 +90,7 @@ Refresh recommendation: none
 **Alternate interactive output (when updating an existing doc due to high overlap):** in non-interactive mode, this case is communicated via the `Overlap: high — existing doc updated` line of the non-interactive terminal report above, not as a separate output block.
 
 ```
-✓ Documentation updated (existing doc refreshed with current context)
+Documentation updated (existing doc refreshed with current context)
 
 Overlap detected: <root>/solutions/performance-issues/n-plus-one-queries.md
   Matched dimensions: problem statement, root cause, solution, referenced files
@@ -102,12 +102,12 @@ File updated:
 
 ## Common Mistakes to Avoid
 
-| ❌ Wrong | ✅ Correct |
+| Wrong | Correct |
 |----------|-----------|
 | Subagents write product files into `docs/` or edit tracked paths | Subagents write only scratch artifacts under `<run-dir>/` and return the path; orchestrator writes the one final doc |
 | Subagent returns a long prose body only as its inline response | Subagent writes full output to its run artifact; orchestrator Reads it back (inline return is fallback only) |
 | Research and assembly run in parallel | Research completes → then assembly runs |
 | Non-interactive Discoverability Check edits AGENTS.md/CLAUDE.md | non-interactive Full reports `Instruction-file edit: gap noted, not applied`; non-interactive Lightweight emits a discoverability tip; only interactive Full applies the edit after consent |
 | Creating a new doc when an existing doc covers the same problem | Check overlap assessment; update the existing doc when overlap is high |
-| Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over SHAs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
+| Asserting code behavior or merge-state from conversation memory | Read the defining source line before asserting; cite PR numbers over commit IDs; soften unverifiable claims (Phase 1 extractor rules, re-checked in Phase 2.45) |
 | Batching several learnings through one run and stitching cross-references between drafts | One learning per run; run the skill sequentially for each additional learning |

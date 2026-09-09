@@ -32,5 +32,5 @@ Return exactly one JSON object:
   ]
 }
 
-Return one verdict for every input # exactly once. No prose outside JSON. Do not edit, commit, push, or mutate files.
+Return one verdict for every input # exactly once. No prose outside JSON. Do not edit files, finalize JJ changes, move bookmarks, or push.
 ```

@@ -8,7 +8,7 @@ LFG is otherwise hands-off and never stops to ask. The single question it may as
 
 Interpret whether the invoking conversation expresses **semantic intent to assign a pipeline stage** — planning or implementation — to a specific model or harness. This is judgment, not keyword or prompt-token matching: an explicit instruction such as "plan with fable" or "use Codex for implementation" creates an assignment, while a plain mention of Codex, Composer, Fable, or another model/harness in feature content, quoted material, comparison text, or a filename does not. Two pipeline stages are routable, each with its own carrier:
 
-- **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier — the plan-authoring **model** (model elevation), model-only. Example aliases: `fable`, `opus`. Planning has no cross-harness engine: an assignment that scopes a *harness* to planning ("plan with codex", "plan on cursor") is **not supported** — surface it as a routing-carrier blocker rather than encoding a harness name as `plan_model:<harness>`, which `ce-plan` cannot serve and would silently fall back to the session model. Only the implementation stage routes to a different harness.
+- **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier — the plan-authoring **model** (model elevation), model-only. Example aliases: `fable`, `opus`. Planning has no cross-harness engine: an assignment that scopes a *harness* to planning ("plan with codex", "plan on cursor") is **not supported** — surface it as a routing-carrier blocker rather than encoding a harness name as `plan_model:<harness>`, which `ce-plan` cannot serve and would silently fall back to the session model. Only the implementation stage routes to a different harness. Standing `plan_harness: opencode2` is owned by ce-plan config, not LFG carriers.
 - **Implementation** routes to `ce-work` as an `implementation_engine` object (grammar below) — the authoring harness/model.
 
 ## Resolve each directive by scope
@@ -24,13 +24,13 @@ Requirement strength is inferred from the whole instruction, not one word: "use 
 When implementation resolves to one candidate, retain one transient `implementation_engine` object with exactly these four fields:
 
 - `mode`: `prefer` or `require`
-- `target`: exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, or `opencode` — a **harness** name, never a model name
+- `target`: exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, `opencode`, or `opencode2` — a **harness** name, never a model name
 - `model`: the explicit model pin, otherwise `null`
 - `source`: caller-visible provenance identifying the current LFG instruction
 
 A directive that names a bare **model** with no harness (e.g. "use fable", "with opus") is a model *pin*, not a target: encode it as the harness that serves that model family with the alias in `model` — a Claude-family model (`fable`, `opus`, `sonnet`, `haiku`) is `{"target":"claude","model":"<alias>"}`. Never put a model name in `target`; if you cannot map the named model to one of the five harnesses, that is a routing-carrier blocker, not a `null` binding that silently drops the user's instruction.
 
-When the implementation instruction instead names an ordered fallback list, do not truncate it to the scalar carrier — retain the whole ordered assignment as current-task implementation intent and pass no `implementation_engine:` object. At the CE Work seam, that still-active current-task assignment outranks config and is normalized/preflighted in order. This is stage-scoped context, not plan content; if the host cannot preserve that context across its skill invocation, stop with a routing-carrier blocker rather than silently dropping later candidates.
+When the implementation instruction instead names an ordered fallback list, do not truncate it to the scalar carrier — retain the whole ordered assignment as current-task implementation intent and pass no `implementation_engine:` object. At the `ce-work` seam, that still-active current-task assignment outranks config and is normalized/preflighted in order. This is stage-scoped context, not plan content; if the host cannot preserve that context across its skill invocation, stop with a routing-carrier blocker rather than silently dropping later candidates.
 
 ## Sanitize product input
 

@@ -14,7 +14,7 @@ When `ce-work` cannot reload its return owner after partial state exists, accept
 
 Verify that implementation work was performed — files were created or modified beyond the plan. Require `status`, `plan_path`, `changed_files`, `u_ids_attempted`, `u_ids_completed`, `verification_results`, `verification_evidence`, `source_kind`, `source_digest`, `settled_decision_conflicts`, `behavior_change`, and `standalone_shipping_skipped: true`. The source fields must identify the same plan authority that entered the implementation run. Evidence and conflict fields are present on every complete return; empty arrays are valid when their conditions did not occur.
 
-Also require the route-aware receipt fields `implementation_engine_binding`, `requested_route`, `actual_route`, `requested_model`, `actual_model`, `fallback_reason`, `run_id`, `unit_receipts`, `plan_checkpoint`, `blockers`, and `recovery_path`. These fields are required even when native execution makes some values `null`; together they carry binding provenance, requested-versus-actual identity, fallback, the durable run, per-unit process/integration/verification/commit state, checkpoint disclosure, blockers, and recovery. A resumed return must carry the same `run_id`; never treat resume as permission to start a new unit or a second LFG tail.
+Also require `implementation_engine_binding`, requested/actual route and model, `fallback_reason`, `run_id`, `unit_receipts`, `plan_checkpoint`, `blockers`, and `recovery_path`. These carry binding provenance, fallback, per-unit process/integration/verification/canonical-revision state, checkpoint disclosure, blockers, and recovery. A resumed return keeps the same `run_id`; it never authorizes a second LFG tail.
 
 ## Verification evidence
 

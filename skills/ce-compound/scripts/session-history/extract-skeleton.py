@@ -8,7 +8,7 @@ Usage:
 Auto-detects platform (Claude Code, Codex, Cursor, Pi, or oh-my-pi (omp)) from the JSONL structure.
 Extracts:
   - User messages (text only, no tool results)
-  - Assistant text (no thinking/reasoning blocks)
+  - AI Assistant text (no thinking/reasoning blocks)
   - Collapsed tool call summaries (consecutive same-tool calls grouped)
 
 Consecutive tool calls of the same type are collapsed:
@@ -49,7 +49,7 @@ _original_stdout = sys.stdout
 if args.output:
     sys.stdout = io.StringIO()
 
-stats = {"lines": 0, "parse_errors": 0, "user": 0, "assistant": 0, "tool": 0, "summary": 0}
+stats = {"lines": 0, "parse_errors": 0, "user": 0, "ai:assistant": 0, "tool": 0, "summary": 0}
 
 # Claude Code wrapper tags to strip from user message content.
 # Strip entirely (tag + content): framework noise and raw command output.
@@ -211,9 +211,9 @@ def handle_claude(obj):
                         if not has_text:
                             flush_tools()
                             has_text = True
-                        print(f"[{ts}] [assistant] {text[:800]}")
+                        print(f"[{ts}] [ai:assistant] {text[:800]}")
                         print("---")
-                        stats["assistant"] += 1
+                        stats["ai:assistant"] += 1
                 elif block.get("type") == "tool_use":
                     name, target = summarize_claude_tool(block)
                     entry = {"ts": ts, "name": name, "target": target}
@@ -266,9 +266,9 @@ def handle_codex(obj):
             for block in p.get("content", []):
                 if block.get("type") == "output_text" and len(block.get("text", "")) > 20:
                     flush_tools()
-                    print(f"[{ts}] [assistant] {block['text'][:800]}")
+                    print(f"[{ts}] [ai:assistant] {block['text'][:800]}")
                     print("---")
-                    stats["assistant"] += 1
+                    stats["ai:assistant"] += 1
 
         # Skip function_call — exec_command_end is the deduplicated version with status
 
@@ -410,9 +410,9 @@ def handle_pi(obj):
             text = clean_text(content)
             if len(text) > 20:
                 flush_tools()
-                print(f"[{ts}] [assistant] {text[:800]}")
+                print(f"[{ts}] [ai:assistant] {text[:800]}")
                 print("---")
-                stats["assistant"] += 1
+                stats["ai:assistant"] += 1
             return
 
         has_text = False
@@ -425,9 +425,9 @@ def handle_pi(obj):
                     if not has_text:
                         flush_tools()
                         has_text = True
-                    print(f"[{ts}] [assistant] {text[:800]}")
+                    print(f"[{ts}] [ai:assistant] {text[:800]}")
                     print("---")
-                    stats["assistant"] += 1
+                    stats["ai:assistant"] += 1
             elif block.get("type") == "toolCall":
                 name = block.get("name", "unknown")
                 args = block.get("arguments", {})
@@ -499,9 +499,9 @@ def handle_cursor(obj):
                     if not has_text:
                         flush_tools()
                         has_text = True
-                    print(f"[assistant] {text[:800]}")
+                    print(f"[ai:assistant] {text[:800]}")
                     print("---")
-                    stats["assistant"] += 1
+                    stats["ai:assistant"] += 1
             elif block.get("type") == "tool_use":
                 name = block.get("name", "unknown")
                 inp = block.get("input", {})

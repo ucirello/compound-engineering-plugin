@@ -40,9 +40,9 @@ When the target resolves to the current host's default execution route and no di
 ### Per-checkout configuration
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary configuration keys from the two workspace files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<workspace-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<workspace-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -57,16 +57,17 @@ work_engine_preferences:
   - harness: codex
     model: gpt-5.6
   - harness: claude
+  - harness: opencode2
 ```
 
 - `work_engine_mode`: `off | prefer | require`
 - `work_engine_preferences`: one or more ordered candidate objects
-- `harness`: `codex | claude | grok | cursor | opencode`
+- `harness`: `codex | claude | grok | cursor | opencode | opencode2`
 - optional `model`: a model id or family understood by that harness; omission means its configured default
 
 Do not put CLI commands or flags in configuration. The list expresses implementation intent; the skill's adapter recipes and local inspection determine how to invoke it. Composer is therefore `{ harness: cursor, model: composer }`, while `{ harness: cursor }` means Cursor's configured default.
 
-Normalize a qualified candidate to the controller's fixed route: Codex -> `codex`, Claude -> `claude`, native Grok -> `grok-cli`, Cursor with no model -> `cursor`, a Composer-family Cursor model -> `composer`, a Grok-family Cursor model -> `grok-cursor`, another explicit Cursor model -> `cursor` with that controller-authorized model selector, and OpenCode -> `opencode`. A model selector is data, never shell syntax; if it cannot be represented by the fixed adapter's safe model token, the candidate is unavailable.
+Normalize a qualified candidate to the controller's fixed route: Codex -> `codex`, Claude -> `claude`, native Grok -> `grok-cli`, Cursor with no model -> `cursor`, a Composer-family Cursor model -> `composer`, a Grok-family Cursor model -> `grok-cursor`, another explicit Cursor model -> `cursor` with that controller-authorized model selector, OpenCode -> `opencode`, and OpenCode2 -> `opencode2`. A model selector is data, never shell syntax; if it cannot be represented by the fixed adapter's safe model token, the candidate is unavailable.
 
 Traverse each ordered candidate during preflight. If a candidate is equivalent to the current host and its current/default model, continue to the next candidate rather than shelling out to self; an explicit different model in the same harness is still a distinct candidate. If a candidate is unavailable before egress, record why and continue to the next candidate. The first qualified candidate becomes the fixed recipient. After dispatch begins, the recipient is locked by the cross-model contract and list traversal stops.
 
@@ -96,7 +97,7 @@ When more than one engine is callable, choose by the plan's decomposition shape:
 | Sequential or modest U-ID decomposition; units share files or depend on each other | **Inline / subagent** (default), or a **goal-mode** prompt for sustained focus when callable | The DoD already defines the end condition; ordinary persistence finishes it. |
 | Many independent U-IDs with disjoint file ownership; codebase-wide sweep; large migration; adversarial cross-checking | **Dynamic-workflow** when callable; otherwise parallel subagents | Workflow scripts hold branching, loops, and intermediate worker state outside the main context and coordinate many agents. Prefer this over goal-mode for large fan-out. |
 | Host exposes no callable goal/workflow primitive (e.g. Claude Code in-session) | **Inline / subagent** | Preserve the same heading-scan / DoD / U-ID discipline without relying on unavailable host features. |
-| Applicable live intent, a caller binding, or enabled config resolves a qualified fixed external route | **Cross-model execution** | Another harness/model authors bounded units while the host retains canonical integration, verification, commits, and tail ownership. |
+| Applicable live intent, a caller binding, or enabled config resolves a qualified fixed external route | **Cross-model execution** | Another harness/model authors bounded units while the host retains canonical integration, verification, described changes, and tail ownership. |
 
 For a bare prompt, cross-model execution is eligible only after Phase 0 has established a concrete goal, bounded scope, and authoritative verification. The cross-model reference turns that discovery into a private prompt brief and conservative P-unit packet. An unclear bare prompt returns to clarification/planning before egress; it does not fall through to a smarter external worker and ask that worker to invent the scope.
 
@@ -106,7 +107,7 @@ Recommend exactly one path. Present a non-default engine as an "advanced / large
 
 ### Inline / subagent (default)
 
-Follow the dispatch strategy in `references/execution-strategy.md` (inline, serial subagents, or parallel subagents) and the Phase 2 execution loop. `ce-work` owns task creation, unit sequencing, dispatch, verification, and commits.
+Follow the dispatch strategy in `references/execution-strategy.md` (inline, serial subagents, or parallel subagents) and the Phase 2 execution loop. `ce-work` owns task creation, unit sequencing, dispatch, verification, and canonical changes.
 
 ### Cross-model execution
 
@@ -151,11 +152,11 @@ After any engine finishes implementation, inspect the diff and continue at the t
 
 | Mode | After implementation, `ce-work` ... |
 |---|---|
-| **Standalone** (user invoked `ce-work` directly, or `ce-plan` handed off interactively) | Resumes its normal post-implementation tail — Phase 3-4 quality gates, simplification, review, commit, and handoff in `references/shipping-workflow.md`. A goal-mode run does not skip these; verify they ran or were explicitly skipped with reason. |
+| **Standalone** (user invoked `ce-work` directly, or `ce-plan` handed off interactively) | Resumes its normal post-implementation tail: Phase 3-4 quality gates, simplification, review, change finalization, and handoff in `references/shipping-workflow.md`. A goal-mode run does not skip these; verify they ran or were explicitly skipped with reason. |
 | **Return-to-caller** (`mode:return-to-caller`, e.g. under `lfg`) | Performs implementation and local verification only, then returns the structured summary in `references/return-to-caller.md` (`standalone_shipping_skipped: true`). Does not run simplify/review/PR/CI — the caller owns those. |
 
 Using goal-mode or a dynamic workflow is a way to get better sustained implementation focus, not a way to skip the owning workflow's finish discipline.
 
 ## Progress visibility (independent of tail ownership)
 
-Tail ownership decides who opens the **final** PR; it does not forbid progress signals during a long run. For multi-hour goals, meaningful commits as units complete and an optional scratch progress artifact (outside the plan body) are encouraged so a long trajectory stays observable. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when it explicitly owns that channel; in return-to-caller mode `ce-work` must not open any PR, but may commit and return a progress report in its structured envelope. Never write progress or status into the plan body — git, commits, and the envelope carry it.
+Tail ownership decides who opens the **final** PR; it does not forbid progress signals during a long run. For multi-hour goals, meaningful described Jujutsu changes and an optional `.tmp/rocketclaw` progress artifact keep the trajectory observable. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when it explicitly owns that channel; in return-to-caller mode `ce-work` must not open any PR, but may finish local changes and return a progress report in its structured envelope. Never write progress into the plan body; revisions and the envelope carry it.

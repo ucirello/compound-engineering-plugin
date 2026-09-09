@@ -52,7 +52,7 @@ create_workspace() {
 
   mkdir -p "$WORKSPACE_DIR"
   jj workspace add --name "$name" -r "$base_revision" -m "$change_description" "$workspace_path" >/dev/null
-  jj -R "$workspace_path" bookmark create "$bookmark" -r @ >/dev/null
+  (cd "$workspace_path" && jj bookmark create "$bookmark" -r @ >/dev/null)
 
   for f in "$ROOT"/.env*; do
     if [[ -f "$f" ]]; then
@@ -91,7 +91,7 @@ cleanup_workspace() {
   local workspace_path="$WORKSPACE_DIR/$name"
 
   if [[ -d "$workspace_path" ]]; then
-    jj -R "$workspace_path" abandon @ >/dev/null 2>&1 || true
+    (cd "$workspace_path" && jj abandon @ >/dev/null 2>&1) || true
   fi
   jj workspace forget "$name" >/dev/null 2>&1 || true
   jj bookmark forget "exact:$bookmark" >/dev/null 2>&1 || true

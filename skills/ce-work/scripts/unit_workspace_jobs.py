@@ -275,9 +275,8 @@ def cmd_prepare(args) -> tuple[str, dict]:
             event(doc, "unit-retry-prepared", uid, {"attempt_id": attempt_id, "base": base})
             event(doc, "workspace-add-intent", uid, {"path": workspace, "name": workspace_name, "base": base})
     with locked_manifest(args.run_id) as doc:
-        common = doc["repository"]["common_dir"]
         repo = doc["repository"]["toplevel"]
-    with admin_lock(common):
+    with admin_lock(repo):
         if not os.path.exists(workspace):
             jj(repo, "workspace", "add", "--name", workspace_name, "-r", base, workspace)
             os.chmod(workspace, 0o700)

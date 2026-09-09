@@ -320,7 +320,7 @@ READ_ROOT="${CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
 READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve repository/read root '$READ_ROOT'"
 if [ -n "${CROSS_MODEL_REPO_ROOT:-}" ]; then
   REPO_ROOT="$CROSS_MODEL_REPO_ROOT"
-elif command -v jj >/dev/null 2>&1 && _jj_root="$(jj -R "$READ_ROOT" workspace root 2>/dev/null)"; then
+elif command -v jj >/dev/null 2>&1 && _jj_root="$(cd "$READ_ROOT" && jj workspace root 2>/dev/null)"; then
   REPO_ROOT="$_jj_root"
 else
   REPO_ROOT="$(pwd -P)"

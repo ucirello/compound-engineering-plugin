@@ -12,7 +12,7 @@ from unit_workspace_jobs import find_attempt
 
 
 def integration_lock_path(doc: dict) -> str:
-    ident = doc["repository"]["identity_digest"] + "\0" + doc["workspace"]["name"]
+    ident = doc["repository"]["toplevel"] + "\0" + doc["workspace"]["name"]
     return os.path.join(os.path.dirname(run_dir(doc["run_id"])), ".locks", f"integration-{digest_bytes(ident.encode())}.json")
 
 
@@ -24,7 +24,7 @@ def validated_lock_nonce(doc: dict, unit_id: str, lock: dict) -> str:
     expected = {
         "run_id": doc["run_id"],
         "unit_id": unit_id,
-        "repository": doc["repository"]["identity_digest"],
+        "repository": doc["repository"]["toplevel"],
         "workspace_name": doc["workspace"]["name"],
     }
     if any(lock.get(key) != value for key, value in expected.items()):
@@ -73,7 +73,7 @@ def cmd_integration_acquire(args) -> tuple[str, dict]:
             "run_id": args.run_id,
             "unit_id": args.unit_id,
             "nonce": nonce,
-            "repository": doc["repository"]["identity_digest"],
+            "repository": doc["repository"]["toplevel"],
             "workspace_name": doc["workspace"]["name"],
             "created_at": now_iso(),
         }

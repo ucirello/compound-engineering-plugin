@@ -56,7 +56,7 @@ def discover_resume_run(repo: str, plan_digest: str) -> tuple[str, list[dict]]:
             try:
                 with locked_manifest(run_id) as doc:
                     if (
-                        doc.get("repository", {}).get("identity_digest") == info["identity_digest"]
+                        doc.get("repository", {}).get("toplevel") == info["toplevel"]
                         and doc.get("workspace", {}).get("name") == info["workspace_name"]
                         and doc.get("source", {}).get("kind") == "plan"
                         and doc.get("source", {}).get("digest") == plan_digest

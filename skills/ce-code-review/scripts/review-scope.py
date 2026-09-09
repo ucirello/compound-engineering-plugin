@@ -44,9 +44,25 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
+def workspace_root() -> str:
+    result = subprocess.run(
+        ["jj", "--no-pager", "workspace", "root"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return os.getcwd()
+
+
 def jj(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["jj", "--no-pager", *args], capture_output=True, text=True, check=False
+        ["jj", "--no-pager", *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=workspace_root(),
     )
 
 
@@ -95,10 +111,7 @@ def repo_root() -> Path:
     works there), where ``Path.cwd()`` would join docs_root under the subdir and
     wrongly report the corpus absent. Fall back to cwd when JJ cannot answer.
     """
-    result = jj("workspace", "root")
-    if result.returncode == 0 and result.stdout.strip():
-        return Path(result.stdout.strip()).resolve()
-    return Path.cwd().resolve()
+    return Path(workspace_root()).resolve()
 
 
 def has_learnings_corpus(docs_root: str | None) -> bool:

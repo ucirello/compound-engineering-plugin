@@ -502,7 +502,8 @@ def sanitized_vcs_environment(overrides: dict | None = None) -> dict[str, str]:
 
 def jj(repo: str, *args: str, input_data: bytes | None = None, check: bool = True, env: dict | None = None) -> bytes:
     proc = subprocess.run(
-        ["jj", "-R", repo, *args], input=input_data, capture_output=True,
+        ["jj", *args], input=input_data, capture_output=True,
+        cwd=repo,
         env=sanitized_vcs_environment(env), check=False,
     )
     if check and proc.returncode != 0:
@@ -550,24 +551,17 @@ def repo_info(repo: str) -> dict:
     top = os.path.realpath(jj_text(repo, "workspace", "root"))
     if top != repo:
         repo = top
-    workspace_rows = jj_text(repo, "workspace", "list", "-T", 'name ++ "\\t" ++ target.change_id() ++ "\\n"').splitlines()
+    listed = jj_text(repo, "workspace", "list", "-T", 'name ++ "\\t" ++ target.change_id() ++ "\\n"').splitlines()
     current_revision = revision_info(repo)
-    matches = [row.split("\t", 1)[0] for row in workspace_rows if row.endswith("\t" + current_revision["change_id"])]
+    matches = [row.split("\t", 1)[0] for row in listed if row.endswith("\t" + current_revision["change_id"])]
     if len(matches) != 1:
         raise Operational("BLOCKED", "current Jujutsu workspace could not be identified uniquely")
     workspace = matches[0]
-    common = os.path.realpath(os.path.join(top, ".jj", "repo"))
-    if not os.path.isdir(common):
-        raise Operational("BLOCKED", "shared Jujutsu repository store is unavailable")
-    st = os.stat(common)
-    roots = [jj_text(repo, "log", "-r", "root()", "--no-graph", "-T", "commit_id")]
-    identity = digest_bytes((common + f"\0{st.st_dev}\0{st.st_ino}\0" + "\n".join(roots)).encode())
+    named_root = os.path.realpath(jj_text(repo, "workspace", "root", "--name", workspace))
+    if named_root != top:
+        raise Operational("BLOCKED", "workspace name does not resolve to this workspace root")
     return {
         "toplevel": repo,
-        "common_dir": common,
-        "common_dev": st.st_dev,
-        "common_ino": st.st_ino,
-        "identity_digest": identity,
         "workspace_name": workspace,
         **current_revision,
     }
@@ -600,9 +594,8 @@ def validate_repo(doc: dict) -> dict:
     validate_source(doc)
     recorded = doc["repository"]
     current = repo_info(recorded["toplevel"])
-    for key in ("toplevel", "common_dir", "common_dev", "common_ino", "identity_digest"):
-        if current[key] != recorded[key]:
-            raise Operational("BLOCKED", f"canonical repository identity changed ({key})")
+    if current["toplevel"] != recorded["toplevel"]:
+        raise Operational("BLOCKED", "canonical repository identity changed (toplevel)")
     if current["workspace_name"] != doc["workspace"]["name"]:
         raise Operational("BLOCKED", "canonical workspace changed")
     return current
@@ -832,7 +825,7 @@ def cmd_init(args) -> tuple[str, dict]:
                     "digest": plan.get("digest") if isinstance(plan, dict) else None,
                 }
             if (
-                existing["repository"]["identity_digest"] != info["identity_digest"]
+                existing["repository"]["toplevel"] != info["toplevel"]
                 or existing_source.get("kind") != source_kind
                 or existing_source.get("digest") != actual_digest
             ):
@@ -863,7 +856,7 @@ def cmd_init(args) -> tuple[str, dict]:
         "run_id": rid,
         "created_at": created,
         "updated_at": created,
-        "repository": {k: info[k] for k in ("toplevel", "common_dir", "common_dev", "common_ino", "identity_digest")},
+        "repository": {"toplevel": info["toplevel"]},
         "workspace": {
             "name": info["workspace_name"],
             "initial_change_id": info["change_id"],
@@ -963,9 +956,9 @@ def cmd_checkpoint_plan(args) -> tuple[str, dict]:
 
 
 @contextlib.contextmanager
-def admin_lock(common_dir: str):
+def admin_lock(toplevel: str):
     root = ensure_root()
-    key = digest_bytes(os.path.realpath(common_dir).encode())
+    key = digest_bytes(os.path.realpath(toplevel).encode())
     path = os.path.join(root, ".locks", f"workspace-{key}.lock")
     try:
         create_private(path, b"")
@@ -1001,12 +994,12 @@ def validate_workspace(doc: dict, unit: dict) -> dict:
     matches = [r for r in workspace_rows(repo) if r["name"] == unit["workspace"]["name"]]
     if len(matches) != 1:
         raise Operational("BLOCKED", "workspace is not registered exactly once")
+    named_root = os.path.realpath(jj_text(repo, "workspace", "root", "--name", unit["workspace"]["name"]))
+    if named_root != os.path.realpath(workspace):
+        raise Operational("BLOCKED", "recorded workspace path does not match its registered workspace root")
     current = revision_info(workspace)
     if current["change_id"] != matches[0]["change_id"] or current["commit_id"] != matches[0]["commit_id"]:
         raise Operational("BLOCKED", "recorded workspace path does not match its registered working-copy change")
-    common = os.path.realpath(os.path.join(jj_text(workspace, "workspace", "root"), ".jj", "repo"))
-    if common != doc["repository"]["common_dir"]:
-        raise Operational("BLOCKED", "unit workspace belongs to another repository")
     return matches[0]
 
 

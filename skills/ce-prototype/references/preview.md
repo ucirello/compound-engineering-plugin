@@ -17,7 +17,7 @@ RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
 SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-if [ "$RUN_KEEP" = yes ] && jj -R "$WORKSPACE_ROOT" root >/dev/null 2>&1 && [ ! -L "$WORKSPACE_ROOT/.context" ]; then
+if [ "$RUN_KEEP" = yes ] && (cd "$WORKSPACE_ROOT" && jj root >/dev/null 2>&1) && [ ! -L "$WORKSPACE_ROOT/.context" ]; then
 ROOT="$WORKSPACE_ROOT/.context";
 else
 ROOT="$SCRATCH_ROOT";

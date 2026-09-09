@@ -389,7 +389,7 @@ PACKET="$(cd "$(dirname "$PACKET")" && pwd -P)/$(basename "$PACKET")" || exit 2
 RESULT_DIR="$(cd "$RESULT_DIR" && pwd -P)" || exit 2
 case "$RESULT_DIR/" in "$WORKSPACE/"*) log "result dir must be outside the worker workspace"; exit 2 ;; esac
 case "$PACKET" in "$WORKSPACE"/*) log "unit packet must be outside the worker workspace"; exit 2 ;; esac
-jj -R "$WORKSPACE" workspace root >/dev/null 2>&1 || { log "workspace is not a Jujutsu workspace"; exit 2; }
+(cd "$WORKSPACE" && jj workspace root >/dev/null 2>&1) || { log "workspace is not a Jujutsu workspace"; exit 2; }
 chmod 700 "$RESULT_DIR" 2>/dev/null || { log "result dir could not be made private"; exit 2; }
 RESULT_DIR_IDENTITY="$("$PY" - "$RESULT_DIR" <<'PY'
 import os, stat, sys

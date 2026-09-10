@@ -1,8 +1,7 @@
 import path from "path"
 import fs from "fs"
 import { fileURLToPath } from "url"
-import { createV1Plugin } from "./compound-engineering/opencode-v1.js"
-import { createV2Setup } from "./compound-engineering/opencode-v2.js"
+import { Plugin } from "@opencode/plugin"
 
 const pluginDir = path.dirname(fileURLToPath(import.meta.url))
 const skillsDir = path.resolve(pluginDir, "../../skills")
@@ -62,13 +61,41 @@ function loadSkills() {
 
 const skills = loadSkills()
 
-const CompoundEngineeringPlugin = createV1Plugin({ skills, skillsDir })
-const setupV2 = createV2Setup(skills)
-
-export { CompoundEngineeringPlugin }
-
-export default {
+export default Plugin.define({
   id: "compound-engineering",
-  server: CompoundEngineeringPlugin,
-  setup: setupV2,
-}
+  async setup(ctx) {
+    await ctx.command.transform((editor) => {
+      for (const skill of skills) {
+        if (skill.suppressed) continue
+        editor.add({
+          name: skill.name,
+          description: skill.description,
+          execute: async (input) => {
+            const promptInput = input?.prompt ?? {}
+            const attachedSkills = promptInput.skills ?? []
+            const skillAlreadyAttached = attachedSkills.some((attached) => attached.id === skill.name)
+            await ctx.session.prompt({
+              ...promptInput,
+              sessionID: input.sessionID,
+              text: promptInput.text || "",
+              skills: skillAlreadyAttached ? attachedSkills : [...attachedSkills, { id: skill.name }],
+              delivery: input.delivery,
+            })
+          },
+        })
+      }
+    })
+
+    await ctx.skill.transform((editor) => {
+      for (const skill of skills) {
+        editor.add({
+          id: skill.name,
+          name: skill.name,
+          ...(skill.description ? { description: skill.description } : {}),
+          location: skill.skillPath,
+          content: skill.body,
+        })
+      }
+    })
+  },
+})

@@ -9,7 +9,7 @@ argument-hint: "[optional: what shipped and/or channels, e.g. 'a tweet thread an
 
 Turn a feature that just shipped into copy-pasteable, user-facing announcement copy, right inside the engineering workflow — so the messaging doesn't wait for a separate marketing pass.
 
-**Done when:** every drafted channel is presented as a labeled, copy-pasteable block and the user has been offered a revision. **This skill drafts only — it never posts, publishes, schedules, commits, or opens PRs.** Posting is a human action.
+**Done when:** every drafted channel is presented as a labeled, copy-pasteable block and the user has been offered a revision. **This skill drafts only — it never posts, publishes, schedules, modifies repository state, pushes bookmarks, or opens PRs.** Posting is a human action.
 
 It is **spiral-agnostic**: with nothing installed it drafts directly from the editorial and social fundamentals in Path B. When the Spiral CLI is present and authed, drafts come back voice-matched to the user's brand — an enhancement, never a requirement.
 
@@ -17,10 +17,10 @@ It is **spiral-agnostic**: with nothing installed it drafts directly from the ed
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what's available and blocking on no single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `GIT_DIR="$(jj git root)" gh pr view --json title,body,url` (the title and body usually state the user-facing value)
+- **The diff** — `jj diff --from <main-bookmark> --to @ --stat`, skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent changes** — `jj log -r ::@ -n 15` for the arc of the change
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 
@@ -89,4 +89,4 @@ Show every draft as a clean, copy-pasteable block labeled by channel:
 <the copy>
 ```
 
-When Path A produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app. Offer to revise (tone, length, angle, more variations, another channel). **Do not post, publish, schedule, commit, or open a PR** — end by reminding the user the drafts are theirs to ship.
+When Path A produced them, also surface the `session_id` and each draft's `url` so the user can open and tweak them in the Spiral web app. Offer to revise (tone, length, angle, more variations, another channel). **Do not post, publish, schedule, modify repository state, push a bookmark, or open a PR** — end by reminding the user the drafts are theirs to ship.

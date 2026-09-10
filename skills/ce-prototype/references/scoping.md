@@ -6,7 +6,7 @@ Required read before the go-ahead message, in every run.
 
 Accept a prompt, a brainstorm path, a plan path, or an empty invoke. An empty invoke still uses this session: if the conversation already names what to try, start from that. Ask only when you cannot tell. If you are inferring from messy history, say what you inferred — do not silently guess.
 
-A run in a repo is about that product unless the user says otherwise. Read this conversation and any supplied brainstorm or plan. If the repo still has to be checked, dispatch a generic subagent for it rather than judging first how big the search is — you cannot tell until you are in it. Use the platform's subagent primitive (`Agent` in Claude Code, `spawn_agent` in Codex) where available; where there is none, do the same scoped read inline. Do not dispatch a standalone agent by type or name. Ask it for what the question touches — the page, component, or flow you will recreate — with its file paths, what it does today, and the constraints on it. Do not scan the tree — neither you nor the subagent — and do not ask for a summary of the architecture. Then read those files yourself when you need the detail.
+A run in a workspace is about that product unless the user says otherwise. Read this conversation and any supplied brainstorm or plan. If the workspace still has to be checked, dispatch a generic subagent for it rather than judging first how big the search is — you cannot tell until you are in it. Use the platform's subagent primitive where available; where there is none, do the same scoped read inline. Do not dispatch a standalone agent by type or name. Ask it for what the question touches — the surface or flow you will recreate — with its file paths, current behavior, and constraints. Do not scan the tree — neither you nor the subagent — and do not ask for an architecture summary. Then read those files yourself when you need the detail.
 
 Before building, you need the product surface, the question, and any hard constraints (must keep, must not change). You do not need the user to have named how it should work or feel — that is this skill's job. If the surface or the constraints are missing, ask those. Do not ask them to invent the answer in chat.
 
@@ -18,8 +18,8 @@ If the supplied brainstorm or plan already records a settled visual-probe decisi
 
 Classify the question before you build.
 
-- **Narrow** — a specific detail with a small similar set (this control vs that control, this placement, this transition). Put two or three close variants on one surface. Do not invent a wildly different mechanism.
-- **Wide** — the space is open (make this more fun to use, explore how this could work). Diverge first: name three to five distinct avenues — different mechanisms, not tweaks of one idea. Give each one a plain line about what the user would see or do, not a coined name and a verdict on it; keep the detail for the ones they lean toward. The user picks, or you put a comparable subset on one surface. Then converge against the built ones. Do not start by building one idea as if it were the answer.
+- **Narrow** — a specific detail with a small similar set. Put two or three close variants on one surface. Do not invent a different class of mechanism.
+- **Wide** — the mechanism is still open. Name three to five avenues that differ in mechanism, not styling or wording alone. Describe only what the user would perceive or do. The user picks, or you put a comparable subset on one surface, then converge against the built ones. Do not start by building one idea as if it were the answer.
 
 If width is unclear, ask once whether this is a close comparison or an open exploration. Do not default to either.
 

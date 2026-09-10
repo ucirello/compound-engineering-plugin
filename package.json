@@ -4,9 +4,9 @@
   "description": "Official Compound Engineering skills plugin for coding agents",
   "type": "module",
   "private": true,
-  "main": ".opencode/plugins/rocketclaw.ts",
+  "main": ".opencode/plugins/compound-engineering.ts",
   "exports": {
-    ".": "./.opencode/plugins/rocketclaw.ts"
+    ".": "./.opencode/plugins/compound-engineering.ts"
   },
   "pi": {
     "extensions": [

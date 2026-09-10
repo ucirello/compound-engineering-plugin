@@ -1,19 +1,7 @@
 # Committing the refresh
 
-Skip if no files changed. Check the current bookmark, whether the working copy has unrelated changes, and recent change-description style. Include **only** the files this refresh modified in the change (the working copy is the change; when unrelated changes are present, `jj commit` with those filesets keeps the refresh paths in the current change and moves the rest to a new working-copy change on top).
+Skip if no files changed. Check bookmarks pointing at `@`, whether the working-copy change has unrelated edits, and recent description style with `jj log`. Jujutsu has no staging area, so isolate only this refresh's paths into a dedicated change with `jj split <filesets>` when unrelated edits share `@`; do not absorb unrelated work. Write a descriptive change description that states the refresh's actual outcomes in the repo's convention. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and `git log` syntax win; do not impose a fixed type, scope, prefix, footer, or body template.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in git log, compose commit messages adherent to the present standards.
+Non-interactive defaults: when `@` is at `trunk()` or a local bookmark identifying the default line points at `@`, create a bookmark named for what was refreshed, describe the dedicated change, advance that bookmark to the described change, and attempt a PR; if PR creation fails, report the bookmark name. On a non-default line, create a separate described change and advance the relevant local bookmark only when it already represented this work. JJ failures go in the report with recovery commands, and the refresh continues.
 
-Then: repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax.
-
-The description covers the refresh (what was updated, consolidated, replaced, or deleted) under those standards — not a fixed prefix, type, scope, or subject template. Apply with:
-
-```
-jj describe -m "<message composed from the standards above>"
-```
-
-When unrelated working-copy changes must stay out of this change, use `jj commit -m "<message composed from the standards above>"` with the refresh filesets instead.
-
-Non-interactive defaults: on the repo's default bookmark (main, master, or whatever the remote designates) → `jj new` plus `jj bookmark set` named for what was refreshed (e.g., `docs/refresh-auth-learnings`), describe the change, attempt a PR (pair `gh` with `GIT_DIR=$(jj git root)`; if PR creation fails, report the bookmark name); on a feature bookmark → separate change on that bookmark; jj failures → put the recommended commands in the report and continue.
-
-Interactive: ask (per Blocking questions), with the recommended option first. On the default bookmark: bookmark+describe+PR (recommended; specific bookmark name) / describe the current change in place / don't describe. On a clean feature bookmark: describe it (recommended) / separate bookmark / don't describe. On a dirty feature bookmark: `jj commit` with only refresh filesets / don't describe.
+Interactive: ask (per Blocking questions), with the recommended option first. At the default line: bookmark+described change+PR (recommended; specific bookmark name) / describe directly without publishing / leave the change undescribed. On an isolated non-default change: describe it and advance its bookmark (recommended) / create a separate change / leave it undescribed. When unrelated edits share `@`: split only refresh paths into a dedicated described change / leave the refresh undescribed.

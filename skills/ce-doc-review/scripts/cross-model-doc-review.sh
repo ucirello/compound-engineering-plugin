@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > config cascade >
+#                   resolved preference (conversation > workspace config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -50,7 +50,7 @@
 # Test/introspection mode (no model call, no side effects):
 #   cross-model-doc-review.sh --emit-adapter <route>
 #     prints the exact argv the given route would run (route in:
-#     codex | claude | grok-cli | grok-cursor | composer | opencode | opencode2). Both this mode and the
+#     codex | claude | grok-cli | grok-cursor | composer). Both this mode and the
 #     live run build their argv from adapter_argv(), so the U7 route-safety test
 #     asserts on the same command string the peer actually runs.
 #
@@ -89,7 +89,7 @@ case "$TRANSIENT_RETRY_DELAY_SECS" in ''|*[!0-9]*) skip "transient retry delay m
 # ONE model per provider at high reasoning, except codex on extra-high (supersedes
 # the old per-lens sol/terra split). Concrete IDs are the CURRENT instance of the
 # tier principle and the single maintenance point when model families change.
-# A checkout may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
+# A workspace may override the model (CROSS_MODEL_MODEL_OVERRIDE_TARGET +
 # CROSS_MODEL_MODEL_OVERRIDE, same target/family only) and the reasoning effort
 # (CROSS_MODEL_EFFORT_OVERRIDE, validated per route); both fail closed.
 # codex: luna/xhigh is the benchmarked pick on API dollars (~0.30x sol-medium, tied
@@ -104,12 +104,7 @@ route_effort() {   # <route> -> requested effort: the override where the route t
   if [ -n "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ]; then
     case "$1" in
       codex|claude|grok-cli) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
-      opencode)
-        case "$CROSS_MODEL_EFFORT_OVERRIDE" in
-          none|minimal|low|medium|high|xhigh|max|default) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
-        esac
-        ;;
-      opencode2)
+      opencode|opencode2)
         case "$CROSS_MODEL_EFFORT_OVERRIDE" in
           none|minimal|low|medium|high|xhigh|max|default) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
         esac
@@ -306,29 +301,24 @@ adapter_argv() {
       esac
       ;;
     opencode2)
-      # Distinct from V1 opencode: no --dir (project dir is process cwd /
-      # parent CLI directory arg), no --variant flag. Model is
-      # provider/modelname#variant. run_timeout_cmd already cds into PEER_WORKDIR.
-      printf '%s\0' opencode2 run --standalone --format json --file "$PROMPT_FILE"
-      printf '%s\0' "Follow the attached brief. Return only schema-shaped JSON."
+      # Distinct from opencode: binary `opencode2`, no --dir, no --variant, no
+      # OPENCODE_CONFIG_CONTENT. CWD is the empty peer workdir. Review does not
+      # pass --auto (cooperative read-only). Model is provider/modelname#variant.
+      printf '%s\0' bash -c 'cd "$1" && shift && exec "$@"' _ "$PEER_WORKDIR" \
+        opencode2 run --format json --file "$PROMPT_FILE"
       _oc2_model="$(route_model opencode2)"
-      _oc2_effort="$(route_effort opencode2)"
       if [ "$_oc2_model" != "auto" ] && [ -n "$_oc2_model" ]; then
-        case "$_oc2_model" in
-          */*)
+        _oc2_effort="$(route_effort opencode2)"
+        case "$_oc2_effort" in
+          unverified|"") ;;
+          *)
             case "$_oc2_model" in
               *#*) ;;
-              *)
-                case "$_oc2_effort" in
-                  none|minimal|low|medium|high|xhigh|max|default)
-                    _oc2_model="${_oc2_model}#${_oc2_effort}"
-                    ;;
-                esac
-                ;;
+              *) _oc2_model="$_oc2_model#$_oc2_effort" ;;
             esac
-            printf '%s\0' --model "$_oc2_model"
             ;;
         esac
+        printf '%s\0' --model "$_oc2_model"
       fi
       ;;
     *) return 1 ;;
@@ -409,14 +399,6 @@ RUN_DIR="${7:-}"
 # Requiring it to pre-exist would silently no-op the whole pass (no fold-in files).
 mkdir -p "$RUN_DIR" 2>/dev/null
 [ -d "$RUN_DIR" ] || skip "run-dir '$RUN_DIR' could not be created; skipping"
-# Workspace-local temp (never OS /tmp). Public `jj workspace root` only.
-_ws_root="$(jj workspace root 2>/dev/null)" || _ws_root=""
-if [ -n "$_ws_root" ]; then
-  TMP_BASE="${_ws_root}/.tmp"
-else
-  TMP_BASE="$RUN_DIR"
-fi
-(umask 077; mkdir -p "$TMP_BASE") 2>/dev/null || TMP_BASE="$RUN_DIR"
 command -v jq >/dev/null 2>&1 || skip "jq not installed; skipping"
 
 # Validate the host identity tuple. An unknown serving family is allowed, but
@@ -453,7 +435,7 @@ SCHEMA_REF="$SCHEMA_CONTENT"   # adapter_argv references SCHEMA_REF for --json-s
 # The peer adapts on the same context slots (Document type / Origin) the in-process
 # reviewer does, but the trio persona briefs only define adaptation for the bare
 # `requirements`/`plan` values. The canonical context-slot rules -- which map
-# `unified-*` onto their base branch, carry the unified slice-suppression rules, and
+# `unified-*` onto their base classification, carry the unified slice-suppression rules, and
 # define how to read non-path Origin values -- live only in the subagent template, so
 # extract them from there (single source of truth) and fold them into the peer prompt.
 # Best-effort: a missing block degrades unified/Origin scoping but must not fail the pass.
@@ -571,21 +553,22 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "$TMP_BASE/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "$TMP_BASE/xmodel-doc-log-XXXXXX")"
+TEMP_DIR="$RUN_DIR/worker-$REVIEWER_NAME-$$"
+(umask 077; mkdir -p "$TEMP_DIR") || skip "could not create workspace-local scratch dir; skipping"
+PROMPT_FILE="$TEMP_DIR/prompt"
+PEERLOG="$TEMP_DIR/out.log"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "$TMP_BASE/xmodel-doc-err-XXXXXX")"
+PEERERR="$TEMP_DIR/err.log"
+: > "$PROMPT_FILE"; : > "$PEERLOG"; : > "$PEERERR"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
 PROVIDER_OUTCOME="ok"
 cleanup_temp() {
-  rm -f "$PROMPT_FILE" "$PEERLOG" "$PEERERR"
-  [ -n "$RAW_OUT" ] && rm -f "$RAW_OUT"
-  [ -n "$PEER_WORKDIR" ] && [ "$PEER_WORKDIR" != "${RUN_DIR:-}" ] && rm -rf "$PEER_WORKDIR"
+  rm -rf "$TEMP_DIR"
 }
 trap 'cleanup_temp' EXIT
 # Basename only in the peer prompt: content is already embedded (KTD3). An absolute
@@ -1072,19 +1055,25 @@ parse_structured() {   # <logfile> <outfile>
   recover_findings_json "$1" "$2"
 }
 
-parse_opencode2_events() {  # <logfile> <outfile>
-  # V2 --format json is not the V1 event stream. Recover a findings object
-  # from the log without assuming V1 envelope keys.
-  recover_findings_json "$1" "$2" && return 0
-  parse_structured "$1" "$2"
-}
-
 parse_opencode_events() {  # <logfile> <outfile>
   local text tmp
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e 'select((.findings|type)=="array")' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "$TMP_BASE/xmodel-opencode-text-XXXXXX")" || return 1
+  tmp="$(mktemp "$TEMP_DIR/opencode-text-XXXXXX")" || return 1
+  printf '%s' "$text" > "$tmp"
+  recover_findings_json "$tmp" "$2"
+  local st=$?
+  rm -f "$tmp"
+  return "$st"
+}
+
+parse_opencode2_events() {  # <logfile> <outfile>
+  local text tmp
+  text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
+  [ -n "$text" ] || return 1
+  printf '%s' "$text" | jq -e 'select((.findings|type)=="array")' > "$2" 2>/dev/null && return 0
+  tmp="$(mktemp "$TEMP_DIR/opencode2-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_findings_json "$tmp" "$2"
   local st=$?
@@ -1167,9 +1156,9 @@ run_provider() {   # <provider>
   # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
   # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
-  # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "$TMP_BASE/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  # never written into RUN_DIR by the peer itself.
+  PEER_WORKDIR="$TEMP_DIR/peer-$provider"
+  (umask 077; mkdir -p "$PEER_WORKDIR") || { log "could not create peer workspace; skipping"; rm -f "$OUT"; return 0; }
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -1226,7 +1215,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "$TMP_BASE/xmodel-doc-norm-XXXXXX")"
+    _norm="$TEMP_DIR/$REVIEWER_NAME-$provider.norm.json"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

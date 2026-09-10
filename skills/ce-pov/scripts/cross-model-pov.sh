@@ -5,7 +5,7 @@
 # process and writes its POV as JSON into the run dir.
 # Every peer receives the canonical POV persona, schema, and a caller-prepared
 # subject payload. The peer also receives the caller-declared repository read
-# scope; private prompt/result scratch stays under the workspace `.tmp`.
+# scope; private prompt/result scratch stays outside that repository.
 #
 # Independence is by PROVIDER, not CLI brand. A provider is reached by a ROUTE:
 # its dedicated CLI, or (for the fixed grok-cursor / composer routes) cursor-agent. All
@@ -24,10 +24,9 @@
 #                   explicitly named peer, but its receipt remains unverified;
 #                   automatic discovery must exclude it before calling this worker.
 #   <fixed-route>   one host-resolved and pre-sanctioned route: codex, claude,
-#                   grok-cli, grok-cursor, cursor, composer, opencode, or opencode2.
-#                   opencode2 is distinct from opencode and does not reuse its flags.
-#                   A route failure returns no artifact; only the host may disclose
-#                   and retry a different recipient.
+#                   grok-cli, grok-cursor, cursor, or composer. A route failure
+#                   returns no artifact; only the host may disclose and retry a
+#                   different recipient.
 #   <subject-payload> framed question plus any conversation-only subject material.
 #                     Point to repository files instead of copying their contents;
 #                     the peer grounds itself from the shared working copy.
@@ -40,9 +39,9 @@
 # Test/introspection mode (no model call, no side effects):
 #   cross-model-pov.sh --emit-adapter <route>
 #     prints the exact argv the given route would run (route in:
-#     codex | claude | grok-cli | grok-cursor | cursor | composer | opencode | opencode2).
-#     Both this mode and the live run build their argv from adapter_argv(), so the
-#     U7 route-safety test asserts on the same command string the peer actually runs.
+#     codex | claude | grok-cli | grok-cursor | cursor | composer). Both this mode and the
+#     live run build their argv from adapter_argv(), so the U7 route-safety test
+#     asserts on the same command string the peer actually runs.
 #
 # Self-locates its sibling reference files via BASH_SOURCE (NOT the CWD, which is
 # the user's project on every host). The agent passes the values above.
@@ -262,8 +261,6 @@ adapter_argv() {
       [ "$_oc_model" = "auto" ] || [ -z "$_oc_model" ] || printf '%s\0' --model "$_oc_model"
       ;;
     opencode2)
-      # Distinct from V1 `opencode`: no --dir, no V1 env, no --auto.
-      # Project directory is the parent positional/cwd, not a V1 flag.
       printf '%s\0' bash -c 'cd "$1" && shift && exec "$@"' _ "$READ_ROOT" \
         opencode2 run --standalone --format json --file "$PROMPT_FILE"
       _oc2_model="$(route_model opencode2)"
@@ -290,7 +287,7 @@ apply_model_override() {
     grok-cursor:cursor-grok-* ) ;;
     composer:composer-* ) ;;
     opencode:*/* ) ;;
-    opencode2:*/*#*|opencode2:*/* ) ;;
+    opencode2:*/* ) ;;
     *) return 1 ;;
   esac
 }
@@ -655,7 +652,7 @@ run_timeout_cmd() {
   # $1 = stdin file ("" -> /dev/null). $2 = hard cap secs. $3 = "idle" | "no-idle".
   RUN_SUCCEEDED=false
   # Run from the declared read root. Private prompt/output paths are absolute and
-  # remain under workspace `.tmp`; route adapters separately carry the same root.
+  # remain outside the repository; route adapters separately carry the same root.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
   local idle_mode="${3:-idle}"

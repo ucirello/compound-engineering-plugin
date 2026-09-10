@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# read-launch-json.sh — read .claude/launch.json from the repo root and emit
+# read-launch-json.sh — read .claude/launch.json from the workspace root and emit
 # the selected configuration as JSON on stdout, or a sentinel on failure.
 #
 # Usage:
@@ -27,7 +27,7 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, JJ workspace root not found).
+# genuine operational failures (missing `jq`, workspace root not found).
 
 set -u
 
@@ -36,6 +36,12 @@ REQUESTED_NAME="${1:-}"
 REPO_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
   echo "ERROR: not in a Jujutsu workspace" >&2
+  exit 1
+fi
+
+# Pin cwd to the workspace root. `jj -R` does not change cwd.
+if ! cd "$REPO_ROOT"; then
+  echo "ERROR: cannot cd to workspace root" >&2
   exit 1
 fi
 

@@ -4,7 +4,7 @@ description: Refresh the repo's captured learnings against the current codebase.
 argument-hint: "[optional: scope hint — directory, filename, module, or keyword] [mode:non-interactive] "
 ---
 
-# Compound Refresh
+# Learning Refresh
 
 Audit the learnings under `<root>/solutions/` against the current codebase, apply the maintenance actions the evidence supports, and deliver a complete per-doc report plus committed changes. The report and the corrected document set are the deliverables. The store only compounds value if every doc can be trusted.
 
@@ -69,11 +69,11 @@ Edits apply silently in every mode. The report's `CONCEPTS.md` line records what
 
 ## Commit
 
-Skip if nothing changed. Otherwise include **only** the files this refresh modified in the change, and describe it in the repo's convention. **Read `references/commit.md`** for the per-mode bookmark decision and the jj-failure fallback.
+Skip if nothing changed. Otherwise describe **only** the files this refresh modified as a dedicated JJ change in the repo's convention. **Read `references/commit.md`** for the per-mode bookmark decision and the JJ-failure fallback.
 
 ## Discoverability Check
 
-After the report, check that the project's instructions would lead an agent to `<root>/solutions/` before working in a documented area. Do this every time: the store only compounds value when agents can find it. **Read `references/discoverability.md`** for what the reader must learn, the smallest-addition rule and its tone, the `CONCEPTS.md` variant, consent versus a report line per mode, and folding a late edit into the change.
+After the report, check that the project's instructions would lead an agent to `<root>/solutions/` before working in a documented area. Do this every time: the store only compounds value when agents can find it. **Read `references/discoverability.md`** for what the reader must learn, the smallest-addition rule and its tone, the `CONCEPTS.md` variant, consent versus a report line per mode, and folding a late edit into the commit.
 
 ## Relationship to ce-compound
 

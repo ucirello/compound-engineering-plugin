@@ -36,8 +36,8 @@
 #   signature files. Deeper nesting is ignored to avoid false positives.
 #
 #   Excluded directories (not real project roots):
-#     node_modules .jj vendor dist build coverage .next .nuxt
-#     .svelte-kit .turbo tmp fixtures
+#     node_modules .git .jj vendor dist build coverage .next .nuxt
+#     .svelte-kit .turbo .tmp tmp fixtures
 #
 # `multiple` vs `rails`: Rails apps commonly ship a Procfile.dev alongside
 # bin/dev. To avoid treating every Rails app as a monorepo, the `rails`
@@ -52,9 +52,14 @@ if [ -z "$REPO_ROOT" ]; then
   exit 1
 fi
 
-REPO_ROOT=$(cd "$REPO_ROOT" 2>/dev/null && pwd -P)
+# Pin cwd to the workspace root. `jj -R` does not change cwd.
+if ! cd "$REPO_ROOT" 2>/dev/null; then
+  echo "ERROR: cannot resolve workspace root" >&2
+  exit 1
+fi
+REPO_ROOT=$(pwd -P)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: cannot resolve repo root" >&2
+  echo "ERROR: cannot resolve workspace root" >&2
   exit 1
 fi
 
@@ -154,7 +159,7 @@ esac
 # Exclusion list: directories that ship framework configs as fixtures or build
 # output, not as real project roots.
 
-EXCLUDE_DIRS="node_modules .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
+EXCLUDE_DIRS="node_modules .git .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo .tmp tmp fixtures"
 EXCLUDE_ARGS=""
 for d in $EXCLUDE_DIRS; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS -path './$d' -prune -o -path '*/$d' -prune -o"

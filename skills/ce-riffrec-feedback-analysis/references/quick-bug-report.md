@@ -4,9 +4,9 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Create `OUTPUT_DIR` under the workspace `.tmp` with run isolation. Run `jj workspace root` with the process cwd at the workspace root; if this is not a JJ repository, use `.` as the root. Create `<workspace-root>/.tmp/ce-riffrec-feedback-analysis/<run-id>/` where `<run-id>` is unique per run. Set `OUTPUT_DIR` to that directory, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
+1. Resolve `WORKSPACE_ROOT` with `jj workspace root`; when there is no JJ repository, use the current directory. Atomically create a unique `OUTPUT_DIR` under `$WORKSPACE_ROOT/.tmp/rocketclaw/ce-riffrec-feedback-analysis/`, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
 
-2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
+2. Read only `analysis.md` from the scratch output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 
 3. Pick at most one or two screenshots from `frames/` that directly show the reported issue. Prefer frames near a verbal complaint, a failed click, a console error, or a failed network request.
 
@@ -30,9 +30,9 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only under workspace `.tmp` and stay local-only.
+- Do not retain `raw/` or `frames/` in a JJ change. They live only in the workspace-local scratch directory and may be removed after the report is complete.
 - No source-mapping pass across the codebase.
 
 ## Escalation
 
-If, while reading the transcript, the recording turns out to contain multiple distinct issues, requirements, or a workflow walkthrough, stop and tell the user: "This recording has more than one issue — switching to the extensive path." Then load `references/extensive-analysis.md` and re-run the analyzer with a non-temp output directory.
+If, while reading the transcript, the recording turns out to contain multiple distinct issues, requirements, or a workflow walkthrough, stop and tell the user: "This recording has more than one issue — switching to the extensive path." Then load `references/extensive-analysis.md` and re-run the analyzer with a durable output directory.

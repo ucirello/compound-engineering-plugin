@@ -2,23 +2,23 @@
 
 **Description-only mode** — print the title and body. Stop unless the user asks to apply.
 
-**New PR** (full workflow, no existing PR from Step 1) — if **Stack mode** is active, follow the Submit section of `references/stack-submit.md` instead of `GIT_DIR="$(jj git root)" gh pr create`; then report the bottom open non-draft PR URL and continue to babysit handoff. Otherwise, immediately before creating, **always** re-run `GIT_DIR="$(jj git root)" gh pr list --head <bookmark> --state open --json number,url,isDraft,headRefName,headRepositoryOwner` (bookmark name only; target the base repo on a fork, per Context) so a PR that appeared since Step 1, or was missed because the Step 1 check came back **unknown**, is not duplicated. If it now shows a PR whose `headRepositoryOwner`/`headRefName` match the current head, switch to the existing-PR path; disambiguate multi-fork matches by head owner as in Step 1 rather than assuming index 0. If this re-check itself exits non-zero, resolve `GIT_DIR="$(jj git root)" gh auth status` / connectivity before creating rather than assuming none exists. Otherwise apply per "Applying via gh" below using `GIT_DIR="$(jj git root)" gh pr create`. Report the URL.
+**New PR** (full workflow, no existing PR from Step 1) — if **Stack mode** is active, follow the Submit section of `references/stack-submit.md` instead of `GIT_DIR="$(jj git root)" gh pr create`; then report the bottom open non-draft PR URL and continue to babysit handoff. Otherwise, immediately before creating, re-run `GIT_DIR="$(jj git root)" gh pr list --head <bookmark> --state open --json number,url,isDraft,headRefName,headRepositoryOwner` with the bookmark name only and target the base repository on a fork. Match owner and the API `headRefName`; do not assume index 0. A matching PR switches to the existing-PR path, exit-0 `[]` permits creation, and non-zero blocks until authentication or connectivity is resolved. Apply with `GIT_DIR="$(jj git root)" gh pr create` and report the URL.
 
 **Existing PR** (full workflow, found in Step 1) — if **Stack mode** is active, still follow the Submit section of `references/stack-submit.md` so remaining stack layers submit / sync (mid-stack ship is normal); then report the bottom open non-draft PR URL and continue to babysit handoff with derived posture. Otherwise the new commits are already on the PR from Step 3. Report the PR URL, then ask whether to rewrite the description.
 
 - **No** — done.
 - **Yes** — run Step 4 if not already done, then preview and apply (see below).
 
-**Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep the existing title and body and do not call `GIT_DIR="$(jj git root)" gh pr edit`. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, the user may pass focus text back for a regenerate; do not apply. If confirmed, apply per "Applying via gh" below using `GIT_DIR="$(jj git root)" gh pr edit` and report the URL.
+**Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep them and do not call `GIT_DIR="$(jj git root)" gh pr edit`. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, the user may pass focus text back for a regenerate; do not apply. If confirmed, apply with `GIT_DIR="$(jj git root)" gh pr edit` and report the URL.
 
-**Explainer archival** — runs only in full workflow, with `pr_teaching_archive` on, a composed `## New concepts` section, and the apply confirmed (new-PR create, or existing-PR rewrite accepted); a declined rewrite skips archival entirely so no unlinked doc change is left behind. All paths resolve from the workspace root gathered in Context, never the CWD. With two taught concepts, write one file per concept and include both in the single JJ change. Execute as explicit transitions immediately before the `gh` call:
+**Explainer archival** — runs only in full workflow, with `pr_teaching_archive` on, a composed `## New concepts` section, and the apply confirmed (new-PR create, or existing-PR rewrite accepted); a declined rewrite skips archival entirely so no unlinked change is left behind. All paths resolve from the workspace root gathered in Context, never the CWD. With two taught concepts, write one file per concept and include both in one JJ change. Execute as explicit transitions immediately before the `gh` call:
 
-1. Verify with the project's ignore rules (`.gitignore` and equivalent ignore files) that `<root>/explainers/YYYY-MM-DD-<concept-slug>.md` can be tracked. If the path is ignored, print a one-line warning and skip archival entirely, writing nothing (never force-track it).
+1. Verify with the project's ignore rules that `<root>/explainers/YYYY-MM-DD-<concept-slug>.md` can be tracked. If ignored, print a one-line warning and skip archival entirely, writing nothing; never force-track it.
 2. Write the file (create the directory if needed) with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. If the file already exists from a prior run, overwrite it.
-3. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in git log, compose commit messages adherent to the present standards. Then: repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax. The composed message must describe teaching those concept(s). Describe and commit only those files with `jj commit <explainer-filesets> -m "<message composed from the standards above>"`, move the feature bookmark to `@-` with `jj bookmark set <bookmark> -r @-`, and push with `jj git push --bookmark <bookmark> --remote origin`. If the files produce no change, the doc is already committed from a prior run — keep the link and continue.
-4. Splice a head-bookmark blob URL per doc into the `## New concepts` section before applying. Build the URL for the repo's actual host — e.g. `GIT_DIR="$(jj git root)" gh browse -n -b <head-bookmark> -- <path>` (prints the link on whatever host `gh` targets, GitHub Enterprise included) — do not hardcode `github.com`, or the link 404s on GHE.
+3. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Project instructions and runtime `git log` syntax win. Describe and commit only those files with `jj commit <explainer-filesets> -m "<message composed from the standards above>"`, move the feature bookmark to `@-`, and push it with `jj git push --bookmark <bookmark> --remote <remote>`. If the files produce no change, they were already committed; keep the link and continue.
+4. Splice a head-bookmark blob URL per document into the `## New concepts` section before applying. Build the URL for the repository's actual host, for example `GIT_DIR="$(jj git root)" gh browse -n -b <head-bookmark> -- <path>`; do not hardcode `github.com`.
 
-If the doc write, JJ commit, bookmark move, or push fails, warn and continue to PR creation without the link — never strand the flow between commit and PR.
+If the document write, JJ commit, bookmark move, or push fails, warn and continue to PR creation without the link; never strand the flow between commit and PR.
 
 **User-runnable invocation rendering.** For the output handoffs below, default to `/ce-explain <name>`. Use `$ce-explain <name>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
@@ -36,22 +36,22 @@ Never start babysit mechanics yourself: do not run `pr-snapshot`, arm a watcher,
 
 A draft-only stack submit is a hard residual before babysit when babysit is on.
 
-**Do not fire (auto-detected, no flag needed):** `mode:pipeline` **except** when this run completed a stack-mode submit (then hand off with derived posture as above), description-only / description-update, no PR created or updated this run, non-GitHub, **draft PR** this run created/updated (author not-ready signal — announce skip; can start `ce-babysit-pr` once ready; explicit `babysit:continuous` / `babysit:checkpoint` still forces watch — pass `watch` / `checkpoint` into the invocation so its draft boundary arms), or **a head bookmark you cannot push to**. **Fork PRs are drivable — not a hard-off** when you can push the head (common for a bookmark this skill just pushed): babysit reads state on the **base** repo and pushes fixes to the **head** repo. Hard-off only when the head is not pushable. **Soft-degrade (after successful handoff only):** checkpoint-only harness runs one tick + resume command — not a substitute for a failed handoff.
+**Do not fire (auto-detected, no flag needed):** `mode:pipeline` except when this run completed a stack-mode submit, description-only or description-update, no PR created or updated this run, non-GitHub, a draft PR this run created or updated, or a head bookmark you cannot push. Fork PRs are drivable when the head bookmark is pushable: babysit reads state on the base repository and pushes fixes to the head repository. Explicit `babysit:continuous` or `babysit:checkpoint` still forces draft watching with the corresponding mode. A checkpoint-only run after successful handoff is not a substitute for a failed handoff.
 
 ## Applying via gh
 
-The body **must** be written under the workspace `.tmp` directory and passed via `--body-file <path>`. Never use `--body-file -`, stdin pipes, heredoc-to-stdin, or `--body "$(cat ...)"` — wrappers and stdin handling can silently produce an empty PR body while `gh` still exits 0 and returns a URL.
+The body **must** be written under the workspace root's `.tmp` directory and passed via `--body-file <path>`. Outside a JJ workspace, use `.tmp` under the current directory. Never use `--body-file -`, stdin pipes, heredoc-to-stdin, or `--body "$(cat ...)"`; wrappers and stdin handling can silently produce an empty PR body while `gh` still exits 0 and returns a URL.
 
 ```bash
 WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
-mkdir -p "$WORKSPACE_ROOT/.tmp/ce-commit-push-pr";
-BODY_FILE="$WORKSPACE_ROOT/.tmp/ce-commit-push-pr/pr-body-$$.md";
+mkdir -p "$WORKSPACE_ROOT/.tmp";
+BODY_FILE="$WORKSPACE_ROOT/.tmp/pr-body-$$.md";
 cat > "$BODY_FILE" <<'__PR_BODY_END__'
 <the composed body markdown goes here, verbatim>
 __PR_BODY_END__
 ```
 
-If not in a JJ workspace, `jj workspace root` fails and local `.tmp` (cwd-relative) suffices. The quoted sentinel keeps `$VAR`, backticks, and any literal `EOF` inside the body from being expanded.
+The quoted sentinel keeps `$VAR`, backticks, and any literal `EOF` inside the body from being expanded.
 
 For `<TITLE>`: substitute verbatim. If it contains `"`, `` ` ``, `$`, or `\`, escape them or switch to single quotes.
 

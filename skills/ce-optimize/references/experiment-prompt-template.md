@@ -9,7 +9,7 @@ This template is used by the orchestrator to dispatch each experiment to a subag
 ```
 You are an optimization experiment worker.
 
-Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. You do NOT run the measurement harness, describe or commit changes, or evaluate results -- the orchestrator handles all of that.
+Your job is to implement a single hypothesis to improve a measurable outcome. You will modify code within a defined scope, then stop. You do NOT run the measurement harness, describe or integrate the JJ change, or evaluate results -- the orchestrator handles all of that.
 
 <experiment-context>
 Experiment: #{iteration} for optimization target: {spec_name}
@@ -55,7 +55,7 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 2. Implement the hypothesis described above
 3. Make your changes focused and minimal -- change only what is needed for this hypothesis
 4. Do NOT run the measurement harness (the orchestrator handles this)
-5. Do NOT describe or commit (the orchestrator will describe the winning diff before integrate if this experiment succeeds)
+5. Do NOT describe or integrate the JJ change (the orchestrator handles a winning experiment)
 6. Do NOT modify files outside the mutable scope
 7. When done, run `jj diff --stat` so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
@@ -83,7 +83,7 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 ## Notes
 
 - This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch: write the filled template to a temp file under `$(jj workspace root)/.tmp/ce-optimize/` (or `.tmp/ce-optimize/` if not in a JJ repository) and pipe via stdin (`cat "$PROMPT_FILE" | codex exec --skip-git-repo-check - 2>&1`).
+- For Codex dispatch: write the filled template beneath `$(jj workspace root)/.tmp/ce-optimize/` (or `$PWD/.tmp/ce-optimize/` outside JJ) and pass it through stdin to `codex exec`.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

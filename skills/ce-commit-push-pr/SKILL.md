@@ -20,19 +20,19 @@ argument-hint: "[PR ref] [mode:pipeline] [archive:on|off] [babysit:off|continuou
 
 **Opt-in only.** Enter it when intent or standing preference wants a multi-PR stack. An explicit stack request is **required intent** — do not re-read it as a single PR with a custom `--base`. **Do not** proactively suggest PR stacks. When the user did **not** ask for one, **refuse** nonsense stacks (one logical change, artificial slices) and stay single-PR.
 
-In stack mode, load `references/stack-submit.md` **before Step 3** and follow only its probing, topology, and retrospective construction; that layer-by-layer change flow replaces ordinary Step 3. **Do not submit there.** Step 5 owns submission, the `gh stack` CLI dependency and residuals, and the handoff posture: `posture:stack-ready` by default, `posture:stack-land` only on explicit land intent, from the **bottom open non-draft** PR. Do not add `posture:` to this skill's argument-hint.
+In stack mode, load `references/stack-submit.md` **before Step 3** and follow only its probing, topology, and retrospective construction; that layer-by-layer commit flow replaces ordinary Step 3. **Do not submit there.** Step 5 owns submission, the `gh stack` CLI dependency and residuals, and the handoff posture: `posture:stack-ready` by default, `posture:stack-land` only on explicit land intent, from the **bottom open non-draft** PR. Do not add `posture:` to this skill's argument-hint.
 
 ## Context
 
-**Read `references/context.md` before Step 1.** It owns the command table, the exit-code meanings, the fork trap, and the bookmark and PR resolution Steps 1-2 use. Two of its rules belong here too. Never ask whether to create a bookmark: a working-copy change with work and no feature bookmark gets one before push, and an empty default with no work reports and stops. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in git log, compose commit messages adherent to the present standards. Then: repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax.
+**Read `references/context.md` before Step 1.** It owns the command table, exit-code meanings, fork handling, and bookmark and PR resolution Steps 1-2 use. A working-copy change does not need a bookmark until publication. Before pushing, create or move a feature bookmark to the completed change; never push the default bookmark directly.
 
 Three rules govern the run.
 
-**Every `jj` probe is its own argv-form call**, gathering and re-verification alike, and its exit status is control flow. Pair every `gh` invocation with `GIT_DIR="$(jj git root)"`. The reference gives the reason and names the compound recipes this skill pins.
+**Every `jj` and `gh` probe is its own argv-form call**, gathering and re-verification alike, and its exit status is control flow. The reference gives the reason and names the compound recipes this skill pins.
 
-**Probe output is a snapshot.** Re-verify bookmark, remote, and PR state right before each consequential action: Step 3's push, Step 5's create.
+**Probe output is a snapshot.** Re-verify bookmark, remote, and PR state right before each consequential action: Step 3's push and Step 5's create.
 
-**Only an exit-0 `[]` from a query against the base repo means "no open PR."** A non-zero exit is **unknown**, never "none". On a fork workspace, target the base with `-R` and pass the bookmark name only, since `--head <owner>:<bookmark>` silently returns `[]`. With results, do **not** blindly take index 0: match head owner and bookmark, and stop on an ambiguous match. Note the URL and body from that entry — Step 5 routes on the URL, Step 4 rewrites the existing body.
+**Only an exit-0 `[]` from a query against the base repo means "no open PR."** A non-zero exit is **unknown**, never "none". On a fork workspace, target the base with `-R` and pass the bookmark name only, since `--head <owner>:<bookmark>` silently returns `[]`. With results, do not blindly take index 0: match head owner and bookmark, and stop on an ambiguous match. Note the URL and body from that entry; Step 5 routes on the URL and Step 4 rewrites the existing body.
 
 ## Artifact Root
 
@@ -41,20 +41,20 @@ Resolve `<root>` once when archival is on: it writes an explainer under `<root>/
 <!-- rocketclaw-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`.
+- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value; never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- rocketclaw-docs-root:end -->
 
 ## Step 3: Commit and push
 
-**Read `references/commit-and-push.md`** for bookmark creation, change grouping, the description and fileset shapes, and the push. Rooting work off the default bookmark is the fragile case — stale local base, local-only changes on it, colliding working-copy content — and `references/bookmark-creation.md` owns that flow. If the stack reference already committed retrospective layers, skip to Step 4; `GIT_DIR="$(jj git root)" gh stack submit` pushes in Step 5.
+**Read `references/commit-and-push.md`** for bookmark creation, change grouping, description mechanics, and push. Creating work from the default bookmark is the fragile case; `references/bookmark-creation.md` owns fresh-base and local-divergence handling. If the stack reference already constructed retrospective layers, skip to Step 4; `GIT_DIR="$(jj git root)" gh stack submit` pushes in Step 5.
 
-Two rules bound this step. Never complete a change with an unbounded fileset — name the files, so `.env`, build, and generated files cannot ride along, and pass that same path list to `jj commit`, so nothing else in the working-copy change is swept in. Honor `exclude:<paths>`: those files stay in the working-copy change and the report says so.
+Two rules bound this step. Use explicit JJ filesets for each completed change so `.env`, build, generated, excluded, or unrelated files cannot ride along. Honor `exclude:<paths>`: those files remain in the working-copy change and the report says so.
 
 ## Step 4: Compose the PR title and body
 
-**You MUST read `references/pr-description-writing.md`** in full — it owns the title and body content rules, including the rule to preserve an existing `Related:` / `Fixes` on rewrite. Then read **`references/compose.md`** for the gates before composition: the evidence decision; and the teaching gate, where `pr_teaching_section` defaults **on**, `pr_teaching_archive` defaults **off**, and only an **active (non-commented)** key changes either.
+**You MUST read `references/pr-description-writing.md`** in full. It owns the title and body content rules, including preserving an existing `Related:` or `Fixes` reference on rewrite. Then read **`references/compose.md`** for the evidence and teaching gates. `pr_teaching_section` defaults on, `pr_teaching_archive` defaults off, and only an active non-commented key changes either.
 
 If Step 1 found an existing PR, pass its URL to Step 4 so PR mode fetches the existing body.
 
@@ -64,4 +64,4 @@ If Step 1 found an existing PR, pass its URL to Step 4 so PR mode fetches the ex
 
 **The completion gate is here.** In an interactive full workflow, or in `mode:pipeline` when this run submitted a stack, a reported PR URL, a stack submit, or new commits on an open PR leave this run **not done** until `ce-babysit-pr` owns follow-on for that PR. Reporting the PR URL alone is not success.
 
-The only skips are `babysit:off`, a standing `auto_babysit: false` in configuration, and that reference's do-not-fire cases, drafts among them. No other watch substitutes: not `ci-watcher`, not `GIT_DIR="$(jj git root)" gh pr checks --watch`, not a hand-rolled poll, not "later". If `ce-babysit-pr` cannot be loaded or started, stop and report it blocked.
+The only skips are `babysit:off`, a standing `auto_babysit: false` in the configuration, and that reference's do-not-fire cases, drafts among them. No other watch substitutes: not `ci-watcher`, not `GIT_DIR="$(jj git root)" gh pr checks --watch`, not a hand-rolled poll, not "later". If `ce-babysit-pr` cannot be loaded or started, stop and report it blocked.

@@ -31,13 +31,13 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. It yields in exactly two cases: the user names a technology, or the dimension cannot be rendered in a browser without faking it. In that second case, build in the medium the dimension requires, and name that choice before you build. If a named technology also cannot render the dimension, say so rather than yielding silently. `references/build.md` owns what the artifact may be on either path.
 
-Build under `.context/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to `<workspace>/.tmp/ce-prototype/<date>-<slug>/` (cwd-relative `.tmp/ce-prototype/<date>-<slug>/` when the run is not inside a JJ repository), where survival is best-effort. `references/build.md` names every case that forces the fallback root.
+Build under `.context/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Use `<workspace-root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` for scratch output, with local `.tmp/rocketclaw/ce-prototype/<date>-<slug>/` when `jj workspace root` reports no repository. `references/build.md` owns the choice.
 
-The `.context` path has to be listed in `.gitignore` first. Probe it from the workspace root with `grep -qxF '.context/' "$(jj workspace root)/.gitignore"`; the trailing slash is load-bearing. When it is not covered, the offer to add that line comes before the root is resolved, or accepting it cannot help this run.
+The `.context/` and `.tmp/` paths must be ignored before use because JJ automatically tracks new files. Follow the repository's existing ignore syntax. When either rule is absent, offer to append only the missing rule to the workspace-root `.gitignore` before resolving the root.
 
 `references/preview.md` owns that offer and the resolution that follows it. Do not create the run directory yourself; a second claim splits the screens from the capsule.
 
-Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches the product tree. Never `jj commit` it. When the try ends, `jj restore` only the files you changed, never work you did not make. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty tree. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
+Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches the product tree. Never include it in the lasting JJ change. When the try ends, use `jj restore <paths>` only for the files you changed, never work you did not make. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty working copy. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
 
 ## Keep the decisions
 

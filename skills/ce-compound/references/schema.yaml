@@ -1,5 +1,5 @@
-# Documentation schema for learnings written by ce-compound
-# Treat this as the canonical frontmatter contract for compounded learnings.
+# Documentation schema for durable learnings.
+# Treat this as the canonical frontmatter contract for written learnings.
 #
 # The schema has two tracks based on problem_type:
 #   Bug track  — problem_type is a defect or failure (build_error, test_failure, etc.)
@@ -196,7 +196,7 @@ optional_fields:
 bug_optional_fields:
   framework_version:
     type: string
-    description: "Framework or runtime name and version the bug was observed on, e.g. \"rails 7.1.2\" or \"node 22.4.0\". Only relevant for bug-track docs."
+    description: "Framework or runtime name and version the bug was observed on. Only relevant for bug-track docs."
 
 # --- Backward compatibility --------------------------------------------------
 # Docs created before the track system was introduced may have bug-track
@@ -206,8 +206,8 @@ bug_optional_fields:
 #     strip them during refresh unless the doc is being rewritten for other reasons.
 #   - When creating NEW docs, follow the track rules above.
 # Docs written before component/root_cause became open vocabulary may carry
-# values from the earlier closed list (rails_*, hotwire_turbo, missing_include,
-# ...) or a rails_version field. They stay valid; the corpus-first rule means a
+# values from an earlier closed list or a legacy framework-version field. They
+# stay valid; the corpus-first rule means a
 # repo whose docs consistently use those values keeps using them.
 
 # --- Validation rules --------------------------------------------------------

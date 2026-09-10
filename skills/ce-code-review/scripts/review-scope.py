@@ -43,25 +43,98 @@ AGENT_SURFACE_PATTERN = re.compile(
     re.I,
 )
 
+_REPO_ROOT: Path | None = None
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+
+def jj(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", *args], capture_output=True, text=True, check=False, cwd=cwd
     )
+
+
+def repo_root() -> Path:
+    """The workspace root, matching how docs_root is resolved everywhere else.
+
+    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
+    check must resolve against the JJ workspace root, not the current working
+    directory. ce-code-review can run from a subdirectory (``jj diff`` still
+    works there), where ``Path.cwd()`` would join docs_root under the subdir and
+    wrongly report the corpus absent. Fall back to cwd when jj can't answer.
+    Subsequent jj invocations use this path as cwd so file lists stay
+    repo-relative (``src/example.py``, not a workspace-prefixed path).
+    """
+    global _REPO_ROOT
+    if _REPO_ROOT is not None:
+        return _REPO_ROOT
+    result = jj("workspace", "root")
+    if result.returncode == 0 and result.stdout.strip():
+        _REPO_ROOT = Path(result.stdout.strip()).resolve()
+    else:
+        _REPO_ROOT = Path.cwd().resolve()
+    return _REPO_ROOT
+
+
+def jj_at(*args: str) -> subprocess.CompletedProcess[str]:
+    return jj(*args, cwd=str(repo_root()))
 
 
 def valid_commit(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj_at("log", "-r", ref, "--no-graph", "-T", "commit_id", "-n", "1")
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+    result = jj_at(
+        "log",
+        "-r",
+        f"heads(::{base} & ::{head})",
+        "--no-graph",
+        "-T",
+        'commit_id ++ "\\n"',
+    )
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
     return candidates[0]
+
+
+def executable_lines_from_git_diff(diff_text: str) -> int:
+    """Count added+deleted lines on code-extension paths from a git-format diff."""
+    current: str | None = None
+    added = 0
+    deleted = 0
+    total = 0
+
+    def flush() -> None:
+        nonlocal current, added, deleted, total
+        if current and Path(current).suffix.lower() in CODE_EXTENSIONS:
+            total += added + deleted
+        current = None
+        added = 0
+        deleted = 0
+
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            flush()
+            continue
+        if line.startswith("+++ b/"):
+            current = line[6:]
+            continue
+        if line.startswith("+++ /dev/null"):
+            current = current or None
+            continue
+        if line.startswith("--- "):
+            continue
+        if current is None:
+            continue
+        if line.startswith("+") and not line.startswith("+++"):
+            added += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            deleted += 1
+    flush()
+    return total
 
 
 DEFAULT_DOCS_ROOT = "docs"
@@ -80,21 +153,6 @@ def normalize_docs_root(docs_root: str | None) -> str:
     if not docs_root or "<" in docs_root or ">" in docs_root:
         return DEFAULT_DOCS_ROOT
     return docs_root
-
-
-def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
-
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
-    """
-    result = git("rev-parse", "--show-toplevel")
-    if result.returncode == 0 and result.stdout.strip():
-        return Path(result.stdout.strip()).resolve()
-    return Path.cwd().resolve()
 
 
 def has_learnings_corpus(docs_root: str | None) -> bool:
@@ -146,31 +204,27 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", learnings_corpus), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
     if args.head:
         merge_base = unique_merge_base(args.base, args.head)
         if merge_base is None:
             print(json.dumps(fail_closed("merge base unavailable or ambiguous", learnings_corpus), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_from = merge_base
+        diff_to = args.head
+        name_args = ["diff", "--name-only", "--from", diff_from, "--to", diff_to]
+        git_args = ["diff", "--git", "--from", diff_from, "--to", diff_to]
+    else:
+        name_args = ["diff", "--name-only", "--from", args.base]
+        git_args = ["diff", "--git", "--from", args.base]
 
-    names = git("diff", "--name-only", *diff_args)
-    numstat = git("diff", "--numstat", *diff_args)
-    if names.returncode != 0 or numstat.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", learnings_corpus), sort_keys=True))
+    names = jj_at(*name_args)
+    git_diff = jj_at(*git_args)
+    if names.returncode != 0 or git_diff.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed", learnings_corpus), sort_keys=True))
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
-    executable_lines = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3 or Path(parts[2]).suffix.lower() not in CODE_EXTENSIONS:
-            continue
-        try:
-            executable_lines += int(parts[0]) + int(parts[1])
-        except ValueError:
-            # Binary/unknown counts fail the lite gate through uncounted_files below.
-            pass
+    executable_lines = executable_lines_from_git_diff(git_diff.stdout)
 
     uncounted = sum(
         1 for file in files if Path(file).suffix.lower() not in CODE_EXTENSIONS

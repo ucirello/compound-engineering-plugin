@@ -2,6 +2,14 @@
 
 This reference owns the path from invocation to a launched app with log capture running.
 
+## Workspace and evidence
+
+Resolve the JJ workspace root with `jj workspace root`. Run every `jj` invocation with process cwd set to that absolute root. When the current directory is outside a JJ repository, use that directory as the local root.
+
+Inside a JJ repository, treat `jj status`, `jj diff`, and `jj log` as authoritative for working-copy state, changed iOS surfaces, and relevant history. Do not substitute Git VCS commands. Pair `gh` with `GIT_DIR="$(jj git root)"` when the user's scope names a GitHub object.
+
+Create one private run directory under `<workspace-root>/.tmp/ce-test-xcode/<run-id>/` and retain its absolute path. Store screenshots, captured logs, and other temporary evidence only there. Do not use operating-system or global temporary storage (`/tmp`, `$TMPDIR`, `mktemp`). Outside a JJ repository, the same path is rooted at the local directory. Do not edit ignore configuration.
+
 ## Availability gate
 
 Confirm that the active harness exposes XcodeBuildMCP's simulator-listing capability and that the call succeeds. Host-specific MCP tool prefixes are adapters, not the contract.
@@ -29,4 +37,4 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 Any failure before the app is visibly launched with log capture running is a setup blocker: preserve its evidence, report it, and stop later stages.
 
-At handoff, retain the project/workspace, scheme, simulator identity, app identity, and log-capture handle needed by `test-and-report.md`.
+At handoff, retain the project/workspace, scheme, simulator identity, app identity, log-capture handle, and evidence-directory path needed by `test-and-report.md`.

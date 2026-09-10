@@ -106,19 +106,21 @@ def cmd_integration_acquire(args) -> tuple[str, dict]:
 
 
 def semantic_snapshot(repo: str) -> dict:
-    head = git_text(repo, "rev-parse", "HEAD")
-    head_tree = git_text(repo, "rev-parse", "HEAD^{tree}")
-    index_tree = git_text(repo, "write-tree")
-    raw = git(repo, "status", "--porcelain=v2", "-z", "--untracked-files=all")
-    worktree_index = git(repo, "diff", "--name-only", "-z")
+    empty = jj_is_empty(repo, "@")
+    head = jj_commit_id(repo, "@-")
+    working_copy = jj_commit_id(repo, "@")
+    bookmarks = jj_local_bookmarks(repo, "@") or jj_local_bookmarks(repo, "@-")
+    dirty = status_paths(repo)
+    status_raw = "\n".join(sorted(dirty)).encode()
     return {
         "head": head,
-        "branch_ref": git_text(repo, "symbolic-ref", "-q", "HEAD", check=False),
-        "head_tree": head_tree,
-        "index_tree": index_tree,
-        "status_sha256": digest_bytes(raw),
-        "status_empty": not bool(raw),
-        "worktree_index_empty": not bool(worktree_index),
+        "branch_ref": bookmarks[0] if bookmarks else "",
+        "head_tree": head,
+        "index_tree": head if empty else working_copy,
+        "status_sha256": digest_bytes(status_raw),
+        "status_empty": empty and not dirty,
+        # JJ has no separate index; the working copy is the commit.
+        "worktree_index_empty": True,
     }
 
 
@@ -126,15 +128,22 @@ def expected_apply_snapshot(repo: str, pre_head: str, unit: dict) -> dict:
     transport = unit["transport"]
     if pre_head == transport["base"]:
         tree = transport["tree"]
+        changed = diff_changed_paths(repo, _commit_id_revset(pre_head), _commit_id_revset(transport["commit"]))
     else:
-        # Compute the same semantic three-way result as applying the
-        # base-parented transport commit, without touching the canonical index.
-        merged = git_text(repo, "merge-tree", "--write-tree", pre_head, transport["commit"])
-        tree = merged.splitlines()[0] if merged else ""
-        if not tree:
+        # Public jj has no merge-tree. Duplicate the transport onto pre_head to
+        # compute the cherry-pick result, then abandon the duplicate.
+        before = set(jj_text(repo, "log", "-r", f'{_commit_id_revset(pre_head)}+', "--no-graph", "-T", 'commit_id ++ "\n"', check=False).splitlines())
+        jj(repo, "duplicate", "--onto", _commit_id_revset(pre_head), _commit_id_revset(transport["commit"]))
+        after = [
+            line for line in jj_text(repo, "log", "-r", f'{_commit_id_revset(pre_head)}+', "--no-graph", "-T", 'commit_id ++ "\n"').splitlines()
+            if line and line not in before
+        ]
+        if len(after) != 1:
             raise Operational("BLOCKED", "could not derive expected canonical apply tree")
-    raw = git(repo, "diff-tree", "-r", "-M", "--name-status", "-z", pre_head, tree)
-    return {"index_tree": tree, "changed_paths": parse_diff_paths(raw)}
+        tree = after[0]
+        changed = diff_changed_paths(repo, _commit_id_revset(pre_head), _commit_id_revset(tree))
+        jj(repo, "abandon", _commit_id_revset(tree), check=False)
+    return {"index_tree": tree, "changed_paths": changed}
 
 
 def matches_expected_apply(repo: str, unit: dict, snap: dict | None = None) -> bool:
@@ -145,7 +154,7 @@ def matches_expected_apply(repo: str, unit: dict, snap: dict | None = None) -> b
         return False
     return (
         snap["head"] == pre["head"]
-        and snap["index_tree"] == expected["index_tree"]
+        and same_tree(repo, "@", expected["index_tree"])
         and snap["worktree_index_empty"]
         and status_paths(repo) == set(expected["changed_paths"])
     )
@@ -331,7 +340,7 @@ def dependency_advanced_head(doc: dict, unit: dict, head: str) -> bool:
     required_ancestors.discard(None)
     repo = doc["repository"]["toplevel"]
     return all(
-        git_text(repo, "merge-base", commit, head, check=False) == commit
+        is_ancestor(repo, commit, head)
         for commit in required_ancestors
     )
 
@@ -350,7 +359,7 @@ def validate_preflight_ancestry(doc: dict, unit: dict, heads: set[str]) -> None:
     missing = {
         head: sorted(
             commit for commit in required
-            if git_text(repo, "merge-base", commit, head, check=False) != commit
+            if not is_ancestor(repo, commit, head)
         )
         for head in sorted(heads)
     }
@@ -386,7 +395,7 @@ def cmd_preflight(args) -> tuple[str, dict]:
         allowed = set(unit["wave"].get("allowed_heads", []))
         requested: set[str] = set()
         if args.allowed_head:
-            requested = {git_text(info["toplevel"], "rev-parse", f"{h}^{{commit}}") for h in args.allowed_head}
+            requested = {resolve_commit(info["toplevel"], h) for h in args.allowed_head}
             if any(head not in allowed and not dependency_advanced_head(doc, unit, head) for head in requested):
                 raise Operational("BLOCKED", "unrecorded same-wave HEAD allowance")
         if info["head"] not in allowed and not dependency_advanced_head(doc, unit, info["head"]):
@@ -458,13 +467,12 @@ def cmd_mark_verified(args) -> tuple[str, dict]:
 
 def reconcile_commit(doc: dict, unit: dict) -> dict | None:
     repo = doc["repository"]["toplevel"]
-    head = git_text(repo, "rev-parse", "HEAD")
-    parents = git_text(repo, "rev-list", "--parents", "-n", "1", head).split()
+    head = jj_commit_id(repo, "@-")
+    parents = jj_parent_ids(repo, "@-")
     expected_parent = unit["integration"]["pre_fold"]["head"]
     expected_tree = unit["integration"]["applied"]["post_index_tree"]
-    actual_tree = git_text(repo, "rev-parse", "HEAD^{tree}")
-    if parents == [head, expected_parent] and actual_tree == expected_tree and not status_paths(repo):
-        return {"commit": head, "parent": expected_parent, "tree": actual_tree, "at": now_iso()}
+    if parents == [expected_parent] and same_tree(repo, "@-", expected_tree) and jj_is_empty(repo, "@") and not status_paths(repo):
+        return {"commit": head, "parent": expected_parent, "tree": head, "at": now_iso()}
     return None
 
 
@@ -496,7 +504,7 @@ def cmd_wave_advance(args) -> tuple[str, dict]:
         if not members:
             raise Operational("REFUSED", "unit does not belong to a parallel wave")
         validate_wave_ready(doc, unit)
-        canonical = git_text(info["toplevel"], "rev-parse", f"{args.canonical_commit}^{{commit}}")
+        canonical = resolve_commit(info["toplevel"], args.canonical_commit)
         recorded = unit.get("integration", {}).get("canonical_commit", {})
         if recorded.get("commit") != canonical or info["head"] != canonical:
             raise Operational("BLOCKED", "canonical wave commit does not match manifest and HEAD")
@@ -513,16 +521,14 @@ def cmd_wave_advance(args) -> tuple[str, dict]:
 
 
 def path_in_tree(repo: str, treeish: str, rel: str) -> bool:
-    out = git(repo, "ls-tree", "-z", "--full-tree", treeish, "--", rel)
-    return bool(out)
+    return path_in_revision(repo, treeish if not _valid_commit_id(treeish) else _commit_id_revset(treeish), rel)
 
 
 def remove_introduced_paths(repo: str, unit: dict) -> None:
     pre = unit["integration"]["pre_fold"]["head"]
     base = unit["transport"]["base"]
     commit = unit["transport"]["commit"]
-    raw = git(repo, "diff-tree", "-r", "-M", "--name-status", "-z", base, commit)
-    for rel in parse_diff_paths(raw):
+    for rel in diff_changed_paths(repo, _commit_id_revset(base), _commit_id_revset(commit)):
         if path_in_tree(repo, pre, rel):
             continue
         target = os.path.abspath(os.path.join(repo, rel))
@@ -549,11 +555,7 @@ def restore(run_id: str, unit_id: str, lock_token: str) -> bool:
             raise Operational("REFUSED", "unit has no pre-fold snapshot")
         repo = doc["repository"]["toplevel"]
         pre = dict(unit["integration"]["pre_fold"])
-        git_dir = git_text(repo, "rev-parse", "--path-format=absolute", "--absolute-git-dir")
-        cherry_pick_head = os.path.join(git_dir, "CHERRY_PICK_HEAD")
-        expected_conflict = False
-        if os.path.isfile(cherry_pick_head) and git_text(repo, "rev-parse", "HEAD") == pre["head"]:
-            expected_conflict = Path(cherry_pick_head).read_text().strip() == unit["transport"]["commit"]
+        expected_conflict = jj_is_conflict(repo, "@") and jj_commit_id(repo, "@-") == pre["head"]
         current = None if expected_conflict else semantic_snapshot(repo)
         already_exact = current == pre if current else False
         expected_apply = matches_expected_apply(repo, unit, current) if current else False
@@ -571,8 +573,7 @@ def restore(run_id: str, unit_id: str, lock_token: str) -> bool:
         unit["state"] = "restoring"
         event(doc, "restore-intent", unit_id)
     if not already_exact:
-        git(repo, "cherry-pick", "--abort", check=False)
-        git(repo, "reset", "--hard", pre["head"])
+        restore_working_copy(repo, _commit_id_revset(pre["head"]))
         test_fault("restore-after-reset")
         with locked_manifest(run_id) as doc:
             unit = doc["units"][unit_id]

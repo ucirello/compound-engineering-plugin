@@ -9,10 +9,12 @@ Parse the URL to extract HOST, OWNER, REPO, PR number, and comment REST ID:
 https://HOST/OWNER/REPO/pull/NUMBER#discussion_rCOMMENT_ID
 ```
 
-**GitHub Enterprise host.** Take the host from the URL (targeted mode is always URL-triggered). When it is **not** `github.com`, pass it as a `GH_HOST=<host>` env prefix inline on **every** `gh api` / bundled-script call below (`gh api` honors `GH_HOST` as the request host) so an enterprise thread is fetched, replied to, and resolved on the right host instead of `github.com`. On `github.com`, drop the `GH_HOST=<host> ` prefix. Carry the same host into the reply/resolve calls you run from Full Mode steps 5-7.
+**GitHub Enterprise host.** Take the host from the URL (targeted mode is always URL-triggered). When it is **not** `github.com`, pass it as a `GH_HOST=<host>` env prefix inline on **every** `gh api` / bundled-script call below (`gh api` honors `GH_HOST` as the request host) so an enterprise thread is fetched, replied to, and resolved on the right host instead of `github.com`. On `github.com`, drop the `GH_HOST=<host> ` prefix. Carry the same host into the reply/resolve calls you run from Full Mode steps 5-7. Pair every `gh` invocation (and every bundled-script call, which runs `gh`) with `GIT_DIR=$(jj git root); export GIT_DIR;` in the same block so `gh`'s underlying git calls succeed.
 
 **Step 1** -- Get comment details and GraphQL node ID via REST (cheap, single comment):
 ```bash
+GIT_DIR=$(jj git root);
+export GIT_DIR;
 GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
   --jq '{node_id, path, line, body}'   # omit GH_HOST=<host> on github.com
 ```
@@ -20,6 +22,8 @@ GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
 **Step 2** -- Map comment to its thread ID. Use [scripts/get-thread-for-comment](../scripts/get-thread-for-comment). Set `SKILL_DIR` to the absolute directory you loaded the ce-resolve-pr-feedback SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, and shell state does not persist between Bash calls, so set it inline. If the bundled script is missing, use Full Mode's fallback `gh` commands to inspect the PR comments:
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
+GIT_DIR=$(jj git root);
+export GIT_DIR;
 GH_HOST=<host> bash "$SKILL_DIR/scripts/get-thread-for-comment" PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]
 ```
 
@@ -27,6 +31,8 @@ This fetches thread IDs and their first comment IDs (minimal fields, no bodies) 
 
 **Step 3** -- Check for your own unsubmitted review before doing any work. A reply posted while you hold one is absorbed into that draft: the call returns a comment ID and URL as if it succeeded, but the reviewer sees nothing until the draft is submitted. Full Mode gets this free from `get-pr-comments`; targeted mode never calls that script, so check directly (PENDING reviews are only visible to their author, so any hit is yours):
 ```bash
+GIT_DIR=$(jj git root);
+export GIT_DIR;
 GH_HOST=<host> gh api --paginate repos/OWNER/REPO/pulls/PR_NUMBER/reviews --jq '.[] | select(.state == "PENDING") | .id'
 ```
 `--paginate` is required: this endpoint is chronological and pages at 30, so a draft can sort past page 1. Print IDs rather than a count — `--jq` runs per page, so a count emits one number per page, but IDs simply concatenate and stay empty when there is no draft. (`--slurp` is not an option; `gh` rejects it alongside `--jq`.)
@@ -37,7 +43,7 @@ If this prints anything, stop. Tell the user they have an unsubmitted review on 
 
 Apply Full Mode step 7's independent reply/resolution completion check before judgment. When the target is already `resolution-pending`, that shared step owns the only remaining work; skip judgment, fixing, validation, and commit, then complete the missing resolution without posting again.
 
-**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read (callers, invariants, `git blame`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
+**Judge first (the gate).** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The cross-item reasoning in the rubric is a no-op for a single thread, but the read-depth and divert logic apply in full: deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This is the legitimacy check — don't fix on the reviewer's authority alone.
 
 **Then act on the verdict:**
 

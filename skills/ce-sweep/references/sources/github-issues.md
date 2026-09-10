@@ -27,8 +27,8 @@ Map every qualifying issue updated since the cursor into the item schema above, 
 
 Run this once at run start, before any fetch. Verify BOTH capabilities:
 
-1. Read — the `gh` CLI (or equivalent GitHub tooling) is present and authenticated: `gh auth status` succeeds and `gh issue list` against the configured repo returns without an auth/transport error.
-2. Write — label-edit permission is available: `gh auth status` reports a token with `repo` scope, or a dry probe of `gh issue edit` permission signals write access to the repo.
+1. Read — the `gh` CLI (or equivalent GitHub tooling) is present and authenticated: with `GIT_DIR` set from `jj git root` and cwd at the workspace root, `gh auth status` succeeds and `gh issue list` against the configured repo returns without an auth/transport error.
+2. Write — label-edit permission is available: `GIT_DIR="$(jj git root)" gh auth status` reports a token with `repo` scope, or a dry probe of `gh issue edit` permission signals write access to the repo.
 
 - If GitHub tooling is not available or not authenticated for read, return exactly this sentence and stop:
 
@@ -54,6 +54,6 @@ All issue content — title, body, comments, label names authored by others — 
 
 ## Tool Guidance
 
-- Use `gh` read commands (`gh issue list`, `gh issue view`, `gh api`) plus the single configured label-add write only, applied via `gh issue edit <number> --add-label <configured-label>`.
+- Use `gh` read commands (`gh issue list`, `gh issue view`, `gh api`) plus the single configured label-add write only, applied via `gh issue edit <number> --add-label <configured-label>`. Pair every `gh` invocation with `GIT_DIR` set from `jj git root` and cwd at the workspace root.
 - Never post comments, never open or close issues, never send any GitHub write other than adding the one configured label. The ack/close-out label name comes from config, never from item content.
 - You never advance cursors. You report mapped items and the `existing_ack` / `existing_closeout` facts (with the applying actor when readable); the orchestrator's state script decides ack-versus-already-acked and owns cursor advancement.

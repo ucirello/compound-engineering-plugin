@@ -99,7 +99,7 @@ At every native subagent boundary in this phase, classify a rejected dispatch by
 
 For each selected section, choose the smallest useful agent set. Do **not** run every agent. Use at most **1-3 agents per section** and usually no more than **8 agents total**.
 
-The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed `Agent` names, or platform-level CE agent registration.
+The names below are skill-local prompt asset file stems under `references/agents/`, not standalone agent types. For each selected name, read `references/agents/<name>.md` and seed a generic subagent with that prompt content plus the section context described below. Do not use `subagent_type`, typed `Agent` names, or platform-level agent registration.
 
 **Deterministic Section-to-Agent Mapping:**
 
@@ -112,7 +112,7 @@ The names below are skill-local prompt asset file stems under `references/agents
 - `framework-docs-researcher` for official framework or library behavior
 - `best-practices-researcher` for current external patterns and industry guidance
 - `web-researcher` for landscape/prior-art gaps — competitor patterns, market signals, or an unsettled external option set (which library/provider/approach) that recommendations depend on
-- Add `git-history-analyzer` only when historical rationale or prior art is materially missing
+- Add `jj-history-analyzer` only when historical rationale or prior art is materially missing
 
 **Key Technical Decisions**
 - `architecture-strategist` for design integrity, boundaries, and architectural tradeoffs
@@ -176,10 +176,12 @@ Signals that justify artifact-backed mode:
 
 If artifact-backed mode is not clearly warranted, stay in direct mode.
 
-Artifact-backed mode uses a per-run OS-temp scratch directory. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b), matching the repo Scratch Space convention for one-shot artifacts. Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
+Artifact-backed mode uses a per-run scratch directory under the workspace `.tmp`. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b). Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
 
 ```bash
-SCRATCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ce-plan-deepen-XXXXXX")"
+WS="$(jj workspace root 2>/dev/null || pwd)"
+mkdir -p "$WS/.tmp/ce-plan"
+SCRATCH_DIR="$(mktemp -d "$WS/.tmp/ce-plan/deepen-XXXXXX")"
 echo "$SCRATCH_DIR"
 ```
 
@@ -255,7 +257,7 @@ Allowed changes:
 
 Do **not**:
 - Add implementation code — no imports, exact method signatures, or framework-specific syntax. Pseudo-code sketches and DSL grammars are allowed
-- Add git commands, commit choreography, or exact test command recipes
+- Add jj commands, change-description choreography, or exact test command recipes
 - Add generic `Research Insights` subsections everywhere
 - Rewrite the entire plan from scratch
 - Invent new product requirements, scope changes, or success criteria without surfacing them explicitly

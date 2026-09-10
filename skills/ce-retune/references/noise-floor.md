@@ -4,7 +4,7 @@ Phase 2 protocol. Measure what changing nothing produces, then write down the ba
 
 ## What the A/A run buys
 
-Two builds of the corpus at the same commit, run under one harness on one task, produce a distribution rather than a result. That distribution is the floor: any later claim smaller than it is unsupported no matter how confidently it was reported. In the engagement this was the single most valuable measurement of the session — 12 runs across two identical builds gave workflow adherence 7 of 12 and output tokens from 21,872 to 155,682, a 7.12x spread on identical code. It retired every small-sample claim in flight, including an outside analyst's "2 of 8 improved to 5 of 8", which sits entirely inside the envelope of doing nothing.
+Two builds of the corpus at the same change, run under one harness on one task, produce a distribution rather than a result. That distribution is the floor: any later claim smaller than it is unsupported no matter how confidently it was reported. In the engagement this was the single most valuable measurement of the session — 12 runs across two identical builds gave workflow adherence 7 of 12 and output tokens from 21,872 to 155,682, a 7.12x spread on identical code. It retired every small-sample claim in flight, including an outside analyst's "2 of 8 improved to 5 of 8", which sits entirely inside the envelope of doing nothing.
 
 The A/A also tests the instrument. Identical builds that differ significantly are not evidence about the corpus; they are a harness, provenance, or scoring bug. Chase that before continuing.
 
@@ -12,7 +12,7 @@ The A/A also tests the instrument. Identical builds that differ significantly ar
 
 Required capability: a harness that can point a run at a specific source checkout of the corpus (Phase 0's build selector) and writes a per-run artifact you can parse. Both arms must go through the *same* runner, task, and model configuration.
 
-1. Materialize two checkouts of the corpus at the same commit. Record the commit for each arm.
+1. Materialize two checkouts of the corpus at the same change. Record the commit id for each arm.
 2. Hash both trees and assert equality before the first run (`find <dir> -type f | sort` then a checksum over the file list and contents). An accidental difference between arms gets read as noise and poisons the floor silently.
 3. Label the arms concretely by path, not by intent (`build-a`, `build-b`). Nothing downstream should be able to guess an arm from a filename that also encodes a hypothesis.
 4. **Prove the selector is honored, in one run, before planning any.** Point a single run at `build-a`, then open the finished artifact and confirm it names `build-a` in the durable field below. Two failures both look like a normal run: a harness that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all 12 runs unlabeled and unusable, and both are invisible until you try to score. If you want a positive control, put a harmless unique string in a **third**, throwaway checkout and confirm it reaches that run's trace — never in either arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.

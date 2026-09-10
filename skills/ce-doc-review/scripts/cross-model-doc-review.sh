@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > CE config cascade >
+#                   resolved preference (conversation > config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -50,7 +50,7 @@
 # Test/introspection mode (no model call, no side effects):
 #   cross-model-doc-review.sh --emit-adapter <route>
 #     prints the exact argv the given route would run (route in:
-#     codex | claude | grok-cli | grok-cursor | composer). Both this mode and the
+#     codex | claude | grok-cli | grok-cursor | composer | opencode | opencode2). Both this mode and the
 #     live run build their argv from adapter_argv(), so the U7 route-safety test
 #     asserts on the same command string the peer actually runs.
 #
@@ -109,6 +109,11 @@ route_effort() {   # <route> -> requested effort: the override where the route t
           none|minimal|low|medium|high|xhigh|max|default) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
         esac
         ;;
+      opencode2)
+        case "$CROSS_MODEL_EFFORT_OVERRIDE" in
+          none|minimal|low|medium|high|xhigh|max|default) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
+        esac
+        ;;
     esac
   fi
   case "$1" in
@@ -118,6 +123,7 @@ route_effort() {   # <route> -> requested effort: the override where the route t
     composer) printf 'fast' ;;
     cursor) printf 'unverified' ;;
     opencode) printf 'unverified' ;;
+    opencode2) printf 'unverified' ;;
   esac
 }
 
@@ -158,6 +164,7 @@ route_model() {   # <route> -> the M_* constant that route requests
     cursor)      printf 'auto' ;;
     composer)    printf '%s' "$M_COMPOSER" ;;
     opencode)    printf 'auto' ;;
+    opencode2)   printf 'auto' ;;
   esac
 }
 
@@ -166,6 +173,7 @@ route_target() {
     codex|claude|cursor|composer) printf '%s' "$1" ;;
     grok-cli|grok-cursor) printf 'grok' ;;
     opencode) printf 'opencode' ;;
+    opencode2) printf 'opencode2' ;;
   esac
 }
 
@@ -176,6 +184,7 @@ route_harness() {
     grok-cli) printf 'grok' ;;
     grok-cursor|cursor|composer) printf 'cursor-agent' ;;
     opencode) printf 'opencode' ;;
+    opencode2) printf 'opencode2' ;;
   esac
 }
 
@@ -184,6 +193,7 @@ target_serving_family() {
     codex|claude|grok|composer) printf '%s' "$1" ;;
     cursor) printf 'unknown' ;;
     opencode) printf 'unknown' ;;
+    opencode2) printf 'unknown' ;;
   esac
 }
 
@@ -295,6 +305,32 @@ adapter_argv() {
         none|minimal|low|medium|high|xhigh|max|default) printf '%s\0' --variant "$_oc_effort" ;;
       esac
       ;;
+    opencode2)
+      # Distinct from V1 opencode: no --dir (project dir is process cwd /
+      # parent CLI directory arg), no --variant flag. Model is
+      # provider/modelname#variant. run_timeout_cmd already cds into PEER_WORKDIR.
+      printf '%s\0' opencode2 run --standalone --format json --file "$PROMPT_FILE"
+      printf '%s\0' "Follow the attached brief. Return only schema-shaped JSON."
+      _oc2_model="$(route_model opencode2)"
+      _oc2_effort="$(route_effort opencode2)"
+      if [ "$_oc2_model" != "auto" ] && [ -n "$_oc2_model" ]; then
+        case "$_oc2_model" in
+          */*)
+            case "$_oc2_model" in
+              *#*) ;;
+              *)
+                case "$_oc2_effort" in
+                  none|minimal|low|medium|high|xhigh|max|default)
+                    _oc2_model="${_oc2_model}#${_oc2_effort}"
+                    ;;
+                esac
+                ;;
+            esac
+            printf '%s\0' --model "$_oc2_model"
+            ;;
+        esac
+      fi
+      ;;
     *) return 1 ;;
   esac
 }
@@ -313,7 +349,7 @@ validate_model_override() {
   [ "$override_target" = "$target" ] || return 0
   [ "$target" != "cursor" ] || return 1
   case "$route:$override" in
-    codex:gpt-*|codex:o[0-9]*|codex:*[./]gpt-*|codex:*[./]o[0-9]*|claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|composer:composer-*|opencode:*/*) ;;
+    codex:gpt-*|codex:o[0-9]*|codex:*[./]gpt-*|codex:*[./]o[0-9]*|claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|composer:composer-*|opencode:*/*|opencode2:*/*) ;;
     *) return 1 ;;
   esac
 }
@@ -331,6 +367,7 @@ validate_effort_override() {
     codex:minimal|codex:low|codex:medium|codex:high|codex:xhigh) ;;
     grok-cli:low|grok-cli:medium|grok-cli:high) ;;
     opencode:none|opencode:minimal|opencode:low|opencode:medium|opencode:high|opencode:xhigh|opencode:max|opencode:default) ;;
+    opencode2:none|opencode2:minimal|opencode2:low|opencode2:medium|opencode2:high|opencode2:xhigh|opencode2:max|opencode2:default) ;;
     *) return 1 ;;
   esac
 }
@@ -346,7 +383,7 @@ if [ "${1:-}" = "--emit-adapter" ]; then
   validate_effort_override "$route" 2>/dev/null || { echo "effort override '${CROSS_MODEL_EFFORT_OVERRIDE:-}' not compatible with route '$route'" >&2; exit 2; }
   # adapter_argv emits NUL-delimited argv (can't be captured in a shell var), so
   # validate the route first, then render for humans with NUL -> space.
-  adapter_argv "$route" >/dev/null 2>&1 || { echo "unknown route '$route' (want codex|claude|grok-cli|grok-cursor|cursor|composer|opencode)" >&2; exit 2; }
+  adapter_argv "$route" >/dev/null 2>&1 || { echo "unknown route '$route' (want codex|claude|grok-cli|grok-cursor|cursor|composer|opencode|opencode2)" >&2; exit 2; }
   adapter_argv "$route" | tr '\0' ' '; echo
   exit 0
 fi
@@ -372,6 +409,14 @@ RUN_DIR="${7:-}"
 # Requiring it to pre-exist would silently no-op the whole pass (no fold-in files).
 mkdir -p "$RUN_DIR" 2>/dev/null
 [ -d "$RUN_DIR" ] || skip "run-dir '$RUN_DIR' could not be created; skipping"
+# Workspace-local temp (never OS /tmp). Public `jj workspace root` only.
+_ws_root="$(jj workspace root 2>/dev/null)" || _ws_root=""
+if [ -n "$_ws_root" ]; then
+  TMP_BASE="${_ws_root}/.tmp"
+else
+  TMP_BASE="$RUN_DIR"
+fi
+(umask 077; mkdir -p "$TMP_BASE") 2>/dev/null || TMP_BASE="$RUN_DIR"
 command -v jq >/dev/null 2>&1 || skip "jq not installed; skipping"
 
 # Validate the host identity tuple. An unknown serving family is allowed, but
@@ -381,8 +426,8 @@ case "$HOST_PROVIDER" in
   *) skip "host serving family '${HOST_PROVIDER:-<empty>}' invalid (want codex|claude|grok|composer|unknown); skipping cross-model pass" ;;
 esac
 case "$HOST_HARNESS" in
-  codex|claude|grok|cursor|opencode|unknown) ;;
-  *) skip "host harness '$HOST_HARNESS' invalid (want codex|claude|grok|cursor|opencode|unknown); skipping cross-model pass" ;;
+  codex|claude|grok|cursor|opencode|opencode2|unknown) ;;
+  *) skip "host harness '$HOST_HARNESS' invalid (want codex|claude|grok|cursor|opencode|opencode2|unknown); skipping cross-model pass" ;;
 esac
 [ "$HOST_PROVIDER" != "unknown" ] || skip "host serving family unattested; automatic cross-model review skipped"
 
@@ -474,6 +519,7 @@ provider_available() {
     cursor)   command -v cursor-agent >/dev/null 2>&1 ;;
     composer) command -v cursor-agent >/dev/null 2>&1 ;;
     opencode) command -v opencode >/dev/null 2>&1 ;;
+    opencode2) command -v opencode2 >/dev/null 2>&1 ;;
     *) return 1 ;;
   esac
 }
@@ -490,7 +536,7 @@ OLDIFS="$IFS"; IFS=','
 for p in $CANDIDATES; do
   p="$(printf '%s' "$p" | tr -d '[:space:]')"
   [ -n "$p" ] || continue
-  case "$p" in codex|claude|grok|cursor|composer|opencode) ;; *) log "ignoring unknown target '$p' in candidates"; continue ;; esac
+  case "$p" in codex|claude|grok|cursor|composer|opencode|opencode2) ;; *) log "ignoring unknown target '$p' in candidates"; continue ;; esac
   [ "$HOST_PROVIDER" != "unknown" ] && [ "$(target_serving_family "$p")" = "$HOST_PROVIDER" ] && continue
   case " $SELECTED " in *" $p "*) continue ;; esac   # dedup
   if [ -n "$ALLOW" ] && ! in_csv "$p" "$ALLOW"; then log "provider '$p' not in CROSS_MODEL_PEERS allowlist; skipping"; continue; fi
@@ -501,7 +547,7 @@ IFS="$OLDIFS"
 SELECTED="$(printf '%s' "$SELECTED" | sed 's/^ *//')"
 
 [ "$MAX_PEERS" -ge 1 ] || skip "CROSS_MODEL_MAX_PEERS=0; cross-model pass disabled"
-[ -n "$SELECTED" ] || skip "no different-provider peer reachable (host=$HOST_PROVIDER, candidates='$CANDIDATES'); the pass needs a peer agent CLI on PATH (codex, claude, grok, cursor-agent, or opencode), not an API key alone; skipping"
+[ -n "$SELECTED" ] || skip "no different-provider peer reachable (host=$HOST_PROVIDER, candidates='$CANDIDATES'); the pass needs a peer agent CLI on PATH (codex, claude, grok, cursor-agent, opencode, or opencode2), not an API key alone; skipping"
 log "reachable cross-model candidates for lens $REVIEWER_NAME: $SELECTED (host $HOST_PROVIDER excluded; up to $MAX_PEERS successful peer(s))"
 
 # first_n <max> <space-separated list> -> the first <max> tokens.
@@ -525,13 +571,13 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+PROMPT_FILE="$(mktemp "$TMP_BASE/xmodel-doc-prompt-XXXXXX")"
+PEERLOG="$(mktemp "$TMP_BASE/xmodel-doc-log-XXXXXX")"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-err-XXXXXX")"
+PEERERR="$(mktemp "$TMP_BASE/xmodel-doc-err-XXXXXX")"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
@@ -1026,12 +1072,19 @@ parse_structured() {   # <logfile> <outfile>
   recover_findings_json "$1" "$2"
 }
 
+parse_opencode2_events() {  # <logfile> <outfile>
+  # V2 --format json is not the V1 event stream. Recover a findings object
+  # from the log without assuming V1 envelope keys.
+  recover_findings_json "$1" "$2" && return 0
+  parse_structured "$1" "$2"
+}
+
 parse_opencode_events() {  # <logfile> <outfile>
   local text tmp
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e 'select((.findings|type)=="array")' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "${TMPDIR:-/tmp}/ce-opencode-text-XXXXXX")" || return 1
+  tmp="$(mktemp "$TMP_BASE/xmodel-opencode-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_findings_json "$tmp" "$2"
   local st=$?
@@ -1052,6 +1105,7 @@ attempt_route() {   # <provider> <route>
     grok-cursor|composer)  note="$(route_model "$route")" ;;
     cursor)                note="auto (serving model unverified)" ;;
     opencode)              note="auto (serving model unverified)" ;;
+    opencode2)             note="auto (serving model unverified)" ;;
   esac
   log "peer run: provider=$provider route=$route model=$note lens=$REVIEWER_NAME read-only least-privilege (idle ${IDLE_SECS}s / attempt hard ${attempt_hard}s); full document content egresses to this provider via this route"
   case "$route" in
@@ -1079,6 +1133,9 @@ attempt_route() {   # <provider> <route>
     opencode)    run_timeout_cmd "" "$attempt_hard" idle
                  classify_route_output
                  [ "$RUN_SUCCEEDED" = true ] && parse_opencode_events "$PEERLOG" "$RAW_OUT" ;;
+    opencode2)   run_timeout_cmd "" "$attempt_hard" idle
+                 classify_route_output
+                 [ "$RUN_SUCCEEDED" = true ] && parse_opencode2_events "$PEERLOG" "$RAW_OUT" ;;
   esac
   if [ "$RUN_SUCCEEDED" != true ]; then
     rm -f "$RAW_OUT"
@@ -1112,7 +1169,7 @@ run_provider() {   # <provider>
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
   # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
   # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  PEER_WORKDIR="$(mktemp -d "$TMP_BASE/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -1169,7 +1226,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
+    _norm="$(mktemp "$TMP_BASE/xmodel-doc-norm-XXXXXX")"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

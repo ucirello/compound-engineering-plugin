@@ -41,7 +41,7 @@ When triage enters Return-to-Caller Mode, immediately read `references/return-to
 
 Before the first implementation write — including a Trivial route — read `references/implementation-loop.md`. It owns evidence choice, implementation, verification, completion stops, incremental commits, pattern-following, continuous testing, simplification boundaries, UI work, progress tracking, and settled-decision handling.
 
-The kernel's write gate remains active: every implementation commit is path-limited to that unit's owned files; a bare commit can absorb the user's pre-existing index and is forbidden.
+The kernel's write gate remains active: every implementation commit is path-limited to that unit's owned files; a bare `jj commit` can absorb the user's pre-existing working-copy changes and is forbidden.
 
 ### Phase 3-4: Quality Check and Finishing Work
 

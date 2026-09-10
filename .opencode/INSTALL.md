@@ -1,31 +1,30 @@
-# Installing Compound Engineering for OpenCode
+# Installing RocketClaw for OpenCode V2
 
-Add Compound Engineering to the `plugin` array in your global or project `opencode.json`:
+This plugin targets `opencode2` exclusively. The plugin id is `rocketclaw`.
 
-```json
-{
-  "plugin": ["compound-engineering@git+https://github.com/EveryInc/compound-engineering-plugin.git"]
-}
-```
+OpenCode loads `.ts` and `.js` files from `.opencode/plugins/` automatically. From this checkout, `.opencode/plugins/rocketclaw.ts` is picked up with no extra config.
 
-Restart OpenCode after changing the config. The OpenCode plugin registers the Compound Engineering skills directory directly; no Bun installer or generated skill copy is required.
-
-To pin a release, add a tag. Replace `X.Y.Z` with the release you want — see the [releases page](https://github.com/EveryInc/compound-engineering-plugin/releases) for available tags:
+To load the package from another directory, add the package path to the `plugins` array in your global or project `opencode.json`:
 
 ```json
 {
-  "plugin": ["compound-engineering@git+https://github.com/EveryInc/compound-engineering-plugin.git#compound-engineering-vX.Y.Z"]
+  "plugins": ["/path/to/this-plugin"]
 }
 ```
 
-## Local Development
+Restart OpenCode after changing the config, or run `opencode2 service restart` if the server is already running. The plugin registers skills and user-invocable commands through the V2 `Plugin.define` lifecycle (`ctx.skill.transform` and `ctx.command.transform`); no Bun installer or generated skill copy is required.
 
-From this checkout, point OpenCode at the package path:
+Inspect loaded plugins:
 
-```json
-{
-  "plugin": ["/path/to/compound-engineering-plugin"]
-}
+```sh
+opencode2 plugin list
+opencode2 plugin list --builtin
 ```
 
-Restart OpenCode after changing the package source.
+Install a package plugin from a local path:
+
+```sh
+opencode2 plugin add /path/to/this-plugin
+```
+
+There is no `--dir` flag; the parent CLI takes an optional directory argument: `opencode2 <subcommand> [flags] [<directory>]`.

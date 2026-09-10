@@ -8,9 +8,9 @@ A missing remote is a terminal local-only state, not an error: never retry a pus
 
 ## Step 3 — simplify before review
 
-Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the branch-diff scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope (the branch diff remains the scope), with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
+Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the bookmark-diff scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope (the bookmark diff remains the scope), with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
 
-Do not commit in this step. `ce-simplify-code` leaves its changes in the working tree; step 4's review scopes the working tree (uncommitted changes included), and step 8's `ce-commit-push-pr` commits whatever remains. Committing here would sweep any still-uncommitted `ce-work` edits into a misleading `refactor` commit and could stall on a tree that never goes clean.
+Do not commit in this step. `ce-simplify-code` leaves its changes in the working copy; step 4's review scopes the working copy (undescribed working-copy changes included), and step 8's `ce-commit-push-pr` records whatever remains. Recording a change here would sweep any still-undescribed `ce-work` edits into a misleading description and could stall on a working copy that never goes clean.
 
 ## Step 4 — invoke `ce-code-review`
 
@@ -32,7 +32,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the working tree only when **all** of the following hold:
+Apply a finding in the working copy only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -51,9 +51,9 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
+2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `git status --short` shows changes, stage only review-driven files, commit `fix(review): apply review findings`, and push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: if an upstream exists, run `git push`. If no upstream exists but a remote is configured (common on a fresh feature branch), resolve a writable remote dynamically: prefer `origin` when present, otherwise use `git remote` and choose the first configured remote. Then run `git push --set-upstream <remote> HEAD`. If there is no remote at all, do not push — the local commit suffices. If no eligible fixes were applied, note explicitly and skip commit.
+4. If `jj diff --name-only` lists files, record only the review-driven paths into the current change (the working copy is the commit; do not include unrelated paths). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in git log, compose commit messages adherent to the present standards. Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax. Preserve that this change applied review findings. Run `jj commit` with those review-driven filesets and `-m "<message composed from the standards above>"`. Push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: if a bookmark on `@` already tracks a remote, run `jj git push`. If remotes exist but the bookmark is not yet tracking (common on a fresh feature bookmark), resolve a writable remote dynamically: prefer `origin` when present, otherwise use `jj git remote list` and choose the first configured remote. Then run `jj git push --remote <remote> --bookmark <bookmark>` (a bookmark that is not tracking yet is tracked automatically). If there is no remote at all, do not push — the local change suffices. If no eligible fixes were applied, note explicitly and skip `jj commit`.
 
 ## Step 6 — residual handoff
 
@@ -61,7 +61,7 @@ Residuals are actionable findings **not** applied in step 5 — not leftovers fr
 
 Two further triggers also require step 6, both outside the apply path: step 4 emitted any `settled_conflict`-stamped findings, or step 2's return carried proceeded-and-flagged `settled_decision_conflicts` entries. They are the divergent class and must be made durable here.
 
-A residual at this point is undecided, not accepted debt: step 5 declined it because it needs judgment, and the pipeline never merges, so the human reviewing the PR supplies that judgment — fix it in this branch, dismiss it, or file it to carry past merge. The record therefore goes where that reviewer already looks, the PR body, and the pipeline files no tickets on its behalf; one ticket per finding, decided by nobody, is how a run of small nits floods a tracker.
+A residual at this point is undecided, not accepted debt: step 5 declined it because it needs judgment, and the pipeline never merges, so the human reviewing the PR supplies that judgment — fix it in this bookmark, dismiss it, or file it to carry past merge. The record therefore goes where that reviewer already looks, the PR body, and the pipeline files no tickets on its behalf; one ticket per finding, decided by nobody, is how a run of small nits floods a tracker.
 
 **When a PR will exist (a remote is configured):** compose a `## Unapplied review findings` section, one checkbox bullet per item so a human ticks it when they close it:
 

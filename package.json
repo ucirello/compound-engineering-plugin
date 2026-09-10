@@ -4,7 +4,10 @@
   "description": "Official Compound Engineering skills plugin for coding agents",
   "type": "module",
   "private": true,
-  "main": ".opencode/plugins/compound-engineering.js",
+  "main": ".opencode/plugins/rocketclaw.ts",
+  "exports": {
+    ".": "./.opencode/plugins/rocketclaw.ts"
+  },
   "pi": {
     "extensions": [
       "./.pi/extensions/compound-engineering.ts"
@@ -31,6 +34,7 @@
     "release:validate": "bun run scripts/release/validate.ts"
   },
   "dependencies": {
+    "@opencode/plugin": "0.0.0-beta-19425",
     "citty": "^0.1.6",
     "js-yaml": "^4.1.0"
   },

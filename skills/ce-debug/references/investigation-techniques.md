@@ -76,27 +76,15 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), use binary search to find the breaking change. `jj bisect run` evaluates each revision by making it the working copy, then running the given command. Heads of `--range` are assumed bad; ancestors not in the range are assumed good.
 
 ```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
+jj bisect run --range <known-good-ref>..@ -- <test-command>
 ```
 
-The test command should exit 0 for good, non-zero for bad.
+The test command should exit 0 for good, non-zero for bad (125 skips the revision; 127 aborts). For a manual probe, pass a shell as the command and `exit 0` or a non-zero status when done.
 
 ---
 
@@ -214,7 +202,7 @@ When the symptom is "slow" rather than "wrong", logs and code reading mislead: i
 
 - Establish a numeric baseline before touching anything — a timing harness around the slow operation, a profiler run, a query plan (`EXPLAIN ANALYZE`). The baseline is Phase 1's reproduction check for a perf bug: the number is the red, and the fix is verified by re-measuring the same thing, not by reasoning that the change should be faster.
 - Attribute before optimizing: a profile or per-stage timings that show where the time actually goes. Optimizing an unmeasured suspect is the perf version of shotgun debugging.
-- If the slowness is a regression, bisect against the measurement (see Git Bisect above) rather than reading diffs for something that looks expensive.
+- If the slowness is a regression, bisect against the measurement (see JJ Bisect above) rather than reading diffs for something that looks expensive.
 
 ---
 

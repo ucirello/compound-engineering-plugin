@@ -255,7 +255,7 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # A machine-local state file can live under world-shared /tmp, and
+            # A machine-local state file can live under workspace .tmp, and
             # it is a correctness dependency (lease, cursors, closed status) as
             # well as an injection sink (item bodies re-read into agent
             # context). Reject a file not owned by us so a co-tenant cannot

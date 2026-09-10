@@ -32,10 +32,10 @@ Debugging surfaces raw output constantly — command results, captured payloads,
 Resolve `<root>` only when you first compose a `<root>/` path — a run that composes none skips this entirely.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under a VCS metadata directory. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -43,7 +43,7 @@ Resolve `<root>` only when you first compose a `<root>/` path — a run that com
 
 Five phases in order: **0 Triage -> 1 Investigate -> 2 Root Cause -> 3 Fix -> 4 Handoff.** Beyond Phase 0's trivial-bug fast-path there is no skipping and no complexity tiers — a hard bug spends longer in each phase, it does not enter fewer.
 
-**Read `references/investigate.md` now and follow it for Phases 0-2** — issue fetching, reproduction, environment sanity and the dirty-tree stash experiment, backward tracing, the tracker/PR-history search, hypothesis grounding, and the escalation table. Only the gates below are stated here.
+**Read `references/investigate.md` now and follow it for Phases 0-2** — issue fetching, reproduction, environment sanity and the dirty-tree isolate experiment, backward tracing, the tracker/PR-history search, hypothesis grounding, and the escalation table. Only the gates below are stated here.
 
 **The issue of record.** Whatever the user handed you is where this bug already lives, whichever system that is — a Sentry issue counts as much as a Linear ticket. Carry its identifier and URL through to Phase 4. Input that is only a stack trace, test path, or description means this run has **no issue of record**. That is an ordinary state, not a gap to fill: ship the fix without one, never open a ticket to manufacture a record, and never ask the user whether to. Phase 1's tracker search reads prior work and **never establishes a new home for the bug** — an existing ticket for this bug is one to *link* in Phase 4, never one to create.
 
@@ -73,8 +73,8 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **Read `references/fix.md` before editing any file** — the test-first sequence, the failed-fix rule, and the defense-in-depth and post-mortem triggers. Two rules decide whether the fix may start at all, so they stay here:
 
-- **Branch.** Check `git status`; if the user has unstaged work in files that need modification, confirm before editing. If the current branch is the default branch, create a feature branch without asking — derive a name from the bug, `git checkout -b <name>`, and say which branch you moved to. Detect the default by comparing against `main`, `master`, or `git rev-parse --abbrev-ref origin/HEAD` **with its `origin/` prefix stripped** — the raw output is `origin/<name>`, so an unstripped comparison never matches.
-- **Record the pre-fix scope:** current `HEAD`, whether `git status --short` is clean, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
+- **Bookmark.** Check `jj status`; if the user has working-copy changes in files that need modification, confirm before editing. If the current change is on the default bookmark, create a feature bookmark without asking — derive a name from the bug, `jj new` then `jj bookmark set <name>`, and say which bookmark you moved to. Detect the default by comparing against `main`, `master`, or `trunk()` — remote bookmarks render as `<name>@origin`, so compare the local name, not the `@origin` suffix.
+- **Record the pre-fix scope:** current `@` (`jj log -r @ --no-graph -T 'commit_id'`), whether `jj diff --name-only` is empty, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
 
 ### Phase 4: Handoff
 
@@ -94,11 +94,11 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **If Phase 3 was skipped**, stop after the summary — the user already said they were taking it from here. Do not prompt.
 
-**If Phase 3 ran, read `references/post-fix-handoff.md` now and follow it before routing below.** It owns this phase's quality tail — the contextual-override checks, the skip-for-mechanical-fixes rule, the scoping that keeps `ce-simplify-code` and `ce-code-review` off unrelated branch work, residual handling, the `## Post-Fix Quality` block, and the learning-capture criteria — and none of that appears in this body. The routing below names *which* action fires, never the scope rules that make it safe, so it cannot be improvised from. Skipping the read ships an unreviewed fix, lets review reach into unrelated branch work, and strands accepted findings in the session.
+**If Phase 3 ran, read `references/post-fix-handoff.md` now and follow it before routing below.** It owns this phase's quality tail — the contextual-override checks, the skip-for-mechanical-fixes rule, the scoping that keeps `ce-simplify-code` and `ce-code-review` off unrelated bookmark work, residual handling, the `## Post-Fix Quality` block, and the learning-capture criteria — and none of that appears in this body. The routing below names *which* action fires, never the scope rules that make it safe, so it cannot be improvised from. Skipping the read ships an unreviewed fix, lets review reach into unrelated bookmark work, and strands accepted findings in the session.
 
 #### Routing
 
-**Land the fix without carrying along anything the user did not offer up** — not into a commit, not into a push, not into a PR. Do not ask whether to open a PR; permission is not the gate. Two questions decide the handoff, answered from the pre-fix scope Phase 3 recorded rather than inferred from how the branch came to exist. **Fire the action itself** via the platform's skill-invocation primitive — never merely tell the user to type a command.
+**Land the fix without carrying along anything the user did not offer up** — not into a commit, not into a push, not into a PR. Do not ask whether to open a PR; permission is not the gate. Two questions decide the handoff, answered from the pre-fix scope Phase 3 recorded rather than inferred from how the bookmark came to exist. **Fire the action itself** via the platform's skill-invocation primitive — never merely tell the user to type a command.
 
 **1. What may go into the commit — the fix-owned files and nothing else.** This is a constraint on whichever skill commits in question 2, never an action of its own. It holds on every route, remote or not. Do not commit here.
 
@@ -107,14 +107,14 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **2. Who commits, and whether it ships.** Exactly one of these runs.
 
-- **Ships** — the pre-fix tree was clean, nothing on the branch is work the user has not already offered, and `origin` is **PR-capable**: somewhere `gh` can actually open a PR. Establish those however fits the repo in front of you. Two facts make it less obvious than it looks.
-  - `ce-commit-push-pr` pushes the **whole branch**, and its PR spans every commit on it, not just your fix — so the question is about the branch, not your diff. It also pushes *before* creating the PR, so a remote `gh` cannot open a PR against leaves the branch published with no PR.
-  - Already pushed is not already **offered**. Commits in an open PR are under review, so they are offered and this run updates that PR rather than opening a second one; commits pushed for backup or to trigger CI are not, and a first PR would publish them. Compare against the remote rather than a local ref — a local branch, including the default branch Phase 3 may have branched off, can itself be ahead of what was pushed.
+- **Ships** — the pre-fix tree was clean, nothing on the bookmark is work the user has not already offered, and `origin` is **PR-capable**: somewhere `gh` can actually open a PR. Pair every `gh` call with `GIT_DIR=$(jj git root)` so underlying git calls succeed. Establish those however fits the repo in front of you. Two facts make it less obvious than it looks.
+  - `ce-commit-push-pr` pushes the **whole bookmark**, and its PR spans every change on it, not just your fix — so the question is about the bookmark, not your diff. It also pushes *before* creating the PR, so a remote `gh` cannot open a PR against leaves the bookmark published with no PR.
+  - Already pushed is not already **offered**. Commits in an open PR are under review, so they are offered and this run updates that PR rather than opening a second one; changes pushed for backup or to trigger CI are not, and a first PR would publish them. Compare against the remote rather than a local ref — a local bookmark, including the default bookmark Phase 3 may have created off of, can itself be ahead of what was pushed.
 
-  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be committed, on what branch, and whether a PR opens or updates, then **invoke the `ce-commit-push-pr` skill with `branding:on`.** It commits under question 1's scope, so do not commit first. The preview is a statement, not a question. Surface the resulting PR URL.
-- **Stays local** — any of those fails. Invoke the `ce-commit` skill under question 1's scope and push nothing. Say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first — a local commit is reversible.
-- **Not a git repo** — nothing commits. Stop after the summary and the quality block.
+  If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be committed, on what bookmark, and whether a PR opens or updates, then **invoke the `ce-commit-push-pr` skill.** It commits under question 1's scope, so do not commit first. The preview is a statement, not a question. Surface the resulting PR URL.
+- **Stays local** — any of those fails. Invoke the `ce-commit` skill under question 1's scope and push nothing. Say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first — a local change is reversible.
+- **Not a Jujutsu repo** (`jj workspace root` fails) — nothing commits. Stop after the summary and the quality block.
 
 **Contextual override** ("don't open PRs from skills", "commit only", "stop after the fix") — follow what the user said, and **Stop here** without committing when that is what they asked for. A vague tonal cue is not an override.
 
-**After a PR is open** — apply the reference's learning-capture criteria; if the user accepts, invoke the `ce-compound` skill, then commit the learning doc to the same branch and push so the open PR picks it up.
+**After a PR is open** — apply the reference's learning-capture criteria; if the user accepts, invoke the `ce-compound` skill, then commit the learning doc to the same bookmark and push so the open PR picks it up.

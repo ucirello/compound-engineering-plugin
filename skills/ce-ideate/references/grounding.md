@@ -8,14 +8,13 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath `$(jj workspace root)/.tmp` in JJ, with `$PWD/.tmp` as the local fallback outside JJ, and never under `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives under `$(jj workspace root)/.tmp`, or cwd-relative `.tmp` when not in a JJ repository — never `.context/`. Run this to resolve the root, create the run directory, and capture its absolute path:
 
 ```bash
-if WORKSPACE_ROOT=$(jj workspace root 2>/dev/null); then SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"; else SCRATCH_ROOT="$PWD/.tmp"; fi;
+REPO_ROOT="$(jj workspace root 2>/dev/null)" || REPO_ROOT="";
+if [ -n "$REPO_ROOT" ]; then SCRATCH_ROOT="$REPO_ROOT/.tmp"; else SCRATCH_ROOT="$(pwd)/.tmp"; fi;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
 SCRATCH_DIR="$SCRATCH_ROOT/ce-ideate/<run-id>";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";

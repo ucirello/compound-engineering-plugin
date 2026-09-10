@@ -1,6 +1,6 @@
 # Phase 0.3-1.7: prior learnings, identity, and measurement scaffolding
 
-Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the clean-change gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run identity and resume detection, the optimization change and bookmark, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
+Read this after the spec is saved and follow it through the approval gate. The body owns the two gates in here that stop the run — the clean-tree gate and the user approval gate — and this file carries the procedure around them: prior-learnings search, run identity and resume detection, the bookmark and scratch space, the measurement harness, the baseline, the parallelism probe, and the workspace budget.
 
 ### 0.3 Search Prior Learnings
 
@@ -8,28 +8,25 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 
 ### 0.4 Run Identity Detection
 
-Check whether the local `optimize/<spec-name>` bookmark already exists:
+Check if `optimize/<spec-name>` bookmark already exists:
 
 ```bash
 jj bookmark list "exact:optimize/<spec-name>"
 ```
 
-**If the bookmark exists**, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
+**If bookmark exists**, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
-- **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning registered experiment workspaces under `$(jj workspace root)/.tmp/ce-optimize/workspaces/` for `result.yaml` markers. Then apply the body's resume rule to decide what is skipped and which gates are re-entered.
-- **Fresh start**: preserve the old target with an archive bookmark whose neutral name includes the spec and current timestamp, forget the active optimization bookmark without scheduling a remote deletion, clear the experiment log, and start from scratch.
+- **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning experiment workspace directories under `.tmp/ce-optimize/workspaces/` for `result.yaml` markers. Then apply the body's resume rule to decide what is skipped and which gates are re-entered.
+- **Fresh start**: archive the old bookmark with `jj bookmark rename "optimize/<spec-name>" "optimize-archive/<spec-name>/archived-<timestamp>"`, clear the experiment log, start from scratch
 
-### 0.5 Create Optimization Change, Bookmark, and State Directory
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Repository-local style wins. Create a new JJ change from the intended base, describe it, and create or update the local optimization bookmark to point to it:
+### 0.5 Create Optimization Bookmark and Scratch Space
 
 ```bash
-jj new <base-revision>
-jj describe -m "<message composed from the standards above>"
+# If the bookmark does not exist:
 jj bookmark set "optimize/<spec-name>" -r @
+# If resuming, create a working-copy change on the existing bookmark:
+jj new "optimize/<spec-name>"
 ```
 
 Create scratch directory:
@@ -50,9 +47,9 @@ SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
 bash "$SKILL_DIR/scripts/<name>"
 ```
 
-### 1.1 Clean-Change Gate
+### 1.1 Clean-Tree Gate
 
-The body owns this gate. Run `jj diff --name-only -r @`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result: name the modified in-scope files and ask the user to move them to a separate JJ change or finish them, and do not continue until the optimization change is clean in those paths.
+The body owns this gate. Run `jj diff --name-only`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result: name the dirty in-scope files and ask the user to describe them (`jj describe` / `jj commit`) or restore them (`jj restore`), and do not continue until they are clean.
 
 ### 1.2 Build or Validate Measurement Harness
 
@@ -126,7 +123,7 @@ bash "$SKILL_DIR/scripts/experiment-worktree.sh" count
 
 If count + `execution.max_concurrent` would exceed 12:
 - Warn the user
-- Suggest cleaning up existing experiment workspaces or reducing `max_concurrent`
+- Suggest cleaning up existing workspaces or reducing `max_concurrent`
 - Do NOT block -- the user may proceed at their own risk
 
 ### 1.6 Write Baseline to Disk (CP-1)
@@ -142,6 +139,6 @@ If count + `execution.max_concurrent` would exceed 12:
 
 ### 1.7 User Approval Gate
 
-The body owns this gate — what is presented, the options and the condition on adjusting the spec, the uncapped-spend disclosure, and the rule that Phase 2 does not start without explicit approval. A resume that cannot prove the user cleared this gate runs it again, so this phase supplies the same payload then. What this phase supplies to it: the baseline's gate values, diagnostic values, and judge scores; the experiment log path; the probe results with any blockers and mitigations; the clean-change confirmation; the workspace count and projection; and the estimated per-experiment judge cost against the configured cap.
+The body owns this gate — what is presented, the options and the condition on adjusting the spec, the uncapped-spend disclosure, and the rule that Phase 2 does not start without explicit approval. A resume that cannot prove the user cleared this gate runs it again, so this phase supplies the same payload then. What this phase supplies to it: the baseline's gate values, diagnostic values, and judge scores; the experiment log path; the probe results with any blockers and mitigations; the clean-tree confirmation; the workspace count and projection; and the estimated per-experiment judge cost against the configured cap.
 
 ---

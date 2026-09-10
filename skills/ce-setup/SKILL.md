@@ -1,10 +1,10 @@
 ---
 name: ce-setup
-description: "Check plugin health and repo-local config."
+description: "Check RocketClaw health and repo-local config."
 disable-model-invocation: true
 ---
 
-# Setup
+# RocketClaw Setup
 
 ## Interaction Method
 
@@ -14,13 +14,13 @@ Ask each question below using the host's blocking question tool already in the c
 
 ## Artifact Root Resolution
 
-Every skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other plugin-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
+Every RocketClaw skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other RocketClaw-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
 
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<workspace-root>/.rocketclaw/config.yaml` only (`<workspace-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a workspace-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -28,7 +28,7 @@ Every skill that writes or reads an artifact directory (`solutions`, `plans`, `i
 
 ### Step 1: Determine Plugin Version
 
-Detect the installed plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
+Detect the installed RocketClaw plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
 
 If a version is found, pass it to the check script via `--version`. Otherwise omit the flag.
 
@@ -37,7 +37,7 @@ If a version is found, pass it to the check script via `--version`. Otherwise om
 Before running the script, display:
 
 ```text
-Checking your environment...
+RocketClaw -- checking your environment...
 ```
 
 Run the bundled check script. Set `SKILL_DIR` to the absolute directory you loaded this `ce-setup` SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, so a bare `scripts/` path will not resolve:
@@ -55,9 +55,9 @@ Display the diagnostic output to the user. Missing optional tools are not setup 
 
 ### Step 3: Decide Whether Fixes Are Needed
 
-Report-gated repo-local remediations apply only to the workspace the health report diagnosed; if Phase 2 will write a different writable workspace, diagnose that workspace first, while session-level findings such as plugin version and optional tools remain from this session's Phase 1.
+Report-gated repo-local remediations apply only to the checkout the health report diagnosed; if Phase 2 will write a different writable checkout, diagnose that checkout first, while session-level findings such as plugin version and optional tools remain from this session's Phase 1.
 
-After the health report, decide Phase 2 from writable-workspace availability:
+After the health report, decide Phase 2 from writable-checkout availability:
 
 - If this session has a writable Jujutsu workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
 - If this session has no writable workspace, but the user named a repository and the harness exposes a remote repo-work surface with a writable workspace, run Phase 2 on that surface instead and report the remote repo-local fixes in Phase 3.
@@ -68,7 +68,7 @@ If the report names a legacy Codex tool map, offer to remove it following `refer
 Also remediate these project issues when the report names them:
 
 - obsolete `rocketclaw.local.md`
-- `.rocketclaw/config.local.yaml` exists but is not safely ignored
+- `.rocketclaw/config.local.yaml` exists but is not safely gitignored
 - `.rocketclaw/config.example.yaml` is missing or outdated
 - the health report marks the `ce-work` skill implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`
 - the health report marks `docs_root` invalid (`Invalid docs_root ...`) — artifacts will not be written until it is fixed
@@ -79,7 +79,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It carries Steps 4-8: removing the obsolete `rocketclaw.local.md`, refreshing the example config, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, and the two `.gitignore` offers.
 
-All paths there resolve from the workspace root (`jj workspace root`), not the current working directory. Maintaining the generated example files is the work Phase 2 does on its own — refreshing `config.example.yaml` and removing the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
+All paths there resolve from the repository root (`jj workspace root`), not the current working directory. Maintaining the generated example files is the work Phase 2 does on its own — refreshing `config.example.yaml` and removing the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
 
 ## Phase 3: Summary
 
@@ -88,7 +88,7 @@ All paths there resolve from the workspace root (`jj workspace root`), not the c
 Display a brief summary:
 
 ```text
-Setup complete
+✅ RocketClaw setup complete
 
 Fixed:     <fixes applied, or none>
 Skipped:   <fixes declined, or none>

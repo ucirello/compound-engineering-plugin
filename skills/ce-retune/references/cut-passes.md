@@ -12,7 +12,7 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides, each prompt carrying: the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5), describe the pass as one JJ change, and start a new change before the next pass. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template.
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and record the pass as its own change (Phase 6).
 
 Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing" — a pass that changed two classes cannot be attributed by the next measurement.
 
@@ -32,18 +32,18 @@ Fan out by **unit** instead: one agent owns one skill directory and applies the 
 
 State the forbidden set in the prompt as paths, not as a rule to infer. An agent told "do not touch shared files" will decide for itself what is shared.
 
-## Isolation: separate JJ workspaces or disjoint paths in one workspace
+## Isolation: separate workspaces or disjoint paths in one tree
 
-Disjoint paths in one workspace are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and one working-copy change keeps the diff readable.
+Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and describing the change trivial.
 
-Create a sibling JJ workspace per agent under `<workspace-root>/.tmp/rocketclaw/ce-retune/<run-id>/` with `jj workspace add --revision <pass-base> <destination>` when any of these is true:
+Pay for a workspace (or equivalent per-agent checkout) when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit — lockfiles, caches, generated output, a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one workspace race on scratch and working-copy state.
-- Agents run JJ operations that rewrite, describe, rebase, or advance the shared working-copy change.
+- An agent needs to run the suite or the harness to check its own edit; concurrent runs in one tree race on scratch and on working-copy snapshot state.
+- Agents describe changes or use bookmark operations; one working-copy change shared by parallel agents corrupts the snapshot.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
-Otherwise the isolation cost is real: N workspaces to create, N changes to integrate, and conflicts reintroduced on exactly the files the manifest was designed to keep apart. After all agents stop writing, integrate each workspace's change serially into the pass change with `jj squash --from <agent-change> --into <pass-change>`, then run `jj workspace forget <workspace>` before removing its directory. Do not run later commands inside a workspace made stale by another workspace's rewrite.
+Otherwise the isolation cost is real: N workspaces to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
 
 ## The shared-asset trap
 
@@ -124,6 +124,14 @@ A failure that moves to a later phase is progress and names the next target. A f
 
 ## Ship (Phase 6)
 
-Keep each pass as one described JJ change so history says what changed and why. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template. Run `jj describe` for the completed pass, and run `jj new` before editing the next pass. Keep the measurement artifacts.
+Record each pass as its own change so the history says which change was made and why. Keep the measurement artifacts.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in git log, compose commit messages adherent to the present standards.
+
+Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax.
+
+```bash
+jj commit -m "<message composed from the standards above>"
+```
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

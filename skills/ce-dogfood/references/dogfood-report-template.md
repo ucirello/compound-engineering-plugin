@@ -1,13 +1,13 @@
 # Dogfood Report — <target revision>
 
-> Diff-scoped browser QA of `<target revision>` vs `<base revision>` on <YYYY-MM-DD>.
+> Diff-scoped browser QA of `<target revision>` vs the trunk. <YYYY-MM-DD>.
 
 <!-- Use repo-relative paths throughout this doc, never absolute paths, so it stays portable. -->
 <!-- This template is the source of truth for the report's sections; build the report to this shape rather than from memory. -->
 
 ## Diff Summary
 
-<What changed between the selected revision and its base: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
+<What changed between the selected revision and trunk: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
 
 ## Personas
 
@@ -30,10 +30,10 @@ flowchart TD
 
 ## Test Matrix & Results
 
-| # | Flow | Journey / Scenario | Status | Issue | Fix | JJ change / commit |
-|---|------|--------------------|--------|-------|-----|--------------------|
-| 1 |      |                    | Pass   | -     | -   | -                  |
-| 2 |      |                    | Fixed  |       |     | <change-id> / <commit-id> |
+| # | Flow | Journey / Scenario | Status | Issue | Fix | Change |
+|---|------|--------------------|--------|-------|-----|--------|
+| 1 |      |                    | Pass   | -     | -   | -      |
+| 2 |      |                    | Fixed  |       |     | <change-id> |
 | 3 |      |                    | Blocked (needs human verify) | | | |
 
 Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human verify)`, `Blocked (human decision)`. Start every scenario at `Pending` so this table doubles as the resume checkpoint.
@@ -42,7 +42,7 @@ Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human veri
 
 For each issue found and fixed:
 
-### <Short issue title> — `<change-id>` / `<commit-id>`
+### <Short issue title> — `<change-id>`
 - **Symptom:** <what the user saw / what failed in the browser>
 - **Root cause:** <why it happened>
 - **Fix:** <what changed, repo-relative file paths>

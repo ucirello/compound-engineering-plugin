@@ -1,16 +1,16 @@
 # Pre-ship quality tail (LFG steps 3–6)
 
-`ce-code-review` is review-only. LFG applies eligible fixes and finishes them as focused Jujutsu changes.
+`ce-code-review` is review-only. LFG applies eligible fixes itself, then commits.
 
 ## The shipping precondition, in these steps
 
-A missing remote is a terminal local-only state, not an error: never retry a push or hunt for a remote. Step 5 still describes every JJ change it calls for; only the pushes and the PR-side records drop. With no PR to carry the residuals, step 6 files them as tracker tickets and the DONE report states the rest — never a tracked file nobody will read.
+A missing remote is a terminal local-only state, not an error: never retry a push or hunt for a remote. Step 5 still makes every commit it calls for; only the pushes and the PR-side records drop. With no PR to carry the residuals, step 6 files them as tracker tickets and the DONE report states the rest — never a committed file nobody will read.
 
 ## Step 3 — simplify before review
 
-Simplification runs before review so step 4 covers the simplified code. Let `ce-simplify-code` resolve the active Jujutsu stack diff. Pass the plan path as structure-pin context, with the constraint that `session-settled:` KTDs remain structure pins.
+Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the bookmark-diff scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as structure-pin context, not as the simplification scope (the bookmark diff remains the scope), with a one-line constraint: `session-settled:`-labeled KTDs are structure pins the simplification must preserve (deliberate duplication stays duplicated).
 
-Do not describe or advance the working-copy change in this step. Step 4 reviews the full active diff, and step 5 separates review fixes before step 8 finalizes anything remaining.
+Do not commit in this step. `ce-simplify-code` leaves its changes in the working copy; step 4's review scopes the working copy (undescribed working-copy changes included), and step 8's `ce-commit-push-pr` records whatever remains. Recording a change here would sweep any still-undescribed `ce-work` edits into a misleading description and could stall on a working copy that never goes clean.
 
 ## Step 4 — invoke `ce-code-review`
 
@@ -53,7 +53,7 @@ Do not treat `autofix_class` as permission to auto-apply.
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
 2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. If `jj diff -r @ --name-only` shows review-driven changes, separate only that fileset with `jj split` when it is mixed with other work, describe the completed review change, and start a new empty change with `jj new`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Use the repository's current local syntax; do not impose a fixed type, scope, prefix, footer, or body template. When a remote and stable bookmark are already configured, push that bookmark with `jj git push --remote <remote> --bookmark <bookmark>` before step 6. Do not invent a bookmark merely for this intermediate push; the final shipping step owns bookmark creation. If no eligible fixes were applied, note that and leave the revision structure unchanged.
+4. If `jj diff --name-only` lists files, record only the review-driven paths into the current change (the working copy is the commit; do not include unrelated paths). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in git log, compose commit messages adherent to the present standards. Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax. Preserve that this change applied review findings. Run `jj commit` with those review-driven filesets and `-m "<message composed from the standards above>"`. Push before step 6 **when a remote is configured** (per LFG's shipping precondition). To push: if a bookmark on `@` already tracks a remote, run `jj git push`. If remotes exist but the bookmark is not yet tracking (common on a fresh feature bookmark), resolve a writable remote dynamically: prefer `origin` when present, otherwise use `jj git remote list` and choose the first configured remote. Then run `jj git push --remote <remote> --bookmark <bookmark>` (a bookmark that is not tracking yet is tracked automatically). If there is no remote at all, do not push — the local change suffices. If no eligible fixes were applied, note explicitly and skip `jj commit`.
 
 ## Step 6 — residual handoff
 
@@ -61,7 +61,7 @@ Residuals are actionable findings **not** applied in step 5 — not leftovers fr
 
 Two further triggers also require step 6, both outside the apply path: step 4 emitted any `settled_conflict`-stamped findings, or step 2's return carried proceeded-and-flagged `settled_decision_conflicts` entries. They are the divergent class and must be made durable here.
 
-A residual at this point is undecided, not accepted debt: step 5 declined it because it needs judgment, and the pipeline never merges, so the human reviewing the PR supplies that judgment — fix it in this branch, dismiss it, or file it to carry past merge. The record therefore goes where that reviewer already looks, the PR body, and the pipeline files no tickets on its behalf; one ticket per finding, decided by nobody, is how a run of small nits floods a tracker.
+A residual at this point is undecided, not accepted debt: step 5 declined it because it needs judgment, and the pipeline never merges, so the human reviewing the PR supplies that judgment — fix it in this bookmark, dismiss it, or file it to carry past merge. The record therefore goes where that reviewer already looks, the PR body, and the pipeline files no tickets on its behalf; one ticket per finding, decided by nobody, is how a run of small nits floods a tracker.
 
 **When a PR will exist (a remote is configured):** compose a `## Unapplied review findings` section, one checkbox bullet per item so a human ticks it when they close it:
 

@@ -10,17 +10,21 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
-Settle durability before you run this block; it reads the choice once. Set `RUN_KEEP="no"` when the user asked for scratch-only output or declined the durable-path ignore rule. JJ automatically tracks new files, so ensure `.context/` and `.tmp/` are covered by the workspace's ignore rules before use. Follow the existing ignore syntax and offer to append only a missing rule to the workspace-root `.gitignore`.
+Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be left in the repo, and run the block as it stands — it sends the run to workspace `.tmp` (cwd-relative `.tmp` when the run is not inside a JJ repository) and nothing else changes. Otherwise, when the run is inside a JJ repository, probe the workspace root for `.context/` in `.gitignore`; if it is not covered, offer to append that one line to the repo-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone. A run that is headed for `.tmp` either way gets no offer.
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-if [ "$RUN_KEEP" = yes ] && (cd "$WORKSPACE_ROOT" && jj root >/dev/null 2>&1) && [ ! -L "$WORKSPACE_ROOT/.context" ]; then
-ROOT="$WORKSPACE_ROOT/.context";
+REPO_ROOT="$(jj workspace root 2>/dev/null)";
+if [ -n "$REPO_ROOT" ]; then
+TEMP_ROOT="$REPO_ROOT/.tmp";
 else
-ROOT="$SCRATCH_ROOT";
+TEMP_ROOT=".tmp";
+fi;
+if [ "$RUN_KEEP" = yes ] && [ -n "$REPO_ROOT" ] && [ ! -L "$REPO_ROOT/.context" ] && grep -qxF '.context/' "$REPO_ROOT/.gitignore" 2>/dev/null; then
+ROOT="$REPO_ROOT/.context";
+else
+ROOT="$TEMP_ROOT";
 fi;
 while :; do
 BASE="$ROOT/ce-prototype";
@@ -33,8 +37,8 @@ elif ! (umask 077; mkdir -p "$BASE"); then echo "could not create $BASE" >&2;
 elif [ ! -O "$BASE" ]; then echo "base is not owned by the current user: $BASE" >&2;
 elif ! chmod 700 "$BASE"; then echo "could not restrict $BASE" >&2;
 else break; fi;
-if [ "$ROOT" = "$SCRATCH_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
-echo "falling back to $SCRATCH_ROOT" >&2; ROOT="$SCRATCH_ROOT";
+if [ "$ROOT" = "$TEMP_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
+echo "falling back to $TEMP_ROOT" >&2; ROOT="$TEMP_ROOT";
 done;
 RUN_DIR="$BASE/$RUN_SLUG"; n=1;
 while ! (umask 077; mkdir "$RUN_DIR") 2>/dev/null; do
@@ -46,7 +50,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-The symlink and ownership checks cover both the selected root and the `ce-prototype` directory beneath it. Every check is inside the retry loop, so an unsafe durable path falls back to workspace-local scratch rather than aborting. Only a scratch root that also fails is fatal.
+Three things this block is careful about. The symlink and ownership checks run against both the **root** — `.context` or workspace `.tmp` — and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe in-repo path at either level falls back to workspace `.tmp` rather than aborting — a hostile or misconfigured `.context` costs the run its durability, not the run itself, and only a temp root that also fails is fatal.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -106,7 +110,7 @@ Write screens under:
     state/
 ```
 
-The scratch root takes the same shape under `<workspace>/.tmp/rocketclaw/ce-prototype/`, or local `.tmp/rocketclaw/ce-prototype/` when there is no JJ repository. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The fallback root takes the same shape under `<workspace>/.tmp/ce-prototype/` (cwd-relative `.tmp/ce-prototype/` when the run is not inside a JJ repository). The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Launch mode by platform
 

@@ -24,7 +24,7 @@ allowed-tools:
 - **No PII in saved reports.** No user emails, account IDs, or message content in the file written to disk.
 - **Read it like a founder.** No hardcoded thresholds, no default "good"/"bad" labels, no alerting: present the numbers and let the reader judge.
 - **Single page.** Target 30-40 lines. If a section is thin, leave it thin; if the report is getting long, cut.
-- **Not a shipping log or a dashboard replacement.** Shipped work lives in the issue tracker and change history. Deep investigation still uses the native tools; this consolidates a single-page read, and every run is saved so past pulses browse as a timeline.
+- **Not a shipping log or a dashboard replacement.** Shipped work lives in the issue tracker and commit history. Deep investigation still uses the native tools; this consolidates a single-page read, and every run is saved so past pulses browse as a timeline.
 
 ## Interaction Method
 
@@ -48,16 +48,16 @@ This skill writes pulse reports under `<root>/pulse-reports/`. Resolve `<root>` 
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under repository metadata. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is not the repo root. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Phase 0: Route by config state
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary plugin YAML keys from the two repo files.**
+**Resolve ordinary yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Gitignore does not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->

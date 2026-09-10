@@ -144,15 +144,21 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
+
+
 def _workspace_tmp_root() -> str:
+    cwd = os.getcwd()
     try:
         result = subprocess.run(
-            ["jj", "workspace", "root"], capture_output=True, text=True,
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
             check=False,
+            cwd=cwd,
         )
     except OSError:
         result = None
-    root = result.stdout.strip() if result and result.returncode == 0 else os.getcwd()
+    root = result.stdout.strip() if result and result.returncode == 0 else cwd
     return os.path.join(os.path.abspath(root), ".tmp")
 
 

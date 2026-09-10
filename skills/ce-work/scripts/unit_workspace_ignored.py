@@ -1,8 +1,12 @@
-"""Metadata inventory of the canonical workspace's ignored entries.
+"""Metadata inventory of the canonical checkout's ignored entries.
 
 Verification runs in the canonical checkout; ignored state is never copied or
 restored. Two inventories taken before and after verification diff into a
 disclosure of changed, removed, and created ignored paths.
+
+JJ has no public ignored-file listing command. Paths present on disk that are
+not in `jj file list` (the working-copy revision) are treated as ignored
+untracked entries. VCS metadata directories are skipped and never parsed.
 """
 
 from __future__ import annotations
@@ -13,16 +17,31 @@ import stat
 from unit_workspace_state import Operational, jj_text
 
 
+_SKIP_DIR_NAMES = {".jj", ".git"}
+
+
 def ignored_paths(repo: str) -> set[str]:
-    tracked = set(filter(None, jj_text(repo, "file", "list", "-r", "@").splitlines()))
+    repo = os.path.abspath(repo)
+    tracked = set()
+    listed = jj_text(repo, "file", "list", "-r", "@")
+    for line in listed.splitlines():
+        if line:
+            tracked.add(line)
     ignored: set[str] = set()
-    for root, dirs, files in os.walk(repo, followlinks=False):
-        dirs[:] = [name for name in dirs if name not in {".jj"}]
-        for name in files:
-            path = os.path.join(root, name)
-            rel = os.path.relpath(path, repo)
+    for dirpath, dirnames, filenames in os.walk(repo, followlinks=False):
+        dirnames[:] = [name for name in dirnames if name not in _SKIP_DIR_NAMES]
+        rel_dir = os.path.relpath(dirpath, repo)
+        if rel_dir == ".":
+            rel_dir = ""
+        for name in filenames:
+            rel = name if not rel_dir else f"{rel_dir}/{name}".replace("\\", "/")
             if rel not in tracked:
                 ignored.add(rel)
+        for name in dirnames:
+            rel = name if not rel_dir else f"{rel_dir}/{name}".replace("\\", "/")
+            # Directories themselves are not in `jj file list`; only files are.
+            # Empty ignored directories are not inventoried.
+            del rel
     return ignored
 
 

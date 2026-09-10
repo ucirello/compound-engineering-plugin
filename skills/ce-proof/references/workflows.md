@@ -7,7 +7,7 @@ Required read before running one of these end to end: reviewing a shared doc, cr
 When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 1. Extract the slug and token
-2. Bind presence with the default identity
+2. Bind presence with the AI Assistant identity defaults
 3. Read via `v3/document`
 4. Edit with `v3/edit` (narrow content ops; review ops for comments/suggestions)
 
@@ -108,25 +108,19 @@ SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-if jj workspace root >/dev/null 2>&1; then
-  SCRATCH="$(jj workspace root)/.tmp"
-else
-  SCRATCH=".tmp"
-fi
-mkdir -p "$SCRATCH"
-STATE_TMP=$(mktemp "$SCRATCH/ce-proof-state.XXXXXX") || exit 1
-TMP=$(mktemp "$SCRATCH/ce-proof-sync.XXXXXX") || { rm -f "$STATE_TMP"; exit 1; }
-trap 'rm -f "$STATE_TMP" "$TMP"' EXIT
+WS_ROOT=$(jj workspace root 2>/dev/null || echo ".")
+mkdir -p "$WS_ROOT/.tmp/ce-proof"
+STATE_TMP=$(mktemp "$WS_ROOT/.tmp/ce-proof/state.XXXXXX")
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"
 REVISION=$(jq -r '.revision // empty' "$STATE_TMP")
 
+TMP="${LOCAL}.proof-sync.$$"
 jq -jr '.markdown' "$STATE_TMP" > "$TMP" && mv "$TMP" "$LOCAL"
-rm -f "$STATE_TMP"
-trap - EXIT
+rm "$STATE_TMP"
 ```
 
-`jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive.
+`jq -jr` streams markdown bytes without going through a shell variable, so trailing newlines survive. `mv` within the same filesystem is atomic.
 
 **Confirm before writing when the pull isn't directly asked for.** If a workflow ends up pulling as a side-effect of a different action, surface the impending write with a short confirm like "Sync Proof doc to `<localPath>`?" A silent overwrite is surprising.

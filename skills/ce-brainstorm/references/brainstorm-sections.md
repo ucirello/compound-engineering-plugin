@@ -363,7 +363,7 @@ pairs or a stats strip). Field names and semantics are the same across both
 formats so consumers can locate them without knowing which format produced the
 artifact.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply the repository's present syntax when these metadata fields carry change-message semantics.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in git log, compose commit messages adherent to the present standards. Repository-local commit-message syntax from project instructions and git log ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax.
 
 ### Required
 

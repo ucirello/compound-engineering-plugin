@@ -31,7 +31,7 @@ Resolve `<root>` the first time you compose or read a `<root>/` path, never earl
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
-`brainstorm_output` and `brainstorm_model` resolve by this rule instead:
+`brainstorm_output`, `brainstorm_model`, and `brainstorm_harness` resolve by this rule instead:
 
 <!-- ce-config-layers:start -->
 **Resolve ordinary yaml keys from the two repo files.**

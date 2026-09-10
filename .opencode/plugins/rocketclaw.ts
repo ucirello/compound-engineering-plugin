@@ -6,7 +6,7 @@ import { Plugin, Skill } from "@opencode/plugin"
 const pluginDir = path.dirname(fileURLToPath(import.meta.url))
 const skillsDir = path.resolve(pluginDir, "../../skills")
 
-function unquote(value: string) {
+function unquote(value: string): string {
   if (value.length < 2) return value
   const quote = value[0]
   if ((quote !== '"' && quote !== "'") || value[value.length - 1] !== quote) return value
@@ -16,7 +16,7 @@ function unquote(value: string) {
 
 // Scoped to the leading `---` block so a `name:`/`description:` line inside a
 // fenced YAML example in the skill body cannot register a bogus command.
-function parseFrontmatter(content: string) {
+function parseFrontmatter(content: string): { fields: Record<string, string>; body: string } | null {
   const block = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!block) return null
   const fields: Record<string, string> = {}
@@ -30,86 +30,78 @@ function parseFrontmatter(content: string) {
   }
 }
 
-function loadSkills() {
-  const skills: Array<{
-    id: string
-    name: string
-    description?: string
-    userInvocable: boolean
-    autoinvoke: boolean
-    location: string
-    content: string
-  }> = []
-  let entries
+type LoadedSkill = {
+  name: string
+  description?: string
+  body: string
+  skillPath: string
+  suppressed: boolean
+  autoinvoke: boolean
+}
+
+function loadSkills(): LoadedSkill[] {
+  const skills: LoadedSkill[] = []
+  let entries: string[]
   try {
     entries = fs.readdirSync(skillsDir)
   } catch {
     return skills
   }
   for (const entry of entries) {
-    const location = path.join(skillsDir, entry, "SKILL.md")
-    let content
+    const skillPath = path.join(skillsDir, entry, "SKILL.md")
+    let content: string
     try {
-      content = fs.readFileSync(location, "utf8")
+      content = fs.readFileSync(skillPath, "utf8")
     } catch {
       continue
     }
     const parsed = parseFrontmatter(content)
     if (!parsed || !parsed.fields.name) continue
-    const fields = parsed.fields
     skills.push({
-      id: fields.name,
-      name: fields.name,
-      description: fields.description,
-      userInvocable: fields["user-invocable"] !== "false",
-      autoinvoke: fields["disable-model-invocation"] !== "true",
-      location,
-      content: parsed.body,
+      name: parsed.fields.name,
+      description: parsed.fields.description,
+      body: parsed.body,
+      skillPath,
+      suppressed: parsed.fields["user-invocable"] === "false",
+      autoinvoke: parsed.fields["disable-model-invocation"] !== "true",
     })
   }
   return skills
 }
 
+const skills = loadSkills()
+
 export default Plugin.define({
   id: "rocketclaw",
   async setup(ctx) {
-    const skills = loadSkills()
-    await ctx.storage.set("loaded", true)
-    await ctx.storage.set("skillCount", skills.length)
-
     await ctx.skill.transform((editor) => {
       for (const skill of skills) {
-        const record: Skill.Info = {
-          id: skill.id as Skill.Info["id"],
-          name: skill.name as Skill.Info["name"],
-          description: skill.description,
-          slash: skill.userInvocable,
+        editor.add({
+          id: skill.name,
+          name: skill.name,
+          ...(skill.description ? { description: skill.description } : {}),
+          slash: false,
           autoinvoke: skill.autoinvoke,
-          location: skill.location as Skill.Info["location"],
-          content: skill.content,
-        }
-        editor.add(record)
+          location: skill.skillPath,
+          content: skill.body,
+        } as Skill.Info)
       }
     })
 
-    const listed = await ctx.command.list()
-    const commands = Array.isArray(listed) ? listed : []
-    const existing = new Set(commands.map((command) => command.name))
-
     await ctx.command.transform((editor) => {
       for (const skill of skills) {
-        if (!skill.userInvocable) continue
-        if (existing.has(skill.name)) continue
-        const name = skill.name
-        const description = skill.description
+        if (skill.suppressed) continue
         editor.add({
-          name,
-          description,
+          name: skill.name,
+          ...(skill.description ? { description: skill.description } : {}),
           execute: async ({ sessionID, prompt, delivery }) => {
+            const attached = prompt.skills ?? []
+            const alreadyAttached = attached.some((item) => item.id === skill.name)
             await ctx.session.prompt({
               ...prompt,
               sessionID,
-              text: `Load and execute the \`${name}\` skill.\n\n${prompt.text}`,
+              text: `Load and execute the \`${skill.name}\` skill.\n\n${prompt.text}`,
+              skills: alreadyAttached ? attached : [...attached, { id: skill.name }],
               delivery,
             })
           },

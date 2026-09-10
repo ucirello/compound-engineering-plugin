@@ -27,7 +27,7 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, workspace root not found).
+# genuine operational failures (missing `jq`, JJ workspace root not found).
 
 set -u
 

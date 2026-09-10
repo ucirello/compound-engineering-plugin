@@ -38,7 +38,7 @@ Skip, Defer, and Acknowledge are all **rejected-class** — each signals the use
 **Withdraw is conditional.** It is the revalidation variant — an earlier decision resolved or contradicted the finding (see "Withdrawing findings the user's earlier answers resolved" in `walkthrough.md`):
 
 - Counts as rejected-class **only** when a user decision retired it — a settled premise (Skip/Defer) or a user-asserted fact.
-- An **Apply-triggered Withdraw never does.** Its resolution depends on the queued edit both landing and semantically resolving the finding, which round N+1 re-synthesis checks — not R29. Suppressing it would hide a fix that failed or landed ineffectively.
+- An **Apply-triggered Withdraw never does.** Its resolution depends on the staged edit both landing and semantically resolving the finding, which round N+1 re-synthesis checks — not R29. Suppressing it would hide a fix that failed or landed ineffectively.
 
 Applied findings stay on the applied list so round-N+1 personas can verify the fixes landed (see R30 in `synthesis-and-presentation.md`).
 

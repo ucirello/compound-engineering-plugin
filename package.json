@@ -6,7 +6,7 @@
   "private": true,
   "main": ".opencode/plugins/rocketclaw.ts",
   "exports": {
-    ".": "./.opencode/plugins/compound-engineering.js"
+    ".": "./.opencode/plugins/rocketclaw.ts"
   },
   "pi": {
     "extensions": [

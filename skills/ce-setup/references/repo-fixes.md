@@ -4,30 +4,31 @@
 
 When the bundled `scripts/check-health` is unavailable, perform these checks by hand and report the same findings:
 
-1. Check optional tools with `command -v`: `jj`, `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a Jujutsu workspace, resolve its root with `jj workspace root`.
-3. Check for obsolete `rocketclaw.local.md` at the workspace root.
+1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
+2. If inside a Jujutsu repository, resolve the repo root with `jj workspace root` (process cwd = that workspace).
+3. Check for obsolete `rocketclaw.local.md` at the repo root.
 4. Check whether `.rocketclaw/config.yaml` exists.
-5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether Jujutsu omits it from `jj file list .rocketclaw/config.local.yaml`. Jujutsu reads `.gitignore`; if the file is already tracked, add the ignore rule and use `jj file untrack .rocketclaw/config.local.yaml`.
+5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether `(cd <repo-root> && jj --ignore-working-copy file list -- .rocketclaw/config.local.yaml)` is empty. A listed path is already in the working-copy commit (not ignored). JJ has no public `check-ignore`; this read-only list is the probe. A path that does not exist cannot be probed.
 6. Compare `.rocketclaw/config.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
+7. Report a legacy Codex tool map when `${CODEX_HOME:-$HOME/.codex}/AGENTS.md` contains a standalone `<!-- BEGIN COMPOUND CODEX TOOL MAP -->` line followed by a standalone `<!-- END COMPOUND CODEX TOOL MAP -->` line.
 
-This file is read at two points: from Step 2 whenever the bundled health script is unavailable, for the inline equivalent above; and before any Phase 2 write, once Step 3 has decided that a writable workspace exists and which reported issues need remediation. Ask with the blocking question tool named in SKILL.md. Maintaining the generated example files is the work this phase does on its own — Step 5's refresh and its removal of the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
+This file is read at two points: from Step 2 whenever the bundled health script is unavailable, for the inline equivalent above; and before any Phase 2 write, once Step 3 has decided that a writable checkout exists and which reported issues need remediation. Ask with the blocking question tool named in SKILL.md. Maintaining the generated example files is the work this phase does on its own — Step 5's refresh and its removal of the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
 
 ## Phase 2: Fix Repo-Local Issues
 
-Resolve the workspace root (`jj workspace root`). All paths below are relative to the workspace root, not the current working directory. If the current directory is not a Jujutsu workspace, use the current directory as the local root and keep scratch under its `.tmp/rocketclaw/` tree.
+Resolve the repository root (`jj workspace root`). All paths below are relative to the repo root, not the current working directory.
 
 ### Step 4: Remove Obsolete Local Config
 
-If `rocketclaw.local.md` exists at the workspace root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.rocketclaw/config.local.yaml` (the optional override). Team defaults live in `config.yaml`.
+If `rocketclaw.local.md` exists at the repo root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.rocketclaw/config.local.yaml` (the optional override). Team defaults live in `config.yaml`.
 
 Ask whether to delete it now. Delete only if the user approves.
 
 ### Step 5: Refresh Example Config
 
-Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file is tracked in the workspace and should always reflect the latest available settings.
+Copy `references/config-template.yaml` to `<repo-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file is committed to the repo and should always reflect the latest available settings.
 
-If leftover `<workspace-root>/.rocketclaw/config.local.example.yaml` remains after the new example exists, treat it as stale generated example (not user config) and remove it with `trash` (never `rm`).
+If leftover `<repo-root>/.rocketclaw/config.local.example.yaml` remains after the new example exists, treat it as stale generated example (not user config) and remove it with `trash` (never `rm`).
 
 If the bundled template cannot be located by the current platform, print the source template path that failed and tell the user the example config could not be refreshed automatically.
 
@@ -37,7 +38,7 @@ If `.rocketclaw/config.yaml` does not exist, ask — even when health is otherwi
 
 ```text
 Set up a repo config file for this project?
-This creates .rocketclaw/config.yaml with optional team defaults.
+This creates .rocketclaw/config.yaml with optional RocketClaw team defaults.
 Everything starts commented out -- you only enable what you need.
 It does not create config.local.yaml.
 
@@ -45,7 +46,7 @@ It does not create config.local.yaml.
 2. No thanks
 ```
 
-If the user approves, copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.yaml`. Never overwrite an existing `config.yaml` or `config.local.yaml`.
+If the user approves, copy `references/config-template.yaml` to `<repo-root>/.rocketclaw/config.yaml`. Never overwrite an existing `config.yaml` or `config.local.yaml`.
 
 If `config.local.yaml` already exists, leave it. After creating (or if both files already exist), name ordinary local keys that would shadow the new team file. If local still has `docs_root`, say it is ignored and offer to move it into `config.yaml`.
 
@@ -53,13 +54,13 @@ Do not create `config.local.yaml`.
 
 ### Step 6a: Repair Invalid Work Preferences
 
-When the health report marks the `ce-work` implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit the layer that supplied the failing value. If the bad ordinary key is only in `config.yaml`, edit that file after preview. Do not hide a broken team value behind a new local override. Preserve every unrelated setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete.
+When the health report marks the Work implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit the layer that supplied the failing value. If the bad ordinary key is only in `config.yaml`, edit that file after preview. Do not hide a broken team value behind a new local override. Preserve every unrelated setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete.
 
 ### Step 6b: Repair Invalid `docs_root`
 
-When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the workspace, `..` traversal, workspace root, `.jj/`, or a non-directory component) and the consequence: artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the tracked value to a valid workspace-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
+When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the repo, `..` traversal, repo root, `.jj/`, colocated `.git/`, or a non-directory component) and the consequence: artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the tracked value to a valid repo-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
 
-### Step 7: Ensure Local Config Is Ignored
+### Step 7: Ensure Local Config Is Gitignored
 
 If `.rocketclaw/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
 
@@ -67,16 +68,18 @@ If `.rocketclaw/config.local.yaml` exists and is not covered by `.gitignore`, of
 .rocketclaw/*.local.yaml
 ```
 
-Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content. If Jujutsu already tracks the file, run `jj file untrack .rocketclaw/config.local.yaml` after adding the rule.
+Append the entry to the repo-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
-### Step 8: Offer To Ignore Scratch Space
+Probe coverage from the workspace root: `(cd <repo root> && jj --ignore-working-copy file list -- .rocketclaw/config.local.yaml)`. A listed path is already in the working-copy commit (not ignored). JJ has no public `check-ignore`; a path that does not exist cannot be probed.
 
-Skills that keep local scratch write it under `<workspace-root>/.tmp/rocketclaw/`; outside Jujutsu they use `<current-directory>/.tmp/rocketclaw/`. Check the applicable `.gitignore` rules, which Jujutsu uses for ignored files, and when the path is not covered, offer to add:
+### Step 8: Offer To Gitignore Scratch Space
+
+Skills that keep local scratch write it under `.context/`. Probe an existing `.context` tree from the workspace root with `(cd <repo root> && jj --ignore-working-copy file list -- .context)` — a listed file means the tree is already in the working-copy commit (not ignored). JJ has no public `check-ignore`, so a path that does not exist cannot be probed; when coverage is not confirmed, offer to add:
 
 ```text
-.tmp/rocketclaw/
+.context/
 ```
 
-Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content. If files under the path were already tracked, untrack them with `jj file untrack .tmp/rocketclaw` only after the ignore rule exists.
+Append the entry to the repo-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
 Unlike Step 7 this does not wait for the path to exist. The skill about to write there offers the same entry at its first write, so a repository that never uses one of those skills never needs the line — adding it here only means that prompt never has to fire.

@@ -51,7 +51,7 @@ Roll up the evidence statuses: any residual `FAIL` makes the result `FAIL`; othe
 **Scheme:** <scheme>
 **Simulator:** <name>
 **Build:** Success | Failed
-**Evidence directory:** <workspace-root>/.tmp/rocketclaw/ce-test-xcode/<run-id>
+**Evidence directory:** <workspace-root>/.tmp/ce-test-xcode/<run-id>
 **Screens tested:** <count>
 
 | Screen or flow | Status | Evidence / notes |

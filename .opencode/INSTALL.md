@@ -1,31 +1,30 @@
 # Installing RocketClaw for OpenCode V2
 
-This plugin targets `opencode2` exclusively. Add it to the `plugins` array in your global or project `opencode.json`:
+This plugin targets `opencode2` exclusively. The plugin id is `rocketclaw`.
+
+OpenCode loads `.ts` and `.js` files from `.opencode/plugins/` automatically. From this checkout, `.opencode/plugins/rocketclaw.ts` is picked up with no extra config.
+
+To load the package from another directory, add the package path to the `plugins` array in your global or project `opencode.json`:
 
 ```json
 {
-  "$schema": "https://opencode.ai/config.json",
-  "plugins": ["./"]
+  "plugins": ["/path/to/this-plugin"]
 }
 ```
 
-Restart OpenCode after changing the config. The plugin registers skills and commands through the V2 `Plugin.define` lifecycle; no Bun installer or generated skill copy is required.
+Restart OpenCode after changing the config, or run `opencode2 service restart` if the server is already running. The plugin registers skills and user-invocable commands through the V2 `Plugin.define` lifecycle (`ctx.skill.transform` and `ctx.command.transform`); no Bun installer or generated skill copy is required.
 
-Inspect loaded plugins with the OpenCode V2 CLI:
+Inspect loaded plugins:
 
 ```sh
 opencode2 plugin list
+opencode2 plugin list --builtin
 ```
 
-## Local Development
+Install a package plugin from a local path:
 
-From this checkout, point OpenCode at the package path:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugins": ["/absolute/path/to/this-checkout"]
-}
+```sh
+opencode2 plugin add /path/to/this-plugin
 ```
 
-Restart OpenCode after changing the package source, or run `opencode2 service restart` if the server is already running.
+There is no `--dir` flag; the parent CLI takes an optional directory argument: `opencode2 <subcommand> [flags] [<directory>]`.

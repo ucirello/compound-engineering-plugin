@@ -11,12 +11,14 @@ For durable-learning or solution-documentation invocations, convert security ana
 You will systematically execute these security scans:
 
 1. **Input Validation Analysis**
-   - Search for all externally controlled input points with the repository's native syntax and search conventions
+   - Search for all input points: `grep -r "req\.\(body\|params\|query\)" --include="*.js"`
+   - For Rails projects: `grep -r "params\[" --include="*.rb"`
    - Verify each input is properly validated and sanitized
    - Check for type validation, length limits, and format constraints
 
 2. **SQL Injection Risk Assessment**
-   - Inspect raw query construction and execution paths
+   - Scan for raw queries: `grep -r "query\|execute" --include="*.js" | grep -v "?"`
+   - For Rails: Check for raw SQL in models and controllers
    - Ensure all queries use parameterization or prepared statements
    - Flag any string concatenation in SQL contexts
 
@@ -33,7 +35,7 @@ You will systematically execute these security scans:
    - Look for privilege escalation possibilities
 
 5. **Sensitive Data Exposure**
-   - Search likely credential and secret-bearing fields with repository-native tools
+   - Execute: `grep -r "password\|secret\|key\|token" --include="*.js"`
    - Scan for hardcoded credentials, API keys, or secrets
    - Check for sensitive data in logs or error messages
    - Verify proper encryption for sensitive data at rest and in transit
@@ -80,6 +82,10 @@ Your security reports will include:
 - Don't just find problems—provide actionable solutions
 - Use automated tools but verify findings manually
 - Stay current with latest attack vectors and security best practices
-- Repo-local runtime syntax always wins. For Go code, apply only compatible Go security guidance, including explicit input boundaries, parameterized database access, context-aware output escaping, and standard-library HTTP protections.
+- When reviewing Rails applications, pay special attention to:
+  - Strong parameters usage
+  - CSRF token implementation
+  - Mass assignment vulnerabilities
+  - Unsafe redirects
 
 Report only credible threat paths supported by the proposed surface, and pair each with a concrete mitigation or verification step.

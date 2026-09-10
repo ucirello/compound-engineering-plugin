@@ -24,9 +24,9 @@ When Spiral is unauthed or absent, offer setup once. First check the opt-out so 
 ### Check the opt-out
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary config keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`, run with cwd at that root). Missing files are skipped. Gitignore does not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -64,14 +64,14 @@ There is deliberately no separate "don't ask again" option: **dismissing is itse
 
 ### Record the opt-out (best-effort)
 
-Resolve the repo root, then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
+Resolve the repo root (`jj workspace root`; never CWD; run subsequent `jj` with cwd at that root), then add `ce_promote_spiral_optout: true` as a top-level key to `<root>/.rocketclaw/config.local.yaml`, using the native file-write/edit tool:
 
 - **File already exists:** ensure an **uncommented** `ce_promote_spiral_optout: true` line is present — add one (or uncomment the example) unless an uncommented one already exists. A commented `# ce_promote_spiral_optout: true` (from `ce-setup`'s template) does **not** count as present; leaving only the comment would let the comment-ignoring read path re-prompt next run.
-- **File absent:** create it (and its `.rocketclaw/` directory) with the key, and ensure the machine-local config remains ignored by JJ snapshots. If the path is not already covered by a JJ-compatible ignore rule, add `.rocketclaw/*.local.yaml` to the backing repository's local exclude file, resolving the backing repository with `jj git root`; do not hardcode a metadata path or modify a tracked ignore file during this drafts-only action. `ce-setup` is the canonical place that adds the shared ignore entry for teammates. Without an ignore rule, a user who runs `/ce-promote` before `/ce-setup` could accidentally include machine-local opt-out state in a change.
+- **File absent:** create it (and its `.rocketclaw/` directory) with the key, AND make sure the machine-local config is not snapshotted into the working-copy change. JJ has no public command that tests whether a path is ignored; add the ignore pattern **before** creating the file so auto-snapshot cannot pick it up. If `"$(jj git root)/info/exclude"` does not already contain `.rocketclaw/*.local.yaml`, append that line (public `jj git root`; do not parse `.jj/` or hardcode `.git/`). Then create the file. If `jj file list` (cwd = repo root) still includes `.rocketclaw/config.local.yaml`, run `jj file untrack` on that repo-relative path — untrack requires the ignore pattern to already match. Use the local exclude, **not** `.gitignore`: it keeps the rule local and avoids dirtying a tracked file on what was a drafts-only action. `ce-setup` is the canonical place that adds the shared `.gitignore` entry for teammates. Without any ignore, a user who runs `/ce-promote` before `/ce-setup` could accidentally snapshot machine-local opt-out state.
 
 If the root can't be resolved or any write fails, proceed to Path B anyway; the opt-out is a convenience, never a blocker.
 
-After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept out of JJ snapshots). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
+After recording, confirm it in one line so the write isn't silent and the user knows how to undo it — e.g. "Got it — I won't bring up Spiral here again (saved to `.rocketclaw/config.local.yaml`, kept untracked). Want it back later? Just ask, or remove the `ce_promote_spiral_optout` key." Keep it to a single line; don't belabor it.
 
 ## Generate
 

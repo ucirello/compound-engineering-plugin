@@ -5,34 +5,58 @@ description: Create a JJ change with a clear, value-communicating description. U
 
 # JJ Commit
 
-Create well-crafted local change(s) from the current JJ working copy. No push, no PR; use `ce-commit-push-pr` for the full ship flow.
+Create well-crafted local change(s) from the current working copy. No push, no PR — use `ce-commit-push-pr` for the full ship flow.
 
-**Done when:** each logical change has an explicit fileset and an outcome-focused description, a fresh empty working-copy change is on top, and `jj status` shows none of the completed work in the new change. **Stop when:** the working-copy change is empty.
+**Done when:** each logical change is committed with an explicit fileset and a description that states the outcome, and `jj status` is clean of those changes. **Stop when:** the working-copy change is empty (nothing to commit).
 
 ## Context
 
-Gather context with each command as its own shell tool call (program and arguments only). Do not join calls with shell operators, pipes, substitutions, or redirects. Treat a non-zero exit as state to interpret.
+Gather context with each command as its **own** shell tool call (program + args only). Do **not** join with `;`, `&&`, `||`, pipes, `$(...)`, or redirects — that syntax fails under Windows PowerShell. A non-zero exit is a normal state to interpret, not a failure to suppress.
 
-| Command | Purpose | Non-zero or empty means |
+Run every `jj` command with process cwd set to the workspace root from `jj workspace root`. Do not use `jj -R` as a cwd substitute. Filesets are workspace-relative (`src/example.py`), never a path that includes `.tmp/` or another checkout prefix.
+
+| Command | Purpose | Non-zero / empty means |
 | --- | --- | --- |
-| `jj workspace root` | Workspace root | Not a JJ workspace; stop |
-| `jj status` | Working-copy state | Not a JJ workspace; stop |
-| `jj diff` | Current change | Empty change |
-| `jj log -r '@ | @-' --no-graph` | Current and parent change identity | Repository state is unavailable |
-| `jj bookmark list -r @` | Bookmarks currently targeting the working-copy change | Empty means no local bookmark targets `@` |
-| `jj bookmark list --all-remotes` | Local and remote bookmark state | Remote state is unavailable |
-| `jj log -r 'ancestors(@, 10)' --no-graph` | Recent description style | No local JJ history is available |
-| `GIT_DIR="$(jj git root)" gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | Remote default bookmark | Unavailable; inspect tracked remote bookmarks and ask rather than guessing |
+| `jj workspace root` | Workspace root | Not a JJ repo — stop |
+| `jj status` | Working-copy state | Not a JJ repo — stop |
+| `jj diff` | Working-copy changes | Empty change |
+| `jj bookmark list -r @` | Bookmarks on the working-copy change | Empty = no local bookmark on `@` |
+| `jj log -n 10 --no-graph` | Recent description style | No history |
+| `jj bookmark list -r trunk()` | Default bookmark (trunk) | No `trunk()` — try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, else `main` |
+| `jj git root` | Underlying Git dir for `gh` | No Git backend — skip `gh`; do not guess a default bookmark |
 
-Treat this as a snapshot. Re-read the working-copy change and bookmarks immediately before describing or committing if anything may have changed.
+Treat this as a snapshot. Re-read bookmarks and working-copy state immediately before committing if anything may have changed.
+
+**Default bookmark name:** strip a trailing `@origin` (or other remote) from a remote bookmark (so `main@origin` → `main`). Use that bare name for all “on the default bookmark?” checks — never compare against `name@origin`.
 
 ## Workflow
 
-1. Run every Context command above, each in its own shell tool call.
-2. If `jj status` shows an empty working-copy change, report that there is nothing to commit and stop.
-3. If a bookmark for the proposed work already exists, preserve it. Otherwise derive a non-conflicting feature bookmark name from the change content and create it only after the completed change's target is known; JJ changes do not require a bookmark until publication.
-4. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Runtime project instructions and `git log` syntax win. Preserve the outcome, motivation, and non-obvious trade-offs without imposing a fixed type, scope, prefix, subject form, or body template. When a plan Implementation Unit ID is already in hand and maps unambiguously to one change, preserve that semantic reference in the repository's current syntax. Do not hunt for a plan, and omit the reference when the change spans units or the mapping is unclear.
-5. If the changed files clearly split into distinct concerns, create separate changes at file level, two or three at most. If ambiguous, keep one change. Use `jj commit <filesets> -m "<message composed from the standards above>"` for each group; it keeps those files in the completed change and moves the remaining files into the new working-copy change.
-6. Honor `exclude:<paths>` throughout. Excluded files remain in the working-copy change and are never included in a completed fileset. Never use an unbounded fileset while excluded or unrelated work exists.
-7. If the completed work needs a bookmark, run `jj bookmark set <bookmark> -r @-` after `jj commit` creates the fresh empty change. A bookmark does not advance automatically in JJ.
-8. Confirm with `jj status`, `jj log -r '@ | @-' --no-graph`, and `jj bookmark list -r @-`. Report change IDs, commit IDs, descriptions, and any excluded paths left in the working-copy change.
+0. **Gather** — run every Context command above (own shell call each), then continue.
+
+1. **Nothing to commit** — if `jj status` shows no working-copy changes, report that and stop. Do not use `jj diff` alone as cleanliness.
+
+2. **Bookmark first** — if `@` has no local bookmark, or a bookmark on `@` is the default (`main` / `master` / the bare trunk name above), create a feature bookmark from the change content (`jj bookmark create <name>`), then re-read `jj bookmark list -r @`. If the default bookmark itself points at `@`, move it to `@-` (`jj bookmark move <default> --to @- --allow-backwards`) so the work is not left on the default. Do not ask — commit-only still must not leave work only with no bookmark or only on the default bookmark. If the derived name exists, pick a non-conflicting suffix.
+
+3. **Compose the description.** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in git log, compose commit messages adherent to the present standards.
+
+   Repository-local commit-message syntax from project commit conventions already in context and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax. Do not choose a fixed type, scope, prefix, subject form, or body template.
+
+   Semantic constraints on the composed message: the subject names the outcome (what is now possible or fixed), not the file list. Body only when motivation or trade-offs are not obvious from the subject. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+
+   - Bad: `Update checkout.rb` / `Add tests and fix stuff`
+   - Good: `Fix double-submit on checkout`
+   - Good: `Add per-subscription mute (U3)`
+
+4. **Logical changes** — if changed files clearly split into distinct concerns, make separate changes (file level only, 2–3 max, no `jj commit --interactive` / `jj split`). If ambiguous, one change.
+
+5. **Commit named files** — there is no staging area; the working copy is the change. Honor `exclude:<paths>` when the invocation carries it: those files stay in the working-copy change no matter what else changed; say in the report that they were left out. Commit **named files only** (never `jj commit` with no filesets — that takes the whole working copy). For each group:
+
+```
+jj commit -m "<message composed from the standards above>" file1 file2 file3
+```
+
+The fileset list is load-bearing: a bare `jj commit` takes the whole working copy, so `exclude:` paths or work the user did not name would ride into the change. Naming the paths keeps exactly that group in the completed change and moves other working-copy paths into the new empty change on top.
+
+`jj commit` does not move bookmarks forward. After the last group, if the feature bookmark is not on the completed tip, run `jj bookmark set <name> -r @-`.
+
+6. **Confirm** — `jj status`; report change id(s) and subject(s).

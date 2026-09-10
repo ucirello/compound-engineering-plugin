@@ -2,17 +2,21 @@
 
 set -e
 
-GIT_DIR=$(jj git root)
-export GIT_DIR
-
 if [ $# -eq 0 ]; then
     echo "Usage: resolve-pr-thread THREAD_ID"
+    echo "Example: resolve-pr-thread PRRT_kwDOABC123"
     exit 1
 fi
 
 THREAD_ID=$1
 
-GIT_DIR="$(jj git root)" gh api graphql -f threadId="$THREAD_ID" -f query='
+# Pair every `gh` call with the colocated Git directory so underlying git
+# calls succeed. Public `jj git root` only; never read `.jj/` or `.git/`.
+if git_dir=$(jj git root 2>/dev/null); then
+    export GIT_DIR="$git_dir"
+fi
+
+gh api graphql -f threadId="$THREAD_ID" -f query='
 mutation ResolveReviewThread($threadId: ID!) {
   resolveReviewThread(input: {threadId: $threadId}) {
     thread {

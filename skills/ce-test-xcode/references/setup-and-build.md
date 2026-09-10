@@ -4,11 +4,11 @@ This reference owns the path from invocation to a launched app with log capture 
 
 ## Workspace and evidence
 
-Resolve the workspace root with `jj workspace root`. When the current directory is outside a JJ workspace, use that directory as the local workspace root. Inside a JJ workspace, treat `jj status`, `jj diff`, and `jj log` as authoritative for working-copy state, changed surfaces, and relevant history. Jujutsu has working-copy changes and bookmarks, not a staging area or current branch; do not substitute mutating Git commands for JJ operations.
+Resolve the JJ workspace root with `jj workspace root`. Run every `jj` invocation with process cwd set to that absolute root. When the current directory is outside a JJ repository, use that directory as the local root.
 
-Preserve operational interoperability rather than translating it into repository mutation. Use `GIT_DIR="$(jj git root)" gh` for GitHub metadata when the user's scope names a PR or other GitHub object. Keep every repository read and mutation in JJ; Git Bash remains a supported shell.
+Inside a JJ repository, treat `jj status`, `jj diff`, and `jj log` as authoritative for working-copy state, changed iOS surfaces, and relevant history. Do not substitute Git VCS commands. Pair `gh` with `GIT_DIR="$(jj git root)"` when the user's scope names a GitHub object.
 
-Create one private run directory under `<workspace-root>/.tmp/rocketclaw/ce-test-xcode/<run-id>/` and retain its absolute path. Store screenshots, captured logs, and other temporary evidence only there; do not use operating-system or global temporary storage. Inside JJ, first confirm existing ignore rules exclude `.tmp/` from working-copy snapshots; if they do not, stop with that blocker rather than editing ignore configuration or recording evidence in the change. Outside JJ, the same path is rooted at the local workspace directory.
+Create one private run directory under `<workspace-root>/.tmp/ce-test-xcode/<run-id>/` and retain its absolute path. Store screenshots, captured logs, and other temporary evidence only there. Do not use operating-system or global temporary storage (`/tmp`, `$TMPDIR`, `mktemp`). Outside a JJ repository, the same path is rooted at the local directory. Do not edit ignore configuration.
 
 ## Availability gate
 

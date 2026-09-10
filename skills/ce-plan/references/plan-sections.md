@@ -21,14 +21,14 @@ Sections earn their place by serving one of these audiences. Omit padding.
 
 ## Unified plan artifact contract
 
-`ce-plan` writes the canonical rocketclaw plan artifact. The same
+`ce-plan` writes the canonical RocketClaw plan artifact. The same
 artifact may begin as a requirements-only skeleton from `ce-brainstorm` and
 later be enriched by `ce-plan`; it is still one plan file moving through
 readiness states, not a requirements doc plus a separate implementation doc.
 
 When the artifact is meant to be consumed by implementation agents, use:
 
-- **`artifact_contract: unified-plan/v1`** — declares this contract.
+- **`artifact_contract: ce-unified-plan/v1`** — declares this contract.
 - **`artifact_readiness`** — document completeness, not work progress. Valid
   values are:
   - `requirements-only` — Product Contract exists; planning sections are not
@@ -307,7 +307,7 @@ versa.
 The agent also picks per artifact:
 
 - Whether Problem Frame merges into Summary — legacy and non-unified plans
-  only. Any `unified-plan/v1` artifact keeps both headings regardless of
+  only. Any `ce-unified-plan/v1` artifact keeps both headings regardless of
   plan depth: the hard floor names them separately and downstream consumers
   anchor on them. (Scoped by artifact contract, not by depth — a `Lightweight`
   plan can still be implementation-ready.)
@@ -403,19 +403,21 @@ plan.
 
 ### Required
 
-- **`title`** — the plan's descriptive name, matching the H1 (markdown) or
-  document `<h1>` (HTML) so file metadata and visible heading do not drift.
-  Runtime project syntax wins; do not impose a fixed prefix or suffix.
-- **`type`** — the project-conventional classification when the project uses
-  one, otherwise a dynamic Jujutsu-aware placeholder such as
-  `<project-conventional-change-kind>`. Never impose a fixed type catalog.
+- **`title`** — the plan's descriptive name with a ` - Plan` suffix
+  (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
+  `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
+  across readiness states (it is a plan at every stage). Do not put a
+  change-description prefix in the title — the `type` field carries that
+  classification.
+- **`type`** — classification of the change intent (what the work is).
+  Carries the intent the eventual Jujutsu change description should reflect.
+  Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in git log, compose commit messages adherent to the present standards.
+  Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax. Do not hardcode a prefix, type, scope, or subject template; preserve semantic constraints (what the work describes, PR/issue refs) as constraints on the dynamically composed message.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
-
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Apply that rule whenever plan metadata recommends, validates, or edits an eventual change description; the runtime project's syntax wins over fixed type, scope, prefix, body, or message templates.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from Jujutsu history, not stored in the doc. Do not
+whether a plan shipped is derived from jj, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known

@@ -10,6 +10,17 @@ fi
 
 THREAD_ID=$1
 
+# Bootstrap the workspace from CWD, then run later `jj` with cwd at that root.
+# `jj -R` selects a repo but does not change cwd. Never read `.jj/` or `.git/`.
+workspace_root=$(jj workspace root 2>/dev/null || true)
+git_dir=""
+if [ -n "$workspace_root" ]; then
+    git_dir=$(cd "$workspace_root" && jj git root 2>/dev/null || true)
+fi
+if [ -n "$git_dir" ]; then
+    export GIT_DIR="$git_dir"
+fi
+
 gh api graphql -f threadId="$THREAD_ID" -f query='
 mutation ResolveReviewThread($threadId: ID!) {
   resolveReviewThread(input: {threadId: $threadId}) {

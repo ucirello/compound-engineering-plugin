@@ -17,6 +17,17 @@ PR_NUMBER=$1
 ROOT_COMMENT_ID=$2
 BODY=$(cat)
 
+# Bootstrap the workspace from CWD, then run later `jj` with cwd at that root.
+# `jj -R` selects a repo but does not change cwd. Never read `.jj/` or `.git/`.
+workspace_root=$(jj workspace root 2>/dev/null || true)
+git_dir=""
+if [ -n "$workspace_root" ]; then
+    git_dir=$(cd "$workspace_root" && jj git root 2>/dev/null || true)
+fi
+if [ -n "$git_dir" ]; then
+    export GIT_DIR="$git_dir"
+fi
+
 if [ -n "$3" ]; then
     OWNER=$(echo "$3" | cut -d/ -f1)
     REPO=$(echo "$3" | cut -d/ -f2)

@@ -1,6 +1,6 @@
 # `.claude/launch.json` schema
 
-Polish reads `.claude/launch.json` at the repo root to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format — chosen because Claude Code, Cursor, and VS Code all understand it and because users often already have one for editor integration.
+Polish reads `.claude/launch.json` at the workspace root to resolve the dev-server start command. The schema is a subset of VS Code's `launch.json` format — chosen because Claude Code, Cursor, and VS Code all understand it and because users often already have one for editor integration.
 
 ## Top-level shape
 
@@ -13,7 +13,7 @@ Polish reads `.claude/launch.json` at the repo root to resolve the dev-server st
       "runtimeExecutable": "<binary>",
       "runtimeArgs": ["<arg>", "<arg>"],
       "port": <number>,
-      "cwd": "<optional, repo-relative>",
+      "cwd": "<optional, workspace-relative>",
       "env": { "<key>": "<value>" }
     }
   ]
@@ -28,7 +28,7 @@ Polish reads `.claude/launch.json` at the repo root to resolve the dev-server st
 | `runtimeExecutable` | yes | The binary polish spawns (e.g., `bin/dev`, `npm`, `overmind`, `bun`). |
 | `runtimeArgs` | no | Array of arguments passed to `runtimeExecutable`. Default: empty array. |
 | `port` | no | The dev-server port. A numeric value completes the tuple's port fact; when the command, working directory, and environment are also usable, no project detection or resolver runs. When omitted, polish resolves only the missing port from the selected project type. The port seeds `http://localhost:<port>` as the default endpoint candidate; server evidence or a user correction may replace that candidate, so the schema does not lock the URL scheme. |
-| `cwd` | no | Repo-relative working directory for the dev server. Default: repo root. Useful for monorepos (`apps/web`, `packages/frontend`). |
+| `cwd` | no | Workspace-relative working directory for the dev server. Default: workspace root. Useful for monorepos (`apps/web`, `packages/frontend`). |
 | `env` | no | Additional environment variables for the dev-server process. Default: inherit polish's environment. |
 
 ## Stub template (written on first run when user accepts)
@@ -171,7 +171,7 @@ Polish does not use `type`, `request`, `console`, `stopOnEntry`, or any of the o
 
 `.claude/launch.json` is not yet a fully unified standard across Claude Code, Cursor, VS Code, and Codex. Polish leads with `.claude/launch.json` because:
 - Claude Code, Cursor, and VS Code can all read it as a launch config
-- It sits at a clean repo-root trust boundary (user-authored, not auto-detected)
+- It sits at a clean workspace-root trust boundary (user-authored, not auto-detected)
 - Users who prefer `.vscode/launch.json` can symlink or mirror the two files manually
 
 If a cross-IDE standard emerges (e.g., `.workspace/launch.json`), the stub writer and reader can swap paths without touching the rest of the skill.

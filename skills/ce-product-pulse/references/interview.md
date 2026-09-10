@@ -1,6 +1,6 @@
 # Product Pulse First-Run Interview
 
-Loaded from `references/setup.md` at the start of Phase 1. Captures the configuration that will be merged into `.compound-engineering/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys through the ordinary-key cascade (local then `config.yaml`).
+Loaded from `references/setup.md` at the start of Phase 1. Captures the configuration that will be merged into `.rocketclaw/config.local.yaml` (the optional local override; interviews write here) as `pulse_*` keys. Subsequent runs re-read those keys through the ordinary-key cascade (local then `config.yaml`).
 
 For each section: ask the opening question, evaluate the answer against the quality bar, push back when it falls into a named anti-pattern, and capture the final answer in the user's own language.
 
@@ -224,9 +224,9 @@ Skipping this entirely is fine - the skill does not require a schedule to functi
 
 ## Config File Shape
 
-After the interview completes, merge a `pulse_*` block into `<repo-root>/.compound-engineering/config.local.yaml`. Resolve the repo root with `git rev-parse --show-toplevel`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
+After the interview completes, merge a `pulse_*` block into `<repo-root>/.rocketclaw/config.local.yaml`. Resolve the repo root with `jj workspace root`. Preserve any non-pulse keys that already exist in the file (e.g., `plan_*`); only add or update `pulse_*` keys.
 
-If the file does not yet exist, create the directory and file. If `.compound-engineering/config.local.yaml` is not already covered by `.gitignore`, offer to add the entry before writing.
+If the file does not yet exist, create the directory and file. If `.rocketclaw/config.local.yaml` is not already covered by the repository's JJ-compatible ignore rules, offer to add the entry before writing.
 
 The pulse block uses skill-prefixed flat keys so it can share the config file without owning unrelated settings:
 

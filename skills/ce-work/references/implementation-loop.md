@@ -10,7 +10,7 @@ When the selected engine is cross-model execution, this loop still owns unit ord
 while (tasks remain):
   - Mark task as in-progress
   - Read any referenced files from the plan or discovered during Phase 0
-  - **If any part of the unit's completion depends on out-of-repo state** (a console setting, DNS record, CMS object, live-system rows), that part has no git-derived completion signal: decide it from the observed state of the deliverable, never from a clean tree or a tracker write. Mark it complete only when that state is already satisfied; execute only when it is observably unsatisfied and re-applying is safe or the user has authorized it; otherwise ask or block.
+  - **If any part of the unit's completion depends on out-of-repo state** (a console setting, DNS record, CMS object, live-system rows), that part has no JJ-derived completion signal: decide it from the observed state of the deliverable, never from a clean tree or a tracker write. Mark it complete only when that state is already satisfied; execute only when it is observably unsatisfied and re-applying is safe or the user has authorized it; otherwise ask or block.
   - **If the unit's entire completion signal is repository-derived and that work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped on a prior branch or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
   - Look for similar patterns in codebase
   - Find existing test files for implementation files being changed (Test Discovery — see below)
@@ -90,21 +90,22 @@ After completing each task, evaluate whether to create an incremental commit:
 
 If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
 
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Repo-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repo-local syntax.
+
 **Commit workflow:**
 ```bash
 # 1. Verify tests pass (use project's test command)
 # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-# 2. Stage only files related to this logical unit (not `git add .`)
-git add <files related to this logical unit>
-
-# 3. Commit with conventional message, limited to those same paths
-git commit -m "feat(scope): description of this unit" -- <files related to this logical unit>
+# 2. Record only files related to this logical unit (JJ has no index)
+jj commit -m "<message composed from the standards above>" -- <files related to this logical unit>
 ```
 
-**Handling merge conflicts:** If conflicts arise during rebasing or merging, resolve them immediately. Incremental commits make conflict resolution easier since each commit is small and focused.
+**Handling merge conflicts:** If conflicts arise during rebasing or merging, resolve them immediately. Incremental changes make conflict resolution easier since each change is small and focused.
 
-**Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
+**Note:** Incremental changes use messages composed from the standards above, without attribution footers. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add PR attribution.
 
 **Parallel subagent mode:** commit ownership follows the isolation mode chosen at dispatch — see `references/execution-strategy.md`.
 

@@ -50,7 +50,7 @@ def _verification_command(args, operation: str = "integrate") -> list[str]:
 
 def _remove_owned_new_paths(repo: str, paths: set[str], pre_head: str) -> None:
     for rel in sorted(paths, key=lambda value: (value.count("/"), value), reverse=True):
-        if git(repo, "ls-tree", "-z", "--full-tree", pre_head, "--", rel):
+        if path_in_revision(repo, pre_head, rel):
             continue
         target = os.path.abspath(os.path.join(repo, rel))
         if os.path.commonpath([repo, target]) != repo:
@@ -78,19 +78,17 @@ def _restore_owned_verification(
         pre = dict(unit["integration"]["pre_fold"])
         expected = unit["integration"]["expected_apply"]
         if not (
-            before["head"] == pre["head"]
-            and before["index_tree"] == expected["index_tree"]
-            and before["worktree_index_empty"]
+            (before["head"] == pre["head"] or before.get("parent") == pre["head"])
             and before_paths == set(expected["changed_paths"])
         ):
             raise Operational("BLOCKED", "owned verification did not start from the expected transport application")
-        if git_text(repo, "rev-parse", "HEAD") != pre["head"]:
+        if commit_id(repo, "@") != before["head"] and parent_ids(repo, "@") != [pre["head"]]:
             raise Operational("BLOCKED", "verification changed canonical HEAD; refusing automatic restoration")
         verification_paths = after_paths - before_paths
     with locked_manifest(run_id, write=True) as doc:
         doc["units"][unit_id]["state"] = "restoring"
         event(doc, "restore-intent", unit_id, {"source": "controller-owned-verification"})
-    git(repo, "reset", "--hard", pre["head"])
+    restore_to_revision(repo, pre["head"])
     with locked_manifest(run_id) as doc:
         remove_introduced_paths(repo, doc["units"][unit_id])
     _remove_owned_new_paths(repo, verification_paths, pre["head"])
@@ -134,7 +132,7 @@ def _validate_accepted_run_head(repo: str, units: dict, current_head: str) -> No
         if commit is None:
             raise Operational("BLOCKED", "unit completion evidence changed before plan-wide verification")
         base = unit.get("workspace", {}).get("base")
-        if not isinstance(base, str) or git_text(repo, "merge-base", base, commit, check=False) != base:
+        if not isinstance(base, str) or not is_ancestor(repo, base, commit):
             raise Operational(
                 "BLOCKED",
                 "controller-accepted unit commit does not descend from its recorded base",
@@ -150,7 +148,7 @@ def _validate_accepted_run_head(repo: str, units: dict, current_head: str) -> No
             "canonical HEAD no longer matches the final controller-accepted unit commit",
             {"accepted_heads": sorted(commits), "actual_head": current_head},
         )
-    if any(git_text(repo, "merge-base", commit, current_head, check=False) != commit for commit in commits):
+    if any(not is_ancestor(repo, commit, current_head) for commit in commits):
         raise Operational(
             "BLOCKED",
             "canonical HEAD does not contain every controller-accepted unit",
@@ -254,7 +252,7 @@ def _verify_run_locked(
                 stdin=subprocess.DEVNULL,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
-                env=sanitized_git_environment({"PYTHONDONTWRITEBYTECODE": "1"}),
+                env=sanitized_process_environment({"PYTHONDONTWRITEBYTECODE": "1"}),
                 check=False,
             )
             verification_exit = proc.returncode
@@ -293,7 +291,7 @@ def _verify_run_locked(
             )
         deletion_paths = after_paths - before_paths
         cleaned_paths = sorted(deletion_paths)
-        git(repo, "reset", "--hard", before["head"])
+        restore_to_revision(repo, before["head"])
         _remove_owned_new_paths(repo, deletion_paths, before["head"])
     restored = semantic_snapshot(repo)
     if restored != before:
@@ -467,7 +465,7 @@ def cmd_integrate(args) -> tuple[str, dict]:
         with locked_manifest(args.run_id) as doc:
             repo = doc["repository"]["toplevel"]
             transport = doc["units"][args.unit_id]["transport"]["commit"]
-        git(repo, "cherry-pick", "--no-commit", transport)
+        apply_transport(repo, transport)
         cmd_mark_applied(_args(run_id=args.run_id, unit_id=args.unit_id, lock_token=token))
         with locked_manifest(args.run_id) as doc:
             unit = doc["units"][args.unit_id]
@@ -486,7 +484,7 @@ def cmd_integrate(args) -> tuple[str, dict]:
                     stdin=subprocess.DEVNULL,
                     stdout=stream,
                     stderr=subprocess.STDOUT,
-                    env=sanitized_git_environment({"PYTHONDONTWRITEBYTECODE": "1"}),
+                    env=sanitized_process_environment({"PYTHONDONTWRITEBYTECODE": "1"}),
                     check=False,
                 )
                 verification_exit = proc.returncode
@@ -534,7 +532,7 @@ def cmd_integrate(args) -> tuple[str, dict]:
             ignored_state=ignored_state,
         ))
         test_fault("before-canonical-commit")
-        commit_index_tree(repo, args.commit_message)
+        commit_working_copy(repo, args.commit_message)
         committed_body = cmd_mark_committed(_args(run_id=args.run_id, unit_id=args.unit_id, lock_token=token))[1]
         committed = True
         canonical = committed_body["canonical_commit"]["commit"]

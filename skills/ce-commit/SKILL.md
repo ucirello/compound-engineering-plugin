@@ -1,13 +1,13 @@
 ---
 name: ce-commit
-description: Create a git commit with a clear, value-communicating message. Use when the user asks to commit/save staged or unstaged changes with a repo-appropriate message.
+description: Create a JJ change with a clear, value-communicating description. Use when the user asks to commit/save working-copy changes with a project-appropriate description.
 ---
 
-# Git Commit
+# JJ Change
 
-Create well-crafted local commit(s) from the current working tree. No push, no PR — use `ce-commit-push-pr` for the full ship flow.
+Create well-crafted local change(s) from the current working copy. No push, no PR — use `ce-commit-push-pr` for the full ship flow.
 
-**Done when:** each logical change is committed with an explicit file list and a message that states the outcome, and `git status` is clean of those changes. **Stop when:** the tree is clean (nothing to commit).
+**Done when:** each logical change is described with an explicit fileset and a description that states the outcome, and `jj status` is clean of those changes. **Stop when:** the working copy has no remaining changes (nothing to describe).
 
 ## Context
 
@@ -15,46 +15,39 @@ Gather context with each command as its **own** shell tool call (program + args 
 
 | Command | Purpose | Non-zero / empty means |
 | --- | --- | --- |
-| `git status` | Working-tree state | Not a git repo — stop |
-| `git diff HEAD` | Uncommitted changes | Unborn repo / no commits yet |
-| `git branch --show-current` | Current branch | Empty = detached HEAD |
-| `git log --oneline -10` | Recent message style | Unborn repo — no history |
-| `git rev-parse --abbrev-ref origin/HEAD` | Remote default branch | No `origin/HEAD` / bare `HEAD` — try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`, else `main` |
+| `jj workspace root` | Workspace root | Not a JJ repo — stop |
+| `jj status` | Working-copy state | Not a JJ repo — stop |
+| `jj diff` | Working-copy vs parents | Empty working-copy diff |
+| `jj bookmark list -r @` | Bookmarks on the working-copy change | Empty = no bookmark on `@` |
+| `jj log -n 10 --no-graph -r ::@` | Recent description style | Empty history |
+| `jj bookmark list -r trunk()` | Default bookmark | No `trunk()` — run `jj git root` as its own call, then `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` with `GIT_DIR` set to that path (fill the path from the prior call; do not nest command substitution), else `main` |
 
-Treat this as a snapshot. Re-read branch and staged set immediately before committing if anything may have changed.
+Treat this as a snapshot. Re-read bookmarks and the working-copy fileset immediately before describing if anything may have changed.
 
-**Default branch name:** strip a leading `origin/` from `origin/HEAD` (so `origin/trunk` → `trunk`). Use that bare name for all “on the default branch?” checks — never compare against `origin/<name>`.
+**Default bookmark name:** strip a remote `@<remote>` suffix (so `trunk@origin` → `trunk`). Use that bare name for all “on the default bookmark?” checks — never compare against `name@origin`.
 
 ## Workflow
 
 0. **Gather** — run every Context command above (own shell call each), then continue.
 
-1. **Nothing to commit** — if `git status` shows no staged, modified, or untracked files, report that and stop. Do not use `git diff HEAD` alone as cleanliness (it misses untracked files).
+1. **Nothing to describe** — if `jj status` shows no working-copy changes, report that and stop. Do not use `jj diff` alone as cleanliness.
 
-2. **Branch first** — if detached HEAD, or on the default branch (`main` / `master` / the bare default name above), create a feature branch from the change content (`git checkout -b <name>`), then re-read `git branch --show-current`. Do not ask — commit-only still must not leave work only on a detached HEAD or the default branch. If the derived name exists, pick a non-conflicting suffix.
+2. **Bookmark first** — if `@` has no bookmark, or carries the default bookmark (`main` / `master` / the bare default name above), create a feature bookmark from the change content (`jj bookmark create <name>`). If `@` carries the default bookmark, also move that bookmark to the parent so the work is not left on the default: `jj bookmark move <default-name> --to @- --allow-backwards`. Then re-read `jj bookmark list -r @`. Do not ask — describe-only still must not leave work only on an unbookmarked working-copy change or the default bookmark. If the derived name exists, pick a non-conflicting suffix.
 
-3. **Convention** — match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). When using conventional commits and `fix`/`feat` both fit, default to `fix:` (remedying broken or missing behavior); reserve `feat:` for new capabilities. User override wins.
+3. **Convention** — Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repo-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repo-local syntax. Match project commit conventions already in context; else match the recent log pattern. User override wins.
 
-4. **Logical commits** — if changed files clearly split into distinct concerns, make separate commits (file level only, 2–3 max, no `git add -p`). If ambiguous, one commit.
+4. **Logical changes** — if changed files clearly split into distinct concerns, make separate changes (file level only, 2–3 max, no `jj commit --interactive`). If ambiguous, one change.
 
-5. **Message** — subject is imperative and names the outcome (what is now possible or fixed), not the file list. Body only when motivation or trade-offs are not obvious from the subject. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+5. **Description** — subject is imperative and names the outcome (what is now possible or fixed), not the file list. Body only when motivation or trade-offs are not obvious from the subject. When a plan Implementation Unit ID is already in hand for this change (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the change spans units, the unit is unclear, or no plan is in hand.
 
-   - Bad: `Update checkout.rb` / `Add tests and fix stuff`
-   - Good: `Fix double-submit on checkout`
-   - Good: `Add per-subscription mute (U3)`
-
-6. **Stage and commit** — stage **named files only** (never `git add -A` or `git add .`). Honor `exclude:<paths>` when the invocation carries it: those files stay uncommitted no matter what else changed; say in the report that they were left out. Write the full message — subject line, blank line, optional body — to a file outside the repo with your file-write tool, then stage and commit as two calls per commit group:
+6. **Describe named filesets** — put **named files only** in the change (never a pathless `jj commit` that snapshots the whole working copy). Honor `exclude:<paths>` when the invocation carries it: those files stay out of the change no matter what else changed; say in the report that they were left out. There is no index: do not stage. Per change group:
 
 ```bash
-git add file1 file2 file3
+jj commit -m "<message composed from the standards above>" file1 file2 file3
 ```
 
-```bash
-git commit -F <message-file> -- file1 file2 file3
-```
+Pass `-m` as a single argument so `$`, quotes, backticks, or a multi-line body are not expanded by the shell.
 
-No shell parses the message with `-F`: a `$`, quotes, backticks, or a multi-line body pass through literally under any shell, with no quoting rules to satisfy. Git's normal whitespace cleanup still applies (trailing spaces trimmed, blank-line runs collapsed), which is fine for a commit message.
+The trailing fileset on `jj commit` is load-bearing: a pathless `jj commit` takes the whole working copy, so anything not named (a caller's `exclude:` paths, or other working-copy files) would ride into the change. Naming the paths describes exactly the group; remaining working-copy changes move to the new working-copy commit on top.
 
-The trailing path list on `git commit` is load-bearing: a bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would ride into the commit. Naming the paths commits exactly the group and leaves other index entries alone.
-
-7. **Confirm** — `git status`; report hash(es) and subject(s).
+7. **Confirm** — `jj status`; report change_id(s), commit_id(s), and subject(s) of the described change (`@-` after `jj commit`).

@@ -1,7 +1,7 @@
 ---
 name: ce-babysit-pr
 description: "Babysits an open GitHub PR until merge-ready. Use when asked to watch a PR over time — not for one-shot comment resolution or one CI failure. GitHub (incl. Enterprise) only."
-argument-hint: "[PR number|URL|blank=current branch] [watch|checkpoint] [duration] [posture:target|stack-ready|stack-land]"
+argument-hint: "[PR number|URL|blank=current bookmark] [watch|checkpoint] [duration] [posture:target|stack-ready|stack-land]"
 ---
 
 # Babysit a PR
@@ -16,7 +16,7 @@ Keep an open PR moving toward merge by reacting to three streams as each arrives
 
 - `target` — only the named PR; stop at looks-ready; never merges; offer stack-wide once if a confirmed managed stack needs work.
 - `stack-ready` — once a layer has zero actionable backlog (CI may still run), advance to the next open non-draft upstack layer needing work; lower layers stay probed and the lowest that re-opens pulls the walk back; never merges.
-- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `gh stack merge` it + `gh stack sync`.
+- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `GIT_DIR=$(jj git root) gh stack merge` it + `GIT_DIR=$(jj git root) gh stack sync`.
 
 One PR named → `target` (ask once if a confirmed multi-layer stack exists); own the stack → `stack-ready`; land → `stack-land`. `mode:pipeline` never asks. Restate posture per transition.
 
@@ -32,10 +32,10 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); ow
 
 ## Step 1: Resolve and arm
 
-1. `gh repo view` must succeed, else say GitHub-only, stop.
-2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
+1. `GIT_DIR=$(jj git root) gh repo view` (cwd: workspace root) must succeed, else say GitHub-only, stop.
+2. Resolve the PR from the argument or current bookmark (`references/setup.md`); none → report, stop.
 3. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-4. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+4. **Workspace must be on the PR's head bookmark with matching upstream** before any delegated mutation; default `GIT_DIR=$(jj git root) gh pr checkout <ref>` (cwd: workspace root); no push access or dirty working copy (`jj status` not empty) → stop, say so.
 5. **Sustain mode** (`references/watch-loop.md`): default is the self-sustaining in-session watch — background `pr-snapshot watch`, wait on its `BABYSIT_WAKE` sentinel with your harness's background-and-wake tool, one tick per wake; never collapse the loop into a script. **Checkpoint** only when no such capability exists: one tick, report, say monitoring is paused, print the resume invocation — default to `/ce-babysit-pr <url>` (+ non-target posture), `$ce-babysit-pr <url>` on Codex; render only the invocation as inline code, output one form only. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)

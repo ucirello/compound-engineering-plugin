@@ -390,8 +390,8 @@ artifact.
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle. `artifact_readiness` is document completeness, not execution
-progress. No CE artifact carries mutable progress state; whether work shipped
-is derived from git, not stored in the doc. Do not introduce one.
+progress. No RocketClaw artifact carries mutable progress state; whether work shipped
+is derived from jj, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 

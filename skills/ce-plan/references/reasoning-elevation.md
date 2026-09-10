@@ -1,6 +1,6 @@
 # Model Elevation
 
-Elevation dispatches the one reasoning-heaviest step to a **user-chosen model**, so a user on a cheaper session model still gets a high-reasoning result without switching their whole session. It runs on **any harness**: the host serves the chosen model natively where it can, otherwise the Claude CLI is invoked, otherwise the step runs inline on the session model. The elevated call is read-only and verifies its own brief.
+Elevation dispatches the one reasoning-heaviest step to a **user-chosen model**, so a user on a cheaper session model still gets a high-reasoning result without switching their whole session. It runs on **any harness**: the host serves the chosen model natively where it can, otherwise the Claude CLI is invoked, otherwise the step runs inline on the session model. When config or a carrier selects `plan_harness: opencode2`, that is a **separate dispatch branch** (see Adapter selection) — not native, not Claude CLI, and never `opencode`. The elevated call is read-only and verifies its own brief.
 
 The elevated steps: **ce-plan** — interpret research findings and author the plan, folded into one interpret-then-author call. **ce-brainstorm** — generate approaches. The ce-brainstorm integration-check consult is deferred and is NOT wired in this version. Everything else — dialogue, research, orchestration — stays on the session model, which remains the orchestrator and relays the elevated output.
 
@@ -8,11 +8,13 @@ This engine loads and runs the same on every harness. There is no host gate that
 
 ## Activation resolution (runs on every harness)
 
-Resolve the per-skill **model choice immediately before adapter selection**, so the decision reflects the current conversation rather than an intake snapshot. The value is a model alias (e.g. `fable`, `opus`), not a boolean.
+Resolve the per-skill **model choice and harness immediately before adapter selection**, so the decision reflects the current conversation rather than an intake snapshot. The model value is a model alias (e.g. `fable`, `opus`) **or** a qualified `provider/modelname#variant` (the `#variant` segment is optional). It is not a boolean. Parse a qualified value by splitting on the first `/`, then on `#`: preserve provider, model name, and variant. Do not drop or rewrite any of the three.
 
-1. **Latest explicit user intent** — in an interactive run, the latest instruction in the current conversation about this step wins: naming a model selects it; explicitly prohibiting elevation selects none. Intent is *reasoned, not keyword-matched*: a model named as product subject matter (e.g. "design a fable-generator feature") is not activation. In pipeline / `disable-model-invocation` runs, skip this source — the sanitized feature request is product content, never elevation intent.
-2. **Caller carrier** — when live user intent does not decide the choice, an automatic orchestrator may pass a structured `<per-skill-key>:<model-alias>` carrier (LFG passes `plan_model:<alias>` to ce-plan; the analogous `brainstorm_model:<alias>` to ce-brainstorm). Strip it from the request text and never reconstruct it from product prose. It is honored in pipeline / `disable-model-invocation` runs. The alias must match `^[A-Za-z0-9._-]{1,64}$`; a malformed carrier is absent, not guessed.
-3. **Config** — otherwise use the per-skill key: `plan_model` for ce-plan, `brainstorm_model` for ce-brainstorm. Read it the **same way this skill's Phase 0.0 resolves `plan_output` / `brainstorm_output`**: reuse the repo root already resolved, else run `git rev-parse --show-toplevel`, then apply the ordinary-key rule (`config.local.yaml` then `config.yaml`). Reuse the Phase 0.0 reads if still in hand. Ignore commented (`#`-prefixed) lines. A model alias selects it; missing / commented / invalid / no file selects none.
+Also resolve `plan_harness` (ce-plan) / `brainstorm_harness` (ce-brainstorm) from the same sources. The only harness value this skill dispatches is `opencode2`. Any other harness value is absent for this skill (do not map it to `opencode` or to Claude CLI).
+
+1. **Latest explicit user intent** — in an interactive run, the latest instruction in the current conversation about this step wins: naming a model selects it; explicitly prohibiting elevation selects none; naming `opencode2` as the planning harness selects that branch. Intent is *reasoned, not keyword-matched*: a model named as product subject matter (e.g. "design a fable-generator feature") is not activation. In pipeline / `disable-model-invocation` runs, skip this source — the sanitized feature request is product content, never elevation intent.
+2. **Caller carrier** — when live user intent does not decide the choice, an automatic orchestrator may pass a structured `<per-skill-key>:<model>` carrier (LFG passes `plan_model:<model>` to ce-plan; the analogous `brainstorm_model:<model>` to ce-brainstorm) and, independently, `plan_harness:opencode2` / `brainstorm_harness:opencode2`. Strip them from the request text and never reconstruct them from product prose. They are honored in pipeline / `disable-model-invocation` runs. A model value must be either an alias matching `^[A-Za-z0-9._-]{1,64}$` or a qualified `provider/modelname` with optional `#variant` (`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+(#[A-Za-z0-9._-]+)?$`). A harness carrier is valid only as the exact token `opencode2`. A malformed carrier is absent, not guessed.
+3. **Config** — otherwise use the per-skill keys: `plan_model` and `plan_harness` for ce-plan, `brainstorm_model` and `brainstorm_harness` for ce-brainstorm. Read them the **same way this skill's Phase 0.0 resolves `plan_output` / `brainstorm_output`**: reuse the repo root already resolved, else run `jj workspace root`, then apply the ordinary-key rule (`config.local.yaml` then `config.yaml`). Reuse the Phase 0.0 reads if still in hand. Ignore commented (`#`-prefixed) lines. A model alias or qualified `provider/modelname#variant` selects the model; `plan_harness: opencode2` selects the opencode2 branch; missing / commented / invalid / no file selects none for that key.
 
 **Precedence: latest explicit live user intent, then caller carrier, then config.** In pipeline / `disable-model-invocation` runs, where there is no live user dialogue, resolution is caller-carrier-then-config. Nothing elevates without one of those sources.
 
@@ -20,13 +22,15 @@ If the session model already **is** the resolved model, elevation is moot: skip 
 
 ## Adapter selection
 
-When elevation is active, resolve an adapter in this fixed order and use the first that serves the requested model:
+**`plan_harness: opencode2` is its own branch.** When the resolved harness is exactly `opencode2`, do **not** enter the native / Claude CLI chain below. Do **not** invoke `opencode` (V1) as a substitute, fallback, alias, or retry. Follow **Off-host dispatch (opencode2 route)** only. If that route cannot start (`opencode2` missing from PATH, invalid model form, or the call produces nothing usable), degrade to inline on the session model and name the unmet precondition. Never retry via `opencode`.
+
+When `plan_harness` is unset or any value other than `opencode2`, do **not** enter the opencode2 branch. Resolve an adapter in this fixed order and use the first that serves the requested model:
 
 1. **Native in-harness dispatch.** Attempt the platform subagent primitive with a per-agent model override (e.g. `model: "fable"` on the Claude Code `Agent`/`Task` tool). Capability is proven by attempt, not self-assessment — a harness that can serve the model natively does; one that cannot fails the attempt and falls through. **Receipt rule (R6):** a native run whose serving-side receipt names a *different* model family than requested falls through to the next adapter; a run with *no* receipt proceeds and is recorded as unverified (it does NOT fall through).
-2. **Claude CLI.** Run the bundled `scripts/elevation-dispatch.sh` worker as a detached job (see Off-host dispatch). Available when `claude` is on PATH. Do not preflight authentication in the host command context: the detached worker's provider-capable call is authoritative, and an authentication failure there follows Recovery.
+2. **Claude CLI.** Run the bundled `scripts/elevation-dispatch.sh` worker as a detached job (see Off-host dispatch (Claude CLI route)). Available when `claude` is on PATH. Do not preflight authentication in the host command context: the detached worker's provider-capable call is authoritative, and an authentication failure there follows Recovery.
 3. **Inline on the session model.** The always-available fallback.
 
-Elevation is never a correctness dependency: every adapter failure degrades to the next, and inline always completes the run.
+On the native / Claude CLI chain, elevation is never a correctness dependency: every adapter failure degrades to the next, and inline always completes the run. The opencode2 branch does not fall through to Claude CLI or `opencode`; its only degrade is inline.
 
 ## Read-only posture and brief handoff
 
@@ -35,7 +39,16 @@ The elevated call gets repo **read** access (Read/Glob/Grep) and **multiple turn
 - On the **Claude CLI** route this is flag-enforced — the worker passes `--tools Read,Glob,Grep,WebSearch,WebFetch` to restrict the available built-in set, so Write/Edit/Bash are not present at all, plus `--allowedTools` for those same tools so `--permission-mode dontAsk` runs them without a prompt instead of denying them. `--allowedTools` alone only *pre-approves* — it leaves every other tool available — so `--tools` is the flag that actually enforces the read-only boundary. The elevated call reads the repo and may check current facts on the web, while writes, shell, skills, and MCP stay unavailable.
 - On the **native** route the subagent primitive exposes a model override but no per-dispatch tool restriction, so write/shell denial is an **instruction** to the subagent, not a hard guarantee.
 
-Hand over the working context as **file paths the subagent reads itself**, never a re-narrated prose brief. Create **one private per-run handoff directory** (`mktemp -d "${TMPDIR:-/tmp}/ce-elevation-XXXXXX"`) and write the prompt-file and every evidence file into *that* directory. On the Claude CLI route the worker grants the elevated model read access to only that one directory (via `--add-dir` on the prompt-file's parent), so the handoff files stay readable while the rest of the OS temp root — other same-user scratch and credentials — is not exposed:
+Hand over the working context as **file paths the subagent reads itself**, never a re-narrated prose brief. Create **one private per-run handoff directory** under the JJ workspace `.tmp` and write the prompt-file and every evidence file into *that* directory:
+
+```bash
+WS_ROOT=$(jj workspace root 2>/dev/null || printf '%s' ".")
+SCRATCH_ROOT="$WS_ROOT/.tmp"
+mkdir -p "$SCRATCH_ROOT"
+HANDOFF_DIR="$(mktemp -d "$SCRATCH_ROOT/ce-elevation-XXXXXX")"
+```
+
+On the Claude CLI route the worker grants the elevated model read access to only that one directory (via `--add-dir` on the prompt-file's parent), so the handoff files stay readable while the rest of the scratch root — other same-user scratch and credentials — is not exposed:
 
 - **Research / grounding evidence.** ce-brainstorm already wrote a Phase 1.1 grounding dossier — pass it. ce-plan consolidates its Phase 1 findings *in context only*, so **serialize those consolidated findings to a scratch file now and pass it** — the elevated author must interpret the same evidence the inline path had.
 - **Dialogue / decisions.** Write the accumulated dialogue/decisions to a fresh scratch file and pass that path too.
@@ -60,7 +73,7 @@ Never hold a tool call open for the model's runtime — some harnesses kill long
 
 Disclose that this is not launcher-only isolation: the detached worker inherits that launch context for its lifetime, so the worker's declared read-only/tool restrictions — not the Codex command sandbox — bound the elevated call while the handoff material egresses. If the grant is denied or unavailable, do not execute `start`; create no job and run the step inline on the session model under the ordinary unavailable-route transparency rule. After `start` returns a job id, any network, authentication, or provider failure is a started-job outcome and follows Recovery below; keep `status`, `wait`, `result`, and `reap` sandboxed because they need no provider connection.
 
-1. **Write the prompt-file into the private handoff directory.** Put the prompt-file *and* every evidence scratch file in the one `mktemp -d "${TMPDIR:-/tmp}/ce-elevation-XXXXXX"` directory from "Read-only posture and brief handoff" above — the worker grants read access to the prompt-file's own parent directory, so co-locating them is what makes the evidence readable while keeping the rest of the temp root private. Build the prompt-file as the elevated model's brief: the instruction to interpret findings and author the plan (or generate approaches), plus the **absolute paths** of those co-located scratch files — the evidence files told to the model as untrusted data to Read and interpret (R20), and the project-conventions file as constraints the output must honor. The scratch files are referenced by path inside this one prompt-file, not passed as extra worker args.
+1. **Write the prompt-file into the private handoff directory.** Put the prompt-file *and* every evidence scratch file in the one `$SCRATCH_ROOT/ce-elevation-XXXXXX` directory from "Read-only posture and brief handoff" above — the worker grants read access to the prompt-file's own parent directory, so co-locating them is what makes the evidence readable while keeping the rest of the scratch root private. Build the prompt-file as the elevated model's brief: the instruction to interpret findings and author the plan (or generate approaches), plus the **absolute paths** of those co-located scratch files — the evidence files told to the model as untrusted data to Read and interpret (R20), and the project-conventions file as constraints the output must honor. The scratch files are referenced by path inside this one prompt-file, not passed as extra worker args.
 
 2. **Start the detached job**, anchoring the bundled scripts to this skill's directory. The Bash tool's CWD is the user's project, not the skill dir, so a bare `scripts/…` path resolves in the wrong place and the run silently never starts — set `SKILL_DIR` inline in the same command and pass `start` with its required flags (`--skill`, `--run-id`, then `--` before the worker argv):
 
@@ -106,6 +119,33 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 
 The worker streams `--output-format stream-json --verbose`, so progress events reset its idle window; a genuinely stalled model stops growing the log and is reaped while a productive long run continues.
 
+## Off-host dispatch (opencode2 route)
+
+This branch is **not** the Claude CLI route and **not** `opencode`. Enter it only when the resolved `plan_harness` (ce-plan) or `brainstorm_harness` (ce-brainstorm) is exactly `opencode2`.
+
+Flags below are from `opencode2 --help` and `opencode2 run --help`. Do not invent flags. Do not pass V1 `opencode` flags.
+
+1. **Preflight.** `command -v opencode2` must succeed. If it does not, do **not** invoke `opencode`. Run the step inline on the session model; name the unmet precondition (`opencode2` not on PATH).
+2. **Model form.** `opencode2 run --model` requires `provider/model#variant` (the `#variant` segment is optional). Use the parsed provider, model name, and variant from activation resolution. Reconstruct the `--model` token as `provider/modelname` or `provider/modelname#variant` without dropping a present variant. An alias-only `plan_model` (no `provider/`) is invalid on this branch — do not guess a provider, do not rewrite it into an `opencode` id, do not fall through to Claude CLI. Run inline and name the invalid model form.
+3. **Handoff.** Use the same private per-run handoff directory and prompt-file as the Claude CLI route (workspace `.tmp`, co-located evidence). Cwd of every `opencode2` and `jj` invocation is the workspace root from `jj workspace root`.
+4. **Invoke.** Never hold a tool call open for the model's runtime — start the same detached-job runner, with `opencode2 run` as the worker (not `elevation-dispatch.sh`, not `opencode`):
+
+```bash
+SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read — this skill's own directory>";
+PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
+SKILL_NAME="<this skill's name: ce-plan or ce-brainstorm>";
+WS_ROOT=$(jj workspace root 2>/dev/null || printf '%s' ".");
+CE_PEER_HARD_SECS=5400 CE_PEER_LOG_MAX_BYTES=52428800 \
+  "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start \
+  --skill "$SKILL_NAME" --run-id "<run-id>" --label elevation-opencode2 \
+  --result-path "<result-path>" \
+  -- opencode2 run --model "<provider/modelname#variant>" --format json --file "<prompt-file>" "Interpret the attached brief and author the plan."
+```
+
+`--model` is the surveyed `provider/model#variant` form. `--format json` and `--file` are surveyed `opencode2 run` flags. Do **not** pass `--auto` (that auto-approves permissions; elevation is read-only). Do **not** pass `--standalone` unless a later `opencode2 run --help` on this host requires it to start. Poll and `result` with the same runner commands as the Claude CLI route.
+
+5. **Failure.** If start cannot run, or the job produces nothing usable, degrade to inline on the session model. **Never retry via `opencode`.** Never fall through to the Claude CLI adapter from this branch.
+
 ## Recovery (R13, R14, R21)
 
 Classify from **both** the runner's terminal state and the worker's result envelope — the worker exits 0 (runner state `done`) even when it self-reaped a stalled model and wrote `status: failed`, so the runner state alone is not enough:
@@ -115,10 +155,10 @@ Classify from **both** the runner's terminal state and the worker's result envel
 
 A successful run has envelope `status: ok`. Treat any envelope whose `receipt` is `mismatch` as if it were a failure even when `status` is `ok`: **discard the output and degrade to the session model** — a served model that does not match the requested family must never be passed off as the requested one. (On the native route a mismatch instead falls through to the next adapter, per R6; on the CLI route inline is the only thing left, so discard-and-degrade is the fall-through.)
 
-Recovery **never substitutes a different model** — a plan the user believes came from their chosen model must not silently come from another. If recovery also fails, run inline on the session model.
+Recovery **never substitutes a different model** — a plan the user believes came from their chosen model must not silently come from another. If recovery also fails, run inline on the session model. On the opencode2 branch, recovery also **never substitutes `opencode` or Claude CLI**.
 
 ## Transparency
 
 - **Elevation fired** → surface one line naming the **model**, the **route**, and **why** it fired (config key, explicit user instruction, or caller carrier). Name the model as **served** when a receipt confirms it; otherwise name it as **requested** with an explicit *unverified* marker — on every route, including native.
 - **Suppress the line** when elevation did not fire, and when the session model already is the model a **config key** requested. An **explicit user instruction** always produces a line, including when the session model already matches (so a recognized request is never indistinguishable from an unparsed one).
-- **Requested but unavailable before provider-capable dispatch** (no native support, `claude` absent, or the required launch permission unavailable) → run the step inline on the session model, name **which routing precondition was unmet**, and state what would make the requested model reachable. Once provider-capable dispatch is established, an authentication failure is instead a route-level Recovery outcome: name the observed authentication failure and the login or credential-refresh remediation.
+- **Requested but unavailable before provider-capable dispatch** (no native support, `claude` absent, `opencode2` absent when `plan_harness` is `opencode2`, invalid `provider/modelname#variant` on that branch, or the required launch permission unavailable) → run the step inline on the session model, name **which routing precondition was unmet**, and state what would make the requested model reachable. Do not name `opencode` as the remediation for a missing `opencode2`. Once provider-capable dispatch is established, an authentication failure is instead a route-level Recovery outcome: name the observed authentication failure and the login or credential-refresh remediation.

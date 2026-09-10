@@ -21,7 +21,7 @@ Sections earn their place by serving one of these audiences. Omit padding.
 
 ## Unified plan artifact contract
 
-`ce-plan` writes the canonical compound-engineering plan artifact. The same
+`ce-plan` writes the canonical RocketClaw plan artifact. The same
 artifact may begin as a requirements-only skeleton from `ce-brainstorm` and
 later be enriched by `ce-plan`; it is still one plan file moving through
 readiness states, not a requirements doc plus a separate implementation doc.
@@ -409,14 +409,14 @@ plan.
   across readiness states (it is a plan at every stage). Do not put a
   conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
   carries that classification.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual commit message should reflect.
+- **`type`** — plan classification (`feat`,
+  `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Names the
+  kind of change the plan describes; it does not prescribe a change-description prefix.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from git, not stored in the doc. Do not
+whether a plan shipped is derived from the JJ workspace, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known
@@ -462,7 +462,7 @@ These apply regardless of rendering format.
   KTD is added, split, or first cited by a unit. Untouched unnumbered KTDs
   in legacy plans stay as they are — readable by label, no mass renumbering.
 - **Repo-relative paths.** Always. Never absolute paths in plan content;
-  they break portability across machines, worktrees, teammates.
+  they break portability across machines, workspaces, teammates.
 - **No process exhaust.** No "captured at Phase X" notes, no `## Next Steps`
   pointing to the next skill, no italic provenance lines. Engineering process
   metadata belongs in commit messages and tool output, not the artifact.

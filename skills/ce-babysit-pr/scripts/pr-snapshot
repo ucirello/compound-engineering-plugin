@@ -282,6 +282,37 @@ def _iso(dt):
     return dt.isoformat()
 
 
+_JJ_WORKSPACE_ROOT = None
+_JJ_GIT_ROOT = None
+_JJ_IDENTITY_LOADED = False
+
+
+def _load_jj_identity():
+    """Resolve workspace root and colocated Git-backend dir once. `--ignore-working-copy` keeps
+    identity lookups from snapshotting the working copy on every `gh` poll."""
+    global _JJ_WORKSPACE_ROOT, _JJ_GIT_ROOT, _JJ_IDENTITY_LOADED
+    if _JJ_IDENTITY_LOADED:
+        return
+    _JJ_IDENTITY_LOADED = True
+    try:
+        ws = subprocess.run(
+            ["jj", "--ignore-working-copy", "workspace", "root"],
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        if ws.returncode == 0:
+            root = (ws.stdout or "").strip()
+            _JJ_WORKSPACE_ROOT = root or None
+        gr = subprocess.run(
+            ["jj", "--ignore-working-copy", "git", "root"],
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        if gr.returncode == 0:
+            git_dir = (gr.stdout or "").strip()
+            _JJ_GIT_ROOT = git_dir or None
+    except OSError:
+        pass
+
+
 def _run(cmd):
     # gh honors CLICOLOR_FORCE / GH_FORCE_TTY even for --json output, and a host that exports them
     # (observed under orca) makes every JSON read unparsable. Pin plain output regardless of caller env.
@@ -289,18 +320,13 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
+    cwd = None
+    if cmd and cmd[0] == "gh":
+        _load_jj_identity()
+        if _JJ_GIT_ROOT:
+            env["GIT_DIR"] = _JJ_GIT_ROOT
+        cwd = _JJ_WORKSPACE_ROOT
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env, cwd=cwd)
 
 
 def _run_checked(cmd, label):
@@ -383,10 +409,10 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     """Bind GitHub's mergeability observation to an independently probed current base ref.
 
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
-    PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
+    PR's `baseRef.target.oid` and an exact GitHub Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST Git-ref endpoint; there is no public `jj` equivalent of
+    probing an arbitrary remote URL's exact ref, so that response is probe-error.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -422,31 +448,6 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
         "--jq", ".object.sha",
     ])
     current_oid = (r.stdout or "").strip()
-    if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -1340,7 +1341,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace `.tmp` across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):

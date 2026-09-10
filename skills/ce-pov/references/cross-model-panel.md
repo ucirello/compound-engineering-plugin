@@ -15,8 +15,8 @@ multiple plausible referents would materially change the POV.
 
 Keep four identities separate for the host and every peer:
 
-- **target** — the user-facing choice (`codex`, `claude`, `grok`, `cursor`, or
-  `composer`);
+- **target** — the user-facing choice (`codex`, `claude`, `grok`, `cursor`,
+  `composer`, `opencode`, or `opencode2`);
 - **harness/intermediary route** — the CLI or intermediary that runs it;
 - **requested model** — an explicit model or the route's declared default; and
 - **served model** — receipt-verified when available, otherwise `unverified`.
@@ -43,10 +43,10 @@ else XHOST_HARNESS=unknown; XHOST_FAMILY=unknown; fi
 Both tokens come from the same peer-key vocabulary as the targets above, never
 from a provider's corporate name: `<host-serving-family>` (`XHOST_FAMILY`) is
 `codex`, `claude`, `grok`, `composer`, or `unknown`. `<host-harness>`
-(`XHOST_HARNESS`) is `codex`, `claude`, `grok`, `cursor`, `opencode`, or `unknown`. The
+(`XHOST_HARNESS`) is `codex`, `claude`, `grok`, `cursor`, `opencode`, `opencode2`, or `unknown`. The
 snippet is evidence, not the verdict: it resolves the harnesses whose
 environment markers it already names, and where it yields `unknown` on a harness
-you can identify from your own runtime, attest what you know instead. A harness
+you can identify from your own runtime, attest what you know instead. `OPENCODE_TERMINAL` is set on both `opencode` and `opencode2`; if the running harness is `opencode2`, attest `opencode2` rather than the snippet's `opencode`. A harness
 the snippet does not name needs no new branch here.
 
 Cursor is the one identity self-knowledge cannot complete, because the harness
@@ -119,7 +119,7 @@ Normalize the allowed read scope once as:
 - optional ordered include and exclude path patterns.
 
 Pass that identical representation to every peer prompt and route adapter. The
-default is the repository root. A narrower user- or host-supplied scope is
+default is the workspace root. A narrower user- or host-supplied scope is
 binding and is never broadened. Peers launched on the same host inspect existing
 subject files and supporting evidence directly from this shared working tree;
 point them to those files instead of copying their contents into the payload.
@@ -176,6 +176,9 @@ fail-closes on anything else (including route-shaped guesses like `codex-cli`):
 | `cursor` | `cursor` |
 | `composer` | `composer` |
 | `opencode` | `opencode` |
+| `opencode2` | `opencode2` |
+
+`opencode2` is its own harness and route, not compatible with `opencode`. A `cross_model_peer: opencode2` config value, a named `opencode2` peer, or an `oracle` preference for it binds this route and never falls back to the `opencode` CLI. Parse a model pin as `provider/modelname#variant` and pass it through; omit `--model` when none is pinned.
 
 The host harness does not choose the Grok route. Target `grok` binds `grok-cli` when that CLI is installed. Bind `grok-cursor` only when the user asked for Grok through Cursor, or when the grok CLI is absent and Cursor is a sanctioned recipient.
 
@@ -246,7 +249,7 @@ fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Fill in the start command below rather than reconstructing the worker's
 arguments from its usage header. Pass the actual repository root separately from
 any narrower read root, and pre-create the round output directory as private
-scratch outside the repository. For named peers, start one job per exact target;
+scratch under the Phase 1 workspace `.tmp` run dir. For named peers, start one job per exact target;
 for a selected panel, start one job per selected peer. Start all jobs before
 waiting.
 
@@ -319,8 +322,8 @@ CE_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill c
 ```
 
 - `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or
-  `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`, or
-  `unknown`. Both are the Section 1 attestation, not a provider name.
+  `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`,
+  `opencode`, `opencode2`, or `unknown`. Both are the Section 1 attestation, not a provider name.
 - `<fixed-route>` is the sanctioned route token from Section 3's table;
   `<target>` is its resolved target, with `grok-cli` and `grok-cursor`
   collapsing to `grok`.

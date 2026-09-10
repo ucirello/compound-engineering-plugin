@@ -8,7 +8,7 @@ Determine `OUTPUT_FORMAT` for the ideation artifact this run might persist. Outp
 
 Unlike `ce-plan` and `ce-brainstorm` (which default to `md`), ce-ideate defaults to **`html`** — ideation artifacts are read mainly by humans weighing candidate directions, and a rich self-contained HTML file makes the ideas easier to approach.
 
-**Read config.** Resolve `<repo-root>` with `git rev-parse --show-toplevel`, then apply the ordinary-key cascade block in `SKILL.md`. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
+**Read config.** Resolve `<repo-root>` with `jj workspace root`, then apply the ordinary-key cascade block in `SKILL.md`. Read both files when they exist. If the root cannot be resolved (`jj workspace root` nonzero), fall through to the defaults below.
 
 Resolution steps:
 
@@ -26,7 +26,7 @@ Resolution steps:
 
 #### 0.1 Check for Recent Ideation Work
 
-Look in `<root>/ideation/` for ideation documents (`*.md` or `*.html`) created within the last 30 days. This is a repo-mode convenience: when there is no git repository or `<root>` fails to resolve, skip the scan and continue — do not fail the run before 0.3 classifies mode, since elsewhere and no-repo runs write to a temp area and never touch `<root>/ideation/`.
+Look in `<root>/ideation/` for ideation documents (`*.md` or `*.html`) created within the last 30 days. This is a repo-mode convenience: when there is no JJ workspace (`jj workspace root` nonzero) or `<root>` fails to resolve, skip the scan and continue — do not fail the run before 0.3 classifies mode, since elsewhere and no-repo runs write to a temp area and never touch `<root>/ideation/`.
 
 A prior doc is relevant when its topic, path, or subsystem overlaps the requested focus, or the request is open-ended and one obvious recent open doc exists. Issue-grounded and non-issue ideations are distinct topics — never offer to resume across that line.
 

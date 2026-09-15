@@ -32,7 +32,7 @@ The shapes below are examples of how a written rule gets violated, drawn from an
 
 - **Writing style violations** -- second person ("you should") where the standards require imperative/objective form. Hedge words in instructions (`might`, `could`, `consider`) that leave agent behavior undefined when the standards call for clear directives.
 
-- **Protected artifact violations** -- findings, suggestions, or instructions that recommend deleting or gitignoring files in paths the standards designate as protected (e.g., `docs/brainstorms/`, `<root>/plans/`, `<root>/solutions/`).
+- **Protected artifact violations** -- findings, suggestions, or instructions that recommend deleting or ignoring files in paths the standards designate as protected (e.g., `docs/brainstorms/`, `<root>/plans/`, `<root>/solutions/`).
 
 ## Confidence calibration
 

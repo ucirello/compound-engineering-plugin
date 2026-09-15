@@ -10,6 +10,12 @@ fi
 
 THREAD_ID=$1
 
+workspace_root=$(jj workspace root 2>/dev/null || true)
+if [ -n "$workspace_root" ]; then
+    GIT_DIR=$(cd "$workspace_root" && jj git root)
+    export GIT_DIR
+fi
+
 gh api graphql -f threadId="$THREAD_ID" -f query='
 mutation ResolveReviewThread($threadId: ID!) {
   resolveReviewThread(input: {threadId: $threadId}) {

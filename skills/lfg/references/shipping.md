@@ -1,26 +1,39 @@
 # Shipping (LFG steps 9–11)
 
-The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `git remote` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out.
+The shipping steps are the last stretch of the run: record the remaining change, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `jj git remote list` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out.
 
 ## Step 9 — a project-defined process may replace the default handoff
 
-The goal is the remaining work committed, pushed, and in an open PR whose URL you hold.
+The goal is the remaining work recorded as a change, pushed, and in an open PR whose URL you hold.
 
-The project's active instructions may name a process for that handoff: a named skill or command, a stacking tool, or documented steps. Commit or PR-title conventions do not count, because the default already honors them, and a skill directory alone is not a directive. When such a process is named, run it non-interactively with the same plan path and context below instead of the default. It is done only when the work is pushed and you hold the URL of an open PR containing it, either one the process opened or a PR that already exists for the branch. If it cannot run headlessly, is unavailable, or ends short of that state, stop as **blocked** naming the process. Do not fall through to the default or to step 10.
+The project's active instructions may name a process for that handoff: a named skill or command, a stacking tool, or documented steps. Commit or PR-title conventions do not count, because the default already honors them, and a skill directory alone is not a directive. When such a process is named, run it non-interactively with the same plan path and context below instead of the default. It is done only when the work is pushed and you hold the URL of an open PR containing it, either one the process opened or a PR that already exists for the bookmark. If it cannot run headlessly, is unavailable, or ends short of that state, stop as **blocked** naming the process. Do not fall through to the default or to step 10.
 
 ## Step 9 — what LFG passes into the default
 
 Pass the recorded plan path from step 1 into the `ce-commit-push-pr` invocation, along with any proceeded-and-flagged `settled_decision_conflicts` entries from step 2, so the PR body can include its settled-decisions provenance line and its note that work proceeded under a flagged conflict. On the defect route there is no plan and no brief: pass the debug return's `root_cause` and `issue_of_record` as PR-description context instead, per `references/debug-return.md`, so the PR body carries the diagnosis and links or closes the ticket. Also pass step 6's `## Unapplied review findings` section, when one exists, as PR-description context to be rendered as a dedicated section verbatim. That section is the record of unapplied findings; a run that opened a PR without it has lost them.
 
-This commits any remaining changes, pushes the branch, and opens a pull request, non-interactively because of the `mode:pipeline` token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 11. If a PR already exists for the branch (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still commit and push any uncommitted changes. Pipeline mode leaves an existing PR body alone by default, so the description context above would be lost there; after the push, invoke `ce-commit-push-pr` again in its description-update mode on that PR with the same context, so the record reaches the reviewer.
+This records any remaining working-copy changes, pushes the bookmark, and opens a pull request, non-interactively because of the `mode:pipeline` token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 11. If a PR already exists for the bookmark, check with `GIT_DIR` set from the workspace:
 
-**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** The default's commit step pushes unconditionally (`git push -u origin HEAD`), so a literal invocation would still hit the impossible push. Instead commit the files this run changed, by name (the work source's files, the review fixes, and any captured learning), and skip the push and PR creation entirely. Never `git add -A`: a file that was already dirty before the run, or one the defect route's `pre_fix_scope` lists, stays uncommitted and is named in the report.
+```
+workspace_root=$(jj workspace root) || { echo "not a jj workspace" >&2; exit 1; }
+GIT_DIR=$(cd "$workspace_root" && jj git root)
+gh pr view --json number,url,state
+```
+
+Skip PR creation but still record and push any remaining working-copy changes. Pipeline mode leaves an existing PR body alone by default, so the description context above would be lost there; after the push, invoke `ce-commit-push-pr` again in its description-update mode on that PR with the same context, so the record reaches the reviewer.
+
+**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** The default's record step pushes unconditionally (`jj git push --bookmark <name>`), so a literal invocation would still hit the impossible push. Instead include only the files this run changed, by name (the work source's files, the review fixes, and any captured learning), and skip the push and PR creation entirely. There is no staging index; do not fold in every working-copy path. A file that was already dirty before the run, or one the defect route's `pre_fix_scope` lists, stays out of the change and is named in the report. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality and clarity without replacing repo-local syntax. Then:
+
+```
+workspace_root=$(jj workspace root) || { echo "not a jj workspace" >&2; exit 1; }
+(cd "$workspace_root" && jj commit -m "<message composed from the standards above>" -- <named-files>)
+```
 
 ## Step 10 — stack handoff from step 9
 
 If step 9's `ce-commit-push-pr` completed a stack-mode submit and handed off `ce-babysit-pr` on the **bottom open non-draft** PR with `posture:stack-ready` or `posture:stack-land`:
 
-- Do **not** start a second bare `mode:pipeline` babysit on the current-branch URL. A second run can replace the stack-aware one with a run that watches only the current PR, or watch the wrong layer of the stack.
+- Do **not** start a second bare `mode:pipeline` babysit on the current-bookmark URL. A second run can replace the stack-aware one with a run that watches only the current PR, or watch the wrong layer of the stack.
 - Prefer the structured result already returned from that handoff when it reflects a completed pipeline stop.
 - If step 9 only confirmed babysit **started** (or no structured result is available), re-invoke `ce-babysit-pr mode:pipeline <bottom-pr-url> posture:<same>` and wait for its pipeline completion — never treat "started" as DONE.
 - Record the bottom PR URL and posture for step 11's user-facing resume line.
@@ -56,7 +69,7 @@ If step 9 recorded a `New concepts:` trailer, first echo one line per concept: `
 
 If an open PR exists, add one line pointing the user to the interactive watch-to-merge (pipeline mode stopped at "CI decided," not "merged"): `PR is moving — run <rendered ce-babysit-pr invocation> to watch it through review to merge.`
 
-When step 9/10 used a stack handoff, render that invocation for the **bottom open non-draft** PR URL with the same `posture:stack-ready` or `posture:stack-land` token — never a bare current-branch URL that would supersede stack scope.
+When step 9/10 used a stack handoff, render that invocation for the **bottom open non-draft** PR URL with the same `posture:stack-ready` or `posture:stack-land` token — never a bare current-bookmark URL that would supersede stack scope.
 
 ### The optional next-work offer
 

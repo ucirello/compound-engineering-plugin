@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # elevation-dispatch.sh — off-host model-elevation worker for ce-plan / ce-brainstorm.
 #
-# Runs one reasoning-heavy step on a user-chosen model via the Claude CLI, as a
-# detached job supervised by peer-job-runner.py. Streams NDJSON so the idle
-# window observes genuine progress, not just liveness — a buffered format would
+# Runs one reasoning-heavy step on a user-chosen model via the Claude CLI or
+# the distinct opencode2 CLI (not opencode), as a detached job supervised by
+# peer-job-runner.py. The Claude route streams NDJSON so the idle window
+# observes genuine progress, not just liveness — a buffered format would
 # make a healthy long run byte-identical to a wedged one. See
 # docs/solutions/skill-design/cli-output-buffering-for-progress-detection.md.
 #
@@ -12,8 +13,9 @@
 # model reads the repo and web to verify its brief and returns prose.
 #
 # Usage:
-#   elevation-dispatch.sh <model> <prompt-file> <result-path>
-#   elevation-dispatch.sh --emit-adapter <model>   # print argv, no model call (test hook)
+#   elevation-dispatch.sh <model> <prompt-file> <result-path> [harness]
+#   elevation-dispatch.sh --emit-adapter <model> [handoff-dir] [harness]
+# harness: omit for Claude CLI; opencode2 is a distinct branch (not opencode).
 #
 # NOTE ON THE FUNCTION NAMED run_codex_cmd: it is NOT codex-specific here. It is
 # the $PEERLOG byte-growth idle loop that implements R11's primary supervision
@@ -30,6 +32,16 @@ ACTIVE_PEER_PID=""
 RUN_SUCCEEDED=false
 
 log() { printf '[elevation] %s\n' "$*" >&2; }
+
+workspace_root() {
+  local root
+  root="$(jj --no-pager workspace root 2>/dev/null)" || root=""
+  if [ -n "$root" ]; then
+    printf '%s' "$root"
+  else
+    printf '%s' "${PWD:-.}"
+  fi
+}
 
 EFFORT="high"   # settled: elevation runs at high effort
 
@@ -51,7 +63,7 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole OS temp root ($TMPDIR / /tmp) instead would
+  # via --add-dir. Adding the whole workspace `.tmp` root instead would
   # expose every other same-user scratch file and credential to the elevated
   # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
@@ -68,12 +80,30 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
        --max-turns "${ELEVATION_MAX_TURNS:-30}")
 }
 
+# Distinct from opencode (v1). No --dir (cwd = workspace root). No --variant
+# flag: variant is the #variant suffix on --model. Model token is
+# provider/modelname#variant.
+build_opencode2_cmd() {  # <model> <prompt-file>
+  CMD=(opencode2 run --standalone --auto --model "$1" --format json --file "$2")
+}
+
 # Test hook: print the argv the worker would exec, without calling a model.
 # Accepts an optional handoff dir ($3) so the emitted argv shows the scoped
 # --add-dir; without it the flag is omitted (no dir to grant).
 if [ "${1:-}" = "--emit-adapter" ]; then
   [ -n "${2:-}" ] || { log "--emit-adapter requires <model>"; exit 2; }
-  build_cmd "$2" "${3:-}"
+  case "${4:-}" in
+    opencode2)
+      build_opencode2_cmd "$2" "${3:-PROMPT}"
+      ;;
+    opencode)
+      log "opencode2 is a distinct harness from opencode; not interchangeable"
+      exit 2
+      ;;
+    *)
+      build_cmd "$2" "${3:-}"
+      ;;
+  esac
   printf '%s\0' "${CMD[@]}"
   exit 0
 fi
@@ -81,11 +111,12 @@ fi
 MODEL="${1:?model required}"
 PROMPT_FILE="${2:?prompt-file required}"
 RESULT_PATH="${3:?result-path required}"
+HARNESS="${4:-}"
 [ -f "$PROMPT_FILE" ] || { log "prompt file not found: $PROMPT_FILE"; exit 2; }
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole OS temp root. Pure-bash dirname (no
+# to an absolute path), never the whole workspace `.tmp` root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,7 +134,9 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/elevation-peer-XXXXXX")"
+WS_ROOT="$(workspace_root)"
+mkdir -p "$WS_ROOT/.tmp" || { log "cannot create workspace .tmp"; exit 1; }
+PEERLOG="$(mktemp "$WS_ROOT/.tmp/elevation-peer-XXXXXX")"
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
@@ -217,7 +250,11 @@ run_codex_cmd() {
   RUN_SUCCEEDED=false
   local prev; case "$-" in *m*) prev=1;; *) prev=0;; esac
   set -m
-  command "${CMD[@]}" < "$PROMPT_FILE" > "$PEERLOG" 2>&1 &
+  if [ -n "${RUN_CWD:-}" ]; then
+    (cd "$RUN_CWD" && command "${CMD[@]}") > "$PEERLOG" 2>&1 &
+  else
+    command "${CMD[@]}" < "$PROMPT_FILE" > "$PEERLOG" 2>&1 &
+  fi
   local pid=$!
   ACTIVE_PEER_PID="$pid"
   [ "$prev" = 0 ] && set +m
@@ -242,6 +279,48 @@ run_codex_cmd() {
 }
 
 # --- main -------------------------------------------------------------------
+case "$HARNESS" in
+  opencode)
+    log "opencode2 is a distinct harness from opencode; not interchangeable"
+    write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"opencode2 is not opencode"}')"
+    exit 0
+    ;;
+  opencode2)
+    if ! command -v opencode2 >/dev/null 2>&1; then
+      log "opencode2 not found on PATH (not interchangeable with opencode)"
+      write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"opencode2 not on PATH"}')"
+      exit 0
+    fi
+    case "$MODEL" in
+      */*) ;;
+      *)
+        log "opencode2 model must be provider/modelname#variant"
+        write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"opencode2 model must be provider/modelname#variant"}')"
+        exit 0
+        ;;
+    esac
+    build_opencode2_cmd "$MODEL" "$PROMPT_FILE"
+    RUN_CWD="$WS_ROOT"
+    run_codex_cmd
+    tmp="${RESULT_PATH}.tmp.$$"
+    if [ "$RUN_SUCCEEDED" = true ] && jq -e . "$PEERLOG" >/dev/null 2>&1; then
+      if jq --arg m "$MODEL" \
+           '{status:"ok", requested_model:$m, served_model:"unverified", receipt:"unverified", output:(.text // .output // .result // .)}' \
+           "$PEERLOG" > "$tmp" 2>/dev/null; then
+        mv -f "$tmp" "$RESULT_PATH"
+        log "elevated step complete: requested=$MODEL harness=opencode2 receipt=unverified"
+        rm -f "$PEERLOG"
+        exit 0
+      fi
+    fi
+    rm -f "$tmp"
+    write_result "$(jq -n --arg m "$MODEL" --arg e "$(bounded_failure_evidence)" \
+      '{status:"failed", requested_model:$m, evidence:$e}')"
+    log "elevated opencode2 step failed; wrote failure envelope"
+    rm -f "$PEERLOG"
+    exit 0
+    ;;
+esac
 build_cmd "$MODEL" "$HANDOFF_DIR"
 run_codex_cmd
 

@@ -17,6 +17,12 @@ PR_NUMBER=$1
 ROOT_COMMENT_ID=$2
 BODY=$(cat)
 
+workspace_root=$(jj workspace root 2>/dev/null || true)
+if [ -n "$workspace_root" ]; then
+    GIT_DIR=$(cd "$workspace_root" && jj git root)
+    export GIT_DIR
+fi
+
 if [ -n "$3" ]; then
     OWNER=$(echo "$3" | cut -d/ -f1)
     REPO=$(echo "$3" | cut -d/ -f2)

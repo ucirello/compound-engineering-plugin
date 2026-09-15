@@ -17,7 +17,7 @@
 #   stdout: Raw JSON output from the measurement command
 #   stderr: Passed through from the measurement command
 #   exit code: Same as the measurement command (124 for timeout, 125 when
-#              CE_OPTIMIZE_CENSOR_AFTER fires before timeout_seconds)
+#              CE_OPTIMIZE_CENSOR_AFTER fires before timeout_seconds).
 
 set -euo pipefail
 
@@ -117,7 +117,12 @@ CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  CENSOR_STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-optimize-censor-XXXXXX")
+  tmp_dir=".tmp"
+  if wr=$(jj workspace root 2>/dev/null) && [[ -n "$wr" ]]; then
+    tmp_dir="$wr/.tmp"
+  fi
+  mkdir -p "$tmp_dir"
+  CENSOR_STATUS_FILE=$(mktemp "$tmp_dir/ce-optimize-censor-XXXXXX")
 fi
 
 # Run the measurement command with timeout

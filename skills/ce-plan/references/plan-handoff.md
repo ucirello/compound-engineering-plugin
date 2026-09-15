@@ -66,7 +66,7 @@ After all mutations in this run have settled (initial write, deepening synthesis
 **Question:** "Plan ready at `<absolute path to plan>`. What would you like to do next?"
 
 **Options:**
-1. **Start `ce-work`** - Build and ship the plan in this session — subagent-driven development with simplification, code review, and commits. Show only when the plan contents support implementation and no launch-blocking question or finding remains; universal-planning, answer-seeking, approach-plan, and requirements-only artifacts keep their own handoff/checkpoint behavior.
+1. **Start `ce-work`** - Build and ship the plan in this session — subagent-driven development with simplification, code review, and jj changes. Show only when the plan contents support implementation and no launch-blocking question or finding remains; universal-planning, answer-seeking, approach-plan, and requirements-only artifacts keep their own handoff/checkpoint behavior.
 2. **Run it as a `/goal`** - Choose this if you'd rather run the plan through your harness's autonomous goal mode instead of ce-work's build-and-ship flow. The alternative to option 1, not an add-on — pick one. Show only when (a) the plan meets the same implementation condition as option 1 AND (b) the host has goal capability at all — Codex `create_goal` in the available tool list, or a user-typed `/goal` in Claude Code; omit it where neither exists. Where the host can start a goal directly the session begins it immediately; where it cannot, it hands over a copyable `/goal` prompt. See the routing below.
 
 **Recommended marker:** `ce-work` (option 1) always carries *(recommended)* — render option 1 as **Start `ce-work`** *(recommended)* and leave option 2 unmarked. `ce-work` is the right entry point for execution: it chooses the execution engine and reaches goal or dynamic-workflow engines itself when a plan's shape warrants, so recommending it never forecloses goal mode. Goal mode (option 2) is the opt-in preference for users who'd rather drive the work through their harness's native goal loop. Exactly one option ever carries *(recommended)*.
@@ -92,7 +92,9 @@ Before acting on any selection received after a user turn, reload this file. The
   - **If only a user-typed `/goal` exists (Claude Code):** print that objective as a single copyable `/goal …` block and tell the user to paste it at the start of a message (a skill cannot issue `/goal` itself there). **Best-effort clipboard copy:** also put the exact prompt on the OS clipboard so the user only has to paste. **Never interpolate the prompt into the command** — the plan path and the prompt's own backticks/`$` would be evaluated or mangled by the shell. Hand it off as data: write it to a temp file via a **quoted-sentinel** here-doc (the quotes stop all expansion), then pipe that file to the first available tool:
 
     ```bash
-    PROMPT_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-goal-prompt.XXXXXX")
+    workspace_root=$(jj workspace root) || workspace_root="."
+    mkdir -p "$workspace_root/.tmp"
+    PROMPT_FILE=$(mktemp "$workspace_root/.tmp/ce-goal-prompt.XXXXXX")
     cat >> "$PROMPT_FILE" <<'__CE_GOAL_PROMPT_END__'
     <the exact /goal prompt goes here, verbatim>
     __CE_GOAL_PROMPT_END__

@@ -1,4 +1,4 @@
-"""Metadata inventory of the canonical checkout's git-ignored entries.
+"""Metadata inventory of the canonical checkout's ignored/untracked entries.
 
 Verification runs in the canonical checkout; ignored state is never copied or
 restored. Two inventories taken before and after verification diff into a
@@ -10,12 +10,11 @@ from __future__ import annotations
 import os
 import stat
 
-from unit_workspace_state import Operational, git
+from unit_workspace_state import Operational, ignored_untracked_paths
 
 
 def ignored_paths(repo: str) -> set[str]:
-    raw = git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--")
-    return set(filter(None, raw.decode("utf-8", "surrogateescape").split("\0")))
+    return ignored_untracked_paths(repo)
 
 
 def artifact_path(repo: str, rel: str) -> str:

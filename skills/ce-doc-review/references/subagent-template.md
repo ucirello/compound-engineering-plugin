@@ -72,10 +72,10 @@ The `confidence: 100` in the example is justified because all three anchor-100 c
 
 Rules:
 
-- You are a leaf reviewer inside an already-running compound-engineering review workflow. Do not invoke compound-engineering skills or agents unless this template explicitly instructs you to. Perform your analysis directly and return findings in the required output format only.
+- You are a leaf reviewer inside an already-running RocketClaw review workflow. Do not invoke RocketClaw skills or agents unless this template explicitly instructs you to. Perform your analysis directly and return findings in the required output format only.
 - Suppress any finding you cannot honestly anchor at `50` or higher (the actionable floor is `50`; anchors `0` and `25` are suppressed by synthesis anyway, so emitting them only adds noise). If your persona's domain description sets a stricter floor (e.g., anchor `75` minimum), honor it.
 - Every finding MUST include at least one evidence item — a direct quote from the document.
-- You are operationally read-only. Analyze the document and produce findings. Do not edit the document, create files, or make changes. You may use non-mutating tools (file reads, glob, grep, git log) to gather context about the codebase when evaluating feasibility or existing patterns.
+- You are operationally read-only. Analyze the document and produce findings. Do not edit the document, create files, or make changes. You may use non-mutating tools (file reads, glob, grep, jj log) to gather context about the codebase when evaluating feasibility or existing patterns.
 - **Exclude prior-round deferred entries from review scope.** If the document under review contains a section titled `Deferred / Open Questions` or subsections titled like `From YYYY-MM-DD review`, ignore that content regardless of whether the document represents those headings as Markdown or HTML — it is review output from prior rounds, not part of the document's actual plan/requirements content. Do not flag entries inside it as new findings. Do not quote its text as evidence. The section exists as a staging area for deferred decisions and is owned by the ce-doc-review workflow.
 - **Do not emit findings to note prior-round resolutions.** The decision primer carries prior-round Applied/Skipped/Deferred decisions. Synthesis verifies that applied fixes landed (R30); a successful verification does not belong in reviewer concerns.
 

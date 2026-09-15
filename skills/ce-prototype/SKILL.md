@@ -33,13 +33,13 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. `references/build.md` defines yields and artifacts.
 
-Build under `.context/compound-engineering/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/`, where survival is best-effort. `references/build.md` names every case that forces the fallback root.
+Build under `.context/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to `<workspace>/.tmp/ce-prototype/<date>-<slug>/` (or local `.tmp/ce-prototype/<date>-<slug>/` when there is no jj workspace), where survival is best-effort. `references/build.md` names every case that forces the fallback root.
 
-The `.context` path has to be gitignored first. Probe it from the repo root with `git -C <repo root> check-ignore -q .context/compound-engineering/`; the trailing slash is required. When it is not covered, the offer to add that line comes before the root is resolved, or accepting it cannot help this run.
+The `.context` path has to be listed in `.gitignore` first. Resolve the workspace with `jj workspace root`, then probe with `GIT_DIR=$(cd <workspace root> && jj git root) git -C <workspace root> check-ignore -q .context/ce-prototype/`; the trailing slash is required. When it is not covered, the offer to add that line comes before the root is resolved, or accepting it cannot help this run.
 
 `references/preview.md` defines that offer and the resolution that follows it. Do not create the run directory yourself; a second claim splits the screens from the capsule.
 
-Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches the product tree. Never commit it. When the try ends, restore only the files you changed. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty tree. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
+Scale into the existing app as a throwaway overlay when the user asks, or when the question is density or chrome on an existing page — an isolated page hides that. It is the one path that touches the product tree. Never leave those overlay edits in the working-copy change. When the try ends, restore only the files you changed. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty tree. Never delete a kept prototype: throwaway describes the code, not a request to remove it.
 
 ## Keep the decisions
 

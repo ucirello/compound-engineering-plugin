@@ -98,8 +98,8 @@ def discover_resume_run(repo: str, plan_digest: str) -> tuple[str, list[dict]]:
     candidates: list[dict] = []
     # A run recorded under the other candidate root (sandboxed vs unsandboxed
     # session) must still be discoverable; scan every candidate that exists.
-    # Read-only: repairing a root this session cannot write (a leftover /tmp
-    # tree under the sandbox) would abort discovery before the writable one.
+    # Read-only: repairing a root this session cannot write (a leftover
+    # workspace .tmp tree under the sandbox) would abort discovery before the writable one.
     entries = []
     for root in candidate_runs_roots():
         if not os.path.isdir(root) or os.path.islink(root):
@@ -125,7 +125,6 @@ def discover_resume_run(repo: str, plan_digest: str) -> tuple[str, list[dict]]:
         if (
             repository.get("identity_digest") != info["identity_digest"]
             or repository.get("toplevel") != info["toplevel"]
-            or repository.get("git_dir") != info["git_dir"]
             or branch.get("ref") != info["branch_ref"]
         ):
             continue
@@ -696,7 +695,7 @@ def cmd_complete_fallback(args) -> tuple[str, dict]:
     if not summary or "\0" in summary or len(summary.encode()) > 1024:
         raise Operational("REFUSED", "native fallback summary must be non-empty and at most 1024 bytes")
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", args.accepted_head):
-        raise Operational("REFUSED", "native fallback accepted head must be a Git object id")
+        raise Operational("REFUSED", "native fallback accepted head must be a commit id")
 
     with locked_manifest(args.run_id, write=True) as doc:
         validate_repo(doc)
@@ -945,11 +944,11 @@ def cmd_cleanup(args) -> tuple[str, dict]:
         workspace = unit["workspace"]["path"]
         ref = unit["transport"].get("ref")
         repo = doc["repository"]["toplevel"]
-        common = doc["repository"]["common_dir"]
+        identity = doc["repository"]["identity_digest"]
     workspace = owned_workspace_path(args.run_id, args.unit_id, workspace)
     with locked_manifest(args.run_id, write=True) as doc:
         event(doc, "cleanup-intent", args.unit_id, {"workspace": workspace, "ref": ref, "abandonment_receipt": abandonment_receipt})
-    with admin_lock(common):
+    with admin_lock(identity):
         present = [r for r in worktree_rows(repo) if os.path.realpath(str(r.get("worktree", ""))) == os.path.realpath(workspace)]
         if present:
             git(repo, "worktree", "remove", "--force", workspace)

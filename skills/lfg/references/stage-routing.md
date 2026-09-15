@@ -24,11 +24,13 @@ Requirement strength is inferred from the whole instruction, not one word: "use 
 When implementation resolves to one candidate, retain one transient `implementation_engine` object with exactly these four fields:
 
 - `mode`: `prefer` or `require`
-- `target`: exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, or `opencode` — a **harness** name, never a model name
-- `model`: the explicit model pin, otherwise `null`
+- `target`: exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, `opencode`, or `opencode2` — a **harness** name, never a model name. `opencode2` is a distinct harness from `opencode`, never an alias, never encoded as `opencode`.
+- `model`: the explicit model pin, otherwise `null`. For `opencode2`, a pin is `provider/modelname#variant` (the variant is the `#variant` suffix on the model token, not a separate flag).
 - `source`: a caller-visible string saying where the binding came from, identifying the current LFG instruction
 
-A directive that names a bare **model** with no harness (e.g. "use fable", "with opus") is a model *pin*, not a target: encode it as the harness that serves that model family with the alias in `model`. A Claude-family model (`fable`, `opus`, `sonnet`, `haiku`) is `{"target":"claude","model":"<alias>"}`. Never put a model name in `target`. If you cannot map the named model to one of the harnesses above, that is a routing-carrier blocker, not a `null` binding that silently drops the user's instruction.
+When `target` is `opencode2`, the engine that executes that binding runs `opencode2 run --standalone --auto --model provider/model#variant --format json --file PROMPT` with cwd equal to the workspace. It does not take `--dir`. Do not invoke the `opencode` binary for an `opencode2` target.
+
+A directive that names a bare **model** with no harness (e.g. "use fable", "with opus") is a model *pin*, not a target: encode it as the harness that serves that model family with the alias in `model`. A Claude-family model (`fable`, `opus`, `sonnet`, `haiku`) is `{"target":"claude","model":"<alias>"}`. Never put a model name in `target`. If you cannot map the named model to one of the harnesses above, that is a routing-carrier blocker, not a `null` binding that silently drops the user's instruction. An instruction that names `opencode2` is a harness assignment (`target: opencode2`), not a model pin and not `opencode`.
 
 When the implementation instruction instead names an ordered fallback list, do not truncate it to the scalar carrier (the single-candidate object above). Instead, retain the whole ordered assignment as current-task implementation intent and pass no `implementation_engine:` object. When LFG invokes `ce-work`, that still-active current-task assignment outranks configuration, and `ce-work` normalizes and preflights the candidates in order. This is context scoped to the implementation stage, not plan content. If the host cannot preserve that context across its skill invocation, stop with a routing-carrier blocker rather than silently dropping later candidates.
 

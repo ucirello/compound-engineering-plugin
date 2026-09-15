@@ -22,7 +22,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 
 **Grouping is presentation, not a mode.** The `grouping:` tokens change how the finding set is organized for triage — never reviewer selection, merge logic, scope rules, or the Stage 5c apply decision.
 
-**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other CE skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
+**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other RocketClaw skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
 
 **Conflicting arguments:** Stop without dispatching reviewers when:
 - Multiple incompatible scope selectors appear together (e.g. `base:` **and** a PR number/branch target — `base:` means "review the current checkout against this base")
@@ -41,7 +41,7 @@ Emit a one-line failure reason. In `mode:agent`, return JSON: `{"status":"failed
 |------------|-------------|
 | **Default** | Report-only markdown (pipe-delimited finding tables) + Actionable Findings summary |
 | **Explicit local apply** | The same markdown report plus verified local fixes and an Applied section |
-| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `/tmp/.../ce-code-review/<run-id>/` artifacts |
+| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `<workspace>/.tmp/rocketclaw/ce-code-review/<run-id>/` artifacts |
 
 Default and `mode:agent` are **report-only**. `mode:agent` changes only the serialization from markdown to JSON for programmatic callers; it does not change reviewer selection, merge logic, or scope rules. `apply:local` is separate mutation authority, not an output mode. The default markdown is the human view; keep it ASCII-safe (pipe tables, `->` not middot `·`, no box-drawing) so it degrades gracefully across terminals.
 
@@ -80,7 +80,7 @@ Produce, in this context:
 - Requirements verification: read the Plan Requirements Completeness and Stage 2b sections of `references/intent-and-plan.md`, discover a plan by that contract (the `plan:` argument, the PR body, or the branch), and when one is found fill `requirements_completeness`. An unaddressed requirement or unit is a finding routed by `plan_source` under that section's rule, so an explicit-plan omission reaches `actionable_findings`; it also makes the verdict Not ready unless the omission is intentional.
 - Test sufficiency: when the change alters runtime behavior without corresponding test work, record the gap in `testing_gaps`. Risks you can see but cannot settle go in `residual_risks`.
 
-Coverage states that the lite path ran and no reviewer agents were dispatched; names the criteria files checked, or that none govern the change, and the instruction-file fallback when it supplied criteria; states that declared Compound Packs were not applied; and names what lite did not assess (learnings, agent-native gaps, deployment notes).
+Coverage states that the lite path ran and no reviewer agents were dispatched; names the criteria files checked, or that none govern the change, and the instruction-file fallback when it supplied criteria; states that declared Packs were not applied; and names what lite did not assess (learnings, agent-native gaps, deployment notes).
 
 Write the receipt and `metadata.json` (## Run artifacts below) into the run directory Stage 1b created and emit the receipt as the response. In `mode:agent`, the receipt is the JSON object the output format below defines, written to `review.json`. In default mode, it is every retained finding (stable `#`, severity, `file:line`, route), then Actionable Findings, Coverage, and Verdict, written to `report.md`; a retained finding that is not actionable still appears in the findings list.
 
@@ -91,8 +91,8 @@ Every run, lite or full, leaves its receipt (`review.json` in `mode:agent`, `rep
 ```json
 {
   "run_id": "<run-id>",
-  "branch": "<git branch --show-current at dispatch time>",
-  "head_sha": "<git rev-parse HEAD at dispatch time>",
+  "branch": "<bookmarks on @ at dispatch time>",
+  "head_sha": "<jj log -r @ --no-graph -T 'commit_id' at dispatch time>",
   "verdict": "<Ready to merge | Ready with fixes | Not ready>",
   "completed_at": "<ISO 8601 UTC timestamp>"
 }
@@ -115,7 +115,7 @@ Minimum shape:
   "scope": {
     "base": "<merge-base sha, pr:NNN marker, or base: ref>",
     "branch": "<current branch name>",
-    "head_sha": "<git rev-parse HEAD>",
+    "head_sha": "<jj log -r @ --no-graph -T 'commit_id'>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },

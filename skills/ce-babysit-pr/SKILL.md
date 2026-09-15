@@ -1,7 +1,7 @@
 ---
 name: ce-babysit-pr
 description: "Babysits an open GitHub PR until merge-ready. Use when asked to watch a PR over time — not for one-shot comment resolution or one CI failure. GitHub (incl. Enterprise) only."
-argument-hint: "[PR number|URL|blank=current branch] [watch|checkpoint] [duration] [posture:target|stack-ready|stack-land]"
+argument-hint: "[PR number|URL|blank=current bookmark] [watch|checkpoint] [duration] [posture:target|stack-ready|stack-land]"
 ---
 
 # Babysit a PR
@@ -32,10 +32,10 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 
 ## Step 1: Resolve and arm
 
-1. `gh repo view` must succeed, else say GitHub-only, stop.
-2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
+1. `gh repo view` (workspace root, `GIT_DIR=$(jj git root)`) must succeed, else say GitHub-only, stop.
+2. Resolve the PR from the argument or current bookmark (`references/setup.md`); none → report, stop.
 3. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-4. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+4. **Working copy must be the PR's head bookmark** (bookmarks on `@` include `headRefName`) before any delegated mutation; default `gh pr checkout <ref>` from the workspace root with `GIT_DIR=$(jj git root)`; no push access or a conflicted working copy → stop, say so.
 5. **Sustain mode** (`references/watch-loop.md`): Keep monitoring in the current session until a stop condition is met. Use checkpoint mode only when the user requests it or the harness cannot keep the session active while waiting for the watcher's output. The default self-sustaining in-session watch uses `pr-snapshot watch` and runs one tick per `BABYSIT_WAKE`; never collapse the loop into a script. In checkpoint mode, run one tick and report paused monitoring with the resume invocation from `references/setup.md`. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)

@@ -8,7 +8,7 @@ You audit code changes against the criteria files the project has designated, at
 
 The orchestrator passes a `<standards-paths>` block pairing each criteria file with the changed files it governs. Read those files and apply that pairing as given.
 
-If no `<standards-paths>` block is present (standalone usage), build the same pairing yourself. Find every `CODING_STANDARDS.md`, `CLAUDE.md`, and `AGENTS.md` in the repository and keep those whose directory is an ancestor of a changed file — a root-level file governs the whole workspace, `skills/AGENTS.md` only what is under `skills/`. `CODING_STANDARDS.md` is the designated criteria source, so an instruction file supplies criteria only for changed files that no `CODING_STANDARDS.md` governs.
+If no `<standards-paths>` block is present (standalone usage), build the same pairing yourself. Find every `CODING_STANDARDS.md`, `CLAUDE.md`, and `AGENTS.md` in the repository and keep those whose directory is an ancestor of a changed file — a root-level file governs the whole checkout, `skills/AGENTS.md` only what is under `skills/`. `CODING_STANDARDS.md` is the designated criteria source, so an instruction file supplies criteria only for changed files that no `CODING_STANDARDS.md` governs.
 
 **The content is the contract, not the format.** A criteria file may be written by a person or by another tool, so expect any shape: prose, bullets, tables, nested headings, with or without frontmatter. Extract the rules whatever the shape. Never require a schema, an identifier, or a section layout, and never report a formatting choice as a finding.
 
@@ -32,7 +32,7 @@ The shapes below are examples of how a written rule gets violated, drawn from an
 
 - **Writing style violations** -- second person ("you should") where the standards require imperative/objective form. Hedge words in instructions (`might`, `could`, `consider`) that leave agent behavior undefined when the standards call for clear directives.
 
-- **Protected artifact violations** -- findings, suggestions, or instructions that recommend deleting or ignoring files in paths the standards designate as protected.
+- **Protected artifact violations** -- findings, suggestions, or instructions that recommend deleting or ignoring files in paths the standards designate as protected (e.g., `docs/brainstorms/`, `<root>/plans/`, `<root>/solutions/`).
 
 ## Confidence calibration
 
@@ -42,7 +42,7 @@ Use the anchored confidence rubric in the subagent template. Persona-specific gu
 
 **Anchor 75** — you can quote the specific rule from the standards file and point to the specific line in the diff that violates it. Both the rule and the violation are unambiguous, but applying the rule requires recognizing the pattern (not pure mechanical match).
 
-**Anchor 50** — the rule exists in the standards file but applying it to this specific case requires judgment — e.g., whether a skill description adequately "describes what it does and when to use it," or whether a file is small enough to qualify for `@` inclusion. Surfaces only as P0 escape or soft buckets.
+**Anchor 50** — the rule exists in the standards file but applying it to this specific case requires judgment — e.g., whether a skill description adequately "describes what it does and when to use it," or whether a file is small enough to qualify for `@` inclusion. A finding at this anchor reaches the report only when its severity is P0, or when synthesis moves it to a soft bucket (`testing_gaps`, `residual_risks`, or advisory).
 
 **Anchor 25 or below — suppress** — the standards file is ambiguous about whether this constitutes a violation, or the rule might not apply to this file type.
 

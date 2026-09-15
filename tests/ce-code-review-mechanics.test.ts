@@ -3,6 +3,7 @@ import { tmpdir } from "os"
 import path from "path"
 import { spawnSync } from "node:child_process"
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
+import { writeKnowledgeFile } from "./skills/helpers/packs-fixtures"
 
 setDefaultTimeout(20_000)
 
@@ -33,7 +34,7 @@ function fixtureRepo() {
 }
 
 describe("ce-code-review deterministic mechanics", () => {
-  test("scope helper counts executable changes and fails closed on uncounted files", () => {
+  test("scope helper counts structured text toward changed_lines and does not hard-block on markdown", () => {
     const { dir, base } = fixtureRepo()
     mkdirSync(path.join(dir, "docs"))
     writeFileSync(path.join(dir, "service.ts"), "export const value = 2\n")
@@ -45,9 +46,116 @@ describe("ce-code-review deterministic mechanics", () => {
     const scope = JSON.parse(result.stdout)
 
     expect(scope.exec_lines).toBe(2)
-    expect(scope.uncounted_files).toBe(1)
+    expect(scope.changed_lines).toBeGreaterThanOrEqual(3)
+    expect(scope.uncounted_files).toBe(0)
     expect(scope.changed_files).toEqual(["docs/note.md", "service.ts"])
-    expect(scope.lite_eligible).toBe(false)
+    expect(scope.size_band).toBe("small")
+    expect(scope.hard_block_full).toBe(false)
+    expect(scope.lite_eligible).toBeUndefined()
+  })
+
+  test("scope helper counts .mjs and .cjs files as executable code", () => {
+    const { dir, base } = fixtureRepo()
+    writeFileSync(path.join(dir, "esm.mjs"), "export const value = 1\n")
+    writeFileSync(path.join(dir, "common.cjs"), "module.exports = 1\n")
+    git(dir, "add", ".")
+
+    const result = run("python3", [SCOPE_SCRIPT, "--base", base], dir)
+    expect(result.status).toBe(0)
+    const scope = JSON.parse(result.stdout)
+
+    expect(scope.exec_lines).toBe(2)
+    expect(scope.changed_lines).toBe(2)
+    expect(scope.uncounted_files).toBe(0)
+    expect(scope.size_band).toBe("small")
+    expect(scope.hard_block_full).toBe(false)
+  })
+
+  test("scope helper counts a small YAML-only edit without awarding lite", () => {
+    const { dir, base } = fixtureRepo()
+    mkdirSync(path.join(dir, ".compound-engineering"))
+    writeFileSync(path.join(dir, ".compound-engineering", "config.yaml"), "docs_root: docs\ntimeout: 30\n")
+    git(dir, "add", ".")
+    git(dir, "commit", "-qm", "add config")
+    const configured = git(dir, "rev-parse", "HEAD")
+    writeFileSync(path.join(dir, ".compound-engineering", "config.yaml"), "docs_root: docs\n")
+    git(dir, "add", ".")
+
+    const result = run("python3", [SCOPE_SCRIPT, "--base", configured], dir)
+    expect(result.status).toBe(0)
+    const scope = JSON.parse(result.stdout)
+
+    expect(scope.status).toBe("complete")
+    expect(scope.changed_files).toEqual([".compound-engineering/config.yaml"])
+    expect(scope.changed_lines).toBe(1)
+    expect(scope.exec_lines).toBe(0)
+    expect(scope.size_band).toBe("small")
+    expect(scope.hard_block_full).toBe(false)
+    expect(scope.hard_block_classes).toEqual([])
+    expect(scope.lite_eligible).toBeUndefined()
+  })
+
+  test("scope helper hard-blocks a diff it cannot fully count", () => {
+    const { dir, base } = fixtureRepo()
+    writeFileSync(path.join(dir, "service.ts"), "export const value = 2\n")
+    writeFileSync(path.join(dir, "blob.bin"), Buffer.from([0, 1, 2, 3, 255, 0, 7]))
+    git(dir, "add", ".")
+
+    const result = run("python3", [SCOPE_SCRIPT, "--base", base], dir)
+    expect(result.status).toBe(0)
+    const scope = JSON.parse(result.stdout)
+
+    // A binary or otherwise uncountable file means the helper cannot measure the
+    // whole change, so the floor is set even though the counted part is small.
+    expect(scope.uncounted_files).toBeGreaterThan(0)
+    expect(scope.size_band).toBe("small")
+    expect(scope.hard_block_classes).toContain("uncounted")
+    expect(scope.hard_block_full).toBe(true)
+  })
+
+  test("scope helper hard-blocks a CI workflow path", () => {
+    const { dir, base } = fixtureRepo()
+    mkdirSync(path.join(dir, ".github", "workflows"), { recursive: true })
+    writeFileSync(path.join(dir, ".github", "workflows", "ci.yml"), "on: push\njobs:\n  t:\n    runs-on: ubuntu-latest\n")
+    git(dir, "add", ".")
+
+    const result = run("python3", [SCOPE_SCRIPT, "--base", base], dir)
+    expect(result.status).toBe(0)
+    const scope = JSON.parse(result.stdout)
+
+    expect(scope.hard_block_classes).toContain("ci")
+    expect(scope.hard_block_full).toBe(true)
+    expect(scope.size_band).toBe("small")
+  })
+
+  test("scope helper treats a frontend signal as a prompt, not a hard block", () => {
+    const { dir, base } = fixtureRepo()
+    writeFileSync(path.join(dir, "App.tsx"), "export const App = () => null\n")
+    git(dir, "add", ".")
+
+    const result = run("python3", [SCOPE_SCRIPT, "--base", base], dir)
+    expect(result.status).toBe(0)
+    const scope = JSON.parse(result.stdout)
+
+    expect(scope.signals).toContain("frontend")
+    expect(scope.size_band).toBe("small")
+    expect(scope.hard_block_full).toBe(false)
+  })
+
+  test("scope helper hard-blocks a large size band", () => {
+    const { dir, base } = fixtureRepo()
+    const lines = Array.from({ length: 40 }, (_, i) => `export const n${i} = ${i}`).join("\n") + "\n"
+    writeFileSync(path.join(dir, "service.ts"), lines)
+    git(dir, "add", ".")
+
+    const result = run("python3", [SCOPE_SCRIPT, "--base", base], dir)
+    expect(result.status).toBe(0)
+    const scope = JSON.parse(result.stdout)
+
+    expect(scope.changed_lines).toBeGreaterThanOrEqual(40)
+    expect(scope.size_band).toBe("large")
+    expect(scope.hard_block_full).toBe(true)
+    expect(scope.hard_block_classes).toEqual([])
   })
 
   test("scope helper emits UNKNOWN-equivalent state for an invalid endpoint", () => {
@@ -57,8 +165,11 @@ describe("ce-code-review deterministic mechanics", () => {
     const scope = JSON.parse(result.stdout)
 
     expect(scope.exec_lines).toBeNull()
+    expect(scope.changed_lines).toBeNull()
     expect(scope.uncounted_files).toBeGreaterThan(0)
-    expect(scope.lite_eligible).toBe(false)
+    expect(scope.size_band).toBe("unknown")
+    expect(scope.hard_block_full).toBe(true)
+    expect(scope.hard_block_classes).toContain("unknown-scope")
   })
 
   test("scope helper resolves the learnings corpus under a configured docs_root", () => {
@@ -118,6 +229,79 @@ describe("ce-code-review deterministic mechanics", () => {
     }
   })
 
+  // Review enforcement of Compound Packs rides on the learnings persona, whose
+  // gate used to require an existing solutions corpus. A repo that adopts packs
+  // before it has any learnings must still report a reason to select it. The
+  // helper answers from the config alone (the resolver's --declared-only mode:
+  // no clone, no cache), so `pack_roots` is always 0 and the signal is cheap in
+  // every scope.
+  function packsFixture() {
+    const fixture = fixtureRepo()
+    mkdirSync(path.join(fixture.dir, ".compound-engineering"), { recursive: true })
+    writeKnowledgeFile(
+      path.join(fixture.dir, "compound-packs", "house-rules"),
+      "validate-input.md",
+      "Validate input at the boundary",
+      "adding an HTTP handler",
+    )
+    return fixture
+  }
+
+  test("scope helper reports no declared packs without a config or without a packs key", () => {
+    const { dir, base } = packsFixture()
+
+    const none = JSON.parse(run("python3", [SCOPE_SCRIPT, "--base", base], dir).stdout)
+    expect(none.declared_packs).toBe(false)
+    expect(none.pack_roots).toBe(0)
+    expect(none.has_learnings_corpus).toBe(false)
+
+    writeFileSync(path.join(dir, ".compound-engineering", "config.yaml"), "docs_root: docs\n")
+    const noKey = JSON.parse(run("python3", [SCOPE_SCRIPT, "--base", base], dir).stdout)
+    expect(noKey.declared_packs).toBe(false)
+  })
+
+  test("scope helper reports a declared pack independently of the learnings corpus", () => {
+    const { dir, base } = packsFixture()
+    writeFileSync(
+      path.join(dir, ".compound-engineering", "config.yaml"),
+      "packs:\n  - source: compound-packs/house-rules\n",
+    )
+    const declared = JSON.parse(run("python3", [SCOPE_SCRIPT, "--base", base], dir).stdout)
+    expect(declared.declared_packs).toBe(true)
+    expect(declared.pack_roots).toBe(0)
+    expect(declared.has_learnings_corpus).toBe(false)
+  })
+
+  test("scope helper does not evaluate declared_packs in remote scope", () => {
+    const { dir, base } = packsFixture()
+    writeFileSync(
+      path.join(dir, ".compound-engineering", "config.yaml"),
+      "packs:\n  - source: compound-packs/house-rules\n",
+    )
+    // Remote scope passes --head; the local config is not the reviewed tree's
+    // config, so the helper reports null without running the resolver at all.
+    const remote = JSON.parse(run("python3", [SCOPE_SCRIPT, "--base", base, "--head", base], dir).stdout)
+    expect(remote.status).toBe("complete")
+    expect(remote.declared_packs).toBeNull()
+    expect(remote.pack_roots).toBe(0)
+  })
+
+  test("scope helper treats a broken pack entry as declared, and keeps the signal when failing closed", () => {
+    const { dir, base } = packsFixture()
+    // The learnings pass surfaces the resolver error in Coverage, so it must still be selected.
+    writeFileSync(
+      path.join(dir, ".compound-engineering", "config.yaml"),
+      "packs:\n  - source: compound-packs/does-not-exist\n",
+    )
+    const broken = JSON.parse(run("python3", [SCOPE_SCRIPT, "--base", base], dir).stdout)
+    expect(broken.declared_packs).toBe(true)
+    expect(broken.pack_roots).toBe(0)
+
+    const failed = JSON.parse(run("python3", [SCOPE_SCRIPT, "--base", "missing-ref"], dir).stdout)
+    expect(failed.status).toBe("unknown")
+    expect(failed.declared_packs).toBe(true)
+  })
+
   test("scope helper fails closed when a remote head endpoint is empty", () => {
     const { dir, base } = fixtureRepo()
     writeFileSync(path.join(dir, "service.ts"), "export const value = 2\n")
@@ -129,7 +313,8 @@ describe("ce-code-review deterministic mechanics", () => {
     expect(scope.reason).toBe("invalid head endpoint")
     expect(scope.exec_lines).toBeNull()
     expect(scope.changed_files).toEqual([])
-    expect(scope.lite_eligible).toBe(false)
+    expect(scope.hard_block_full).toBe(true)
+    expect(scope.size_band).toBe("unknown")
   })
 
   test("scope helper excludes base-only changes after the base advances", () => {
@@ -220,12 +405,39 @@ describe("ce-code-review deterministic mechanics", () => {
 
     expect(merged.findings).toHaveLength(1)
     expect(merged.findings[0]["#"]).toBe(1)
-    expect(merged.findings[0].confidence).toBe(100)
+    expect(merged.findings[0].confidence).toBe(75)
     expect(merged.findings[0].autofix_class).toBe("manual")
     expect(merged.findings[0].owner).toBe("human")
     expect(merged.findings[0].reviewers).toEqual(["correctness", "reliability"])
     expect(merged.findings[0].independent_reviewers).toEqual(["correctness", "reliability"])
     expect(merged.suppressed_by_confidence).toEqual({ "50": 1 })
+  })
+
+  test("agreement promotes only with a verified cross-model peer", () => {
+    const finding = {
+      title: "Stale result", severity: "P1", file: "src/worker.ts", line: 12,
+      confidence: 75, autofix_class: "manual", owner: "downstream-resolver",
+      requires_verification: true, pre_existing: false,
+      first_evidence: "src/worker.ts:12 -- result = staleValue",
+    }
+    const merge = (peer: Record<string, unknown>) => {
+      const returns = [
+        { reviewer: "correctness", findings: [finding], residual_risks: [], testing_gaps: [] },
+        { reviewer: "reliability", findings: [finding], residual_risks: [], testing_gaps: [] },
+        { reviewer: "adversarial-codex", findings: [finding], residual_risks: [], testing_gaps: [], ...peer },
+      ]
+      const result = run("python3", [FINDINGS_SCRIPT], undefined, JSON.stringify(returns))
+      expect(result.status).toBe(0)
+      return JSON.parse(result.stdout).findings[0]
+    }
+
+    const verified = merge({ independence_verified: true })
+    expect(verified.confidence).toBe(100)
+    expect(verified.independent_reviewers).toEqual(["correctness", "reliability", "adversarial-codex"])
+
+    const unverified = merge({ independence_verified: false })
+    expect(unverified.confidence).toBe(75)
+    expect(unverified.independent_reviewers).toEqual(["correctness", "reliability"])
   })
 
   test("synthetic reruns preserve independent corroboration from semantic duplicates", () => {
@@ -240,8 +452,8 @@ describe("ce-code-review deterministic mechanics", () => {
       requires_verification: true,
       pre_existing: false,
       first_evidence: "src/worker.ts:12 -- result = staleValue",
-      reviewers: ["correctness", "testing"],
-      independent_reviewers: ["correctness", "testing"],
+      reviewers: ["correctness", "adversarial-codex"],
+      independent_reviewers: ["correctness", "adversarial-codex"],
     }
 
     const result = run(
@@ -265,8 +477,8 @@ describe("ce-code-review deterministic mechanics", () => {
       expect.objectContaining({
         title: reconciled.title,
         confidence: 75,
-        reviewers: ["correctness", "testing"],
-        independent_reviewers: ["correctness", "testing"],
+        reviewers: ["correctness", "adversarial-codex"],
+        independent_reviewers: ["correctness", "adversarial-codex"],
       }),
     ])
   })
@@ -410,6 +622,37 @@ describe("ce-code-review deterministic mechanics", () => {
     expect(merged.malformed_findings).toBe(1)
   })
 
+  test("findings helper rejects notes stand-in when pre_existing is omitted", () => {
+    const returns = [
+      {
+        reviewer: "correctness",
+        findings: [
+          {
+            title: "Notes is not a compact-return field",
+            severity: "P1",
+            file: "src/worker.ts",
+            line: 12,
+            confidence: 75,
+            autofix_class: "manual",
+            owner: "human",
+            requires_verification: true,
+            notes: "Any user can read another user's orders",
+            first_evidence: "src/worker.ts:12 -- result = staleValue",
+          },
+        ],
+        residual_risks: [],
+        testing_gaps: [],
+      },
+    ]
+
+    const result = run("python3", [FINDINGS_SCRIPT], undefined, JSON.stringify(returns))
+    expect(result.status).toBe(0)
+    const merged = JSON.parse(result.stdout)
+
+    expect(merged.findings).toEqual([])
+    expect(merged.malformed_findings).toBe(1)
+  })
+
   test("findings helper rejects malformed optional evidence without rejecting absence", () => {
     const finding = {
       severity: "P1",
@@ -446,6 +689,77 @@ describe("ce-code-review deterministic mechanics", () => {
         confidence: 50,
       }),
     ])
+  })
+
+  test("findings helper recovers artifact quotes before validation without weakening the evidence gate", () => {
+    const quote = "src/state.ts:8 -- return priorState"
+    const base = {
+      title: "Stale state returned", severity: "P1", file: "src/state.ts", line: 8,
+      confidence: 75, autofix_class: "manual", owner: "downstream-resolver",
+      requires_verification: true, pre_existing: false,
+    }
+    const cases = [
+      { fields: { evidence: [quote] }, retained: 1, backfilled: 1, malformed: 0 },
+      { fields: { first_evidence: " ", evidence: [quote] }, retained: 1, backfilled: 1, malformed: 0 },
+      { fields: { first_evidence: quote, evidence: ["other quote"] }, retained: 1, backfilled: 0, malformed: 0 },
+      { fields: { first_evidence: false, evidence: [quote] }, retained: 0, backfilled: 0, malformed: 1 },
+      { fields: { first_evidence: 42, evidence: [quote] }, retained: 0, backfilled: 0, malformed: 1 },
+      { fields: {}, retained: 0, backfilled: 0, malformed: 0 },
+      { fields: { evidence: [] }, retained: 0, backfilled: 0, malformed: 0 },
+      { fields: { evidence: "not an array" }, retained: 0, backfilled: 0, malformed: 0 },
+      { fields: { evidence: [42, quote] }, retained: 0, backfilled: 0, malformed: 0 },
+      { fields: { evidence: [" ", quote] }, retained: 0, backfilled: 0, malformed: 0 },
+      { fields: { first_evidence: false, evidence: [] }, retained: 0, backfilled: 0, malformed: 1 },
+    ]
+    const returns = [{
+      reviewer: "correctness",
+      findings: cases.map((entry, index) => ({
+        ...base,
+        ...entry.fields,
+        title: `${base.title} ${index}`,
+        line: base.line + index,
+      })),
+      residual_risks: [],
+      testing_gaps: [],
+    }]
+    const result = run("python3", [FINDINGS_SCRIPT], undefined, JSON.stringify(returns))
+    expect(result.status).toBe(0)
+    const merged = JSON.parse(result.stdout)
+
+    expect(merged.findings).toHaveLength(cases.filter((entry) => entry.retained).length)
+    expect(merged.first_evidence_backfilled).toBe(cases.reduce((sum, entry) => sum + entry.backfilled, 0))
+    expect(merged.malformed_findings).toBe(cases.reduce((sum, entry) => sum + entry.malformed, 0))
+    expect(merged.suppressed_by_confidence).toEqual({
+      "50": cases.filter((entry) => !entry.retained && !entry.malformed).length,
+    })
+    expect(merged.findings.map((finding: { title: string }) => finding.title).sort()).toEqual(
+      cases.flatMap((entry, index) => entry.retained ? [`${base.title} ${index}`] : []).sort(),
+    )
+    expect(merged.suppressed_findings.map((finding: { title: string }) => finding.title).sort()).toEqual(
+      cases.flatMap((entry, index) => !entry.retained && !entry.malformed ? [`${base.title} ${index}`] : []).sort(),
+    )
+    for (const finding of merged.findings) {
+      expect(finding.first_evidence).toBe(quote)
+      expect(finding.confidence).toBe(75)
+    }
+  })
+
+  test("artifact quotes do not promote two independent anchor-50 findings", () => {
+    const finding = {
+      title: "Possible stale state", severity: "P2", file: "src/state.ts", line: 8,
+      confidence: 50, autofix_class: "advisory", owner: "downstream-resolver",
+      requires_verification: true, pre_existing: false,
+      evidence: ["src/state.ts:8 -- return priorState"],
+    }
+    const returns = ["correctness", "reliability"].map((reviewer) => ({
+      reviewer, findings: [finding], residual_risks: [], testing_gaps: [],
+    }))
+    const result = run("python3", [FINDINGS_SCRIPT], undefined, JSON.stringify(returns))
+    expect(result.status).toBe(0)
+    const merged = JSON.parse(result.stdout)
+    expect(merged.findings).toEqual([])
+    expect(merged.first_evidence_backfilled).toBe(0)
+    expect(merged.suppressed_by_confidence).toEqual({ "50": 1 })
   })
 
   test("findings helper keeps settled decisions, caps fast-pass, and sorts by confidence", () => {

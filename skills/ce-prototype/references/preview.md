@@ -1,6 +1,6 @@
 # Preview helper
 
-Load this when serving a local web prototype. Feedback stays in chat.
+Load this when serving a local web prototype. Isolated web runs start the helper with annotation on; `references/annotation-loop.md` owns the wait loop and when chat is the fallback.
 
 This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that. The file is a byte-identical copy of brainstorm's helper.
 
@@ -10,17 +10,19 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
-Settle durability before you run this block; it reads the choice once. Set `RUN_KEEP="no"` when the user asked for scratch-only output or declined the durable-path ignore rule. JJ automatically tracks new files, so ensure `.context/` and `.tmp/` are covered by the workspace's ignore rules before use. Follow the existing ignore syntax and offer to append only a missing rule to the workspace-root `.gitignore`.
+Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be left in the repo, and run the block as it stands — it sends the run to workspace `.tmp` (or local `.tmp` when there is no jj workspace) and nothing else changes. Otherwise, when the run is inside a jj workspace, probe the workspace root for `.context/ce-prototype/`; if it is not covered, offer to append that one line to the workspace-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone. A run that is headed for `.tmp` either way gets no offer.
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd)";
-SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
-if [ "$RUN_KEEP" = yes ] && (cd "$WORKSPACE_ROOT" && jj root >/dev/null 2>&1) && [ ! -L "$WORKSPACE_ROOT/.context" ]; then
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
+if [ -n "$WORKSPACE_ROOT" ]; then TEMP_ROOT="$WORKSPACE_ROOT/.tmp"; else TEMP_ROOT=".tmp"; fi;
+GIT_DIR="";
+if [ -n "$WORKSPACE_ROOT" ]; then GIT_DIR="$(cd "$WORKSPACE_ROOT" && jj git root 2>/dev/null)"; fi;
+if [ "$RUN_KEEP" = yes ] && [ -n "$WORKSPACE_ROOT" ] && [ ! -L "$WORKSPACE_ROOT/.context" ] && [ ! -L "$WORKSPACE_ROOT/.context/ce-prototype" ] && [ -n "$GIT_DIR" ] && GIT_DIR="$GIT_DIR" git -C "$WORKSPACE_ROOT" check-ignore -q .context/ce-prototype/ 2>/dev/null; then
 ROOT="$WORKSPACE_ROOT/.context";
 else
-ROOT="$SCRATCH_ROOT";
+ROOT="$TEMP_ROOT";
 fi;
 while :; do
 BASE="$ROOT/ce-prototype";
@@ -33,8 +35,8 @@ elif ! (umask 077; mkdir -p "$BASE"); then echo "could not create $BASE" >&2;
 elif [ ! -O "$BASE" ]; then echo "base is not owned by the current user: $BASE" >&2;
 elif ! chmod 700 "$BASE"; then echo "could not restrict $BASE" >&2;
 else break; fi;
-if [ "$ROOT" = "$SCRATCH_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
-echo "falling back to $SCRATCH_ROOT" >&2; ROOT="$SCRATCH_ROOT";
+if [ "$ROOT" = "$TEMP_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
+echo "falling back to $TEMP_ROOT" >&2; ROOT="$TEMP_ROOT";
 done;
 RUN_DIR="$BASE/$RUN_SLUG"; n=1;
 while ! (umask 077; mkdir "$RUN_DIR") 2>/dev/null; do
@@ -46,7 +48,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-The symlink and ownership checks cover both the selected root and the `ce-prototype` directory beneath it. Every check is inside the retry loop, so an unsafe durable path falls back to workspace-local scratch rather than aborting. Only a scratch root that also fails is fatal.
+Three things this block is careful about. The symlink and ownership checks run against both the **root** — `.context` for a kept run, workspace `.tmp` (or local `.tmp`) otherwise — and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe in-repo path at either level falls back to workspace `.tmp` rather than aborting — a hostile or misconfigured `.context` costs the run its durability, not the run itself, and only a temp root that also fails is fatal.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -66,7 +68,7 @@ Start (detached), with `PROTO_DIR` set to the absolute path the resolution print
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PROTO_DIR="<absolute question directory the resolution block printed>";
 if [ -L "$PROTO_DIR" ] || [ ! -O "$PROTO_DIR" ]; then echo "unsafe run directory: $PROTO_DIR" >&2; exit 1; fi;
-node "$SKILL_DIR/scripts/light-webserver.js" start --root "$PROTO_DIR"
+node "$SKILL_DIR/scripts/light-webserver.js" start --root "$PROTO_DIR" --annotate
 ```
 
 The server takes `--root` on trust — it resolves the path and creates it, and checks nothing — so each call re-checks the directory it is about to hand over. The path arrives here by transcription across separate shell invocations, and a mistyped or stale one would otherwise be written to unverified.
@@ -83,11 +85,11 @@ node "$SKILL_DIR/scripts/light-webserver.js" status --root "$PROTO_DIR"
 
 If `SKILL_DIR` cannot be resolved to a concrete skill directory, do not guess from the project CWD. Stop and report that the preview cannot start; do not settle the question in chat instead.
 
-The helper creates `screens/` and `state/`, serves the newest `.html` file in `screens/` at `/`, writes `state/display-info.json`, and exposes `/version` so the browser can poll for screen changes. Every other path is read from `screens/` at that same path — `/img/blot.webp` serves `screens/img/blot.webp` — so a screen keeps whatever asset layout it was copied from, nesting included. Put the assets the screen references under `screens/` at the paths it asks for, or inline them as data URIs. Anything resolving outside `screens/` is refused.
+The helper creates `screens/` and `state/`, serves the newest `.html` file in `screens/` at `/`, writes `state/display-info.json`, and exposes `/version` so a default (annotate-off) browser can poll for screen changes. Isolated web starts pass `--annotate`: the printed URL is the origin (no token in it), the overlay is added at serve time to every HTML document the browser navigates to under `screens/` (a script fetching an HTML partial gets it raw), and disk screens stay agent-clean. Visiting that origin sets a session cookie so the overlay can reach wait, annotation, and events; those routes stay token-gated. Do not print the token to the explorer. A prototype may use `?token=` or other query state of its own. Every other path is read from `screens/` at that same path — `/img/blot.webp` serves `screens/img/blot.webp` — so a screen keeps whatever asset layout it was copied from, nesting included. Put the assets the screen references under `screens/` at the paths it asks for, or inline them as data URIs. Anything resolving outside `screens/` is refused.
 
 Before handing over the URL, look at the rendered screen — a screenshot where the platform has one, otherwise measure the laid-out result in the DOM. A 200 on every asset is not that check: an image that loads correctly at the wrong size passes it, as does a script that leaves the page inert. Check each variant at rest, not just the page — one bug in shared scaffolding reads as several bad designs. Drive an interaction only when its behavior is invisible at rest, which is also the case where telling them to try something you have not tried is a claim you made up. Measurement lies by default — computed styles read mid-transition, scroll events coalesce — so read after things settle, and suspect the instrument before you conclude the page is broken. You are done when they could judge the idea, not when the code is correct. If you have no way to see the rendered result, say so when you hand over the URL rather than implying it was checked.
 
-The browser reloads only when the newest screen changes; it must not continually reload on a timer. `/version` polling does not count as activity. Detached servers monitor the owning harness process when it can be resolved, and all servers exit after an idle timeout. The helper has no browser-to-agent event path. Interactive HTML is allowed.
+A default start reloads only when the newest screen changes; it must not continually reload on a timer. Annotate-on pushes each change under `screens/` — the screen or an asset it links — over a stream, and the page reloads with the explorer's pins preserved. `/version` polling and `wait` do not count as activity; an annotation POST does. Detached servers monitor the owning harness process when it can be resolved, and all servers exit after an idle timeout. Interactive HTML is allowed.
 
 Write screens under:
 
@@ -106,15 +108,12 @@ Write screens under:
     state/
 ```
 
-The scratch root takes the same shape under `<workspace>/.tmp/rocketclaw/ce-prototype/`, or local `.tmp/rocketclaw/ce-prototype/` when there is no JJ repository. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The fallback root takes the same shape under `<workspace>/.tmp/ce-prototype/` (or local `.tmp/ce-prototype/` when there is no jj workspace). The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
-## Launch mode by platform
+## Handoff
 
-The server is the same everywhere; only the launch mode changes.
+Pick the browser that will load the prototype — one surface. Hand it the origin it will actually request. The helper prints `http://localhost:<port>`. Use that when that browser is on this machine. When it is not, start with `--host 0.0.0.0` and hand the explorer the helper's returned URL with only the host rewritten to one they can reach. Rewrite only the host. Do not also hand localhost. Visiting that origin sets the session cookie. Wait talks the bind address with the file token. Do not print the token. Binding every interface serves the run directory to anything that can reach the port; annotation and wait routes stay token-gated — do it only on a network the user trusts, and say so when you hand over the URL.
 
-- **Claude Code / Claude desktop app:** detached `start` is the default path. If the app opens localhost URLs, show the returned URL and continue.
-- **Codex CLI / Codex app:** if detached processes are reaped or the URL dies after the tool call, use `start --foreground` through the platform's long-running/background terminal mechanism.
-- **Plain terminal UI:** print the returned URL for the user to open manually.
-- **Remote or containerized sessions:** if `localhost` is not reachable from the user's browser, start with `--host 0.0.0.0` and tell the user which host/port to open. That serves the run directory to anything that can reach the port, with no auth — do it only on a network the user trusts, and say so when you hand over the URL.
+Keep the server alive the way this host actually does. Detached `start` is the default. If this host reaps detached processes or the URL dies after the tool call, append `--foreground` through its long-running terminal.
 
 If the helper path is unavailable or the platform cannot display a local URL cleanly, stop and report that. Do not settle the question in chat instead — a question that needs a real artifact to be decided is not answered by talking about it.

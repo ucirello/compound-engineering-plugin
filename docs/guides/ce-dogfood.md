@@ -2,11 +2,11 @@
 
 > Hands-off, diff-scoped browser QA of the active branch. Maps the journeys the diff touches, drives them in a real browser, fixes small breakages (with a regression test and a commit), and writes a durable report.
 
-`ce-dogfood` is on-demand **autonomous QA** of what this branch changed versus the trunk. It maps those journeys, exercises them with `agent-browser`, judges correctness and feel (including per-persona paper cuts), fixes what is small and unambiguous, escalates the rest, and leaves a report under `docs/dogfood-reports/`.
+`ce-dogfood` is autonomous QA of what this branch changed versus the trunk. It maps those changes as user journeys, exercises them with `agent-browser`, judges correctness and feel (including per-persona paper cuts), fixes what is small and unambiguous, escalates the rest, and leaves a report under `docs/dogfood-reports/`.
 
-It is diff-scoped, not a whole-app crawl. Once invoked it runs the loop without check-ins, except for external flows (OAuth, real email, payments, SMS) and for resume questions. It edits code and creates commits, so it is manual invocation only.
+It is diff-scoped, not a whole-app crawl. Once invoked it runs without check-ins, except for external flows (OAuth, real email, payments, SMS) and resume questions. It edits code and creates commits, so it is manual invocation only.
 
-It is not `ce-test-browser` (test and report; it fixes only if you pick "fix now"), not `ce-polish` (you drive live UX), and not `ce-simplify-code` (code cleanup with no browser).
+It is not `ce-test-browser` (test and report; fixes only if you pick "fix now"), not `ce-polish` (you drive live UX), and not `ce-simplify-code` (code cleanup, no browser).
 
 ---
 
@@ -16,15 +16,15 @@ It is not `ce-test-browser` (test and report; it fixes only if you pick "fix now
 |----------|--------|
 | What does it do? | Maps the branch diff to user flows, drives them in a browser, auto-fixes small issues, escalates the rest, writes a report |
 | When to use it | Before shipping a branch, when you want a real-browser pass that also fixes what it can |
-| What it produces | `docs/dogfood-reports/<YYYY-MM-DD>-<branch-slug>-dogfood.md`: flows, matrix, fixes, paper cuts, escalations, learnings, verdict. Plus any fix commits |
-| How it differs from `ce-test-browser` | That skill tests and reports. This one also fixes, adds regression tests, commits, judges feel per persona, and keeps a resume-able report |
+| What it produces | `docs/dogfood-reports/<YYYY-MM-DD>-<branch-slug>-dogfood.md`: flows, matrix, fixes, paper cuts, escalations, verdict. Plus any fix commits |
+| How it differs from `ce-test-browser` | That skill tests and reports. This one also fixes, adds regression tests, commits, judges feel per persona, and keeps a resumable report |
 | Invocation | Manual only. Type `/ce-dogfood` |
 
 ---
 
 ## Example invocations
 
-Arguments pick which ref to dogfood and, optionally, which port. Empty runs **in place** on the current branch.
+Arguments pick which ref to dogfood and, optionally, which port. Empty runs in place on the current branch.
 
 ```text
 # Current feature branch, in this checkout. Refuses main/master/the default branch
@@ -61,7 +61,7 @@ A branch can pass review and unit tests and still be broken or rough in the brow
 
 One pass:
 
-- Map each user-visible change as a Mermaid flowchart *before* building the test matrix
+- Map each user-visible change as a Mermaid flowchart before building the test matrix
 - Ground flows in product personas (`STRATEGY.md`, `VISION.md`, persona docs, or one inferred persona)
 - Walk each flow for paper cuts as well as functional failures
 - Auto-fix only small, low-risk, unambiguous breakages, each with a regression test (or a documented replay/screenshot check when no automated test is meaningful) and its own commit
@@ -75,15 +75,17 @@ One pass:
 
 ### Flows before the matrix
 
-Each user-visible change becomes a flowchart: entry, actions, branches, side effects, true end state (including email click-through). The matrix is derived from those diagrams, not from a flat page list. A one-route change gets one small chart. Mapping is never skipped.
+Each user-visible change becomes a flowchart: entry, actions, branches, side effects, true end state (including email click-through). The matrix comes from those diagrams, not from a flat page list. A one-route change gets one small chart. Mapping is never skipped.
 
 ### Functional and experiential judgment
 
-Every scenario is scored twice: right data, right destination, no console errors; and whether it feels aligned with the product. Walking the flow as each primary persona produces **paper cuts**: small frictions that still `Pass` functionally. A sharp paper cut can enter the fix loop. The rest stay in the report.
+Every scenario is scored twice: right data, right destination, no console errors; and whether it feels aligned with the product. Walking the flow as each primary persona produces paper cuts, small frictions that still `Pass` functionally. A sharp paper cut can enter the fix loop. The rest stay in the report.
+
+Declared [Compound Packs](./packs.md) feed both scores. A pack rule that describes a user is a persona the flows are walked as; one that prescribes how the product must look or behave is a criterion attached to every scenario it reaches, and a scenario that contradicts it fails with the `(pack: <id>, <path within the pack>)` citation. The report's Pack Compliance section lists each matched rule as honored, contradicted (fixed or escalated), or not exercised. When the branch contradicts a rule on purpose, the rule is what is in question: dogfood escalates a stale-rule decision instead of fighting the product. Judgments that generalize beyond the branch are handed to `ce-compound`, which owns whether they land in a writable pack; dogfood never writes a pack itself. Successive runs against the same packs therefore climb: each run fixes what contradicts the rules and refines the rules the product has outgrown.
 
 ### Size-gated autonomous fixes
 
-Auto-fix when the change is small, understood, and low-risk. Do not auto-fix when it needs an architecture or schema decision, changes product behavior, spans many files, or has competing answers. Each autonomous fix gets a regression test and a `ce-commit`. Too-big items go under **Decisions for a human** and the scenario is `Blocked (human decision)`.
+Auto-fix when the change is small, understood, and low-risk. Not when it needs an architecture or schema decision, changes product behavior, spans many files, or has competing answers. Each autonomous fix gets a regression test and a `ce-commit`. Too-big items go under "Decisions for a human" and the scenario becomes `Blocked (human decision)`.
 
 ### Resumable report
 
@@ -138,29 +140,16 @@ On-demand. Nothing in the core loop calls this. After a green (or explicitly blo
 
 ---
 
-## Use Standalone
-
-- **Current branch:** `/ce-dogfood` (in place; refuses the trunk)
-- **PR:** `/ce-dogfood 847` (offers a worktree so this checkout stays put)
-- **Other branch:** `/ce-dogfood feature/new-dashboard` (same isolation offer)
-- **Port:** `/ce-dogfood --port 5000`
-
-A PR is always diffable against its base, so a PR whose head happens to be named `main` still runs. A bare `/ce-dogfood` on the trunk does not.
-
-If a server is already listening on the chosen port, it reuses it. Otherwise it starts `bin/dev`, `rails server`, or `npm run dev` without asking.
-
----
-
 ## Reference
 
 | Argument | Effect |
 |----------|--------|
 | _(empty)_ | Dogfood the current branch in place. Stops if that branch is the trunk |
-| `<PR number>` | Dogfood that PR. Offers a worktree. Never refused for a `main`-named head |
+| `<PR number>` | Dogfood that PR. Offers a worktree so this checkout stays put. Never refused for a `main`-named head, because a PR always has a base to diff against |
 | `<branch name>` | Dogfood that branch. Offers a worktree if you are not already on it |
 | `--port <number>` | Skip port detection |
 
-Required: `agent-browser` on PATH (not `npx agent-browser`), and a local dev server the skill can start or reuse. Port order matches the other browser skills: `--port`, a port already in active project instructions, `package.json`, `.env*`, then `3000`.
+Required: `agent-browser` on PATH (not `npx agent-browser`), and a local dev server the skill can start or reuse. If a server is already listening on the chosen port, it reuses it; otherwise it starts `bin/dev`, `rails server`, or `npm run dev` without asking. Port order matches the other browser skills: `--port`, a port already in active project instructions, `package.json`, `.env*`, then `3000`.
 
 Report path relocates with `docs_root` (see [configuration](./configuration.md)).
 
@@ -182,6 +171,9 @@ Not on its own. Large, ambiguous, or product-changing issues are escalated. Smal
 
 **What do the Blocked states mean?**
 `Blocked (needs human verify)` is an external flow waiting on you. `Blocked (human decision)` is too big to auto-fix. Resume asks about those instead of re-running them.
+
+**Can a pack be my persona source?**
+Yes. A pack rule whose body describes who the user is and what they notice or refuse is walked as a persona, cited from the pack; product-doc personas join it when present. See [Personas as packs](./packs.md#personas-as-packs).
 
 ---
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run one pre-sanctioned, write-capable implementation route in a controller-
-# supplied isolated workspace. The adapter never creates workspaces, changes
+# supplied detached workspace. The adapter never creates workspaces, changes
 # recipients, integrates output, or retries through another route.
 #
 # Usage:
@@ -98,14 +98,33 @@ validate_model_override() {
   esac
 }
 
+validate_effort_override() {
+  # Same per-route allowlists as the ce-code-review / ce-doc-review peer paths:
+  # reject a tier the selected route cannot honor instead of forwarding it to a
+  # CLI that will fail the attempt after controller authorization. Routes with
+  # no effort knob (cursor, composer, grok-cursor) reject any override.
+  local route="$1" effort="${CROSS_MODEL_EFFORT_OVERRIDE:-}"
+  [ -n "$effort" ] || return 0
+  case "$route:$effort" in
+    claude:low|claude:medium|claude:high|claude:xhigh|claude:max) ;;
+    codex:minimal|codex:low|codex:medium|codex:high|codex:xhigh) ;;
+    grok-cli:low|grok-cli:medium|grok-cli:high) ;;
+    opencode:none|opencode:minimal|opencode:low|opencode:medium|opencode:high|opencode:xhigh|opencode:max|opencode:default) ;;
+    opencode2:*) return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
 adapter_argv() {
   case "$1" in
     codex)
       # --ignore-user-config drops the user's model_reasoning_effort, so pin the
       # editorial tier explicitly, matching the claude/grok routes' --effort high.
+      # CROSS_MODEL_EFFORT_OVERRIDE retunes all three effort-taking routes, the
+      # same knob the ce-code-review / ce-doc-review peer paths honor.
       printf '%s\0' codex exec --ignore-user-config --ignore-rules --ephemeral \
         -s workspace-write -C "$WORKSPACE" --json -o "$RAW_RESULT" \
-        -c model_reasoning_effort=high
+        -c model_reasoning_effort="${CROSS_MODEL_EFFORT_OVERRIDE:-high}"
       [ "$(route_model codex)" = auto ] || printf '%s\0' -m "$(route_model codex)"
       printf '%s\0' -
       ;;
@@ -115,14 +134,14 @@ adapter_argv() {
       printf '%s\0' claude -p --safe-mode --no-session-persistence \
         --permission-mode bypassPermissions --tools Read,Write,Edit,Bash \
         --allowed-tools 'Bash(*)' \
-        --effort high --output-format stream-json --verbose
+        --effort "${CROSS_MODEL_EFFORT_OVERRIDE:-high}" --output-format stream-json --verbose
       [ "$claude_model" = auto ] || printf '%s\0' --model "$claude_model"
       ;;
     grok-cli)
       local grok_model
       grok_model="$(route_model grok-cli)"
       printf '%s\0' grok --prompt-file "$PROMPT_FILE" --cwd "$WORKSPACE" \
-        --effort high --permission-mode acceptEdits \
+        --effort "${CROSS_MODEL_EFFORT_OVERRIDE:-high}" --permission-mode acceptEdits \
         --tools Read,Write,Edit --disable-web-search --no-memory --no-subagents \
         --no-plan --max-turns 50 --output-format streaming-json --verbatim
       [ "$grok_model" = auto ] || printf '%s\0' --model "$grok_model"
@@ -146,9 +165,12 @@ adapter_argv() {
       printf '%s\0' opencode run --dir "$WORKSPACE" --format json --auto --file "$PROMPT_FILE"
       printf '%s\0' "Follow the attached unit packet. Return only the implementation result JSON."
       [ "$(route_model opencode)" = auto ] || printf '%s\0' --model "$(route_model opencode)"
+      # OpenCode carries effort through --variant, same as the review adapters.
+      [ -z "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ] || printf '%s\0' --variant "$CROSS_MODEL_EFFORT_OVERRIDE"
       ;;
     opencode2)
-      printf '%s\0' bash -c 'cd "$1" && shift && exec "$@"' _ "$WORKSPACE" opencode2 run --standalone --auto --format json --file "$PROMPT_FILE"
+      # Distinct v2 harness: binary opencode2; no --dir; no --variant; cwd=workspace.
+      printf '%s\0' opencode2 run --standalone --auto --format json --file "$PROMPT_FILE"
       [ "$(route_model opencode2)" = auto ] || printf '%s\0' --model "$(route_model opencode2)"
       ;;
     *) return 1 ;;
@@ -162,6 +184,10 @@ if [ "${1:-}" = "--emit-adapter" ]; then
   ROUTE="${2:-}"
   validate_model_override "$ROUTE" || {
     printf "model override '%s' not compatible with route '%s'\n" "${CE_WORK_MODEL_OVERRIDE:-}" "$ROUTE" >&2
+    exit 2
+  }
+  validate_effort_override "$ROUTE" || {
+    printf "effort override '%s' not compatible with route '%s'\n" "${CROSS_MODEL_EFFORT_OVERRIDE:-}" "$ROUTE" >&2
     exit 2
   }
   adapter_argv "$ROUTE" >/dev/null 2>&1 || { printf "unknown route '%s'\n" "$ROUTE" >&2; exit 2; }
@@ -194,15 +220,12 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-SCRATCH_ROOT="$WORKSPACE/.tmp/rocketclaw/ce-work-adapter"
-mkdir -p "$SCRATCH_ROOT" || exit 2
-chmod 700 "$WORKSPACE/.tmp" "$WORKSPACE/.tmp/rocketclaw" "$SCRATCH_ROOT" 2>/dev/null || true
-SCRATCH=""
-for _ in {1..16}; do
-  candidate="$SCRATCH_ROOT/run-$$-$RANDOM-$RANDOM"
-  if (umask 077; mkdir "$candidate") 2>/dev/null; then SCRATCH="$candidate"; break; fi
-done
-[ -n "$SCRATCH" ] || { log "cannot create private workspace scratch directory"; exit 2; }
+ADAPTER_TMP="$( (cd "$WORKSPACE" && jj workspace root 2>/dev/null) || true)"
+if [ -z "$ADAPTER_TMP" ]; then
+  ADAPTER_TMP="$WORKSPACE"
+fi
+mkdir -p "$ADAPTER_TMP/.tmp" || exit 2
+SCRATCH="$(mktemp -d "$ADAPTER_TMP/.tmp/ce-work-adapter-XXXXXX")" || exit 2
 chmod 700 "$SCRATCH"
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
@@ -264,7 +287,7 @@ def model_allowed(route, model):
     if route == "opencode":
         return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+", model))
     if route == "opencode2":
-        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(#[A-Za-z0-9._-]+)?", model))
+        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(?:#[A-Za-z0-9._-]+)?", model))
     return False
 
 try:
@@ -389,7 +412,7 @@ PACKET="$(cd "$(dirname "$PACKET")" && pwd -P)/$(basename "$PACKET")" || exit 2
 RESULT_DIR="$(cd "$RESULT_DIR" && pwd -P)" || exit 2
 case "$RESULT_DIR/" in "$WORKSPACE/"*) log "result dir must be outside the worker workspace"; exit 2 ;; esac
 case "$PACKET" in "$WORKSPACE"/*) log "unit packet must be outside the worker workspace"; exit 2 ;; esac
-(cd "$WORKSPACE" && jj workspace root >/dev/null 2>&1) || { log "workspace is not a Jujutsu workspace"; exit 2; }
+(cd "$WORKSPACE" && jj workspace root >/dev/null 2>&1) || { log "workspace is not a jj workspace"; exit 2; }
 chmod 700 "$RESULT_DIR" 2>/dev/null || { log "result dir could not be made private"; exit 2; }
 RESULT_DIR_IDENTITY="$("$PY" - "$RESULT_DIR" <<'PY'
 import os, stat, sys
@@ -680,11 +703,7 @@ if [ "${CE_WORK_REQUIRE_ENFORCED_CONFINEMENT:-}" = "1" ]; then
       publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
       exit 2
       ;;
-    opencode)
-      publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
-      exit 2
-      ;;
-    opencode2)
+    opencode|opencode2)
       publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
       exit 2
       ;;
@@ -715,13 +734,18 @@ if ! command -v "$BINARY" >/dev/null 2>&1; then
   exit 2
 fi
 
+validate_effort_override "$ROUTE" || {
+  publish_unavailable "effort override '${CROSS_MODEL_EFFORT_OVERRIDE:-}' not compatible with route '$ROUTE'" || exit 2
+  exit 2
+}
+
 ARGS=()
 while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROUTE")
 
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-MIN_ENV+=("TMPDIR=$SCRATCH_ROOT")
+MIN_ENV+=("TMPDIR=${ADAPTER_TMP:-$WORKSPACE}/.tmp")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")
@@ -732,11 +756,9 @@ case "$ROUTE" in
   codex) [ -n "${CODEX_HOME:-}" ] && MIN_ENV+=("CODEX_HOME=$CODEX_HOME") ;;
   claude) [ -n "${CLAUDE_CONFIG_DIR:-}" ] && MIN_ENV+=("CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR") ;;
   grok-cli) [ -n "${GROK_CONFIG_HOME:-}" ] && MIN_ENV+=("GROK_CONFIG_HOME=$GROK_CONFIG_HOME") ;;
-  opencode)
+  opencode|opencode2)
     [ -n "${OPENCODE_CONFIG_DIR:-}" ] && MIN_ENV+=("OPENCODE_CONFIG_DIR=$OPENCODE_CONFIG_DIR")
     [ -n "${OPENCODE_CONFIG:-}" ] && MIN_ENV+=("OPENCODE_CONFIG=$OPENCODE_CONFIG")
-    ;;
-  opencode2)
     ;;
   cursor|composer|grok-cursor)
     [ -n "${CURSOR_CONFIG_DIR:-}" ] && MIN_ENV+=("CURSOR_CONFIG_DIR=$CURSOR_CONFIG_DIR")
@@ -895,19 +917,9 @@ def normalize_served_model(value):
 
 try: raw=open(source, encoding="utf-8", errors="replace").read()
 except OSError: raw=""
-if route == "opencode":
-    parts=[]
-    for line in raw.splitlines():
-        try: event=json.loads(line)
-        except Exception: continue
-        if not isinstance(event, dict) or event.get("type") != "text":
-            continue
-        part=event.get("part") if isinstance(event.get("part"), dict) else {}
-        chunk=part.get("text") if isinstance(part.get("text"), str) else None
-        if chunk:
-            parts.append(chunk)
-    worker=parse_text("".join(parts)) if parts else None
-elif route == "opencode2":
+if route == "opencode2":
+    worker=parse_text(raw)
+elif route == "opencode":
     parts=[]
     for line in raw.splitlines():
         try: event=json.loads(line)

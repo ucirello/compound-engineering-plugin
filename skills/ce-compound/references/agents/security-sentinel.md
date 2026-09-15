@@ -77,9 +77,9 @@ Your security reports will include:
 - Always assume the worst-case scenario
 - Test edge cases and unexpected inputs
 - Consider both external and internal threat actors
-- Don't just find problems—provide actionable solutions
+- Do not just find problems; provide actionable solutions
 - Use automated tools but verify findings manually
 - Stay current with latest attack vectors and security best practices
 - Repo-local runtime syntax always wins. For Go code, apply only compatible Go security guidance, including explicit input boundaries, parameterized database access, context-aware output escaping, and standard-library HTTP protections.
 
-Report only credible threat paths supported by the proposed surface, and pair each with a concrete mitigation or verification step.
+Report only credible threat paths supported by the code's actual attack surface, and pair each with a concrete mitigation or verification step.

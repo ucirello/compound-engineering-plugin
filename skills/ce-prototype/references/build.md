@@ -6,25 +6,31 @@ Required read before you write any prototype code, alongside `references/preview
 
 Fidelity is a different axis from size (`references/scoping.md` owns sizing, which the go-ahead depends on). Throwaway means unmaintained and unshipped, not thin — do not test, abstract, or harden past runnable, but take finish as far as the dimension under test needs. A flow or state model gets rich enough to drive; a visual direction gets finished enough to judge; a placement question stays thin. Fidelity may differ per avenue within one wide run. Do not stay low-fidelity on principle, and persist state only when persistence is the question.
 
+## Yields from the web default
+
+It yields in exactly two cases: the user names a technology, or the dimension cannot be rendered in a browser without faking it. In that second case, build in the medium the dimension requires, and name that choice before you build. If a named technology also cannot render the dimension, say so rather than yielding silently. The rest of this file defines what the artifact may be on either path.
+
 ## The artifact on the web path
 
 On the web path the artifact is whatever a browser can display and you can author — HTML, SVG, CSS renderings, images — shown inside the page the preview helper already serves. Where the host offers image generation, use it. Where it does not, author the candidates as markup when markup can carry the dimension honestly, and say so; when it cannot — a photographic or painterly direction — report the missing capability instead, because substituting markup there fakes the very thing being judged. Do not introduce a second display mechanism alongside that page; a yielded run displays however its own medium does.
 
 ## Which run root
 
-Prefer `.context/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Use `<workspace-root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` when the user declines the `.gitignore` append, asks that the run remain scratch-only, or the durable path fails its safety checks. When `jj workspace root` reports no repository, use local `.tmp/rocketclaw/ce-prototype/<date>-<slug>/`. Scratch survival is best-effort, so do not promise it a lifetime. Calling the prototype throwaway is not a request to leave the workspace; throwaway describes the code, and a kept prototype is never deleted.
+Prefer `.context/ce-prototype/<date>-<slug>/` so the prototype survives alongside the decisions capsule. Fall back to `<workspace>/.tmp/ce-prototype/<date>-<slug>/` (or local `.tmp/ce-prototype/<date>-<slug>/` when there is no jj workspace) when the user declines the `.gitignore` append, when they ask that this run not be left in their repo, when the run is not inside a jj workspace, or when the path fails the safety checks; survival there is best-effort, so do not promise it a lifetime. Calling the prototype throwaway is not a request to leave the repo — throwaway describes the code, and a kept prototype is never deleted.
 
 ## Recreate, do not rebuild the app
 
 Recreate what this question needs from the current product. Do not stand up the full app unless the question is the whole-product feel.
 
-Scale into the existing app only as a throwaway overlay when the user asks or the question is density or chrome on an existing page — an isolated page will hide that. That overlay is not the shipped feature. Do not retain prototype code in the lasting JJ change. Undo those edits with `jj restore <paths>` when the try ends, naming only files you changed. An overlay run therefore leaves no artifact behind. If you cannot undo it without replacing someone else's work, name the files you left modified rather than handing off a dirty working copy.
+Scale into the existing app only as a throwaway overlay when the user asks or the question is density or chrome on an existing page — an isolated page will hide that. That overlay is not the shipped feature. Do not leave overlay prototype code in the working-copy change. Undo those edits when the try ends — restore only the files you changed, never work you did not make. An overlay run therefore leaves no artifact behind; nothing survives it. If you cannot undo them cleanly, name the files you left modified rather than handing off a dirty tree.
 
 ## Showing it
 
 When the question is which option wins, put the options on one surface so they can be judged together — unless that surface would distort what is being judged: a scroll or transition gets a full-size run of its own rather than being nested in a small framed panel, and the comparison surface stays static.
 
 After each user-facing action or variant change, show the relevant state so they can see what changed.
+
+While an annotation loop is running, revise the screen the record names, in place. Do not mint a new numbered `00N-*.html` per pin.
 
 Give each question in a multi-question run its own child directory under the run directory. Never delete a kept prototype — the directory is theirs to prune. Calling the prototype throwaway is not a request to delete it; throwaway describes the code.
 

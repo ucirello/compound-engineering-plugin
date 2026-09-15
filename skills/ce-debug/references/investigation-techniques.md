@@ -70,21 +70,23 @@ security find-identity -v
 codesign --sign "$IDENTITY" --verbose=4 "$APP"
 ```
 
-One run, and the log shows precisely which layer drops the value: secrets reach the workflow, but the workflow value does not reach the build. Focus investigation on workflow-to-build-script inheritance, not signing.
+One run, and the log shows precisely which layer drops the value — secrets → workflow ✓, workflow → build ✗ → focus investigation on the workflow-to-build-script inheritance, not on signing.
 
 **When this beats backward tracing:** When the symptom is far from the trigger (many components apart), when components are owned by different systems (CI vs app code), when the "call stack" is conceptual rather than literal (message bus, HTTP, process boundaries). Backward tracing still applies within each layer once the failing layer is identified.
 
 ---
 
-## JJ Bisect for Regressions
+## Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use Jujutsu's automated binary search to find the first bad revision. The command exits 0 for good, 125 to skip, 127 to abort, and any other non-zero status for bad:
+When a bug is a regression ("it worked before"), use binary search to find the breaking change. Record the starting `@` (`jj log -r @ --no-graph -T 'change_id'`) first; `jj bisect run` edits each target as the working copy.
 
 ```bash
-jj bisect run --range '<known-good-revision>..@' -- <test-command>
+jj bisect run --range <known-good-ref>..@ -- <test-command>
 ```
 
-`jj bisect run` directly edits each candidate revision while testing and restores the original working-copy revision when it completes. Use `--find-good` only when searching for the first good revision instead. Preserve any in-progress change by running the bisection in a dedicated JJ workspace under `$(jj workspace root)/.tmp`; outside a JJ workspace, use `$PWD/.tmp` for local scratch and skip bisection.
+The heads of the range are assumed bad. Ancestors of the range that are not also in the range are assumed good. The test command should exit 0 for good, non-zero for bad (125 skips the revision; 127 aborts).
+
+For a manual probe, pass a shell as the command and exit 0 or non-zero after testing that working copy. When finished, `jj edit` the change you started from.
 
 ---
 
@@ -120,7 +122,7 @@ A 5% reproduction rate confirms the bug exists but suggests timing or data sensi
 - Run the suite with randomized test order (most runners support a seed flag) — a different failing-test neighbor each run implies global state mutation
 - Bisect the preceding tests: run the failing test with just the first half of the earlier tests, then the second half, then narrow
 
-Common culprits once isolated: module-level state, mocks not torn down, workspace-local `.tmp` files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
+Common culprits once isolated: module-level state, mocks not torn down, temp files not cleaned up, database rows not rolled back, environment variables mutated and not restored.
 
 ---
 
@@ -202,7 +204,7 @@ When the symptom is "slow" rather than "wrong", logs and code reading mislead: i
 
 - Establish a numeric baseline before touching anything — a timing harness around the slow operation, a profiler run, a query plan (`EXPLAIN ANALYZE`). The baseline is Phase 1's reproduction check for a perf bug: the number is the red, and the fix is verified by re-measuring the same thing, not by reasoning that the change should be faster.
 - Attribute before optimizing: a profile or per-stage timings that show where the time actually goes. Optimizing an unmeasured suspect is the perf version of shotgun debugging.
-- If the slowness is a regression, bisect against the measurement (see JJ Bisect above) rather than reading diffs for something that looks expensive.
+- If the slowness is a regression, bisect against the measurement (see Bisect above) rather than reading diffs for something that looks expensive.
 
 ---
 
@@ -310,7 +312,7 @@ One traced request usually reveals the root cause faster than a dozen attempts t
 
 **Timestamp triangulation.** When the failing operation has no shared ID, timestamps are the fallback. Constrain every log query to a narrow window around the observed failure, then look for the first anomaly in order. Watch for clock skew between services — a 30-second drift between two hosts reorders evidence and misleads triangulation.
 
-**Error tracker payloads.** Sentry, Bugsnag, AppSignal and similar tools capture stack traces, breadcrumbs, user context, request state, and release metadata at the moment of failure. Read the full payload before tracing code — it often contains the exact file:line, the variable state, and the breadcrumbs leading to the error. Grouping rules sometimes hide frequency and variant information; expand to see every instance rather than just the representative one.
+**Error tracker payloads.** Sentry, Bugsnag, Honeybadger, AppSignal and similar tools capture stack traces, breadcrumbs, user context, request state, and release metadata at the moment of failure. Read the full payload before tracing code — it often contains the exact file:line, the variable state, and the breadcrumbs leading to the error. Grouping rules sometimes hide frequency and variant information; expand to see every instance rather than just the representative one.
 
 **APM / distributed traces.** When the project has Datadog APM, Honeycomb, New Relic, or an OpenTelemetry collector, the trace view shows the full call tree across services with timings. Look for: unexpectedly long spans (blocking or slow dependency), failed spans in the middle of the chain, spans that should exist but don't (missing instrumentation also masks bugs).
 
@@ -333,7 +335,7 @@ Many bugs live at the boundary between an application and the system it runs on 
 **Database.**
 
 - Query plan: `EXPLAIN` / `EXPLAIN ANALYZE` on the suspect query — is it using the expected index, or scanning a large table?
-- Slow query log / recent queries: most databases surface the N slowest recent queries — failing queries often show up there
+- Slow query log / recent queries: most databases can show the N slowest recent queries, and failing queries often show up there
 - Locks and transactions: inspect the lock/transaction tables (`pg_locks`, `information_schema.innodb_trx`, `sys.dm_tran_locks`) — is the operation waiting on a long-held lock?
 - Connection pool: is the app exhausting its pool? Are connections leaking?
 - Replication lag (if read replicas are in the path): a read right after a write may hit a replica that hasn't caught up yet
@@ -343,7 +345,7 @@ Many bugs live at the boundary between an application and the system it runs on 
 - Existence and permissions: `ls -la <path>` — does the file exist, is it readable/writable by the running user?
 - Case sensitivity: bugs that only appear on Linux (not macOS) are often case mismatches
 - Open handles: `lsof <path>` or `lsof -p <pid>` — is something still holding the file, preventing write/unlink?
-- Disk space: `df -h` — out-of-space errors sometimes surface as cryptic write failures elsewhere
+- Disk space: `df -h`. Out-of-space errors sometimes appear as cryptic write failures elsewhere
 - File watching / inotify limits: EMFILE or "too many open files" often means an inotify/FD limit, not a leak in your code
 - Path separators and encoding: Windows-style paths in Unix code, or UTF-8 paths in a non-UTF-8 locale
 

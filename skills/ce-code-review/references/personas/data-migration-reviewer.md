@@ -10,7 +10,7 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 
 ## Step 0: Schema drift (when a schema dump is in the diff)
 
-Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — common-ancestor commit ID or ref). **Never assume `main`.**
+Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
 jj diff --from <review-base> --name-only -- db/migrate/
@@ -36,11 +36,11 @@ When drift is present, emit a **P1** finding on the affected dump path (`db/sche
 
 ```bash
 # schema.rb:
-jj file show -r <review-base> db/schema.rb
+jj restore --from <review-base> db/schema.rb
 bin/rails db:migrate
 
 # structure.sql (regenerate after restoring and migrating):
-jj file show -r <review-base> db/structure.sql
+jj restore --from <review-base> db/structure.sql
 bin/rails db:migrate
 ```
 
@@ -86,7 +86,7 @@ Use the anchored confidence rubric in the subagent template.
 
 **Anchor 75** — migration DDL or drift visible in the diff; concrete orphaned reference you can name.
 
-**Anchor 50** — inferred data impact from app code without visible migration handling. Surfaces only as P0 escape per synthesis rules.
+**Anchor 50** — inferred data impact from app code without visible migration handling. Synthesis keeps a finding at this anchor only when its severity is P0.
 
 **Anchor 25 or below — suppress.**
 

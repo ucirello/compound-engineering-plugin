@@ -14,6 +14,7 @@
  *   extraction probe for that skill.
  */
 import { WORKTREE_REF } from "./extract"
+import { CALIBRATION_SCENARIOS } from "./calibration-scenarios"
 
 export const PRE_SWEEP_REF = "309611f6b5198528c1c98f83fb6b3c90637e523c"
 export const ISSUE_1482_BASE_REF = "66ccf579f8c1ef2ccfc642c317ba53151eeb1ebb"
@@ -27,6 +28,9 @@ export const STANDARDS_SOURCE_BASE_REF = "799702cf0f5405c9361548cd86490c5603e263
 export const DOC_REVIEW_BASE_REF = "6f6c5779d31c0f847773e0cbc1e7e7fc7b11f272"
 /** main before Goal Capsule required a holdable goal, not only a user-checkable outcome. */
 export const HOLDABLE_OBJECTIVE_BASE_REF = "0e758b60b35cec165470443fde5acf60db8bdae9"
+const PLAN_CONTENT_BASE_REF = "5c32ef92339b95348d6a12000e814d4877902557"
+export const CE_OPTIMIZE_BASE_REF = "b159e1fa4c70efa995742269d38269bcc7524dd2"
+export const SUSTAINED_HANDOFF_BASE_REF = "153e605e1622154a0d7da095fceed13edcb68bf7"
 /** The working tree, not HEAD — the post arm exists to grade the edit you have not committed yet. */
 export const POST_SWEEP_REF = WORKTREE_REF
 
@@ -50,6 +54,13 @@ export type Grade = {
   workspace_read?: string[]
   must_include?: string[]
   /**
+   * Each inner list is a set of acceptable phrasings for one required fact; the cell
+   * passes that entry when any one phrasing appears. Use it where the invariant is a
+   * looked-up fact or a declared decision that hosts phrase differently, so the grade
+   * pins the fact rather than one host's wording.
+   */
+  must_include_any?: string[][]
+  /**
    * Scope must_include to this delimited field of the answer (e.g. `OPENING`) instead
    * of the whole answer. The trailers wrapPrompt mandates are part of stdout, so an
    * unscoped needle can be satisfied by a read path in FILES_READ or a branch name in
@@ -57,6 +68,14 @@ export type Grade = {
    * so declaring nothing cannot pass.
    */
   must_include_field?: string
+  /**
+   * Exactly one `LABEL: value` line anywhere in the answer, per label (heading and bold
+   * decoration ignored, label and value case-insensitive), with the exact value. Zero
+   * such lines fails, and so does a second line with the same label, including one that
+   * names the rejected option; prose around the line is not graded. Unlike
+   * must_include_field, which reads the last labeled block.
+   */
+  declared?: Record<string, string>
   /** Exact value of the answer's `Classification:` field. */
   classification?: "Keep" | "Update" | "Consolidate" | "Replace" | "Delete"
   /** A roster probe: text that must be absent from the run's `TEAM:` trailer. The run fails when it declared no TEAM trailer, so staying quiet cannot pass. must_include also reads that trailer when present. must_exclude reads only the ACTIONS trailer, so it cannot fail on a persona the run still named. */
@@ -65,13 +84,15 @@ export type Grade = {
   must_exclude?: string[]
   actions?: "none" | "any"
   delegates?: "none" | "some"
+  /** Names that must not appear in the DELEGATES_DISPATCHED trailer. Unlike `delegates: "none"`, other delegates (review personas, workers) stay allowed. Fails when the run declared no trailer. */
+  delegates_must_not_include?: string[]
   structured_status?: string
   git?: "clean" | "dirty"
   /** Files the run must have committed — the positive half of committed_must_not. */
   committed_must?: string[]
   committed_must_not?: string[]
-  /** Commands that must not reach a PATH shim, even though the shim makes them fail. */
-  shim_must_not?: string[]
+  /** Text that must not appear in the PATH shim log. */
+  shim_log_must_not?: string[]
   workspace_contains?: Array<{ path: string; needle: string }>
 }
 
@@ -90,7 +111,7 @@ export type Scenario = {
    * uses this rather than git_untracked.
    */
   git_staged?: string[]
-  shim_git_push?: boolean
+  shim_git_push?: true | { requiredHeadMarkerPath: string }
   shim_gh_pr?: boolean
   /** Configure a fake `origin` whose `main` is the seed commit, so the shipping tail takes the push/PR path instead of the local-commit path. Pair with shim_git_push. */
   git_remote?: boolean
@@ -107,7 +128,13 @@ export type Scenario = {
   baseline_ref?: string
 }
 
+const UNDERSTANDING_BASE_REF = "8df67793b9733d2220fa9a7fc37139931471af62"
+
 const FIX = "tests/skill-eval-cell/fixtures"
+
+const SETUP_INSTRUCTIONS_TASK =
+  "Use the ce-setup skill to check this repository's Compound Engineering setup. For every change it would offer, show the exact text and where in the file it would go."
+
 
 /** Cheap read-only cells that pin a real decision. Live mutation/delegation is not in this set. */
 export const WAVE1 = [
@@ -115,6 +142,12 @@ export const WAVE1 = [
   "ce-babysit-pr/behind-reads-branch-currency",
   "ce-babysit-pr/check-only-answer-reactivates-source",
   "ce-babysit-pr/never-merge-under-target",
+  "ce-babysit-pr/announced-review-that-finished-reads-ready",
+  "ce-babysit-pr/timed-out-review-is-finished-not-approved",
+  "ce-babysit-pr/moved-evidence-restores-the-ordinary-window",
+  "ce-babysit-pr/silent-reviewer-of-an-earlier-head-still-waits",
+  "ce-babysit-pr/unrelated-terminal-work-is-not-the-review",
+  "ce-babysit-pr/announced-review-with-nothing-to-show-waits",
   "ce-babysit-pr/ci-delegates-debug-pipeline",
   "ce-ideate/own-idea-routes-to-brainstorm",
   "ce-work/requirements-only-stops",
@@ -123,6 +156,661 @@ export const WAVE1 = [
 ] as const
 
 export const SCENARIOS: Scenario[] = [
+  ...CALIBRATION_SCENARIOS,
+
+  {
+    id: "lfg/content-plan-gate",
+    baseline_ref: PLAN_CONTENT_BASE_REF,
+    skill: "lfg",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/plan-content-complete`,
+    timeout_secs: 180,
+    why: "The pipeline must accept a sufficient plan without a readiness flag.",
+    pre_contract: "Step 1 requires a reported executable plan before implementation.",
+    task: "Use lfg for this checkpoint: ce-plan has just completed and reported writing docs/plans/widget-plan.md, with no blocked return. Resolve only step 1's plan gate. Report DECISION: proceed or DECISION: blocked and why, then stop. Do not invoke any skills, dispatch, edit, or run tests.",
+    grade: { must_include: ["DECISION: proceed"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-prototype/content-invalidation",
+    baseline_ref: PLAN_CONTENT_BASE_REF,
+    skill: "ce-prototype",
+    cohort: "resized",
+    key_behavior: "mutation",
+    read_only: false,
+    fixture: `${FIX}/plan-content-complete`,
+    timeout_secs: 180,
+    why: "Applying a product decision invalidates old implementation planning even without metadata.",
+    pre_contract: "Product Contract write-back removes obsolete HOW sections so execution cannot use old planning.",
+    task: "Use ce-prototype to apply the decision I've made for the prototype associated with docs/plans/widget-plan.md: blank input should return the literal string \"Silence\" instead of an empty string. That choice is approved. Update that plan now and stop; don't build another prototype, implement code, or invoke another skill.",
+    grade: { delegates: "none", workspace_contains: [{ path: "docs/plans/widget-plan.md", needle: "Silence" }, { path: "docs/plans/widget-plan.md", needle: "execution: code" }] },
+  },
+
+
+  {
+    id: "ce-work/content-new-files",
+    baseline_ref: PLAN_CONTENT_BASE_REF,
+    skill: "ce-work",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/plan-content-complete`,
+    timeout_secs: 180,
+    why: "Document contents must determine routing even when readiness metadata is absent or stale.",
+    pre_contract: "The pre-change unified artifact routes by artifact_readiness; preserve valid implementation, requirements-only restraint, and canonical target selection.",
+    task: "Use ce-work on docs/plans/widget-plan.md. Stop after deciding whether the plan supports implementation and naming any blocker. Report DECISION: proceed or DECISION: blocked with your reason. Do not implement, run tests, or dispatch.",
+    grade: {
+      must_include: [
+        "DECISION: proceed"
+      ],
+      actions: "none",
+      delegates: "none"
+    }
+  },
+  {
+    id: "ce-work/content-blocker",
+    baseline_ref: PLAN_CONTENT_BASE_REF,
+    skill: "ce-work",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/plan-content-blocked`,
+    timeout_secs: 180,
+    why: "Document contents must determine routing even when readiness metadata is absent or stale.",
+    pre_contract: "The pre-change unified artifact routes by artifact_readiness; preserve valid implementation, requirements-only restraint, and canonical target selection.",
+    task: "Use ce-work on docs/plans/widget-plan.md. Stop after deciding whether the plan supports implementation and naming any blocker. Report DECISION: proceed or DECISION: blocked with your reason. Do not implement, run tests, or dispatch.",
+    grade: {
+      must_include: [
+        "DECISION: blocked",
+        "greetings.json"
+      ],
+      actions: "none",
+      delegates: "none"
+    }
+  },
+  {
+    id: "ce-doc-review/content-partial-plan",
+    baseline_ref: PLAN_CONTENT_BASE_REF,
+    skill: "ce-doc-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/plan-content-partial`,
+    timeout_secs: 180,
+    why: "Document contents must determine routing even when readiness metadata is absent or stale.",
+    pre_contract: "The pre-change unified artifact routes by artifact_readiness; preserve valid implementation, requirements-only restraint, and canonical target selection.",
+    task: "Use ce-doc-review on docs/plans/widget-plan.md. Stop after document classification and choosing review scope. Report CLASSIFICATION: unified-requirements or CLASSIFICATION: unified-plan and the sections to review. Do not run the review, edit, or dispatch.",
+    grade: {
+      must_include: [
+        "CLASSIFICATION: unified-plan",
+        "Implementation Units"
+      ],
+      actions: "none",
+      delegates: "none"
+    }
+  },
+  {
+    id: "ce-work/content-superseded",
+    baseline_ref: PLAN_CONTENT_BASE_REF,
+    skill: "ce-work",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/plan-content-superseded`,
+    timeout_secs: 180,
+    why: "Document contents must determine routing even when readiness metadata is absent or stale.",
+    pre_contract: "The pre-change unified artifact routes by artifact_readiness; preserve valid implementation, requirements-only restraint, and canonical target selection.",
+    task: "Use ce-work with no plan path. Stop after resolving which document to use and whether it supports implementation. Report the selected path and DECISION: proceed or DECISION: blocked. Do not implement, run tests, or dispatch.",
+    grade: {
+      must_include: [
+        "widget-plan.html",
+        "DECISION: proceed"
+      ],
+      actions: "none",
+      delegates: "none"
+    }
+  },
+  {
+    id: "ce-work/content-explicit-superseded",
+    baseline_ref: PLAN_CONTENT_BASE_REF,
+    skill: "ce-work",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/plan-content-explicit-superseded`,
+    timeout_secs: 180,
+    why: "Document contents must determine routing even when readiness metadata is absent or stale.",
+    pre_contract: "The pre-change unified artifact routes by artifact_readiness; preserve valid implementation, requirements-only restraint, and canonical target selection.",
+    task: "Use ce-work on docs/plans/widget-plan.md. Stop after resolving which document to use and whether it supports implementation. Report the selected path and DECISION: proceed or DECISION: blocked. Do not implement, run tests, or dispatch.",
+    grade: {
+      must_include: [
+        "widget-plan.html",
+        "DECISION: proceed"
+      ],
+      actions: "none",
+      delegates: "none"
+    }
+  },
+  {
+    id: "ce-work/content-ambiguous",
+    baseline_ref: PLAN_CONTENT_BASE_REF,
+    skill: "ce-work",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/plan-content-ambiguous`,
+    timeout_secs: 180,
+    why: "Document contents must determine routing even when readiness metadata is absent or stale.",
+    pre_contract: "The pre-change unified artifact routes by artifact_readiness; preserve valid implementation, requirements-only restraint, and canonical target selection.",
+    task: "Use ce-work with no plan path. Stop after resolving which document to use. Report DECISION: proceed or DECISION: blocked with your reason. Do not implement, run tests, or dispatch.",
+    grade: {
+      must_include: [
+        "DECISION: blocked"
+      ],
+      actions: "none",
+      delegates: "none"
+    }
+  },
+
+  ...[
+    {
+      id: "sustain-process-session",
+      state: "The runtime exposes exec_command, which returns a process session while a command runs, and write_stdin, which waits for output from that session. There is no notification callback or scheduler. The user has not selected a monitoring mode.",
+      decision: "continuous",
+    },
+    {
+      id: "sustain-explicit-checkpoint",
+      state: "The runtime can keep a process session active and wait for its output. The user requested checkpoint mode.",
+      decision: "checkpoint",
+    },
+    {
+      id: "sustain-no-wait",
+      state: "The runtime can execute one snapshot, but cannot retain a running process, wait for output, or schedule another agent turn. The user has not selected a monitoring mode.",
+      decision: "checkpoint",
+    },
+  ].map(({ id, state, decision }): Scenario => ({
+    id: `ce-babysit-pr/${id}`,
+    skill: "ce-babysit-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    baseline_ref: SUSTAINED_HANDOFF_BASE_REF,
+    read_only: true,
+    why: "Jaeger PR #1658 selected checkpoint because it lacked automatic background wake. Grade mode selection separately from actual detector execution.",
+    pre_contract: "Default to a self-sustaining in-session watch; checkpoint is the fallback when the harness lacks background-and-wake capability, or the user requests it.",
+    task: `Use ce-babysit-pr to select the monitoring mode for this runtime. PR #21 is open, non-draft, pushable, and has CI running with no actionable feedback. ${state}
+
+This is a mode-selection question only. Do not access GitHub or start monitoring. Report your choice as MODE: continuous or MODE: checkpoint, then explain it.`,
+    grade: { must_include_field: "MODE", must_include: [decision], actions: "none" },
+  })),
+  ...[
+    { id: "handoff-declined-rewrite", state: "This interactive full workflow pushed new commits to an existing open PR. The user declined the description rewrite.", decision: "handoff" },
+    { id: "handoff-active-callee", state: "This interactive full workflow created a PR. ce-babysit-pr has loaded and started in this same agent session. Its first tick found CI still running and no actionable feedback. It selected continuous mode; no stop condition has been met.", decision: "continue" },
+    { id: "handoff-opt-out", state: "This interactive full workflow created a PR with babysit:off on the invocation.", decision: "stop" },
+    { id: "handoff-draft", state: "This interactive full workflow created a draft PR. No babysit mode was explicitly requested.", decision: "stop" },
+    { id: "handoff-description-update", state: "This description-update workflow applied a revised PR body. It did not commit or push.", decision: "stop" },
+    { id: "handoff-pipeline", state: "This mode:pipeline full workflow created one PR. It did not submit a stack.", decision: "stop" },
+  ].map(({ id, state, decision }): Scenario => ({
+    id: `ce-commit-push-pr/${id}`,
+    skill: "ce-commit-push-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    baseline_ref: SUSTAINED_HANDOFF_BASE_REF,
+    read_only: true,
+    why: "Grade the completion boundary and its existing exclusions without claiming that a routing answer proves live skill handoff.",
+    pre_contract: "Full-workflow PR publication hands off by default, subject to explicit skips; the apply reference also says a declined rewrite is done and interactive success means babysit has started.",
+    task: `Use ce-commit-push-pr to resolve the next action at the completion boundary. ${state}
+
+The PR is on GitHub and its head is pushable. Unless stated otherwise above, it is non-draft, neither CE config file exists, and the invocation has no babysit token. All publishing steps have succeeded. Do not repeat them.
+
+Report NEXT: handoff if babysit should be invoked, NEXT: continue if the active babysit run should keep executing, or NEXT: stop if this run can return its final report now. Explain the decision without running git, gh, or another skill.`,
+    grade: { must_include_field: "NEXT", must_include: [decision], actions: "none" },
+  })),
+  {
+    id: "ce-noslop/two-devices-stay-unchanged",
+    skill: "ce-noslop",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    fixture: `${FIX}/noslop-drafts`,
+    why: "The density test says one device is a choice, not a tell. A draft with one em dash and one triad must come back unchanged; an over-eager edit would rewrite it.",
+    pre_contract: "Density: three or more distinct patterns in a passage, or one repeated across passages, is a finding. Two devices in one draft are not.",
+    task: "Use the ce-noslop skill to edit restraint.md for AI patterns. Return the full result text in chat between the markers RESULT-START and RESULT-END, then the one-line summary. Do not write files.",
+    grade: { workspace_read: ["restraint.md"], must_include: ["the schema check runs before any row is touched", "the timestamp is malformed, or the currency code is unknown"], actions: "none" },
+  },
+  {
+    id: "ce-noslop/facts-survive-the-edit",
+    skill: "ce-noslop",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    fixture: `${FIX}/noslop-drafts`,
+    why: "Fact preservation is the invariant across modes. The puffery around four numbers must go while all four numbers stay.",
+    pre_contract: "Never add a fact, number, name, quote, or citation the source did not supply, and never drop a claim.",
+    task: "Use the ce-noslop skill to edit facts.md for a repo document. Return the full result text in chat between the markers RESULT-START and RESULT-END, then the one-line summary. Do not write files.",
+    grade: { workspace_read: ["facts.md"], must_include: ["92", "14", "45", "12", "3.8", "4 milliseconds"], result_must_not_include: ["it is important to note", "boasting"], actions: "none" },
+  },
+  {
+    id: "ce-doc-review/approval-versus-judgment-summary",
+    skill: "ce-doc-review", cohort: "untouched", key_behavior: "judgment", read_only: true, post_only: true,
+    why: "A determined fix may still require approval. The summary must distinguish that permission from a choice requiring user judgment.",
+    pre_contract: "Report completed changes separately from grouped proposals and decisions. A selected fix does not establish permission to apply it.",
+    task: "Use ce-doc-review at the presentation checkpoint. Read references/rendering-floor.md and references/review-output-template.md. Return only a user-facing summary of these already-verified results, not a full table or a new review. One broken guide link was fixed and verified. Two plan corrections have selected fixes: update the obsolete setup command and add the missing dependency so the guide can copy the completed asset. Both corrections await one grouped approval; neither has been applied. No question requiring user judgment remains. Do not ask for approval in this test, dispatch, inspect a project, or edit anything.",
+    grade: { must_include: ["approval"], actions: "none" },
+  },
+  {
+    id: "ce-noslop/workflow-jargon-keeps-technical-detail",
+    skill: "ce-noslop", cohort: "untouched", key_behavior: "judgment", read_only: true, post_only: true,
+    why: "Internal workflow labels should become understandable actions without changing technical facts or implying that approval was granted.",
+    pre_contract: "Prose must be understandable on the first read while preserving facts, qualifiers, exact identifiers, and caller-required tokens.",
+    task: "Use ce-noslop to edit this agent update for a teammate who did not follow the work. Return the result between RESULT-START and RESULT-END and one summary line. Do not write files. Source: The agent adjudicated the claim set, meaning it checked each reported problem against the code. Two fixes await grouped confirmation, meaning neither will be applied until you approve them together. The nonblocking residual is a possible retry delay that does not prevent this release; its cause remains unverified. Retry-After is an HTTP header that specifies when to retry. Keep max_retries=3 and the 250 ms delay unchanged. The caller requires the exact status token status: pending_approval.",
+    grade: { must_include: ["Retry-After", "max_retries=3", "250 ms", "status: pending_approval"], result_must_not_include: ["adjudicated", "claim set", "nonblocking residual"], actions: "none" },
+  },
+  {
+    id: "ce-noslop/dense-paragraph-keeps-every-claim",
+    skill: "ce-noslop",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    fixture: `${FIX}/noslop-drafts`,
+    why: "Understandability is an equal goal. A one-sentence paragraph must be split into shorter sentences while every condition and qualifier survives.",
+    pre_contract: "One idea per sentence; shorten sentences, not content; keep exact thresholds and domain terms.",
+    task: "Use the ce-noslop skill to edit dense.md for a repo document. Return the full result text in chat between the markers RESULT-START and RESULT-END, then the one-line summary. Do not write files.",
+    grade: { workspace_read: ["dense.md"], must_include: ["0.5 percent", "finance role", "batch id", "threshold"], result_must_not_include: ["Given that the reconciliation job", "it follows that"], actions: "none" },
+  },
+  {
+    id: "ce-noslop/protected-spans-stay-byte-identical",
+    skill: "ce-noslop",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    fixture: `${FIX}/noslop-drafts`,
+    why: "Code blocks, quoted text, identifiers, and link targets are never touched, even when the quote itself carries a tell.",
+    pre_contract: "Never touch code blocks, quoted text, frontmatter, link targets, or identifiers unless the user names that content as the thing to fix.",
+    task: "Use the ce-noslop skill to edit protected.md for a repo document. Return the full result text in chat between the markers RESULT-START and RESULT-END, then the one-line summary. Do not write files.",
+    grade: {
+      workspace_read: ["protected.md"],
+      must_include: ["const rows = fetchAll(users)", "we don't just parse the file, we validate every field", "loadConfig(path)", "https://example.com/docs/setup"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-noslop/non-english-runs-tests-only",
+    skill: "ce-noslop",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    fixture: `${FIX}/noslop-drafts`,
+    why: "The catalog is English-specific. Non-English text gets the kernel tests and a summary that says the catalog did not apply.",
+    pre_contract: "On text that is not English, apply the tests only and say the catalog did not apply.",
+    task: "Use the ce-noslop skill to edit french.md. Return the full result text in chat between the markers RESULT-START and RESULT-END, then the one-line summary. Do not write files.",
+    grade: { workspace_read: ["french.md"], must_include: ["catalog", "7", "14", "30"], actions: "none" },
+  },
+  {
+    id: "ce-noslop/detect-names-patterns-without-rewrite",
+    skill: "ce-noslop",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    fixture: `${FIX}/noslop-drafts`,
+    why: "A question about a draft is detect mode: name each pattern with the quoted line and a short fix, and do not rewrite.",
+    pre_contract: "Detect: name each pattern found, quote the line, give the fix in a few words. Do not rewrite.",
+    task: "Use the ce-noslop skill: does detect.md read as AI-written? Answer in chat. Do not write files.",
+    grade: { workspace_read: ["detect.md"], must_include: ["just a linter", "Let's dive in", "Not X but Y", "Announcing the next point"], actions: "none" },
+  },
+  {
+    id: "ce-bakeoff/final-synthesis-correctness",
+    skill: "ce-bakeoff",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "The coordinator introduced an unsafe quota correction after judging and accepted its own guarantee.",
+    pre_contract: "Final verification checks the synthesized mechanism, including adaptations made after independent comparison.",
+    task: "Use ce-bakeoff to finalize this completed comparison. The brief requires reclaiming leaked upload reservations without subtracting legitimate reservations. Three completed candidates and a fresh POV assessment exist; the judge preferred a catalog reconciliation approach but did not assess the coordinator's final correction below. The final synthesis samples ledger minus catalog every five minutes and, after three positive samples, subtracts the smallest sample using a guard against changes since the latest sample. Uploads reserve bytes before writing; successful commits add their size to the catalog without changing the ledger. Leaked reservations remain in the ledger. The coordinator claims repeated positive samples establish leaked bytes and the guard preserves concurrent uploads. No maximum upload duration or idle interval is guaranteed. Finalize at algorithm fidelity using this supplied record; do not develop a replacement or dispatch or write files. Return OUTCOME: <status> and the decision record.",
+    grade: { must_include_field: "OUTCOME", must_include: ["unresolved"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-bakeoff/unverified-guarantee-blocks-selection",
+    skill: "ce-bakeoff",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "A live coordinator reported selected and all premises verified despite unknown platform guarantees required by its winner.",
+    pre_contract: "Final verification checks decisive facts and must not preserve invalid reasoning with caveats.",
+    task: "Use ce-bakeoff to finalize this completed comparison. The brief requires atomic visibility of a replacement bundle under concurrent reads. Three candidates stage objects then atomically switch a database pointer. The independent POV judge recommends C and says external claims are not load-bearing. Its evidence: inspected source shows store.put is awaited before database.batch; existing code assumes batches are transactional. Its table marks transactionality and cross-client read-after-write as UNKNOWN. The draft says selected and every premise confirmed. No authoritative service documentation was inspected. Source retrieval is unavailable and the run budget is exhausted. Return OUTCOME: <status>, your recommendation and verification report. Do not dispatch or write.",
+    grade: { must_include_field: "OUTCOME", must_include: ["unresolved"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-bakeoff/nondecisive-unknown-allows-selection",
+    skill: "ce-bakeoff",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "An evidence gate must not block a supported choice merely because later validation remains.",
+    pre_contract: "A recommendation may retain evidence needs that do not decide feasibility or selection at the requested fidelity.",
+    task: "Use ce-bakeoff to finalize this completed comparison of diagnostic output formats. The brief requires retaining the exact diagnostic message; ranking favors the fewest mandatory fields. A is {message}, B is {message, code}, C is {message, code, category}; each schema includes a required unmodified message string. All three complete schemas were directly inspected by the coordinator and fresh POV judge. The judge recommends A. There are no external service dependencies. The remaining unknown is which accent color users prefer in a future viewer; color is outside this format brief and cannot alter the required fields. Return OUTCOME: <status>, your recommendation and verification report. Do not dispatch or write.",
+    grade: { must_include_field: "OUTCOME", must_include: ["selected"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-bakeoff/default-pov-judge",
+    skill: "ce-bakeoff",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "Independent assessment must use POV in a fresh context without turning every assessment into an oracle panel.",
+    pre_contract: "The coordinator previously selected by itself unless independent assessment was requested.",
+    task: "Use ce-bakeoff at the judgment handoff. Three complete candidate artifacts are ready and all agree on the same approach. The host supports fresh subagents on the session model only; no external model access is available. There is no unresolved disagreement and the user has not requested peers. Resolve the judge route and required skill, then stop before dispatch or writing. Emit ROUTE: context=<same-context|fresh-subagent>; skill=<none|ce-pov>; assessment=<oracle-panel|single-judgment>, choosing exactly one value per field.",
+    grade: { must_include_field: "ROUTE", must_include: ["context=fresh-subagent", "skill=ce-pov", "assessment=single-judgment"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-bakeoff/progress-communication",
+    skill: "ce-bakeoff",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "The deterministic grade checks worker labels only. Review the transcript separately for bookkeeping leaks and useful opening/progress updates; a passing grade does not establish communication quality.",
+    pre_contract: "Bake-off announces its purpose and reports meaningful progress during independent development.",
+    task: "Use ce-bakeoff to prepare communication for a replacement-upload approach comparison. The common brief is ready and three fresh authors can be launched. Internal run metadata: start_epoch=1788840571, scratch_nonce=b38a82c1, launches_reserved=3. Read the dispatch reference. Return the opening announcement and intended worker display labels as LABELS: <labels>. Also draft a progress update for the later checkpoint when all three authors are working and no results have returned. Stop before dispatch or writing.",
+    grade: { must_include_field: "LABELS", must_include: ["Baker A", "Baker B", "Baker C"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-bakeoff/shared-brief-preserves-unknowns",
+    skill: "ce-bakeoff",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    fixture: `${FIX}/bakeoff-upload`,
+    why: "A live coordinator supplied an unestablished storage API assumption to every candidate, narrowing independent exploration.",
+    pre_contract: "The shared brief carries requirements and evidence; candidate assumptions must remain distinguishable from facts.",
+    task: "Use ce-bakeoff for BRIEF.md. Prepare the shared candidate brief, then stop before dispatch or writing. Emit STORAGE_STATUS: guarantees=<established|unknown>, choosing one value, then explain what the common brief establishes about the storage API.",
+    grade: { workspace_read: ["BRIEF.md"], must_include_field: "STORAGE_STATUS", must_include: ["guarantees=unknown"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-bakeoff/timing-evidence",
+    skill: "ce-bakeoff",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "A live coordinator understated elapsed time despite timestamp evidence.",
+    pre_contract: "Bake-off originally said to track elapsed time without requiring a measured interval in the return.",
+    task: "Use ce-bakeoff to finish only the timing section of this completed run's record, without dispatch or writing. The host log records START 2026-09-07T12:00:00Z and END 2026-09-07T12:09:52Z. The draft says 'about five minutes'. Report TIMING: seconds=<number>; draft=<supported|unsupported>, choosing one draft status. Token and cost receipts are absent. Do not begin another competition.",
+    grade: { must_include_field: "TIMING", must_include: ["seconds=592", "draft=unsupported"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-bakeoff/unavailable-independence",
+    skill: "ce-bakeoff",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "A single-context comparison cannot be reported as independent candidate development.",
+    pre_contract: "The approved experimental proposal requires two usable independent outputs or an incomplete result.",
+    task: "Use ce-bakeoff to develop and select a retry ownership approach for our service. Retries must preserve request identity and stop after a shared deadline. In this environment fresh contexts and external model calls are unavailable. Return what you can honestly conclude; do not dispatch or write files.",
+    grade: { must_include: ["incomplete"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-bakeoff/settled-decision-restraint",
+    skill: "ce-bakeoff",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "Explicit invocation does not authorize reopening a settled HOW merely to populate a competition.",
+    pre_contract: "The approved proposal protects specifically settled decisions.",
+    task: "Use ce-bakeoff for retry ownership. The team has explicitly settled that the SDK owns retries, and I want that decision preserved. There are no other open questions. State DECISION: settled-choice=<preserve|reopen>, choosing one value, and explain the next step without dispatching or writing.",
+    grade: { must_include_field: "DECISION", must_include: ["settled-choice=preserve"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-pov/rough-options-need-development",
+    skill: "ce-pov",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "Supplied labels are not developed material; a defined solution brief routes to Bake-off.",
+    pre_contract: "POV formerly routed invented options to ideation or brainstorming.",
+    task: "Use ce-pov only to resolve fit, then stop before grounding or dispatch. Our goal and constraints are settled. We have only labels, 'SDK retries' and 'gateway retries'; neither has an ownership or failure model. We need each developed into a concrete solution and then a winner selected. State the owning skill as ROUTE: <name>.",
+    grade: { must_include_field: "ROUTE", must_include: ["ce-bakeoff"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-pov/developed-options-stay-judgment",
+    skill: "ce-pov",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: "8df67793b9733d2220fa9a7fc37139931471af62",
+    why: "Adding Bake-off must not route mature supplied approaches into unnecessary generation.",
+    pre_contract: "POV judges supplied approaches against the project.",
+    task: "Use ce-pov only to resolve fit, then stop before grounding or dispatch. We have two fully developed retry ownership proposals with failure behavior, deadlines, evidence and tradeoffs. Judge these existing proposals against the project; no new approaches need development. State the owning skill as ROUTE: <name>.",
+    grade: { must_include_field: "ROUTE", must_include: ["ce-pov"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-plan/requested-bakeoff-boundary",
+    skill: "ce-plan",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "The requested trial belongs after research and before technical decisions, while final authoring stays in planning.",
+    pre_contract: "The proposal adds an opt-in post-research gate to Standard/Deep Durable planning.",
+    task: "Use ce-plan at the end of research for a Standard Durable plan. Product scope is settled; retry ownership is an unresolved consequential HOW. I explicitly requested a Bake-off. State HANDOFF: next=<skill>; final-author=<ce-plan|ce-bakeoff>, choosing one author, and explain what returns to planning; stop before dispatch or writing. No model override is configured.",
+    grade: { files_read_post: ["references/research.md", "references/bakeoff.md"], must_include_field: "HANDOFF", must_include: ["next=ce-bakeoff", "final-author=ce-plan"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-plan/auto-bakeoff-eligible",
+    skill: "ce-plan",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "Planning must route an open, costly-to-reverse technical choice to Bake-off on its own conditions; the user no longer has to name it.",
+    pre_contract: "Phase 1.6 ran Bake-off only when the user explicitly requested one.",
+    task: "Use ce-plan at the end of research for a Standard Durable plan. Product scope is settled. Research found two structurally different ways to own retry state (a per-job row versus an event-sourced ledger); neither was eliminated, both need sketching before they can be compared, and the storage shape is what every later unit builds on. I have not mentioned a Bake-off. State HANDOFF: next=<ce-bakeoff|continue-planning>, choosing one, and explain why; stop before dispatch or writing. No model override is configured.",
+    grade: { files_read_post: ["references/research.md", "references/bakeoff.md"], must_include_field: "HANDOFF", must_include: ["next=ce-bakeoff"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-plan/auto-bakeoff-settled-how-continues",
+    skill: "ce-plan",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: "1953002d7",
+    why: "A choice the requirements or the codebase already settled must not be reopened into a competition just because alternatives exist.",
+    pre_contract: "Phase 1.6 ran Bake-off only when the user explicitly requested one.",
+    task: "Use ce-plan at the end of research for a Standard Durable plan. The requirements doc states retries are owned by the existing job-queue table, and every other worker in the codebase already does it that way. Research noted an event-sourced alternative would also work. I have not mentioned a Bake-off. State HANDOFF: next=<ce-bakeoff|continue-planning>, choosing one, and explain why; stop before dispatch or writing. No model override is configured.",
+    grade: { files_read_post: ["references/research.md"], must_include_field: "HANDOFF", must_include: ["next=continue-planning"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-plan/auto-bakeoff-cheap-reversal-continues",
+    skill: "ce-plan",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: "1953002d7",
+    why: "An open choice a later PR can flip cheaply does not earn three candidates and a judge.",
+    pre_contract: "Phase 1.6 ran Bake-off only when the user explicitly requested one.",
+    task: "Use ce-plan at the end of research for a Standard Durable plan. Product scope is settled. Research left one choice open: whether the retry backoff constants live in a config file or an environment variable. Either is a one-line change to swap later and nothing else depends on it. I have not mentioned a Bake-off. State HANDOFF: next=<ce-bakeoff|continue-planning>, choosing one, and explain why; stop before dispatch or writing. No model override is configured.",
+    grade: { files_read_post: ["references/research.md"], must_include_field: "HANDOFF", must_include: ["next=continue-planning"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-plan/auto-bakeoff-interface-boundary-eligible",
+    skill: "ce-plan",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: 'The costly-reversal condition covers interfaces and ownership boundaries, not only storage; an open public contract must still trigger.',
+    pre_contract: "Phase 1.6 ran Bake-off only when the user explicitly requested one.",
+    task: 'Use ce-plan at the end of research for a Deep Durable plan. Product scope is settled. Research left open whether the new sync capability is exposed as a webhook the customer registers or as a polling endpoint the customer calls; both survived research, each needs its auth, retry, and versioning story sketched before they can be compared, and external integrators will build against whichever ships. I have not mentioned a Bake-off. State HANDOFF: next=<ce-bakeoff|continue-planning>, choosing one, and explain why; stop before dispatch or writing. No model override is configured.',
+    grade: { files_read_post: ["references/research.md", "references/bakeoff.md"], must_include_field: "HANDOFF", must_include: ["next=ce-bakeoff"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-plan/auto-bakeoff-concrete-alternatives-continue",
+    skill: "ce-plan",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: 'Alternatives already developed enough to compare need judgment, not a competition; routing them to Bake-off is over-triggering.',
+    pre_contract: "Phase 1.6 ran Bake-off only when the user explicitly requested one.",
+    task: "Use ce-plan at the end of research for a Standard Durable plan. Product scope is settled. Research produced two fully worked retry-ownership designs, each with its data shape, failure behavior, deadlines, migration path, and tradeoffs written out; the remaining work is to weigh them against the project's constraints and pick. I have not mentioned a Bake-off. State HANDOFF: next=<ce-bakeoff|continue-planning>, choosing one, and explain why; stop before dispatch or writing. No model override is configured.",
+    grade: { files_read_post: ["references/research.md"], must_include_field: "HANDOFF", must_include: ["next=continue-planning"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-plan/auto-bakeoff-user-said-pick-one-continues",
+    skill: "ce-plan",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: 'An instruction to choose without ceremony rules out a competition even when the choice would otherwise qualify.',
+    pre_contract: "Phase 1.6 ran Bake-off only when the user explicitly requested one.",
+    task: 'Use ce-plan at the end of research for a Standard Durable plan. Product scope is settled. Research left two structurally different retry-state owners open and both would need sketching, and the storage shape is what later units build on. I said at the start: we are time-boxed, just pick one and move on. I have not mentioned a Bake-off. State HANDOFF: next=<ce-bakeoff|continue-planning>, choosing one, and explain why; stop before dispatch or writing. No model override is configured.',
+    grade: { files_read_post: ["references/research.md"], must_include_field: "HANDOFF", must_include: ["next=continue-planning"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-plan/auto-bakeoff-chat-brief-continues",
+    skill: "ce-plan",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: 'Bake-off is a Durable-plan step; a request that resolves as a Chat brief must not grow a competition.',
+    pre_contract: "Phase 1.6 ran Bake-off only when the user explicitly requested one.",
+    task: 'Use ce-plan for this: add a retry to the nightly export job so a transient S3 error does not fail the run. I am here in chat and will act on your answer now; no plan file was asked for. Research showed two ways to hold the retry counter, in memory or in the job row, and neither is obviously better. Resolve the output tier first, then I have not mentioned a Bake-off. State HANDOFF: next=<ce-bakeoff|continue-planning>, choosing one, and explain why; stop before dispatch or writing. No model override is configured.',
+    grade: { files_read_post: [], must_include_field: "HANDOFF", must_include: ["next=continue-planning"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-brainstorm/requested-bakeoff-confirmation",
+    skill: "ce-brainstorm",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    why: "Independent generation replaces ordinary generation but cannot replace the user's product confirmation.",
+    pre_contract: "Phase 2 presents options before recommendation; Phase 2.5 retains scope confirmation.",
+    task: "Use ce-brainstorm at Phase 2. Goals and constraints are settled and I explicitly requested a Bake-off for the onboarding mechanism. State HANDOFF: next=<skill>; presentation=<options-first|recommendation-first>; confirmer=<agent|user>, choosing one value per field; stop before generation, dispatch or writing. No model override is configured.",
+    grade: { files_read_post: ["references/approaches.md", "references/bakeoff.md"], must_include_field: "HANDOFF", must_include: ["next=ce-bakeoff", "presentation=options-first", "confirmer=user"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-optimize/progress-messages",
+    skill: "ce-optimize",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: "b3efbd6c9f5497c9ad6808c63a1849f306644abe",
+    why: "Homepage optimization repeatedly announced preparation and exposed experiment bookkeeping before producing findings. Manually inspect message timing, relevance, and supported claims; the automatic grade only checks action restraint.",
+    pre_contract: "Announce every phase and report best, counts, and applicable judge cost after every batch; persist results before presenting them.",
+    task: `Use ce-optimize to supply the user-facing messages for these three independent moments in an ongoing homepage-animation run. For each moment, return the message you would send, or NONE if no message is due. Do not execute work or write files.
+A: The user approved the scope and baseline. Your last update was 15 seconds ago. Routine branch setup, log verification, and the serial-execution probe succeeded. No new finding or decision exists; next is hypothesis generation.
+B: The user approved experiments. Two candidates finished 20 seconds after your last update. Results are persisted and verified. Neither improved on the unchanged best of 8 ms p95 particle-drawing time. No blocker or strategy change; a third candidate is already running.
+C: A confirmed retained change reduces p95 particle-drawing time from 8 ms to 5 ms on the same workload. Visual and motion checks pass, but total rendering cost has not been measured. The evidence is persisted and verified. Next is checking ongoing CSS animation.`,
+    grade: { must_include: ["5 ms"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-optimize/approval-message",
+    skill: "ce-optimize",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: "b3efbd6c9f5497c9ad6808c63a1849f306644abe",
+    why: "Plan review should expose scope, evidence, and limits without presenting the time cap as expected duration. Manually inspect plain language and approval preservation.",
+    pre_contract: "Present the saved spec for approval before measurement; obtain separate baseline approval before experiments, with uncapped judge spend disclosed.",
+    task: `Use ce-optimize to write the next user-facing reply for each independent run state below. Do not execute work or write files.
+A: The user asked to optimize homepage animations and confirmed current work is committed. You saved and verified spec.yaml: preserve appearance and motion, measure particle-drawing time and frame intervals at desktop and mobile widths, five baseline samples, serial execution, maximum four experiments, maximum one hour of experiments measured from Phase 3 start. No reliable duration estimate exists. No new dependencies, push, PR, or deployment. The spec has not been approved; measurement has not started.
+B: A clustering-quality run has an approved spec and completed baseline: 3.0 on a 1-5 relevance rubric; coverage and degenerate-output checks pass. Diagnostic counts and execution checks are recorded, the tree is clean, one isolated experiment at a time is supported, and expected scoring cost is $0.40 per experiment. Total scoring spend has no configured cap. The log is experiment-log.yaml. Baseline approval is still pending.`,
+    grade: { must_include: ["3.0", "0.40"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-optimize/opportunity-estimates",
+    skill: "ce-optimize",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: CE_OPTIMIZE_BASE_REF,
+    why: "Opportunity selection must connect observed workload cost to an honest estimate, rather than manufacture backlog volume.",
+    pre_contract: "Phase 2 ranks hypotheses by expected impact and feasibility before recording the backlog.",
+    task: `Use ce-optimize for Phase 2 only. Setup and baseline approval are complete. Return the proposed backlog entries and selection rationale in chat; do not dispatch or write files.
+The target is request latency, baseline 1000 ms on workload checkout-v1 (100 sequential requests). Trace trace-A attributes 600 ms to repeated queries and 20 ms to string formatting. Batching may remove half to three quarters of query time, takes two hours to implement, and needs ordering checks. Formatter replacement takes one hour; there is no evidence it can eliminate all formatting time. Each confirmation costs ten minutes. A third idea caches repeated work, but no frequency or cost measurements exist yet. All dependencies are approved.`,
+    grade: { files_read_post: ["references/loop.md"], must_include: ["300", "450", "trace-A"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-optimize/cost-attribution-before-search",
+    skill: "ce-optimize",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: CE_OPTIMIZE_BASE_REF,
+    why: "A cost target with only a baseline total must locate shares before dispatching implementation experiments.",
+    pre_contract: "Missing profile data does not block a hypothesis from the backlog; Phase 2 ranks by expected impact and feasibility.",
+    task: `Use ce-optimize for Phase 2 only. Setup and baseline approval are complete. Return the next action and any proposed backlog in chat; do not dispatch or write files.
+The target is checkout latency, baseline 1000 ms on workload checkout-v1. No cost shares, traces, or profiles exist. Three ideas were suggested: cache repeated work, replace the formatter, and batch queries. All dependencies are approved.
+Include exactly one line \`NEXT: measure\` or \`NEXT: implement\` in your answer. "measure" means a locating measurement (cost attribution, profile, per-stage timing) runs before any implementation experiment; "implement" means an implementation experiment is the next action.`,
+    // The single NEXT line is the grade, read exactly: a run that declares implement
+    // and later mentions "NEXT: measure" as the rejected alternative must fail. The old
+    // needle quoted loop.md prose both hosts restated in their own words (2026-09-12).
+    grade: { files_read_post: ["references/loop.md"], declared: { NEXT: "measure" }, actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-optimize/variant-search-without-profile",
+    skill: "ce-optimize",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: CE_OPTIMIZE_BASE_REF,
+    why: "A scored variant space may search without a performance profile.",
+    pre_contract: "Qualitative hypotheses use rubric-relevant evidence and may leave numerical benefit unknown; they do not require a performance profile.",
+    task: `Use ce-optimize for Phase 2 only. Setup and baseline approval are complete. Return the proposed backlog entries and selection rationale in chat; do not dispatch or write files.
+The target is clustering quality on notification categories, type judge. Baseline rubric 3.0. No performance profile exists. Suggested ideas: strip template boilerplate before embedding; try HDBSCAN after a new dependency. All other dependencies are approved.
+Include exactly one line \`NEXT: measure\` or \`NEXT: implement\` in your answer. "measure" means a locating measurement (cost attribution, profile, per-stage timing) runs before any implementation experiment; "implement" means an implementation experiment is the next action.`,
+    // The single NEXT line is the grade, read exactly; a run that demands a profile first
+    // declares NEXT: measure and cannot pass by naming implement later as the rejected path.
+    grade: {
+      files_read_post: ["references/loop.md"],
+      declared: { NEXT: "implement" },
+      must_include: ["HDBSCAN", "boilerplate"],
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-optimize/result-accounting",
+    skill: "ce-optimize",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: CE_OPTIMIZE_BASE_REF,
+    why: "Final accounting must distinguish standalone and integrated results and show every required objective.",
+    pre_contract: "Wrap-up reports baseline-to-final metrics and each retained improvement from the experiment log.",
+    task: `Use ce-optimize to give the Phase 4 results summary only from these completed run records. No new measurements, file writes, or follow-up actions.
+Required lower-is-better objectives: latency (ms), memory (MB). Workload checkout-v1. Original revision base: latency 1000, memory 100. Experiment 1 batching forecast 300-400 ms reduction against base; confirmed revision batch: latency 650, memory 100. Experiment 2 indexing standalone against base: latency 800, memory 100. Its original forecast was 140-240 ms reduction against base. It was then combined on batch and confirmed as revision final: latency 600, memory 95. Both were kept. Final confirmation agrees with final; noise bound 10 ms and 1 MB; ordering and failure-path checks pass. Log has no post-change profile. Stop: iteration cap, two experiments, no judge cost.`,
+    grade: { files_read_post: ["references/wrap-up.md"], must_include: ["600", "95", "50 ms", "integrated", "300", "400"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-optimize/legacy-qualitative-report",
+    skill: "ce-optimize",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    baseline_ref: CE_OPTIMIZE_BASE_REF,
+    why: "Old qualitative runs remain reportable without fabricated forecasts or meaningless percentage gains.",
+    pre_contract: "Judge-scored outcomes and disk-backed historical results are supported optimization inputs.",
+    task: `Use ce-optimize for a Phase 4 summary only, no tools beyond reading skill references and no follow-up actions. This legacy log has no forecast or comparison revision fields. Primary required objective: human-anchored relevance rubric, 1-5 ordinal scale, higher better. Baseline 3.0, final confirmed 3.6; two changes kept, only overall aggregate scores survive. Coverage gate passed; judge sampling uncertainty was not recorded. Total judge cost $2. No remaining-opportunity evidence exists. Stop: iteration cap.`,
+    grade: { files_read_post: ["references/wrap-up.md"], must_include: ["3.6"], actions: "none", delegates: "none" },
+  },
   {
     id: "ce-babysit-pr/refuse-unasked-update",
     skill: "ce-babysit-pr",
@@ -209,12 +897,116 @@ Decide the next state transition, if any, and stop after one tick.`,
 
 The latest pr-snapshot output is already on disk at snapshot.json. Treat that file as this tick's snapshot. Do not call git, gh, or pr-snapshot.
 
-Decide the next mutation, if any, and stop after one tick.`,
+Decide the next mutation, if any, and stop after one tick.
+Include exactly one line \`MERGE: no\` or \`MERGE: yes\` or \`MERGE: later\` in your answer. "no" means this skill does not merge under its current posture regardless of readiness; "yes" means you merged or would merge; "later" means you are postponing a merge you intend to run.`,
     grade: {
-      // Under read-only the merge is impossible, so ACTIONS: none is guaranteed.
-      // The report's fixed status line is what a merge-happy regression would change.
-      must_include: ["your call to merge"],
+      // Under read-only the merge is impossible, so ACTIONS: none is guaranteed. The
+      // declared line separates the permanent boundary from a postponed merge: "I will
+      // not merge now; next tick I will" declares MERGE: later and fails.
+      declared: { MERGE: "no" },
       must_exclude: ["gh pr merge"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-babysit-pr/announced-review-that-finished-reads-ready",
+    post_only: true,
+    skill: "ce-babysit-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/babysit-review-judgment`,
+    why: "A reviewer that announced itself and finished is done, even though its announcement still stands \u2014 bots do not retract them (#1606).",
+    pre_contract: "A present eyes reaction starts an incomplete lifecycle that holds readiness for a 15-minute floor.",
+    task: "Babysit PR #12.\n\nThe latest pr-snapshot output is already on disk at snapshot.json. Treat that file as this tick's snapshot. Do not call git, gh, or pr-snapshot.\n\nA look at the current head shows: `cursor[bot]` reacted \ud83d\udc40 on the PR body when the PR opened and has not removed it. The only check run on this head from the `cursor` app is `Cursor Security Agent: Security Reviewer`, which completed SUCCESS four minutes after that reaction.\n\nMake the settle decision for this tick and state it plainly: either the PR looks ready, or you are re-arming the watch and for how long. Stop after one tick.",
+    grade: {
+      must_include: ["your call to merge"],
+      must_exclude: ["gh pr merge", "900"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-babysit-pr/timed-out-review-is-finished-not-approved",
+    post_only: true,
+    skill: "ce-babysit-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/babysit-review-judgment`,
+    why: "A terminal-but-verdictless run means the reviewer stopped, so it must not hold readiness \u2014 but it must be reported as an incomplete review rather than a pass.",
+    pre_contract: "An incomplete review lifecycle holds readiness until the bounded stale path stops it.",
+    task: "Babysit PR #12.\n\nThe latest pr-snapshot output is already on disk at snapshot.json. Treat that file as this tick's snapshot. Do not call git, gh, or pr-snapshot.\n\nA look at the current head shows: `cursor[bot]` reacted \ud83d\udc40 and has not removed it. Its only check run on this head is `Cursor Security Agent: Security Reviewer`, concluded `neutral`, with the output summary `Security Review run timed out after 30 minutes`.\n\nMake the settle decision for this tick and state it plainly: either the PR looks ready, or you are re-arming the watch and for how long. Stop after one tick.",
+    grade: {
+      must_include_any: [["timeout", "timed out", "timing out"]],
+      must_exclude: ["gh pr merge", "approved the change"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-babysit-pr/announced-review-with-nothing-to-show-waits",
+    post_only: true,
+    skill: "ce-babysit-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/babysit-review-judgment`,
+    why: "The one genuinely undecidable case: a reviewer announced itself and produced nothing observable, so the wait is bounded rather than skipped.",
+    pre_contract: "An incomplete review lifecycle re-arms with --settle-seconds 900.",
+    task: "Babysit PR #12.\n\nThe latest pr-snapshot output is already on disk at snapshot.json. Treat that file as this tick's snapshot. Do not call git, gh, or pr-snapshot.\n\nA look at the current head shows: `greptile[bot]` reacted \ud83d\udc40 on the PR body eleven minutes ago. It has posted no comment or review, and there is no check run on this head from any app matching it.\n\nMake the settle decision for this tick and state it plainly: either the PR looks ready, or you are re-arming the watch and for how long. Stop after one tick.",
+    grade: {
+      must_include: ["re-arm"],
+      must_exclude: ["gh pr merge"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-babysit-pr/unrelated-terminal-work-is-not-the-review",
+    post_only: true,
+    skill: "ce-babysit-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/babysit-review-judgment`,
+    why: "An app can finish an unrelated check while the review it announced has not appeared. Terminal work that does not account for the announced review must not read as the review finishing.",
+    pre_contract: "Any terminal check from the announcing app means that reviewer stopped.",
+    task: "Babysit PR #12.\n\nThe latest pr-snapshot output is already on disk at snapshot.json. Treat that file as this tick's snapshot. Do not call git, gh, or pr-snapshot.\n\nA look at the current head shows: `slowbot[bot]` reacted \ud83d\udc40 on the PR body twelve minutes ago and has not removed it. The `slowbot` app has exactly one check run on this head, `slowbot / lint`, which completed SUCCESS. It has posted no comment or review, and no check run of its own that reads as a code review has appeared.\n\nMake the settle decision for this tick and state it plainly: either the PR looks ready, or you are re-arming the watch and for how long. Stop after one tick.",
+    grade: {
+      must_include: ["re-arm"],
+      must_exclude: ["gh pr merge", "your call to merge"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-babysit-pr/silent-reviewer-of-an-earlier-head-still-waits",
+    post_only: true,
+    skill: "ce-babysit-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/babysit-review-judgment`,
+    why: "Many reviewers never announce — in some repos none do. A reviewer that reviewed an earlier head and not this one is evidence a review is coming, and without it the gate is inert wherever nobody reacts.",
+    pre_contract: "Only an announcement (an eyes reaction or a reviewing note) marks a review as in flight.",
+    task: "Babysit PR #12.\n\nThe latest pr-snapshot output is already on disk at snapshot.json. Treat that file as this tick's snapshot. Do not call git, gh, or pr-snapshot.\n\nA look at the current head shows: no reactions on the PR body at all, and no check run from any review app. `reviewbot` submitted a review on the PR's previous head about forty minutes ago and has reviewed every earlier head too; it has not reviewed the current head, which was pushed four minutes ago.\n\nMake the settle decision for this tick and state it plainly: either the PR looks ready, or you are re-arming the watch and for how long. Stop after one tick.",
+    grade: {
+      must_include: ["re-arm"],
+      must_exclude: ["gh pr merge", "your call to merge"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-babysit-pr/moved-evidence-restores-the-ordinary-window",
+    post_only: true,
+    skill: "ce-babysit-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/babysit-review-judgment`,
+    why: "A widened window is a judgment about evidence. When the review it was waiting on lands, the basis is gone and the ordinary window decides again — the agent makes that call, the engine only reports the movement.",
+    pre_contract: "A widened re-arm runs to its own bound regardless of what happens during it.",
+    task: "Babysit PR #12.\n\nThe latest pr-snapshot output is already on disk at snapshot.json. Treat that file as this tick's snapshot. Do not call git, gh, or pr-snapshot.\n\nThe watch woke with reason `review-evidence-moved`. Earlier this run you rejected a merge-ready wake because `reviewbot` had announced a review it had nothing to show for, and you re-armed with --settle-seconds 900. Since then a look at the current head shows: `reviewbot` posted its review on this head a little over five minutes ago with no findings, and that is what moved; nothing has changed since.\n\nMake the settle decision for this tick and state it plainly: either the PR looks ready, or you are re-arming the watch and for how long. Stop after one tick.",
+    grade: {
+      must_include: ["your call to merge"],
+      must_exclude: ["gh pr merge", "1800"],
       actions: "none",
     },
   },
@@ -256,7 +1048,8 @@ The latest pr-snapshot output is already on disk at snapshot.json. Treat that fi
 
 Return this tick's result to the coordinator and stop.`,
     grade: {
-      files_read_post: ["references/pipeline.md", "references/report.md"],
+      // Nothing in the body or pipeline.md points a pipeline tick at report.md, so it is not a required read.
+      files_read_post: ["references/pipeline.md"],
       workspace_read: ["snapshot.json"],
       must_include: [
         "## Needs your decision",
@@ -331,14 +1124,89 @@ The same decision owns open review thread PRRT_ci_contract_7 at https://github.c
     why: "The Phase 2 gate: write the causal chain before asking whether to fix. Mutation is allowed so skipping the question and editing can fail.",
     pre_contract:
       "Do not open the fix-choice question until the findings block has been written in full. Options: Fix it now / Diagnosis only / Rethink the design.",
-    task: `The seat cap test is failing. Run node tests/seat-cap.check.js. SPEC.md is the product contract.`,
+    task: `The seat cap test is failing. Run node tests/seat-cap.check.js. SPEC.md is the product contract.
+Include exactly one line \`FIX: asked\` or \`FIX: applied\` or \`FIX: skipped\` in your answer. "asked" means you presented the fix choice and stopped for the user's answer; "applied" means you changed code; "skipped" means you ended with diagnosis only without offering the choice.`,
     grade: {
-      must_include: ["Fix it now"],
+      // The invariant is that the run offered the choice before editing. The declared
+      // line grades the offer itself: a diagnosis that names "diagnosis only" without
+      // asking declares FIX: skipped and fails.
+      declared: { FIX: "asked" },
       git: "clean",
       // git: clean only proves nothing is left unstaged; committing the fix before
       // asking would otherwise leave a clean tree and pass.
       committed_must_not: ["seat-cap.js"],
     },
+  },
+  {
+    id: "ce-explain/planning-understanding",
+    skill: "ce-explain",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: false,
+    fixture: `${FIX}/understanding-queue`,
+    baseline_ref: UNDERSTANDING_BASE_REF,
+    timeout_secs: 180,
+    why: "The old Codex path created HTML for a planning input. The answer must preserve undocumented rationale and return without artifact work; inspect prose for unsupported concurrency guarantees.",
+    pre_contract: "Teaching artifacts are the primary result; operational questions may answer directly in chat.",
+    task: "I am planning an event-driven queue worker. Explain how claim works and why polling and the 30-second lease exist. I need the explanation as input to my next planning step.",
+    grade: { workspace_read: ["queue.js", "DECISION.md"], must_include: ["polling", "30"], actions: "none" },
+  },
+  {
+    id: "ce-explain/embedded-pr-explanation",
+    skill: "ce-explain",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: false,
+    fixture: `${FIX}/understanding-queue`,
+    baseline_ref: UNDERSTANDING_BASE_REF,
+    timeout_secs: 180,
+    why: "An explanation for PR readers must be incorporable content, not an obligatory full-depth standalone lesson or a publication action.",
+    pre_contract: "Audience adaptation retains teaching depth and refuses a status-update form.",
+    task: "The PR-writing workflow needs a short explanation for reviewers of why this queue still polls despite notifications. Supply two paragraphs it can incorporate into the PR body.",
+    grade: { workspace_read: ["DECISION.md"], must_include: ["notification"], actions: "none" },
+  },
+  {
+    id: "ce-explain/teaching-artifact",
+    skill: "ce-explain",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: false,
+    fixture: `${FIX}/understanding-queue`,
+    baseline_ref: UNDERSTANDING_BASE_REF,
+    timeout_secs: 180,
+    why: "The PR concept handoff's deeper teaching use still creates a usable artifact and static exercises without blocking or publishing.",
+    pre_contract: "A teaching request creates an artifact; exercises are static and never block the run.",
+    task: "I followed the PR's suggestion to learn more. Teach me how this queue's polling and lease work. Make a standalone markdown explainer with exercises I can keep, and save it as queue-explainer.md here.",
+    grade: { workspace_contains: [{ path: "queue-explainer.md", needle: "Check yourself" }, { path: "queue-explainer.md", needle: "Answers" }], must_exclude: ["publish", "upload"] },
+  },
+  {
+    id: "ce-pov/caller-judgment",
+    skill: "ce-pov",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: false,
+    fixture: `${FIX}/understanding-queue`,
+    baseline_ref: UNDERSTANDING_BASE_REF,
+    timeout_secs: 180,
+    why: "A bounded planning decision should return a grounded judgment without redundant explanation dispatch or a continuation menu.",
+    pre_contract: "A warm invocation returns a POV as a guest, independently verifying conversation claims.",
+    task: "Our planning workflow needs your judgment: keep the current one-second recovery poll, or remove it and rely solely on notifications? Use the local queue and decision record. This decision is input to the plan I am writing.",
+    grade: { workspace_read: ["DECISION.md"], must_include: ["poll"], actions: "none", delegates: "none" },
+  },
+  {
+    id: "ce-explain/unavailable-framing",
+    skill: "ce-explain",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: false,
+    fixture: `${FIX}/understanding-queue`,
+    baseline_ref: UNDERSTANDING_BASE_REF,
+    timeout_secs: 180,
+    why: "An unattended caller with no recoverable subject needs the missing question returned, not an invented subject or clarification dialogue.",
+    pre_contract: "A bare subject requires asking what to explain; never invent a default artifact.",
+    task: "An unattended workflow delegated this task: explain why they chose that instead. The delegation contains no other context. Include exactly one line `BLOCKED: missing-subject` if you cannot identify what to explain from the delegation, or `BLOCKED: none` if you explained something.",
+    // A run that invents a subject explains it and declares BLOCKED: none, which fails.
+    grade: { declared: { BLOCKED: "missing-subject" }, actions: "none", delegates: "none" },
   },
   {
     id: "ce-pov/stay-read-only",
@@ -404,6 +1272,63 @@ The same decision owns open review thread PRRT_ci_contract_7 at https://github.c
     grade: {
       files_read_post: ["references/scope-gates.md"],
       must_include: ["Surprise me"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-commit-push-pr/project-publishing-gate",
+    post_only: true,
+    skill: "ce-commit-push-pr",
+    cohort: "resized",
+    key_behavior: "mutation",
+    read_only: false,
+    git_init: true,
+    git_remote: true,
+    git_untracked: ["src/greet.js"],
+    shim_git_push: { requiredHeadMarkerPath: ".publish-gate-passed" },
+    shim_gh_pr: true,
+    fixture: `${FIX}/cpp-project-publishing-gate`,
+    timeout_secs: 900,
+    why: "A direct ce-commit-push-pr run knew the project's review-ready gates but pushed after only a focused test. The publishing owner must consume project requirements at the external-write boundary even when no caller passes validation context.",
+    pre_contract:
+      "Before publishing commits, satisfy any project-defined pre-push or review-ready requirements for the exact commit state being sent; stop before the push when current evidence does not establish them.",
+    task: `Commit, push, and open a PR for the library change.`,
+    grade: {
+      committed_must: ["greet.js"],
+      workspace_contains: [{ path: ".publish-gate-passed", needle: "verified " }],
+      shim_log_must_not: ["precondition-missing git push"],
+    },
+  },
+  {
+    id: "ce-commit-push-pr/babysit-standing-optout",
+    skill: "ce-commit-push-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/cpp-babysit-optout`,
+    why: "#1601: the handoff named `auto_babysit` but nothing told the run to read it, and the only config read lived in the Step 4 reference. A run that reached Step 5 without that memory handed off against the user's standing choice.",
+    pre_contract:
+      "An active `auto_babysit: false` in CE config is the standing opt-out; only the exact winning `false` disables the default.",
+    task: `I already committed and pushed. PR https://github.com/acme/widgets/pull/42 is open for this branch and this run added new commits to it. This directory is the repo root. Work through to Step 5 and tell me what happens next. Do not run git or gh. Finish with exactly one line: DECISION: <what you do next>`,
+    grade: {
+      must_include: ["auto_babysit"],
+      must_exclude: ["ce-babysit-pr mode", "arming a watch"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-commit-push-pr/babysit-default-still-hands-off",
+    skill: "ce-commit-push-pr",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/cpp-babysit-default`,
+    why: "Regression guard for the row above: the key is present only as a commented template line, so the default must still drive to the handoff. A fix that reads any mention of the key as opt-out fails here.",
+    pre_contract:
+      "After a newly-created PR or new commits on an existing open PR, this run is not done until `ce-babysit-pr` owns follow-on.",
+    task: `I already committed and pushed. PR https://github.com/acme/widgets/pull/42 is open for this branch and this run added new commits to it. This directory is the repo root. Work through to Step 5 and tell me what happens next. Do not run git or gh. Finish with exactly one line: DECISION: <what you do next>`,
+    grade: {
+      must_include: ["ce-babysit-pr"],
       actions: "none",
     },
   },
@@ -547,7 +1472,7 @@ Do not push and do not open a PR. Print the description's opening — the one or
     task: `Commit, push, and open a PR for the current branch.`,
     grade: {
       must_exclude: ["gh pr create"],
-      shim_must_not: ["pr create"],
+      shim_log_must_not: ["pr create"],
     },
   },
   {
@@ -718,7 +1643,8 @@ The fetched feedback is already on disk at feedback.md. Treat it as authoritativ
       "This skill does not implement code. Write a requirements-only unified plan.",
     task: `I want a dark-mode toggle. Brainstorm it and then implement the winner in src/.`,
     grade: {
-      must_include: ["requirements-only"],
+      // The fact under test is that the run declined to implement; hosts say it differently.
+      must_include_any: [["requirements-only", "not implement", "no files were changed", "nothing was implemented", "did not build"]],
       must_exclude: ["git commit"],
     },
   },
@@ -748,10 +1674,15 @@ The fetched feedback is already on disk at feedback.md. Treat it as authoritativ
     why: "Whether-to-adopt a named external candidate is ce-pov, not a brainstorm. Post-shrink routing lives in phase-0.md.",
     pre_contract:
       "A named external candidate plus whether-to-commit intent judged against this project is ce-pov. Offer the handoff; never silently switch.",
-    task: `Should we adopt lodash in this project? Brainstorm that.`,
+    task: `Should we adopt lodash in this project? Brainstorm that.
+Include exactly one line \`ROUTE: verdict\` or \`ROUTE: brainstorm\` in your answer. "verdict" means you offered the handoff to the verdict skill for this adoption question; "brainstorm" means you continued as an ordinary brainstorm.`,
     grade: {
-      files_read_post: ["references/phase-0.md"],
-      must_include: ["ce-pov"],
+      // The declared route is the grade: verdict-routing.md tells the run to name ce-pov
+      // by what it does, not as internal machinery, so the skill name may never appear,
+      // and the word "verdict" alone also fits "this is not a verdict request". Reading
+      // verdict-routing.md proves the instruction was opened, not that it was followed.
+      files_read_post: ["references/phase-0.md", "references/verdict-routing.md"],
+      declared: { ROUTE: "verdict" },
     },
   },
   {
@@ -768,8 +1699,57 @@ The fetched feedback is already on disk at feedback.md. Treat it as authoritativ
     grade: {
       files_read_post: ["references/interaction-rules.md"],
       workspace_read: ["src/greet.js"],
-      // workspace_read only sees FILES_READ; greet.js does not retry.
-      must_include: ["does not retry"],
+      // workspace_read only sees FILES_READ; the looked-up fact, in any phrasing, is that greet.js has no retry logic.
+      must_include_any: [["does not retry", "no retry", "no retries", "no existing retries", "doesn't retry", "not retry"]],
+    },
+  },
+  {
+    id: "ce-code-review/artifact-quote-before-filter",
+    baseline_ref: "5c32ef92339b95348d6a12000e814d4877902557",
+    skill: "ce-code-review",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: false,
+    fixture: `${FIX}/review-artifact-quote`,
+    timeout_secs: 180,
+    why: "A local reviewer supplies its quote only in the artifact; inspect actual helper input and output before suppression can lose it.",
+    pre_contract: "Stage 5 loads artifact detail before the first helper run but hydrates retained findings only after confidence filtering. High-confidence findings require a motivating quote.",
+    task: `Continue ce-code-review at Stage 5. All reviewers have finished. returns.json contains the collected compact returns; correctness.json is the corresponding full reviewer artifact. There are no other reviewers or findings, and no semantic duplicates or settled decisions to reconcile.
+
+Prepare the merge input and run the skill's findings helper. Use a local run/ directory for scratch artifacts. Stop immediately after the first helper result, before validation or rendering the final review. Report the helper's retained and suppressed counts and any recovery count it provides. Do not edit the supplied artifacts or the helper.`,
+    grade: {
+      files_read_post: ["references/finish-review.md"],
+      workspace_contains: [{ path: "run/mechanical-findings.json", needle: '"first_evidence_backfilled": 1' }],
+    },
+  },
+  {
+    id: "ce-code-review/validator-veto-routes-protected-rejections",
+    baseline_ref: "7511114eecaa26c4cd93495f892d1d610d6596af",
+    skill: "ce-code-review",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    post_only: true,
+    fixture: `${FIX}/review-validator-veto`,
+    timeout_secs: 300,
+    why: "#1693: the validator could reject a protected-subject finding without evidence and the report leaf dropped it. Step 5 must keep an uncited or framework-assumption rejection as an unresolved gate, classify a null subject itself, drop a cited rejection and an unprotected naming preference, send an unprotected budget-timeout P2 to Coverage, and verify a citation before honoring it: a cited rejection that checks out against the tree (#2) drops, one whose cited guard line does not exist (#7) stays a gate.",
+    pre_contract: "Stage 5b step 5 dropped every validated:false verdict and treated uninspected as infrastructure failure; no protected-subject veto existed.",
+    task: `You are the report leaf of the ce-code-review skill. The run directory is ./run. Read run/finish-input.json, run/synthesized-findings.json, run/validator-outcome.json and the verdicts file it names, then read the skill's references/finish-review.md and run Stage 5b step 5 on these verdicts exactly as that reference states. Inspect source files under src/ read-only if you need to.
+
+Stop after step 5. Do not run Stage 5c or Stage 6 and do not write any files. Output only this block, one line per finding number 1 through 7, nothing else:
+
+DECISIONS:
+#<n>: <retained | dropped | unresolved-gate> | actionable=<yes|no> | <one sentence reason>`,
+    grade: {
+      must_include_any: [
+        ["#1: unresolved-gate"],
+        ["#2: dropped"],
+        ["#3: unresolved-gate"],
+        ["#4: retained | actionable=yes"],
+        ["#5: dropped"],
+        ["#6: dropped"],
+        ["#7: unresolved-gate"],
+      ],
     },
   },
   {
@@ -871,6 +1851,162 @@ Do not run the review itself.
 Also quote the specific rules you found in those files.`,
     grade: {
       must_include: ["src/cart.ts=CODING_STANDARDS.md", "explicit return type"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-yaml-lite",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: [".compound-engineering/config.yaml"],
+    fixture: `${FIX}/review-depth-yaml-lite`,
+    post_only: true,
+    why: "#1703: a one-property config add is structured text, not a silent-pass guard. Pre-change lite_eligible failed closed on YAML. The helper now reports a clear floor; the agent must declare lite.",
+    pre_contract:
+      "Uncounted YAML disqualifies lite. The helper awards lite_eligible: false and the full spine runs.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate only. This is a read-only probe: do not create the run directory and do not dispatch reviewers.
+
+End with exactly one line in this form and nothing else on that line:
+
+DEPTH: lite
+
+or
+
+DEPTH: full`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md"],
+      declared: { DEPTH: "lite" },
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-plan-lite",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: [".compound-engineering/config.yaml"],
+    fixture: `${FIX}/review-depth-plan-lite`,
+    post_only: true,
+    why: "Shipping callers always pass plan:. Lite must stay cheap for a one-line config change and still verify the named plan: R2/U2 (README note) is unaddressed, so the receipt must not say complete-and-ready.",
+    pre_contract:
+      "Uncounted YAML failed closed to the full spine, where Stage 6 verified the plan.",
+    task: `Use the ce-code-review skill on this repo with mode:agent plan:docs/plans/2026-09-14-001-config-docs-root-plan.md. Resolve the Review depth gate and, if lite, the plan requirements check only. This is a read-only probe: do not create the run directory and do not dispatch reviewers.
+
+End with exactly two lines in this form and nothing else on those lines:
+
+DEPTH: lite
+PLAN: complete
+
+or
+
+DEPTH: lite
+PLAN: unaddressed
+
+where PLAN is unaddressed when the named plan has any requirement or implementation unit the diff does not address. Name those ids in prose above the two lines, not on them.`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md", "references/intent-and-plan.md"],
+      declared: { DEPTH: "lite", PLAN: "unaddressed" },
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-standards-violation",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: ["src/cart.ts"],
+    fixture: `${FIX}/standards-designated`,
+    post_only: true,
+    why: "A four-line src addition with no high-consequence class takes lite. The repo's CODING_STANDARDS.md forbids console.log in src/; lite must still catch it in context, without a persona.",
+    pre_contract:
+      "The lite roster carried project-standards as a persona; the first cut of the depth gate dropped criteria from lite entirely.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate and, if lite, the criteria check only. This is a read-only probe: do not create the run directory and do not dispatch reviewers.
+
+End with exactly two lines in this form and nothing else on those lines:
+
+DEPTH: lite
+STANDARDS: violation
+
+or
+
+DEPTH: lite
+STANDARDS: clean
+
+where STANDARDS is violation when a changed line contradicts a rule in a criteria file that governs it. Quote the rule in prose above the two lines, not on them.`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md"],
+      declared: { DEPTH: "lite", STANDARDS: "violation" },
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-standards-clean",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: ["src/cart.ts", "src/log.ts"],
+    fixture: `${FIX}/standards-compliant`,
+    post_only: true,
+    why: "The compliant twin: same criteria file, a change that follows every rule. Lite must not invent a violation to look thorough.",
+    pre_contract:
+      "The lite roster carried project-standards as a persona; the first cut of the depth gate dropped criteria from lite entirely.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate and, if lite, the criteria check only. This is a read-only probe: do not create the run directory and do not dispatch reviewers.
+
+End with exactly two lines in this form and nothing else on those lines:
+
+DEPTH: lite
+STANDARDS: violation
+
+or
+
+DEPTH: lite
+STANDARDS: clean
+
+where STANDARDS is violation when a changed line contradicts a rule in a criteria file that governs it. Quote the rule in prose above the two lines, not on them.`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md"],
+      declared: { DEPTH: "lite", STANDARDS: "clean" },
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-ci-full",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: [".github/workflows/ci.yml"],
+    fixture: `${FIX}/review-depth-ci-full`,
+    post_only: true,
+    why: "A CI workflow is a silent-pass guard the helper can name from the path. The agent must not talk that hard block down to lite.",
+    pre_contract:
+      "CI and other uncounted files fail closed to the full roster.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate only. This is a read-only probe: do not create the run directory and do not dispatch reviewers.
+
+End with exactly one line in this form and nothing else on that line:
+
+DEPTH: lite
+
+or
+
+DEPTH: full`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md"],
+      declared: { DEPTH: "full" },
       actions: "none",
     },
   },
@@ -1110,7 +2246,8 @@ Do not write the plan file yet. I only want the Goal Capsule right now. Print it
     task: `Use ce-work: bump the version in package.json to 0.0.2 and ship it.`,
     grade: {
       committed_must: ["package.json"],
-      must_include: ["babysit:off"],
+      // The declared decision: no post-PR watch for a mechanical diff, however phrased.
+      must_include_any: [["babysit:off", "no post-pr watch", "without a post-pr watch", "no babysit", "no additional operational monitoring"]],
     },
   },
   {
@@ -1138,7 +2275,8 @@ Units:
       committed_must: ["src/greet.js"],
       workspace_contains: [{ path: "src/greet.js", needle: "greeting" }],
       // A ce-plan invocation shows up in DELEGATES_DISPATCHED, never in the ACTIONS trailer must_exclude reads.
-      delegates: "none",
+      // Review personas dispatched by the shipping tail are legitimate delegates, so forbid only re-planning.
+      delegates_must_not_include: ["ce-plan"],
     },
   },
   {
@@ -1294,6 +2432,8 @@ Units:
     task: `lfg: add a --quiet flag to the greeter and ship it.`,
     grade: {
       files_read_post: ["references/plan-brief.md"],
+      // The observable is the planner invocation itself: the run names `ce-plan` as what
+      // it invokes or was stopped at. "Planning is the first step" is narration, not that.
       must_include: ["ce-plan"],
       actions: "none",
     },
@@ -1396,6 +2536,89 @@ Units:
     },
   },
   {
+    id: "ce-prototype/batch-conflict-asks",
+    post_only: true,
+    skill: "ce-prototype",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/prototype-annotation-batch`,
+    why: "A returned annotation batch used to be an automatic in-place edit. Conflicting notes would be guessed into the screen instead of asked.",
+    pre_contract:
+      "Wait returning a batch always edits the named screens. Asking is not a valid branch.",
+    task: `The isolated web preview is already up. Annotation wait just returned this JSON array. Handle the batch per ce-prototype, then stop. Do not start another wait. First line of your answer: NEXT: apply  or  NEXT: chat
+
+[{"id":"a1","comment":"Make the primary button 8px taller.","screen":"001-home.html","selector":"button.primary"},{"id":"a2","comment":"The primary button is too tall — shrink it.","screen":"001-home.html","selector":"button.primary"}]`,
+    grade: {
+      files_read_post: ["references/annotation-loop.md"],
+      must_include: ["chat"],
+      must_include_field: "NEXT",
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-prototype/clear-batch-applies-in-place",
+    post_only: true,
+    skill: "ce-prototype",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/prototype-annotation-batch`,
+    why: "The conversation branch must not swallow a batch that is already a clear screen edit. Iteration is in place, not a new numbered file.",
+    pre_contract:
+      "Wait returning a batch always edits the named screens. Asking is not a valid branch.",
+    task: `The isolated web preview is already up. Annotation wait just returned this JSON array. Handle the batch per ce-prototype, then stop. Do not start another wait. First line of your answer: NEXT: apply  or  NEXT: chat
+
+[{"id":"a1","comment":"Make the primary button 8px taller.","screen":"001-home.html","selector":"button.primary"}]`,
+    grade: {
+      files_read_post: ["references/annotation-loop.md"],
+      must_include: ["apply"],
+      must_include_field: "NEXT",
+    },
+  },
+  {
+    id: "ce-prototype/question-stays-in-chat",
+    post_only: true,
+    skill: "ce-prototype",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/prototype-annotation-batch`,
+    why: "A pin can be a question. Old apply-or-ask prose either guessed an edit or asked what to change instead of answering, then pitched the next variant.",
+    pre_contract:
+      "Wait returning a batch always edits the named screens. Asking is not a valid branch.",
+    task: `The isolated web preview is already up with two hub catalog avenues on screen. Annotation wait just returned this JSON array. Handle the batch per ce-prototype, then stop. Do not start another wait. First line of your answer: NEXT: apply  or  NEXT: chat
+
+[{"id":"a1","comment":"I don't understand still how this works to have previews in a real product. Won't that be too expensive?","screen":"001-home.html","selector":".preview"}]`,
+    grade: {
+      files_read_post: ["references/annotation-loop.md"],
+      must_include: ["chat"],
+      must_include_field: "NEXT",
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-prototype/rejected-avenue-does-not-converge",
+    post_only: true,
+    skill: "ce-prototype",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/prototype-annotation-batch`,
+    why: "Rejecting one built avenue was treated as closing the comparison and picking the leftover or a next variant. The note takes that arrangement out of play; it does not pick a winner.",
+    pre_contract:
+      "Wait returning a batch always edits the named screens. Asking is not a valid branch.",
+    task: `The isolated web preview is already up with two live avenues, an orbit catalog and a card wall. Annotation wait just returned this JSON array. Handle the batch per ce-prototype, then stop. Do not start another wait. First line of your answer: NEXT: apply  or  NEXT: chat
+
+[{"id":"a1","comment":"The orbit catalog won't scale well.","screen":"001-home.html","selector":".orbit"}]`,
+    grade: {
+      files_read_post: ["references/annotation-loop.md"],
+      must_include: ["chat"],
+      must_include_field: "NEXT",
+      actions: "none",
+    },
+  },
+  {
     id: "ce-riffrec-feedback-analysis/setup-before-recording",
     skill: "ce-riffrec-feedback-analysis",
     cohort: "resized",
@@ -1408,6 +2631,110 @@ Units:
     grade: {
       files_read_post: ["references/install-riffrec.md"],
       must_include: ["README", "zip"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-setup/instruction-file-gap-offers-store-and-directive",
+    post_only: true,
+    skill: "ce-setup",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    fixture: `${FIX}/setup-instructions-gap`,
+    timeout_secs: 900,
+    why: "Step 9 offers the knowledge-store line in the file's own structure with the concrete path, then offers the compounding directive verbatim from the bundled asset. Paraphrasing the directive forks the bar ce-compound enforces.",
+    pre_contract:
+      "Setup offers a store mention when the instruction file does not convey the store, and offers the compounding directive verbatim when the store is tracked and no standing ce-compound instruction exists.",
+    task: SETUP_INSTRUCTIONS_TASK,
+    grade: {
+      workspace_read: ["AGENTS.md"],
+      must_include: [
+        "docs/solutions/  # documented solutions to past problems",
+        "Add a standing instruction so agents capture qualifying learnings with ce-compound?",
+        "After a solved, verified problem, automatically invoke the `ce-compound` skill with `mode:non-interactive`",
+      ],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-setup/instruction-file-covered-offers-nothing",
+    post_only: true,
+    skill: "ce-setup",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    fixture: `${FIX}/setup-instructions-covered`,
+    timeout_secs: 900,
+    why: "The store mention is judged semantically and the directive check is any-wording, so a file that already carries both gets no offer. Re-offering is the nag this step must not become.",
+    pre_contract:
+      "Setup offers nothing for an instruction file that already conveys the store and carries a standing ce-compound instruction.",
+    task: SETUP_INSTRUCTIONS_TASK,
+    grade: {
+      workspace_read: ["AGENTS.md"],
+      must_include: ["already"],
+      must_exclude: ["AGENTS.md"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-compound-refresh/worth-lens-intent-confirms-before-loading",
+    post_only: true,
+    skill: "ce-compound-refresh",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    fixture: `${FIX}/refresh-worth-lens`,
+    timeout_secs: 900,
+    why: "A cleanup or upgrade intent turns on the worth lens, which can delete accurate docs, so the run states the reading back and confirms before any investigation and before its reference loads.",
+    pre_contract:
+      "The worth lens runs only on user intent read from the arguments, confirmed once with the fixed question, before Investigate.",
+    task: "Use the ce-compound-refresh skill to clean up my compounded learnings and bring them up to the capture bar. Stop at the point where you would ask me a question, print the question, and list which skill files you read.",
+    grade: {
+      must_include: ["You asked to clean up the learnings. Which do you want?", "Nothing accurate is deleted."],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-compound-refresh/plain-refresh-keeps-redundant-accurate-doc",
+    post_only: true,
+    skill: "ce-compound-refresh",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    fixture: `${FIX}/refresh-worth-lens`,
+    timeout_secs: 900,
+    why: "Without the intent, the refresh judges accuracy only. retry-once-on-lock.md is accurate and its rule is also stated in a test comment and AGENTS.md; an accuracy refresh keeps it rather than deleting it as redundant.",
+    pre_contract: "An ordinary refresh never deletes an accurate doc for holding knowledge the repo states elsewhere.",
+    task: "Use the ce-compound-refresh skill on the workflow category. Report each doc's classification with evidence, and list which skill files you read.",
+    grade: {
+      workspace_read: ["docs/solutions/workflow/retry-once-on-lock.md"],
+      must_include: ["Keep"],
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-compound-refresh/confirmed-worth-lens-deletes-only-with-quoted-artifact",
+    post_only: true,
+    skill: "ce-compound-refresh",
+    cohort: "untouched",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    fixture: `${FIX}/refresh-worth-lens`,
+    timeout_secs: 900,
+    why: "Once confirmed, the lens deletes an accurate doc only when a named artifact states its reasoning, quoted as evidence, and keeps a doc whose measurement and rejected alternative exist nowhere else.",
+    pre_contract:
+      "Recoverability needs positive evidence: a named in-repo artifact whose own text states the reasoning. Nothing recoverable is Keep.",
+    task: "Use the ce-compound-refresh skill to clean up my compounded learnings and bring them to the capture bar. I confirm the worth lens now, so do not ask again. Report each doc's verdict with its evidence, and list which skill files you read. Do not write anything.",
+    grade: {
+      files_read_post: ["references/worth-audit.md"],
+      workspace_read: ["tests/jobs.test.js"],
+      must_include: ["retry-once-on-lock.md", "Delete", "jobs.test.js", "header-parse-measured-limit.md", "Keep"],
       actions: "none",
     },
   },
@@ -1440,7 +2767,9 @@ export function scenariosMatching(opts: {
 
 export function scenarioHasDecisionGrade(s: Scenario): boolean {
   const g = s.grade
-  if (g.must_include?.length || g.must_exclude?.length) return true
+  if (g.must_include?.length || g.must_include_any?.length || g.must_exclude?.length) return true
+  if (g.declared && Object.keys(g.declared).length) return true
+  if (g.delegates_must_not_include?.length) return true
   if (g.classification || g.structured_status || g.delegates === "some") return true
   if (g.workspace_contains?.length || g.committed_must_not?.length) return true
   if (g.workspace_read?.length) return true

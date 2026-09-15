@@ -5,7 +5,7 @@
 # process and writes its POV as JSON into the run dir.
 # Every peer receives the canonical POV persona, schema, and a caller-prepared
 # subject payload. The peer also receives the caller-declared repository read
-# scope; private prompt/result scratch stays outside that repository.
+# scope; private prompt/result scratch lives under the workspace .tmp tree.
 #
 # Independence is by PROVIDER, not CLI brand. A provider is reached by a ROUTE:
 # its dedicated CLI, or (for the fixed grok-cursor / composer routes) cursor-agent. All
@@ -24,14 +24,14 @@
 #                   explicitly named peer, but its receipt remains unverified;
 #                   automatic discovery must exclude it before calling this worker.
 #   <fixed-route>   one host-resolved and pre-sanctioned route: codex, claude,
-#                   grok-cli, grok-cursor, cursor, or composer. A route failure
+#                   grok-cli, grok-cursor, cursor, composer, opencode, or
+#                   opencode2. A route failure
 #                   returns no artifact; only the host may disclose and retry a
 #                   different recipient.
 #   <subject-payload> framed question plus any conversation-only subject material.
 #                     Point to repository files instead of copying their contents;
-#                     the peer grounds itself from the shared working copy.
-#   <run-dir>         existing private dir under the workspace's
-#                     `.tmp/rocketclaw/ce-pov/` namespace; output ->
+#                     the peer grounds itself from the shared working tree.
+#   <run-dir>         existing private dir under the workspace .tmp tree; output ->
 #                     <run-dir>/pov-<target>.json, where <target> is the resolved
 #                     <fixed-route> target (grok-cli/grok-cursor both collapse to
 #                     grok) -- NOT the <host-serving-family> key.
@@ -39,7 +39,7 @@
 # Test/introspection mode (no model call, no side effects):
 #   cross-model-pov.sh --emit-adapter <route>
 #     prints the exact argv the given route would run (route in:
-#     codex | claude | grok-cli | grok-cursor | cursor | composer). Both this mode and the
+#     codex | claude | grok-cli | grok-cursor | cursor | composer | opencode | opencode2). Both this mode and the
 #     live run build their argv from adapter_argv(), so the U7 route-safety test
 #     asserts on the same command string the peer actually runs.
 #
@@ -261,8 +261,9 @@ adapter_argv() {
       [ "$_oc_model" = "auto" ] || [ -z "$_oc_model" ] || printf '%s\0' --model "$_oc_model"
       ;;
     opencode2)
-      printf '%s\0' bash -c 'cd "$1" && shift && exec "$@"' _ "$READ_ROOT" \
-        opencode2 run --standalone --format json --file "$PROMPT_FILE"
+      # Distinct v2 harness: no --dir (cwd is the workspace), no --variant
+      # flag (variant is #variant on --model). Not compatible with v1 opencode.
+      printf '%s\0' opencode2 run --standalone --auto --format json --file "$PROMPT_FILE"
       _oc2_model="$(route_model opencode2)"
       [ "$_oc2_model" = "auto" ] || [ -z "$_oc2_model" ] || printf '%s\0' --model "$_oc2_model"
       ;;
@@ -320,7 +321,7 @@ READ_ROOT="${CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
 READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve repository/read root '$READ_ROOT'"
 if [ -n "${CROSS_MODEL_REPO_ROOT:-}" ]; then
   REPO_ROOT="$CROSS_MODEL_REPO_ROOT"
-elif command -v jj >/dev/null 2>&1 && _jj_root="$(cd "$READ_ROOT" && jj workspace root 2>/dev/null)"; then
+elif _jj_root="$(cd "$READ_ROOT" && jj workspace root 2>/dev/null)"; then
   REPO_ROOT="$_jj_root"
 else
   REPO_ROOT="$(pwd -P)"
@@ -339,7 +340,10 @@ else
   RUN_PARENT="$(cd "$RUN_PARENT" && pwd -P)" || skip "cannot resolve run-dir parent '$RUN_PARENT'"
   RUN_DIR_RESOLVED="$RUN_PARENT/$RUN_BASENAME"
 fi
-case "$RUN_DIR_RESOLVED/" in "$REPO_ROOT/.tmp/rocketclaw/ce-pov/"*) ;; *) skip "run-dir must be under '$REPO_ROOT/.tmp/rocketclaw/ce-pov'" ;; esac
+case "$RUN_DIR_RESOLVED/" in
+  "$REPO_ROOT/.tmp/"*) ;;
+  "$REPO_ROOT/"*) skip "run-dir must be under the workspace .tmp directory, not elsewhere in the repository" ;;
+esac
 [ -d "$RUN_DIR_RESOLVED" ] || skip "run-dir '$RUN_DIR' must already exist"
 RUN_DIR="$RUN_DIR_RESOLVED"
 chmod 700 "$RUN_DIR" 2>/dev/null || skip "run-dir '$RUN_DIR' could not be made private"
@@ -452,13 +456,19 @@ log "fixed cross-model POV route: target=$TARGET route=$FIXED_ROUTE (host $HOST_
 # --- compose the peer prompt from the canonical persona (single source) ----
 # The payload is prepared by ce-pov and embeds the framed question plus any
 # conversation-only subject material needed for this round. Repository evidence
-# stays in the shared working copy for the peer to inspect directly.
-SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$RUN_DIR}"
+# stays in the shared working tree for the peer to inspect directly.
+if [ -n "${CROSS_MODEL_SCRATCH_PARENT:-}" ]; then
+  SCRATCH_PARENT="$CROSS_MODEL_SCRATCH_PARENT"
+else
+  SCRATCH_PARENT="$REPO_ROOT/.tmp/rocketclaw"
+fi
 [ -d "$SCRATCH_PARENT" ] || mkdir -p "$SCRATCH_PARENT" 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
 SCRATCH_PARENT="$(cd "$SCRATCH_PARENT" && pwd -P)" || skip "cannot resolve private scratch parent"
-case "$SCRATCH_PARENT/" in "$REPO_ROOT/.tmp/rocketclaw/"*) ;; *) skip "private scratch parent must remain under '$REPO_ROOT/.tmp/rocketclaw'" ;; esac
-PEER_WORKDIR="$SCRATCH_PARENT/xmodel-pov-peer-$(date +%Y%m%dT%H%M%S)-$$-$RANDOM"
-if ! (umask 077; mkdir "$PEER_WORKDIR"); then
+case "$SCRATCH_PARENT/" in
+  "$REPO_ROOT/.tmp/"*) ;;
+  "$REPO_ROOT/"*) skip "private scratch parent must be under the workspace .tmp directory, not elsewhere in the repository" ;;
+esac
+if ! PEER_WORKDIR="$(mktemp -d "$SCRATCH_PARENT/xmodel-pov-peer-XXXXXX")"; then
   skip "provider $TARGET workspace isolation unavailable; skipping provider"
 fi
 chmod 700 "$PEER_WORKDIR" 2>/dev/null || { cleanup_private_scratch; skip "cannot make peer scratch private"; }
@@ -651,8 +661,8 @@ run_codex_cmd() {   # CMD already built for the codex route; streams to PEERLOG,
 run_timeout_cmd() {
   # $1 = stdin file ("" -> /dev/null). $2 = hard cap secs. $3 = "idle" | "no-idle".
   RUN_SUCCEEDED=false
-  # Run from the declared read root. Private prompt/output paths are absolute and
-  # remain outside the repository; route adapters separately carry the same root.
+  # Run from the declared read root. Private prompt/output paths are absolute
+  # under workspace .tmp; route adapters separately carry the same read root.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
   local idle_mode="${3:-idle}"
@@ -801,7 +811,7 @@ parse_opencode_events() {  # <logfile> <outfile>
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e '.' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "$PEER_WORKDIR/ce-opencode-text-XXXXXX")" || return 1
+  tmp="$(mktemp "${PEER_WORKDIR:-$SCRATCH_PARENT}/opencode-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_pov_json "$tmp" "$2"
   local st=$?
@@ -809,17 +819,14 @@ parse_opencode_events() {  # <logfile> <outfile>
   return "$st"
 }
 
-parse_opencode2_events() {  # <logfile> <outfile>
-  local text tmp
-  text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
-  [ -n "$text" ] || return 1
-  printf '%s' "$text" | jq -e '.' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "$PEER_WORKDIR/ce-opencode2-text-XXXXXX")" || return 1
-  printf '%s' "$text" > "$tmp"
-  recover_pov_json "$tmp" "$2"
-  local st=$?
-  rm -f "$tmp"
-  return "$st"
+parse_opencode2_output() {  # <logfile> <outfile>
+  # Distinct from v1 event-stream parsing: opencode2 --format json may emit a
+  # single object or a stream. Prefer a schema-shaped object, then recover.
+  if jq -e '.' "$1" > "$2" 2>/dev/null && pov_shaped "$2"; then
+    return 0
+  fi
+  parse_opencode_events "$1" "$2" && return 0
+  recover_pov_json "$1" "$2"
 }
 
 bounded_failure_evidence() {   # <logfile>; prefer structured diagnostics, then bounded head+tail
@@ -886,7 +893,7 @@ attempt_route() {   # <provider> <route>
     opencode)    run_timeout_cmd "" "$HARD_SECS" idle
                  [ "$RUN_SUCCEEDED" = true ] && parse_opencode_events "$PEERLOG" "$RAW_OUT" ;;
     opencode2)   run_timeout_cmd "" "$HARD_SECS" idle
-                 [ "$RUN_SUCCEEDED" = true ] && parse_opencode2_events "$PEERLOG" "$RAW_OUT" ;;
+                 [ "$RUN_SUCCEEDED" = true ] && parse_opencode2_output "$PEERLOG" "$RAW_OUT" ;;
   esac
   if [ "$RUN_SUCCEEDED" != true ]; then
     rm -f "$RAW_OUT"
@@ -921,7 +928,7 @@ run_fixed_route() {
       rm -f "$RAW_OUT"
     else
       log "peer returned a non-final position (\"${position:0:120}\"); retrying once on the same route with a final-answer requirement (${remaining}s left)"
-      printf '\n\nYour previous response set final to false. This response is the final one: inspect the subject and shared working copy now, then return the settled position with its evidence and final set to true.\n' >> "$PROMPT_FILE"
+      printf '\n\nYour previous response set final to false. This response is the final one: inspect the subject and shared working tree now, then return the settled position with its evidence and final set to true.\n' >> "$PROMPT_FILE"
       HARD_SECS="$remaining"; UNGUARDED_HARD_SECS="$remaining"
       attempt_route "$provider" "$FIXED_ROUTE"
       if [ "$RUN_SUCCEEDED" = true ] && ! out_missing_or_invalid && ! out_final; then
@@ -933,7 +940,7 @@ run_fixed_route() {
 
   # --- normalize + validate against the peer POV contract ------------------
   # Force voice = peer-<provider>, preserve the POV fields, and add route/model
-  # receipts from the route that actually ran. The peer never self-assigns an
+  # receipts from the route that actually ran. The peer never self-attributes an
   # unverifiable serving model.
   # Publish ONLY the normalized OUT into RUN_DIR. RAW_OUT lives in the per-peer
   # workspace and is never a fold-in artifact — if this script dies before normalize

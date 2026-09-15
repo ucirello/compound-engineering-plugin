@@ -1,4 +1,4 @@
-"""Metadata inventory of the canonical workspace's ignored entries.
+"""Metadata inventory of the canonical checkout's ignored/untracked entries.
 
 Verification runs in the canonical checkout; ignored state is never copied or
 restored. Two inventories taken before and after verification diff into a
@@ -10,20 +10,11 @@ from __future__ import annotations
 import os
 import stat
 
-from unit_workspace_state import Operational, jj_text
+from unit_workspace_state import Operational, ignored_untracked_paths
 
 
 def ignored_paths(repo: str) -> set[str]:
-    tracked = set(filter(None, jj_text(repo, "file", "list", "-r", "@").splitlines()))
-    ignored: set[str] = set()
-    for root, dirs, files in os.walk(repo, followlinks=False):
-        dirs[:] = [name for name in dirs if name not in {".jj"}]
-        for name in files:
-            path = os.path.join(root, name)
-            rel = os.path.relpath(path, repo)
-            if rel not in tracked:
-                ignored.add(rel)
-    return ignored
+    return ignored_untracked_paths(repo)
 
 
 def artifact_path(repo: str, rel: str) -> str:

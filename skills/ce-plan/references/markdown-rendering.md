@@ -18,11 +18,11 @@ These hold regardless of which skill produced the artifact.
 - **ASCII identifiers in anchors.** Markdown headings auto-generate anchors
   from the heading text. Keep headings ASCII so anchors are predictable
   (`#implementation-units`, not `#implementación-units`).
-- **Workspace-relative paths for file references.** Always. Never absolute paths
+- **Repo-relative paths for file references.** Always. Never absolute paths
   — they break portability across machines, workspaces, teammates.
 - **No HTML mixed in.** Keep the markdown pure. No `<div>`, no `<details>`,
   no inline `<style>`. The only exception is a contract-defined invisible
-  semantic marker such as `<!-- plan-section: work-relationships -->`; it carries
+  semantic marker such as `<!-- ce-section: work-relationships -->`; it carries
   section meaning for downstream agents and does not create layout. If a layout
   idea only works as HTML, defer it to the HTML rendering. Markdown stays
   markdown.
@@ -116,7 +116,7 @@ How section types commonly render in markdown. These are patterns, not
 contracts — the agent picks the shape that fits the content.
 
 - **Goal Capsule** — bullets or a small table for objective, means (only
-  when an approach is fixed), authority, execution profile, stop conditions, and tail ownership.
+  when an approach is fixed), authority, execution profile, stop conditions, and who finishes the remaining work.
 - **Product Contract** — H2 section containing Summary, Problem Frame,
   Requirements, and product-scope subsections. Put Requirements under
   `### Requirements` so review tools can distinguish Product Requirements
@@ -208,7 +208,7 @@ Engineering process metadata stays out of the artifact:
 - No engineering-flow shepherding ("Now read this file:", "Next, run that
   command:")
 
-This information belongs in Jujutsu change descriptions, tool output, and agent
+This information belongs in change descriptions, tool output, and agent
 transcripts — not in the artifact a reader returns to weeks later.
 
 ## Frontmatter shape
@@ -224,7 +224,7 @@ brainstorm frontmatter). Common rules:
 - **No status / lifecycle field.** Artifacts are point-in-time records
   (decision or discovery), not tracked work items. Do not introduce a
   mutable `status` field or an `active → completed` lifecycle — whether
-  the work shipped is derived from Jujutsu history, not stored in the doc.
+  the work shipped is derived from jj, not stored in the doc.
 - Stable across artifact revisions — never rename or repurpose a field.
 
 ## Post-write audit

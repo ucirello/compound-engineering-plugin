@@ -1,4 +1,4 @@
-# Repo config
+# RocketClaw -- repo config
 # Copy to .rocketclaw/config.yaml in your workspace root (team defaults).
 # Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
@@ -51,8 +51,8 @@
 # HTML styling. Precedence: a format request in your prompt for that run wins
 # (e.g. "output:html" or "make it HTML"); a preference you established earlier
 # (in-session, saved to memory, or in your agent instructions) overrides these
-# keys (this config is the persisted fallback); pipeline contexts (e.g., LFG,
-# disable-model-invocation) always force `md`.
+# keys (this config is the persisted fallback). A headless or pipeline run
+# resolves the format the same way; nothing forces `md`.
 
 # plan_output: html              # md | html (default: md)
 # brainstorm_output: html        # md | html (default: md)
@@ -70,15 +70,23 @@
 # Claude CLI is invoked when installed and authenticated; otherwise the step runs
 # on your session model and the run says so. Invalid/commented/missing -> no
 # elevation.
-
-# plan_model: fable              # model alias for the plan-authoring step (no default)
-# plan_harness: opencode2        # optional harness for that step (opencode2 only; not opencode)
-# brainstorm_model: fable        # model alias for approach generation (no default)
-# brainstorm_harness: opencode2  # optional harness for that step (opencode2 only; not opencode)
 #
 # `opencode2` is a distinct harness from `opencode`. It is not backward compatible.
 # When plan_harness or brainstorm_harness is `opencode2`, the matching model key is
-# `provider/modelname#variant` as documented by `opencode2 run --help`.
+# `provider/modelname#variant`. Dispatch is the `opencode2` binary:
+# `opencode2 run --standalone --auto --model provider/model#variant`
+# (no `--dir`, no `--variant` flag).
+
+# plan_model: fable              # model alias for plan authoring; candidate preference when a Bake-off runs (no default)
+# plan_harness: opencode2        # optional harness for that step (opencode2 only; not opencode)
+# brainstorm_model: fable        # model alias for approach generation; candidate preference when a Bake-off runs (no default)
+# brainstorm_harness: opencode2  # optional harness for that step (opencode2 only; not opencode)
+#
+# When the harness is opencode2, set the matching model to provider/modelname#variant:
+# plan_model: provider/modelname#variant
+# plan_harness: opencode2
+# brainstorm_model: provider/modelname#variant
+# brainstorm_harness: opencode2
 
 # --- PR concept teaching (ce-commit-push-pr) ---
 # When a PR introduces a concept new to the codebase, the generated PR
@@ -94,7 +102,9 @@
 # --- ce-commit-push-pr babysit handoff ---
 # After a full-workflow PR is opened, ce-commit-push-pr auto-invokes ce-babysit-pr
 # to watch CI + incoming review and drive the PR toward merge-ready. Set false to
-# opt out standing (per-run override: the babysit:off token).
+# opt out standing (per-run override: the babysit:off token). This governs that
+# standing watch only -- lfg's in-pipeline babysit is bounded (3 fix rounds) and
+# still runs, since it is how that pipeline reaches "CI decided".
 # auto_babysit: false            # true | false (default: true)
 
 # --- ce-plan scoping confirmation ---
@@ -126,13 +136,16 @@
 # mapping. The model must belong to that target's family (an alias such as
 # `fable` or a full id such as `claude-opus-5` for claude; `gpt-*` for codex,
 # optionally namespace-qualified such as `openai.gpt-5.6-sol` when the codex CLI
-# routes through a non-default `model_provider`).
+# routes through a non-default `model_provider`; `provider/modelname#variant`
+# for opencode2).
 # Effort levels: claude low|medium|high|xhigh|max, codex minimal|low|medium|
-# high|xhigh, grok low|medium|high; cursor/composer routes take none. A value
-# the peer cannot honor skips the pass with a stated reason -- never substituted.
+# high|xhigh, grok low|medium|high; cursor/composer routes take none;
+# opencode2 pins effort as `#variant` on `--model` (no `--variant` flag).
+# A value the peer cannot honor skips the pass with a stated reason -- never substituted.
+# `opencode2` is not `opencode`.
 
 # cross_model_review_mode: off   # auto | off (default: auto)
-# cross_model_peer: codex          # codex | claude | grok | cursor | composer | opencode | opencode2
+# cross_model_peer: opencode2      # codex | claude | grok | cursor | composer | opencode | opencode2
 # cross_model_model: fable         # model alias or full id for the resolved peer target (no default)
 # cross_model_effort: xhigh        # reasoning effort for the resolved peer target (no default)
 
@@ -148,9 +161,9 @@
 # family through Cursor: { harness: cursor, model: composer }. Do not put CLI flags
 # or commands here. A candidate equivalent to the current host/default is skipped;
 # a different explicit model in the same harness remains eligible.
-# `opencode2` is not `opencode`: it uses the `opencode2` binary and `opencode2 run`
-# flags (`--standalone`, `--auto`, `--model provider/model#variant`; no `--dir`
-# or `--variant`).
+# `opencode2` is not `opencode`: it uses the `opencode2` binary and
+# `opencode2 run --standalone --auto --model provider/model#variant`
+# (no `--dir`, no `--variant` flag).
 
 # work_engine_mode: prefer        # off | prefer | require (default: off)
 # work_engine_preferences:
@@ -160,7 +173,7 @@
 #     model: "gpt-5.6"
 #   - harness: claude             # configured default model
 #   - harness: opencode2
-#     model: "openai/gpt-5#high"
+#     model: "provider/modelname#variant"
 
 # --- ce-promote ---
 # Written automatically when you decline the Spiral setup offer in /ce-promote.
@@ -182,4 +195,24 @@
 # sweep_state_path: docs/feedback-sweep/state.yml   # tracked (multi-agent) or .tmp/rocketclaw path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
-# sweep_shared_bookmark: false                      # true: push-gated lease for shared-docs bookmark topology
+# sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
+
+# --- Compound Packs ---
+
+# Prescriptive domain knowledge folders that planning reads and cites.
+# Declared, never scanned: an entry names a source (workspace-relative path,
+# ~/absolute path, or git URL) and what to install from it. Lists from this
+# file and config.local.yaml concatenate -- local adds packs, never replaces
+# the team's. Git URL sources require ref (tag or sha reproduce exactly; a bookmark
+# freezes at its cached resolution and can drift across machines). path: and
+# pasted GitHub /tree/<ref>/<sub> URLs scope a source to a subfolder.
+# pack: picks one id or a list; omit it to install everything the source
+# publishes. id: renames a single-pack entry.
+# Rules are top-level .md files with title + applies_when; subfolders are storage.
+
+# packs:
+#   - source: compound-packs/local-rules                       # workspace-relative, read live
+#   - source: ~/compound-packs/kk-style                        # machine-local, read live
+#   - source: https://github.com/org/rails-ce-pack    # git URL, cached at ref
+#     ref: v1.2.0
+#     pack: [rails, inertia]

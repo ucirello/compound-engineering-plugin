@@ -11,15 +11,10 @@ fi
 
 PR_NUMBER=$1
 
-# Bootstrap the workspace from CWD, then run later `jj` with cwd at that root.
-# `jj -R` selects a repo but does not change cwd. Never read `.jj/` or `.git/`.
 workspace_root=$(jj workspace root 2>/dev/null || true)
-git_dir=""
 if [ -n "$workspace_root" ]; then
-    git_dir=$(cd "$workspace_root" && jj git root 2>/dev/null || true)
-fi
-if [ -n "$git_dir" ]; then
-    export GIT_DIR="$git_dir"
+    GIT_DIR=$(cd "$workspace_root" && jj git root)
+    export GIT_DIR
 fi
 
 if [ -n "$2" ]; then
@@ -27,7 +22,7 @@ if [ -n "$2" ]; then
     REPO=$(echo "$2" | cut -d/ -f2)
 else
     # `|| true` is load-bearing: under `set -e`, a failed command substitution
-    # in an assignment aborts the script immediately. Run outside the target workspace,
+    # in an assignment aborts the script immediately. Run outside a jj workspace,
     # `gh repo view` exits 1, its stderr is swallowed by `2>/dev/null`, and the
     # script would die here with rc=1 and no output -- making the friendly error
     # below unreachable. Keep `|| true` so detection failure falls through to it.
@@ -36,7 +31,7 @@ else
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-pr-comments from inside the target JJ workspace, or pass OWNER/REPO as the second argument (e.g., get-pr-comments $PR_NUMBER EveryInc/cora)." >&2
+    echo "Error: could not resolve owner/repo. Run get-pr-comments from inside the target jj workspace, or pass OWNER/REPO as the second argument (e.g., get-pr-comments $PR_NUMBER EveryInc/cora)." >&2
     exit 1
 fi
 
@@ -76,15 +71,11 @@ fi
 # resolver can weigh identity as evidence, including recognizing its own prior
 # replies as already-handled.
 
-if [ -n "$workspace_root" ]; then
-    tmp_root="$workspace_root/.tmp/rocketclaw/ce-resolve-pr-feedback"
-else
-    tmp_root=".tmp/rocketclaw/ce-resolve-pr-feedback"
-fi
-mkdir -p "$tmp_root"
-tmp_threads=$(mktemp "$tmp_root/pr-threads.XXXXXX")
-tmp_comments=$(mktemp "$tmp_root/pr-comments.XXXXXX")
-tmp_reviews=$(mktemp "$tmp_root/pr-reviews.XXXXXX")
+scratch_root="${workspace_root:-.}/.tmp"
+mkdir -p "$scratch_root"
+tmp_threads=$(mktemp "$scratch_root/pr-threads.XXXXXX")
+tmp_comments=$(mktemp "$scratch_root/pr-comments.XXXXXX")
+tmp_reviews=$(mktemp "$scratch_root/pr-reviews.XXXXXX")
 trap 'rm -f "$tmp_threads" "$tmp_comments" "$tmp_reviews"' EXIT
 
 gh api graphql --paginate --slurp \

@@ -60,8 +60,9 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir under the active workspace's .tmp directory
-  CE_WORK_RUNS_ROOT         parent ce-work dir under that .tmp directory
+  CE_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw-jobs;
+                            local .tmp if not a jj workspace)
+  CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -74,11 +75,11 @@ Environment overrides (defaults in parentheses):
   CE_PEER_GRACE_SECS        TERM-to-KILL grace during reap (5)
   CE_PEER_BASH              Windows: absolute bash.exe for peer workers
                             (preferred over PATH / WSL System32 bash)
-  CLAUDE_CODE_GIT_BASH_PATH compatibility path for a Windows POSIX shell when
-                            CE_PEER_BASH is unset
+  CLAUDE_CODE_GIT_BASH_PATH Claude Code Git Bash path; used on Windows when
+                            CE_PEER_BASH is unset (#1268)
 
-Security posture: the job root is a predictable workspace-local directory.
-Every read of job state opens the file first (no-follow) and
+Security posture: the job root is a predictable, owner-private directory under
+workspace `.tmp`. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -114,7 +115,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults to the workspace-local `.tmp` directory.
+  jobs root defaults under <workspace>/.tmp/rocketclaw-jobs, owner-private.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -128,6 +129,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 
 # Identifier charset for --skill/--run-id/--label and bare job refs. The dot is
@@ -144,19 +146,6 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-def _workspace_tmp_root() -> str:
-    try:
-        result = subprocess.run(
-            ["jj", "workspace", "root"], capture_output=True, text=True,
-            check=False,
-        )
-    except OSError:
-        result = None
-    root = result.stdout.strip() if result and result.returncode == 0 else os.getcwd()
-    return os.path.join(os.path.abspath(root), ".tmp")
-
-
-DEFAULT_ROOT = _workspace_tmp_root()
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -167,6 +156,7 @@ O_BINARY = getattr(os, "O_BINARY", 0)
 SWEEP_AGE_SECS = 24 * 3600
 CLAIM_ATTEMPTS = 16
 STATUS_READ_CAP = 256
+REASON_READ_CAP = 1024
 META_READ_CAP = 64 * 1024
 
 EXIT_CODES_DOC = """\
@@ -179,8 +169,10 @@ exit codes:
   2  usage error; for `result`: the job is still running
   3  for `result`: job settled but not done (failed / timeout /
      died-without-result / never-started), or the result file is missing
-  4  ownership check failed (job state or result not owned by the current
-     user) — content is never emitted
+  4  the read was refused, so content is never emitted: the ownership check
+     failed (job state or result not owned by the current user), or the path
+     is there but unreadable (a symlink rejected by O_NOFOLLOW, a non-regular
+     file, a byte-cap overrun). Only a genuinely absent file is 3.
 
 environment overrides: CE_PEER_JOBS_ROOT, CE_WORK_RUNS_ROOT, CE_PEER_IDLE_SECS,
 CE_PEER_HARD_SECS, CROSS_MODEL_HARD_SECS, CE_PEER_LOG_MAX_BYTES,
@@ -207,11 +199,32 @@ _RUNNER_HARD_FLOOR = 1230.0
 _RUNNER_HARD_GRACE = 30.0
 
 
+def workspace_root() -> str:
+    proc = subprocess.run(
+        ["jj", "--no-pager", "workspace", "root"],
+        capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return os.getcwd()
+    return proc.stdout.strip()
+
+
+def workspace_tmp() -> str:
+    tmp = os.path.join(workspace_root(), ".tmp")
+    os.makedirs(tmp, exist_ok=True)
+    return tmp
+
+
+def _default_jobs_root() -> str:
+    return os.path.join(workspace_tmp(), "rocketclaw-jobs")
+
+
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe; a pre-existing root must still pass ownership and
-    writability checks.
+    Creation is the probe: a workspace `.tmp` that denies writes refuses the
+    mkdir, and one that lets a pre-existing root stand still fails the access
+    check.
     """
     try:
         os.mkdir(path, 0o700)
@@ -226,44 +239,47 @@ def _private_root_usable(path: str) -> bool:
     return os.access(path, os.W_OK)
 
 
-def _workspace_tmp_path(path: str, label: str) -> str:
-    absolute = os.path.realpath(os.path.abspath(path))
-    allowed = os.path.realpath(DEFAULT_ROOT)
-    try:
-        contained = os.path.commonpath([allowed, absolute]) == allowed
-    except ValueError:
-        contained = False
-    if not contained:
-        raise RunnerError(f"{label} must stay under the active workspace's .tmp directory")
-    return absolute
-
-
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
-        return _workspace_tmp_path(configured, "CE_PEER_JOBS_ROOT")
-    if _private_root_usable(DEFAULT_ROOT):
-        return os.path.abspath(DEFAULT_ROOT)
-    raise RunnerError(f"workspace-local jobs root is unavailable: {DEFAULT_ROOT}")
+        return os.path.abspath(configured)
+    root = _default_jobs_root()
+    if not _private_root_usable(root):
+        raise RunnerError("cannot create a writable jobs root under workspace .tmp")
+    return os.path.abspath(root)
 
 
 def candidate_jobs_root_bases() -> list:
-    """Every workspace-local root an existing job may live under."""
+    """Every root an existing job may live under: the configured root, else
+    workspace `.tmp`/rocketclaw-jobs.
+
+    Creation uses jobs_root_base(); lookup of an already-started job must not
+    depend on which root *this* invocation would create under.
+    """
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
-        return [_workspace_tmp_path(configured, "CE_PEER_JOBS_ROOT")]
-    return [os.path.abspath(DEFAULT_ROOT)]
+        return [os.path.abspath(configured)]
+    return [os.path.abspath(_default_jobs_root())]
+
+
+def _is_opencode2_argv(argv) -> bool:
+    """True when this worker is the opencode2 harness, not opencode (v1)."""
+    for tok in argv:
+        name = os.path.basename(str(tok)).lower()
+        if name in ("opencode2", "opencode2.exe"):
+            return True
+    return False
 
 
 def skill_runs_root(skill: str) -> str:
     if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return _workspace_tmp_path(os.environ["CE_WORK_RUNS_ROOT"], "CE_WORK_RUNS_ROOT")
+        return os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])
     return os.path.join(jobs_root_base(), skill)
 
 
 def candidate_skill_runs_roots(skill: str) -> list:
     if skill == "ce-work" and os.environ.get("CE_WORK_RUNS_ROOT"):
-        return [_workspace_tmp_path(os.environ["CE_WORK_RUNS_ROOT"], "CE_WORK_RUNS_ROOT")]
+        return [os.path.abspath(os.environ["CE_WORK_RUNS_ROOT"])]
     return [os.path.join(base, skill) for base in candidate_jobs_root_bases()]
 
 
@@ -842,7 +858,7 @@ def ensure_owned_dirs(base: str, path: str) -> None:
         # managed default (repairing a default left non-private, which is what
         # the POSIX unconditional chmod is for). A pre-existing user-supplied
         # CE_PEER_JOBS_ROOT keeps its ACLs and rests on the owner check.
-        default_root = os.path.abspath(DEFAULT_ROOT) if DEFAULT_ROOT else None
+        default_root = os.path.abspath(_default_jobs_root())
         ours = created_base or (
             default_root is not None
             and os.path.normcase(cur) == os.path.normcase(default_root))
@@ -917,16 +933,7 @@ def create_exclusive(path: str, data: bytes = b"", mode: int = 0o600) -> None:
 
 
 def write_atomic(path: str, data: bytes) -> None:
-    directory = os.path.dirname(path)
-    for _ in range(CLAIM_ATTEMPTS):
-        tmp = os.path.join(directory, f".atomic-{os.urandom(8).hex()}")
-        try:
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | O_NOFOLLOW | O_BINARY, 0o600)
-            break
-        except FileExistsError:
-            continue
-    else:
-        raise RunnerError(f"cannot reserve atomic sibling for {path}")
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -1013,6 +1020,16 @@ def job_state(job_dir: str) -> str:
     if os.path.lexists(os.path.join(job_dir, "pid")):
         return "running"
     return "never-started"
+
+
+def job_reason(job_dir: str) -> str:
+    """The terminal record's detail line, or "" when unavailable. Decorative
+    context for a message; never load-bearing, so every failure reads as ""."""
+    try:
+        raw = read_owned(os.path.join(job_dir, "reason"), REASON_READ_CAP)
+    except (Unreadable, OSError):
+        return ""
+    return raw.decode("utf-8", "replace").strip()
 
 
 # --- process-tree control -----------------------------------------------------
@@ -1353,7 +1370,7 @@ def _env_option_advance(tok: str) -> int:
     the rest of the token as an
     attached operand or the next argv slot. Unsupported options fail closed
     before worker detach.
-    (portability regression coverage)
+    (#1292 Codex P2)
     """
     if tok in ("-u", "--unset", "-C", "--chdir"):
         return 2
@@ -1468,7 +1485,7 @@ def _prefer_windows_posix_shell(token: str) -> str:
     """Absolute non-WSL bash/sh kept; bare names and System32 go through resolve.
 
     Explicit absolute paths (portable Git, custom installs) must not be
-    substituted by the preferred resolver. Bare `bash`/`sh`
+    substituted by the preferred resolver (#1292 Codex P2). Bare `bash`/`sh`
     and System32 WSL launchers still use `_resolve_windows_posix_shell()`.
     """
     if _windows_path_is_absolute(token):
@@ -1647,6 +1664,10 @@ def supervise(job_dir: str, argv, result_path, conf: dict, ack_fd: int) -> None:
                     | _CREATE_SUSPENDED)
             else:
                 popen_kwargs["start_new_session"] = True  # worker leads its own group
+            if _is_opencode2_argv(argv):
+                # Distinct from opencode (v1). opencode2 has no --dir; cwd is
+                # the workspace root.
+                popen_kwargs["cwd"] = workspace_root()
             # Wrap bare *.sh on Windows at spawn time only — meta still has the
             # caller argv (see _popen_argv).
             proc = subprocess.Popen(_popen_argv(argv), **popen_kwargs)
@@ -1927,8 +1948,7 @@ def _require_detach_support() -> None:
     """Detached peer jobs need a supported detach path: os.fork/os.setsid on
     POSIX, or the native Windows DETACHED_PROCESS path (#1243). Checked first,
     before jobs_root_base()/geteuid, so an unsupported host fails with this clear
-    message instead of jobs_root_base()'s unrelated "effective user ID is
-    unavailable" error or an AttributeError mid-detach. Native Windows is now
+    message instead of jobs_root_base()'s unrelated workspace `.tmp` error, or an AttributeError mid-detach. Native Windows is now
     supported; only a non-win32 Python missing fork/setsid (some embedded
     builds) is rejected here."""
     if IS_WINDOWS:
@@ -1938,7 +1958,7 @@ def _require_detach_support() -> None:
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
             "a Windows Python 3 build (see "
-            "the tracked portability issue)."
+            "issue #1243)."
         )
 
 
@@ -2029,6 +2049,11 @@ def cmd_start(args, worker_argv) -> int:
             except RunnerError as exc:
                 problem = str(exc)
     argv = [resolved] + list(worker_argv[1:])
+    if _is_opencode2_argv(worker_argv):
+        if problem == "was not found on PATH":
+            problem = "opencode2 not found on PATH (not interchangeable with opencode)"
+        elif os.path.basename(resolved).lower() in ("opencode", "opencode.exe"):
+            problem = "opencode2 is a distinct harness from opencode; refusing to exec opencode"
 
     conf = cfg(args.skill)
     meta = {
@@ -2125,6 +2150,42 @@ def _emit_bytes(data: bytes) -> None:
         sys.stdout.write(data.decode("utf-8", "replace"))
 
 
+def _report_absent_artifact(target: str, args) -> int:
+    """An absent --path artifact is an outcome, not a read error: a peer that
+    skipped its gate exits 0 and writes nothing, so the file is legitimately
+    missing on the most common fold-in path. Name that outcome, and when the
+    caller also passed the job id, name the job's state -- otherwise "still
+    running" and "ran, produced nothing" arrive as one errno the caller cannot
+    act on. Each outcome keeps the exit code the job-result contract already
+    assigns it, so a trust or lookup failure never reads as the routine skip:
+    2 running, 4 ownership, 1 unknown job, 3 settled with no artifact."""
+    sys.stderr.write(f"peer-job-runner: no artifact at {target}\n")
+    if not args.job:
+        return 3
+    try:
+        job_dir = resolve_job_dir(args.job, args.skill)
+    except RunnerError as exc:
+        sys.stderr.write(f"peer-job-runner: {exc}\n")
+        return 1
+    state = job_state(job_dir)
+    if state == "unreadable":
+        # Do not read `reason` here: job_dir already failed its owner check, and
+        # O_NOFOLLOW guards only the final component, so a swapped directory
+        # could redirect that read.
+        sys.stderr.write(
+            f"peer-job-runner: job state unreadable (ownership or corruption): {job_dir}\n"
+        )
+        return 4
+    if state == "running":
+        sys.stderr.write(f"peer-job-runner: job {args.job} is still running\n")
+        return 2
+    reason = job_reason(job_dir)
+    sys.stderr.write(
+        f"peer-job-runner: job {args.job}: {state}" + (f" ({reason})" if reason else "") + "\n"
+    )
+    return 3
+
+
 def cmd_result(args) -> int:
     if not getattr(args, "path", None) and not args.job:
         sys.stderr.write("peer-job-runner: result needs a job id or --path FILE\n")
@@ -2133,15 +2194,22 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable scratch path unchecked.
+        # consumer must never read a predictable workspace .tmp path unchecked.
+        target = os.path.abspath(args.path)
         try:
-            data = read_owned(os.path.abspath(args.path), cfg()["result_max"])
+            data = read_owned(target, cfg()["result_max"])
         except Unreadable as exc:
             sys.stderr.write(f"peer-job-runner: unreadable: {exc}\n")
             return 4
+        except FileNotFoundError:
+            return _report_absent_artifact(target, args)
         except OSError as exc:
-            sys.stderr.write(f"peer-job-runner: file missing or unreadable: {exc}\n")
-            return 3
+            # Only a genuine ENOENT is "the peer produced nothing". Every other
+            # read failure means the path is there but was refused -- a planted
+            # symlink rejected by O_NOFOLLOW is the case this guard exists for --
+            # so it takes the trust-failure code, never the routine one.
+            sys.stderr.write(f"peer-job-runner: refused to read {target}: {exc}\n")
+            return 4
         _emit_bytes(data)
         return 0
     job_dir = resolve_job_dir(args.job, args.skill)
@@ -2350,7 +2418,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_result.add_argument(
         "--path",
         default=None,
-        help="ownership-checked bounded read of this file instead of a job's declared result",
+        help=(
+            "ownership-checked bounded read of this file instead of a job's "
+            "declared result; pass the job id too so an absent file reports "
+            "that job's state"
+        ),
     )
 
     p_reap = sub.add_parser(

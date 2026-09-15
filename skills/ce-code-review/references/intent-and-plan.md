@@ -1,21 +1,13 @@
 # Intent discovery and plan requirements
 
-Read this at Stage 2. It owns the intent summary, plan discovery, reviewer grounding, and the plan-readiness rules Stage 6 verifies against.
+Read this at Stage 2. It defines the intent summary, plan discovery, what context each reviewer receives, and the plan-readiness rules that Stage 6 (Synthesize and present) verifies requirements against.
 
 ## Plan Requirements Completeness
 
 When a plan is provided via `plan:<path>` or discovered from PR/branch context,
-classify readiness before checking completeness:
+inspect the contents before checking completeness. A Product Contract alone informs product intent and does not create implementation-unit obligations. When implementation units are present, check their coverage as well, including incomplete planning. Old readiness labels do not change the review scope. Legacy plans keep the existing completeness checks.
 
-- Unified artifact: metadata includes `artifact_contract: unified-plan/v1`.
-  - `artifact_readiness: requirements-only` can inform product intent, but it
-    must not trigger implementation-unit completeness findings. Report that the
-    artifact was not implementation-ready if the diff appears to implement it.
-  - `artifact_readiness: implementation-ready` is eligible for full
-    requirements and U-ID completeness checks.
-  - Invalid progress-like readiness values (`active`, `in_progress`,
-    `completed`, `done`) are contract errors.
-- Legacy plan: use the existing completeness checks.
+An unaddressed requirement or implementation unit is a finding on every depth path, routed by `plan_source`: `explicit` (a `plan:` argument or a PR-body link) yields a P1 finding with `autofix_class: manual` and `owner: downstream-resolver`, which enters the actionable queue; `inferred` (auto-discovered) yields a P3 finding with `autofix_class: advisory` and `owner: human`, which stays in the report only, because an inferred match is a hint, not a contract.
 
 Extract requirements from these shapes, in order:
 
@@ -23,7 +15,7 @@ Extract requirements from these shapes, in order:
 2. Legacy top-level `## Requirements`
 3. Legacy `## Requirements Trace`
 
-For unified implementation-ready plans, also extract U-IDs from
+For unified plans with implementation units, also extract U-IDs from
 `## Implementation Units` and compare against PR body/branch context when
 available. Do not require every Product Contract R-ID to map one-to-one to a
 single U-ID; verify that implemented U-IDs cite the relevant R/F/AE/KTD IDs and
@@ -33,14 +25,14 @@ that no claimed U-ID is missing from the plan.
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `GIT_DIR="$(jj git root)" gh pr view` metadata. Supplement with change descriptions from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
 
-**Bookmark mode:** Run `jj log -r "$BASE::<branch-ref>" --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved common ancestor and bookmark revision from Stage 1.
+**Branch mode:** Run `jj log -r "${BASE}..<branch-ref>" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved common ancestor and resolved bookmark ref from Stage 1. Use `<branch-ref>` (the resolved `<branch>@origin` or fetched ref), not the raw `<branch>` argument — a remote-only bookmark has no matching local ref, so the raw name would fail or read a stale same-named local bookmark.
 
-**Standalone (current working copy):** Run:
+**Standalone (current bookmark):** Run (cwd at the workspace root):
 
 ```
-echo "BOOKMARKS:" && jj log -r @ --no-graph -T 'local_bookmarks.map(|b| b.name()).join(",") ++ "\n"' && echo "CHANGES:" && jj log -r "$BASE::@" --no-graph -T 'change_id.short() ++ " " ++ description.first_line() ++ "\n"'
+echo "BRANCH:" && jj log -r @ --no-graph -T 'bookmarks' && echo "COMMITS:" && jj log -r "${BASE}..@" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:
@@ -50,9 +42,9 @@ Intent: Simplify tax calculation by replacing the multi-tier rate lookup
 with a flat-rate computation. Must not regress edge cases in tax-exempt handling.
 ```
 
-Pass this to every reviewer in their spawn prompt. Intent shapes *how hard each reviewer looks*, not which reviewers are selected. Keep any `session-settled:` annotations (from a plan or the conversation) out of this summary — reviewers stay blind to settlement (Stage 2b).
+Pass this to every reviewer in their spawn prompt. Intent shapes *how hard each reviewer looks*, not which reviewers are selected. Keep any `session-settled:` annotations (from a plan or the conversation) out of this summary. Reviewers must not see settlement annotations (Stage 2b, Plan discovery).
 
-**When intent is ambiguous:** Infer from bookmark name, change descriptions, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage; never block on a clarifying question.
+**When intent is ambiguous:** Infer from branch name, commits, PR title/body, diff, `plan:`, and conversation. Write the best-effort intent summary and note uncertainty in Coverage — never block on a clarifying question.
 
 ### Stage 2b: Plan discovery (requirements verification)
 
@@ -68,12 +60,12 @@ Locate the plan document so Stage 6 can verify requirements completeness. Check 
 - Multiple/ambiguous PR body matches -> `plan_source: inferred` (lower confidence)
 - Auto-discover with single unambiguous match -> `plan_source: inferred` (lower confidence)
 
-If a plan is found, classify readiness before extraction (see "Plan Requirements Completeness" above): for a unified plan read the metadata/header first, and treat a requirements-only artifact as product intent only — it must not drive implementation-unit completeness findings. Then read its **Requirements** in this order — unified `Product Contract` -> `### Requirements`, then legacy top-level `## Requirements`, then legacy `## Requirements Trace` — and the R-IDs (R1, R2, etc.) listed there, plus **Implementation Units** (current numeric subsections such as `### U1.`, `### U2.`, or `### Unit 1:` under `## Implementation Units`; legacy bullet or checkbox unit entries under that section also count). For HTML unified plans the same section names and R-/U-IDs appear as visible headings/anchors — match on the section name, ignoring HTML wrapper tags. Store the extracted requirements list and `plan_source` for Stage 6. Do not block the review if no plan is found — requirements verification is additive, not required.
+If a plan is found, classify by contents before extraction (see "Plan Requirements Completeness" above): treat a Product Contract without implementation planning as product intent only — it must not drive implementation-unit completeness findings. Then read its **Requirements** in this order — unified `Product Contract` -> `### Requirements`, then legacy top-level `## Requirements`, then legacy `## Requirements Trace` — and the R-IDs (R1, R2, etc.) listed there, plus **Implementation Units** (current numeric subsections such as `### U1.`, `### U2.`, or `### Unit 1:` under `## Implementation Units`; legacy bullet or checkbox unit entries under that section also count). For HTML unified plans the same section names and R-/U-IDs appear as visible headings/anchors — match on the section name, ignoring HTML wrapper tags. Store the extracted requirements list and `plan_source` for Stage 6. Do not block the review if no plan is found — requirements verification is additive, not required.
 
-When the discovered plan's Key Technical Decisions carry `session-settled:` annotations (classes `user-directed` / `user-approved`), extract each labeled KTD — the decision, its class, and the rejected alternative — for your own use in Stage 5 triage (step 6c). Settlement annotations are **orchestrator-only context**: exclude them from the Stage 2 intent summary and from every reviewer bundle, including the cross-model adversarial pass. Reviewer independence is the point: lenses must stay free to re-derive the rejected alternative on the merits; the orchestrator triages settlement conflicts post-hoc.
+When the discovered plan's Key Technical Decisions carry `session-settled:` annotations (classes `user-directed` / `user-approved`), extract each labeled KTD — the decision, its class, and the rejected alternative — for your own use in Stage 5 triage (step 6c). Settlement annotations are **context for you (the orchestrator) only**: exclude them from the Stage 2 intent summary and from every reviewer's prompt, including the cross-model adversarial pass. The point is reviewer independence: each reviewer must stay free to re-derive the rejected alternative on the merits, and you triage any settlement conflicts afterwards in Stage 5.
 
 ### Stage 2c: Keep grounding review-specific
 
-Use the project's active instructions already in context plus the current diff and source. Give each reviewer only the task-relevant context for its lens; the `project-standards` reviewer reads the actual standards sources. If a reviewer cannot scope the affected area from the diff and supplied context, allow one targeted probe.
+Use the project's active instructions already in context plus the current diff and source. Give each reviewer only the context relevant to its review focus; the `project-standards` reviewer reads the actual standards sources. If a reviewer cannot scope the affected area from the diff and supplied context, allow one targeted probe.
 
-In `pr-remote` / `branch-remote`, current source and any targeted probe must use `jj file show -r` against the supplied reviewed head revision, or the supplied diff hunks when no head revision is available; never inspect workspace paths.
+In `pr-remote` / `branch-remote`, current source and any targeted probe must use `jj file show` against the supplied reviewed head ref, or the supplied diff hunks when no head ref is available; never inspect workspace paths.

@@ -1,10 +1,11 @@
 ---
 name: ce-setup
-description: "Check plugin health and repo-local config."
+description: "Check RocketClaw health and repo-local config, or scaffold a Compound Pack with `pack:<id>`."
+argument-hint: "[pack:<id>]"
 disable-model-invocation: true
 ---
 
-# Setup
+# RocketClaw Setup
 
 ## Interaction Method
 
@@ -12,9 +13,13 @@ Ask each question below using the host's blocking question tool already in the c
 
 `ce-setup` is a lightweight health check and repo-local config helper. It does **not** bulk-install every optional dependency. Missing tools are reported as optional capabilities so the user can install only the workflows they use.
 
+## Pack Scaffold
+
+When the invocation names a Compound Pack to add, create, or scaffold (the `pack:<id>` argument, or the same request in words), read `references/pack-scaffold.md` from this skill's directory and follow it in place of Phases 1-2 (Diagnose and Fix Repo-Local Issues): it writes the pack and its config entry only after the user approves, runs the health check itself, and reports into Phase 3 (Summary).
+
 ## Artifact Root Resolution
 
-Every skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other plugin-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
+Every RocketClaw skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other plugin-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
 
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
@@ -28,7 +33,7 @@ Every skill that writes or reads an artifact directory (`solutions`, `plans`, `i
 
 ### Step 1: Determine Plugin Version
 
-Detect the installed plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
+Detect the installed rocketclaw plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
 
 If a version is found, pass it to the check script via `--version`. Otherwise omit the flag.
 
@@ -37,7 +42,7 @@ If a version is found, pass it to the check script via `--version`. Otherwise om
 Before running the script, display:
 
 ```text
-Checking your environment...
+RocketClaw -- checking your environment...
 ```
 
 Run the bundled check script. Set `SKILL_DIR` to the absolute directory you loaded this `ce-setup` SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, so a bare `scripts/` path will not resolve:
@@ -51,23 +56,22 @@ Use the same command without `--version VERSION` if Step 1 could not determine a
 
 If the script is unavailable, run the inline equivalent listed in `references/repo-fixes.md`.
 
-Display the diagnostic output to the user. Missing optional tools are not setup failures. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); surface that line so the operator can confirm where artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
+Display the diagnostic output to the user. Missing optional tools are not setup failures. The health report includes the resolved artifact root and which config layer supplied it (per Artifact Root Resolution above); show that line so the operator can confirm where artifacts will be written. Missing `config.yaml` is a reported absence, not a project issue.
 
 ### Step 3: Decide Whether Fixes Are Needed
 
-Report-gated repo-local remediations apply only to the workspace the health report diagnosed; if Phase 2 will write a different writable workspace, diagnose that workspace first, while session-level findings such as plugin version and optional tools remain from this session's Phase 1.
+Repo-local fixes the health report names apply only to the checkout that report diagnosed. If Phase 2 will write to a different writable checkout, diagnose that checkout first. Session-level findings such as plugin version and optional tools still come from this session's Phase 1.
 
-After the health report, decide Phase 2 from writable-workspace availability:
+After the health report, decide Phase 2 from writable-checkout availability:
 
-- If this session has a writable Jujutsu workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
-- If this session has no writable workspace, but the user named a repository and the harness exposes a remote repo-work surface with a writable workspace, run Phase 2 on that surface instead and report the remote repo-local fixes in Phase 3.
-- Otherwise skip Phase 2 and go to Phase 3, saying repo-local writes were skipped because no writable workspace is available.
+- If this session has a writable jj workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
+- If this session has no writable workspace, but the user named a repository and the harness exposes a remote repo-work surface with a writable checkout, run Phase 2 on that surface instead and report the remote repo-local fixes in Phase 3.
+- Otherwise skip Phase 2 and go to Phase 3, saying repo-local writes were skipped because no writable checkout is available.
 
-If the report names a legacy Codex tool map, offer to remove it following `references/legacy-codex-tool-map.md` from this skill's directory. That block lives in the user's Codex home, not the checkout, so the offer stands whether or not Phase 2 runs.
+If the report names a legacy Compound Codex tool map, offer to remove it following `references/legacy-codex-tool-map.md` from this skill's directory. That block lives in the user's Codex home, not the checkout, so the offer stands whether or not Phase 2 runs.
 
 Also remediate these project issues when the report names them:
 
-- obsolete `rocketclaw.local.md`
 - `.rocketclaw/config.local.yaml` exists but is not safely ignored
 - `.rocketclaw/config.example.yaml` is missing or outdated
 - the health report marks the `ce-work` skill implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`
@@ -77,7 +81,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 ## Phase 2: Fix Repo-Local Issues
 
-Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It carries Steps 4-8: removing the obsolete `rocketclaw.local.md`, refreshing the example config, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, and the two `.gitignore` offers.
+Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It carries Steps 5-9: refreshing the example config, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, the two `.gitignore` offers, and the agent-instructions offers (a knowledge-store mention, the compounding directive, and the chat-register directive for `ce-noslop`).
 
 All paths there resolve from the workspace root (`jj workspace root`), not the current working directory. Maintaining the generated example files is the work Phase 2 does on its own — refreshing `config.example.yaml` and removing the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
 
@@ -88,7 +92,7 @@ All paths there resolve from the workspace root (`jj workspace root`), not the c
 Display a brief summary:
 
 ```text
-Setup complete
+✅ RocketClaw setup complete
 
 Fixed:     <fixes applied, or none>
 Skipped:   <fixes declined, or none>

@@ -26,8 +26,8 @@ When the input is ambiguous (e.g., a zip arrived without context), inspect the r
 
 ## Common rules
 
-- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Do not include `raw/` or `frames/` in a lasting JJ change unless the user explicitly asks and privacy is acceptable.
-- Text and metadata artifacts may remain in a described JJ change when traceability needs them and they contain no sensitive data.
-- Use workspace-relative screenshot paths in any retained document so later agents can open the evidence without absolute local paths.
+- Keep raw recordings, audio chunks, zip contents, session dumps, and extracted screenshots local-only by default. Leave `raw/` and `frames/` untracked (`jj file untrack` if they appear in the working copy) unless the user explicitly asks and privacy is acceptable.
+- Text/metadata artifacts (requirements kickoff material, analysis summaries, problem analyses, source manifests) may remain in the working copy when they are needed for traceability and contain no sensitive data.
+- Use repo-relative screenshot paths in any tracked doc so later agents can open the evidence without absolute local paths.
 
-The output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.
+The RocketClaw output format used by the extensive path is documented in `references/rocketclaw-feedback-format.md`.

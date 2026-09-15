@@ -37,7 +37,7 @@
 #
 #   Excluded directories (not real project roots):
 #     node_modules .git .jj vendor dist build coverage .next .nuxt
-#     .svelte-kit .turbo .tmp tmp fixtures
+#     .svelte-kit .turbo tmp fixtures
 #
 # `multiple` vs `rails`: Rails apps commonly ship a Procfile.dev alongside
 # bin/dev. To avoid treating every Rails app as a monorepo, the `rails`
@@ -46,20 +46,15 @@
 
 set -u
 
-REPO_ROOT=$(jj workspace root 2>/dev/null)
+REPO_ROOT=$(jj workspace root 2>/dev/null) || true
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a Jujutsu workspace" >&2
+  echo "ERROR: not a jj workspace" >&2
   exit 1
 fi
 
-# Pin cwd to the workspace root. `jj -R` does not change cwd.
-if ! cd "$REPO_ROOT" 2>/dev/null; then
-  echo "ERROR: cannot resolve workspace root" >&2
-  exit 1
-fi
-REPO_ROOT=$(pwd -P)
+REPO_ROOT=$(cd "$REPO_ROOT" 2>/dev/null && pwd -P)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: cannot resolve workspace root" >&2
+  echo "ERROR: cannot resolve repo root" >&2
   exit 1
 fi
 
@@ -159,7 +154,7 @@ esac
 # Exclusion list: directories that ship framework configs as fixtures or build
 # output, not as real project roots.
 
-EXCLUDE_DIRS="node_modules .git .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo .tmp tmp fixtures"
+EXCLUDE_DIRS="node_modules .git .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
 EXCLUDE_ARGS=""
 for d in $EXCLUDE_DIRS; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS -path './$d' -prune -o -path '*/$d' -prune -o"

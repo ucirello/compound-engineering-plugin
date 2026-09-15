@@ -1,12 +1,12 @@
-import fs from "fs"
 import path from "path"
+import fs from "fs"
 import { fileURLToPath } from "url"
-import { Plugin, Skill } from "@opencode/plugin"
+import { Plugin } from "@opencode/plugin"
 
 const pluginDir = path.dirname(fileURLToPath(import.meta.url))
 const skillsDir = path.resolve(pluginDir, "../../skills")
 
-function unquote(value: string): string {
+function unquote(value: string) {
   if (value.length < 2) return value
   const quote = value[0]
   if ((quote !== '"' && quote !== "'") || value[value.length - 1] !== quote) return value
@@ -16,7 +16,7 @@ function unquote(value: string): string {
 
 // Scoped to the leading `---` block so a `name:`/`description:` line inside a
 // fenced YAML example in the skill body cannot register a bogus command.
-function parseFrontmatter(content: string): { fields: Record<string, string>; body: string } | null {
+function parseFrontmatter(content: string) {
   const block = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!block) return null
   const fields: Record<string, string> = {}
@@ -24,49 +24,51 @@ function parseFrontmatter(content: string): { fields: Record<string, string>; bo
     const pair = line.match(/^([A-Za-z][\w-]*):\s*(.*)$/)
     if (pair) fields[pair[1]] = unquote(pair[2].trim())
   }
-  return {
-    fields,
-    body: content.slice(block[0].length).replace(/^\r?\n/, ""),
-  }
+  return fields
+}
+
+function skillBody(content: string) {
+  const block = content.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)
+  if (!block) return content
+  return content.slice(block[0].length)
 }
 
 type LoadedSkill = {
   name: string
   description?: string
-  body: string
-  skillPath: string
   suppressed: boolean
-  autoinvoke: boolean
+  skillPath: string
+  body: string
 }
 
 function loadSkills(): LoadedSkill[] {
-  const skills: LoadedSkill[] = []
-  let entries: string[]
+  const loaded: LoadedSkill[] = []
+  let entries
   try {
     entries = fs.readdirSync(skillsDir)
   } catch {
-    return skills
+    return loaded
   }
   for (const entry of entries) {
     const skillPath = path.join(skillsDir, entry, "SKILL.md")
-    let content: string
+    let content
     try {
       content = fs.readFileSync(skillPath, "utf8")
     } catch {
       continue
     }
-    const parsed = parseFrontmatter(content)
-    if (!parsed || !parsed.fields.name) continue
-    skills.push({
-      name: parsed.fields.name,
-      description: parsed.fields.description,
-      body: parsed.body,
+    const fields = parseFrontmatter(content)
+    if (!fields || !fields.name) continue
+    const skill: LoadedSkill = {
+      name: fields.name,
+      suppressed: fields["user-invocable"] === "false",
       skillPath,
-      suppressed: parsed.fields["user-invocable"] === "false",
-      autoinvoke: parsed.fields["disable-model-invocation"] !== "true",
-    })
+      body: skillBody(content),
+    }
+    if (fields.description) skill.description = fields.description
+    loaded.push(skill)
   }
-  return skills
+  return loaded
 }
 
 const skills = loadSkills()
@@ -80,11 +82,9 @@ export default Plugin.define({
           id: skill.name,
           name: skill.name,
           ...(skill.description ? { description: skill.description } : {}),
-          slash: false,
-          autoinvoke: skill.autoinvoke,
           location: skill.skillPath,
           content: skill.body,
-        } as Skill.Info)
+        } as Parameters<typeof editor.add>[0])
       }
     })
 
@@ -94,15 +94,15 @@ export default Plugin.define({
         editor.add({
           name: skill.name,
           ...(skill.description ? { description: skill.description } : {}),
-          execute: async ({ sessionID, prompt, delivery }) => {
-            const attached = prompt.skills ?? []
+          execute: async (input) => {
+            const attached = input.prompt.skills ?? []
             const alreadyAttached = attached.some((item) => item.id === skill.name)
             await ctx.session.prompt({
-              ...prompt,
-              sessionID,
-              text: `Load and execute the \`${skill.name}\` skill.\n\n${prompt.text}`,
+              ...input.prompt,
+              sessionID: input.sessionID,
+              text: input.prompt.text || "",
               skills: alreadyAttached ? attached : [...attached, { id: skill.name }],
-              delivery,
+              delivery: input.delivery,
             })
           },
         })

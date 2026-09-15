@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Environment health check.
+# RocketClaw environment health check.
 # Reports optional tool capabilities and repo-local config safety in one pass.
 
 set -o pipefail
@@ -10,7 +10,6 @@ set -o pipefail
 # Format: name|install_cmd|url|capability
 
 deps=(
-  "jj|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q jj|https://jj-vcs.github.io/jj/latest/install-and-setup/|Jujutsu workspace and change workflows"
   "agent-browser|CI=true npm install -g agent-browser --no-audit --no-fund --loglevel=error && agent-browser install|https://github.com/vercel-labs/agent-browser|browser testing and dogfood QA"
   "gh|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q gh|https://cli.github.com|GitHub PR, issue, and review workflows"
   "jq|NONINTERACTIVE=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install -q jq|https://jqlang.github.io/jq/|JSON inspection in shell-based workflows"
@@ -34,9 +33,9 @@ done
 #  Helpers
 # =====================================================
 
-ok()      { echo "  OK: $1"; }
-warn()    { echo "  Warning: $1"; }
-skip()    { echo "  Skipped: $1"; }
+ok()      { echo "  🟢  $1"; }
+warn()    { echo "  🟡  $1"; }
+skip()    { echo "  ➖  $1"; }
 detail()  { echo "       $1"; }
 section() { echo ""; echo " $1"; }
 
@@ -122,16 +121,16 @@ resolve_docs_root() {
   # Reject any `..` path component up front. resolve_real_best_effort only
   # collapses `..` within the existing prefix (via cd/pwd -P); a `..` that
   # traverses a not-yet-created segment would otherwise survive literally and
-  # escape the workspace, hit the workspace root, or reach .jj/ while still
-  # string-prefix matching. A legitimate workspace-relative artifact root never needs `..`.
+  # escape the workspace, hit the workspace root, or reach .jj/ while still string-prefix
+  # matching. A legitimate workspace-relative artifact root never needs `..`.
   case "/$value/" in
     */../*) docs_root_error="path traversal ('..') is not allowed; use a plain workspace-relative path"; return ;;
   esac
-  repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P)" || { docs_root_error="could not resolve the repository root"; return; }
+  repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P)" || { docs_root_error="could not resolve the workspace root"; return; }
   real="$(resolve_real_best_effort "$repo_root/$value")" || { docs_root_error="could not resolve the path"; return; }
   case "$real/" in
     "$repo_real/"*) ;;
-    *) docs_root_error="resolves outside the repository ($real)"; return ;;
+    *) docs_root_error="resolves outside the workspace ($real)"; return ;;
   esac
   [ "$real" = "$repo_real" ] && { docs_root_error="resolves to the workspace root itself"; return; }
   case "$real/" in
@@ -288,7 +287,20 @@ read_work_engine_preferences() {
 }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(jj workspace root >/dev/null 2>&1 && echo "yes" || echo "no")
+workspace_root=$(jj --no-pager workspace root 2>/dev/null) || workspace_root=""
+if [ -n "$workspace_root" ]; then
+  in_repo="yes"
+else
+  in_repo="no"
+fi
+
+# JJ auto-tracks files that are not ignored. Non-empty `jj file list` for a
+# prefix means those paths are tracked (not ignored). JJ has no check-ignore.
+is_tracked() {
+  local root="$1" prefix="$2" listing
+  listing=$(cd "$root" && jj --no-pager file list -- "$prefix" 2>/dev/null) || true
+  [ -n "$listing" ]
+}
 
 # Retired Bun-era Codex tool map (#1099). The block is present only when a
 # standalone BEGIN line is followed by a standalone END line.
@@ -332,9 +344,8 @@ done
 #  Project checks (repo only)
 # =====================================================
 
-legacy_cfg="skip"
-repo_cfg_ignore="skip"
-scratch_ignore="skip"
+repo_cfg_gitignore="skip"
+scratch_gitignore="skip"
 local_cfg="skip"
 example_cfg="skip"
 retired_keys=()
@@ -352,27 +363,28 @@ tracked_cfg="skip"
 project_issues=0
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(jj workspace root 2>/dev/null)
+  repo_root="$workspace_root"
   local_config_path="$repo_root/.rocketclaw/config.local.yaml"
   tracked_config_path="$repo_root/.rocketclaw/config.yaml"
   resolve_docs_root "$repo_root"
   [ "$docs_root_status" = "invalid" ] && project_issues=$((project_issues + 1))
-  legacy_cfg="missing"
-  [ -f "$repo_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    if ! (cd "$repo_root" && jj --ignore-working-copy file list 'root-file:.rocketclaw/config.local.yaml') 2>/dev/null | grep -q .; then
-      repo_cfg_ignore="ok"
+    if is_tracked "$repo_root" ".rocketclaw/config.local.yaml"; then
+      repo_cfg_gitignore="missing"
     else
-      repo_cfg_ignore="missing"
+      repo_cfg_gitignore="ok"
     fi
   fi
 
-  scratch_ignore="missing"
-  if [ -f "$repo_root/.gitignore" ] && grep -Eq '^[[:space:]]*/?\.tmp(/\*|/|/rocketclaw/?)?[[:space:]]*$' "$repo_root/.gitignore"; then
-    scratch_ignore="ok"
+  # JJ has no check-ignore. A missing .tmp cannot be probed; treat as not
+  # covered so Phase 2 still offers the ignore line. If .tmp exists and
+  # jj file list names nothing under it, the tree is ignored.
+  scratch_gitignore="missing"
+  if [ -e "$repo_root/.tmp" ] && ! is_tracked "$repo_root" ".tmp"; then
+    scratch_gitignore="ok"
   fi
 
   tracked_cfg="missing"
@@ -427,7 +439,7 @@ if [ "$in_repo" = "yes" ]; then
             case "$preference_model" in
               [A-Za-z0-9]*)
                 case "$preference_model" in
-                  *[!A-Za-z0-9._:/#-]*)
+                  *[!A-Za-z0-9._:/-#]*)
                     [ -z "$work_engine_preferences_error" ] && work_engine_preferences_error="invalid model '$preference_model' in work_engine_preferences"
                     ;;
                 esac
@@ -546,20 +558,13 @@ done
 
 if [ "$legacy_codex_map" = "yes" ]; then
   section "Codex instructions"
-  warn "Legacy Codex tool map in ${codex_agents_file}"
+  warn "Legacy Compound Codex tool map in ${codex_agents_file}"
   detail "Retired block from a pre-native Bun install; one line tells Codex to collapse subagent dispatch."
   detail "Remove it -- see this skill's references/legacy-codex-tool-map.md"
 fi
 
 if [ "$in_repo" = "yes" ]; then
   section "Project config"
-
-  if [ "$legacy_cfg" = "present" ]; then
-    warn "Obsolete rocketclaw.local.md exists"
-    project_issues=$((project_issues + 1))
-  else
-    ok "No obsolete rocketclaw.local.md"
-  fi
 
   if [ "$tracked_cfg" = "present" ]; then
     ok ".rocketclaw/config.yaml exists"
@@ -569,7 +574,7 @@ if [ "$in_repo" = "yes" ]; then
 
   if [ "$local_cfg" = "present" ]; then
     ok ".rocketclaw/config.local.yaml exists"
-    if [ "$repo_cfg_ignore" = "ok" ]; then
+    if [ "$repo_cfg_gitignore" = "ok" ]; then
       ok "Local config is ignored"
     else
       warn "Local config is not safely ignored"
@@ -579,11 +584,11 @@ if [ "$in_repo" = "yes" ]; then
     skip "No local override yet (.rocketclaw/config.local.yaml)"
   fi
 
-  if [ "$scratch_ignore" = "ok" ]; then
+  if [ "$scratch_gitignore" = "ok" ]; then
     ok "Scratch space is ignored"
   else
     skip "Scratch space is not ignored"
-    detail "Skills that keep local scratch write it under .tmp/rocketclaw/"
+    detail "Skills that keep local scratch write it under .tmp/"
   fi
 
   if [ "$docs_root_status" = "default" ]; then
@@ -634,16 +639,63 @@ if [ "$in_repo" = "yes" ]; then
     esac
     project_issues=$((project_issues + 1))
   done
+  # --- Compound Packs (packs: config key) -------------------------------------
+  section "Compound Packs"
+  packs_python="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"
+  packs_resolver="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/packs-resolve.py"
+  if [ -z "$packs_python" ]; then
+    skip "No Python interpreter found; pack health not checked"
+  elif [ ! -f "$packs_resolver" ]; then
+    skip "packs-resolve.py not found beside check-health; pack health not checked"
+  else
+    packs_json="$("$packs_python" "$packs_resolver" 2>/dev/null)"
+    if [ -z "$packs_json" ]; then
+      warn "packs-resolve.py failed to run"
+      project_issues=$((project_issues + 1))
+    else
+      packs_report="$(printf '%s' "$packs_json" | "$packs_python" -c '
+import json, sys
+data = json.load(sys.stdin)
+roots, errors, warns = data.get("roots", []), data.get("errors", []), data.get("warnings", [])
+if not roots and not errors and not warns:
+    print("SKIP\tNo packs configured")
+for r in roots:
+    line = "OK\tpack " + r["id"]
+    url, ref = r.get("url"), r.get("ref")
+    if url and ref:
+        line += " (" + ref + ")"
+    # Subdirectories are storage, so rule-shaped files there are a note on the
+    # OK line, never a warning: the author may keep drafts and evidence with frontmatter.
+    nested = r.get("nested_rule_shaped", 0)
+    if nested:
+        line += " -- " + str(nested) + " rule-shaped file(s) in subfolders kept as storage"
+    print(line)
+for w in warns:
+    print("WARN\t" + w)
+for e in errors:
+    print("ERROR\t" + e)
+')"
+      while IFS=$'\t' read -r kind msg; do
+        [ -z "$kind" ] && continue
+        case "$kind" in
+          OK)    ok "$msg" ;;
+          SKIP)  skip "$msg" ;;
+          WARN)  warn "$msg" ;;
+          ERROR) warn "Pack config error: $msg"; project_issues=$((project_issues + 1)) ;;
+        esac
+      done < <(printf '%s\n' "$packs_report")
+    fi
+  fi
 else
   section "Project config"
-  skip "Not inside a Jujutsu workspace"
+  skip "Not inside a jj workspace"
 fi
 
 echo ""
 if [ "$project_issues" -eq 0 ]; then
-  echo " Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " ✅  Project config healthy. Optional capabilities available: ${capability_ok}/${capability_total}"
 else
-  echo " ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
+  echo " ⚠️   ${project_issues} project issue(s) found. Optional capabilities available: ${capability_ok}/${capability_total}"
 fi
 
 if [ "$legacy_codex_map" = "yes" ]; then

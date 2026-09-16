@@ -1,13 +1,17 @@
-# Describing the refresh change
+# Committing the refresh
 
-Skip if no files changed. Check the bookmarks on `@`, whether the working copy has unrelated changes, and recent change-description style. The working copy is the change — do not stage. Isolate the refresh so the described change contains only the files this run modified.
+Skip if no files changed. Check the current bookmark, whether the working copy has unrelated changes, and recent description style. There is no staging area: name **only** the files this refresh modified on `jj commit`.
 
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repo-local syntax.
+Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality, clarity, and structure without replacing repo-local syntax. Determine the syntax at runtime from those sources. Keep the semantic constraint that the description summarizes the refresh (how many docs were updated, consolidated, or deleted). Do not impose a fixed type, scope, prefix, footer, or body template.
 
-The description must summarize the refresh: which learnings were updated, consolidated, replaced, or deleted. Do not use a fixed subject, prefix, type, scope, or template. Set it with `jj describe -m "<message composed from the standards above>"` (or `jj commit -m "<message composed from the standards above>"` when the workflow needs a new empty change on top).
+Example:
 
-Non-interactive defaults: on the repo's default bookmark (main, master, or whatever the remote designates) → if `@` carries that bookmark, create a bookmark named for what was refreshed (e.g., `docs/refresh-auth-learnings`) on `@` and move the default bookmark back to `@-`, describe the change, `jj git push --bookmark <name>`, attempt a PR with `GIT_DIR=$(cd "$(jj workspace root)" && jj git root)` on `gh` (if PR creation fails, report the bookmark name); on a feature bookmark → describe a separate change on that bookmark; jj failures → put the recommended commands in the report and continue.
+```bash
+jj commit -m "<message composed from the standards above>" file1 file2
+```
 
-Interactive: ask (per Blocking questions), with the recommended option first. On the default bookmark: new bookmark + describe + PR (recommended; specific bookmark name) / describe on the current bookmark / don't describe. On a clean feature bookmark: describe on it (recommended) / separate bookmark / don't describe. On a working copy that also has unrelated changes: isolate and describe only refresh changes / don't describe.
+Non-interactive defaults: on the repo's default bookmark (main, master, or whatever the remote designates) → create a bookmark named for what was refreshed, commit, attempt a PR (if PR creation fails, report the bookmark name); on a feature bookmark → separate change on that bookmark; jj failures → put the recommended commands in the report and continue.
+
+Interactive: ask (per Blocking questions), with the recommended option first. On the default bookmark: bookmark+commit+PR (recommended; specific bookmark name) / commit on the current bookmark / don't commit. On a clean feature bookmark: commit to it (recommended) / separate bookmark / don't commit. On a dirty feature bookmark: named-fileset commit of only refresh changes / don't commit.

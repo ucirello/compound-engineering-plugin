@@ -110,7 +110,7 @@ validate_effort_override() {
     codex:minimal|codex:low|codex:medium|codex:high|codex:xhigh) ;;
     grok-cli:low|grok-cli:medium|grok-cli:high) ;;
     opencode:none|opencode:minimal|opencode:low|opencode:medium|opencode:high|opencode:xhigh|opencode:max|opencode:default) ;;
-    opencode2:*) return 1 ;;
+    opencode2:none|opencode2:minimal|opencode2:low|opencode2:medium|opencode2:high|opencode2:xhigh|opencode2:max|opencode2:default) ;;
     *) return 1 ;;
   esac
 }
@@ -169,9 +169,18 @@ adapter_argv() {
       [ -z "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ] || printf '%s\0' --variant "$CROSS_MODEL_EFFORT_OVERRIDE"
       ;;
     opencode2)
-      # Distinct v2 harness: binary opencode2; no --dir; no --variant; cwd=workspace.
-      printf '%s\0' opencode2 run --standalone --auto --format json --file "$PROMPT_FILE"
-      [ "$(route_model opencode2)" = auto ] || printf '%s\0' --model "$(route_model opencode2)"
+      # Distinct opencode2 harness: variant is #variant on --model, not --variant.
+      printf '%s\0' opencode2 run --standalone --auto
+      printf '%s\0' "Follow the attached unit packet. Return only the implementation result JSON."
+      model="$(route_model opencode2)"
+      if [ "$model" != auto ]; then
+        if [ -n "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ] && [[ "$model" != *#* ]]; then
+          model="${model}#${CROSS_MODEL_EFFORT_OVERRIDE}"
+        fi
+        printf '%s\0' --model "$model"
+      elif [ -n "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ]; then
+        printf '%s\0' --model "auto#${CROSS_MODEL_EFFORT_OVERRIDE}"
+      fi
       ;;
     *) return 1 ;;
   esac
@@ -220,12 +229,9 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-ADAPTER_TMP="$( (cd "$WORKSPACE" && jj workspace root 2>/dev/null) || true)"
-if [ -z "$ADAPTER_TMP" ]; then
-  ADAPTER_TMP="$WORKSPACE"
-fi
-mkdir -p "$ADAPTER_TMP/.tmp" || exit 2
-SCRATCH="$(mktemp -d "$ADAPTER_TMP/.tmp/ce-work-adapter-XXXXXX")" || exit 2
+ROOT="$( (cd "$WORKSPACE" && jj --no-pager workspace root) 2>/dev/null || echo "$WORKSPACE" )"
+mkdir -p "$ROOT/.tmp" || exit 2
+SCRATCH="$(mktemp -d "$ROOT/.tmp/ce-work-adapter-XXXXXX")" || exit 2
 chmod 700 "$SCRATCH"
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
@@ -287,7 +293,10 @@ def model_allowed(route, model):
     if route == "opencode":
         return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+", model))
     if route == "opencode2":
-        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(?:#[A-Za-z0-9._-]+)?", model))
+        return model == "auto" or bool(re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(?:#[A-Za-z0-9._-]+)?",
+            model,
+        ))
     return False
 
 try:
@@ -412,7 +421,7 @@ PACKET="$(cd "$(dirname "$PACKET")" && pwd -P)/$(basename "$PACKET")" || exit 2
 RESULT_DIR="$(cd "$RESULT_DIR" && pwd -P)" || exit 2
 case "$RESULT_DIR/" in "$WORKSPACE/"*) log "result dir must be outside the worker workspace"; exit 2 ;; esac
 case "$PACKET" in "$WORKSPACE"/*) log "unit packet must be outside the worker workspace"; exit 2 ;; esac
-(cd "$WORKSPACE" && jj workspace root >/dev/null 2>&1) || { log "workspace is not a jj workspace"; exit 2; }
+(cd "$WORKSPACE" && jj --no-pager workspace root >/dev/null 2>&1) || { log "workspace is not a JJ workspace"; exit 2; }
 chmod 700 "$RESULT_DIR" 2>/dev/null || { log "result dir could not be made private"; exit 2; }
 RESULT_DIR_IDENTITY="$("$PY" - "$RESULT_DIR" <<'PY'
 import os, stat, sys
@@ -703,7 +712,11 @@ if [ "${CE_WORK_REQUIRE_ENFORCED_CONFINEMENT:-}" = "1" ]; then
       publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
       exit 2
       ;;
-    opencode|opencode2)
+    opencode)
+      publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
+      exit 2
+      ;;
+    opencode2)
       publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
       exit 2
       ;;
@@ -745,7 +758,7 @@ while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROU
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-MIN_ENV+=("TMPDIR=${ADAPTER_TMP:-$WORKSPACE}/.tmp")
+[ -n "${TMPDIR:-}" ] && MIN_ENV+=("TMPDIR=$TMPDIR")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")
@@ -756,9 +769,13 @@ case "$ROUTE" in
   codex) [ -n "${CODEX_HOME:-}" ] && MIN_ENV+=("CODEX_HOME=$CODEX_HOME") ;;
   claude) [ -n "${CLAUDE_CONFIG_DIR:-}" ] && MIN_ENV+=("CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR") ;;
   grok-cli) [ -n "${GROK_CONFIG_HOME:-}" ] && MIN_ENV+=("GROK_CONFIG_HOME=$GROK_CONFIG_HOME") ;;
-  opencode|opencode2)
+  opencode)
     [ -n "${OPENCODE_CONFIG_DIR:-}" ] && MIN_ENV+=("OPENCODE_CONFIG_DIR=$OPENCODE_CONFIG_DIR")
     [ -n "${OPENCODE_CONFIG:-}" ] && MIN_ENV+=("OPENCODE_CONFIG=$OPENCODE_CONFIG")
+    ;;
+  opencode2)
+    [ -n "${OPENCODE2_CONFIG_DIR:-}" ] && MIN_ENV+=("OPENCODE2_CONFIG_DIR=$OPENCODE2_CONFIG_DIR")
+    [ -n "${OPENCODE2_CONFIG:-}" ] && MIN_ENV+=("OPENCODE2_CONFIG=$OPENCODE2_CONFIG")
     ;;
   cursor|composer|grok-cursor)
     [ -n "${CURSOR_CONFIG_DIR:-}" ] && MIN_ENV+=("CURSOR_CONFIG_DIR=$CURSOR_CONFIG_DIR")
@@ -917,9 +934,7 @@ def normalize_served_model(value):
 
 try: raw=open(source, encoding="utf-8", errors="replace").read()
 except OSError: raw=""
-if route == "opencode2":
-    worker=parse_text(raw)
-elif route == "opencode":
+if route == "opencode":
     parts=[]
     for line in raw.splitlines():
         try: event=json.loads(line)
@@ -931,6 +946,8 @@ elif route == "opencode":
         if chunk:
             parts.append(chunk)
     worker=parse_text("".join(parts)) if parts else None
+elif route == "opencode2":
+    worker=parse_text(raw)
 else:
     worker=parse_text(raw)
 valid=isinstance(worker,dict)

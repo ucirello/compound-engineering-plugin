@@ -33,9 +33,9 @@ set -u
 
 REQUESTED_NAME="${1:-}"
 
-REPO_ROOT=$(jj workspace root 2>/dev/null) || true
+REPO_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not a jj workspace" >&2
+  echo "ERROR: not in a jj workspace" >&2
   exit 1
 fi
 

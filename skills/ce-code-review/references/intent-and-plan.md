@@ -27,12 +27,12 @@ Understand what the change is trying to accomplish. The source of intent depends
 
 **PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
 
-**Branch mode:** Run `jj log -r "${BASE}..<branch-ref>" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved common ancestor and resolved bookmark ref from Stage 1. Use `<branch-ref>` (the resolved `<branch>@origin` or fetched ref), not the raw `<branch>` argument — a remote-only bookmark has no matching local ref, so the raw name would fail or read a stale same-named local bookmark.
+**Branch mode:** Run `jj log -r '${BASE}..<branch-ref>' --no-graph -T 'commit_id.short() ++ " " ++ description.first_line()'` using the resolved merge-base and resolved bookmark ref from Stage 1 (cwd = workspace root). Use `<branch-ref>` (the resolved `<branch>@origin` or fetched ref), not the raw `<branch>` argument — a remote-only bookmark has no matching local ref, so the raw name would fail or read a stale same-named local bookmark.
 
-**Standalone (current bookmark):** Run (cwd at the workspace root):
+**Standalone (current bookmark):** Run (cwd = workspace root):
 
 ```
-echo "BRANCH:" && jj log -r @ --no-graph -T 'bookmarks' && echo "COMMITS:" && jj log -r "${BASE}..@" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+echo "BRANCH:" && jj --no-pager log -r @ --no-graph -T bookmarks && echo "COMMITS:" && jj --no-pager log -r "${BASE}..@" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line()'
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:
@@ -68,4 +68,4 @@ When the discovered plan's Key Technical Decisions carry `session-settled:` anno
 
 Use the project's active instructions already in context plus the current diff and source. Give each reviewer only the context relevant to its review focus; the `project-standards` reviewer reads the actual standards sources. If a reviewer cannot scope the affected area from the diff and supplied context, allow one targeted probe.
 
-In `pr-remote` / `branch-remote`, current source and any targeted probe must use `jj file show` against the supplied reviewed head ref, or the supplied diff hunks when no head ref is available; never inspect workspace paths.
+In `pr-remote` / `branch-remote`, current source and any targeted probe must use `jj file show -r <head-ref>` (cwd = workspace root) against the supplied reviewed head ref, or the supplied diff hunks when no head ref is available; never inspect workspace paths.

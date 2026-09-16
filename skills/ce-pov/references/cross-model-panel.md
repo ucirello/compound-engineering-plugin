@@ -37,7 +37,6 @@ if [ "${CLAUDECODE:-}" = "1" ]; then XHOST_HARNESS=claude; XHOST_FAMILY=claude;
 elif [ -n "${CODEX_SANDBOX:-}${CODEX_SANDBOX_NETWORK_DISABLED:-}${CODEX_SESSION_ID:-}${CODEX_THREAD_ID:-}${CODEX_CI:-}" ]; then XHOST_HARNESS=codex; XHOST_FAMILY=codex;
 elif [ "${GROK_AGENT:-}" = "1" ] || [ -n "${GROK_SESSION_ID:-}" ]; then XHOST_HARNESS=grok; XHOST_FAMILY=grok;
 elif [ -n "${CURSOR_AGENT:-}${CURSOR_CONVERSATION_ID:-}" ]; then XHOST_HARNESS=cursor; XHOST_FAMILY=unknown;
-elif [ -n "${OPENCODE2_TERMINAL:-}" ]; then XHOST_HARNESS=opencode2; XHOST_FAMILY=unknown;
 elif [ -n "${OPENCODE_TERMINAL:-}" ]; then XHOST_HARNESS=opencode; XHOST_FAMILY=unknown;
 else XHOST_HARNESS=unknown; XHOST_FAMILY=unknown; fi
 ```
@@ -135,13 +134,12 @@ never promise that secrets inside the readable scope are inaccessible. Peers may
 search and read within the declared scope but may not mutate the project or
 intentionally inspect outside it.
 
-Before initial dispatch, capture one **repository-scope identity**: the current
-change (`@` via `jj log -r @ --no-graph -T 'commit_id'`) plus a digest of
-untracked content inside the normalized scope (`jj status`). Include it in
-every peer payload. Revalidate it before every reconcile dispatch and before
-final fold-in. If it changed, never reconcile or fold stale voices into the
-current project: disclose the change and either restart all voices on the new
-identity or return an incomplete panel result.
+Before initial dispatch, capture one **repository-scope identity**: the committed
+revision plus a digest of dirty and untracked content inside the normalized
+scope. Include it in every peer payload. Revalidate it before every reconcile
+dispatch and before final fold-in. If it changed, never reconcile or fold stale
+voices into the current project: disclose the change and either restart all
+voices on the new identity or return an incomplete panel result.
 
 The caller passes this panel the resolved absolute `$SCRATCH_DIR` created in
 SKILL.md Phase 1. Keep payloads, raw output, logs, and result artifacts there;
@@ -181,11 +179,11 @@ refuses anything else (including route-shaped guesses like `codex-cli`):
 | `cursor` | `cursor` |
 | `composer` | `composer` |
 | `opencode` | `opencode` |
-| `opencode2` | `opencode2` |
-
-`opencode` and `opencode2` are distinct harnesses and are not interchangeable. The v1 `opencode` route stays; `opencode2` is a separate binary, model token (`provider/modelname#variant`), and cwd-based workspace (no `--dir`).
+| `opencode2` | `opencode2` (`opencode2` binary; not `opencode`) |
 
 The host harness does not choose the Grok route. Target `grok` binds `grok-cli` when that CLI is installed. Bind `grok-cursor` only when the user asked for Grok through Cursor, or when the grok CLI is absent and Cursor is a sanctioned recipient.
+
+`opencode2` is not `opencode`. Target `opencode2` binds the `opencode2` binary with `opencode2 run --standalone --auto --model provider/model#variant` (no `--dir`, no `--variant` flag; variant is `#variant` on `--model`). Do not fall back to `opencode`.
 
 Binary presence proves only that a route is a candidate. Pre-dispatch capability
 evidence may refine the fixed route only when the current host context makes that
@@ -206,7 +204,7 @@ within these rules is reported, never silently replaced or dropped.
 The pre-dispatch update should say who will inspect the subject and that the
 review is read-only. Do not recite scope mechanics, promise that repository
 secrets are inaccessible, or describe probe results, CLI versions, model tiers,
-change ids, repository identity, route health, job lifecycle, or scratch
+commit hashes, repository identity, route health, job lifecycle, or scratch
 paths. Mention a cooperative scope restriction only when it materially changes
 the user's choice. Refer to the codebase as "this project" or "the repository"
 unless the user supplied a recognizable name.
@@ -254,7 +252,7 @@ fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Fill in the start command below rather than reconstructing the worker's
 arguments from its usage header. Pass the actual repository root separately from
 any narrower read root, and pre-create the round output directory as private
-scratch under the workspace `.tmp` tree. For named peers, start one job per exact target;
+scratch under the workspace `.tmp` directory. For named peers, start one job per exact target;
 for a selected panel, start one job per selected peer. Start all jobs before
 waiting.
 
@@ -328,8 +326,8 @@ CE_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill c
 
 - `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or
   `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`,
-  `opencode`, `opencode2`, or `unknown`. Both are the Section 1 attestation,
-  not a provider name.
+  `opencode`, `opencode2`, or `unknown`. Both are the Section 1 attestation, not a provider name.
+  `opencode2` is not `opencode`.
 - `<fixed-route>` is the sanctioned route token from Section 3's table;
   `<target>` is its resolved target, with `grok-cli` and `grok-cursor`
   collapsing to `grok`.

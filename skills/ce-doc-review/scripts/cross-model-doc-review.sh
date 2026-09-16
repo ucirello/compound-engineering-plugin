@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > RocketClaw config cascade >)
+#                   resolved preference (conversation > RocketClaw config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -50,7 +50,7 @@
 # Test/introspection mode (no model call, no side effects):
 #   cross-model-doc-review.sh --emit-adapter <route>
 #     prints the exact argv the given route would run (route in:
-#     codex | claude | grok-cli | grok-cursor | composer | opencode | opencode2). Both this mode and the
+#     codex | claude | grok-cli | grok-cursor | cursor | composer | opencode | opencode2). Both this mode and the
 #     live run build their argv from adapter_argv(), so the U7 route-safety test
 #     asserts on the same command string the peer actually runs.
 #
@@ -81,11 +81,14 @@ PY_BIN=""
 log()  { printf '[cross-model-doc] %s\n' "$*" >&2; }
 skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no output
 
-workspace_tmp() {
-  local wr
-  wr="$(jj --no-pager workspace root 2>/dev/null)" || wr="."
-  mkdir -p "$wr/.tmp" 2>/dev/null || true
-  printf '%s' "$wr/.tmp"
+# Workspace-local temp (never OS-global /tmp). Falls back to cwd/.tmp when
+# this is not a jj workspace.
+workspace_tmp_dir() {
+  local root
+  root="$(jj --no-pager workspace root 2>/dev/null || true)"
+  [ -n "$root" ] || root="."
+  mkdir -p "$root/.tmp" || return 1
+  printf '%s' "$root/.tmp"
 }
 
 TRANSIENT_RETRY_DELAY_SECS="${CROSS_MODEL_TRANSIENT_RETRY_DELAY_SECS:-5}"
@@ -112,6 +115,11 @@ route_effort() {   # <route> -> requested effort: the override where the route t
     case "$1" in
       codex|claude|grok-cli) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
       opencode)
+        case "$CROSS_MODEL_EFFORT_OVERRIDE" in
+          none|minimal|low|medium|high|xhigh|max|default) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
+        esac
+        ;;
+      opencode2)
         case "$CROSS_MODEL_EFFORT_OVERRIDE" in
           none|minimal|low|medium|high|xhigh|max|default) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
         esac
@@ -308,13 +316,21 @@ adapter_argv() {
       esac
       ;;
     opencode2)
-      # Distinct from opencode: opencode2 binary, no --dir, no --variant.
-      # Variant lives on --model as provider/model#variant. cwd is the workspace
-      # (attempt_route points PEER_WORKDIR at jj workspace root for this route).
-      printf '%s\0' opencode2 run --standalone --auto
+      # Distinct from opencode: binary opencode2, no --dir, no --variant.
+      # Effort rides `#variant` on --model. Prompt via --file; --format json
+      # so the existing event parser can recover findings.
+      printf '%s\0' opencode2 run --standalone --auto --format json --file "$PROMPT_FILE"
       _oc2_model="$(route_model opencode2)"
+      _oc2_effort="$(route_effort opencode2)"
+      if [ -n "$_oc2_effort" ] && [ "$_oc2_effort" != "unverified" ]; then
+        case "$_oc2_model" in
+          auto|"") ;;
+          *#*) ;;
+          *) _oc2_model="$_oc2_model#$_oc2_effort" ;;
+        esac
+      fi
       [ "$_oc2_model" = "auto" ] || [ -z "$_oc2_model" ] || printf '%s\0' --model "$_oc2_model"
-      printf '%s\0' --format json --file "$PROMPT_FILE"
+      printf '%s\0' "Follow the attached brief. Return only schema-shaped JSON."
       ;;
     *) return 1 ;;
   esac
@@ -343,9 +359,7 @@ validate_model_override() {
 # value is one that CLI documents (claude: low|medium|high|xhigh|max; codex
 # model_reasoning_effort: minimal|low|medium|high|xhigh; grok: low|medium|high).
 # cursor-agent routes imply effort in the model id, so any override there is
-# invalid for the route rather than silently dropped. opencode2 has no --variant
-# flag (variant is #variant on --model), so an effort override is invalid there
-# too. Empty means "no override".
+# invalid for the route rather than silently dropped. Empty means "no override".
 validate_effort_override() {
   local route="$1" effort="${CROSS_MODEL_EFFORT_OVERRIDE:-}"
   [ -n "$effort" ] || return 0
@@ -354,6 +368,7 @@ validate_effort_override() {
     codex:minimal|codex:low|codex:medium|codex:high|codex:xhigh) ;;
     grok-cli:low|grok-cli:medium|grok-cli:high) ;;
     opencode:none|opencode:minimal|opencode:low|opencode:medium|opencode:high|opencode:xhigh|opencode:max|opencode:default) ;;
+    opencode2:none|opencode2:minimal|opencode2:low|opencode2:medium|opencode2:high|opencode2:xhigh|opencode2:max|opencode2:default) ;;
     *) return 1 ;;
   esac
 }
@@ -549,14 +564,14 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-_XTMP="$(workspace_tmp)"
-PROMPT_FILE="$(mktemp "$_XTMP/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "$_XTMP/xmodel-doc-log-XXXXXX")"
+_WS_TMP="$(workspace_tmp_dir)" || skip "cannot create workspace .tmp; skipping"
+PROMPT_FILE="$(mktemp "$_WS_TMP/xmodel-doc-prompt-XXXXXX")"
+PEERLOG="$(mktemp "$_WS_TMP/xmodel-doc-log-XXXXXX")"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "$_XTMP/xmodel-doc-err-XXXXXX")"
+PEERERR="$(mktemp "$_WS_TMP/xmodel-doc-err-XXXXXX")"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
@@ -1056,7 +1071,8 @@ parse_opencode_events() {  # <logfile> <outfile>
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e 'select((.findings|type)=="array")' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "${_XTMP:-$(workspace_tmp)}/ce-opencode-text-XXXXXX")" || return 1
+  _ws_tmp="$(workspace_tmp_dir)" || return 1
+  tmp="$(mktemp "$_ws_tmp/xmodel-doc-oc-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_findings_json "$tmp" "$2"
   local st=$?
@@ -1077,7 +1093,7 @@ attempt_route() {   # <provider> <route>
     grok-cursor|composer)  note="$(route_model "$route")" ;;
     cursor)                note="auto (serving model unverified)" ;;
     opencode)              note="auto (serving model unverified)" ;;
-    opencode2)             note="$(route_model opencode2)" ;;
+    opencode2)             note="auto (serving model unverified)" ;;
   esac
   log "peer run: provider=$provider route=$route model=$note lens=$REVIEWER_NAME read-only least-privilege (idle ${IDLE_SECS}s / attempt hard ${attempt_hard}s); full document content egresses to this provider via this route"
   case "$route" in
@@ -1105,17 +1121,9 @@ attempt_route() {   # <provider> <route>
     opencode)    run_timeout_cmd "" "$attempt_hard" idle
                  classify_route_output
                  [ "$RUN_SUCCEEDED" = true ] && parse_opencode_events "$PEERLOG" "$RAW_OUT" ;;
-    opencode2)
-      # cwd = workspace; no --dir. Keep RAW_OUT in the empty scratch dir.
-      _saved_pw="$PEER_WORKDIR"
-      PEER_WORKDIR="$(jj --no-pager workspace root 2>/dev/null || printf '.')"
-      run_timeout_cmd "" "$attempt_hard" idle
-      PEER_WORKDIR="$_saved_pw"
-      classify_route_output
-      if [ "$RUN_SUCCEEDED" = true ]; then
-        parse_opencode_events "$PEERLOG" "$RAW_OUT" || parse_structured "$PEERLOG" "$RAW_OUT"
-      fi
-      ;;
+    opencode2)   run_timeout_cmd "" "$attempt_hard" idle
+                 classify_route_output
+                 [ "$RUN_SUCCEEDED" = true ] && parse_opencode_events "$PEERLOG" "$RAW_OUT" ;;
   esac
   if [ "$RUN_SUCCEEDED" != true ]; then
     rm -f "$RAW_OUT"
@@ -1149,7 +1157,12 @@ run_provider() {   # <provider>
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
   # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
   # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "$_XTMP/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  _ws_tmp="$(workspace_tmp_dir)" || _ws_tmp=""
+  if [ -n "$_ws_tmp" ]; then
+    PEER_WORKDIR="$(mktemp -d "$_ws_tmp/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  else
+    PEER_WORKDIR="$RUN_DIR"
+  fi
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -1206,7 +1219,8 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "$_XTMP/xmodel-doc-norm-XXXXXX")"
+    _ws_tmp="$(workspace_tmp_dir)" || _ws_tmp="."
+    _norm="$(mktemp "$_ws_tmp/xmodel-doc-norm-XXXXXX")"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

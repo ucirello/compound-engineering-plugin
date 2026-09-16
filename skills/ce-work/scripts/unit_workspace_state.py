@@ -35,6 +35,12 @@ from pathlib import Path
 
 
 SCHEMA_VERSION = 1
+PLAN_CHECKPOINT_MESSAGE = "checkpoint selected implementation plan"
+GO_COMMIT_INSTRUCTION = (
+    "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, "
+    "compose commit messages adherent to the present standards. Use the repository's current local syntax; "
+    "do not impose a fixed type, scope, prefix, footer, or body template."
+)
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
 MAX_JSON_BYTES = 2 * 1024 * 1024
@@ -48,7 +54,6 @@ UNIT_STATES = {
     "queued", "authoring", "authored", "integration-pending", "integrated",
     "restoring", "verified", "committed", "preserved", "cleaned", "native-completed",
 }
-# Strip inherited Git env so a colocated checkout cannot redirect jj via GIT_DIR.
 GIT_LOCAL_ENV_VARS = frozenset({
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     "GIT_COMMON_DIR",
@@ -59,6 +64,8 @@ GIT_LOCAL_ENV_VARS = frozenset({
     "GIT_GRAFT_FILE",
     "GIT_IMPLICIT_WORK_TREE",
     "GIT_INDEX_FILE",
+    # Strip inherited Git env so a colocated checkout cannot redirect jj via GIT_DIR.
+    # GIT_INTERNAL_SUPER_PREFIX was listed on older Git and is still scrubbed.
     "GIT_INTERNAL_SUPER_PREFIX",
     "GIT_NO_REPLACE_OBJECTS",
     "GIT_OBJECT_DIRECTORY",
@@ -118,7 +125,7 @@ def _jj_workspace_root_from(start: str) -> str | None:
         capture_output=True,
         text=True,
         check=False,
-        env=sanitized_git_environment(),
+        env=sanitized_vcs_environment(),
     )
     if proc.returncode != 0 or not proc.stdout.strip():
         return None
@@ -494,10 +501,13 @@ def locked_manifest(run_id: str, write: bool = False):
         os.close(fd)
 
 
-def sanitized_git_environment(overrides: dict | None = None) -> dict[str, str]:
+def sanitized_vcs_environment(overrides: dict | None = None) -> dict[str, str]:
     process_env = {key: value for key, value in os.environ.items() if key not in GIT_LOCAL_ENV_VARS}
     process_env.update(overrides or {})
     return process_env
+
+
+sanitized_git_environment = sanitized_vcs_environment
 
 
 def _jj_run(
@@ -513,7 +523,7 @@ def _jj_run(
         cwd=root,
         input=input_data,
         capture_output=True,
-        env=sanitized_git_environment(env),
+        env=sanitized_vcs_environment(env),
         check=False,
     )
     if check and proc.returncode != 0:
@@ -551,6 +561,14 @@ def jj_local_bookmarks(repo: str, rev: str = "@") -> str:
     return jj_text(repo, "log", "-r", rev, "--no-graph", "-T", "local_bookmarks", check=False)
 
 
+def revision_is_ancestor(repo: str, ancestor: str, descendant: str) -> bool:
+    if not ancestor or not descendant:
+        return False
+    return jj_text(
+        repo, "log", "-r", f"heads(::{ancestor} & ::{descendant})", "--no-graph", "-T", "commit_id", check=False,
+    ) == ancestor
+
+
 def current_bookmark(repo: str) -> str:
     text = jj_local_bookmarks(repo, "@").split()
     if not text:
@@ -572,7 +590,7 @@ def tree_fingerprint(repo: str, rev: str) -> str:
 
 def changed_path_list(repo: str, frm: str, to: str) -> list[str]:
     raw = jj_text(repo, "diff", "--from", frm, "--to", to, "--name-only")
-    return [line for line in raw.splitlines() if line]
+    return [line.replace("\\", "/") for line in raw.splitlines() if line]
 
 
 def name_status_bytes(repo: str, frm: str, to: str) -> bytes:
@@ -583,7 +601,7 @@ def name_status_bytes(repo: str, frm: str, to: str) -> bytes:
         if not line or " " not in line:
             continue
         code, path = line.split(" ", 1)
-        path = path.strip()
+        path = path.strip().replace("\\", "/")
         if code.startswith("R") and " -> " in path:
             src, dst = path.split(" -> ", 1)
             parts.extend([b"R100", src.encode("utf-8", "surrogateescape"), dst.encode("utf-8", "surrogateescape")])
@@ -622,7 +640,7 @@ def add_linked_workspace(repo: str, workspace: str, base: str) -> None:
     parent = os.path.dirname(os.path.abspath(workspace))
     os.makedirs(parent, mode=0o700, exist_ok=True)
     name = workspace_name_for_path(workspace)
-    jj(repo, "workspace", "add", "--name", name, "-r", base, "--sparse-patterns", "full", workspace)
+    jj(repo, "workspace", "add", "--name", name, "-r", base, workspace)
 
 
 def forget_linked_workspace(repo: str, workspace: str) -> None:
@@ -639,8 +657,11 @@ def restore_working_copy(repo: str, rev: str) -> None:
     jj(repo, "restore", "--from", rev, "--into", "@")
 
 
-def apply_transport(repo: str, transport: str) -> None:
-    jj(repo, "restore", "--from", transport, "--into", "@")
+def apply_transport(repo: str, transport: str, paths: list[str] | None = None) -> None:
+    args = ["restore", "--from", transport, "--into", "@"]
+    if paths:
+        args.extend(paths)
+    jj(repo, *args)
     if jj_conflicted(repo, "@"):
         raise Operational("BLOCKED", "transport apply produced conflicts")
 
@@ -648,7 +669,7 @@ def apply_transport(repo: str, transport: str) -> None:
 def ignored_untracked_paths(repo: str) -> set[str]:
     """Paths on disk that ``jj file list`` does not track (ignored or untracked)."""
     root = os.path.abspath(repo)
-    tracked = {line for line in jj_text(repo, "file", "list").splitlines() if line}
+    tracked = {line.replace("\\", "/") for line in jj_text(repo, "file", "list").splitlines() if line}
     ignored: set[str] = set()
     skip_dirs = {".jj", ".git"}
     for dirpath, dirnames, filenames in os.walk(root):
@@ -663,189 +684,14 @@ def ignored_untracked_paths(repo: str) -> set[str]:
     return ignored
 
 
-def git(repo: str, *args: str, input_data: bytes | None = None, check: bool = True, env: dict | None = None) -> bytes:
-    """Map historical git argv onto public jj. Always runs with cwd=workspace root."""
-    argv = list(args)
-    try:
-        return _emulate_git(repo, argv, input_data=input_data, env=env)
-    except Operational:
-        if not check:
-            return b""
-        raise
-
-
-def git_text(repo: str, *args: str, check: bool = True) -> str:
-    return git(repo, *args, check=check).decode("utf-8", "surrogateescape").strip()
-
-
-def _emulate_git(repo: str, argv: list[str], input_data: bytes | None = None, env: dict | None = None) -> bytes:
-    del input_data, env
-    if not argv:
-        raise Operational("BLOCKED", "empty git invocation")
-    cmd = argv[0]
-
-    if cmd == "rev-parse":
-        rest = [a for a in argv[1:] if a not in {"-q", "--verify", "--path-format=absolute"}]
-        if "--show-toplevel" in rest:
-            return (jj_text(repo, "workspace", "root") + "\n").encode()
-        if "--absolute-git-dir" in rest or "--git-common-dir" in rest or "--is-inside-work-tree" in rest:
-            raise Operational("BLOCKED", "repository identity must use jj workspace commands, not git-dir internals")
-        target = rest[-1] if rest else "HEAD"
-        want_tree = target.endswith("^{tree}")
-        target = target.replace("^{commit}", "").replace("^{tree}", "")
-        if target in {"HEAD", "@"}:
-            target = "@-"
-        if want_tree:
-            return (tree_fingerprint(repo, target) + "\n").encode()
-        if target.startswith("refs/"):
-            return b""
-        return (jj_commit_id(repo, target) + "\n").encode()
-
-    if cmd == "symbolic-ref":
-        return (current_bookmark(repo) + "\n").encode()
-
-    if cmd == "write-tree":
-        return (tree_fingerprint(repo, "@") + "\n").encode()
-
-    if cmd == "status":
-        paths = status_paths(repo)
-        if not paths:
-            return b""
-        records = []
-        for path in sorted(paths):
-            records.append(b"1 M. N... 100644 100644 100644 " + b"0 " * 3 + path.encode("utf-8", "surrogateescape"))
-        return b"\0".join(records) + b"\0"
-
-    if cmd == "diff":
-        if "--cached" in argv:
-            names = changed_path_list(repo, "@-", "@")
-        else:
-            names = changed_path_list(repo, "@-", "@")
-        if not names:
-            return b""
-        return b"\0".join(n.encode("utf-8", "surrogateescape") for n in names) + b"\0"
-
-    if cmd == "merge-base":
-        a, b = argv[1], argv[2]
-        value = jj_text(repo, "log", "-r", f"heads(::{a} & ::{b})", "--no-graph", "-T", "commit_id", check=False)
-        return (value + "\n").encode() if value else b""
-
-    if cmd == "rev-list":
-        if "--max-parents=0" in argv:
-            return (jj_text(repo, "log", "-r", "root()", "--no-graph", "-T", 'commit_id ++ "\n"') + "\n").encode()
-        if "--parents" in argv:
-            rev = argv[-1]
-            commit = jj_commit_id(repo, rev)
-            parents = jj_parents(repo, rev)
-            return (" ".join([commit, *parents]) + "\n").encode()
-        raise Operational("BLOCKED", f"unsupported rev-list invocation: {' '.join(argv)}")
-
-    if cmd == "diff-tree":
-        revs = [a for a in argv[1:] if not a.startswith("-")]
-        if len(revs) < 2:
-            raise Operational("BLOCKED", "diff-tree requires two revisions")
-        frm, to = revs[0], revs[1]
-        if "--raw" in argv:
-            return jj(repo, "diff", "--types", "--from", frm, "--to", to)
-        if "--name-only" in argv:
-            names = changed_path_list(repo, frm, to)
-            if not names:
-                return b""
-            return b"\0".join(n.encode("utf-8", "surrogateescape") for n in names) + b"\0"
-        return name_status_bytes(repo, frm, to)
-
-    if cmd == "merge-tree":
-        # Public jj has no merge-tree. Same-base apply uses the transport tree;
-        # three-way callers fall back to transport commit fingerprint.
-        return (argv[-1] + "\n").encode()
-
-    if cmd == "ls-tree":
-        rev = None
-        path = None
-        for item in argv[1:]:
-            if item in {"-z", "--full-tree", "--"}:
-                continue
-            if rev is None:
-                rev = item
-            else:
-                path = item
-        if rev is None or path is None:
-            return b""
-        return (path + "\n").encode() if path_in_revision(repo, rev, path) else b""
-
-    if cmd == "ls-files":
-        paths = sorted(ignored_untracked_paths(repo))
-        if not paths:
-            return b""
-        return b"\0".join(p.encode("utf-8", "surrogateescape") for p in paths) + b"\0"
-
-    if cmd == "add":
-        return b""
-
-    if cmd == "reset":
-        rev = argv[-1]
-        if rev in {"--hard", "--mixed"}:
-            return b""
-        restore_working_copy(repo, rev)
-        return b""
-
-    if cmd == "cherry-pick":
-        if "--abort" in argv:
-            restore_working_copy(repo, "@-")
-            return b""
-        apply_transport(repo, argv[-1])
-        return b""
-
-    if cmd == "worktree":
-        sub = argv[1] if len(argv) > 1 else ""
-        if sub == "add":
-            workspace = argv[-2]
-            base = argv[-1]
-            add_linked_workspace(repo, workspace, base)
-            return b""
-        if sub == "remove":
-            forget_linked_workspace(repo, argv[-1])
-            return b""
-        if sub == "list":
-            lines = []
-            for row in workspace_rows(repo):
-                lines.append(f"worktree {row['worktree']}")
-                lines.append("detached")
-                lines.append("")
-            return ("\n".join(lines) + "\n").encode()
-        raise Operational("BLOCKED", f"unsupported worktree invocation: {' '.join(argv)}")
-
-    if cmd == "show":
-        spec = argv[-1]
-        if "--format=%B" in argv:
-            return (jj_text(repo, "log", "-r", spec, "--no-graph", "-T", "description") + "\n").encode()
-        if "--format=%ct" in argv:
-            raw = jj_text(repo, "log", "-r", spec, "--no-graph", "-T", "committer.timestamp().utc().format('%s')", check=False)
-            if not raw:
-                raw = "0"
-            return (raw + "\n").encode()
-        if ":" in spec:
-            rev, path = spec.split(":", 1)
-            return jj(repo, "file", "show", "-r", rev, path, check=False)
-        return jj(repo, "show", spec)
-
-    if cmd == "commit-tree":
-        return (jj_commit_id(repo, "@") + "\n").encode()
-
-    if cmd == "update-ref":
-        return b""
-
-    raise Operational("BLOCKED", f"no public jj equivalent for git {' '.join(argv)}")
-
-
 def commit_index_tree(repo: str, message: str) -> str:
     """Describe the working-copy change and start a new empty change on top."""
     if not message.strip() or "\0" in message:
-        raise Operational("REFUSED", "commit message must be non-empty and contain no NUL")
+        raise Operational("REFUSED", "commit message must be non-empty and contain no NUL. " + GO_COMMIT_INSTRUCTION)
     bookmark = current_bookmark(repo)
     jj(repo, "commit", "-m", message)
     commit = jj_commit_id(repo, "@-")
-    jj(repo, "bookmark", "move", bookmark, "--to", "@-")
+    jj(repo, "bookmark", "move", bookmark, "--to", "@-", check=False)
     return commit
 
 
@@ -856,7 +702,12 @@ def repo_info(repo: str) -> dict:
         repo = top
     branch = current_bookmark(repo)
     roots = sorted(line for line in jj_text(repo, "log", "-r", "root()", "--no-graph", "-T", 'commit_id ++ "\n"').splitlines() if line)
-    identity = digest_bytes((repo + "\0" + "\n".join(roots)).encode())
+    workspace_name = None
+    for row in workspace_rows(repo):
+        if os.path.realpath(str(row.get("worktree", ""))) == os.path.realpath(repo):
+            workspace_name = row.get("name")
+            break
+    identity = digest_bytes((f"{workspace_name or ''}\0{repo}\0" + "\n".join(roots)).encode())
     head = canonical_head(repo)
     return {
         "toplevel": repo,
@@ -1200,12 +1051,12 @@ def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -
     commit = info["head"]
     if commit == prior:
         return None
-    lineage = git_text(repo, "rev-list", "--parents", "-n", "1", commit).split()
+    parents = jj_parents(repo, commit)
     changed = set(changed_path_list(repo, prior, commit))
-    plan_bytes = git(repo, "show", f"{commit}:{plan_rel}", check=False)
+    plan_bytes = jj(repo, "file", "show", "-r", commit, plan_rel, check=False)
     if (
         not _valid_git_object_id(prior)
-        or lineage != [commit, prior]
+        or parents != [prior]
         or changed != {plan_rel}
         or digest_bytes(plan_bytes) != doc["plan"]["digest"]
     ):
@@ -1214,7 +1065,10 @@ def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -
             "canonical HEAD advanced without a recorded matching plan checkpoint",
             {"expected_prior_head": prior, "head": commit},
         )
-    committed_at = int(git_text(repo, "show", "-s", "--format=%ct", commit))
+    committed_at_raw = jj_text(
+        repo, "log", "-r", commit, "--no-graph", "-T", "committer.timestamp().utc().format('%s')", check=False,
+    )
+    committed_at = int(committed_at_raw) if committed_at_raw else 0
     return {
         "prior_head": prior,
         "commit": commit,
@@ -1253,19 +1107,16 @@ def cmd_checkpoint_plan(args) -> tuple[str, dict]:
         if dirty != {plan_rel}:
             raise Operational("BLOCKED", "canonical dirt is not exactly the selected plan", {"dirty_paths": sorted(dirty)})
         prior = info["head"]
-    dirty = status_paths(repo)
-    if dirty != {plan_rel}:
-        raise Operational("BLOCKED", "canonical dirt is not exactly the selected plan")
     try:
-        commit_index_tree(repo, "checkpoint selected implementation plan")
+        commit_index_tree(repo, PLAN_CHECKPOINT_MESSAGE)
     except Operational:
         restore_working_copy(repo, prior)
         raise
-    commit = git_text(repo, "rev-parse", "HEAD")
+    commit = canonical_head(repo)
     test_fault("checkpoint-plan-after-commit")
     if status_paths(repo):
         raise Operational("BLOCKED", "checkpoint committed but canonical checkout is not clean")
-    cp = {"prior_head": prior, "commit": commit, "tree": git_text(repo, "rev-parse", "HEAD^{tree}"), "path": plan_rel, "digest": doc["plan"]["digest"], "at": now_iso()}
+    cp = {"prior_head": prior, "commit": commit, "tree": tree_fingerprint(repo, "@-"), "path": plan_rel, "digest": doc["plan"]["digest"], "at": now_iso()}
     with locked_manifest(args.run_id, write=True) as doc:
         validate_repo(doc)
         doc["plan"]["checkpoint"] = cp

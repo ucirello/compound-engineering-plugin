@@ -1875,6 +1875,10 @@ DEPTH: lite
 
 or
 
+DEPTH: focused
+
+or
+
 DEPTH: full`,
     grade: {
       files_read_post: ["references/modes-and-output.md"],
@@ -1910,7 +1914,7 @@ PLAN: unaddressed
 
 where PLAN is unaddressed when the named plan has any requirement or implementation unit the diff does not address. Name those ids in prose above the two lines, not on them.`,
     grade: {
-      files_read_post: ["references/modes-and-output.md", "references/intent-and-plan.md"],
+      files_read_post: ["references/modes-and-output.md", "references/depth-paths.md", "references/intent-and-plan.md"],
       declared: { DEPTH: "lite", PLAN: "unaddressed" },
       actions: "none",
       delegates: "none",
@@ -1943,7 +1947,7 @@ STANDARDS: clean
 
 where STANDARDS is violation when a changed line contradicts a rule in a criteria file that governs it. Quote the rule in prose above the two lines, not on them.`,
     grade: {
-      files_read_post: ["references/modes-and-output.md"],
+      files_read_post: ["references/modes-and-output.md", "references/depth-paths.md"],
       declared: { DEPTH: "lite", STANDARDS: "violation" },
       actions: "none",
       delegates: "none",
@@ -1976,14 +1980,14 @@ STANDARDS: clean
 
 where STANDARDS is violation when a changed line contradicts a rule in a criteria file that governs it. Quote the rule in prose above the two lines, not on them.`,
     grade: {
-      files_read_post: ["references/modes-and-output.md"],
+      files_read_post: ["references/modes-and-output.md", "references/depth-paths.md"],
       declared: { DEPTH: "lite", STANDARDS: "clean" },
       actions: "none",
       delegates: "none",
     },
   },
   {
-    id: "ce-code-review/depth-gate-ci-full",
+    id: "ce-code-review/depth-gate-ci-focused",
     skill: "ce-code-review",
     cohort: "resized",
     key_behavior: "judgment",
@@ -1992,9 +1996,9 @@ where STANDARDS is violation when a changed line contradicts a rule in a criteri
     git_staged: [".github/workflows/ci.yml"],
     fixture: `${FIX}/review-depth-ci-full`,
     post_only: true,
-    why: "A CI workflow is a silent-pass guard the helper can name from the path. The agent must not talk that hard block down to lite.",
+    why: "A CI workflow is a silent-pass guard the helper names from the path. It can never take lite, and the read it needs is the adversarial one the focused path carries, so a workflow change with no auth, money, or public-contract consequence declares focused rather than full.",
     pre_contract:
-      "CI and other uncounted files fail closed to the full roster.",
+      "The ci hard-block class forces the full spine.",
     task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate only. This is a read-only probe: do not create the run directory and do not dispatch reviewers.
 
 End with exactly one line in this form and nothing else on that line:
@@ -2003,11 +2007,273 @@ DEPTH: lite
 
 or
 
+DEPTH: focused
+
+or
+
+DEPTH: full`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md"],
+      declared: { DEPTH: "focused" },
+      actions: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-loud-lite",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: ["src/tablefmt.ts"],
+    fixture: `${FIX}/review-depth-loud-lite`,
+    post_only: true,
+    why: "A 60-line text-table formatter fails loudly in its own output. The old total-line floor at 39 forced the full spine on it; the floor now counts executable non-test lines against 200, so the consequence question runs and must answer lite.",
+    pre_contract:
+      "Any change over 39 total changed lines is size_band large and runs the full spine; the loud/silent question never runs.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate only. This is a read-only probe: do not create the run directory, do not start a peer job, and do not dispatch reviewers.
+
+End with exactly one line in this form and nothing else on that line:
+
+DEPTH: lite
+
+or
+
+DEPTH: focused
+
+or
+
+DEPTH: full`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md"],
+      declared: { DEPTH: "lite" },
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-focused",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: ["src/landing.ts"],
+    fixture: `${FIX}/review-depth-focused`,
+    post_only: true,
+    why: "A landing-path guard that decides whether an agent pushes to main fails silently: a wrong read of branch policy pushes when it should have opened a PR, with no error at the change site. It is not an auth, money, or public-contract boundary, so it takes the focused path (lite plus one independent adversarial read), not the full roster. Modeled on a real 2026-09-15 run that paid for the full spine on this shape.",
+    pre_contract:
+      "Any change over 39 total changed lines runs the full spine; there is no focused path.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate only. This is a read-only probe: do not create the run directory, do not start a peer job, and do not dispatch reviewers.
+
+End with exactly one line in this form and nothing else on that line:
+
+DEPTH: lite
+
+or
+
+DEPTH: focused
+
+or
+
+DEPTH: full`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md"],
+      declared: { DEPTH: "focused" },
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-auth-full",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: ["src/access.ts"],
+    fixture: `${FIX}/review-depth-auth-full`,
+    post_only: true,
+    why: "A workspace authorization check is a silent failure on an auth boundary. That boundary keeps the full spine even below the size floor; the agent must not stop at focused because the diff is small.",
+    pre_contract:
+      "Full spine by size band; the auth condition was not separately stated.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate only. This is a read-only probe: do not create the run directory, do not start a peer job, and do not dispatch reviewers.
+
+End with exactly one line in this form and nothing else on that line:
+
+DEPTH: lite
+
+or
+
+DEPTH: focused
+
+or
+
 DEPTH: full`,
     grade: {
       files_read_post: ["references/modes-and-output.md"],
       declared: { DEPTH: "full" },
       actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-unlisted-language",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: ["R/bucket.R"],
+    fixture: `${FIX}/review-depth-unlisted-language`,
+    post_only: true,
+    why: "A 400-line R token-bucket limiter is executable code the helper's extension list does not name: exec_nontest_lines is 0 and unclassified_lines carries the .r count. The gate must read it as code that degrades silently under load and never declare lite; the 400 total-line backstop that used to catch this was dropped in favor of that judgment.",
+    pre_contract:
+      "A 400-line change of any file type is size_band large and forces the full spine.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate only. This is a read-only probe: do not create the run directory, do not start a peer job, and do not dispatch reviewers.
+
+End with exactly one line in this form and nothing else on that line:
+
+DEPTH: lite
+
+or
+
+DEPTH: focused
+
+or
+
+DEPTH: full`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md"],
+      must_include_any: [["DEPTH: focused", "DEPTH: full"]],
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-prose-only",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: ["docs/runbook.md"],
+    fixture: `${FIX}/review-depth-prose-only`,
+    post_only: true,
+    why: "The control for the unlisted-language cell: a 300-line markdown runbook produces the same unclassified_lines shape under .md, and the gate must read what those lines are and declare lite rather than treating any large unclassified change as code.",
+    pre_contract:
+      "A 400-line change of any file type is size_band large and forces the full spine.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate only. This is a read-only probe: do not create the run directory, do not start a peer job, and do not dispatch reviewers.
+
+End with exactly one line in this form and nothing else on that line:
+
+DEPTH: lite
+
+or
+
+DEPTH: focused
+
+or
+
+DEPTH: full`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md"],
+      declared: { DEPTH: "lite" },
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/cross-model-fold-in-recovery",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/review-peer-failed`,
+    post_only: true,
+    why: "The cross-model failure branches moved to cross-model-recovery.md, pointed to from the sentence that enters a failure branch. A peer that ended failed with quota evidence is that branch: the agent must open the recovery file to classify it and name what covers the adversarial lens next.",
+    pre_contract:
+      "Every fold-in branch lives in cross-model-review.md, read in full at Stage 3d.",
+    task: `Continue ce-code-review at the cross-model fold-in step in Stage 4, using the run directory at run/ in this workspace. The local reviewer batch has been collected. The peer job under run/jobs/ was started at Stage 3d; the runner's verified read exited 3 and reports the job's state as failed, and no adversarial-codex.json exists. Read the job's out.log yourself. This is a read-only probe: do not run the runner, do not start any job, do not dispatch reviewers, and do not edit anything. Resolve from the skill's references which outcome this is and what covers the adversarial lens next.
+
+End with exactly one line in this form and nothing else on that line:
+
+LENS: replacement-peer
+
+or
+
+LENS: local-adversarial
+
+or
+
+LENS: degraded`,
+    grade: {
+      files_read_post: ["references/cross-model-recovery.md"],
+      must_include_any: [["LENS: replacement-peer", "LENS: local-adversarial"]],
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/cross-model-fold-in-folded",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    fixture: `${FIX}/review-peer-folded`,
+    post_only: true,
+    why: "The happy twin of the recovery cell: the artifact exists with independence verified, so the fold-in completes from cross-model-review.md alone and declares the lens covered by the peer.",
+    pre_contract:
+      "Every fold-in branch lives in cross-model-review.md, read in full at Stage 3d.",
+    task: `Continue ce-code-review at the cross-model fold-in step in Stage 4, using the run directory at run/ in this workspace. The local reviewer batch has been collected. The peer job was started at Stage 3d; the runner's verified read exited 0 and emitted run/adversarial-codex.json. This is a read-only probe: do not run the runner, do not start any job, do not dispatch reviewers, and do not edit anything. Resolve from the skill's references what covers the adversarial lens and whether the peer's findings may promote agreement.
+
+End with exactly two lines in this form and nothing else on those lines:
+
+LENS: folded
+PROMOTION: allowed
+
+or
+
+LENS: folded
+PROMOTION: not-allowed`,
+    grade: {
+      files_read_post: ["references/cross-model-review.md"],
+      declared: { LENS: "folded", PROMOTION: "allowed" },
+      actions: "none",
+      delegates: "none",
+    },
+  },
+  {
+    id: "ce-code-review/depth-gate-lite-procedure",
+    skill: "ce-code-review",
+    cohort: "resized",
+    key_behavior: "judgment",
+    read_only: true,
+    git_init: true,
+    git_staged: [".compound-engineering/config.yaml"],
+    fixture: `${FIX}/review-depth-yaml-lite`,
+    post_only: true,
+    why: "The lite procedure moved to depth-paths.md, named inside the gate's selection sentence. After declaring lite the agent must open that file for the procedure, and nothing full-only.",
+    pre_contract:
+      "The lite procedure sits in modes-and-output.md beside the gate.",
+    task: `Use the ce-code-review skill on this repo with mode:agent. Resolve the Review depth gate, then read the procedure for the path it selected and stop before doing any of that procedure's work. This is a read-only probe: do not create the run directory, do not start a peer job, and do not dispatch reviewers.
+
+End with exactly one line in this form and nothing else on that line:
+
+DEPTH: lite
+
+or
+
+DEPTH: focused
+
+or
+
+DEPTH: full`,
+    grade: {
+      files_read_post: ["references/modes-and-output.md", "references/depth-paths.md"],
+      declared: { DEPTH: "lite" },
+      actions: "none",
+      delegates: "none",
     },
   },
   {

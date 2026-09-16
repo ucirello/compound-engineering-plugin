@@ -1,6 +1,6 @@
 {
   "name": "compound-engineering",
-  "version": "3.26.2",
+  "version": "3.26.3",
   "description": "Official Compound Engineering skills plugin for coding agents",
   "type": "module",
   "private": true,
@@ -38,6 +38,7 @@
     "site:check": "cd site && LC_ALL=C.UTF-8 bundle exec htmlproofer _site --disable-external --allow-missing-href --no-enforce-https --swap-urls '^/compound-engineering/:/'"
   },
   "dependencies": {
+    "@opencode/plugin": "latest",
     "citty": "^0.1.6",
     "js-yaml": "^4.1.0"
   },

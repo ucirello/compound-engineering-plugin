@@ -108,9 +108,9 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to another checkout. Users
-working from a jj workspace who want HTML defaults can add DESIGN.md to
-that workspace.
+Workspace-root only — do not fall through to a main checkout. Users
+working from a workspace who want HTML defaults can add DESIGN.md to the
+workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -229,8 +229,7 @@ every entry into a browser or IDE.
 Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-workspace_root=$(jj workspace root) || { echo "not a jj workspace" >&2; exit 1; }
-(cd "$workspace_root" && jj git remote list)
+jj --no-pager git remote list
 ```
 
 Apply linking to three reference shapes:

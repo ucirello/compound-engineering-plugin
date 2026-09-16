@@ -6,10 +6,11 @@ When the bundled `scripts/check-health` is unavailable, perform these checks by 
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
 2. If inside a jj workspace, resolve the workspace root with `jj workspace root`.
-3. Check whether `.rocketclaw/config.yaml` exists.
-4. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether it is absent from `jj file list` (jj auto-tracks files that are not ignored; a present local config that `jj file list` names is not safely ignored).
-5. Compare `.rocketclaw/config.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
-6. Report a legacy Compound Codex tool map when `${CODEX_HOME:-$HOME/.codex}/AGENTS.md` contains a standalone `<!-- BEGIN COMPOUND CODEX TOOL MAP -->` line followed by a standalone `<!-- END COMPOUND CODEX TOOL MAP -->` line.
+3. Check for obsolete `rocketclaw.local.md` at the workspace root.
+4. Check whether `.rocketclaw/config.yaml` exists.
+5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether `.gitignore` at the workspace root contains `.rocketclaw/*.local.yaml`.
+6. Compare `.rocketclaw/config.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
+7. Report a legacy Compound Codex tool map when `${CODEX_HOME:-$HOME/.codex}/AGENTS.md` contains a standalone `<!-- BEGIN COMPOUND CODEX TOOL MAP -->` line followed by a standalone `<!-- END COMPOUND CODEX TOOL MAP -->` line.
 
 This file is read at two points: from Step 2 whenever the bundled health script is unavailable, for the inline equivalent above; and before any Phase 2 write, once Step 3 has decided that a writable checkout exists and which reported issues need remediation. Ask with the blocking question tool named in SKILL.md. Maintaining the generated example files is the work this phase does on its own — Step 5's refresh and its removal of the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
 
@@ -17,11 +18,17 @@ This file is read at two points: from Step 2 whenever the bundled health script 
 
 Resolve the workspace root (`jj workspace root`). All paths below are relative to the workspace root, not the current working directory.
 
+### Step 4: Remove Obsolete Local Config
+
+If `rocketclaw.local.md` exists at the workspace root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.rocketclaw/config.local.yaml` (the optional override). Team defaults live in `config.yaml`.
+
+Ask whether to delete it now. Delete only if the user approves.
+
 ### Step 5: Refresh Example Config
 
-Copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file is tracked in the workspace and should always reflect the latest available settings.
+Copy `references/config-template.yaml` to `<repo-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file is tracked in the workspace and should always reflect the latest available settings.
 
-If leftover `<workspace-root>/.rocketclaw/config.local.example.yaml` remains after the new example exists, treat it as stale generated example (not user config) and remove it with `trash` (never `rm`).
+If leftover `<repo-root>/.rocketclaw/config.local.example.yaml` remains after the new example exists, treat it as stale generated example (not user config) and remove it with `trash` (never `rm`).
 
 If the bundled template cannot be located by the current platform, print the source template path that failed and tell the user the example config could not be refreshed automatically.
 
@@ -39,17 +46,15 @@ It does not create config.local.yaml.
 2. No thanks
 ```
 
-If the user approves, copy `references/config-template.yaml` to `<workspace-root>/.rocketclaw/config.yaml`. Never overwrite an existing `config.yaml` or `config.local.yaml`.
+If the user approves, copy `references/config-template.yaml` to `<repo-root>/.rocketclaw/config.yaml`. Never overwrite an existing `config.yaml` or `config.local.yaml`.
 
 If `config.local.yaml` already exists, leave it. After creating (or if both files already exist), name ordinary local keys that would shadow the new team file. If local still has `docs_root`, say it is ignored and offer to move it into `config.yaml`.
 
 Do not create `config.local.yaml`.
 
-### Step 6a: Repair Invalid ce-work Preferences
+### Step 6a: Repair Invalid Work Preferences
 
-When the health report marks the `ce-work` implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit the layer that supplied the failing value. If the bad ordinary key is only in `config.yaml`, edit that file after preview. Do not hide a broken team value behind a new local override. Preserve every unrelated setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete.
-
-`opencode2` is a distinct harness from `opencode`. A `work_engine_preferences` item with `harness: opencode2` takes `model: provider/modelname#variant`. Do not accept `opencode` as a substitute for `opencode2`.
+When the health report marks the Work implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit the layer that supplied the failing value. If the bad ordinary key is only in `config.yaml`, edit that file after preview. Do not hide a broken team value behind a new local override. Preserve every unrelated setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete.
 
 ### Step 6b: Repair Invalid `docs_root`
 
@@ -57,25 +62,25 @@ When the health report marks `docs_root` invalid, explain the exact reason it ga
 
 ### Step 7: Ensure Local Config Is Ignored
 
-If `.rocketclaw/config.local.yaml` exists and `jj file list` names it (jj auto-tracks files that are not ignored), offer to add:
+If `.rocketclaw/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
 
 ```text
 .rocketclaw/*.local.yaml
 ```
 
-Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content. JJ has no `check-ignore`; coverage for a path that does not yet exist cannot be probed — offer the line when the file exists and is tracked.
+Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
 ### Step 8: Offer To Ignore Scratch Space
 
-Skills that keep local scratch write it under `.tmp/` at the workspace root (`$(jj workspace root)/.tmp`). JJ has no public check-ignore. When `.tmp/` does not exist, or when it exists and `jj file list` names paths under it, offer to add:
+Skills that keep local scratch write it under `.context/`. Probe coverage by whether the workspace-root `.gitignore` contains `.context/` — with the trailing slash, so an existing directory-only rule counts before the directory exists, and anchored to the workspace root, since that is where the entry is appended — and when it is not covered, offer to add:
 
 ```text
-.tmp/
+.context/
 ```
 
 Append the entry to the workspace-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
-Unlike Step 7 this does not wait for the path to exist. The skill about to write there offers the same entry at its first write, so a workspace that never uses one of those skills never needs the line — adding it here only means that prompt never has to fire.
+Unlike Step 7 this does not wait for the path to exist. The skill about to write there offers the same entry at its first write, so a repository that never uses one of those skills never needs the line — adding it here only means that prompt never has to fire.
 
 ### Step 9: Point Agents At The Knowledge Store, And Offer The Standing Directives
 
@@ -89,7 +94,7 @@ Runs whenever the repository has a root agent-instructions file (`AGENTS.md`, `C
 <root>/solutions/  # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
 ```
 
-**Compounding directive.** Offer it only when the repository treats the store as tracked knowledge: `jj file list` names at least one file under the resolved `<root>/solutions/` (run `(cd "$workspace_root" && jj file list -- <root>/solutions)`; an ignored directory is not evidence), or the user just accepted the store mention. Skip the offer when the file already carries a standing instruction to invoke `ce-compound` at a completion checkpoint, in any wording. Otherwise ask:
+**Compounding directive.** Offer it only when the repository treats the store as tracked, committed knowledge: the workspace tracks at least one file under the resolved `<root>/solutions/` (`jj file list` there is non-empty; an untracked or ignored directory is not evidence), or the user just accepted the store mention. Skip the offer when the file already carries a standing instruction to invoke `ce-compound` at a completion checkpoint, in any wording. Otherwise ask:
 
 ```text
 Add a standing instruction so agents capture qualifying learnings with ce-compound?

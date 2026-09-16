@@ -23,31 +23,32 @@ Before composing, resolve PR-body requirements from the project's active instruc
 
 Two modes:
 
-- **Current-bookmark mode** (default) — describe `@` vs the repo's default base.
+- **Current-bookmark mode** (default) — describe the feature bookmark target vs the repo's default base.
 - **PR mode** — describe a specific PR when the caller passes a PR ref.
 
-For PR mode, fetch metadata first (`GIT_DIR` set from `jj git root`):
+For PR mode, fetch metadata first (`GIT_DIR` filled from a prior `jj git root` call; do not nest `$(...)`):
 
 ```bash
-GIT_DIR=$(jj git root) gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
+GIT_DIR="<path from prior jj git root>" gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
 ```
 
 If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-bookmark mode, resolve `<base>` in priority order: `jj log -r 'trunk()' --no-graph -T 'bookmarks'` → `GIT_DIR=$(jj git root) gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `jj log -r '<candidate>@origin' --no-graph -T 'commit_id'`. If none resolve, ask the user. `<head>` is `@`.
+For current-bookmark mode, resolve `<base>` in priority order: trunk from `jj bookmark list` (strip a trailing `@origin`) → `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` (`GIT_DIR` from that prior call) → try `main`/`master`/`develop` via `jj bookmark list`. If none resolve, ask the user. `<head>` is the feature bookmark target; use `@-` only when this workflow just completed the change and the bookmark has not yet been set.
 
 **Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `jj git remote list`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
 
 ```bash
 jj git fetch --remote <base-remote> --branch <base>
-jj log -r '<base-remote-rev>..<head>' --no-graph
-jj log -r '<base-remote-rev>..<head>' --no-graph -T description
-jj diff --from <base-remote-rev> --to <head>
+jj git fetch --remote <base-remote> --branch <headRefName>   # PR mode only: fetch the PR head bookmark; then resolve <head> to headRefOid
+jj log -r '<base>@<base-remote>..<head>' --no-graph
+jj log -r '<base>@<base-remote>..<head>' --no-graph -T builtin_log_detailed   # full change descriptions for related-reference discovery
+jj diff --from '<base>@<base-remote>' --to '<head>'
 ```
 
-`<base-remote-rev>` is `<base>@<base-remote>` (for example `main@origin`). In PR mode, `<head>` is `headRefOid` and may not be local; if `jj log`/`jj diff` cannot resolve it after fetch, use the fallback. If the change list is empty, report "No changes to describe" and stop.
+If the change list is empty, report "No changes to describe" and stop.
 
-**Fallback** — use `GIT_DIR=$(jj git root) gh pr diff <ref>` and `GIT_DIR=$(jj git root) gh pr view <ref> --json commits` when local jj cannot reach the refs (fork PR with no matching remote, shallow clone, offline, no common ancestor). Do not parse `.git/` or `.jj/` (including `FETCH_HEAD`) to recover a pull-ref SHA. Note in the user-facing summary when the API fallback was used.
+**Fallback** — use `gh pr diff <ref>` and `gh pr view <ref> --json commits` (`GIT_DIR` filled from the prior `jj git root` call) when JJ can't reach the revisions (fork PR with no matching remote, shallow clone, offline, unrelated histories). Note in the user-facing summary when the API fallback was used.
 
 ---
 
@@ -55,7 +56,7 @@ jj diff --from <base-remote-rev> --to <head>
 
 **Size by decision cost, not diff shape.** Decision cost is how much a reviewer still has to work out before they can approve; it is not changed-line count, file extension, or visual surface. A 5-line ranking or deploy change can carry more reviewer uncertainty than a 500-line mechanical rename.
 
-Build a compact internal **scope map** from the **complete oneline change list and final from-to diff**. Use oneline subjects for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale subjects; consult the fuller descriptions only when a subject remains opaque or conflicts with the diff. Group into material outcome clusters (one is fine), name one umbrella outcome that covers them, and identify each cluster's **material claims** — what became possible, fixed, riskier, or which design decision the reviewer must assess.
+Build a compact internal **scope map** from the **complete JJ change list and final range diff**. Use concise descriptions for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale descriptions; consult the fuller descriptions only when a concise description remains opaque or conflicts with the diff. Group into material outcome clusters (one is fine), name one umbrella outcome that covers them, and identify each cluster's **material claims** — what became possible, fixed, riskier, or which design decision the reviewer must assess.
 
 State the umbrella as what is now different for someone using this, never as the mechanism that produced it. The title and the opening both inherit the map's level of description, so a mechanism-shaped umbrella is not something a later step can correct — every later check compares against it and agrees with it. Derive the umbrella from the full range, never from the latest change, tracker title, bookmark name, original request, or the story of how the work started — the incident, bug report, or ask that opened the bookmark is one cluster's origin, not the umbrella, and a description that leads with it while the range delivers peer outcomes has misread the map.
 
@@ -70,7 +71,7 @@ When program context is present, extend the map with: (1) **Program outcome** �
 - Good (outcome does not stand on its own): "Sessions now carry a revocation epoch — the field that makes server-side revocation possible at all. Nothing reads it yet." Here the program is what gives the change its point, so the connection is part of the opening's one idea rather than a block after it.
 - Early/late: name first-slice + residual, or complete-the-arc + what already landed — same three fields, omit the unknown neighbor.
 
-**Write the finished map down before composing** — after the program-altitude check, so it carries both halves: umbrella; clusters with their claims; program placement or "none" (three or four lines). Step E audits the opening against this written map, not against memory.
+**Write the finished map down before composing** — after the program-altitude check, so it carries both halves: umbrella; clusters with their claims; program placement or "none" (three or four lines). Step D audits the opening against this written map, not against memory.
 
 > Prefer the shortest description that still lets a reviewer decide — context (including program placement when present), evidence, and residual uncertainty they can't get from the diff, and nothing they can.
 
@@ -92,7 +93,7 @@ A project PR-body contract sets the structural floor; this table sizes the conte
 
 ## Step B: Compose the title
 
-Match project PR-title conventions from instructions already in context and from recent change descriptions. Do not prescribe a type, scope, prefix, or subject template. Description: from the scope map's umbrella outcome, not one cluster or mechanism; with program context, the title may name this PR's contribution under the program without restating the whole series — it must not make another material outcome sound incidental. Imperative, lowercase, under 72 chars, no trailing period. **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation.**
+Compose the title from the scope map's umbrella outcome rather than imposing a fixed type, scope, or conventional template. Project PR-title instructions and observed repository practice win. With program context, the title may name this PR's contribution under the program without restating the whole series — it must not make another material outcome sound incidental. Keep any required length or breaking-change policy from the project; **never use `!` or `BREAKING CHANGE:` without explicit user confirmation.**
 
 ---
 
@@ -133,10 +134,10 @@ Decide whether the change introduces a concept (pattern, technique, library, dom
 
 **Gather candidates from the Pre-A diff first** (first real use of a dependency, a technique the diff introduces, a domain idea the code now encodes). Most PRs have none — stop; absence is the common case.
 
-**Check each candidate against the base ref, never the working copy** (the working copy contains this PR's own code):
+**Check each candidate against the base revision, never the working copy** (the working copy contains this PR's own code):
 
 ```bash
-jj file search --name-only --pattern "<term>" -r <base-remote-rev>
+jj file search -r '<base>@<base-remote>' --pattern '<term>' --name-only
 ```
 
 One call per candidate (cap two). Empty output → absent from the base. Teachable only when new *and* transferable. Never teach: established patterns, ordinary refactors/renames/dep bumps, project-internal plumbing. When in doubt, omit. On the `gh`-fallback path, judge from diff context alone and lean conservative.
@@ -168,7 +169,7 @@ The why belongs inside that one idea when it is the reason the outcome takes its
 
 ---
 
-## Step E: Pre-apply coverage audit
+## Step D: Pre-apply coverage audit
 
 Before returning the title and body, check against the scope map and material claims from Step A and revise if wrong:
 

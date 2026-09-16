@@ -1,44 +1,51 @@
 # Installing RocketClaw for OpenCode
 
-Add RocketClaw to the `plugins` array in your global or project `opencode.json`:
+RocketClaw targets **opencode2** v2.0.3. Use the V2 `plugins` key (not V1 `plugin`).
+
+## CLI
+
+Install a published package into the global config:
+
+```sh
+opencode2 plugin add <package>
+```
+
+List active plugins:
+
+```sh
+opencode2 plugin list
+```
+
+## Config
+
+Add RocketClaw to the `plugins` array in your global or project `opencode.json`.
+
+File URL:
 
 ```json
 {
-  "plugins": ["rocketclaw"]
+  "plugins": ["file:///path/to/this/checkout"]
 }
 ```
 
-Restart OpenCode after changing the config. The OpenCode plugin registers RocketClaw skills directly; no Bun installer or generated skill copy is required.
-
-To pin a release, add a version. Replace `X.Y.Z` with the release you want:
-
-```json
-{
-  "plugins": ["rocketclaw@X.Y.Z"]
-}
-```
-
-Git package specs and local paths also work:
+Package form:
 
 ```json
 {
   "plugins": [
-    "github:example/rocketclaw",
-    "/absolute/path/to/rocketclaw"
+    {
+      "package": "file:///path/to/this/checkout"
+    }
   ]
 }
 ```
 
-OpenCode V2 auto-discovers `.ts` / `.js` files under `.opencode/plugins/`. A checkout that already contains `.opencode/plugins/rocketclaw.ts` loads it without an extra `plugins` entry.
+A plugin under `.opencode/plugins/` in this checkout is also discovered automatically.
 
-## Local Development
+Restart after changing the config:
 
-From this checkout, point OpenCode at the package path:
-
-```json
-{
-  "plugins": ["/path/to/rocketclaw"]
-}
+```sh
+opencode2 service restart
 ```
 
-Restart OpenCode after changing the package source. The config key is `plugins` (not `plugin`). The directory argument to `opencode2` is positional, not `--dir`.
+The plugin registers skills from this checkout's `skills/` directory and exposes each user-invocable skill as a slash command that attaches that skill id. No generated skill copy is required.

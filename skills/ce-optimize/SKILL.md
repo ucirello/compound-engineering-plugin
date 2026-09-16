@@ -34,7 +34,7 @@ Resolve `<root>` the first time you compose a path under it. Reading learnings u
 **Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -50,7 +50,7 @@ Four phases run in order. Each one names the reference it cannot start without. 
 
 **Phase 0: Setup.** The input is a goal, or a path to a spec YAML. It comes from the user or from a calling skill. If neither supplied one, ask: "What would you like to optimize? Describe the goal, or provide a path to an optimization spec YAML file." Load or build the spec and save it (CP-0): **read `references/spec.md`**. Then search prior learnings, detect run identity, and create the bookmark and scratch space. **Read `references/measurement.md`** for the rest of Phase 0 and Phase 1.
 
-**Phase 1: Measurement scaffolding.** Build or validate the harness, write the baseline (CP-1), probe parallelism, check the experiment-workspace budget. Two gates stop the run:
+**Phase 1: Measurement scaffolding.** Build or validate the harness, write the baseline (CP-1), probe parallelism, check the workspace budget. Two gates stop the run:
 
 - **Clean-tree gate.** Do not continue while any file in `scope.mutable` or `scope.immutable` has working-copy changes. The reference defines the check and what to ask for.
 - **User approval gate.** Present what Phase 1 assembled; the reference lists what to include. If the primary type is `judge` and `max_total_cost_usd` is unset, say plainly that spend is uncapped. Offer proceed, fix issues, and adjust spec. Adjusting the spec is only available while the log holds nothing derived from it (no hypothesis backlog and no experiments) and it sends the run back through Phase 1 so the baseline matches the new spec. Once anything derived from the spec is on file, the spec is fixed for the run. **Do not enter Phase 2 until the user explicitly approves.** Then re-read the spec and baseline from disk.

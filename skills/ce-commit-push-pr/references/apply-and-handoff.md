@@ -2,7 +2,7 @@
 
 **Description-only mode** — print the title and body. Stop unless the user asks to apply.
 
-**New PR** (full workflow, no existing PR from Step 1, resolve bookmark and PR state) — if **Stack mode** is active, follow the Submit section of `references/stack-submit.md` instead of `gh pr create`; then report the bottom open non-draft PR URL and continue to the babysit handoff. Otherwise, immediately before creating, **always** re-run `gh pr list --head <bookmark> --state open --json number,url,isDraft,headRefName,headRepositoryOwner` (bookmark name only; `GIT_DIR` set from `jj git root`; target the base repo on a fork, per Context). This catches a PR that appeared since Step 1, or one the Step 1 check missed because it came back **unknown**, so you do not open a duplicate. If the list now shows a PR whose `headRepositoryOwner` and `headRefName` match the current head, switch to the existing-PR path. When several forks match, pick by head owner as in Step 1 rather than assuming index 0. If this re-check itself exits non-zero, resolve `gh auth status` or connectivity before creating; do not assume no PR exists. Otherwise apply per "Applying via gh" below using `gh pr create`. Report the URL.
+**New PR** (full workflow, no existing PR from Step 1, resolve bookmark and PR state) — if **Stack mode** is active, follow the Submit section of `references/stack-submit.md` instead of `gh pr create`; then report the bottom open non-draft PR URL and continue to the babysit handoff. Otherwise, immediately before creating, **always** re-run `gh pr list --head <bookmark> --state open --json number,url,isDraft,headRefName,headRepositoryOwner` (bookmark name only; target the base repo on a fork, per Context; `GIT_DIR` filled from the prior `jj git root` call). This catches a PR that appeared since Step 1, or one the Step 1 check missed because it came back **unknown**, so you do not open a duplicate. If the list now shows a PR whose `headRepositoryOwner` and `headRefName` match the current head, switch to the existing-PR path. When several forks match, pick by head owner as in Step 1 rather than assuming index 0. If this re-check itself exits non-zero, resolve `gh auth status` or connectivity before creating; do not assume no PR exists. Otherwise apply per "Applying via gh" below using `gh pr create`. Report the URL.
 
 **Existing PR** (full workflow, found in Step 1) — if **Stack mode** is active, still follow the Submit section of `references/stack-submit.md` so the remaining stack layers submit or sync (shipping from the middle of a stack is normal); then report the bottom open non-draft PR URL and continue to the babysit handoff with the posture derived below. Otherwise the new changes are already on the PR from Step 3 (commit and push). Report the PR URL, then ask whether to rewrite the description.
 
@@ -11,20 +11,14 @@
 
 **Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep the existing title and body and do not call `gh pr edit`. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, the user may pass focus text back for a regenerate; do not apply. If confirmed, apply per "Applying via gh" below using `gh pr edit` and report the URL.
 
-**Explainer archival** — runs only in the full workflow, when all of these hold: `pr_teaching_archive` is on, the composed body has a `## New concepts` section, and the apply was confirmed (a new-PR create, or an existing-PR rewrite the user accepted). A declined rewrite skips archival entirely, so no unlinked doc change is left behind. Resolve every path from the repo root gathered in Context, never from the CWD. With two taught concepts, write one file per concept and include both in the single change. Run these steps, in order, immediately before the `gh` call:
+**Explainer archival** — runs only in the full workflow, when all of these hold: `pr_teaching_archive` is on, the composed body has a `## New concepts` section, and the apply was confirmed (a new-PR create, or an existing-PR rewrite the user accepted). A declined rewrite skips archival entirely, so no unlinked doc commit is left behind. Resolve every path from the workspace root gathered in Context, never from the CWD. With two taught concepts, write one file per concept and include both in the single change. Run these steps, in order, immediately before the `gh` call:
 
-1. Write the file (create the directory if needed) with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. If the file already exists from a prior run, overwrite it. Workspace root from `jj workspace root`.
-2. If `jj diff` does not include that path after the write, the path is ignored or unchanged — print a one-line warning and skip archival entirely, writing nothing further (do not force-track). Public jj has no ignore-probe equivalent of a dry-run ignore check, so this is the post-write signal.
-3. Include those file(s) only in the change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repo-local syntax. The semantic constraint is that the change teaches the named concept(s). Then:
+1. Verify with the project's ignore rules that `<root>/explainers/YYYY-MM-DD-<concept-slug>.md` can be tracked (the check works on paths that do not exist yet). If the path is ignored, print a one-line warning and skip archival entirely, writing nothing (never force-track it).
+2. Write the file (create the directory if needed) with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. If the file already exists from a prior run, overwrite it.
+3. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Describe and commit only those files with `jj commit -m "<message composed from the standards above>" <explainer-files>`, then `jj bookmark set <bookmark> -r @-` and `jj git push --bookmark <bookmark>`. Re-apply the **Project publishing gate** to the resulting change state. If the files produce no change, the doc is already committed from a prior run — keep the link and continue.
+4. Add a head-bookmark blob URL for each doc into the `## New concepts` section before applying. Build the URL for the repo's actual host — for example `gh browse -n -b <head-bookmark> -- <path>` prints the link on whatever host `gh` targets, GitHub Enterprise included (`GIT_DIR` filled from the prior `jj git root` call). Do not hardcode `github.com`, or the link 404s on GHE.
 
-```bash
-jj commit -m "<message composed from the standards above>" <root>/explainers/YYYY-MM-DD-<concept-slug>.md
-```
-
-   Re-apply the **Project publishing gate** to the resulting change state, then `jj git push --bookmark <bookmark-name>`. If the working copy shows nothing to describe for those paths, the doc is already in a prior change — keep the link and continue.
-4. Add a head-bookmark blob URL for each doc into the `## New concepts` section before applying. Build the URL for the repo's actual host — for example `gh browse -n -b <head-bookmark> -- <path>` with `GIT_DIR` set prints the link on whatever host `gh` targets, GitHub Enterprise included. Do not hardcode `github.com`, or the link 404s on GHE.
-
-If the doc write, change, or push fails, warn and continue to PR creation without the link. Never leave the flow stopped between the change and the PR.
+If the doc write, commit, bookmark move, or push fails, warn and continue to PR creation without the link. Never leave the flow stopped between the commit and the PR.
 
 **User-runnable invocation rendering.** For the output handoffs below, default to `/ce-explain <name>`. Use `$ce-explain <name>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
@@ -35,14 +29,14 @@ If the doc write, change, or push fails, warn and continue to PR creation withou
 <!-- ce-config-layers:start -->
 **Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore files do not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
 Babysit is off only when the winning active value is exactly `false`; a missing key or any other value leaves the default **on**. A handoff the user opted out of is a **successful terminal for this run**, not a blocked one — report the PR URL, say in one line that babysit was skipped by standing config, and stop.
 
-**Babysit handoff — default on; completion gate.** After a newly-created PR, a successful stack submit, or new changes on an existing open PR, this run is not done until `ce-babysit-pr` owns follow-on or an explicit skip below applies. Reporting the PR URL alone is not success. Announce the automatic handoff in one non-blocking line, then invoke the skill through the host's normal skill-invocation mechanism; never ask yes/no.
+**Babysit handoff — default on; completion gate.** After a newly-created PR, a successful stack submit, or new commits on an existing open PR, this run is not done until `ce-babysit-pr` owns follow-on or an explicit skip below applies. Reporting the PR URL alone is not success. Announce the automatic handoff in one non-blocking line, then invoke the skill through the host's normal skill-invocation mechanism; never ask yes/no.
 
 After a stack submit, hand off the bottom open non-draft PR with the derived `posture:stack-ready`, or `posture:stack-land` when the user explicitly asked to land, plus stack-wide scope when a pipeline submitted the stack. Report that ownership transfer so an outer orchestrator does not start a second bare babysit on the current bookmark.
 
@@ -65,23 +59,24 @@ A draft-only stack submit is a hard residual before babysit when babysit is on.
 
 ## Applying via gh
 
-The body **must** be written to a temp file under the workspace `.tmp` and passed via `--body-file <path>`. Never use `--body-file -`, stdin pipes, heredoc-to-stdin, or `--body "$(cat ...)"` — wrappers and stdin handling can silently produce an empty PR body while `gh` still exits 0 and returns a URL.
+The body **must** be written to a temp file under the workspace `.tmp` directory and passed via `--body-file <path>`. Never use `--body-file -`, stdin pipes, heredoc-to-stdin, or `--body "$(cat ...)"` — wrappers and stdin handling can silently produce an empty PR body while `gh` still exits 0 and returns a URL.
+
+This is the compound body-file recipe this skill pins. Fill `ROOT` from a prior argv-form `jj workspace root` (use `.` if that call failed). Do not nest `$(jj workspace root)` here.
 
 ```bash
-workspace_root=$(jj workspace root) || { echo "not a jj workspace" >&2; exit 1; }
-mkdir -p "$workspace_root/.tmp"
-BODY_FILE=$(mktemp "$workspace_root/.tmp/pr-body-XXXXXX")
-cat >> "$BODY_FILE" <<'__PR_BODY_END__'
+mkdir -p "$ROOT/.tmp";
+BODY_FILE=$(mktemp "$ROOT/.tmp/pr-body.XXXXXX") && cat >> "$BODY_FILE" <<'__PR_BODY_END__'
 <the composed body markdown goes here, verbatim>
 __PR_BODY_END__
-GIT_DIR=$(jj git root)
 ```
 
 The quoted sentinel keeps `$VAR`, backticks, and any literal `EOF` inside the body from being expanded.
 
 For `<TITLE>`: substitute verbatim. If it contains `"`, `` ` ``, `$`, or `\`, escape them or switch to single quotes.
 
+Fill `GIT_DIR` from the prior `jj git root` call; do not nest `$(...)`:
+
 ```bash
-GIT_DIR=$(jj git root) gh pr create --title "<TITLE>" --body-file "$BODY_FILE"   # new PR
-GIT_DIR=$(jj git root) gh pr edit   --title "<TITLE>" --body-file "$BODY_FILE"   # existing PR
+GIT_DIR="<path from prior jj git root>" gh pr create --title "<TITLE>" --body-file "$BODY_FILE"   # new PR
+GIT_DIR="<path from prior jj git root>" gh pr edit   --title "<TITLE>" --body-file "$BODY_FILE"   # existing PR
 ```

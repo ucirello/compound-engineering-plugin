@@ -15,10 +15,13 @@ fi
 PR_NUMBER=$1
 COMMENT_NODE_ID=$2
 
-workspace_root=$(jj workspace root 2>/dev/null || true)
-if [ -n "$workspace_root" ]; then
-    GIT_DIR=$(cd "$workspace_root" && jj git root)
-    export GIT_DIR
+# Pair every gh call with GIT_DIR from the colocated Git dir. Prefer a
+# caller-supplied GIT_DIR; otherwise resolve it from jj.
+if [ -z "${GIT_DIR:-}" ]; then
+    _git_dir=$(jj git root 2>/dev/null || true)
+    if [ -n "$_git_dir" ]; then
+        export GIT_DIR="$_git_dir"
+    fi
 fi
 
 if [ -n "$3" ]; then
@@ -43,9 +46,9 @@ fi
 # more than one page of threads can still resolve a comment to its parent
 # thread. Per-thread comments are still capped at 100 -- threads exceeding
 # that depth are not paginated here.
-scratch_root="${workspace_root:-.}/.tmp"
-mkdir -p "$scratch_root"
-tmp_threads=$(mktemp "$scratch_root/pr-threads.XXXXXX")
+_tmp_root="$(jj workspace root 2>/dev/null || echo .)/.tmp"
+mkdir -p "$_tmp_root"
+tmp_threads=$(mktemp "$_tmp_root/ce-pr-threads.XXXXXX")
 trap 'rm -f "$tmp_threads"' EXIT
 
 gh api graphql --paginate --slurp \

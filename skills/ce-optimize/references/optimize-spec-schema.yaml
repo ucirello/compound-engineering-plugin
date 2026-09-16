@@ -378,7 +378,7 @@ optional_fields:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for worktree backend (JJ workspaces). 8+ only valid for Codex backend."
+        description: "Maximum experiments to run in parallel. Capped at 6 for worktree (JJ workspace) backend. 8+ only valid for Codex backend."
       codex_security:
         type: enum
         values:

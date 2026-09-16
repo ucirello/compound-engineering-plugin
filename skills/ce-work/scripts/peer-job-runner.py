@@ -145,6 +145,8 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
+
+
 def _workspace_tmp_root() -> str | None:
     proc = subprocess.run(
         ["jj", "--no-pager", "workspace", "root"],
@@ -1927,8 +1929,8 @@ def _require_detach_support() -> None:
     """Detached peer jobs need a supported detach path: os.fork/os.setsid on
     POSIX, or the native Windows DETACHED_PROCESS path (#1243). Checked first,
     before jobs_root_base()/geteuid, so an unsupported host fails with this clear
-    message instead of jobs_root_base()'s unrelated "effective user ID is
-    unavailable" error or an AttributeError mid-detach. Native Windows is now
+    message instead of jobs_root_base()'s unrelated workspace-root error or an
+    AttributeError mid-detach. Native Windows is now
     supported; only a non-win32 Python missing fork/setsid (some embedded
     builds) is rejected here."""
     if IS_WINDOWS:
@@ -1937,8 +1939,7 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (see "
-            "EveryInc/rocketclaw-plugin#1243)."
+            "a Windows Python 3 build (see #1243)."
         )
 
 
@@ -2169,7 +2170,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace .tmp path unchecked.
+        # consumer must never read a predictable scratch path unchecked.
         target = os.path.abspath(args.path)
         try:
             data = read_owned(target, cfg()["result_max"])

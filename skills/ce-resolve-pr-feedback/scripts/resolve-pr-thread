@@ -10,10 +10,13 @@ fi
 
 THREAD_ID=$1
 
-workspace_root=$(jj workspace root 2>/dev/null || true)
-if [ -n "$workspace_root" ]; then
-    GIT_DIR=$(cd "$workspace_root" && jj git root)
-    export GIT_DIR
+# Pair every gh call with GIT_DIR from the colocated Git dir. Prefer a
+# caller-supplied GIT_DIR; otherwise resolve it from jj.
+if [ -z "${GIT_DIR:-}" ]; then
+    _git_dir=$(jj git root 2>/dev/null || true)
+    if [ -n "$_git_dir" ]; then
+        export GIT_DIR="$_git_dir"
+    fi
 fi
 
 gh api graphql -f threadId="$THREAD_ID" -f query='

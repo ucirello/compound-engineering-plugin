@@ -287,69 +287,60 @@ def _iso(dt):
     return dt.isoformat()
 
 
-_WORKSPACE_ROOT = None
-_GIT_DIR = None
+def _jj_env():
+    env = os.environ.copy()
+    env.pop("GIT_DIR", None)
+    env.pop("GIT_WORK_TREE", None)
+    return env
 
 
-def workspace_root() -> str:
-    global _WORKSPACE_ROOT
-    if _WORKSPACE_ROOT is None:
-        proc = subprocess.run(
-            ["jj", "--no-pager", "workspace", "root"],
-            capture_output=True, text=True, encoding="utf-8", check=False,
-        )
-        if proc.returncode != 0 or not proc.stdout.strip():
-            raise SystemExit("not a jj workspace")
-        _WORKSPACE_ROOT = proc.stdout.strip()
-    return _WORKSPACE_ROOT
-
-
-def jj(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
-    root = cwd or workspace_root()
-    return subprocess.run(
-        ["jj", "--no-pager", *args], cwd=root,
-        capture_output=True, text=True, encoding="utf-8", check=False,
+def _workspace_root():
+    r = subprocess.run(
+        ["jj", "--no-pager", "workspace", "root"],
+        capture_output=True, text=True, encoding="utf-8", env=_jj_env(),
     )
+    root = (r.stdout or "").strip()
+    return root if r.returncode == 0 and root else None
 
 
-def _jj_git_dir() -> str:
-    global _GIT_DIR
-    if _GIT_DIR is None:
-        proc = jj("git", "root")
-        if proc.returncode != 0 or not proc.stdout.strip():
-            raise SystemExit("jj git root failed")
-        _GIT_DIR = proc.stdout.strip()
-    return _GIT_DIR
+def _jj_git_root():
+    cached = getattr(_jj_git_root, "_cached", None)
+    if getattr(_jj_git_root, "_resolved", False):
+        return cached
+    root = _workspace_root()
+    r = subprocess.run(
+        ["jj", "--no-pager", "git", "root"],
+        cwd=root or None,
+        capture_output=True, text=True, encoding="utf-8", env=_jj_env(),
+    )
+    path = (r.stdout or "").strip()
+    value = path if r.returncode == 0 and path else None
+    _jj_git_root._cached = value
+    _jj_git_root._resolved = True
+    return value
 
 
 def _run(cmd):
     # gh honors CLICOLOR_FORCE / GH_FORCE_TTY even for --json output, and a host that exports them
     # (observed under orca) makes every JSON read unparsable. Pin plain output regardless of caller env.
-    # Pair gh with GIT_DIR from public jj: gh resolves the checkout through git.
     env = os.environ.copy()
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    root = workspace_root()
-    env["GIT_DIR"] = _jj_git_dir()
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, cwd=root,
-    )
+    git_dir = _jj_git_root()
+    if git_dir:
+        env["GIT_DIR"] = git_dir
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
 
 
 def _run_git(cmd):
-    # Git-protocol probe of a remote URL (no public jj ls-remote). Still pair GIT_DIR so
-    # credential helper `gh auth git-credential` sees the colocated git dir.
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GCM_INTERACTIVE"] = "never"
     env["GIT_ASKPASS"] = ""
     env["SSH_ASKPASS"] = ""
-    root = workspace_root()
-    env["GIT_DIR"] = _jj_git_dir()
     return subprocess.run(
         cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-        cwd=root,
     )
 
 
@@ -435,9 +426,10 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
     PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to a
-    Git-protocol `ls-remote` of the remote URL (jj has no public ls-remote) while preserving
-    exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST Git-ref endpoint, so that response falls back to a GitHub remote-ref advertisement
+    (`git ls-remote` of the GitHub URL, authenticated through `gh auth git-credential`)
+    while preserving exact-ref matching and non-interactive failure behavior. This is
+    not local repository identity.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -478,8 +470,8 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
         remote_url = (f"https://{host or 'github.com'}/"
                       f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
         try:
-            # Reuse the gh session (GH_TOKEN or keyring) as the Git-protocol credential source so a
-            # headless host with no configured credential helper is not anonymous here.
+            # Reuse the gh session (GH_TOKEN or keyring) as the credential source so a
+            # headless host with no separately configured helper is not anonymous here.
             git_result = _run_git([
                 "git", "-c", "core.askPass=",
                 "-c", "credential.helper=",
@@ -1349,7 +1341,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted under the workspace .tmp across script versions) — backfill missing keys so a new
+    state.json (persisted under workspace .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):

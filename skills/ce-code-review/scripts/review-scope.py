@@ -3,8 +3,10 @@
 
 The helper never awards lite. It reports counts, path classes, and floors
 the skill's Review depth gate reads. `hard_block_full` forces the full
-spine; a clear floor still needs the agent to confirm no high-consequence
-class before lite.
+spine: a path class the script can name, a file it could not count, or a
+change whose executable non-test lines reach the full floor. Below that
+floor, size is a fact the gate reads, never a decision; the agent judges
+consequence.
 """
 
 from __future__ import annotations
@@ -23,6 +25,8 @@ CODE_EXTENSIONS = {
     ".rb", ".py", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".go", ".rs",
     ".java", ".swift", ".kt", ".c", ".cc", ".cpp", ".cs", ".php",
     ".ex", ".exs", ".scala",
+    ".sh", ".bash", ".zsh", ".fish", ".ps1", ".pl", ".pm", ".lua", ".dart",
+    ".vue", ".svelte",
 }
 
 SIGNAL_PATTERNS = {
@@ -42,20 +46,36 @@ SIGNAL_PATTERNS = {
 }
 
 # Classes the script can name from paths alone. These force full; they do not
-# award lite. Silent-pass guards outside these paths are the agent's question.
+# award lite.
 HARD_BLOCK_PATTERNS = {
+    "migrations": SIGNAL_PATTERNS["migrations"],
+}
+
+# Silent-pass guards the script can name from paths alone. These forbid lite
+# (the change needs the adversarial read the focused path carries) but do not
+# force full; consequence still decides focused versus full. Silent-pass guards
+# outside these paths are the agent's question.
+SILENT_PASS_PATTERNS = {
     "ci": re.compile(
         r"(^|/)\.github/workflows/|(^|/)\.gitlab-ci\.yml$|(^|/)\.gitlab-ci/"
         r"|(^|/)Jenkinsfile$|(^|/)\.circleci/|(^|/)\.buildkite/",
         re.I,
     ),
-    "migrations": SIGNAL_PATTERNS["migrations"],
 }
 
-SMALL_LINE_MAX = 39
+# Executable non-test changed lines at or above this run the full spine; it
+# matches the maintainability reviewer's trigger. Below it, consequence decides.
+FULL_EXEC_LINE_MIN = 200
 
+# Conventions recognized: tests?/spec/__tests__ directories; a .test./.spec.
+# suffix; a test_*.py / conftest.py Python prefix; and a case-sensitive
+# Test/Tests/Spec class-file suffix (Java/C#/Scala/Swift/Kotlin), so that
+# Contest.java or Manifest.cs stays production code.
 TEST_PATTERN = re.compile(
-    r"(^|/)(tests?|spec|__tests__)/|(^|/)[^/]+[._-](test|spec)\.[^/]+$",
+    r"(^|/)(tests?|spec|__tests__)/"
+    r"|(^|/)[^/]+[._-](test|spec)\.[^/]+$"
+    r"|(^|/)(test_[^/]+|conftest)\.[^/]+$"
+    r"|(?-i:(^|/)[^/]+(Test|Tests|Spec)\.(java|kt|scala|swift|cs)$)",
     re.I,
 )
 AGENT_SURFACE_PATTERN = re.compile(
@@ -235,12 +255,15 @@ def fail_closed(reason: str, signals: dict[str, object]) -> dict[str, object]:
         "status": "unknown",
         "reason": reason,
         "exec_lines": None,
+        "exec_nontest_lines": None,
+        "unclassified_lines": {},
         "changed_lines": None,
         "uncounted_files": 1,
         "changed_files": [],
         "signals": [],
         "hard_block_classes": ["unknown-scope"],
         "hard_block_full": True,
+        "silent_pass_classes": [],
         "size_band": "unknown",
         "test_files_changed": False,
         "agent_surface": False,
@@ -248,12 +271,17 @@ def fail_closed(reason: str, signals: dict[str, object]) -> dict[str, object]:
     }
 
 
-def size_band_for(changed_lines: int | None) -> str:
-    if changed_lines is None:
+def size_band_for(exec_nontest_lines: int | None) -> str:
+    """Band the executable non-test lines: `large` is a full-spine floor.
+
+    Sources the extension list cannot name are not banded; they are reported
+    in `unclassified_lines` for the gate's consequence judgment.
+    """
+    if exec_nontest_lines is None:
         return "unknown"
-    if 1 <= changed_lines <= SMALL_LINE_MAX:
-        return "small"
-    return "large"
+    if exec_nontest_lines >= FULL_EXEC_LINE_MIN:
+        return "large"
+    return "small"
 
 
 def matching_classes(
@@ -266,22 +294,28 @@ def matching_classes(
     ]
 
 
-def parse_git_format_counts(diff_text: str) -> tuple[dict[str, int | None], int]:
-    """Per-path added+deleted counts from `jj diff --git` output.
+def parse_git_format_diff(diff_text: str) -> tuple[dict[str, int | None], set[str], int]:
+    """Per-path added+deleted counts and executable-mode paths from `jj diff --git`.
 
-    ``None`` means the path is binary or otherwise uncounted. The second
-    return is how many such uncounted paths were seen.
+    ``None`` means the path is binary or otherwise uncounted. The third return
+    is how many such uncounted paths were seen. Executable-mode paths are those
+    whose resulting mode ends in 755 (new mode, else deleted-file old mode).
     """
     counts: dict[str, int | None] = {}
+    executable_mode_paths: set[str] = set()
     current: str | None = None
     added = 0
     deleted = 0
     uncounted = 0
     in_hunk = False
     binary = False
+    new_mode: str | None = None
+    old_mode: str | None = None
+    deleted_mode: str | None = None
 
     def flush() -> None:
         nonlocal current, added, deleted, uncounted, in_hunk, binary
+        nonlocal new_mode, old_mode, deleted_mode
         if current is None:
             return
         if binary:
@@ -289,11 +323,19 @@ def parse_git_format_counts(diff_text: str) -> tuple[dict[str, int | None], int]
             uncounted += 1
         else:
             counts[current] = added + deleted
+        mode = deleted_mode if deleted_mode is not None else (
+            new_mode if new_mode is not None else old_mode
+        )
+        if mode is not None and mode.endswith("755"):
+            executable_mode_paths.add(current)
         current = None
         added = 0
         deleted = 0
         in_hunk = False
         binary = False
+        new_mode = None
+        old_mode = None
+        deleted_mode = None
 
     for line in diff_text.splitlines():
         header = _DIFF_GIT_HEADER.match(line)
@@ -306,6 +348,18 @@ def parse_git_format_counts(diff_text: str) -> tuple[dict[str, int | None], int]
         if line.startswith("Binary files ") or line.startswith("GIT binary patch"):
             binary = True
             continue
+        if line.startswith("new file mode "):
+            new_mode = line.rsplit(" ", 1)[-1]
+            continue
+        if line.startswith("deleted file mode "):
+            deleted_mode = line.rsplit(" ", 1)[-1]
+            continue
+        if line.startswith("new mode "):
+            new_mode = line.rsplit(" ", 1)[-1]
+            continue
+        if line.startswith("old mode "):
+            old_mode = line.rsplit(" ", 1)[-1]
+            continue
         if line.startswith("@@"):
             in_hunk = True
             continue
@@ -316,7 +370,7 @@ def parse_git_format_counts(diff_text: str) -> tuple[dict[str, int | None], int]
         elif line.startswith("-") and not line.startswith("---"):
             deleted += 1
     flush()
-    return counts, uncounted
+    return counts, executable_mode_paths, uncounted
 
 
 def main() -> int:
@@ -364,8 +418,10 @@ def main() -> int:
         return 0
 
     files = sorted(line for line in names.stdout.splitlines() if line)
-    counts, uncounted = parse_git_format_counts(git_diff.stdout)
+    counts, executable_mode_paths, uncounted = parse_git_format_diff(git_diff.stdout)
     executable_lines = 0
+    executable_nontest_lines = 0
+    unclassified_lines: dict[str, int] = {}
     changed_lines = 0
     for name in files:
         total = counts.get(name)
@@ -376,25 +432,34 @@ def main() -> int:
                 uncounted += 1
             continue
         changed_lines += total
-        if Path(name).suffix.lower() in CODE_EXTENSIONS:
+        if Path(name).suffix.lower() in CODE_EXTENSIONS or name in executable_mode_paths:
             executable_lines += total
+            if not TEST_PATTERN.search(name):
+                executable_nontest_lines += total
+        elif not TEST_PATTERN.search(name):
+            ext = Path(name).suffix.lower()
+            unclassified_lines[ext] = unclassified_lines.get(ext, 0) + total
 
     signals = matching_classes(files, SIGNAL_PATTERNS)
     hard_block_classes = matching_classes(files, HARD_BLOCK_PATTERNS)
+    silent_pass_classes = matching_classes(files, SILENT_PASS_PATTERNS)
     if uncounted:
         hard_block_classes.append("uncounted")
-    band = size_band_for(changed_lines)
+    band = size_band_for(executable_nontest_lines)
 
     result = {
         "status": "complete",
         "reason": None,
         "exec_lines": executable_lines,
+        "exec_nontest_lines": executable_nontest_lines,
+        "unclassified_lines": unclassified_lines,
         "changed_lines": changed_lines,
         "uncounted_files": uncounted,
         "changed_files": files,
         "signals": signals,
         "hard_block_classes": hard_block_classes,
         "hard_block_full": bool(hard_block_classes) or band != "small",
+        "silent_pass_classes": silent_pass_classes,
         "size_band": band,
         "test_files_changed": any(TEST_PATTERN.search(file) for file in files),
         "agent_surface": any(AGENT_SURFACE_PATTERN.search(file) for file in files),

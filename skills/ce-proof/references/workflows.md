@@ -108,9 +108,9 @@ SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-workspace_root=$(jj workspace root 2>/dev/null) || workspace_root="."
-mkdir -p "$workspace_root/.tmp"
-STATE_TMP=$(mktemp "$workspace_root/.tmp/ce-proof-state.XXXXXX")
+ROOT="$(jj workspace root 2>/dev/null || echo .)"
+mkdir -p "$ROOT/.tmp"
+STATE_TMP=$(mktemp "$ROOT/.tmp/ce-proof-state.XXXXXX")
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"

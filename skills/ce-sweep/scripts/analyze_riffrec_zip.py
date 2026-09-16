@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and markdown
+transcript, high-signal video frames when available, and agent-friendly markdown
 artifacts.
 """
 
@@ -381,18 +381,6 @@ def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = N
         if staged_path is not None:
             source[key] = raw_dir / staged_path.relative_to(staging_dir)
     return source
-
-
-def workspace_root() -> Path:
-    proc = subprocess.run(
-        ["jj", "--no-pager", "workspace", "root"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode != 0 or not proc.stdout.strip():
-        return Path.cwd()
-    return Path(proc.stdout.strip())
 
 
 def repo_relative(path: Path, base: Path) -> str:
@@ -1266,7 +1254,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = workspace_root()
+    repo_root = Path.cwd()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"

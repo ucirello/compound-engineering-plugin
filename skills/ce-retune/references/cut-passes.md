@@ -12,7 +12,7 @@ A pass applies **one problem class** across the corpus and stops. The work fails
 4. Dispatch one agent per unit through whatever sub-agent primitive the platform provides. Each prompt carries the class, the contract path if any, its own paths, and the forbidden paths.
 5. **Reconcile** every block touched (below). This is the step that gets skipped.
 6. Run the project's own test suite. A pinned string that disappeared is a finding to report with its test path, never a test to edit.
-7. Collect each agent's applied/skipped report. Then measure (Phase 5) and land the pass as its own change (Phase 6).
+7. Collect each agent's applied/skipped report. Then measure (Phase 5) and record the pass as its own change.
 
 Eight passes landed in the engagement that produced this skill. Every one reduced to the same class. Resist widening a pass to "also fix the obvious thing". A pass that changed two classes cannot be attributed by the next measurement.
 
@@ -34,16 +34,14 @@ State the forbidden set in the prompt as paths, not as a rule to infer. An agent
 
 ## Isolation: separate workspaces or disjoint paths in one tree
 
-Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and landing the change trivial. There is no staging area: the working copy is the change.
+Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the change trivial.
 
-Pay for a workspace (`jj workspace add` from the current workspace root, or equivalent per-agent checkout) when any of these is true:
+Pay for a workspace (or equivalent per-agent working copy) when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch under `$(jj workspace root)/.tmp` and on the shared working-copy change (`@`).
-- Agents describe or commit changes, or create/move bookmarks. One workspace's working copy is shared; parallel agents in it collide on `@`.
-- A pass may need to be abandoned wholesale, and a clean discard (`jj workspace forget`, or `jj abandon` of that workspace's change) is worth more than a shared diff.
-
-Run every `jj` command with cwd set to that workspace's absolute root (`jj workspace root` / `jj workspace root --name <name>`). `jj -R` selects a repository and does not change cwd.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on working-copy state.
+- Agents describe changes or use bookmark operations. One working copy shared by parallel agents corrupts concurrent edits.
+- A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
 
 Otherwise the isolation cost is real: N workspaces to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
 
@@ -126,20 +124,10 @@ A failure that moves to a later phase is progress and names the next target. A f
 
 ## Ship (Phase 6)
 
-Land each pass as its own change so the history says which change was made and why. Keep the measurement artifacts.
-
 Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repo-local syntax.
+Repo-local syntax from project instructions and `git log` ALWAYS wins. Do not choose Conventional Commits vs Go style here.
 
-Do not use a fixed prefix, type, scope, subject, or body. Compose the description at runtime. Semantic constraints the composed message must satisfy: this pass landed alone; it names the problem class applied; it says why the cut was made; later measurement can attribute the result to this change.
-
-From the workspace root:
-
-```
-jj describe -m "<message composed from the standards above>"
-```
-
-Use `jj commit -m "<message composed from the standards above>"` when the workflow requires starting a new change after this pass.
+Describe each pass separately (`jj commit -m "<message composed from the standards above>"` or `jj describe -m "<message composed from the standards above>"`) so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

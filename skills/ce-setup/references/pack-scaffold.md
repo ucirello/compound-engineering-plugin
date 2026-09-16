@@ -23,22 +23,22 @@ Loaded from SKILL.md when the invocation names a pack to add, create, or scaffol
 
 3. **Draft the config change.** When `.rocketclaw/config.yaml` is missing, create it from `references/config-template.yaml` under the same approval. Append `  - source: compound-packs/<id>` (or the directory the user chose) as the last item of the live `packs:` list, matching its indentation; when there is no live key, append this block at the end of the file:
 
-   ```yaml
-   packs:
-     - source: compound-packs/<id>
-   ```
+    ```yaml
+    packs:
+      - source: compound-packs/<id>
+    ```
 
-   Leave the template's commented `# packs:` example and every other line exactly as they are. `config.local.yaml` is not the target; a pack the team shares belongs in the tracked file.
+    Leave the template's commented `# packs:` example and every other line exactly as they are. `config.local.yaml` is not the target; a pack the team shares belongs in the tracked file.
 
 4. **Ask once, showing everything.** Preview the directory, both files in full, and the exact config lines with their placement, then ask:
 
-   ```text
-   Create the Compound Pack `<id>`?
-   1. Yes, write these files and the config entry
-   2. No thanks
-   ```
+    ```text
+    Create the Compound Pack `<id>`?
+    1. Yes, write these files and the config entry
+    2. No thanks
+    ```
 
-   Write only on approval. When the caller declared the run non-interactive, or no question can reach the user, print the same preview, say the scaffold wrote nothing, and stop.
+    Write only on approval. When the caller declared the run non-interactive, or no question can reach the user, print the same preview, say the scaffold wrote nothing, and stop.
 
 5. **Verify with the health check.** Run the bundled `scripts/check-health` exactly as SKILL.md Step 2 does, with the same `SKILL_DIR` anchor, and report its `pack <id>` line. A `Pack config error` or `publishes no packs` line about this pack means the scaffold is not done: fix the cause and run the check again.
 

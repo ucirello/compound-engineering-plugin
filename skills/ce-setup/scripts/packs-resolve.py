@@ -35,15 +35,15 @@ Entry shape (documented subset -- anything else under `packs:` is a loud error):
       - source: packs/local-rules              # workspace-relative path
       - source: ~/packs/kk-style               # ~ or absolute path
       - source: https://github.com/o/r         # git URL: ref required
-        ref: v1.2.0                            # tag, sha, or branch
-        path: packs                            # optional subfolder (git only)
+        ref: v1.2.0                            # tag, sha, or bookmark
+        path: packs                            # optional subfolder (git-URL only)
         pack: [rails, inertia]                 # one id, a list, or omit = all
         id: rails-core                         # rename (single-pack entries)
       - source: https://github.com/o/r/tree/main/packs   # tree-URL sugar
 
 Git-URL sources cache under `<workspace>/.tmp/rocketclaw/packs/<sha256(url\\nref)>`
 with an atomic temp-clone-then-rename, so a keyed path's existence proves a complete
-clone. Clones use `jj git clone` (not `git clone`). All jj subprocesses run
+clone. Clones use `jj git clone`. All jj subprocesses run
 non-interactively (GIT_TERMINAL_PROMPT=0, ssh BatchMode, bounded timeout): missing
 credentials degrade to a warning, never a hang. A missing `jj` binary degrades
 git-URL sources only (each warns and is skipped); path sources still resolve, with
@@ -68,6 +68,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 
 IS_WINDOWS = os.name == "nt"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
@@ -306,13 +307,13 @@ def resolve_git_source(url: str, ref: str, warnings: list, label: str, workspace
         if os.path.lexists(dest):
             warnings.append(f"{label}: cannot replace untrusted cached checkout {dest}; source skipped")
             return None
-    tmp = os.path.join(base, f"{key}.part")
-    _remove_path(tmp)
+    tmp = tempfile.mkdtemp(prefix=f"{key}.part-", dir=base)
     try:
         try:
             proc = _run_jj(["git", "clone", "--depth", "1", "-b", ref, url, tmp])
             if proc.returncode != 0:
-                _remove_path(tmp)
+                shutil.rmtree(tmp, ignore_errors=True)
+                os.makedirs(tmp, exist_ok=True)
                 proc = _run_jj(["git", "clone", "--depth", "1", "-t", ref, url, tmp])
         except subprocess.TimeoutExpired:
             warnings.append(f"{label}: jj git clone timed out after {int(GIT_TIMEOUT)}s; source skipped")
@@ -341,8 +342,8 @@ def resolve_git_source(url: str, ref: str, warnings: list, label: str, workspace
         )
         return None
     finally:
-        if os.path.lexists(tmp):
-            _remove_path(tmp)
+        if os.path.isdir(tmp):
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 # --- pack enumeration --------------------------------------------------------
@@ -520,16 +521,16 @@ def resolve_entry(entry: dict, repo_root: str, roots: list, warnings: list, erro
 
     if _is_git_url(source):
         if not isinstance(ref, str) or not ref:
-            errors.append(f"{label}: git source `{source}` requires `ref:` (tag, sha, or branch)")
+            errors.append(f"{label}: git-URL source `{source}` requires `ref:` (tag, sha, or bookmark)")
             return
         if ref.startswith("-") or source.startswith("-"):
-            errors.append(f"{label}: git source/ref may not begin with `-`")
+            errors.append(f"{label}: git-URL source/ref may not begin with `-`")
             return
         checkout = resolve_git_source(source, ref, warnings, label, repo_root)
         if checkout is None:
             if tree:
                 warnings.append(
-                    f"{label}: if the branch name contains `/`, tree-URL parsing splits it wrong -- use explicit `ref:` and `path:` fields"
+                    f"{label}: if the ref name contains `/`, tree-URL parsing splits it wrong -- use explicit `ref:` and `path:` fields"
                 )
             return
         git_meta = {"url": source, "ref": ref}
@@ -545,10 +546,10 @@ def resolve_entry(entry: dict, repo_root: str, roots: list, warnings: list, erro
     else:
         git_meta = None
         if ref is not None:
-            errors.append(f"{label}: `ref:` is only valid on git sources; path sources are read live")
+            errors.append(f"{label}: `ref:` is only valid on git-URL sources; path sources are read live")
             return
         if sub_path is not None:
-            errors.append(f"{label}: `path:` is only valid on git sources; point `source:` at the directory instead")
+            errors.append(f"{label}: `path:` is only valid on git-URL sources; point `source:` at the directory instead")
             return
         expanded = os.path.expanduser(source)
         if os.path.isabs(expanded):
@@ -566,7 +567,7 @@ def resolve_entry(entry: dict, repo_root: str, roots: list, warnings: list, erro
             return
 
     if git_meta:
-        # Display name for a single-pack git source: the path: subfolder's
+        # Display name for a single-pack git-URL source: the path: subfolder's
         # basename, else the URL's last path segment (never the cache key).
         tail = (sub_path or source).rstrip("/").rsplit("/", 1)[-1]
         self_name = re.sub(r"\.git$", "", tail.split(":")[-1]) or None

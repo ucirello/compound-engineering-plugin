@@ -12,12 +12,8 @@
 # model reads the repo and web to verify its brief and returns prose.
 #
 # Usage:
-#   elevation-dispatch.sh <model> <prompt-file> <result-path> [harness]
-#   elevation-dispatch.sh --emit-adapter <model> [handoff-dir] [harness]
-# harness: claude (default) | opencode2
-# opencode2 is a distinct harness from opencode; never treat them as aliases.
-# opencode2 argv: opencode2 run --standalone --auto --model provider/model#variant
-#   --format json --file PROMPT   (no --dir; cwd = jj workspace root)
+#   elevation-dispatch.sh <model> <prompt-file> <result-path>
+#   elevation-dispatch.sh --emit-adapter <model>   # print argv, no model call (test hook)
 #
 # NOTE ON THE FUNCTION NAMED run_codex_cmd: it is NOT codex-specific here. It is
 # the $PEERLOG byte-growth idle loop that implements R11's primary supervision
@@ -43,7 +39,20 @@ EFFORT="high"   # settled: elevation runs at high effort
 # any mutating tool. Its output is returned prose, not a file write.
 ALLOWED=(Read Glob Grep WebSearch WebFetch)
 
-build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming, read-only)
+# opencode2 is a distinct harness from opencode (not a fallback). When
+# ELEVATION_HARNESS=opencode2, dispatch the opencode2 binary:
+#   opencode2 run --standalone --auto --model provider/model#variant
+# Variant is `#variant` on --model; there is no `--variant` flag.
+build_cmd_opencode2() {  # <model> -> sets CMD array (opencode2, not opencode)
+  CMD=(opencode2 run --standalone --auto --model "$1")
+}
+
+build_cmd() {   # <model> <handoff-dir> -> sets CMD array
+  if [ "${ELEVATION_HARNESS:-}" = "opencode2" ]; then
+    build_cmd_opencode2 "$1"
+    return
+  fi
+  # claude CLI, streaming, read-only (unchanged opencode-unrelated path)
   # --safe-mode suppresses the user environment's hooks, plugins, and MCP
   # servers; --disable-slash-commands blocks skills. --tools RESTRICTS the
   # available built-in set to this list — Write/Edit/Bash are not present at all.
@@ -75,45 +84,17 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
 # Test hook: print the argv the worker would exec, without calling a model.
 # Accepts an optional handoff dir ($3) so the emitted argv shows the scoped
 # --add-dir; without it the flag is omitted (no dir to grant).
-# $4 is the harness: claude (default) or opencode2. `opencode` is rejected.
 if [ "${1:-}" = "--emit-adapter" ]; then
   [ -n "${2:-}" ] || { log "--emit-adapter requires <model>"; exit 2; }
-  case "${4:-claude}" in
-    opencode2)
-      printf '%s\0' opencode2 run --standalone --auto --model "$2" --format json --file
-      ;;
-    opencode)
-      log "opencode2 is a distinct harness; not backward compatible with opencode"
-      exit 2
-      ;;
-    claude|"")
-      build_cmd "$2" "${3:-}"
-      printf '%s\0' "${CMD[@]}"
-      ;;
-    *)
-      log "unknown harness '${4}' (want claude|opencode2)"
-      exit 2
-      ;;
-  esac
+  build_cmd "$2" "${3:-}"
+  printf '%s\0' "${CMD[@]}"
   exit 0
 fi
 
 MODEL="${1:?model required}"
 PROMPT_FILE="${2:?prompt-file required}"
 RESULT_PATH="${3:?result-path required}"
-HARNESS="${4:-claude}"
 [ -f "$PROMPT_FILE" ] || { log "prompt file not found: $PROMPT_FILE"; exit 2; }
-case "$HARNESS" in
-  claude|opencode2) ;;
-  opencode)
-    log "opencode2 is a distinct harness; not backward compatible with opencode"
-    exit 2
-    ;;
-  *)
-    log "unknown harness '$HARNESS' (want claude|opencode2)"
-    exit 2
-    ;;
-esac
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
@@ -122,7 +103,6 @@ esac
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
 HANDOFF_DIR="$(cd "$HANDOFF_DIR" 2>/dev/null && pwd || printf '%s' "$HANDOFF_DIR")"
-PROMPT_FILE="$HANDOFF_DIR/${PROMPT_FILE##*/}"
 
 # jq builds every result envelope; it is only an optional capability (ce-setup),
 # so preflight it here rather than spending the CLI call and failing to parse.
@@ -136,9 +116,9 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-workspace_root=$(jj workspace root) || workspace_root="."
-mkdir -p "$workspace_root/.tmp" || { log "cannot create workspace .tmp"; exit 1; }
-PEERLOG="$(mktemp "$workspace_root/.tmp/elevation-peer-XXXXXX")"
+WS_ROOT="$(jj --no-pager workspace root 2>/dev/null || printf '.')"
+mkdir -p "$WS_ROOT/.tmp"
+PEERLOG="$(mktemp "$WS_ROOT/.tmp/elevation-peer-XXXXXX")"
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
@@ -276,102 +256,9 @@ run_codex_cmd() {
   ACTIVE_PEER_PID=""
 }
 
-# Distinct from run_codex_cmd and from v1 `opencode`: cwd must be the workspace
-# root because opencode2 has no --dir. Prompt is --file, not stdin.
-run_opencode2_cmd() {
-  local run_cwd="$1"
-  RUN_SUCCEEDED=false
-  local prev; case "$-" in *m*) prev=1;; *) prev=0;; esac
-  set -m
-  (cd "$run_cwd" && command "${CMD[@]}" > "$PEERLOG" 2>&1) &
-  local pid=$!
-  ACTIVE_PEER_PID="$pid"
-  [ "$prev" = 0 ] && set +m
-  start_heartbeat
-  local start last=-1 lastchg now size
-  start="$(date +%s)"; lastchg="$start"
-  while kill -0 "$pid" 2>/dev/null; do
-    sleep "$POLL_SECS"; now="$(date +%s)"; size="$(wc -c <"$PEERLOG" 2>/dev/null || echo 0)"
-    [ "$size" != "$last" ] && { last="$size"; lastchg="$now"; }
-    if [ $(( now - lastchg )) -ge "$IDLE_SECS" ]; then
-      log "elevated call idle ${IDLE_SECS}s; reaping"; reap "$pid"; break
-    fi
-    if [ $(( now - start )) -ge "$HARD_SECS" ]; then
-      log "elevated call exceeded hard cap ${HARD_SECS}s; reaping"; reap "$pid"; break
-    fi
-  done
-  if wait "$pid" 2>/dev/null; then RUN_SUCCEEDED=true
-  else log "elevated call exited non-zero or was reaped"; fi
-  reap "$pid" 2>/dev/null || true
-  stop_heartbeat
-  ACTIVE_PEER_PID=""
-}
-
 # --- main -------------------------------------------------------------------
-if [ "$HARNESS" = "opencode2" ]; then
-  case "$MODEL" in
-    */*#*) ;;
-    *)
-      write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"opencode2 model must be provider/modelname#variant"}')"
-      rm -f "$PEERLOG"
-      exit 0
-      ;;
-  esac
-  if ! command -v opencode2 >/dev/null 2>&1; then
-    write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"opencode2 not on PATH"}')"
-    rm -f "$PEERLOG"
-    exit 0
-  fi
-  oc_root=$(jj workspace root) || {
-    write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"opencode2 dispatch requires a jj workspace (cwd=workspace root; no --dir)"}')"
-    rm -f "$PEERLOG"
-    exit 0
-  }
-  CMD=(opencode2 run --standalone --auto --model "$MODEL" --format json --file "$PROMPT_FILE")
-  run_opencode2_cmd "$oc_root"
-else
-  build_cmd "$MODEL" "$HANDOFF_DIR"
-  run_codex_cmd
-fi
-
-if [ "$HARNESS" = "opencode2" ]; then
-  # Distinct from Claude stream-json: opencode2 --format json. Pipe the last
-  # JSON object through jq so plan text never enters an argv.
-  EVENT="$(grep -a '^{' "$PEERLOG" 2>/dev/null | tail -1 || true)"
-  SERVED="$(printf '%s' "$EVENT" | jq -r '.model // .info.model // "unverified"' 2>/dev/null || printf 'unverified')"
-  HAS_OUTPUT="$(printf '%s' "$EVENT" | jq -r '
-    (if type == "string" then .
-     elif (.text // "") != "" then .text
-     elif (.result // "") != "" then .result
-     elif (.output // "") != "" then .output
-     else empty end) as $o
-    | if ($o | tostring) == "" then "no" else "yes" end' 2>/dev/null || printf 'no')"
-  if [ "$RUN_SUCCEEDED" = true ] && [ "$HAS_OUTPUT" = "yes" ]; then
-    RECEIPT="$(classify_receipt "$MODEL" "$SERVED")"
-    tmp="${RESULT_PATH}.tmp.$$"
-    if printf '%s' "$EVENT" | jq --arg m "$MODEL" --arg s "$SERVED" --arg r "$RECEIPT" \
-         '{status:"ok", requested_model:$m, served_model:$s, receipt:$r,
-           output: (if type == "string" then .
-                    elif (.text // "") != "" then .text
-                    elif (.result // "") != "" then .result
-                    elif (.output // "") != "" then .output
-                    else empty end)}' \
-         > "$tmp" 2>/dev/null; then
-      mv -f "$tmp" "$RESULT_PATH"
-      log "elevated step complete: requested=$MODEL served=$SERVED receipt=$RECEIPT harness=opencode2"
-    else
-      rm -f "$tmp"
-      write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"result envelope build failed"}')"
-      log "elevated step: result envelope build failed"
-    fi
-  else
-    write_result "$(jq -n --arg m "$MODEL" --arg e "$(bounded_failure_evidence)" \
-      '{status:"failed", requested_model:$m, evidence:$e}')"
-    log "elevated step failed; wrote failure envelope"
-  fi
-  rm -f "$PEERLOG"
-  exit 0
-fi
+build_cmd "$MODEL" "$HANDOFF_DIR"
+run_codex_cmd
 
 # The stream-json terminal event is the LAST line whose type is "result". Match
 # on it rather than `tail -1`, so a diagnostic written to stderr after the result

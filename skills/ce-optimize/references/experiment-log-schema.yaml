@@ -179,8 +179,8 @@ experiment_entry:
         - error                   # measurement command crashed, timed out, or produced malformed output
         - deferred_needs_approval # experiment needs an unapproved dependency -> set aside for batch approval
         - timeout                 # measurement command exceeded timeout_seconds
-        - runner_up_kept          # file-disjoint runner-up that was cherry-picked and re-measured successfully
-        - runner_up_reverted      # file-disjoint runner-up that was cherry-picked but combined measurement was not better
+        - runner_up_kept          # file-disjoint runner-up that was applied onto the new baseline and re-measured successfully
+        - runner_up_reverted      # file-disjoint runner-up that was applied onto the new baseline but combined measurement was not better
       description: >
         The loop branches on this value.
         'measured' and 'promising' are non-terminal: CP-3 persists raw metrics
@@ -209,10 +209,10 @@ experiment_entry:
             enum: [standalone, integrated]
           reference_revision:
             type: string
-            description: "Identity that uniquely identifies the measured reference bytes. A revision is enough when it names those bytes; an `@` shared by different working-copy trees is not."
+            description: "Identity that uniquely identifies the measured reference bytes. A revision is enough when it names those bytes; a shared `@` across different working-copy trees is not."
           candidate_revision:
             type: string
-            description: "Identity that uniquely identifies the measured candidate bytes. A revision is enough when it names those bytes; an `@` shared by different working-copy trees is not."
+            description: "Identity that uniquely identifies the measured candidate bytes. A revision is enough when it names those bytes; a shared `@` across different working-copy trees is not."
           workload:
             type: string
           reference:
@@ -321,7 +321,7 @@ experiment_entry:
 #             -> decide.mjs eligible, next_measurement none -> stay measured until integration
 #               -> diff on optimization bookmark -> outcome: kept
 #               -> eligible leftover             -> outcome: not_selected
-#             -> runner-up, file-disjoint -> cherry-pick + re-measure
+#             -> runner-up, file-disjoint -> apply onto new baseline + re-measure
 #               -> combined eligible and integrated -> outcome: runner_up_kept
 #               -> combined not kept              -> outcome: runner_up_reverted
 #             -> inconclusive             -> outcome: inconclusive

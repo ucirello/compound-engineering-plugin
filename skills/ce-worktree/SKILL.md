@@ -9,7 +9,7 @@ Ensure the current work happens in an isolated workspace, without disturbing the
 
 **Done when:** the caller is working in an isolated workspace — existing or newly created — and its path and bookmark have been reported, or a blocker has been reported instead.
 
-**Order of operations: detect existing isolation -> prefer a native worktree/workspace tool -> fall back to `jj workspace add`.** Never create a workspace the harness cannot see.
+**Order of operations: detect existing isolation -> prefer a native worktree tool or workspace tool -> fall back to `jj workspace add`.** Never create a workspace the harness cannot see.
 
 Do not inspect `.jj/` or `.git/`. Membership is `jj workspace list` plus `jj workspace root --name <name>` only.
 
@@ -24,7 +24,7 @@ Do not inspect `.jj/` or `.git/`. Membership is `jj workspace list` plus `jj wor
 workspace_root=$(jj workspace root) || { echo "not a jj workspace" >&2; exit 1; }
 ```
 
-If `jj workspace root` fails, this is not a JJ workspace — report that blocker and stop.
+If `jj workspace root` fails, this is not a JJ workspace — report that blocker and stop. Do not walk the filesystem for `.jj/` or `.git/`.
 
 List membership with `jj workspace list`. Resolve each listed name with `jj workspace root --name <name>` (absolute path). The current workspace is the listed name whose resolved root equals `$workspace_root`. The primary checkout is `jj workspace root --name default`.
 
@@ -36,7 +36,7 @@ When running any `jj` command against a workspace, set that command's working di
 
 ## Step 1: Prefer the harness's native worktree/workspace tool
 
-If the harness provides a native worktree or workspace primitive — for example an `EnterWorktree` / `WorktreeCreate` tool, a `/worktree` command, a `--worktree` flag, or a session-move-into-workspace tool that both places and tracks the tree — use it and stop. Native tools place, track, and clean up the workspace so the harness can manage it. A behind-the-back `jj workspace add` creates phantom state the harness cannot see, navigate to, or clean up (`jj workspace forget` is then the harness's problem, not a fallback cleanup step).
+If the harness provides a native worktree primitive or workspace primitive — for example an `EnterWorktree` / `WorktreeCreate` tool, a `/worktree` command, a `--worktree` flag, or a session-move-into-workspace tool that both places and tracks the tree — use it and stop. Native tools place, track, and clean up the workspace so the harness can manage it. A behind-the-back `jj workspace add` creates phantom state the harness cannot see, navigate to, or clean up (`jj workspace forget` is then the harness's problem, not a fallback cleanup step).
 
 If the harness can only move the session into a directory after one exists, continue to Step 2, then invoke that move on the new workspace root so the harness tracks it.
 
@@ -45,13 +45,13 @@ If the harness can only move the session into a directory after one exists, cont
 Only when there is no native create tool **and** Step 0 found no existing isolation.
 
 1. **Run from the primary checkout root:** `default_root=$(jj workspace root --name default)` (if `default` is absent, use the sole listed workspace root). `cd` there. Destinations below are that-root-relative, but the skill runs from the user's current directory — without this, `.tmp/<name>` lands in a subdirectory.
-2. Choose a meaningful workspace and bookmark name from the work description (e.g. `feat/login`, `fix/email-validation`) — never an opaque auto-generated one. Base: trunk bookmark (`jj bookmark list` / remote bookmarks such as `main@origin`), else `main`. `gh` is OK for GitHub's default branch; pair it with `GIT_DIR=$(cd "$default_root" && jj git root)`.
+2. Choose a meaningful workspace and bookmark name from the work description (e.g. `feat/login`, `fix/email-validation`) — never an opaque auto-generated one. Base: trunk bookmark (`jj bookmark list` / remote bookmarks such as `main@origin`), else `main`. `gh` is OK for GitHub's default branch; run `(cd "$default_root" && jj git root)` first, then pass that path as `GIT_DIR` on the `gh` call.
 3. **Ensure `.tmp/` is ignored before creating anything.** Isolation workspaces live under `$(jj workspace root --name default)/.tmp/<name>`, never OS-global temp. If `.gitignore` has no `.tmp/` line, add one. Create the `.tmp` directory if it does not exist.
 4. Refresh the base with `(cd "$default_root" && jj git fetch)`. This is **non-fatal** — no `origin` remote, a differently-named remote, or a local-only bookmark is not an abort; continue with the local ref.
 5. Create the workspace, per mode (`(cd "$default_root" && jj workspace add ...)`):
-   - **New work:** `jj workspace add .tmp/<name> --name <name> -r <from-bookmark>` (use the local bookmark if `<from-bookmark>@origin` does not exist). Then in the new workspace, `jj bookmark create <bookmark>` on `@`.
-   - **Existing bookmark or tag:** `jj workspace add .tmp/<slug> --name <slug> -r <target-ref>`.
-   - **PR:** resolve the head with `gh` (`GIT_DIR=$(cd "$default_root" && jj git root)`), `jj git fetch` as needed, then `jj workspace add .tmp/pr-<n> --name pr-<n> -r <head>`. Never leave the new working-copy on an anonymous fetched commit with no bookmark: create or keep a local `pr-<n>` bookmark so later changes update the PR. (For fork-safe push tracking, add the workspace first, then `cd` in and run `GIT_DIR=$(jj git root) gh pr checkout <n>`.)
+   - **New work:** `jj workspace add --name <name> -r <from-bookmark> .tmp/<name>` (use the local bookmark if `<from-bookmark>@origin` does not exist). Then in the new workspace, `jj bookmark create <bookmark>` on `@`.
+   - **Existing bookmark or tag:** `jj workspace add --name <slug> -r <target-ref> .tmp/<slug>`.
+   - **PR:** resolve the head with `gh` (`GIT_DIR` from the prior `jj git root`), `jj git fetch` as needed, then `jj workspace add --name pr-<n> -r <head> .tmp/pr-<n>`. Never leave the new working-copy on an anonymous fetched commit with no bookmark: create or keep a local `pr-<n>` bookmark so later changes update the PR. (For fork-safe push tracking, add the workspace first, then `cd` in and run `GIT_DIR=<jj git root> gh pr checkout <n>`.)
    - If a listed workspace already belongs to that name or already carries that bookmark on `@`, apply the one-ref-one-workspace rule above — do not force a second workspace.
 6. `cd` into it (and invoke the harness move-into-workspace primitive if Step 1 deferred to it), then report the path and bookmarks on `@`.
 

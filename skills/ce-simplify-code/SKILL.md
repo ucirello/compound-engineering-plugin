@@ -12,7 +12,7 @@ Simplify recently changed code for clarity, reuse, quality, and efficiency while
 Resolve the simplification scope in this order:
 
 1. **User-named scope** is authoritative; do not widen it.
-2. **Otherwise, in a jj workspace**, use the current bookmark versus its base. Without a usable base, use the current change (`jj diff`).
+2. **Otherwise, in a jj workspace**, use the current bookmark versus its base (`jj diff --from <base> --to @`). Without a usable base, use working-copy changes (`jj diff`).
 3. **Outside a jj workspace or without a diff**, use files the user named or that were edited earlier in the conversation.
 
 If none of the above produces a non-empty scope, stop and ask the user what to simplify rather than guessing. Use the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability — do not search for another host's tool name. Fall back to numbered options on the host's user-visible chat surface only when no such tool is in the list or a real question call errors. Never silently skip the question.

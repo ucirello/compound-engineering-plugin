@@ -11,7 +11,7 @@ argument-hint: "[feature, focus area, or constraint] [output:md]"
 
 `ce-ideate` runs before `ce-brainstorm`. This skill answers "which ideas are worth exploring?" `ce-brainstorm` then answers what one chosen idea should mean. `ce-plan` answers how it gets built.
 
-**Done:** a ranked ideation artifact is written to `<root>/ideation/` when that root is present, else to a workspace `.tmp` path. Every idea generated has been critiqued, and the survivors are explained. The user is left holding the next-steps menu. No requirements, plans, or code.
+**Done:** a ranked ideation artifact is written to `<root>/ideation/` when that root is present, else to a scratch path. Every idea generated has been critiqued, and the survivors are explained. The user is left holding the next-steps menu. No requirements, plans, or code.
 
 ## Boundaries
 
@@ -28,13 +28,13 @@ The **focus hint** is any optional context this run was invoked with, from the u
 
 ## Artifact Root
 
-Artifacts go under `<root>/ideation/`, and learnings are read from `<root>/solutions/`. Resolve `<root>` only when you are about to compose one of those paths, and never before the mode is classified — an elsewhere or no-repo run writes to a temp directory and never needs it. Pass a subagent the resolved path, not the config.
+Artifacts go under `<root>/ideation/`, and learnings are read from `<root>/solutions/`. Resolve `<root>` only when you are about to compose one of those paths, and never before the mode is classified — an elsewhere or no-workspace run writes to a temp directory and never needs it. Pass a subagent the resolved path, not the config.
 
 <!-- ce-docs-root:start -->
 **Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -49,7 +49,7 @@ Read `references/output-mode.md` whenever a format is resolved. The read is requ
 <!-- ce-config-layers:start -->
 **Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore files do not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Gitignore does not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -62,7 +62,7 @@ Read `references/output-mode.md` whenever a format is resolved. The read is requ
 
 Read `references/grounding.md` before dispatching any grounding agent. The read is required. That reference defines every dispatch in this phase, including the routing test that runs *before* either dispatch block. Grounding runs in parallel, in the **foreground**.
 
-Scratch lives under `$(jj workspace root)/.tmp` (or local `.tmp` if not a jj workspace), never `.context/`. Generate one 8-hex `<run-id>` and reuse it for the cache and for every checkpoint. The preamble lives in `references/grounding.md`.
+Scratch lives under the JJ workspace `.tmp/rocketclaw` tree (or cwd-relative `.tmp/rocketclaw` when not in a workspace), and never `.context/`. Generate one 8-hex `<run-id>` and reuse it for the cache and for every checkpoint.
 
 ## Phase 1.5: Topic-Surface Decomposition
 

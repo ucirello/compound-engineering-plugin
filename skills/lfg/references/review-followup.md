@@ -1,16 +1,16 @@
 # Pre-ship quality steps (LFG steps 3–7)
 
-These are the quality steps that run after implementation and before shipping. On the defect route the implementation was `ce-debug`'s fix; `references/debug-return.md` names what each step below receives in place of the plan path. `ce-code-review` is review-only. LFG applies eligible fixes itself, then records them as a change.
+These are the quality steps that run after implementation and before shipping. On the defect route the implementation was `ce-debug`'s fix; `references/debug-return.md` names what each step below receives in place of the plan path. `ce-code-review` is review-only. LFG applies eligible fixes itself, then commits.
 
 ## The shipping precondition, in these steps
 
-When the repo has no remote, the run finishes locally. That is a final state, not an error: never retry a push or hunt for a remote. Step 5 still makes every change it calls for; only the pushes and the records that would live on the PR are dropped. With no PR to hold the unapplied findings, step 6 files them as tracker tickets and the DONE report states the rest. Never write them to a tracked file nobody will read.
+When the repo has no remote, the run finishes locally. That is a final state, not an error: never retry a push or hunt for a remote. Step 5 still makes every commit it calls for; only the pushes and the records that would live on the PR are dropped. With no PR to hold the unapplied findings, step 6 files them as tracker tickets and the DONE report states the rest. Never write them to a committed file nobody will read.
 
 ## Step 3 — simplify before review
 
 Simplification runs before review so the code-review in step 4 covers the simplified code. Let `ce-simplify-code` resolve the bookmark-diff scope itself; it preserves behavior and runs the test suite. Pass the plan path from step 1 as context about structure the simplification must keep, not as the simplification scope (the bookmark diff remains the scope); on the defect route pass the debug return's `root_cause` and `changed_files` instead, so the fix is not simplified away. Add a one-line constraint: KTDs labeled `session-settled:` describe structure the simplification must preserve, so deliberate duplication stays duplicated.
 
-Do not record a change in this step. `ce-simplify-code` leaves its edits in the working copy; step 4's review scopes the working copy (those edits included), and step 9's `ce-commit-push-pr` records whatever remains. Recording a change here would sweep any remaining working-copy `ce-work` edits into a misleading simplification-only change and could stall on a working copy that never becomes empty of those edits.
+Do not commit in this step. `ce-simplify-code` leaves its changes in the working copy; step 4's review scopes the working copy, and step 9's `ce-commit-push-pr` commits whatever remains. Committing here would sweep any remaining working-copy `ce-work` edits into a misleading `refactor` change and could stall on a tree that never goes clean.
 
 ## Step 4 — invoke `ce-code-review`
 
@@ -32,7 +32,7 @@ Capture parsed JSON (`status`, `actionable_findings`, `findings`, `artifact_path
 
 ### What to apply
 
-Apply a finding in the working copy only when **all** of the following hold:
+Apply a finding in the working tree only when **all** of the following hold:
 
 1. **`suggested_fix` is present** — concrete change shape from the reviewer.
 2. **`confidence` is `100`, or `75` with cross-persona agreement noted in the report** — do not apply anchor-50 findings.
@@ -51,9 +51,15 @@ Do not treat `autofix_class` as permission to auto-apply.
 ### Execution
 
 1. Filter `actionable_findings` (or markdown Actionable Findings) with the bar above.
-2. Apply eligible fixes in the working copy in severity order (`#` stable from the review).
+2. Apply eligible fixes in the working tree in severity order (`#` stable from the review).
 3. Run targeted tests when `requires_verification: true` on any applied finding.
-4. Resolve `workspace_root=$(jj workspace root)` (stop if that fails). If `(cd "$workspace_root" && jj status)` shows changes, include only review-driven files in the change — the working copy is the change; there is no staging index. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality and clarity without replacing repo-local syntax. The semantic content of this change is that eligible review findings were applied; do not use a fixed prefix, type, scope, or canned subject. Record it with `(cd "$workspace_root" && jj commit -m "<message composed from the standards above>" -- <review-driven-files>)`. Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). To push: run `(cd "$workspace_root" && jj git remote list)`. Prefer `origin` when present, otherwise the first listed remote. Read the bookmark name from `(cd "$workspace_root" && jj log -r @ --no-graph -T 'bookmarks')` (take it before `jj commit` if the new working copy will not carry it) and run `(cd "$workspace_root" && jj git push --remote <remote> --bookmark <name>)`. If there is no remote at all, do not push; the local change suffices. If no eligible fixes were applied, say so explicitly and skip `jj commit`.
+4. If `jj status` (cwd = workspace root) shows working-copy changes, commit only the review-driven files — there is no staging area; name those paths on `jj commit` so unrelated working-copy paths stay out of the change.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Keep the semantic constraint that the change applies review findings. Example: `jj commit -m "<message composed from the standards above>" file1 file2`.
+
+Then push before step 6 **when a remote is configured** (per LFG's shipping precondition) and, on the defect route, when everything the push would publish is work the user offered (`references/debug-return.md`). To push: resolve the bookmark on `@` with `jj log -r @ --no-graph -T bookmarks` (cwd = workspace root). If that bookmark already tracks a remote, run `jj git push --bookmark <name>`. If no remote bookmark exists but a remote is configured (common on a fresh feature bookmark), pick a writable remote at run time: prefer `origin` when present, otherwise run `jj git remote list` and choose the first configured remote. Then run `jj git push --remote <remote> --bookmark <name>`. If there is no remote at all, do not push; the local change suffices. If no eligible fixes were applied, say so explicitly and skip the commit.
 
 ## Step 6 — residual handoff
 
@@ -61,7 +67,7 @@ Residuals are the findings left over: actionable findings **not** applied in ste
 
 Two further triggers also require step 6, both outside the apply path: step 4 emitted any `settled_conflict`-stamped findings, or step 2's return carried proceeded-and-flagged `settled_decision_conflicts` entries. These are the findings where the work diverged from a settled decision, and this step is where they get written down somewhere that lasts.
 
-A residual at this point is undecided, not accepted debt. Step 5 declined it because it needs judgment, and the pipeline does not merge unless the user granted it, so the human reviewing the PR supplies that judgment: fix it in this PR, dismiss it, or file it to carry past merge. The record therefore goes where that reviewer already looks, the PR body. The pipeline files no tickets for these; one ticket per finding, decided by nobody, is how a run of small nits floods a tracker.
+A residual at this point is undecided, not accepted debt. Step 5 declined it because it needs judgment, and the pipeline does not merge unless the user granted it, so the human reviewing the PR supplies that judgment: fix it in this bookmark, dismiss it, or file it to carry past merge. The record therefore goes where that reviewer already looks, the PR body. The pipeline files no tickets for these; one ticket per finding, decided by nobody, is how a run of small nits floods a tracker.
 
 **When a PR will exist (a remote is configured):** compose a `## Unapplied review findings` section, one checkbox bullet per item so a human ticks it when they close it:
 
@@ -75,4 +81,4 @@ Close the section with the review run context (`run_id`, `artifact_path`). Hand 
 
 ## Step 7 — compound before shipping
 
-Invoke `ce-compound` with `mode:non-interactive` when the run produced durable reasoning that the final code, tests, and plan or diagnosis do not carry, and losing it would plausibly cause recurrence or substantial rediscovery. The plan or `root_cause`, the review residuals, and the fixes applied in step 5 are the evidence for that judgment. `ce-compound` writes into the repository's tracked learnings store on the bookmark and asks nothing; `Documentation skipped` is a successful outcome, not a stop. Step 9 records and pushes whatever it wrote with the rest of the change, so the learning is in the PR at the moment it opens and CI runs against a revision that contains it. Do not run it after the babysit result: a push after "CI decided" leaves an unwatched PR head.
+Invoke `ce-compound` with `mode:non-interactive` when the run produced durable reasoning that the final code, tests, and plan or diagnosis do not carry, and losing it would plausibly cause recurrence or substantial rediscovery. The plan or `root_cause`, the review residuals, and the fixes applied in step 5 are the evidence for that judgment. `ce-compound` writes into the repository's tracked learnings store on the bookmark and asks nothing; `Documentation skipped` is a successful outcome, not a stop. Step 9 commits and pushes whatever it wrote with the rest of the change, so the learning is in the PR at the moment it opens and CI runs against a head that contains it. Do not run it after the babysit result: a push after "CI decided" leaves an unwatched head.

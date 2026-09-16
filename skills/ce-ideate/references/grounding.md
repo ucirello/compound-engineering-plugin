@@ -8,22 +8,20 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives under `$(jj workspace root)/.tmp` when this is a jj workspace, else local `.tmp` — never `.context/`, never OS `/tmp` or `$TMPDIR`. Run this to create the run directory and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives under the JJ workspace `.tmp/rocketclaw` tree (or cwd-relative `.tmp/rocketclaw` when not in a workspace) — never `.context/`. Run this to resolve the workspace root, create the run directory, and capture its absolute path:
 
 ```bash
-workspace_root=$(jj workspace root) || workspace_root="";
-if [ -n "$workspace_root" ]; then
-  SCRATCH_ROOT="$workspace_root/.tmp";
-else
-  SCRATCH_ROOT=".tmp";
-fi;
+ROOT="$(jj workspace root 2>/dev/null || echo .)";
+SCRATCH_ROOT="$ROOT/.tmp/rocketclaw";
+if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+if [ -L "$SCRATCH_ROOT" ]; then echo "scratch root became a symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 SCRATCH_DIR="$SCRATCH_ROOT/ce-ideate/<run-id>";
-(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1;
+(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
 
-Use the echoed absolute path as `<scratch-dir>` for every checkpoint write and cache read in this run. It is **not** deleted on completion — the V15 cache is reused across run-ids in a session, and in the no-repo case the deliverable itself is written here.
+Use the echoed absolute path as `<scratch-dir>` for every checkpoint write and cache read in this run. It is **not** deleted on completion — the V15 cache is reused across run-ids in a session, and in the no-workspace case the deliverable itself is written here.
 
 **Before either dispatch block, run the research-artifact routing test** from "User-Supplied Research Artifacts" below over any file the prompt or intake named. It has to run here, ahead of both blocks, because each one has a way to swallow an evidence file it was never told to skip: the repo scan reads a named root-level `*.md` into `User-named references`, and elsewhere-mode synthesis reads "any rich-prompt material". Without the test, a long survey or analytics export would be dispatched to synthesis *and* to a distiller, duplicating the file and polluting `Topic context`. Each file takes exactly one path.
 

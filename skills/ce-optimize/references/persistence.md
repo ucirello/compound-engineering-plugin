@@ -39,7 +39,7 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 
 ### File Locations (all under `.context/ce-optimize/<spec-name>/`)
 
-The scratch space under `.context/` is ignored by the VCS. It survives a local resume but does not travel with the bookmark, so anything needed durably must be exported to a tracked path.
+The scratch space under `.context/` is ignored. It survives a local resume but does not travel with the bookmark, so anything needed durably must be exported to a tracked path.
 
 | File | Purpose | Written When |
 |------|---------|-------------|
@@ -52,7 +52,7 @@ The scratch space under `.context/` is ignored by the VCS. It survives a local r
 
 When Phase 0.4 detects an existing run:
 1. Read the experiment log from disk. It is the ground truth
-2. Scan experiment workspace directories for `result.yaml` markers not yet in the log
+2. Scan workspace directories for `result.yaml` markers not yet in the log
 3. Recover any measured-but-unlogged experiments. The recovered first CP-3 entry copies `opportunity` from the hypothesis backlog as of dispatch; `result.yaml` holds metrics only, so a missing forecast stays unrecorded rather than being reconstructed from the result
 4. Continue as the SKILL.md body's resume rule directs. Skip the work the log proves finished, and re-enter any approval check the log does not prove was cleared
 

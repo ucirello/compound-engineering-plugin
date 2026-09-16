@@ -21,7 +21,7 @@ Gather context with each command as its **own** shell tool call (program + args 
 | `jj log -n 10 --no-graph` | Recent description style | Empty history |
 | `jj bookmark list` | Local and remote bookmarks; trunk | No bookmarks listed |
 | `jj git root` | Git dir for `gh` | No colocated Git repo — skip `gh`, use bookmarks |
-| `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name` | GitHub default branch (fallback) | No GitHub remote / auth — use the trunk bookmark, else `main` |
+| `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | GitHub default branch (fallback) | No GitHub remote / auth — use the trunk bookmark, else `main` |
 
 When invoking `gh`, set `GIT_DIR` for that call to the path from `jj git root` (fill the path from that prior call; do not nest `$(...)`).
 
@@ -46,6 +46,10 @@ Repository-local syntax from project instructions and `git log` ALWAYS wins when
 4. **Logical commits** — if changed files clearly split into distinct concerns, make separate commits (file level only, 2–3 max, no interactive hunk split). If ambiguous, one commit. `jj commit` with a fileset puts those paths in the current change and leaves the rest in the working copy.
 
 5. **Message** — first line names the outcome (what is now possible or fixed), not the file list. Body only when motivation or trade-offs are not obvious from the first line. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+
+   - Bad: `Update checkout.rb` / `Add tests and fix stuff`
+   - Good: `Fix double-submit on checkout`
+   - Good: `Add per-subscription mute (U3)`
 
 6. **Commit** — no staging. Named filesets only. Honor `exclude:<paths>` when the invocation carries it: omit those paths from the fileset so they stay in the working copy no matter what else changed; say in the report that they were left out.
 

@@ -40,7 +40,7 @@ def _validate_retry_base(doc: dict, unit: dict, requested_base: str) -> None:
     required = accepted_heads | {original_base, *allowed_heads}
     missing = sorted(
         commit for commit in required
-        if git_text(repo, "merge-base", commit, requested_base, check=False) != commit
+        if not revision_is_ancestor(repo, commit, requested_base)
     )
     if missing:
         raise Operational(
@@ -89,7 +89,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
     with locked_manifest(args.run_id) as doc:
         info = validate_repo(doc)
         repo = info["toplevel"]
-        base = git_text(repo, "rev-parse", f"{args.base}^{{commit}}")
+        base = jj_commit_id(repo, args.base)
         if info["head"] != base:
             raise Operational("BLOCKED", "canonical HEAD does not equal requested unit base")
         if status_paths(repo):
@@ -278,7 +278,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
         repo = doc["repository"]["toplevel"]
     with admin_lock(identity):
         if not os.path.exists(workspace):
-            git(repo, "worktree", "add", "--detach", workspace, base)
+            add_linked_workspace(repo, workspace, base)
             test_fault("after-worktree-add")
         with locked_manifest(args.run_id) as doc:
             unit = doc["units"][uid]
@@ -1090,12 +1090,7 @@ def terminalize(run_id: str, unit_id: str) -> dict:
         repo = doc["repository"]["toplevel"]
     try:
         no_sequencer(workspace)
-        ignored_raw = git(workspace, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
-        ignored_paths = [
-            part.decode("utf-8", "surrogateescape")
-            for part in ignored_raw.split(b"\0")
-            if part
-        ]
+        ignored_paths = sorted(ignored_untracked_paths(workspace))
         if ignored_paths:
             preview = json.dumps(ignored_paths[:20], ensure_ascii=True)
             suffix = f" and {len(ignored_paths) - 20} more" if len(ignored_paths) > 20 else ""
@@ -1106,7 +1101,10 @@ def terminalize(run_id: str, unit_id: str) -> dict:
             )
         tree = tree_fingerprint(workspace, "@")
         types = jj_text(workspace, "diff", "--types", "--from", base, "--to", "@")
-        if any(line.split(" ", 1)[0].endswith("G") or line.split(" ", 1)[0].startswith("G") for line in types.splitlines() if line):
+        if any(
+            line.split(" ", 1)[0].endswith("G") or line.split(" ", 1)[0].startswith("G")
+            for line in types.splitlines() if line
+        ):
             raise Operational("BLOCKED", "submodule state cannot be transported implicitly")
     except Operational as exc:
         record_terminal_validation_failure(run_id, unit_id, exc)

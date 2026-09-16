@@ -60,9 +60,8 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw-jobs, or
-                            <cwd>/.tmp/rocketclaw-jobs when not a jj workspace)
-  CE_WORK_RUNS_ROOT         parent Work dir containing all <run-id>/ dirs
+  CE_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw)
+  CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -115,7 +114,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the workspace `.tmp`/rocketclaw-jobs, owner-private.
+  jobs root defaults under the workspace `.tmp/rocketclaw` directory.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -146,7 +145,23 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-DEFAULT_ROOT = None  # computed lazily from the workspace `.tmp`
+def _workspace_tmp_root() -> str | None:
+    proc = subprocess.run(
+        ["jj", "--no-pager", "workspace", "root"],
+        capture_output=True, text=True, check=False,
+    )
+    root = proc.stdout.strip() if proc.returncode == 0 else ""
+    if not root:
+        root = os.getcwd()
+    scratch = os.path.join(root, ".tmp", "rocketclaw")
+    try:
+        os.makedirs(os.path.join(root, ".tmp"), mode=0o700, exist_ok=True)
+    except OSError:
+        return None
+    return scratch
+
+
+DEFAULT_ROOT = _workspace_tmp_root()
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -203,8 +218,9 @@ _RUNNER_HARD_GRACE = 30.0
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe: a workspace `.tmp` that cannot be created or written
-    fails here rather than falling through to an OS-global temp directory.
+    Creation is the probe: a sandbox that denies writes under workspace `.tmp`
+    refuses the mkdir, and one that lets a pre-existing root stand still fails
+    the access check.
     """
     try:
         os.mkdir(path, 0o700)
@@ -219,40 +235,23 @@ def _private_root_usable(path: str) -> bool:
     return os.access(path, os.W_OK)
 
 
-def _workspace_tmp() -> str:
-    proc = subprocess.run(
-        ["jj", "--no-pager", "workspace", "root"],
-        capture_output=True, text=True, check=False,
-    )
-    if proc.returncode == 0 and proc.stdout.strip():
-        root = os.path.join(proc.stdout.strip(), ".tmp")
-    else:
-        root = os.path.join(os.getcwd(), ".tmp")
-    os.makedirs(root, exist_ok=True)
-    return root
-
-
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
-    root = os.path.join(_workspace_tmp(), "rocketclaw-jobs")
-    if not _private_root_usable(root):
-        raise RunnerError("cannot create workspace .tmp jobs root")
-    return os.path.abspath(root)
+    if DEFAULT_ROOT is None:
+        raise RunnerError("cannot derive the jobs root from the workspace .tmp directory")
+    return os.path.abspath(DEFAULT_ROOT)
 
 
 def candidate_jobs_root_bases() -> list:
-    """Every root an existing job may live under: the configured root alone, or
-    the workspace `.tmp` jobs root.
-
-    Creation uses jobs_root_base(); lookup of an already-started job must not
-    depend on which root *this* invocation would create under.
-    """
+    """Every root an existing job may live under."""
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]
-    return [os.path.abspath(os.path.join(_workspace_tmp(), "rocketclaw-jobs"))]
+    if DEFAULT_ROOT is None:
+        raise RunnerError("cannot derive the jobs root from the workspace .tmp directory")
+    return [os.path.abspath(DEFAULT_ROOT)]
 
 
 def skill_runs_root(skill: str) -> str:
@@ -1939,7 +1938,7 @@ def _require_detach_support() -> None:
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
             "a Windows Python 3 build (see "
-            "issue #1243)."
+            "#1243)."
         )
 
 
@@ -2170,7 +2169,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable scratch path unchecked.
+        # consumer must never read a predictable workspace .tmp path unchecked.
         target = os.path.abspath(args.path)
         try:
             data = read_owned(target, cfg()["result_max"])

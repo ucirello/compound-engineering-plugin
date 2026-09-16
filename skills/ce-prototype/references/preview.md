@@ -10,17 +10,15 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
-Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be left in the repo, and run the block as it stands — it sends the run to workspace `.tmp` (or local `.tmp` when there is no jj workspace) and nothing else changes. Otherwise, when the run is inside a jj workspace, probe the workspace root for `.context/ce-prototype/`; if it is not covered, offer to append that one line to the workspace-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone. A run that is headed for `.tmp` either way gets no offer.
+Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be left under `.context`, and run the block as it stands — it sends the run to workspace `.tmp` and nothing else changes. Otherwise, when the run is inside a jj workspace, probe the workspace-root `.gitignore` for the line `.context/`; if it is not covered, offer to append that one line to the workspace-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone. A run that is headed for workspace `.tmp` either way gets no offer.
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
-WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
-if [ -n "$WORKSPACE_ROOT" ]; then TEMP_ROOT="$WORKSPACE_ROOT/.tmp"; else TEMP_ROOT=".tmp"; fi;
-GIT_DIR="";
-if [ -n "$WORKSPACE_ROOT" ]; then GIT_DIR="$(cd "$WORKSPACE_ROOT" && jj git root 2>/dev/null)"; fi;
-if [ "$RUN_KEEP" = yes ] && [ -n "$WORKSPACE_ROOT" ] && [ ! -L "$WORKSPACE_ROOT/.context" ] && [ ! -L "$WORKSPACE_ROOT/.context/ce-prototype" ] && [ -n "$GIT_DIR" ] && GIT_DIR="$GIT_DIR" git -C "$WORKSPACE_ROOT" check-ignore -q .context/ce-prototype/ 2>/dev/null; then
-ROOT="$WORKSPACE_ROOT/.context";
+REPO_ROOT="$(jj workspace root 2>/dev/null)";
+TEMP_ROOT="${REPO_ROOT:-.}/.tmp/rocketclaw";
+if [ "$RUN_KEEP" = yes ] && [ -n "$REPO_ROOT" ] && [ ! -L "$REPO_ROOT/.context" ] && grep -qxF '.context/' "$REPO_ROOT/.gitignore" 2>/dev/null; then
+ROOT="$REPO_ROOT/.context";
 else
 ROOT="$TEMP_ROOT";
 fi;
@@ -48,7 +46,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-Three things this block is careful about. The symlink and ownership checks run against both the **root** — `.context` for a kept run, workspace `.tmp` (or local `.tmp`) otherwise — and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe in-repo path at either level falls back to workspace `.tmp` rather than aborting — a hostile or misconfigured `.context` costs the run its durability, not the run itself, and only a temp root that also fails is fatal.
+Three things this block is careful about. The symlink and ownership checks run against both the **root** — `.context` or the workspace `.tmp/rocketclaw` fallback — and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe `.context` path at either level falls back to workspace `.tmp` rather than aborting — a hostile or misconfigured `.context` costs the run its durability, not the run itself, and only a temp root that also fails is fatal.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -108,7 +106,7 @@ Write screens under:
     state/
 ```
 
-The fallback root takes the same shape under `<workspace>/.tmp/ce-prototype/` (or local `.tmp/ce-prototype/` when there is no jj workspace). The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The fallback root takes the same shape under `<workspace>/.tmp/rocketclaw/ce-prototype/` (or `./.tmp/rocketclaw/ce-prototype/` when not in a jj workspace). The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Handoff
 

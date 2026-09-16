@@ -44,8 +44,8 @@ After a fresh dispatch, append the new result to the current run's cache file at
 
 `topic_surface_hash` hashes the user-supplied content the web research is grounded on. That content is:
 - **Elsewhere modes (`elsewhere-software`, `elsewhere-non-software`):** the user's topic prompt plus any Phase 0.4 intake answers (the actual subject the agent is researching). The two sub-modes are keyed separately — a reclassification between software and non-software for the same topic hash must force a fresh dispatch, since the research domain differs.
-- **Repo mode:** the focus hint plus a stable repo discriminator. This keeps the cache key meaningful when focus is empty — two bare-prompt invocations in the same repo legitimately share research, but the key still differentiates repos. Cache files live under the workspace `.tmp` root (or local `.tmp` when there is no jj workspace); hash a discriminator so a no-workspace fallback does not collide across unrelated directories. Resolve the discriminator with this fallback chain and hash the result (first 8 hex chars of sha256 is sufficient):
-    1. `jj git remote list` (from the workspace root; take the `origin` URL) — stable across machines, correct for collaborators on the same remote.
+- **Repo mode:** the focus hint plus a stable repo discriminator. This keeps the cache key meaningful when focus is empty — two bare-prompt invocations in the same workspace legitimately share research, and the remote URL keeps that stable across machines. Resolve the discriminator with this fallback chain and hash the result (first 8 hex chars of sha256 is sufficient):
+    1. `jj git remote list` — stable across machines, correct for collaborators on the same remote.
     2. `jj workspace root` — absolute workspace path; machine-local but always available in a jj workspace.
     3. The current working directory's absolute path — last resort when not in a jj workspace.
 

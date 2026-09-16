@@ -7,8 +7,8 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working copy changes.** If the working-copy commit is non-empty (`jj diff` is non-empty), review those.
-3. **Unpublished changes vs base bookmark.** If the working-copy commit is empty, review `jj diff --from <base> --to @` where `<base>` is the unique common ancestor of `@` and the default bookmark (`main` or `master`).
+2. **Working copy changes.** If there are undescribed working-copy changes (`jj diff` is non-empty), review those.
+3. **Undescribed parent vs trunk bookmark.** If the working copy is clean, review `jj diff --from $(jj log -r 'heads(::@ & ::<base>)' --no-graph -T commit_id) --to @` where `<base>` is the trunk bookmark (main or master, strip `@origin`).
 
 The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run jj commands yourself unless PR scope mode requires it (below).
 
@@ -18,7 +18,7 @@ When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `
 
 Instead:
 
-- Prefer `jj file show -r <remote-head-ref> <path>` when `<pr-head-ref>` or `<branch-head-ref>` is provided in context.
+- Prefer `jj file show -r <remote-head-ref> <path>` (cwd = workspace root) when `<pr-head-ref>` or `<branch-head-ref>` is provided in context.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 
@@ -32,7 +32,7 @@ Recall depends on how you find related code. A diff-local read plus a text `grep
 
 No tool is complete: dynamic dispatch, reflection, dependency injection, string-keyed routes/config, generated code, and external consumers hide usages from all of them. This only bites a claim that rests on *exhaustive* coverage — "this symbol is unused," "nothing else calls this," "safe to change." For such a claim, when coverage is text-search-only or a hiding construct could apply, record the unresolved boundary in `residual_risks` (e.g. `callsite completeness: grep-only`) or step the finding down, rather than asserting absence or safety. A finding that does not turn on exhaustive coverage needs no such note.
 
-In `pr-remote` / `branch-remote` scope these tiers inspect the working tree, which is not the reviewed head — apply the Remote scope rules above (`jj file show` / `jj file search --pattern=... -r <remote-head-ref>`) instead of local search.
+In `pr-remote` / `branch-remote` scope these tiers inspect the working tree, which is not the reviewed head — apply the Remote scope rules above (`jj file show -r <remote-head-ref>`) instead of local search.
 
 ## Finding Classification Tiers
 

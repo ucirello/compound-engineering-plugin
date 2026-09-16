@@ -13,17 +13,17 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
-jj diff --from <review-base> --name-only -- db/migrate/
+jj --no-pager diff --from <review-base> --name-only -- db/migrate/
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-jj diff --from <review-base> -- db/schema.rb
+jj --no-pager diff --from <review-base> -- db/schema.rb
 
 # When db/structure.sql is in the diff:
-jj diff --from <review-base> -- db/structure.sql
+jj --no-pager diff --from <review-base> -- db/structure.sql
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:

@@ -32,11 +32,11 @@ Repository-local syntax from project instructions and `git log` ALWAYS wins when
 
 Three rules govern the run.
 
-**Every `jj` and `gh` probe is its own argv-form call**, gathering and re-verification alike, and its exit status is control flow. The reference gives the reason and names the two compound recipes this skill pins.
+**Every `jj` and `gh` probe is its own argv-form call**, gathering and re-verification alike, and its exit status is control flow. The reference gives the reason and names the compound body-file recipe this skill pins. When invoking `gh`, set `GIT_DIR` for that call to the path from a prior `jj git root` (fill the path from that call; do not nest `$(...)`).
 
 **Probe output is a snapshot.** Re-verify bookmark, remote, and PR state right before each consequential action: Step 3's push, Step 5's create.
 
-**Only an exit-0 `[]` from a query against the base repo means "no open PR."** A non-zero exit is **unknown**, never "none". On a fork checkout, target the base with `-R` and pass the bookmark name only, since `--head <owner>:<bookmark>` silently returns `[]`. With results, do **not** blindly take index 0: match head owner and bookmark, and stop on an ambiguous match. Note the URL and body from that entry — Step 5 uses the URL to pick the existing-PR path, Step 4 rewrites the existing body.
+**Only an exit-0 `[]` from a query against the base repo means "no open PR."** A non-zero exit is **unknown**, never "none". On a fork workspace, target the base with `-R` and pass the bookmark name only, since `--head <owner>:<bookmark>` silently returns `[]`. With results, do **not** blindly take index 0: match head owner and bookmark, and stop on an ambiguous match. Note the URL and body from that entry — Step 5 uses the URL to pick the existing-PR path, Step 4 rewrites the existing body.
 
 ## Artifact Root
 
@@ -52,7 +52,7 @@ Resolve `<root>` once when archival is on: it writes an explainer under `<root>/
 
 ## Step 3: Commit and push
 
-**Read `references/commit-and-push.md`** for change-description/push mechanics and default-bookmark handling via `references/branch-creation.md`. If stack mode committed its layers, skip to Step 4; Step 5 submits them.
+**Read `references/commit-and-push.md`** for change-description/push mechanics and default-bookmark handling via `references/bookmark-creation.md`. If stack mode committed its layers, skip to Step 4; Step 5 submits them.
 
 **Project publishing gate.** Before publishing changes, resolve every applicable pre-push or review-ready requirement from the project's active instructions and conventions already in context and any additional scoped instructions governing the committed paths. Only evidence valid for the exact change state being sent satisfies them; otherwise stop before the external write and report what is missing or failing. If none, proceed.
 
@@ -66,7 +66,7 @@ If Step 1 found an existing PR, pass its URL to Step 4 so PR mode fetches the ex
 
 ## Step 5: Apply and report
 
-**Read `references/apply-and-handoff.md`** for apply, preview, archival, and handoff. Before `gh pr create`, re-check PR presence: a matching PR takes the existing-PR path, exit-0 `[]` creates, non-zero blocks. Pass the body via `--body-file <path>`, never stdin — `gh` exits 0 with an empty body. Pair every `gh` invocation that talks to git with `GIT_DIR` set to `jj git root`.
+**Read `references/apply-and-handoff.md`** for apply, preview, archival, and handoff. Before `gh pr create`, re-check PR presence: a matching PR takes the existing-PR path, exit-0 `[]` creates, non-zero blocks. Pass the body via `--body-file <path>`, never stdin — `gh` exits 0 with an empty body. Pair every `gh` invocation with `GIT_DIR` set to the path from a prior `jj git root` call (fill the path; do not nest `$(...)`).
 
 **Completion is decided here.** An interactive full workflow or pipeline stack submit is **not done** until `ce-babysit-pr` owns follow-on for the published PR. Reporting the PR URL alone is not success. Load the callee to choose the monitoring mode. If running it in this session, continue until its stop condition permits a final report.
 

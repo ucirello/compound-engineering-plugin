@@ -1,42 +1,57 @@
-# Bookmark creation from the default bookmark
+# Bookmark creation from default bookmark
 
-The local default bookmark may differ from its remote bookmark because another workspace advanced it or local changes were intentionally based on unpublished work. Resolve that ancestry before choosing the feature change's parent.
+Local `<base>` may have stale changes (another session/workspace advanced it) or changes the user authored intending to bookmark from later. Local jj can't distinguish these — ask when unpublished local changes are present.
 
 ## Decision flow
 
-### 1. Fetch the remote base
+### 1. Fetch fresh remote base
 
 ```bash
-jj git fetch --remote <remote> --branch <base>
+jj git fetch --remote origin --branch <base>
 ```
 
-If fetch fails because of network, authentication, or a missing remote, use the fallback below.
+If fetch fails (network, auth, no remote), use the fallback at the bottom.
 
-### 2. Check local-only changes on the default bookmark
+### 2. Check for unpublished local changes on `<base>`
 
 ```bash
-jj log -r '<base>@<remote>..<base>'
+jj log -r '<base>@origin..<base>' --no-graph
 ```
 
-- Empty output: use `<base>@<remote>` as `<base-revision>`.
-- Non-empty output: show the changes and ask whether the feature should include them or start from `<base>@<remote>`. Including them uses `<base>` as `<base-revision>`; leaving them on the local default uses `<base>@<remote>`. Never guess because including unrelated local changes changes the PR.
+- **Empty output:** set `<base-revision>` to `<base>@origin` and proceed to step 3.
+- **Non-empty output:** show the change list and ask (per the "Asking the user" convention in `SKILL.md`):
 
-### 3. Root the work and create its bookmark
+  > "Local `<base>` has N unpublished changes not on `<base>@origin`. Carry them onto the new feature bookmark, or leave them on local `<base>`?"
 
-JJ's working-copy change can be rebased without stashing. If the current change should move to the selected base, run:
+  - **Carry forward** → `<base-revision>` is `@`. The feature bookmark starts from the current working-copy change, preserving those changes.
+  - **Leave on `<base>`** → `<base-revision>` is `<base>@origin`. The feature starts from the remote base; those changes remain on local `<base>`.
+
+  Never default silently — carrying foreign changes into a PR is worse than asking again.
+
+### 3. Root the work and create the feature bookmark
+
+The working copy is the change; there is no stash. If the default bookmark is on `@`, move it to `@-` so the default stays at the parent. If the current change should sit on `BASE_REV` and does not already, rebase it:
 
 ```bash
 jj rebase -s @ -o <base-revision>
 ```
 
-After the work is described and `jj commit` has created a fresh empty change, create or update the feature bookmark at the completed parent:
+If rebase fails because of conflicts, stop and ask the user to handle the colliding paths. In `mode:pipeline`, report the blocker without asking. Do not abandon or overwrite the colliding paths.
+
+Then create the feature bookmark on the working-copy change (Step 3's `jj commit` will leave it on the completed change):
 
 ```bash
-jj bookmark set <bookmark-name> -r @-
+jj bookmark create <bookmark-name>
 ```
 
-If the bookmark already exists at an unrelated revision, stop rather than moving it. JJ automatically rebases descendants and records operations, but a bookmark collision still represents ambiguous user intent.
+If the bookmark name already exists at an unrelated revision, stop rather than moving it, or choose a non-conflicting suffix as Step 1 allows.
 
 ## Fetch failure fallback
 
-Keep the current change's existing parent and create the feature bookmark at the completed change after committing. Report that remote-base freshness was not verified. Do not run the local-only comparison without a fresh remote bookmark.
+If `jj git fetch` fails, keep the current change's existing parent and create the feature bookmark on `@`:
+
+```bash
+jj bookmark create <bookmark-name>
+```
+
+Note in the user-facing summary that base freshness was not verified. Skip the unpublished-changes check — without a fresh `<base>@origin`, the answer is unreliable.

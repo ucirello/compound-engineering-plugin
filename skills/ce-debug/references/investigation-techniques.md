@@ -76,17 +76,19 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Bisect for Regressions
+## JJ Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking change. Record the starting `@` (`jj log -r @ --no-graph -T 'change_id'`) first; `jj bisect run` edits each target as the working copy.
+When a bug is a regression ("it worked before"), use binary search to find the breaking change. Heads of the range are assumed bad; ancestors not in the range are assumed good. Each probed revision becomes the working copy (`@`) while the command runs.
 
 ```bash
 jj bisect run --range <known-good-ref>..@ -- <test-command>
 ```
 
-The heads of the range are assumed bad. Ancestors of the range that are not also in the range are assumed good. The test command should exit 0 for good, non-zero for bad (125 skips the revision; 127 aborts).
+The test command should exit 0 for good, non-zero for bad (125 skips a revision). For a manual walk, pass a shell as the command and exit 0 (good) or non-zero (bad) when done:
 
-For a manual probe, pass a shell as the command and exit 0 or non-zero after testing that working copy. When finished, `jj edit` the change you started from.
+```bash
+jj bisect run --range <known-good-ref>..@ -- bash
+```
 
 ---
 
@@ -204,7 +206,7 @@ When the symptom is "slow" rather than "wrong", logs and code reading mislead: i
 
 - Establish a numeric baseline before touching anything — a timing harness around the slow operation, a profiler run, a query plan (`EXPLAIN ANALYZE`). The baseline is Phase 1's reproduction check for a perf bug: the number is the red, and the fix is verified by re-measuring the same thing, not by reasoning that the change should be faster.
 - Attribute before optimizing: a profile or per-stage timings that show where the time actually goes. Optimizing an unmeasured suspect is the perf version of shotgun debugging.
-- If the slowness is a regression, bisect against the measurement (see Bisect above) rather than reading diffs for something that looks expensive.
+- If the slowness is a regression, bisect against the measurement (see JJ Bisect above) rather than reading diffs for something that looks expensive.
 
 ---
 

@@ -124,12 +124,8 @@ def semantic_snapshot(repo: str) -> dict:
 
 def expected_apply_snapshot(repo: str, pre_head: str, unit: dict) -> dict:
     transport = unit["transport"]
-    if pre_head == transport["base"]:
-        tree = transport["tree"]
-        paths = list(transport.get("changed_paths") or [])
-    else:
-        tree = transport["tree"]
-        paths = list(transport.get("changed_paths") or [])
+    tree = transport["tree"]
+    paths = list(transport.get("changed_paths") or [])
     if not paths:
         paths = changed_path_list(repo, pre_head, transport["commit"])
     return {"index_tree": tree, "changed_paths": paths}
@@ -333,7 +329,7 @@ def dependency_advanced_head(doc: dict, unit: dict, head: str) -> bool:
     required_ancestors.discard(None)
     repo = doc["repository"]["toplevel"]
     return all(
-        git_text(repo, "merge-base", commit, head, check=False) == commit
+        revision_is_ancestor(repo, commit, head)
         for commit in required_ancestors
     )
 
@@ -352,7 +348,7 @@ def validate_preflight_ancestry(doc: dict, unit: dict, heads: set[str]) -> None:
     missing = {
         head: sorted(
             commit for commit in required
-            if git_text(repo, "merge-base", commit, head, check=False) != commit
+            if not revision_is_ancestor(repo, commit, head)
         )
         for head in sorted(heads)
     }
@@ -388,7 +384,7 @@ def cmd_preflight(args) -> tuple[str, dict]:
         allowed = set(unit["wave"].get("allowed_heads", []))
         requested: set[str] = set()
         if args.allowed_head:
-            requested = {git_text(info["toplevel"], "rev-parse", f"{h}^{{commit}}") for h in args.allowed_head}
+            requested = {jj_commit_id(info["toplevel"], h) for h in args.allowed_head}
             if any(head not in allowed and not dependency_advanced_head(doc, unit, head) for head in requested):
                 raise Operational("BLOCKED", "unrecorded same-wave HEAD allowance")
         if info["head"] not in allowed and not dependency_advanced_head(doc, unit, info["head"]):
@@ -461,15 +457,11 @@ def cmd_mark_verified(args) -> tuple[str, dict]:
 def reconcile_commit(doc: dict, unit: dict) -> dict | None:
     repo = doc["repository"]["toplevel"]
     head = canonical_head(repo)
-    parents = [head, *jj_parents(repo, "@-")]
+    parents = jj_parents(repo, "@-")
     expected_parent = unit["integration"]["pre_fold"]["head"]
     expected_tree = unit["integration"]["applied"]["post_index_tree"]
     actual_tree = tree_fingerprint(repo, "@-")
-    if (
-        expected_parent in jj_parents(repo, "@-")
-        and actual_tree == expected_tree
-        and jj_change_empty(repo, "@")
-    ):
+    if parents == [expected_parent] and actual_tree == expected_tree and jj_change_empty(repo, "@"):
         return {"commit": head, "parent": expected_parent, "tree": actual_tree, "at": now_iso()}
     return None
 
@@ -502,7 +494,7 @@ def cmd_wave_advance(args) -> tuple[str, dict]:
         if not members:
             raise Operational("REFUSED", "unit does not belong to a parallel wave")
         validate_wave_ready(doc, unit)
-        canonical = git_text(info["toplevel"], "rev-parse", f"{args.canonical_commit}^{{commit}}")
+        canonical = jj_commit_id(info["toplevel"], args.canonical_commit)
         recorded = unit.get("integration", {}).get("canonical_commit", {})
         if recorded.get("commit") != canonical or info["head"] != canonical:
             raise Operational("BLOCKED", "canonical wave commit does not match manifest and HEAD")
@@ -519,16 +511,15 @@ def cmd_wave_advance(args) -> tuple[str, dict]:
 
 
 def path_in_tree(repo: str, treeish: str, rel: str) -> bool:
-    out = git(repo, "ls-tree", "-z", "--full-tree", treeish, "--", rel)
-    return bool(out)
+    return path_in_revision(repo, treeish, rel)
 
 
 def remove_introduced_paths(repo: str, unit: dict) -> None:
     pre = unit["integration"]["pre_fold"]["head"]
     base = unit["transport"]["base"]
     commit = unit["transport"]["commit"]
-    raw = git(repo, "diff-tree", "-r", "-M", "--name-status", "-z", base, commit)
-    for rel in parse_diff_paths(raw):
+    raw = name_status_bytes(repo, base, commit)
+    for rel in parse_diff_paths(raw) if raw else changed_path_list(repo, base, commit):
         if path_in_tree(repo, pre, rel):
             continue
         target = os.path.abspath(os.path.join(repo, rel))

@@ -11,7 +11,7 @@ gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <t
 gh stack push --remote <tracking-remote>
 ```
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — GitHub branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
 
 ## Discover order / next open layer
 

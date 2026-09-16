@@ -4,7 +4,7 @@
 
 `SKILL.md` states the two rules that must hold even when this file is not read: the mode is exclusive, and markdown is written unless HTML was requested. This file states the precedence that decides the rest — in-prompt request > user-stated preference > config > default (`md`) — and the token-parsing convention.
 
-**Read config.** Resolve `<repo-root>` with `git rev-parse --show-toplevel`, then apply the ordinary-key rule stated in `SKILL.md`. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
+**Read config.** Resolve `<workspace-root>` with `jj workspace root`, then apply the ordinary-key rule stated in `SKILL.md`. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
 
 Resolution steps:
 
@@ -19,7 +19,7 @@ There is no pipeline override. A headless or non-interactive run resolves the fo
 
 **Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, `brainstorm_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including conventional commit prefixes like `feat:`, `fix:`, `chore:` that may appear inside a feature description — pass through verbatim. A stripped `brainstorm_model:<alias>` token (passed by an orchestrator) is kept for the model-elevation step before approach generation; it is not woven into the feature description.
 
-**Model-elevation visibility.** Treat a stripped `brainstorm_model:<alias>` token, or a `brainstorm_model` config value you have read, as a pending input to Phase 2 (Explore Approaches), not a resolved choice. Phase 2 resolves the choice from the current conversation, the token, and the config immediately before generating approaches, so later user intent cannot be lost. A headless or non-interactive run still evaluates the token and the config.
+**Model-elevation visibility.** Treat a stripped `brainstorm_model:<alias>` token, or a `brainstorm_model` / `brainstorm_harness` config value you have read, as a pending input to Phase 2 (Explore Approaches), not a resolved choice. Phase 2 resolves the choice from the current conversation, the token, and the config immediately before generating approaches, so later user intent cannot be lost. A headless or non-interactive run still evaluates the token and the config. When `brainstorm_harness` is `opencode2`, the model is `provider/modelname#variant`; that route is not `opencode`.
 
 **Resolve the format here; load the rendering reference at Phase 3, not now.** The format-rendering reference (`references/markdown-rendering.md` for `md`, `references/html-rendering.md` for `html`) is consumed only when the doc is composed — loading it during Phase 0 would carry 200+ lines through the entire dialogue. Phase 3 (write the plan) says when to load it. Section content is the same in either format; presentation differs.
 

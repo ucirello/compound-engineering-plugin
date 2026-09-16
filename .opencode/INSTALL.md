@@ -1,31 +1,51 @@
-# Installing Compound Engineering for OpenCode
+# Installing RocketClaw for OpenCode
 
-Add Compound Engineering to the `plugin` array in your global or project `opencode.json`:
+RocketClaw targets **opencode2** v2.0.3. Use the V2 `plugins` key (not V1 `plugin`).
+
+## CLI
+
+Install a published package into the global config:
+
+```sh
+opencode2 plugin add <package>
+```
+
+List active plugins:
+
+```sh
+opencode2 plugin list
+```
+
+## Config
+
+Add RocketClaw to the `plugins` array in your global or project `opencode.json`.
+
+File URL:
 
 ```json
 {
-  "plugin": ["compound-engineering@git+https://github.com/EveryInc/compound-engineering-plugin.git"]
+  "plugins": ["file:///path/to/this/checkout"]
 }
 ```
 
-Restart OpenCode after changing the config. The OpenCode plugin registers the Compound Engineering skills directory directly; no Bun installer or generated skill copy is required.
-
-To pin a release, add a tag. Replace `X.Y.Z` with the release you want — see the [releases page](https://github.com/EveryInc/compound-engineering-plugin/releases) for available tags:
+Package form:
 
 ```json
 {
-  "plugin": ["compound-engineering@git+https://github.com/EveryInc/compound-engineering-plugin.git#compound-engineering-vX.Y.Z"]
+  "plugins": [
+    {
+      "package": "file:///path/to/this/checkout"
+    }
+  ]
 }
 ```
 
-## Local Development
+A plugin under `.opencode/plugins/` in this checkout is also discovered automatically.
 
-From this checkout, point OpenCode at the package path:
+Restart after changing the config:
 
-```json
-{
-  "plugin": ["/path/to/compound-engineering-plugin"]
-}
+```sh
+opencode2 service restart
 ```
 
-Restart OpenCode after changing the package source.
+The plugin registers skills from this checkout's `skills/` directory and exposes each user-invocable skill as a slash command that attaches that skill id. No generated skill copy is required.

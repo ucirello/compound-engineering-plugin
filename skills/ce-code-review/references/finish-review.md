@@ -97,10 +97,12 @@ Local apply does not authorize reversing a settled decision. When a retained def
 - If a reviewer item is useful information with no defect, code contract change, or test gap, report it as advisory only after it passes the same admission rule. Do not patch it or describe it as a missed defect; omit information without a present benefit.
 If this self-review changes files, rerun the affected tests or lint for those follow-up edits before committing or reporting; the earlier validation only covers the original autofix diff.
 
-**Commit when the pre-review tree was clean.** Before applying, note whether the working tree already had uncommitted changes (`git status --porcelain`). The step that makes a change permanent is the **push**, not the commit; a local commit is private and reversible (`git reset --soft HEAD~1`).
+**Describe when the pre-review tree was clean.** Before applying, note whether the working copy already had undescribed changes (`jj status`). The step that makes a change permanent is the **push**, not describing the change; a local change is private and reversible (`jj undo`).
 
-- **Clean before the review:** after applying and verifying, commit the fixes as one isolated, review-labeled fix commit: `fix(review): <summary>`, or the repo's nearest convention if `review` isn't an allowed scope. Labeled and reversible, returning the tree to a known state.
-- **Dirty before the review:** apply but do **not** commit. The fixes interleave with the user's in-flight work and ride along with the commit they were already going to make. The Applied section lists what changed.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+- **Clean before the review:** after applying and verifying, describe the fixes as one isolated, review-labeled change: `jj commit -m "<message composed from the standards above>"` or `jj describe -m "<message composed from the standards above>"`. Repo-local syntax from project instructions and `git log` ALWAYS wins. Labeled and reversible, returning the tree to a known state.
+- **Dirty before the review:** apply but do **not** describe a new change. The fixes interleave with the user's in-flight work and ride along with the change they were already going to describe. The Applied section lists what changed.
 - **Never push, open a PR, or file tickets.** That is the outward-facing step the user decides on.
 
 **Flag green-but-unverifiable edits.** When an applied fix touches auth/authz, a public or cross-service contract/schema, or concurrency/ordering, a passing test does not prove safety. Flag it prominently in the Applied section so the diff reviewer's attention goes there.
@@ -163,7 +165,7 @@ Before delivering the review, verify:
 2. **No false positives from skimming.** For each finding, verify the surrounding code was actually read. Check that the "bug" isn't handled elsewhere in the same function, that the "unused import" isn't used in a type annotation, that the "missing null check" isn't guarded by the caller.
 3. **Severity is calibrated.** A style nit is never P0. A SQL injection is never P3. Re-check every severity assignment.
 4. **Line numbers are accurate.** Verify each cited line number against the file content. A finding pointing to the wrong line is worse than no finding.
-5. **Protected artifacts are respected.** Discard any finding that recommends deleting or gitignoring a CE pipeline artifact, per the Protected Artifacts rule in `references/action-class-rubric.md`: any file under a `plans/`, `solutions/`, or legacy `brainstorms/` directory whose immediate parent is the artifact root (a directory named `docs`, or the configured `docs_root` when resolved). Categories nest (`solutions/<category>/`); a `references/personas/` skill asset, parented by `references`, is not a protected artifact.
+5. **Protected artifacts are respected.** Discard any finding that recommends deleting or ignoring a pipeline artifact, per the Protected Artifacts rule in `references/action-class-rubric.md`: any file under a `plans/`, `solutions/`, or legacy `brainstorms/` directory whose immediate parent is the artifact root (a directory named `docs`, or the configured `docs_root` when resolved). Categories nest (`solutions/<category>/`); a `references/personas/` skill asset, parented by `references`, is not a protected artifact.
 6. **Findings don't duplicate linter output.** Don't flag things the project's linter/formatter would catch (missing semicolons, wrong indentation). Focus on semantic issues.
 
 ## Protected Artifacts

@@ -17,6 +17,15 @@ PR_NUMBER=$1
 ROOT_COMMENT_ID=$2
 BODY=$(cat)
 
+# Pair every gh call with GIT_DIR from the colocated Git dir. Prefer a
+# caller-supplied GIT_DIR; otherwise resolve it from jj.
+if [ -z "${GIT_DIR:-}" ]; then
+    _git_dir=$(jj git root 2>/dev/null || true)
+    if [ -n "$_git_dir" ]; then
+        export GIT_DIR="$_git_dir"
+    fi
+fi
+
 if [ -n "$3" ]; then
     OWNER=$(echo "$3" | cut -d/ -f1)
     REPO=$(echo "$3" | cut -d/ -f2)

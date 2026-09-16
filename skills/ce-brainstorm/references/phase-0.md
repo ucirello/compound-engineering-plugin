@@ -2,9 +2,9 @@
 
 #### 0.1 Resume Existing Work When Appropriate
 
-This resume scan needs `<root>/plans/`, so it applies only to a repo-backed run. If there is no git repository, or resolving `<root>` fails (a bad `docs_root`), skip the scan and continue — do not fail the run here, since Phase 0.1b may route non-software work to `references/universal-brainstorming.md`, whose contract does not write a unified plan under `<root>/plans/`.
+This resume scan needs `<root>/plans/`, so it applies only to a workspace-backed run. If there is no jj workspace, or resolving `<root>` fails (a bad `docs_root`), skip the scan and continue — do not fail the run here, since Phase 0.1b may route non-software work to `references/universal-brainstorming.md`, whose contract does not write a unified plan under `<root>/plans/`.
 
-Only when that check passes — a repo-backed run whose `<root>` resolved — evaluate this resume condition; never resolve `<root>` here on a run the check told you to skip. When it applies, if the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `<root>/plans/` with `artifact_contract: ce-unified-plan/v1` and `product_contract_source: ce-brainstorm`, whose contents are still a Product Contract without implementation planning:
+Only when that check passes — a workspace-backed run whose `<root>` resolved — evaluate this resume condition; never resolve `<root>` here on a run the check told you to skip. When it applies, if the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `<root>/plans/` with `artifact_contract: ce-unified-plan/v1` and `product_contract_source: ce-brainstorm`, whose contents are still a Product Contract without implementation planning:
 - Read the document
 - Confirm with the user before resuming: "Found an existing requirements-only plan for [topic]. Should I continue from this, or start fresh?"
 - If resuming, summarize the current state briefly, continue from its existing decisions and outstanding questions, and update the existing document instead of creating a duplicate

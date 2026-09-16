@@ -11,12 +11,21 @@ fi
 
 PR_NUMBER=$1
 
+# Pair every gh call with GIT_DIR from the colocated Git dir. Prefer a
+# caller-supplied GIT_DIR; otherwise resolve it from jj.
+if [ -z "${GIT_DIR:-}" ]; then
+    _git_dir=$(jj git root 2>/dev/null || true)
+    if [ -n "$_git_dir" ]; then
+        export GIT_DIR="$_git_dir"
+    fi
+fi
+
 if [ -n "$2" ]; then
     OWNER=$(echo "$2" | cut -d/ -f1)
     REPO=$(echo "$2" | cut -d/ -f2)
 else
     # `|| true` is load-bearing: under `set -e`, a failed command substitution
-    # in an assignment aborts the script immediately. Run outside a git repo,
+    # in an assignment aborts the script immediately. Run outside a jj workspace,
     # `gh repo view` exits 1, its stderr is swallowed by `2>/dev/null`, and the
     # script would die here with rc=1 and no output -- making the friendly error
     # below unreachable. Keep `|| true` so detection failure falls through to it.
@@ -25,7 +34,7 @@ else
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-pr-comments from inside the target git repository, or pass OWNER/REPO as the second argument (e.g., get-pr-comments $PR_NUMBER EveryInc/cora)." >&2
+    echo "Error: could not resolve owner/repo. Run get-pr-comments from inside the target jj workspace, or pass OWNER/REPO as the second argument (e.g., get-pr-comments $PR_NUMBER EveryInc/cora)." >&2
     exit 1
 fi
 
@@ -65,9 +74,11 @@ fi
 # resolver can weigh identity as evidence, including recognizing its own prior
 # replies as already-handled.
 
-tmp_threads=$(mktemp "${TMPDIR:-/tmp}/ce-pr-threads.XXXXXX")
-tmp_comments=$(mktemp "${TMPDIR:-/tmp}/ce-pr-comments.XXXXXX")
-tmp_reviews=$(mktemp "${TMPDIR:-/tmp}/ce-pr-reviews.XXXXXX")
+_tmp_root="$(jj workspace root 2>/dev/null || echo .)/.tmp"
+mkdir -p "$_tmp_root"
+tmp_threads=$(mktemp "$_tmp_root/ce-pr-threads.XXXXXX")
+tmp_comments=$(mktemp "$_tmp_root/ce-pr-comments.XXXXXX")
+tmp_reviews=$(mktemp "$_tmp_root/ce-pr-reviews.XXXXXX")
 trap 'rm -f "$tmp_threads" "$tmp_comments" "$tmp_reviews"' EXIT
 
 gh api graphql --paginate --slurp \

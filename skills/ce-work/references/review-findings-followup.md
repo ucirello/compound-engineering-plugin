@@ -61,7 +61,7 @@ After review, **dispatch subagents for all remaining applicable findings** unles
 
 1. Sort applicable findings by severity (P0 first).
 2. **Group by `file`.** All eligible findings on the same file → **one subagent** (it loads the file once and works through its `#` list in severity order).
-3. **Parallel waves:** batches with **disjoint file sets** may run in parallel (same worktree / shared-directory rules as `ce-work`'s execution strategy in `references/execution-strategy.md`).
+3. **Parallel waves:** batches with **disjoint file sets** may run in parallel (same workspace / shared-directory rules as `ce-work`'s execution strategy in `references/execution-strategy.md`).
 4. **Same file, many findings:** keep one subagent per file. If the prompt would exceed a comfortable size (~8 findings), split into **serial** subagent passes on that file (first batch highest severity, then next batch after merge or after the prior agent returns).
 5. **Cross-file coupling:** do not merge unrelated files into one subagent just to reduce agent count; file grouping is the default. Only co-batch multiple files when findings explicitly reference the same small related change (rare); when in doubt, separate by file.
 
@@ -71,7 +71,7 @@ After review, **dispatch subagents for all remaining applicable findings** unles
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits with a message composed from the repository's current local syntax (Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards) unless workspace-isolated subagents merge per Phase 1. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

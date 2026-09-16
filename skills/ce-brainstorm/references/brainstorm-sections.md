@@ -336,7 +336,7 @@ worse than omitting it.
   A constraint adopted from a Compound Pack file is cited inline as
   `(pack: <id>, <path within the pack>)` after the requirement or decision it
   shaped. The path is relative to the pack's own directory, so it is stable
-  for path- and git-sourced packs alike. Cite the pack text; do not restate
+  for path- and git-URL sourced packs alike. Cite the pack text; do not restate
   it. That marker is reserved for pack files; `<root>/solutions/` learnings
   keep the ordinary path citation.
 
@@ -390,8 +390,8 @@ artifact.
 ### No status field
 
 Unified plan artifacts have no `status` field and no `active → completed`
-lifecycle or readiness flag. Readers assess the contents and unresolved questions. No CE artifact carries mutable progress state; whether work shipped
-is derived from git, not stored in the doc. Do not introduce one.
+lifecycle or readiness flag. Readers assess the contents and unresolved questions. No RocketClaw artifact carries mutable progress state; whether work shipped
+is derived from jj history, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 

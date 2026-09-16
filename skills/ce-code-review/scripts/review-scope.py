@@ -84,21 +84,52 @@ AGENT_SURFACE_PATTERN = re.compile(
     re.I,
 )
 
+_DIFF_GIT_HEADER = re.compile(r"^diff --git a/(.*) b/(.*)$")
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+
+def workspace_root() -> str:
+    proc = subprocess.run(
+        ["jj", "--no-pager", "workspace", "root"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        raise RuntimeError("not a jj workspace")
+    return proc.stdout.strip()
+
+
+def jj(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+    root = cwd or workspace_root()
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", "--no-pager", *args],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
-def valid_commit(ref: str | None) -> bool:
+def valid_commit(ref: str | None, root: str) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj(
+        "log", "-r", ref, "--no-graph", "-T", 'commit_id ++ "\n"', "-n", "1",
+        cwd=root,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
-def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+def unique_merge_base(base: str, head: str, root: str) -> str | None:
+    result = jj(
+        "log",
+        "-r",
+        f"heads(::{base} & ::{head})",
+        "--no-graph",
+        "-T",
+        'commit_id ++ "\n"',
+        cwd=root,
+    )
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -125,18 +156,16 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 @functools.lru_cache(maxsize=None)
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
+    """The workspace root, matching how docs_root is resolved everywhere else.
 
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
+    docs_root is workspace-relative (``<workspace-root>/<docs_root>``), so the
+    corpus check must resolve against ``jj workspace root``, not the current
+    working directory. ce-code-review can run from a subdirectory or from
+    another directory inside a linked workspace; ``jj diff`` still works once
+    commands use cwd=workspace root, where ``Path.cwd()`` would join docs_root
+    under the subdir and wrongly report the corpus absent.
     """
-    result = git("rev-parse", "--show-toplevel")
-    if result.returncode == 0 and result.stdout.strip():
-        return Path(result.stdout.strip()).resolve()
-    return Path.cwd().resolve()
+    return Path(workspace_root()).resolve()
 
 
 def has_learnings_corpus(docs_root: str | None) -> bool:
@@ -150,7 +179,10 @@ def has_learnings_corpus(docs_root: str | None) -> bool:
     docs_root = normalize_docs_root(docs_root)
     if os.path.isabs(docs_root):
         return False
-    repo = repo_root()
+    try:
+        repo = repo_root()
+    except RuntimeError:
+        return False
     candidate = (repo / docs_root / "solutions").resolve()
     if repo not in candidate.parents and candidate != repo:
         return False
@@ -158,36 +190,37 @@ def has_learnings_corpus(docs_root: str | None) -> bool:
 
 
 PACKS_RESOLVER = Path(__file__).resolve().parent / "packs-resolve.py"
-# Parse-only mode does no git or cache work, so this bound only guards against a
+# Parse-only mode does no clone or cache work, so this bound only guards against a
 # wedged interpreter; the helper is meant to be cheap and must never hang scope.
 PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local RocketClaw config declares Packs, from the config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
-    git or cache work. Its `declared` is true when any entry parsed or the block
-    is malformed -- a broken declaration is still one the learnings pass must
-    surface in Coverage. ``None`` means the helper could not tell (resolver
-    missing, crashed, timed out, or answered without `declared`); the caller
-    then falls closed to reading the config's `packs:` key itself. The second
-    value keeps the `pack_roots` output slot and is always 0: nothing resolves
-    here.
+    `packs:` list from both RocketClaw config layers and shape-checks each
+    entry with no clone or cache work. Its `declared` is true when any entry
+    parsed or the block is malformed -- a broken declaration is still one the
+    learnings pass must surface in Coverage. ``None`` means the helper could
+    not tell (resolver missing, crashed, timed out, or answered without
+    `declared`); the caller then falls closed to reading the config's `packs:`
+    key itself. The second value keeps the `pack_roots` output slot and is
+    always 0: nothing resolves here.
     """
     if not PACKS_RESOLVER.is_file():
         return None, 0
     try:
+        root = str(repo_root())
         proc = subprocess.run(
             [sys.executable, str(PACKS_RESOLVER), "--declared-only"],
             capture_output=True,
             text=True,
             check=False,
-            cwd=repo_root(),
+            cwd=root,
             timeout=PACKS_RESOLVER_TIMEOUT,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, RuntimeError):
         return None, 0
     if proc.returncode != 0:
         return None, 0
@@ -261,19 +294,83 @@ def matching_classes(
     ]
 
 
-def numstat_path(name: str) -> str:
-    """Return the destination path from a `git diff --numstat` rename display name."""
-    if " => " not in name:
-        return name
-    if "{" in name and "}" in name:
-        prefix, rest = name.split("{", 1)
-        old_new, suffix = rest.split("}", 1)
-        _, new = old_new.split(" => ", 1)
-        # A collapsed segment (`a/{b => }/c`) leaves an empty side, so the
-        # rebuilt path would carry `//` and miss every path-class pattern.
-        return re.sub(r"/{2,}", "/", f"{prefix}{new}{suffix}")
-    _, new = name.split(" => ", 1)
-    return new
+def parse_git_format_diff(diff_text: str) -> tuple[dict[str, int | None], set[str], int]:
+    """Per-path added+deleted counts and executable-mode paths from `jj diff --git`.
+
+    ``None`` means the path is binary or otherwise uncounted. The third return
+    is how many such uncounted paths were seen. Executable-mode paths are those
+    whose resulting mode ends in 755 (new mode, else deleted-file old mode).
+    """
+    counts: dict[str, int | None] = {}
+    executable_mode_paths: set[str] = set()
+    current: str | None = None
+    added = 0
+    deleted = 0
+    uncounted = 0
+    in_hunk = False
+    binary = False
+    new_mode: str | None = None
+    old_mode: str | None = None
+    deleted_mode: str | None = None
+
+    def flush() -> None:
+        nonlocal current, added, deleted, uncounted, in_hunk, binary
+        nonlocal new_mode, old_mode, deleted_mode
+        if current is None:
+            return
+        if binary:
+            counts[current] = None
+            uncounted += 1
+        else:
+            counts[current] = added + deleted
+        mode = deleted_mode if deleted_mode is not None else (
+            new_mode if new_mode is not None else old_mode
+        )
+        if mode is not None and mode.endswith("755"):
+            executable_mode_paths.add(current)
+        current = None
+        added = 0
+        deleted = 0
+        in_hunk = False
+        binary = False
+        new_mode = None
+        old_mode = None
+        deleted_mode = None
+
+    for line in diff_text.splitlines():
+        header = _DIFF_GIT_HEADER.match(line)
+        if header:
+            flush()
+            current = header.group(2)
+            continue
+        if current is None:
+            continue
+        if line.startswith("Binary files ") or line.startswith("GIT binary patch"):
+            binary = True
+            continue
+        if line.startswith("new file mode "):
+            new_mode = line.rsplit(" ", 1)[-1]
+            continue
+        if line.startswith("deleted file mode "):
+            deleted_mode = line.rsplit(" ", 1)[-1]
+            continue
+        if line.startswith("new mode "):
+            new_mode = line.rsplit(" ", 1)[-1]
+            continue
+        if line.startswith("old mode "):
+            old_mode = line.rsplit(" ", 1)[-1]
+            continue
+        if line.startswith("@@"):
+            in_hunk = True
+            continue
+        if not in_hunk:
+            continue
+        if line.startswith("+") and not line.startswith("+++"):
+            added += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            deleted += 1
+    flush()
+    return counts, executable_mode_paths, uncounted
 
 
 def main() -> int:
@@ -283,80 +380,66 @@ def main() -> int:
     parser.add_argument("--docs-root", default="docs")
     args = parser.parse_args()
 
+    try:
+        root = workspace_root()
+    except RuntimeError:
+        print(json.dumps(fail_closed("not a jj workspace", {
+            "has_learnings_corpus": False,
+            "declared_packs": None,
+            "pack_roots": 0,
+        }), sort_keys=True))
+        return 0
+
     # Remote scope (pr-remote / branch-remote) always passes --head, even when a
     # best-effort fetch left it empty; the local config is not that tree's config.
     repo = repo_signals(args.docs_root, local_scope=args.head is None)
 
-    if not valid_commit(args.base):
+    if not valid_commit(args.base, root):
         print(json.dumps(fail_closed("invalid base endpoint", repo), sort_keys=True))
         return 0
-    if args.head is not None and not valid_commit(args.head):
+    if args.head is not None and not valid_commit(args.head, root):
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
     if args.head:
-        merge_base = unique_merge_base(args.base, args.head)
+        merge_base = unique_merge_base(args.base, args.head, root)
         if merge_base is None:
             print(json.dumps(fail_closed("merge base unavailable or ambiguous", repo), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_from, diff_to = merge_base, args.head
+        names = jj("diff", "--from", diff_from, "--to", diff_to, "--name-only", cwd=root)
+        git_diff = jj("diff", "--from", diff_from, "--to", diff_to, "--git", cwd=root)
+    else:
+        names = jj("diff", "--from", args.base, "--name-only", cwd=root)
+        git_diff = jj("diff", "--from", args.base, "--git", cwd=root)
 
-    numstat = git("diff", "--numstat", *diff_args)
-    raw = git("diff", "--raw", *diff_args)
-    if numstat.returncode != 0 or raw.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", repo), sort_keys=True))
+    if names.returncode != 0 or git_diff.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed", repo), sort_keys=True))
         return 0
 
-    executable_mode_paths: set[str] = set()
-    for line in raw.stdout.splitlines():
-        if "\t" not in line:
-            continue
-        meta, path_field = line.split("\t", 1)
-        fields = meta.lstrip(":").split(" ")
-        if len(fields) < 2:
-            continue
-        old_mode, new_mode = fields[0], fields[1]
-        mode = old_mode if new_mode == "000000" else new_mode
-        if not mode.endswith("755"):
-            continue
-        for path in path_field.split("\t"):
-            executable_mode_paths.add(path)
-
-    files: list[str] = []
+    files = sorted(line for line in names.stdout.splitlines() if line)
+    counts, executable_mode_paths, uncounted = parse_git_format_diff(git_diff.stdout)
     executable_lines = 0
     executable_nontest_lines = 0
     unclassified_lines: dict[str, int] = {}
     changed_lines = 0
-    uncounted = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        added, deleted, name = parts[0], parts[1], parts[2]
-        resolved_name = numstat_path(name)
-        files.append(resolved_name)
-        if added == "-" or deleted == "-":
-            uncounted += 1
-            continue
-        try:
-            total = int(added) + int(deleted)
-        except ValueError:
-            uncounted += 1
+    for name in files:
+        total = counts.get(name)
+        if total is None:
+            # Name-only listed it but git-format did not count it (rename-only,
+            # binary, or empty). Treat unknown counts as uncounted.
+            if name not in counts:
+                uncounted += 1
             continue
         changed_lines += total
-        if (
-            Path(resolved_name).suffix.lower() in CODE_EXTENSIONS
-            or resolved_name in executable_mode_paths
-        ):
+        if Path(name).suffix.lower() in CODE_EXTENSIONS or name in executable_mode_paths:
             executable_lines += total
-            if not TEST_PATTERN.search(resolved_name):
+            if not TEST_PATTERN.search(name):
                 executable_nontest_lines += total
-        elif not TEST_PATTERN.search(resolved_name):
-            ext = Path(resolved_name).suffix.lower()
+        elif not TEST_PATTERN.search(name):
+            ext = Path(name).suffix.lower()
             unclassified_lines[ext] = unclassified_lines.get(ext, 0) + total
 
-    files.sort()
     signals = matching_classes(files, SIGNAL_PATTERNS)
     hard_block_classes = matching_classes(files, HARD_BLOCK_PATTERNS)
     silent_pass_classes = matching_classes(files, SILENT_PASS_PATTERNS)

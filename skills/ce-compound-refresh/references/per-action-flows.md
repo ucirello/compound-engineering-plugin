@@ -36,7 +36,7 @@ Relocate only when the misfiling is unambiguous: the doc's directory and its fro
 In non-interactive mode, apply the relocation only when all four conditions hold, mirroring the auto-delete pattern: (1) frontmatter and directory disagree per the category mapping, (2) content evidence clearly resolves the direction as directory-wrong, (3) the target category directory already exists, (4) every inbound citation is in-repo and mechanically rewritable. If any condition fails — including content that plausibly fits either category — record the relocation (doc, proposed target, which condition failed) under Recommended instead of moving.
 
 1. Confirm the target category directory exists.
-2. Move the file with `git mv` so history follows the rename.
+2. Move the file with the workspace file-move tool so the working copy records the rename.
 3. Reconcile frontmatter category metadata with the new location.
 4. Rewrite inbound links across the repo's markdown, including catalog rows in README files.
 5. Re-check the moved doc's **outgoing** relative links — the move changed their resolution base, so a `../category/doc.md` that resolved before now dangles. Run the bundled claims validator (`scripts/validate-doc-claims.py`, invoked as in the Replace flow) on the moved doc, or inspect its relative links manually, and rewrite any that no longer resolve before completing the relocation.
@@ -122,7 +122,7 @@ Do not let replacement subagents invent frontmatter fields, enum values, or sect
    ```
 
    Exit 1 flags are **adjudication input, not failures** — a successor doc describing removed code legitimately cites paths that no longer exist. Resolve each flag by fixing the citation, annotating it as historical, or confirming it intentional; always fix scaffold flags. If the script is not resolvable on this platform, scan the body for those same patterns manually and say so in the report.
-5. After the subagent completes, the orchestrator deletes the old learning file and updates any catalog README row that lists the old filename to point at the successor. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional — the git history and commit message provide the same information.
+5. After the subagent completes, the orchestrator deletes the old learning file and updates any catalog README row that lists the old filename to point at the successor. The new learning's frontmatter may include `supersedes: [old learning filename]` for traceability, but this is optional — version history and the change description provide the same information.
 
 **When evidence is insufficient:**
 

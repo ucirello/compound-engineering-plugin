@@ -30,11 +30,10 @@ Launch research subagents. Each writes its full output to a per-run scratch arti
 **Run ID and run dir (before dispatching any subagent):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+ROOT="$(jj workspace root 2>/dev/null || echo .)";
+SCRATCH_ROOT="$ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ');
 RUN_DIR="$SCRATCH_ROOT/ce-compound/$RUN_ID";
@@ -63,7 +62,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/packs-resolve.py"
 ```
 
-Pass the JSON's `roots` (pack `id` + absolute `dir`, plus `url`/`ref` when git-sourced) into the Related Docs Finder's prompt; report `errors`/`warnings` once in the completion report and nowhere else. With no `packs:` key the result is empty and nothing changes. When the command yields no JSON (no interpreter, script not found, non-zero exit), packs are unresolved for this run: the finder searches `<root>/solutions/` alone, say so once in the completion report, and never stop the run for it.
+Pass the JSON's `roots` (pack `id` + absolute `dir`, plus `url`/`ref` when URL-sourced) into the Related Docs Finder's prompt; report `errors`/`warnings` once in the completion report and nowhere else. With no `packs:` key the result is empty and nothing changes. When the command yields no JSON (no interpreter, script not found, non-zero exit), packs are unresolved for this run: the finder searches `<root>/solutions/` alone, say so once in the completion report, and never stop the run for it.
 
 **Dispatch.** Launch `Context Analyzer`, `Solution Extractor`, and `Related Docs Finder` in parallel, in the background, and do not wait on them here. They keep running underneath the session-history step the body starts next, so the two overlap and the wall-clock cost is `max(session-history, slowest background subagent)` rather than their sum.
 

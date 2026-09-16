@@ -2,12 +2,16 @@
 
 The generic peer-job runner owns process supervision. This controller owns the
 repository-specific transaction: one private run manifest, detached sibling
-worktrees, complete-tree transport commits, canonical integration evidence,
+workspaces, complete-tree transport commits, canonical integration evidence,
 exact restoration, retention, and explicit cleanup. It never launches a model
 CLI and never commits a worker's output in the canonical checkout.
 
 Every successful command prints a status word and one compact JSON document.
 Trust failures print only ``UNREADABLE`` and an error on stderr.
+
+JJ invocations always use cwd set to the absolute workspace root so file lists
+are repository-relative. Membership uses ``jj workspace list`` plus
+``jj workspace root --name``. This module never reads ``.jj/`` or ``.git/``.
 """
 
 from __future__ import annotations
@@ -31,14 +35,14 @@ from pathlib import Path
 
 
 SCHEMA_VERSION = 1
-PLAN_CHECKPOINT_MESSAGE = "docs(ce-work): checkpoint selected implementation plan"
+PLAN_CHECKPOINT_MESSAGE = "checkpoint selected implementation plan"
+GO_COMMIT_INSTRUCTION = (
+    "Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, "
+    "compose commit messages adherent to the present standards. Use the repository's current local syntax; "
+    "do not impose a fixed type, scope, prefix, footer, or body template."
+)
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-OWNER_SCRATCH_ROOT = (
-    os.path.join("/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
-    if _EFFECTIVE_UID is not None
-    else None
-)
 MAX_JSON_BYTES = 2 * 1024 * 1024
 MAX_PACKET_BYTES = 200_000
 SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -60,9 +64,8 @@ GIT_LOCAL_ENV_VARS = frozenset({
     "GIT_GRAFT_FILE",
     "GIT_IMPLICIT_WORK_TREE",
     "GIT_INDEX_FILE",
-    # Listed by `git rev-parse --local-env-vars` on git < 2.41 (e.g. Debian
-    # bookworm's 2.39); dropped from the list by newer git. Scrub it so an
-    # inherited value cannot leak into unit verification on old git.
+    # Strip inherited Git env so a colocated checkout cannot redirect jj via GIT_DIR.
+    # GIT_INTERNAL_SUPER_PREFIX was listed on older Git and is still scrubbed.
     "GIT_INTERNAL_SUPER_PREFIX",
     "GIT_NO_REPLACE_OBJECTS",
     "GIT_OBJECT_DIRECTORY",
@@ -97,12 +100,7 @@ def test_fault(point: str) -> None:
 
 
 def _private_root_usable(path: str) -> bool:
-    """True when `path` is (or can now be) a directory we own and can write into.
-
-    Creation is the probe: a sandbox that denies writes under /tmp refuses the
-    mkdir, and one that lets a pre-existing root stand still fails the access
-    check, so both land on the fallback instead of failing at the first run.
-    """
+    """True when `path` is (or can now be) a directory we own and can write into."""
     try:
         os.mkdir(path, 0o700)
     except FileExistsError:
@@ -120,27 +118,43 @@ def _private_root_usable(path: str) -> bool:
     return os.access(path, os.W_OK)
 
 
-def _fallback_scratch_root() -> str:
-    return os.path.join(os.environ.get("TMPDIR") or "/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
+def _jj_workspace_root_from(start: str) -> str | None:
+    proc = subprocess.run(
+        ["jj", "--no-pager", "workspace", "root"],
+        cwd=start,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=sanitized_vcs_environment(),
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    return proc.stdout.strip()
 
 
-def owner_scratch_root() -> str:
-    """The owner-private scratch root, in the same candidate order as the skills' shell preamble."""
-    if OWNER_SCRATCH_ROOT is None:
-        raise TrustFailure("effective user ID is unavailable; cannot derive the runs root")
-    if _private_root_usable(OWNER_SCRATCH_ROOT):
-        return OWNER_SCRATCH_ROOT
-    return _fallback_scratch_root()
+def owner_scratch_root(repo: str | None = None) -> str:
+    """Owner-private scratch under the JJ workspace ``.tmp/rocketclaw`` directory."""
+    root = None
+    if repo:
+        root = _jj_workspace_root_from(os.path.abspath(repo))
+    if root is None:
+        root = _jj_workspace_root_from(os.getcwd())
+    if root is None:
+        root = os.getcwd()
+    scratch = os.path.join(root, ".tmp", "rocketclaw")
+    parent = os.path.join(root, ".tmp")
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    return scratch
 
 
-def runs_root() -> str:
+def runs_root(repo: str | None = None) -> str:
     configured = os.environ.get("CE_WORK_RUNS_ROOT")
     if configured:
         return os.path.abspath(configured)
     peer_root = os.environ.get("CE_PEER_JOBS_ROOT")
     if peer_root:
         return os.path.join(os.path.abspath(peer_root), "ce-work")
-    return os.path.join(owner_scratch_root(), "ce-work")
+    return os.path.join(owner_scratch_root(repo), "ce-work")
 
 
 def safe_id(value: str, label: str) -> str:
@@ -287,15 +301,12 @@ def ensure_private_dir(path: str) -> None:
 
 
 def _owner_root_for_runs(root: str) -> str | None:
-    if OWNER_SCRATCH_ROOT is None:
+    owner_root = os.path.abspath(owner_scratch_root())
+    try:
+        if os.path.commonpath([owner_root, os.path.abspath(root)]) == owner_root:
+            return owner_root
+    except ValueError:
         return None
-    for candidate in (OWNER_SCRATCH_ROOT, _fallback_scratch_root()):
-        owner_root = os.path.abspath(candidate)
-        try:
-            if os.path.commonpath([owner_root, os.path.abspath(root)]) == owner_root:
-                return owner_root
-        except ValueError:  # different drives on Windows: not under this candidate
-            continue
     return None
 
 
@@ -323,8 +334,8 @@ def _ensure_owner_scratch_root(path: str) -> None:
         os.close(fd)
 
 
-def ensure_root() -> str:
-    return ensure_runs_root(runs_root())
+def ensure_root(repo: str | None = None) -> str:
+    return ensure_runs_root(runs_root(repo))
 
 
 def ensure_runs_root(root: str) -> str:
@@ -437,9 +448,8 @@ def atomic_private_json(path: str, doc: dict) -> None:
         raise
 
 
-def candidate_runs_roots() -> list:
-    """Every root an existing run may live under (configured root alone, or the
-    /tmp root and the $TMPDIR fallback, primary first). Creation uses runs_root();
+def candidate_runs_roots(repo: str | None = None) -> list:
+    """Every root an existing run may live under. Creation uses runs_root();
     lookup must not depend on which root this invocation would create under."""
     configured = os.environ.get("CE_WORK_RUNS_ROOT")
     if configured:
@@ -447,13 +457,7 @@ def candidate_runs_roots() -> list:
     peer_root = os.environ.get("CE_PEER_JOBS_ROOT")
     if peer_root:
         return [os.path.join(os.path.abspath(peer_root), "ce-work")]
-    if OWNER_SCRATCH_ROOT is None:
-        raise TrustFailure("effective user ID is unavailable; cannot derive the runs root")
-    roots = [os.path.join(os.path.abspath(OWNER_SCRATCH_ROOT), "ce-work")]
-    fallback = os.path.join(os.path.abspath(_fallback_scratch_root()), "ce-work")
-    if fallback not in roots:
-        roots.append(fallback)
-    return roots
+    return [os.path.join(os.path.abspath(owner_scratch_root(repo)), "ce-work")]
 
 
 def run_dir(run_id: str) -> str:
@@ -497,66 +501,220 @@ def locked_manifest(run_id: str, write: bool = False):
         os.close(fd)
 
 
-def sanitized_git_environment(overrides: dict | None = None) -> dict[str, str]:
+def sanitized_vcs_environment(overrides: dict | None = None) -> dict[str, str]:
     process_env = {key: value for key, value in os.environ.items() if key not in GIT_LOCAL_ENV_VARS}
     process_env.update(overrides or {})
     return process_env
 
 
-def git(repo: str, *args: str, input_data: bytes | None = None, check: bool = True, env: dict | None = None) -> bytes:
+sanitized_git_environment = sanitized_vcs_environment
+
+
+def _jj_run(
+    repo: str,
+    args: list[str],
+    input_data: bytes | None = None,
+    check: bool = True,
+    env: dict | None = None,
+) -> subprocess.CompletedProcess[bytes]:
+    root = os.path.abspath(repo)
     proc = subprocess.run(
-        ["git", "-C", repo, *args], input=input_data, capture_output=True,
-        env=sanitized_git_environment(env), check=False,
+        ["jj", "--no-pager", *args],
+        cwd=root,
+        input=input_data,
+        capture_output=True,
+        env=sanitized_vcs_environment(env),
+        check=False,
     )
     if check and proc.returncode != 0:
         message = proc.stderr.decode("utf-8", "replace").strip()
-        raise Operational("BLOCKED", f"git {' '.join(args)} failed: {message}")
-    return proc.stdout
+        raise Operational("BLOCKED", f"jj {' '.join(args)} failed: {message}")
+    return proc
 
 
-def git_text(repo: str, *args: str, check: bool = True) -> str:
-    return git(repo, *args, check=check).decode("utf-8", "surrogateescape").strip()
+def jj(repo: str, *args: str, input_data: bytes | None = None, check: bool = True, env: dict | None = None) -> bytes:
+    return _jj_run(repo, list(args), input_data=input_data, check=check, env=env).stdout
+
+
+def jj_text(repo: str, *args: str, check: bool = True) -> str:
+    return jj(repo, *args, check=check).decode("utf-8", "surrogateescape").strip()
+
+
+def jj_commit_id(repo: str, rev: str = "@", check: bool = True) -> str:
+    return jj_text(repo, "log", "-r", rev, "--no-graph", "-T", "commit_id", check=check)
+
+
+def jj_change_empty(repo: str, rev: str = "@") -> bool:
+    return jj_text(repo, "log", "-r", rev, "--no-graph", "-T", "empty") == "true"
+
+
+def jj_conflicted(repo: str, rev: str = "@") -> bool:
+    return jj_text(repo, "log", "-r", rev, "--no-graph", "-T", "conflict") == "true"
+
+
+def jj_parents(repo: str, rev: str = "@") -> list[str]:
+    raw = jj_text(repo, "log", "-r", rev, "--no-graph", "-T", 'parents.map(|p| p.commit_id()).join("\n")')
+    return [line for line in raw.splitlines() if line]
+
+
+def jj_local_bookmarks(repo: str, rev: str = "@") -> str:
+    return jj_text(repo, "log", "-r", rev, "--no-graph", "-T", "local_bookmarks", check=False)
+
+
+def revision_is_ancestor(repo: str, ancestor: str, descendant: str) -> bool:
+    if not ancestor or not descendant:
+        return False
+    return jj_text(
+        repo, "log", "-r", f"heads(::{ancestor} & ::{descendant})", "--no-graph", "-T", "commit_id", check=False,
+    ) == ancestor
+
+
+def current_bookmark(repo: str) -> str:
+    text = jj_local_bookmarks(repo, "@").split()
+    if not text:
+        text = jj_local_bookmarks(repo, "@-").split()
+    if not text:
+        raise Operational("REFUSED", "canonical checkout must have a bookmark on @ or @-")
+    return text[0]
+
+
+def canonical_head(repo: str) -> str:
+    """Last described revision: parent of the working-copy change (@-)."""
+    return jj_commit_id(repo, "@-")
+
+
+def tree_fingerprint(repo: str, rev: str) -> str:
+    data = jj(repo, "diff", "--git", "--from", "root()", "--to", rev)
+    return digest_bytes(data)
+
+
+def changed_path_list(repo: str, frm: str, to: str) -> list[str]:
+    raw = jj_text(repo, "diff", "--from", frm, "--to", to, "--name-only")
+    return [line.replace("\\", "/") for line in raw.splitlines() if line]
+
+
+def name_status_bytes(repo: str, frm: str, to: str) -> bytes:
+    """NUL-delimited git-style name-status records from ``jj diff --summary``."""
+    raw = jj_text(repo, "diff", "--from", frm, "--to", to, "--summary")
+    parts: list[bytes] = []
+    for line in raw.splitlines():
+        if not line or " " not in line:
+            continue
+        code, path = line.split(" ", 1)
+        path = path.strip().replace("\\", "/")
+        if code.startswith("R") and " -> " in path:
+            src, dst = path.split(" -> ", 1)
+            parts.extend([b"R100", src.encode("utf-8", "surrogateescape"), dst.encode("utf-8", "surrogateescape")])
+        else:
+            parts.extend([code.encode("ascii"), path.encode("utf-8", "surrogateescape")])
+    if not parts:
+        return b""
+    return b"\0".join(parts) + b"\0"
+
+
+def path_in_revision(repo: str, rev: str, rel: str) -> bool:
+    listed = jj_text(repo, "file", "list", "-r", rev, rel, check=False)
+    return any(line == rel or line.startswith(rel.rstrip("/") + "/") for line in listed.splitlines() if line)
+
+
+def workspace_name_for_path(workspace: str) -> str:
+    digest = digest_bytes(os.path.abspath(workspace).encode())[:20]
+    return f"ce-w-{digest}"
+
+
+def workspace_rows(repo: str) -> list[dict]:
+    names = [name for name in jj_text(repo, "workspace", "list", "-T", 'name ++ "\n"').splitlines() if name]
+    rows = []
+    for name in names:
+        root = jj_text(repo, "workspace", "root", "--name", name, check=False)
+        if not root:
+            continue
+        rows.append({"name": name, "worktree": root, "detached": True})
+    return rows
+
+
+worktree_rows = workspace_rows
+
+
+def add_linked_workspace(repo: str, workspace: str, base: str) -> None:
+    parent = os.path.dirname(os.path.abspath(workspace))
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    name = workspace_name_for_path(workspace)
+    jj(repo, "workspace", "add", "--name", name, "-r", base, workspace)
+
+
+def forget_linked_workspace(repo: str, workspace: str) -> None:
+    target = os.path.realpath(workspace)
+    for row in workspace_rows(repo):
+        if os.path.realpath(str(row.get("worktree", ""))) == target:
+            jj(repo, "workspace", "forget", str(row["name"]))
+            break
+    if os.path.lexists(workspace):
+        shutil.rmtree(workspace)
+
+
+def restore_working_copy(repo: str, rev: str) -> None:
+    jj(repo, "restore", "--from", rev, "--into", "@")
+
+
+def apply_transport(repo: str, transport: str, paths: list[str] | None = None) -> None:
+    args = ["restore", "--from", transport, "--into", "@"]
+    if paths:
+        args.extend(paths)
+    jj(repo, *args)
+    if jj_conflicted(repo, "@"):
+        raise Operational("BLOCKED", "transport apply produced conflicts")
+
+
+def ignored_untracked_paths(repo: str) -> set[str]:
+    """Paths on disk that ``jj file list`` does not track (ignored or untracked)."""
+    root = os.path.abspath(repo)
+    tracked = {line.replace("\\", "/") for line in jj_text(repo, "file", "list").splitlines() if line}
+    ignored: set[str] = set()
+    skip_dirs = {".jj", ".git"}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if name not in skip_dirs]
+        rel_dir = os.path.relpath(dirpath, root)
+        if rel_dir == ".":
+            rel_dir = ""
+        for name in filenames:
+            rel = name if not rel_dir else f"{rel_dir}/{name}".replace(os.sep, "/")
+            if rel not in tracked:
+                ignored.add(rel)
+    return ignored
 
 
 def commit_index_tree(repo: str, message: str) -> str:
-    """Commit the verified index directly, without invoking repository hooks."""
+    """Describe the working-copy change and start a new empty change on top."""
     if not message.strip() or "\0" in message:
-        raise Operational("REFUSED", "commit message must be non-empty and contain no NUL")
-    parent = git_text(repo, "rev-parse", "HEAD")
-    branch_ref = git_text(repo, "symbolic-ref", "-q", "HEAD")
-    tree = git_text(repo, "write-tree")
-    commit = git(
-        repo,
-        "commit-tree", tree, "-p", parent,
-        input_data=f"{message.rstrip()}\n".encode("utf-8"),
-    ).decode("ascii", "strict").strip()
-    git(repo, "update-ref", branch_ref, commit, parent)
+        raise Operational("REFUSED", "commit message must be non-empty and contain no NUL. " + GO_COMMIT_INSTRUCTION)
+    bookmark = current_bookmark(repo)
+    jj(repo, "commit", "-m", message)
+    commit = jj_commit_id(repo, "@-")
+    jj(repo, "bookmark", "move", bookmark, "--to", "@-", check=False)
     return commit
 
 
 def repo_info(repo: str) -> dict:
     repo = os.path.realpath(repo)
-    top = os.path.realpath(git_text(repo, "rev-parse", "--show-toplevel"))
+    top = os.path.realpath(jj_text(repo, "workspace", "root"))
     if top != repo:
         repo = top
-    branch = git_text(repo, "symbolic-ref", "-q", "HEAD", check=False)
-    if not branch:
-        raise Operational("REFUSED", "canonical checkout must be on a branch")
-    git_dir = os.path.realpath(git_text(repo, "rev-parse", "--path-format=absolute", "--absolute-git-dir"))
-    common = os.path.realpath(git_text(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
-    st = os.stat(common)
-    roots = sorted(git_text(repo, "rev-list", "--max-parents=0", "HEAD").splitlines())
-    identity = digest_bytes((common + f"\0{st.st_dev}\0{st.st_ino}\0" + "\n".join(roots)).encode())
+    branch = current_bookmark(repo)
+    roots = sorted(line for line in jj_text(repo, "log", "-r", "root()", "--no-graph", "-T", 'commit_id ++ "\n"').splitlines() if line)
+    workspace_name = None
+    for row in workspace_rows(repo):
+        if os.path.realpath(str(row.get("worktree", ""))) == os.path.realpath(repo):
+            workspace_name = row.get("name")
+            break
+    identity = digest_bytes((f"{workspace_name or ''}\0{repo}\0" + "\n".join(roots)).encode())
+    head = canonical_head(repo)
     return {
         "toplevel": repo,
-        "git_dir": git_dir,
-        "common_dir": common,
-        "common_dev": st.st_dev,
-        "common_ino": st.st_ino,
         "identity_digest": identity,
         "branch_ref": branch,
-        "head": git_text(repo, "rev-parse", "HEAD"),
-        "head_tree": git_text(repo, "rev-parse", "HEAD^{tree}"),
+        "head": head,
+        "head_tree": tree_fingerprint(repo, "@-"),
     }
 
 
@@ -587,11 +745,11 @@ def validate_repo(doc: dict) -> dict:
     validate_source(doc)
     recorded = doc["repository"]
     current = repo_info(recorded["toplevel"])
-    for key in ("toplevel", "git_dir", "common_dir", "common_dev", "common_ino", "identity_digest"):
+    for key in ("toplevel", "identity_digest"):
         if current[key] != recorded[key]:
             raise Operational("BLOCKED", f"canonical repository identity changed ({key})")
     if current["branch_ref"] != doc["branch"]["ref"]:
-        raise Operational("BLOCKED", "canonical branch changed")
+        raise Operational("BLOCKED", "canonical bookmark changed")
     return current
 
 
@@ -630,11 +788,12 @@ ROUTE_CONTRACTS = {
     "composer": {"target": "composer", "harness": "cursor-agent", "intermediaries": ["cursor"], "default_model": "composer-2.5-fast", "restriction_posture": "adapter-enforced"},
     "grok-cursor": {"target": "grok", "harness": "cursor-agent", "intermediaries": ["cursor"], "default_model": "cursor-grok-4.6-high", "restriction_posture": "adapter-enforced"},
     "opencode": {"target": "opencode", "harness": "opencode", "intermediaries": [], "default_model": "auto", "restriction_posture": "cooperative"},
+    "opencode2": {"target": "opencode2", "harness": "opencode2", "intermediaries": [], "default_model": "auto", "restriction_posture": "cooperative"},
 }
 
 
 def route_model_allowed(route: str, model: str) -> bool:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", model):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/#-]*", model):
         return False
     lowered = model.lower()
     if route == "codex":
@@ -652,6 +811,11 @@ def route_model_allowed(route: str, model: str) -> bool:
         return bool(re.fullmatch(r"cursor-grok-[A-Za-z0-9._-]+", model))
     if route == "opencode":
         return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+", model))
+    if route == "opencode2":
+        return model == "auto" or bool(re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(?:#[A-Za-z0-9._-]+)?",
+            model,
+        ))
     return False
 
 
@@ -754,7 +918,7 @@ def event(doc: dict, kind: str, unit_id: str | None = None, detail: dict | None 
 
 
 def cmd_init(args) -> tuple[str, dict]:
-    ensure_root()
+    ensure_root(args.repo)
     rid = safe_id(args.run_id, "run id")
     info = repo_info(args.repo)
     if args.plan:
@@ -848,7 +1012,7 @@ def cmd_init(args) -> tuple[str, dict]:
         "run_id": rid,
         "created_at": created,
         "updated_at": created,
-        "repository": {k: info[k] for k in ("toplevel", "git_dir", "common_dir", "common_dev", "common_ino", "identity_digest")},
+        "repository": {k: info[k] for k in ("toplevel", "identity_digest")},
         "branch": {"ref": info["branch_ref"], "initial_head": info["head"]},
         "source": source_record,
         "plan": {
@@ -878,25 +1042,7 @@ def cmd_init(args) -> tuple[str, dict]:
 
 
 def status_paths(repo: str) -> set[str]:
-    raw = git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
-    parts = raw.split(b"\0")
-    paths: set[str] = set()
-    i = 0
-    while i < len(parts):
-        entry = parts[i]
-        i += 1
-        if not entry:
-            continue
-        if len(entry) < 4:
-            raise Operational("BLOCKED", "unexpected porcelain status record")
-        code = entry[:2]
-        paths.add(entry[3:].decode("utf-8", "surrogateescape"))
-        if b"R" in code or b"C" in code:
-            if i >= len(parts) or not parts[i]:
-                raise Operational("BLOCKED", "incomplete rename status record")
-            paths.add(parts[i].decode("utf-8", "surrogateescape"))
-            i += 1
-    return paths
+    return set(changed_path_list(repo, "@-", "@"))
 
 
 def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -> dict | None:
@@ -905,15 +1051,13 @@ def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -
     commit = info["head"]
     if commit == prior:
         return None
-    lineage = git_text(repo, "rev-list", "--parents", "-n", "1", commit).split()
-    changed = set(filter(None, git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit).decode("utf-8", "surrogateescape").split("\0")))
-    message = git(repo, "show", "-s", "--format=%B", commit).decode("utf-8", "surrogateescape").rstrip("\n")
-    plan_bytes = git(repo, "show", f"{commit}:{plan_rel}", check=False)
+    parents = jj_parents(repo, commit)
+    changed = set(changed_path_list(repo, prior, commit))
+    plan_bytes = jj(repo, "file", "show", "-r", commit, plan_rel, check=False)
     if (
         not _valid_git_object_id(prior)
-        or lineage != [commit, prior]
+        or parents != [prior]
         or changed != {plan_rel}
-        or message != PLAN_CHECKPOINT_MESSAGE
         or digest_bytes(plan_bytes) != doc["plan"]["digest"]
     ):
         raise Operational(
@@ -921,7 +1065,10 @@ def reconcile_plan_checkpoint(repo: str, doc: dict, info: dict, plan_rel: str) -
             "canonical HEAD advanced without a recorded matching plan checkpoint",
             {"expected_prior_head": prior, "head": commit},
         )
-    committed_at = int(git_text(repo, "show", "-s", "--format=%ct", commit))
+    committed_at_raw = jj_text(
+        repo, "log", "-r", commit, "--no-graph", "-T", "committer.timestamp().utc().format('%s')", check=False,
+    )
+    committed_at = int(committed_at_raw) if committed_at_raw else 0
     return {
         "prior_head": prior,
         "commit": commit,
@@ -960,21 +1107,16 @@ def cmd_checkpoint_plan(args) -> tuple[str, dict]:
         if dirty != {plan_rel}:
             raise Operational("BLOCKED", "canonical dirt is not exactly the selected plan", {"dirty_paths": sorted(dirty)})
         prior = info["head"]
-    git(repo, "add", "--", plan_rel)
-    staged = set(filter(None, git(repo, "diff", "--cached", "--name-only", "-z").decode("utf-8", "surrogateescape").split("\0")))
-    if staged != {plan_rel}:
-        git(repo, "reset", "--mixed", prior)
-        raise Operational("BLOCKED", "staged paths are not exactly the selected plan")
     try:
         commit_index_tree(repo, PLAN_CHECKPOINT_MESSAGE)
     except Operational:
-        git(repo, "reset", "--mixed", prior, check=False)
+        restore_working_copy(repo, prior)
         raise
-    commit = git_text(repo, "rev-parse", "HEAD")
+    commit = canonical_head(repo)
     test_fault("checkpoint-plan-after-commit")
     if status_paths(repo):
         raise Operational("BLOCKED", "checkpoint committed but canonical checkout is not clean")
-    cp = {"prior_head": prior, "commit": commit, "tree": git_text(repo, "rev-parse", "HEAD^{tree}"), "path": plan_rel, "digest": doc["plan"]["digest"], "at": now_iso()}
+    cp = {"prior_head": prior, "commit": commit, "tree": tree_fingerprint(repo, "@-"), "path": plan_rel, "digest": doc["plan"]["digest"], "at": now_iso()}
     with locked_manifest(args.run_id, write=True) as doc:
         validate_repo(doc)
         doc["plan"]["checkpoint"] = cp
@@ -983,10 +1125,10 @@ def cmd_checkpoint_plan(args) -> tuple[str, dict]:
 
 
 @contextlib.contextmanager
-def admin_lock(common_dir: str):
+def admin_lock(identity_key: str):
     root = ensure_root()
-    key = digest_bytes(os.path.realpath(common_dir).encode())
-    path = os.path.join(root, ".locks", f"worktree-{key}.lock")
+    key = digest_bytes(os.path.realpath(identity_key).encode())
+    path = os.path.join(root, ".locks", f"workspace-{key}.lock")
     try:
         create_private(path, b"")
     except Operational:
@@ -1002,20 +1144,6 @@ def admin_lock(common_dir: str):
         os.close(fd)
 
 
-def worktree_rows(repo: str) -> list[dict]:
-    raw = git_text(repo, "worktree", "list", "--porcelain")
-    rows, row = [], {}
-    for line in raw.splitlines() + [""]:
-        if not line:
-            if row:
-                rows.append(row)
-                row = {}
-            continue
-        key, _, value = line.partition(" ")
-        row[key] = value if value else True
-    return rows
-
-
 def validate_workspace(doc: dict, unit: dict) -> dict:
     repo = doc["repository"]["toplevel"]
     workspace = unit["workspace"]["path"]
@@ -1023,14 +1151,15 @@ def validate_workspace(doc: dict, unit: dict) -> dict:
     if os.path.commonpath([os.path.realpath(workspace), os.path.realpath(owned)]) != os.path.realpath(owned):
         raise Operational("BLOCKED", "workspace escaped its owned unit directory")
     validate_private_dir(workspace)
-    matches = [r for r in worktree_rows(repo) if os.path.realpath(str(r.get("worktree", ""))) == os.path.realpath(workspace)]
+    matches = [r for r in workspace_rows(repo) if os.path.realpath(str(r.get("worktree", ""))) == os.path.realpath(workspace)]
     if len(matches) != 1:
         raise Operational("BLOCKED", "workspace is not registered exactly once")
-    if "detached" not in matches[0]:
-        raise Operational("BLOCKED", "unit workspace is not detached")
-    common = os.path.realpath(git_text(workspace, "rev-parse", "--path-format=absolute", "--git-common-dir"))
-    if common != doc["repository"]["common_dir"]:
-        raise Operational("BLOCKED", "unit workspace belongs to another repository")
+    named_root = jj_text(repo, "workspace", "root", "--name", str(matches[0]["name"]))
+    if os.path.realpath(named_root) != os.path.realpath(workspace):
+        raise Operational("BLOCKED", "workspace name does not resolve to the recorded path")
+    unit_repo_root = jj_text(workspace, "workspace", "root")
+    if os.path.realpath(unit_repo_root) != os.path.realpath(workspace):
+        raise Operational("BLOCKED", "unit workspace root does not match the recorded path")
     return matches[0]
 
 
@@ -1038,13 +1167,12 @@ def validate_pristine_unit_base(doc: dict, unit: dict) -> dict:
     row = validate_workspace(doc, unit)
     workspace = unit["workspace"]["path"]
     base = unit["workspace"]["base"]
-    if git_text(workspace, "rev-parse", "HEAD") != base:
-        raise Operational("BLOCKED", "unit workspace HEAD no longer equals the recorded base")
-    dirty = status_paths(workspace)
-    if dirty:
+    if jj_commit_id(workspace, "@-") != base:
+        raise Operational("BLOCKED", "unit workspace parent no longer equals the recorded base")
+    if not jj_change_empty(workspace, "@"):
         raise Operational(
             "BLOCKED",
             "unit workspace is dirty before dispatch authorization",
-            {"dirty_paths": sorted(dirty)},
+            {"dirty_paths": sorted(status_paths(workspace))},
         )
     return row

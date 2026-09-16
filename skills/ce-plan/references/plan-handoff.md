@@ -92,7 +92,9 @@ Before acting on any selection received after a user turn, reload this file. The
   - **If only a user-typed `/goal` exists (Claude Code):** print that objective as a single copyable `/goal …` block and tell the user to paste it at the start of a message (a skill cannot issue `/goal` itself there). **Best-effort clipboard copy:** also put the exact prompt on the OS clipboard so the user only has to paste. **Never interpolate the prompt into the command** — the plan path and the prompt's own backticks/`$` would be evaluated or mangled by the shell. Hand it off as data: write it to a temp file via a **quoted-sentinel** here-doc (the quotes stop all expansion), then pipe that file to the first available tool:
 
     ```bash
-    PROMPT_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-goal-prompt.XXXXXX")
+    ROOT="$(jj workspace root 2>/dev/null || echo .)"
+    mkdir -p "$ROOT/.tmp"
+    PROMPT_FILE=$(mktemp "$ROOT/.tmp/ce-goal-prompt.XXXXXX")
     cat >> "$PROMPT_FILE" <<'__CE_GOAL_PROMPT_END__'
     <the exact /goal prompt goes here, verbatim>
     __CE_GOAL_PROMPT_END__

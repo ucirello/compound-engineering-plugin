@@ -39,7 +39,20 @@ EFFORT="high"   # settled: elevation runs at high effort
 # any mutating tool. Its output is returned prose, not a file write.
 ALLOWED=(Read Glob Grep WebSearch WebFetch)
 
-build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming, read-only)
+# opencode2 is a distinct harness from opencode (not a fallback). When
+# ELEVATION_HARNESS=opencode2, dispatch the opencode2 binary:
+#   opencode2 run --standalone --auto --model provider/model#variant
+# Variant is `#variant` on --model; there is no `--variant` flag.
+build_cmd_opencode2() {  # <model> -> sets CMD array (opencode2, not opencode)
+  CMD=(opencode2 run --standalone --auto --model "$1")
+}
+
+build_cmd() {   # <model> <handoff-dir> -> sets CMD array
+  if [ "${ELEVATION_HARNESS:-}" = "opencode2" ]; then
+    build_cmd_opencode2 "$1"
+    return
+  fi
+  # claude CLI, streaming, read-only (unchanged opencode-unrelated path)
   # --safe-mode suppresses the user environment's hooks, plugins, and MCP
   # servers; --disable-slash-commands blocks skills. --tools RESTRICTS the
   # available built-in set to this list — Write/Edit/Bash are not present at all.
@@ -51,7 +64,7 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole OS temp root ($TMPDIR / /tmp) instead would
+  # via --add-dir. Adding the whole workspace `.tmp` root instead would
   # expose every other same-user scratch file and credential to the elevated
   # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
@@ -85,7 +98,7 @@ RESULT_PATH="${3:?result-path required}"
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole OS temp root. Pure-bash dirname (no
+# to an absolute path), never the whole workspace `.tmp` root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,7 +116,9 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/elevation-peer-XXXXXX")"
+WS_ROOT="$(jj --no-pager workspace root 2>/dev/null || printf '.')"
+mkdir -p "$WS_ROOT/.tmp"
+PEERLOG="$(mktemp "$WS_ROOT/.tmp/elevation-peer-XXXXXX")"
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a

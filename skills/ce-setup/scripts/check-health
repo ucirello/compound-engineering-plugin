@@ -445,7 +445,7 @@ if [ "$in_repo" = "yes" ]; then
             case "$preference_model" in
               [A-Za-z0-9]*)
                 case "$preference_model" in
-                  *[!A-Za-z0-9._:/-#]*)
+                  *[!A-Za-z0-9._:/#-]*)
                     [ -z "$work_engine_preferences_error" ] && work_engine_preferences_error="invalid model '$preference_model' in work_engine_preferences"
                     ;;
                 esac

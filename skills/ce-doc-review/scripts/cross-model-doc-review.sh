@@ -81,21 +81,6 @@ PY_BIN=""
 log()  { printf '[cross-model-doc] %s\n' "$*" >&2; }
 skip() { log "$*"; exit 0; }   # non-blocking: announce reason, exit clean, no output
 
-workspace_tmp_dir() {
-  local root
-  root="$(jj workspace root 2>/dev/null || pwd)"
-  mkdir -p "$root/.tmp" || return 1
-  printf '%s\n' "$root/.tmp"
-}
-
-mktemp_ws() {  # [-d] <prefix>
-  local dir dash_d="" prefix
-  dir="$(workspace_tmp_dir)" || return 1
-  if [ "$1" = "-d" ]; then dash_d="-d"; shift; fi
-  prefix="$1"
-  mktemp $dash_d "$dir/${prefix}-XXXXXX"
-}
-
 TRANSIENT_RETRY_DELAY_SECS="${CROSS_MODEL_TRANSIENT_RETRY_DELAY_SECS:-5}"
 case "$TRANSIENT_RETRY_DELAY_SECS" in ''|*[!0-9]*) skip "transient retry delay must be an integer from 0 to 60; skipping" ;; esac
 [ "$TRANSIENT_RETRY_DELAY_SECS" -le 60 ] || skip "transient retry delay must be an integer from 0 to 60; skipping"
@@ -119,12 +104,7 @@ route_effort() {   # <route> -> requested effort: the override where the route t
   if [ -n "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ]; then
     case "$1" in
       codex|claude|grok-cli) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
-      opencode)
-        case "$CROSS_MODEL_EFFORT_OVERRIDE" in
-          none|minimal|low|medium|high|xhigh|max|default) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
-        esac
-        ;;
-      opencode2)
+      opencode|opencode2)
         case "$CROSS_MODEL_EFFORT_OVERRIDE" in
           none|minimal|low|medium|high|xhigh|max|default) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
         esac
@@ -321,25 +301,24 @@ adapter_argv() {
       esac
       ;;
     opencode2)
-      # Distinct from opencode. Surveyed `opencode2 run --help` (v2.0.6): no --dir
-      # (run_timeout_cmd already cds to PEER_WORKDIR); --model is
-      # provider/model#variant; no --variant flag.
-      printf '%s\0' opencode2 run --format json --file "$PROMPT_FILE"
-      printf '%s\0' "Follow the attached brief. Return only schema-shaped JSON."
+      # Distinct from opencode. Flags from `opencode2 run --help` only: no --dir,
+      # no --variant. cwd is PEER_WORKDIR via run_timeout_cmd. --model keeps
+      # provider/model#variant intact when present.
       _oc2_model="$(route_model opencode2)"
       _oc2_effort="$(route_effort opencode2)"
+      printf '%s\0' opencode2 run --format json --file "$PROMPT_FILE" --auto
       if [ "$_oc2_model" != "auto" ] && [ -n "$_oc2_model" ]; then
         case "$_oc2_model" in
           *'#'*) printf '%s\0' --model "$_oc2_model" ;;
           *)
             case "$_oc2_effort" in
-              none|minimal|low|medium|high|xhigh|max|default)
-                printf '%s\0' --model "${_oc2_model}#${_oc2_effort}" ;;
+              none|minimal|low|medium|high|xhigh|max|default) printf '%s\0' --model "${_oc2_model}#${_oc2_effort}" ;;
               *) printf '%s\0' --model "$_oc2_model" ;;
             esac
             ;;
         esac
       fi
+      printf '%s\0' "Follow the attached brief. Return only schema-shaped JSON."
       ;;
     *) return 1 ;;
   esac
@@ -573,13 +552,16 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp_ws xmodel-doc-prompt)"
-PEERLOG="$(mktemp_ws xmodel-doc-log)"
+_WS_ROOT="$(jj workspace root 2>/dev/null)" || _WS_ROOT=""
+if [ -n "$_WS_ROOT" ]; then SCRATCH_TMP_BASE="$_WS_ROOT/.tmp"; else SCRATCH_TMP_BASE=".tmp"; fi
+(umask 077; mkdir -p "$SCRATCH_TMP_BASE") || skip "cannot create scratch .tmp at $SCRATCH_TMP_BASE; skipping"
+PROMPT_FILE="$(mktemp "$SCRATCH_TMP_BASE/xmodel-doc-prompt-XXXXXX")"
+PEERLOG="$(mktemp "$SCRATCH_TMP_BASE/xmodel-doc-log-XXXXXX")"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp_ws xmodel-doc-err)"
+PEERERR="$(mktemp "$SCRATCH_TMP_BASE/xmodel-doc-err-XXXXXX")"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
@@ -1079,18 +1061,12 @@ parse_opencode_events() {  # <logfile> <outfile>
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e 'select((.findings|type)=="array")' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp_ws ce-opencode-text)" || return 1
+  tmp="$(mktemp "${SCRATCH_TMP_BASE:-.tmp}/ce-opencode-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_findings_json "$tmp" "$2"
   local st=$?
   rm -f "$tmp"
   return "$st"
-}
-
-parse_opencode2_events() {  # <logfile> <outfile>
-  # Own parser: opencode2 --format json is not the opencode event stream.
-  parse_structured "$1" "$2" && return 0
-  recover_findings_json "$1" "$2"
 }
 
 # Run one route for a provider; leaves a schema-shaped (pre-normalization) $RAW_OUT on success.
@@ -1136,7 +1112,11 @@ attempt_route() {   # <provider> <route>
                  [ "$RUN_SUCCEEDED" = true ] && parse_opencode_events "$PEERLOG" "$RAW_OUT" ;;
     opencode2)   run_timeout_cmd "" "$attempt_hard" idle
                  classify_route_output
-                 [ "$RUN_SUCCEEDED" = true ] && parse_opencode2_events "$PEERLOG" "$RAW_OUT" ;;
+                 if [ "$RUN_SUCCEEDED" = true ]; then
+                   parse_opencode_events "$PEERLOG" "$RAW_OUT" \
+                     || jq -e 'select((.findings|type)=="array")' "$PEERLOG" > "$RAW_OUT" 2>/dev/null \
+                     || recover_findings_json "$PEERLOG" "$RAW_OUT"
+                 fi ;;
   esac
   if [ "$RUN_SUCCEEDED" != true ]; then
     rm -f "$RAW_OUT"
@@ -1169,8 +1149,8 @@ run_provider() {   # <provider>
   # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
   # OUT is published to RUN_DIR only after the peer process exits (normalize below),
   # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
-  # unique-dir creation under workspace .tmp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp_ws -d xmodel-doc-peer)" || PEER_WORKDIR="$RUN_DIR"
+  # mktemp fails (preserves prior behavior over failing the pass).
+  PEER_WORKDIR="$(mktemp -d "${SCRATCH_TMP_BASE:-.tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -1227,7 +1207,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp_ws xmodel-doc-norm)"
+    _norm="$(mktemp "${SCRATCH_TMP_BASE:-.tmp}/xmodel-doc-norm-XXXXXX")"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

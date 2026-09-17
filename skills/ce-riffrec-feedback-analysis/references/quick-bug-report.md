@@ -4,14 +4,7 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Create `OUTPUT_DIR` under the workspace `.tmp` root in the same shell as the analyzer invocation, set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
-
-```bash
-ROOT="$(jj workspace root 2>/dev/null || pwd)";
-mkdir -p "$ROOT/.tmp";
-OUTPUT_DIR="$ROOT/.tmp/riffrec-quick-$$";
-mkdir -p "$OUTPUT_DIR";
-```
+1. Create `OUTPUT_DIR` with `mktemp -d "$(jj workspace root)/.tmp/riffrec-quick-XXXXXX"` (fallback `mktemp -d ".tmp/riffrec-quick-XXXXXX"` when `jj workspace root` fails; create the `.tmp` parent if needed), set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
 
 2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 
@@ -37,7 +30,7 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- No commit of `raw/` or `frames/` — they live only in the workspace `.tmp` directory.
+- Do not include `raw/` or `frames/` in the current Jujutsu change — they live only in the workspace `.tmp` directory.
 - No source-mapping pass across the codebase.
 
 ## Escalation

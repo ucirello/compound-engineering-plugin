@@ -8,7 +8,7 @@ Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
 2. **Working copy changes.** If there are uncommitted changes (`jj diff` is non-empty), review those.
-3. **Unpushed changes vs base bookmark.** If the working copy is clean, review `jj diff --from $(jj log -r 'heads(::@ & ::<base>)' -T 'commit_id ++ "\n"' --no-graph) --to @` where `<base>` is the default bookmark (main or master).
+3. **Unpushed commits vs base branch.** If the working copy is clean, review `jj diff --from $(jj log -r 'fork_point(@ | <base>)' --no-graph -T 'commit_id') --to @` where `<base>` is the default bookmark (main or master).
 
 The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run jj commands yourself unless PR scope mode requires it (below).
 

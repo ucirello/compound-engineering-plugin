@@ -13,9 +13,12 @@ A supplied folder or collection is a discovery boundary, not a selected document
 1. Search the folder or collection the user supplied; otherwise resolve the managed root in the current shell call with this block, then enumerate candidate files beneath `$SCRATCH_ROOT/ce-handoff/`. Bound the candidate set before inspecting content; prefer recent files and current repository or working-directory affinity without making repository affinity mandatory. Resolve the root with this block:
 
    ```bash
-   ROOT="$(jj workspace root 2>/dev/null || pwd)";
-   mkdir -p "$ROOT/.tmp";
-   SCRATCH_ROOT="$ROOT/.tmp/rocketclaw";
+   WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)" || WORKSPACE_ROOT="";
+   if [ -n "$WORKSPACE_ROOT" ]; then SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"; else SCRATCH_ROOT=".tmp"; fi;
+   if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+   (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+   if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+   chmod 700 "$SCRATCH_ROOT" || exit 1;
    ```
 
 2. Before reading any candidate metadata or frontmatter, resolve the discovery boundary and exclude symlink candidates and candidates whose resolved path escapes that boundary. This discovery-only containment rule does not restrict an explicit selected source.

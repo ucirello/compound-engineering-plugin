@@ -11,7 +11,7 @@ Put a working feature in front of the user and turn their live observations into
 
 **Done:** the user ends the polish loop, every requested fix is reflected in the live feature or reported as blocked, and the in-scope changes are saved in local change(s). A server or workspace blocker also ends the run when it is reported with the evidence needed to resume.
 
-**Boundaries:** the user drives what to inspect and change; do not invent an autonomous checklist or expand into general QA. Never work on the repository's default bookmark. This workflow may edit and locally save the requested polish as a change, but it never pushes or opens a PR.
+**Boundaries:** the user drives what to inspect and change; do not invent an autonomous checklist or expand into general QA. Never work on the repository's default bookmark. This workflow may edit and locally describe the requested polish, but it never pushes or opens a PR.
 
 ## Run
 

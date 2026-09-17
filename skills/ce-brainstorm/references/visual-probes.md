@@ -76,9 +76,12 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-ROOT="$(jj workspace root 2>/dev/null || pwd)";
-mkdir -p "$ROOT/.tmp";
-SCRATCH_ROOT="$ROOT/.tmp";
+WS_ROOT="$(jj workspace root 2>/dev/null)" || WS_ROOT="";
+if [ -n "$WS_ROOT" ]; then SCRATCH_ROOT="$WS_ROOT/.tmp"; else SCRATCH_ROOT=".tmp"; fi;
+if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+chmod 700 "$SCRATCH_ROOT" || exit 1;
 PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" start --root "$PROBE_DIR"
 ```
@@ -87,9 +90,12 @@ Append `--foreground` to that `start` command for foreground mode. Status and st
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-ROOT="$(jj workspace root 2>/dev/null || pwd)";
-mkdir -p "$ROOT/.tmp";
-SCRATCH_ROOT="$ROOT/.tmp";
+WS_ROOT="$(jj workspace root 2>/dev/null)" || WS_ROOT="";
+if [ -n "$WS_ROOT" ]; then SCRATCH_ROOT="$WS_ROOT/.tmp"; else SCRATCH_ROOT=".tmp"; fi;
+if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
+(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
+chmod 700 "$SCRATCH_ROOT" || exit 1;
 PROBE_DIR="$SCRATCH_ROOT/ce-brainstorm-visual/<run-id>"; (umask 077; mkdir -p "$PROBE_DIR") || exit 1; chmod 700 "$PROBE_DIR" || exit 1;
 node "$SKILL_DIR/scripts/light-webserver.js" status --root "$PROBE_DIR"
 # stop: the same command with `stop` in place of `status` (re-set SKILL_DIR again)

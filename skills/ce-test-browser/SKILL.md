@@ -1,6 +1,6 @@
 ---
 name: ce-test-browser
-description: Run browser tests for pages affected by the current bookmark or PR. Use when asked to run or check browser tests for the current change.
+description: Run browser tests for pages affected by the current change, bookmark, or PR. Use when asked to run or check browser tests for the current change.
 argument-hint: "[PR number, bookmark name, 'current', or --port PORT]"
 ---
 
@@ -29,8 +29,8 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 Read `references/route-and-report.md` from this skill's directory before step 3 (Map changed files to routes). It carries the route-mapping patterns, the port and server commands, the per-page checks, the two human-facing prompts, and the summary format.
 
-1. **Select the driver** per the policy above and record it. This also requires a jj repository with changes to test.
-2. **Determine test scope** from the argument: a PR number → `GIT_DIR=$(jj git root) gh pr view [number] --json files -q '.files[].path'`; `current` or empty → `jj diff --name-only -r main..@`; a bookmark name → `jj diff --name-only -r main..[bookmark]`.
+1. **Select the driver** per the policy above and record it. This also requires a Jujutsu workspace with changes to test.
+2. **Determine test scope** from the argument: a PR number → `GIT_DIR="$(jj git root)" gh pr view [number] --json files -q '.files[].path'`; `current` or empty → `jj diff --from main --to @ --name-only`; a bookmark name → `jj diff --from main --to [bookmark] --name-only`.
 3. **Map changed files to routes** and build the list of URLs to test.
 4. **Determine the dev server port.** `scripts/resolve-port.sh` resolves it and prints the port alone on stdout: an explicit port argument; else a `--port` flag in a `package.json` dev/start script; else `PORT=` in `.env`, `.env.local`, or `.env.development`; else `3000`. Pass an explicit port when the user gave `--port N`, or when your active project instructions already in context state the dev-server port. Do not grep instruction files for one: prose mentions in docs, examples, and troubleshooting are unreliable and false-positive-prone, while config files and `.env` are trustworthy. Each mode runs the script in the shell call that needs the port, so no port value has to survive between shell calls or be transcribed out of prose; the reference gives the command. Manual mode uses that port as-is: the user controls their own server, so do not scan for alternatives.
 5. **Verify the dev server is running** before asking the headed/headless question — a manual run with no server stops here, so asking first would waste the question.

@@ -19,13 +19,13 @@ When the invocation names a Compound Pack to add, create, or scaffold (the `pack
 
 ## Artifact Root Resolution
 
-Every RocketClaw skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
+Every RocketClaw skill that writes or reads an artifact directory (`solutions`, `plans`, `ideation`, and the other plugin-owned trees) resolves its root through the rule below. `ce-setup` carries the canonical statement and reports the resolved root so an operator can confirm where artifacts land before running other skills.
 
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the workspace and is not the workspace root itself. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -33,7 +33,7 @@ Every RocketClaw skill that writes or reads an artifact directory (`solutions`, 
 
 ### Step 1: Determine Plugin Version
 
-Detect the installed plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
+Detect the installed rocketclaw plugin version by reading the plugin metadata or manifest when the platform exposes it. If the version cannot be determined, skip this step.
 
 If a version is found, pass it to the check script via `--version`. Otherwise omit the flag.
 
@@ -64,8 +64,8 @@ Repo-local fixes the health report names apply only to the checkout that report 
 
 After the health report, decide Phase 2 from writable-checkout availability:
 
-- If this session has a writable jj workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
-- If this session has no writable workspace, but the user named a repository and the harness exposes a remote repo-work surface with a writable checkout, run Phase 2 on that surface instead and report the remote repo-local fixes in Phase 3.
+- If this session has a writable JJ workspace, run Phase 2 locally, including when `project_issues` is 0. Phase 2 always refreshes the example and always offers to create `config.yaml` when that file is missing.
+- If this session has no writable checkout, but the user named a repository and the harness exposes a remote repo-work surface with a writable checkout, run Phase 2 on that surface instead and report the remote repo-local fixes in Phase 3.
 - Otherwise skip Phase 2 and go to Phase 3, saying repo-local writes were skipped because no writable checkout is available.
 
 If the report names a legacy Compound Codex tool map, offer to remove it following `references/legacy-codex-tool-map.md` from this skill's directory. That block lives in the user's Codex home, not the checkout, so the offer stands whether or not Phase 2 runs.
@@ -73,7 +73,7 @@ If the report names a legacy Compound Codex tool map, offer to remove it followi
 Also remediate these project issues when the report names them:
 
 - obsolete `rocketclaw.local.md`
-- `.rocketclaw/config.local.yaml` exists but is not safely ignored
+- `.rocketclaw/config.local.yaml` exists but is not covered by `.gitignore`
 - `.rocketclaw/config.example.yaml` is missing or outdated
 - the health report marks the `ce-work` skill implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`
 - the health report marks `docs_root` invalid (`Invalid docs_root ...`) — artifacts will not be written until it is fixed
@@ -84,7 +84,7 @@ If optional tools are missing, do not offer a bulk install. The diagnostic alrea
 
 Read `references/repo-fixes.md` from this skill's directory before making any repo-local change. It carries Steps 4-9: removing the obsolete `rocketclaw.local.md`, refreshing the example config, offering to create `config.yaml`, repairing invalid `work_engine_preferences` and `docs_root`, the two `.gitignore` offers, and the agent-instructions offers (a knowledge-store mention, the compounding directive, and the chat-register directive for `ce-noslop`).
 
-All paths there resolve from the repository root (`jj workspace root`), not the current working directory. Maintaining the generated example files is the work Phase 2 does on its own — refreshing `config.example.yaml` and removing the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
+All paths there resolve from the workspace root (`jj workspace root`), not the current working directory. Maintaining the generated example files is the work Phase 2 does on its own — refreshing `config.example.yaml` and removing the superseded `config.local.example.yaml`. Every change to a user-owned file is offered and applied only if the user approves.
 
 ## Phase 3: Summary
 

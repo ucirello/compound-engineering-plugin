@@ -7,7 +7,7 @@ Dispatch context supplies: `{window}` (a date range, relative window, or since-r
 Work through these sources for the window, cheapest first:
 
 1. **Change activity** — `jj log` over the window (subjects, change ids, dates, authors), and for the substantial changes, a stat-level view of what they touched. Group obviously-related changes (a feature bookmark's changes, a fix and its follow-ups) rather than listing them flat.
-2. **Merged and open PRs** — only when a PR interface is reachable (a `gh` CLI that responds, a connector/MCP tool). When invoking `gh`, pair it with `GIT_DIR=$(jj git root)` in the same shell. This portion is capability-gated: when no interface is reachable, note "PR evidence unavailable" in one line and move on — never treat the missing interface as an error and never guess PR state from bookmark names.
+2. **Merged and open PRs** — only when a PR interface is reachable (a `gh` CLI that responds, paired as `GIT_DIR="$(jj git root)" GIT_WORK_TREE="$(jj workspace root)" gh ...`, a connector/MCP tool). This portion is capability-gated: when no interface is reachable, note "PR evidence unavailable" in one line and move on — never treat the missing interface as an error and never guess PR state from bookmark names.
 3. **Project docs** — plans, brainstorms, and solution docs added or modified in the window (`<root>/plans/`, `docs/brainstorms/`, `<root>/solutions/`, or wherever this repo keeps them). These carry the *why* behind the change activity — quote the decision or problem statement, not the whole doc.
 
 ## Output

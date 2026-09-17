@@ -60,9 +60,9 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw via
-                            `jj workspace root`, else cwd/.tmp/rocketclaw)
-  CE_WORK_RUNS_ROOT         parent ce-work run dir containing all <run-id>/ dirs
+  CE_PEER_JOBS_ROOT         base dir (<workspace>/.tmp via `jj workspace root`,
+                            or local .tmp when not inside a Jujutsu workspace)
+  CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -115,7 +115,7 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the workspace `.tmp/rocketclaw` (same as POSIX),
+  jobs root defaults under the workspace `.tmp` (then cwd `.tmp`),
             owner-private.
 
 Pure stdlib. No third-party dependencies.
@@ -147,28 +147,26 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-
-
-def _workspace_tmp() -> str:
-    """Workspace `.tmp` via public `jj workspace root`; else cwd/.tmp."""
+def _jj_workspace_root() -> str | None:
     try:
         proc = subprocess.run(
             ["jj", "workspace", "root"],
             capture_output=True,
             text=True,
             check=False,
-            cwd=os.getcwd(),
         )
-        root = proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else os.getcwd()
     except OSError:
-        root = os.getcwd()
-    return os.path.join(root, ".tmp")
+        return None
+    root = (proc.stdout or "").strip()
+    return root if proc.returncode == 0 and root else None
 
 
-def _default_jobs_root() -> str:
-    return os.path.join(_workspace_tmp(), "rocketclaw")
-
-
+def default_jobs_root() -> str:
+    """Workspace `.tmp` when `jj workspace root` succeeds; otherwise cwd `.tmp`."""
+    ws = _jj_workspace_root()
+    if ws:
+        return os.path.join(ws, ".tmp")
+    return os.path.abspath(".tmp")
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -225,9 +223,10 @@ _RUNNER_HARD_GRACE = 30.0
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe: a workspace that denies writes under `.tmp` refuses
-    the mkdir, and one that lets a pre-existing root stand still fails the
-    access check.
+    Creation is the probe: a sandbox that denies writes under the chosen
+    `.tmp` refuses the mkdir, and one that lets a pre-existing root stand still
+    fails the access check, so both land on the cwd `.tmp` fallback instead of
+    failing at the first job.
     """
     try:
         os.mkdir(path, 0o700)
@@ -242,30 +241,36 @@ def _private_root_usable(path: str) -> bool:
     return os.access(path, os.W_OK)
 
 
+def _fallback_root() -> str:
+    return os.path.abspath(".tmp")
+
+
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
-    tmp = _workspace_tmp()
-    if not _private_root_usable(tmp):
-        raise RunnerError(f"cannot create workspace scratch dir {tmp}")
-    root = os.path.abspath(_default_jobs_root())
-    if not _private_root_usable(root):
-        raise RunnerError(f"cannot create jobs root {root}")
-    return root
+    primary = default_jobs_root()
+    if IS_WINDOWS or _private_root_usable(primary):
+        return os.path.abspath(primary)
+    return os.path.abspath(_fallback_root())
 
 
 def candidate_jobs_root_bases() -> list:
-    """Every root an existing job may live under: the configured root, or the
-    workspace `.tmp/rocketclaw` root.
+    """Every root an existing job may live under: the configured root alone, or
+    the workspace `.tmp` and cwd `.tmp` fallback (deduplicated, primary first).
 
     Creation uses jobs_root_base(); lookup of an already-started job must not
-    depend on which root *this* invocation would create under.
+    depend on which root *this* invocation would create under, because a
+    sandboxed session and a later unsandboxed one resolve different roots.
     """
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]
-    return [os.path.abspath(_default_jobs_root())]
+    bases = [os.path.abspath(default_jobs_root())]
+    fallback = os.path.abspath(_fallback_root())
+    if fallback not in bases:
+        bases.append(fallback)
+    return bases
 
 
 def skill_runs_root(skill: str) -> str:
@@ -855,7 +860,7 @@ def ensure_owned_dirs(base: str, path: str) -> None:
         # managed default (repairing a default left non-private, which is what
         # the POSIX unconditional chmod is for). A pre-existing user-supplied
         # CE_PEER_JOBS_ROOT keeps its ACLs and rests on the owner check.
-        default_root = os.path.abspath(_default_jobs_root())
+        default_root = os.path.abspath(default_jobs_root())
         ours = created_base or (
             default_root is not None
             and os.path.normcase(cur) == os.path.normcase(default_root))
@@ -1951,7 +1956,8 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (see issue #1243)."
+            "a Windows Python 3 build (see "
+            "EveryInc/rocketclaw-plugin#1243)."
         )
 
 

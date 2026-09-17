@@ -22,7 +22,7 @@ Source 3 is unavailable in a corpus checkout with no history, which is the norma
 
 **Pipeline the waves.** Start a unit's defense as soon as its proposal set returns. Do not wait for wave 1 to finish; the two waves share no state across units. It is 2N dispatches on N units, so plan the wave count against the host's concurrency cap (`references/workflow-shapes.md`).
 
-Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a commit message returns "no provenance found" for everything, which silently converts the audit into a demolition.
+Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a change description returns "no provenance found" for everything, which silently converts the audit into a demolition.
 
 ## Finding schema
 
@@ -70,7 +70,7 @@ Exactly three, one per finding:
 
 - **`cut`**: a real search over all three sources found no provenance. The proposal stands.
 - **`reduce`**: the constraint is real and the prose states it at several times the length needed. The defender returns the minimal form that preserves the constraint.
-- **`keep`**: concrete citable provenance a capable model could not infer, such as a test asserting it, a documented learning, or a commit that added it to fix a named bug. The ruling must carry the citation: path, test name, or sha.
+- **`keep`**: concrete citable provenance a capable model could not infer, such as a test asserting it, a documented learning, or a change that added it to fix a named bug. The ruling must carry the citation: path, test name, or revision id.
 
 A defender returns one row per finding, in these fields, and nothing else:
 
@@ -79,7 +79,7 @@ A defender returns one row per finding, in these fields, and nothing else:
 | `id` | the proposer's finding id, unchanged; a ruling that cannot be joined back is discarded |
 | `ruling` | `cut` / `reduce` / `keep` |
 | `sources_searched` | which of the three, named; plus the query used, so an empty search is visible |
-| `citation` | required on `keep`: path, test name, or sha. Empty is not a `keep` |
+| `citation` | required on `keep`: path, test name, or revision id. Empty is not a `keep` |
 | `minimal_form` | required on `reduce`: the shortest text preserving the constraint |
 | `pinning_test` | test path and assertion if a grep of the target text hits the suite, else empty |
 
@@ -125,4 +125,4 @@ Expect roughly half of `reduce` items to be pinned by a test asserting exact str
 - **A cut with no provenance found after a real search is a confident cut. A cut the defender saves with a citation is off the list.** Do not relitigate a defended keep.
 - **Absence of evidence is weaker than the project's own standard for a change.** Where the guidance requires a reproduced failure or an exact failing path, a search that found nothing is a verification task, not a change. Say which of your cuts rest on that weaker basis.
 
-Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and version history. Expect the audit to contradict the premise you started with. That is its value.
+Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and revision history. Expect the audit to contradict the premise you started with. That is its value.

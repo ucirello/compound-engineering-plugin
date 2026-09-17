@@ -52,10 +52,10 @@ def host_from_env() -> str:
         return "grok"
     if env.get("CURSOR_AGENT") or env.get("CURSOR_CONVERSATION_ID"):
         return "cursor"
-    if env.get("OPENCODE2") or env.get("OPENCODE2_TERMINAL"):
-        return "opencode2"
     if env.get("OPENCODE_TERMINAL"):
         return "opencode"
+    # opencode2 is a distinct harness with no unique env in surveyed --help;
+    # when the host attests it, cost.host may still be unknown here.
     return "unknown"
 
 

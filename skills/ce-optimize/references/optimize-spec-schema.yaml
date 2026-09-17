@@ -371,7 +371,7 @@ optional_fields:
       backend:
         type: enum
         values:
-          - workspace  # jj workspaces for isolation (default)
+          - workspace  # Jujutsu workspaces for isolation (default)
           - codex      # Codex sandboxes for isolation
         default: workspace
       max_concurrent:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against the jj tree.
+"""Validate cited claims in a solution doc against the Jujutsu tree.
 
 Usage:
     python3 validate-doc-claims.py <doc-path>
@@ -17,23 +17,23 @@ citations against the repository:
        exist in the working tree, including already-absolute citations that
        fall inside the repo (rewritten to repo-relative before candidacy).
        Tokens containing '../' resolve from the doc's directory (those
-       escaping the repo are skipped). Misses tracked at `@-` or the
-       upstream default bookmark still count as real paths and are classified
-       (deleted/uncommitted vs stale checkout). Tokens missing everywhere
-       are flagged only when path-shaped; slash-delimited identifiers
-       (bookmark names, VCS refs, provider/model IDs) and slash-prefixed
-       URL routes are skipped.
+       escaping the repo are skipped). Misses tracked at `@-` (parent of
+       the working-copy change) or the upstream default bookmark still
+       count as real paths and are classified (deleted/uncommitted vs
+       stale checkout). Tokens missing everywhere are flagged only when
+       path-shaped; slash-delimited identifiers (bookmark names, remote
+       refs, provider/model IDs) and slash-prefixed URL routes are skipped.
     2. Cited commit SHAs (7-40 hex chars with at least one digit and one
        a-f letter) resolve to commits, classified by reachability from
-       `@` and the upstream default bookmark. Session ids, content hashes
-       and blob hashes are hex too, so an unresolvable hex word is
-       reported in one of two tiers rather than asserted to be fabricated:
-       FLAG when the text right before it presents it as a commit (a
-       likely fabricated citation), NOTE otherwise (an identifier this
-       script cannot classify). Only FLAG affects the exit code. The
-       cue vocabulary therefore ranks confidence; it does not decide
-       whether an item is surfaced, so a phrasing it misses is reported
-       one tier down instead of disappearing.
+       `@` and the upstream default bookmark (`trunk()`). Session ids,
+       content hashes and blob hashes are hex too, so an unresolvable hex
+       word is reported in one of two tiers rather than asserted to be
+       fabricated: FLAG when the text right before it presents it as a
+       commit (a likely fabricated citation), NOTE otherwise (an
+       identifier this script cannot classify). Only FLAG affects the
+       exit code. The cue vocabulary therefore ranks confidence; it does
+       not decide whether an item is surfaced, so a phrasing it misses is
+       reported one tier down instead of disappearing.
     3. Relative markdown link targets resolve from the doc's location.
     4. Dangling drafting scaffold: "Learning(s) N" numbering and
        unresolved {{...}} placeholder tokens. Inline code spans and fenced
@@ -64,7 +64,7 @@ SHA_RE = re.compile(r"\b[0-9a-f]{7,40}\b")
 # one is a commit citation. Words naming some other git object ("blob", "tree"),
 # any hash ("sha"), and the bare tool name ("git", which precedes every object
 # kind equally) are deliberately absent — they are what the flag used to mistake
-# for commits. Those words describe citation text in user docs, not VCS calls.
+# for commits.
 COMMIT_WORDS = frozenset(
     "commit commits committed committing revision revisions rev revs "
     "revert reverts reverted cherry-pick cherry-picked rebase rebased "
@@ -104,7 +104,7 @@ def usage_fail(msg: str) -> "NoReturn":
 def jj(args: list[str], cwd: str) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["jj", "--no-pager", "--color", "never", "--quiet", *args],
+            ["jj", "--quiet", "--no-pager", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -113,6 +113,13 @@ def jj(args: list[str], cwd: str) -> tuple[int, str]:
         return result.returncode, result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
+
+
+def jj_count(revset: str, cwd: str) -> int | None:
+    code, out = jj(["log", "-r", revset, "--count"], cwd)
+    if code == 0 and out.isdigit():
+        return int(out)
+    return None
 
 
 def split_body(text: str) -> tuple[str, int]:
@@ -137,7 +144,7 @@ def is_path_candidate(token: str, *, known_path: bool = False) -> bool:
     if "://" in token or token.startswith(("http", "#", "/", "~")):
         return False
     if token.startswith(("origin/", "upstream/", "refs/")):
-        return False  # VCS refs, not repo paths
+        return False  # remote-ref / bookmark-style identifiers, not repo paths
     if PLACEHOLDER_CHARS & set(token):
         return False
     if any(sub in token for sub in PLACEHOLDER_SUBSTRINGS):
@@ -147,7 +154,7 @@ def is_path_candidate(token: str, *, known_path: bool = False) -> bool:
 
 def is_path_shaped(token: str, base: str) -> bool:
     """Distinguish a path citation from a slash-delimited identifier
-    (bookmark name, provider/model ID) among tokens found nowhere in the repo."""
+    (bookmark name, provider/model ID) among tokens found nowhere in jj."""
     segments = token.split("/")
     if re.search(r"\.[A-Za-z0-9]{1,8}$", segments[-1]):
         return True
@@ -237,6 +244,60 @@ def strip_repo_prefix(token: str, base: str) -> str:
     return rel.replace("\\", "/")
 
 
+def _fileset_path(path: str) -> str | None:
+    """Quote a workspace-relative path for a fileset, or None if unsafe."""
+    if not path or any(ch in path for ch in '"\n\r'):
+        return None
+    return path
+
+
+def rev_has_path(rev: str, path: str, cwd: str) -> bool:
+    """True when `path` exists as a file or directory prefix in `rev`.
+
+    Uses workspace-relative filesets (`root-file:` exact, `root:` prefix)
+    with cwd at the workspace root so listed paths stay workspace-relative.
+    """
+    quoted = _fileset_path(path)
+    if quoted is None:
+        return False
+    _, out = jj(["file", "list", "-r", rev, "--", f'root-file:"{quoted}"'], cwd)
+    if out:
+        return True
+    _, out = jj(["file", "list", "-r", rev, "--", f'root:"{quoted}"'], cwd)
+    return bool(out)
+
+
+def resolve_upstream(cwd: str) -> str | None:
+    """Return a revset for the upstream default bookmark, or None.
+
+    Prefers `trunk()` when it is not `root()`. Falls back to `main@origin`
+    then `master@origin`. Display name is the revset string itself.
+    """
+    n = jj_count("trunk() ~ root()", cwd)
+    if n is not None and n > 0:
+        code, names = jj(
+            [
+                "log",
+                "-r",
+                "trunk()",
+                "--no-graph",
+                "-T",
+                'separate(" ", remote_bookmarks)',
+            ],
+            cwd,
+        )
+        if code == 0 and names:
+            for name in names.split():
+                if name.endswith("@origin") or name.endswith("@upstream"):
+                    return name
+        return "trunk()"
+    for candidate in ("main@origin", "master@origin"):
+        n = jj_count(f"present({candidate})", cwd)
+        if n is not None and n > 0:
+            return candidate
+    return None
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         usage_fail(f"usage: {os.path.basename(argv[0])} <doc-path>")
@@ -267,32 +328,14 @@ def main(argv: list[str]) -> int:
     in_jj = code == 0 and bool(repo_root)
     upstream: str | None = None
     if in_jj:
-        for candidate in ("origin/main", "origin/master"):
-            code, out = jj(
-                [
-                    "log",
-                    "-r",
-                    f"present({candidate})",
-                    "--limit",
-                    "1",
-                    "-T",
-                    'commit_id ++ "\\n"',
-                    "--no-graph",
-                ],
-                repo_root,
-            )
-            if code == 0 and out:
-                upstream = candidate
-                break
+        upstream = resolve_upstream(repo_root)
         if upstream:
-            code, behind = jj(
-                ["log", "-r", f"@..{upstream}", "--count"],
-                repo_root,
-            )
-            if code == 0 and behind.isdigit() and int(behind) > 0:
+            behind = jj_count(f"@..{upstream}", repo_root)
+            if behind is not None and behind > 0:
                 infos.append(
-                    f"INFO: workspace is {behind} commits behind {upstream} — "
-                    "verify merge-state claims against remote truth (gh pr view), "
+                    f"INFO: workspace is {behind} changes behind {upstream} — "
+                    "verify merge-state claims against remote truth "
+                    '(GIT_DIR="$(jj git root)" gh pr view), '
                     "not this checkout"
                 )
         else:
@@ -306,63 +349,15 @@ def main(argv: list[str]) -> int:
             "(scaffold and link checks still apply)"
         )
 
-    def rev_has_path(rev: str, path: str) -> bool:
-        if not in_jj:
-            return False
-        code, out = jj(["file", "list", "-r", rev, "--", path], repo_root)
-        if code != 0 or not out:
-            return False
-        prefix = path.rstrip("/") + "/"
-        for line in out.splitlines():
-            line = line.strip()
-            if line == path or line.startswith(prefix):
-                return True
-        return False
-
     def upstream_has_path(path: str) -> bool:
         if not (in_jj and upstream):
             return False
-        return rev_has_path(upstream, path)
+        return rev_has_path(upstream, path, repo_root)
 
-    def head_has_path(path: str) -> bool:
-        # `@` snapshots the working copy, so an uncommitted deletion is
-        # already absent there. `@-` is the parent change, which still holds
-        # a path removed only in the working copy.
+    def parent_has_path(path: str) -> bool:
         if not in_jj:
             return False
-        return rev_has_path("@-", path)
-
-    def rev_exists(rev: str) -> bool:
-        code, out = jj(
-            [
-                "log",
-                "-r",
-                f"present({rev})",
-                "--limit",
-                "1",
-                "-T",
-                'commit_id ++ "\\n"',
-                "--no-graph",
-            ],
-            repo_root,
-        )
-        return code == 0 and bool(out)
-
-    def is_ancestor(sha: str, rev: str) -> bool:
-        code, out = jj(
-            [
-                "log",
-                "-r",
-                f"present({sha}) & ::{rev}",
-                "--limit",
-                "1",
-                "-T",
-                'commit_id ++ "\\n"',
-                "--no-graph",
-            ],
-            repo_root,
-        )
-        return code == 0 and bool(out)
+        return rev_has_path("@-", path, repo_root)
 
     # --- 1. Cited repo paths ----------------------------------------------
     checked_paths = 0
@@ -393,17 +388,17 @@ def main(argv: list[str]) -> int:
         if os.path.exists(os.path.join(base, check)):
             checked_paths += 1
             continue
-        tracked_head = head_has_path(check)
+        tracked_parent = parent_has_path(check)
         tracked_upstream = upstream_has_path(check)
-        if not (tracked_head or tracked_upstream) and not is_path_shaped(
+        if not (tracked_parent or tracked_upstream) and not is_path_shaped(
             check, base
         ):
             continue  # bookmark name / provider ID, not a path citation
         checked_paths += 1
         loc = loc_suffix(raw)
-        if tracked_head:
+        if tracked_parent:
             flags.append(
-                f"FLAG path `{token}`{loc} — tracked at `@-` but missing from "
+                f"FLAG path `{token}`{loc} — tracked at @- but missing from "
                 "the working tree: deleted or uncommitted removal? Annotate as "
                 "historical (e.g. removed by this fix) or restore it."
             )
@@ -444,7 +439,8 @@ def main(argv: list[str]) -> int:
                 seen_shas[sha] = (line_no, True)
         for sha in order:
             line_no, cited = seen_shas[sha]
-            resolved = rev_exists(sha)
+            resolved_n = jj_count(f'commit_id("{sha}")', repo_root)
+            resolved = resolved_n is not None and resolved_n > 0
             loc = f" (line {line_no})"
             if not resolved:
                 if not cited:
@@ -465,25 +461,29 @@ def main(argv: list[str]) -> int:
                 )
                 continue
             checked_shas += 1
-            in_head = is_ancestor(sha, "@")
-            in_up = upstream is not None and is_ancestor(sha, upstream)
+            in_head = (jj_count(f'commit_id("{sha}") & ::@', repo_root) or 0) > 0
+            in_up = (
+                upstream is not None
+                and (jj_count(f'commit_id("{sha}") & ::{upstream}', repo_root) or 0)
+                > 0
+            )
             if in_head and (in_up or upstream is None):
                 continue
             if in_head and not in_up:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — reachable from `@` but not {upstream}: "
+                    f"FLAG sha {sha}{loc} — reachable from @ but not {upstream}: "
                     "local-only commit whose SHA may be rewritten on merge "
                     "(rebase/squash). Prefer citing the PR number."
                 )
             elif in_up:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — not reachable from `@` but reachable "
+                    f"FLAG sha {sha}{loc} — not reachable from @ but reachable "
                     f"from {upstream}: this checkout predates the merge. Add a "
                     "temporal qualifier or verify the claim via gh."
                 )
             else:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — exists but unreachable from `@`"
+                    f"FLAG sha {sha}{loc} — exists but unreachable from @"
                     + (f" or {upstream}" if upstream else "")
                     + ": likely a rebased-away commit. Prefer citing the PR number."
                 )

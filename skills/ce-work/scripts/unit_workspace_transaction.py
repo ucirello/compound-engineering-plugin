@@ -22,7 +22,6 @@ from unit_workspace_integration import (
     cmd_restore,
     cmd_wave_advance,
     matches_expected_apply,
-    path_in_tree,
     remove_introduced_paths,
     semantic_snapshot,
     validate_lock,
@@ -51,7 +50,7 @@ def _verification_command(args, operation: str = "integrate") -> list[str]:
 
 def _remove_owned_new_paths(repo: str, paths: set[str], pre_head: str) -> None:
     for rel in sorted(paths, key=lambda value: (value.count("/"), value), reverse=True):
-        if path_in_tree(repo, pre_head, rel):
+        if file_in_revision(repo, pre_head, rel):
             continue
         target = os.path.abspath(os.path.join(repo, rel))
         if os.path.commonpath([repo, target]) != repo:
@@ -78,18 +77,16 @@ def _restore_owned_verification(
         repo = doc["repository"]["toplevel"]
         pre = dict(unit["integration"]["pre_fold"])
         expected = unit["integration"]["expected_apply"]
-        if not (
-            matches_expected_apply(repo, unit)
-            and before_paths == set(expected["changed_paths"])
-        ):
+        if not matches_expected_apply(repo, unit, before):
             raise Operational("BLOCKED", "owned verification did not start from the expected transport application")
-        if commit_id(repo, "@") != before["head"] and not matches_expected_apply(repo, unit):
-            raise Operational("BLOCKED", "verification changed canonical HEAD; refusing automatic restoration")
+        if parent_commits(repo, "@") != parent_commits(repo, before["head"]) and before.get("parent") != (parent_commits(repo, "@") or [None])[0]:
+            raise Operational("BLOCKED", "verification changed canonical working-copy parent; refusing automatic restoration")
         verification_paths = after_paths - before_paths
     with locked_manifest(run_id, write=True) as doc:
         doc["units"][unit_id]["state"] = "restoring"
         event(doc, "restore-intent", unit_id, {"source": "controller-owned-verification"})
-    jj(repo, "restore", "--from", pre["head"])
+    restore_from = pre.get("parent") if pre.get("status_empty") and pre.get("parent") else pre["head"]
+    restore_to_revision(repo, restore_from)
     with locked_manifest(run_id) as doc:
         remove_introduced_paths(repo, doc["units"][unit_id])
     _remove_owned_new_paths(repo, verification_paths, pre["head"])
@@ -292,7 +289,7 @@ def _verify_run_locked(
             )
         deletion_paths = after_paths - before_paths
         cleaned_paths = sorted(deletion_paths)
-        jj(repo, "restore", "--from", before["head"])
+        restore_to_revision(repo, before.get("parent") or before["head"])
         _remove_owned_new_paths(repo, deletion_paths, before["head"])
     restored = semantic_snapshot(repo)
     if restored != before:
@@ -466,14 +463,9 @@ def cmd_integrate(args) -> tuple[str, dict]:
         with locked_manifest(args.run_id) as doc:
             repo = doc["repository"]["toplevel"]
             transport = doc["units"][args.unit_id]["transport"]["commit"]
+            transport_base = doc["units"][args.unit_id]["transport"]["base"]
             pre_head = doc["units"][args.unit_id]["integration"]["pre_fold"]["head"]
-            base = doc["units"][args.unit_id]["transport"]["base"]
-        if pre_head != base:
-            raise Operational(
-                "BLOCKED",
-                "three-way apply has no public jj equivalent (git cherry-pick); refusing fold-in onto an advanced HEAD",
-            )
-        jj(repo, "restore", "--from", transport)
+        apply_transport_change(repo, transport, pre_head, transport_base)
         cmd_mark_applied(_args(run_id=args.run_id, unit_id=args.unit_id, lock_token=token))
         with locked_manifest(args.run_id) as doc:
             unit = doc["units"][args.unit_id]

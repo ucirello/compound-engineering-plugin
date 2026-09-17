@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -203,8 +204,25 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
         shutil.rmtree(previous_dir, ignore_errors=True)
 
 
+def resolve_workspace_root() -> Path:
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            root = result.stdout.strip()
+            if root:
+                return Path(root)
+    except OSError:
+        pass
+    return Path.cwd()
+
+
 def default_output_dir(source_path: Path) -> Path:
-    cwd = Path.cwd()
+    cwd = resolve_workspace_root()
     stem = slugify(source_path.stem)
     if (cwd / "docs" / "brainstorms").is_dir():
         return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
@@ -361,23 +379,12 @@ def populate_source_snapshot(source_path: Path, snapshot_dir: Path, source_kind:
     }
 
 
-def exclusive_staging_dir(parent: Path, prefix: str) -> Path:
-    """Create a unique sibling staging directory under parent (not OS temp)."""
-    parent.mkdir(parents=True, exist_ok=True)
-    for _ in range(64):
-        candidate = parent / f"{prefix}{os.urandom(4).hex()}"
-        try:
-            candidate.mkdir(mode=0o700)
-            return candidate
-        except FileExistsError:
-            continue
-    raise RuntimeError(f"could not create staging directory under {parent}")
-
-
 def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = None) -> dict[str, Any]:
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir = exclusive_staging_dir(raw_dir.parent, f".{raw_dir.name}.staging-")
+    staging_dir = Path(
+        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
+    )
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
         promote_raw_snapshot(staging_dir, raw_dir)
@@ -665,7 +672,9 @@ def select_moments(
 def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[dict[str, Any]]) -> None:
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
-    staging_dir = exclusive_staging_dir(frames_dir.parent, f".{frames_dir.name}.staging-")
+    staging_dir = Path(
+        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
+    )
     try:
         if not recording_path or not recording_path.exists():
             for moment in moments:
@@ -1262,7 +1271,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = Path.cwd()
+    repo_root = resolve_workspace_root()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
@@ -1305,7 +1314,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: $rocketclaw:ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

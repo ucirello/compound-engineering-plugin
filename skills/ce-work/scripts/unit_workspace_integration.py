@@ -106,30 +106,30 @@ def cmd_integration_acquire(args) -> tuple[str, dict]:
 
 
 def semantic_snapshot(repo: str) -> dict:
-    head = commit_id(repo, "@")
-    raw = jj(repo, "status", check=False)
-    paths = status_paths(repo)
+    head = current_commit(repo)
+    raw = jj_text(repo, "diff", "--name-only")
+    bookmarks = bookmark_names(repo, "@") or bookmark_names(repo, "@-")
+    parents = parent_commits(repo, "@")
     return {
         "head": head,
-        "branch_ref": bookmark_name(repo),
+        "parent": parents[0] if parents else "",
+        "branch_ref": bookmarks[0] if bookmarks else "",
         "head_tree": head,
         "index_tree": head,
-        "status_sha256": digest_bytes(raw),
-        "status_empty": not bool(paths),
-        "worktree_index_empty": not bool(paths),
+        "status_sha256": digest_bytes(raw.encode()),
+        "status_empty": not bool(raw),
+        "worktree_index_empty": not bool(raw),
     }
 
 
 def expected_apply_snapshot(repo: str, pre_head: str, unit: dict) -> dict:
     transport = unit["transport"]
-    if pre_head != transport["base"]:
-        raise Operational(
-            "BLOCKED",
-            "three-way apply tree has no public jj equivalent (git merge-tree); refusing fold-in onto an advanced HEAD",
-            {"pre_head": pre_head, "transport_base": transport["base"]},
-        )
-    tree = transport["tree"]
-    return {"index_tree": tree, "changed_paths": diff_name_only(repo, pre_head, transport["commit"])}
+    if pre_head == transport["base"]:
+        tree = transport["tree"]
+    else:
+        tree = transport["commit"]
+    raw = diff_summary(repo, pre_head, tree)
+    return {"index_tree": tree, "changed_paths": parse_diff_paths(raw)}
 
 
 def matches_expected_apply(repo: str, unit: dict, snap: dict | None = None) -> bool:
@@ -138,15 +138,13 @@ def matches_expected_apply(repo: str, unit: dict, snap: dict | None = None) -> b
     expected = unit.get("integration", {}).get("expected_apply")
     if not pre or not expected:
         return False
-    pre_parent = jj_text(
-        repo, "log", "-r", pre["head"], "-T", 'parents.map(|c| c.commit_id()).join(" ") ++ "\n"', "--no-graph", check=False,
-    )
-    cur_parent = jj_text(
-        repo, "log", "-r", "@", "-T", 'parents.map(|c| c.commit_id()).join(" ") ++ "\n"', "--no-graph", check=False,
-    )
+    parents = parent_commits(repo, "@")
+    expected_parent = pre.get("parent") or pre["head"]
+    if pre.get("status_empty") and pre.get("parent"):
+        expected_parent = pre["parent"]
     return (
-        cur_parent == pre_parent
-        and status_paths(repo) == set(expected["changed_paths"])
+        parents == [expected_parent]
+        and set(status_paths(repo)) == set(expected["changed_paths"])
     )
 
 
@@ -385,7 +383,7 @@ def cmd_preflight(args) -> tuple[str, dict]:
         allowed = set(unit["wave"].get("allowed_heads", []))
         requested: set[str] = set()
         if args.allowed_head:
-            requested = {commit_id(info["toplevel"], h) for h in args.allowed_head}
+            requested = {resolve_commit(info["toplevel"], h) for h in args.allowed_head}
             if any(head not in allowed and not dependency_advanced_head(doc, unit, head) for head in requested):
                 raise Operational("BLOCKED", "unrecorded same-wave HEAD allowance")
         if info["head"] not in allowed and not dependency_advanced_head(doc, unit, info["head"]):
@@ -457,13 +455,18 @@ def cmd_mark_verified(args) -> tuple[str, dict]:
 
 def reconcile_commit(doc: dict, unit: dict) -> dict | None:
     repo = doc["repository"]["toplevel"]
-    head = commit_id(repo, "@-") if not status_paths(repo) else commit_id(repo, "@")
-    parent = jj_text(repo, "log", "-r", head, "-T", 'parents.map(|c| c.commit_id()).join(" ") ++ "\n"', "--no-graph")
-    expected_parent = unit["integration"]["pre_fold"]["head"]
-    expected_tree = unit["integration"]["applied"]["post_index_tree"]
-    actual_tree = head
-    if parent == expected_parent and not status_paths(repo):
-        return {"commit": head, "parent": expected_parent, "tree": actual_tree, "at": now_iso()}
+    pre = unit["integration"]["pre_fold"]
+    expected_parent = pre.get("parent") or pre["head"]
+    if pre.get("status_empty") and pre.get("parent"):
+        expected_parent = pre["parent"]
+    if current_empty(repo):
+        head = current_commit(repo, "@-")
+        parents = parent_commits(repo, "@-")
+    else:
+        head = current_commit(repo)
+        parents = parent_commits(repo, "@")
+    if parents == [expected_parent] and not status_paths(repo):
+        return {"commit": head, "parent": expected_parent, "tree": head, "at": now_iso()}
     return None
 
 
@@ -495,9 +498,10 @@ def cmd_wave_advance(args) -> tuple[str, dict]:
         if not members:
             raise Operational("REFUSED", "unit does not belong to a parallel wave")
         validate_wave_ready(doc, unit)
-        canonical = commit_id(info["toplevel"], args.canonical_commit)
+        canonical = resolve_commit(info["toplevel"], args.canonical_commit)
         recorded = unit.get("integration", {}).get("canonical_commit", {})
-        if recorded.get("commit") != canonical or info["head"] != canonical:
+        accepted = current_commit(info["toplevel"], "@-") if current_empty(info["toplevel"]) else info["head"]
+        if recorded.get("commit") != canonical or accepted != canonical:
             raise Operational("BLOCKED", "canonical wave commit does not match manifest and HEAD")
         parent = unit.get("integration", {}).get("pre_fold", {}).get("head")
         if recorded.get("parent") != parent:
@@ -512,15 +516,15 @@ def cmd_wave_advance(args) -> tuple[str, dict]:
 
 
 def path_in_tree(repo: str, treeish: str, rel: str) -> bool:
-    out = jj_text(repo, "file", "list", "-r", treeish, "--", rel, check=False)
-    return bool(out)
+    return file_in_revision(repo, treeish, rel)
 
 
 def remove_introduced_paths(repo: str, unit: dict) -> None:
     pre = unit["integration"]["pre_fold"]["head"]
     base = unit["transport"]["base"]
     commit = unit["transport"]["commit"]
-    for rel in diff_name_only(repo, base, commit):
+    raw = diff_summary(repo, base, commit)
+    for rel in parse_diff_paths(raw):
         if path_in_tree(repo, pre, rel):
             continue
         target = os.path.abspath(os.path.join(repo, rel))
@@ -547,23 +551,29 @@ def restore(run_id: str, unit_id: str, lock_token: str) -> bool:
             raise Operational("REFUSED", "unit has no pre-fold snapshot")
         repo = doc["repository"]["toplevel"]
         pre = dict(unit["integration"]["pre_fold"])
-        conflicted = jj_text(repo, "log", "-r", "@", "-T", "conflict", "--no-graph", check=False).strip().lower() == "true"
-        current = None if conflicted else semantic_snapshot(repo)
-        already_exact = current["head"] == pre["head"] and current.get("status_empty") if current else False
+        expected_conflict = current_conflict(repo)
+        current = None if expected_conflict else semantic_snapshot(repo)
+        already_exact = (
+            bool(current)
+            and current.get("parent") == pre.get("parent")
+            and current.get("status_empty") == pre.get("status_empty")
+            and (current.get("status_empty") or current.get("head") == pre.get("head"))
+        )
         expected_apply = matches_expected_apply(repo, unit, current) if current else False
         partial_reset = bool(current) and (
             unit.get("state") == "restoring"
-            and jj_text(repo, "log", "-r", "@", "-T", 'parents.map(|c| c.commit_id()).join(" ") ++ "\n"', "--no-graph", check=False) == pre["head"]
+            and current.get("parent") == pre.get("parent")
             and status_paths(repo).issubset(set(unit["integration"]["expected_apply"]["changed_paths"]))
         )
-        if not (already_exact or expected_apply or partial_reset or conflicted):
+        if not (already_exact or expected_apply or partial_reset or expected_conflict):
             raise Operational("BLOCKED", "canonical state is not a proven in-flight transport state; refusing destructive restoration")
     with locked_manifest(run_id, write=True) as doc:
         unit = doc["units"][unit_id]
         unit["state"] = "restoring"
         event(doc, "restore-intent", unit_id)
     if not already_exact:
-        jj(repo, "restore", "--from", pre["head"], check=False)
+        restore_from = pre.get("parent") if pre.get("status_empty") and pre.get("parent") else pre["head"]
+        restore_to_revision(repo, restore_from)
         test_fault("restore-after-reset")
         with locked_manifest(run_id) as doc:
             unit = doc["units"][unit_id]

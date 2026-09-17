@@ -1,6 +1,6 @@
 ---
 name: ce-sweep
-description: "Sweep configured feedback sources (Slack, GitHub Issues; email experimental) for new items: acknowledge at source, analyze recordings, verify fixes merged to the default bookmark, and emit an `lfg`-ready plan. First run sets up sources; supports mode:non-interactive for scheduled runs."
+description: "Sweep configured feedback sources (Slack, GitHub Issues; email experimental) for new items: acknowledge at source, analyze recordings, verify fixes merged to main, and emit an `lfg`-ready plan. First run sets up sources; supports mode:non-interactive for scheduled runs."
 disable-model-invocation: true
 argument-hint: "[setup|reconfigure] [mode:non-interactive]"
 allowed-tools:
@@ -16,7 +16,7 @@ allowed-tools:
 
 # Feedback Sweep
 
-**Outcome:** every item posted to a configured source since the last run is acknowledged at that source. Its recordings are analyzed, and any fix it claims is verified merged to the default bookmark. The open items are folded into a rolling `lfg`-ready plan.
+**Outcome:** every item posted to a configured source since the last run is acknowledged at that source. Its recordings are analyzed, and any fix it claims is verified merged to the default branch. The open items are folded into a rolling `lfg`-ready plan.
 
 **Done:** the run is recorded, the lease is released, and the summary is printed with the plan path.
 
@@ -48,7 +48,7 @@ Swept feedback lives under `<root>/feedback-sweep/`. Resolve `<root>` the first 
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root itself. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -88,6 +88,6 @@ Whenever state *can* record the outcome, the run continues. A failed ack marks t
 
 **User-runnable invocation rendering.** In the handoff below, default to `/lfg <root>/plans/feedback-sweep-plan.md`; use `$lfg <root>/plans/feedback-sweep-plan.md` only on Codex or a host documenting dollar-prefixed invocation. Render only the invocation as inline code and output one form only.
 
-Include only the plan, plus the repo-internal `<state>`, in the change — never the rest of the working copy. A describe/commit failure is reported, not fatal, and never blocks `run-record` or `lease-release`. Always emit the summary with every field `references/run.md` lists, ending with the plan path and this handoff line:
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from the Go guidance. The message should identify this feedback-sweep run (the plan plus repo-internal state); do not use a fixed prefix, type, scope, or subject template. Name only the plan, plus the repo-internal `<state>` — never other paths. If those files are untracked, `jj file track` them. Then `jj commit -m "<message composed from the standards above>"` those filesets. A commit failure is reported, not fatal, and never blocks `run-record` or `lease-release`. Always emit the summary with every field `references/run.md` lists, ending with the plan path and this handoff line:
 
   `<rendered lfg invocation for <root>/plans/feedback-sweep-plan.md>`

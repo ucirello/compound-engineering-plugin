@@ -1,13 +1,13 @@
-# Dogfood Report — <bookmark>
+# Dogfood Report — <branch>
 
-> Diff-scoped browser QA of `<bookmark>` vs the trunk. Run on <YYYY-MM-DD>.
+> Diff-scoped browser QA of `<branch>` vs the trunk. <YYYY-MM-DD>.
 
 <!-- Use repo-relative paths throughout this doc, never absolute paths, so it stays portable. -->
 <!-- This template is the source of truth for the report's sections; build the report to this shape rather than from memory. -->
 
 ## Diff Summary
 
-<What changed between the bookmark and trunk: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
+<What changed between the branch and main: new features, modified behavior, new/changed routes, views, components, data flows. 2-6 bullets.>
 
 ## Personas
 
@@ -30,7 +30,7 @@ flowchart TD
 
 ## Test Matrix & Results
 
-| # | Flow | Journey / Scenario | Status | Issue | Fix | Change |
+| # | Flow | Journey / Scenario | Status | Issue | Fix | Commit |
 |---|------|--------------------|--------|-------|-----|--------|
 | 1 |      |                    | Pass   | -     | -   | -      |
 | 2 |      |                    | Fixed  |       |     | abc123 |
@@ -40,15 +40,15 @@ Status values: `Pending`, `Pass`, `Fixed`, `Skipped`, `Blocked (needs human veri
 
 ## Pack Compliance
 
-<One line per pack criterion that matched a flow in Phase 1, with its verdict: `honored`, `contradicted` (fixed `<change>`, or escalated as a stale-rule decision below), or `not exercised` (no scenario reached it). "None" when the repo declares no packs or none matched.>
+<One line per pack criterion that matched a flow in Phase 1, with its verdict: `honored`, `contradicted` (fixed `<commit>`, or escalated as a stale-rule decision below), or `not exercised` (no scenario reached it). "None" when the repo declares no packs or none matched.>
 
-- `(pack: <id>, <path within the pack>)` — <rule title> — <honored / contradicted (fixed `<change>` or escalated) / not exercised> — <scenario #s>
+- `(pack: <id>, <path within the pack>)` — <rule title> — <honored / contradicted (fixed `<commit>` or escalated) / not exercised> — <scenario #s>
 
 ## What Was Fixed
 
 For each issue found and fixed:
 
-### <Short issue title> — `<change>`
+### <Short issue title> — `<commit>`
 - **Symptom:** <what the user saw / what failed in the browser>
 - **Root cause:** <why it happened>
 - **Fix:** <what changed, repo-relative file paths>
@@ -58,7 +58,7 @@ For each issue found and fixed:
 
 <Experiential friction found while walking each flow as each persona. A scenario can `Pass` functionally and still carry paper cuts. Note the persona, severity, and whether it was fixed (sharp ones, via the Phase 5 loop) or deferred. "None" if clean.>
 
-- **<Persona>** — <paper cut> — <severity> — <fixed `<change>` / deferred>
+- **<Persona>** — <paper cut> — <severity> — <fixed `<commit>` / deferred>
 
 ## Console Errors
 
@@ -80,8 +80,8 @@ For each issue found and fixed:
 
 ### Stale rule: <rule title> `(pack: <id>, <path within the pack>)`
 - **What the rule says:** <quoted rule text>
-- **What the bookmark does instead, and why:** <the intended behavior and the evidence it is intentional — plan, PR description, change history>
-- **Options:** refine the rule (writable pack: through `ce-compound`; remote-sourced pack: upstream change and a `ref` bump) / retire it
+- **What the branch does instead, and why:** <the intended behavior and the evidence it is intentional — plan, PR description, commit history>
+- **Options:** refine the rule (writable pack: through `ce-compound`; git-sourced pack: upstream change and a `ref` bump) / retire it
 - **Recommendation:** <refine or retire, and the wording if refine>
 
 ## Learnings
@@ -90,8 +90,8 @@ For each issue found and fixed:
 
 ### Pack candidates
 
-<Judgments from this run that generalize beyond the bookmark and are prescriptive-shaped — a paper cut any screen would give a persona, a check every scenario of this kind should pass — that were not yet routed through `ce-compound` (non-interactive run, or the author deferred). One line each, with the pack it would refine when there is one. "None" when every candidate was routed or none arose.>
+<Judgments from this run that generalize beyond the branch and are prescriptive-shaped — a paper cut any screen would give a persona, a check every scenario of this kind should pass — that were not yet routed through `ce-compound` (non-interactive run, or the author deferred). One line each, with the pack it would refine when there is one. "None" when every candidate was routed or none arose.>
 
 ## Final Status
 
-<Overall readiness verdict for the bookmark. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run — a green matrix with a red suite is not "ready.">
+<Overall readiness verdict for the branch. Ready to ship? Caveats? Outstanding blocked items? Record the result of the Phase 5 automated test suite run — a green matrix with a red suite is not "ready.">

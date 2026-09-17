@@ -27,7 +27,7 @@
 #
 # The script never exits non-zero for a missing or malformed file -- callers
 # parse the sentinel and decide how to proceed. Exit code 1 is reserved for
-# genuine operational failures (missing `jq`, jj workspace root not found).
+# genuine operational failures (missing `jq`, workspace root not found).
 
 set -u
 
@@ -35,7 +35,7 @@ REQUESTED_NAME="${1:-}"
 
 REPO_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a jj repository" >&2
+  echo "ERROR: not in a Jujutsu workspace" >&2
   exit 1
 fi
 

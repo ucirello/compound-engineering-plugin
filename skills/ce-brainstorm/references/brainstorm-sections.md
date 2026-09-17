@@ -391,7 +391,7 @@ artifact.
 
 Unified plan artifacts have no `status` field and no `active → completed`
 lifecycle or readiness flag. Readers assess the contents and unresolved questions. No artifact carries mutable progress state; whether work shipped
-is derived from the repository, not stored in the doc. Do not introduce one.
+is derived from `jj log`, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 

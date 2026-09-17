@@ -15,18 +15,24 @@ from unit_workspace_state import Operational, jj_text
 
 def ignored_paths(repo: str) -> set[str]:
     tracked = {
-        line for line in jj_text(repo, "file", "list", check=False).splitlines() if line
+        line for line in jj_text(repo, "file", "list", "-r", "@").splitlines() if line
     }
-    found: set[str] = set()
     repo = os.path.abspath(repo)
-    skip_names = {".jj", ".git"}
-    for dirpath, dirnames, filenames in os.walk(repo):
-        dirnames[:] = [name for name in dirnames if name not in skip_names]
+    found: set[str] = set()
+    for dirpath, dirnames, filenames in os.walk(repo, followlinks=False):
+        dirnames[:] = [name for name in dirnames if name not in {".jj", ".git"}]
         for name in filenames:
-            absolute = os.path.join(dirpath, name)
-            rel = os.path.relpath(absolute, repo)
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, repo)
             if rel not in tracked:
                 found.add(rel)
+        for name in dirnames:
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, repo)
+            if rel not in tracked and f"{rel}/" not in tracked:
+                # Ignored directories themselves are listed when they have no
+                # tracked children; files inside are walked separately.
+                pass
     return found
 
 

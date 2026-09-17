@@ -25,14 +25,14 @@ that no claimed U-ID is missing from the plan.
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `GIT_DIR="$(jj git root)" GIT_WORK_TREE="$(jj workspace root)" gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
 
-**Branch mode:** Run `jj log -r "${BASE}..<branch-ref>" --no-graph` using the resolved merge-base and resolved bookmark ref from Stage 1. Use `<branch-ref>` (the resolved `<branch>@origin` or fetched ref), not the raw `<branch>` argument — a remote-only bookmark has no matching local ref, so the raw name would fail or read a stale same-named local bookmark.
+**Branch mode:** Run `jj log -r "${BASE}..<branch-ref>" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved fork-point and resolved branch ref from Stage 1. Use `<branch-ref>` (the resolved `<branch>@origin` or fetched ref), not the raw `<branch>` argument — a remote-only bookmark has no matching local ref, so the raw name would fail or read a stale same-named local bookmark.
 
 **Standalone (current branch):** Run:
 
 ```
-echo "BRANCH:" && jj log -r @ -T 'bookmarks ++ "\n"' --no-graph && echo "COMMITS:" && jj log -r ${BASE}..@ --no-graph
+echo "BRANCH:" && jj bookmark list -r @ -T 'name ++ "\n"' && echo "COMMITS:" && jj log -r "${BASE}..@" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:

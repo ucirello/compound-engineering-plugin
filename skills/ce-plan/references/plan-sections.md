@@ -276,10 +276,10 @@ them apply.
   not enumerated). A record of the planning process itself (reading the
   user's prompt, glancing at obvious entry points, restating prose) → omit. Put it inline next to the
   KTD or unit it justifies, or in a dedicated section — both shapes work.
-  A constraint adopted from a Pack file is cited inline as
+  A constraint adopted from a Compound Pack file is cited inline as
   `(pack: <id>, <path within the pack>)` after the requirement, KTD, constraint,
   or risk it shaped. The path is relative to the pack's own directory, so it
-  is stable for path- and remote-sourced packs alike. Cite the pack text; do not
+  is stable for path- and git-sourced packs alike. Cite the pack text; do not
   restate it. That marker is reserved for pack files; `<root>/solutions/`
   learnings keep the ordinary path citation, so a reader can tell a
   prescriptive pack rule from a retrospective learning.
@@ -387,16 +387,16 @@ plan.
   (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
   across planning stages (it is a plan at every stage). Do not put a
-  change-description prefix in the title — the `type` field carries work-kind
-  classification.
-- **`type`** — work-kind classification used by filename and metadata (`feat`,
-  `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Do not treat this
-  field as a change-description template. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance.
+  conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
+  carries that classification.
+- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
+  `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
+  intent the eventual commit message should reflect.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from jj, not stored in the doc. Do not
+whether a plan shipped is derived from Jujutsu, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
 
 ### Optional but well-known

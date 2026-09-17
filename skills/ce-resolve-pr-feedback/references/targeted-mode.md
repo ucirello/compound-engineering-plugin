@@ -9,25 +9,25 @@ Parse the URL to extract HOST, OWNER, REPO, PR number, and comment REST ID:
 https://HOST/OWNER/REPO/pull/NUMBER#discussion_rCOMMENT_ID
 ```
 
-**GitHub Enterprise host.** Take the host from the URL (targeted mode is always URL-triggered). When it is **not** `github.com`, pass it as a `GH_HOST=<host>` env prefix inline on **every** `gh api` / bundled-script call below (`gh api` honors `GH_HOST` as the request host) so an enterprise thread is fetched, replied to, and resolved on the right host instead of `github.com`. On `github.com`, drop the `GH_HOST=<host> ` prefix. Pair every `gh` invocation with `GIT_DIR=$(jj git root)` in the same shell so gh's underlying git sees the colocated git store. Carry the same host into the reply/resolve calls you run from Full Mode steps 5-7.
+**GitHub Enterprise host.** Take the host from the URL (targeted mode is always URL-triggered). When it is **not** `github.com`, pass it as a `GH_HOST=<host>` env prefix inline on **every** `gh api` / bundled-script call below (`gh api` honors `GH_HOST` as the request host) so an enterprise thread is fetched, replied to, and resolved on the right host instead of `github.com`. On `github.com`, drop the `GH_HOST=<host> ` prefix. Carry the same host into the reply/resolve calls you run from Full Mode steps 5-7.
 
 **Step 1** -- Get comment details and GraphQL node ID via REST (cheap, single comment):
 ```bash
-GIT_DIR=$(jj git root) GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
+GIT_DIR="$(jj git root)" GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
   --jq '{node_id, path, line, body}'   # omit GH_HOST=<host> on github.com
 ```
 
 **Step 2** -- Map comment to its thread ID. Use [scripts/get-thread-for-comment](../scripts/get-thread-for-comment). Set `SKILL_DIR` to the absolute directory you loaded the ce-resolve-pr-feedback SKILL.md from — the Bash tool's CWD is the user's project, not the skill dir, and shell state does not persist between Bash calls, so set it inline. If the bundled script is missing, use Full Mode's fallback `gh` commands to inspect the PR comments:
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
-GIT_DIR=$(jj git root) GH_HOST=<host> bash "$SKILL_DIR/scripts/get-thread-for-comment" PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]
+GH_HOST=<host> bash "$SKILL_DIR/scripts/get-thread-for-comment" PR_NUMBER COMMENT_NODE_ID [OWNER/REPO]
 ```
 
 This fetches thread IDs and their first comment IDs (minimal fields, no bodies) and returns the matching thread with full comment details.
 
 **Step 3** -- Check for your own unsubmitted review before doing any work. A reply posted while you hold one is absorbed into that draft: the call returns a comment ID and URL as if it succeeded, but the reviewer sees nothing until the draft is submitted. Full Mode gets this free from `get-pr-comments`; targeted mode never calls that script, so check directly (PENDING reviews are only visible to their author, so any hit is yours):
 ```bash
-GIT_DIR=$(jj git root) GH_HOST=<host> gh api --paginate repos/OWNER/REPO/pulls/PR_NUMBER/reviews --jq '.[] | select(.state == "PENDING") | .id'
+GIT_DIR="$(jj git root)" GH_HOST=<host> gh api --paginate repos/OWNER/REPO/pulls/PR_NUMBER/reviews --jq '.[] | select(.state == "PENDING") | .id'
 ```
 `--paginate` is required: this endpoint is chronological and pages at 30, so a draft can sort past page 1. Print IDs rather than a count — `--jq` runs per page, so a count emits one number per page, but IDs simply concatenate and stay empty when there is no draft. (`--slurp` is not an option; `gh` rejects it alongside `--jq`.)
 

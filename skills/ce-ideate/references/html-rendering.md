@@ -108,7 +108,7 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to another workspace. Users
+Workspace-root only — do not fall through to a main checkout. Users
 working from a workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 
@@ -226,7 +226,7 @@ can open it directly. A long bare-text list of paths and ticket IDs is
 the format's biggest unforced UX miss — the reader has to copy-paste
 every entry into a browser or IDE.
 
-Resolve the repo's GitHub URL once at compose time. Run `jj git remote list` and pick the `origin` URL from the list:
+Resolve the repo's GitHub URL once at compose time:
 
 ```bash
 jj git remote list

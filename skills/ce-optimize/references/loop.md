@@ -102,7 +102,7 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
 1. Create experiment workspace:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-   WORKSPACE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates optimize-exp/<spec_name>/exp-<NNN>
+   WORKSPACE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates optimize-<spec_name>-exp-<NNN>
    ```
 2. Apply port parameterization if configured (set env vars for the measurement script)
 3. Fill the experiment prompt template (`references/experiment-prompt-template.md`) with:
@@ -121,20 +121,16 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
    test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}"
    ```
 2. Fill the experiment prompt template
-3. Write the filled prompt under the workspace `.tmp` directory:
-   ```bash
-   ROOT="$(jj workspace root 2>/dev/null || pwd)"
-   mkdir -p "$ROOT/.tmp"
-   ```
+3. Write the filled prompt to a temp file under the workspace `.tmp` (`mktemp "$(jj workspace root)/.tmp/optimize-exp-XXXXXX.txt"` with fallback `mktemp ".tmp/optimize-exp-XXXXXX.txt"` when `jj workspace root` fails)
 4. Dispatch via Codex:
    ```bash
-   cat "$ROOT/.tmp/optimize-exp-XXXXX.txt" | codex exec --skip-git-repo-check - 2>&1
+   cat "$PROMPT_FILE" | codex exec --skip-git-repo-check - 2>&1
    ```
 5. Security posture: use the user's selection (ask once per session if not set in spec)
 
 ### 3.3 Collect and Persist Results
 
-Persist a `comparisons` record for each distinct reference, candidate, and workload pairing used in a decision. Each side's identity must uniquely identify the bytes that were measured; a shared `@` is not enough when the candidate is uncommitted. Record the workload, both snapshots, and the decision's uncertainty and correctness evidence. Standalone and integrated pairings stay distinct in this array; a later in-place update must not replace a previously persisted distinct pairing. A runner-up's contribution is its confirmed change against the bookmark it was added to, not its standalone gain. These records explain results. `decide.mjs` still makes the accept or revert decision, using the existing snapshot fields.
+Persist a `comparisons` record for each distinct reference, candidate, and workload pairing used in a decision. Each side's identity must uniquely identify the bytes that were measured; a shared `@` is not enough when the candidate is only in a working copy. Record the workload, both snapshots, and the decision's uncertainty and correctness evidence. Standalone and integrated pairings stay distinct in this array; a later in-place update must not replace a previously persisted distinct pairing. A runner-up's contribution is its confirmed change against the bookmark it was added to, not its standalone gain. These records explain results. `decide.mjs` still makes the accept or revert decision, using the existing snapshot fields.
 
 Process experiments as they complete: do NOT wait for the entire batch to finish before writing results.
 
@@ -190,21 +186,22 @@ After all experiments in the batch have been measured:
 
 2. **Rank** the eligible experiments in the batch by the script's `rank_score` (primary relative gain when the primary moved; otherwise the strongest required-objective relative gain). Identify that winner as the experiment to keep. An eligible experiment may be kept even if the ranking primary did not move.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing local syntax. The change description must cover the hypothesis that produced the diff.
-
 3. **If `decide.mjs` returns `keep` for that winner: KEEP**
-   - In the experiment workspace, describe the working-copy change so the winning diff exists as a real change before any merge or duplicate: `jj describe -m "<message composed from the standards above>"`
-   - Include only mutable-scope changes in that change; if no eligible diff remains, treat the experiment as non-improving and restore or abandon it
-   - Merge onto the optimization bookmark (cwd = the optimization workspace): `jj new @ <experiment-change>`
-   - After the merge succeeds, clean up the winner's experiment workspace and bookmark; the integrated change on the optimization bookmark is the durable artifact
+   - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+   - Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from the Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax.
+   - Include only mutable-scope changes in the experiment working copy; if no eligible diff remains, treat the experiment as non-improving and revert it
+   - Describe the experiment change so the winning diff exists as a real change before integrating onto the optimization bookmark. The composed message must still identify the hypothesis that produced the kept diff.
+   - In the experiment workspace: `jj describe -m "<message composed from the standards above>"`. Finish the change with `jj commit -m "<message composed from the standards above>"` when the workflow meant commit and start a new change.
+   - Integrate that change onto the optimization bookmark (`jj rebase -s <experiment-change> -o "optimize/<spec-name>"`, then `jj bookmark set "optimize/<spec-name>" -r <experiment-change>`)
+   - After integration succeeds, clean up the winner's experiment workspace; the integrated change on the optimization bookmark is the durable artifact
    - This is now the new baseline for subsequent batches
 
 4. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
-   - If disjoint, duplicate the runner-up onto the new baseline (`jj duplicate SRC -o DST`) and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot. Do not reuse the standalone experiment's accumulated samples; they were measured against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Persist the combined pairing as `kind: integrated` on that same log entry without replacing the standalone comparison. Keep the original standalone log entry for audit.
-   - Keep the duplicate only when that result is eligible and `next_measurement` is `none` (outcome: `runner_up_kept`); then clean up that runner-up's experiment workspace and bookmark
-   - Otherwise revert the duplicate (`jj revert` / `jj abandon`), log it as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment workspace and bookmark
+   - If disjoint, duplicate the runner-up onto the new baseline (`jj duplicate <runner-up-change> -o "optimize/<spec-name>"`) and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot. Do not reuse the standalone experiment's accumulated samples; they were measured against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Persist the combined pairing as `kind: integrated` on that same log entry without replacing the standalone comparison. Keep the original standalone log entry for audit.
+   - Keep the duplicated change only when that result is eligible and `next_measurement` is `none` (outcome: `runner_up_kept`); then clean up that runner-up's experiment workspace
+   - Otherwise restore/abandon the duplicated change, log it as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment workspace
    - Stop after first failed combination
 
 5. **Handle deferred dependencies.** Experiments that need unapproved dependencies get outcome `deferred_needs_approval`

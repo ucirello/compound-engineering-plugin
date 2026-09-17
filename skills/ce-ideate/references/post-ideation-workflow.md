@@ -55,7 +55,7 @@ The ideation artifact is produced **automatically** — persistence is not opt-i
    - Extension follows `OUTPUT_FORMAT` (`.html` default, `.md` on override).
    - **Repo mode:** ensure `<root>/ideation/` exists (create if absent).
    - **Elsewhere mode with `<root>/ideation/` already present:** use it.
-   - **Otherwise (no repo, or elsewhere with no `<root>/ideation/`):** write into the run's temp area — the `<scratch-dir>` resolved in Phase 1 (`<scratch-root>/ce-ideate/<run-id>/`). Do **not** write into the user's current working directory, and do **not** create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path and note it lives under workspace `.tmp` (scratch, not a durable product path — move it to keep it).
+   - **Otherwise (no repo, or elsewhere with no `<root>/ideation/`):** write into the run's temp area — the `<scratch-dir>` resolved in Phase 1 (`<scratch-root>/ce-ideate/<run-id>/`). Do **not** write into the user's current working directory, and do **not** create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path.
 2. **Choose the file path:** `<dir>/YYYY-MM-DD-<topic>-ideation.<ext>` (or `<dir>/YYYY-MM-DD-open-ideation.<ext>` when no focus exists).
 3. **Load the section contract and rendering reference** (deferred from Phase 0.0): read `references/ideation-sections.md` and the format-rendering reference matching `OUTPUT_FORMAT` — `references/markdown-rendering.md` for `md`, `references/html-rendering.md` for `html`.
 4. **Write the document** per those references. `ideation-sections.md` defines the section contract (metadata, Grounding Context, Topic Axes, Ranked Ideas with per-idea fields, Rejection Summary); the rendering reference defines how the resolved format presents it. Content is identical across formats; only presentation differs.
@@ -138,8 +138,8 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a JJ repo:** offer to record only the ideation doc as the current change (do not create a bookmark, do not push; if the user declines, leave it undescribed). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing local syntax. Use `jj describe -m "<message composed from the standards above>"` (and `jj commit` / `jj new` if closing the change). Do not invent a fixed prefix, type, or subject.
-- **Temp-area or non-repo file:** skip the change-description offer.
+- **Inside a JJ workspace:** offer to record only the ideation doc (do not create a bookmark, do not push; if the user declines, leave the working copy as-is). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from the Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax. Use `jj commit -m "<message composed from the standards above>"` with the ideation doc path so only that file is in the change.
+- **Temp-area or non-repo file:** skip the commit offer.
 
 Then narrate the path and end the session — do not return to the menu.
 
@@ -147,7 +147,7 @@ Then narrate the path and end the session — do not return to the menu.
 
 Only when the file was **created fresh this run**: delete it, confirm the deletion, and end. On a **resume** run (a pre-existing file was updated in place), do **not** delete — tell the user the existing doc at `<path>` remains and offer no destructive action. Discard is never a default; it happens only on an explicit request.
 
-Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the V15 web-research cache reused across run-ids by later ideation invocations in the same session (see `references/web-research-cache.md`), the Checkpoint A/B files, the evidence dossiers, and (in the no-repo case) the deliverable itself.
+Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the V15 web-research cache reused across run-ids by later ideation invocations in the same session (see `references/web-research-cache.md`), the Checkpoint A/B files, the evidence dossiers, and (in the no-repo case) the deliverable itself. Leave it under workspace `.tmp` (gitignored).
 
 ## Quality Bar
 

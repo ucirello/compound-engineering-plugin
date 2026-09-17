@@ -2,7 +2,7 @@
 
 Load this when serving a local web prototype. Isolated web runs start the helper with annotation on; `references/annotation-loop.md` owns the wait loop and when chat is the fallback.
 
-This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that.
+This skill ships its own `scripts/light-webserver.js`. Do not import a sibling skill's copy — isolation forbids that. The file is a byte-identical copy of brainstorm's helper.
 
 Use the bundled helper when the current platform can run a bundled skill script. Invoke it via the `SKILL_DIR` anchor: set `SKILL_DIR` to the absolute path of the directory containing the `ce-prototype` `SKILL.md` you loaded (the Bash tool's cwd is the user's project, not the skill dir), and re-set it in the same command on each call since shell vars do not persist between Bash invocations. Do not resolve the helper from the user's project CWD.
 
@@ -10,15 +10,18 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
-Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be left in the repo, and run the block as it stands — it sends the run to workspace `.tmp` and nothing else changes. Otherwise, when the run is inside a JJ workspace, probe the workspace root for `.context/ce-prototype/`; if it is not covered, offer to append that one line to the workspace-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone. A run that is headed for workspace `.tmp` either way gets no offer.
+Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be left in the repo, and run the block as it stands — it sends the run to workspace `.tmp` and nothing else changes. Otherwise, when `jj workspace root` succeeds, probe the workspace-root `.gitignore` for a `.context/` line; if it is not covered, offer to append that one line to the workspace-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone. A run that is headed for `.tmp` either way gets no offer.
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
 RUN_KEEP="yes";
 REPO_ROOT="$(jj workspace root 2>/dev/null)";
-WS_ROOT="${REPO_ROOT:-$(pwd)}";
-TEMP_ROOT="$WS_ROOT/.tmp/rocketclaw";
-if [ "$RUN_KEEP" = yes ] && [ -n "$REPO_ROOT" ] && [ ! -L "$REPO_ROOT/.context" ] && (cd "$REPO_ROOT" && git check-ignore -q .context/ce-prototype/) 2>/dev/null; then
+if [ -n "$REPO_ROOT" ]; then
+TEMP_ROOT="$REPO_ROOT/.tmp";
+else
+TEMP_ROOT="$(pwd)/.tmp";
+fi;
+if [ "$RUN_KEEP" = yes ] && [ -n "$REPO_ROOT" ] && [ ! -L "$REPO_ROOT/.context" ] && grep -qxF '.context/' "$REPO_ROOT/.gitignore" 2>/dev/null; then
 ROOT="$REPO_ROOT/.context";
 else
 ROOT="$TEMP_ROOT";
@@ -93,7 +96,7 @@ A default start reloads only when the newest screen changes; it must not continu
 Write screens under:
 
 ```text
-<workspace>/.context/ce-prototype/<YYYY-MM-DD>-<run-slug>/
+<repo>/.context/ce-prototype/<YYYY-MM-DD>-<run-slug>/
   decisions.md               # run capsule for the next skill; not a plan
   01-<question-slug>/
     screens/
@@ -107,7 +110,7 @@ Write screens under:
     state/
 ```
 
-The fallback root takes the same shape under `<workspace>/.tmp/rocketclaw/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+The fallback root takes the same shape under `<workspace>/.tmp/ce-prototype/` (or `$(pwd)/.tmp/ce-prototype/` when `jj workspace root` fails). The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Handoff
 

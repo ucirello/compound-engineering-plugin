@@ -108,7 +108,7 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to a main checkout. Users
+Workspace-root only — do not fall through to another workspace. Users
 working from a workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 
@@ -231,6 +231,8 @@ Resolve the repo's GitHub URL once at compose time:
 ```bash
 jj git remote list
 ```
+
+Use the URL on the `origin` line (name, then URL). Do not parse `.jj/` or `.git/`.
 
 Apply linking to three reference shapes:
 

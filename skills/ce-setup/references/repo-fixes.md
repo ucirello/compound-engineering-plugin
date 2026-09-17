@@ -5,10 +5,10 @@
 When the bundled `scripts/check-health` is unavailable, perform these checks by hand and report the same findings:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a jj workspace, resolve the repo root with `jj workspace root`.
-3. Check for obsolete `rocketclaw.local.md` at the repo root.
+2. If inside a JJ workspace, resolve the workspace root with `jj workspace root`.
+3. Check for obsolete `rocketclaw.local.md` at the workspace root.
 4. Check whether `.rocketclaw/config.yaml` exists.
-5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether repo-root `.gitignore` contains the line `.rocketclaw/*.local.yaml`.
+5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether `.gitignore` covers `.rocketclaw/config.local.yaml` (look for an uncommented `.rocketclaw/*.local.yaml` or equivalent rule; do not probe VCS metadata).
 6. Compare `.rocketclaw/config.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 7. Report a legacy Compound Codex tool map when `${CODEX_HOME:-$HOME/.codex}/AGENTS.md` contains a standalone `<!-- BEGIN COMPOUND CODEX TOOL MAP -->` line followed by a standalone `<!-- END COMPOUND CODEX TOOL MAP -->` line.
 
@@ -16,11 +16,11 @@ This file is read at two points: from Step 2 whenever the bundled health script 
 
 ## Phase 2: Fix Repo-Local Issues
 
-Resolve the repository root (`jj workspace root`). All paths below are relative to the repo root, not the current working directory.
+Resolve the workspace root (`jj workspace root`). All paths below are relative to the workspace root, not the current working directory.
 
 ### Step 4: Remove Obsolete Local Config
 
-If `rocketclaw.local.md` exists at the repo root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.rocketclaw/config.local.yaml` (the optional override). Team defaults live in `config.yaml`.
+If `rocketclaw.local.md` exists at the workspace root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.rocketclaw/config.local.yaml` (the optional override). Team defaults live in `config.yaml`.
 
 Ask whether to delete it now. Delete only if the user approves.
 
@@ -54,13 +54,13 @@ Do not create `config.local.yaml`.
 
 ### Step 6a: Repair Invalid Work Preferences
 
-When the health report marks the Work implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit the layer that supplied the failing value. If the bad ordinary key is only in `config.yaml`, edit that file after preview. Do not hide a broken team value behind a new local override. Preserve every unrelated setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete.
+When the health report marks the `ce-work` implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit the layer that supplied the failing value. If the bad ordinary key is only in `config.yaml`, edit that file after preview. Do not hide a broken team value behind a new local override. Preserve every unrelated setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete.
 
 ### Step 6b: Repair Invalid `docs_root`
 
-When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the repo, `..` traversal, repo root, `.git/`, `.jj/`, or a non-directory component) and the consequence: artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the tracked value to a valid repo-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
+When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the repo, `..` traversal, workspace root, or a non-directory component) and the consequence: artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the tracked value to a valid repo-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
 
-### Step 7: Ensure Local Config Is Ignored
+### Step 7: Ensure Local Config Is Gitignored
 
 If `.rocketclaw/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
 
@@ -70,9 +70,9 @@ If `.rocketclaw/config.local.yaml` exists and is not covered by `.gitignore`, of
 
 Append the entry to the repo-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
-### Step 8: Offer To Ignore Scratch Space
+### Step 8: Offer To Gitignore Scratch Space
 
-Skills that keep local scratch write it under `.context/`. Probe coverage by checking whether repo-root `.gitignore` contains the line `.context/` — with the trailing slash, so an existing directory-only rule counts before the directory exists, and anchored to the repo root, since that is where the entry is appended — and when it is not covered, offer to add:
+Skills that keep local scratch write it under `.context/`. Probe coverage by reading the repo-root `.gitignore` for an uncommented `.context/` rule — with the trailing slash, so an existing directory-only rule counts before the directory exists. Workspace throwaway and reusable scratch also lives under `.tmp/` (ignored separately). When `.context/` is not covered, offer to add:
 
 ```text
 .context/

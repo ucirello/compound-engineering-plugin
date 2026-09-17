@@ -5,8 +5,7 @@
 # process and writes its POV as JSON into the run dir.
 # Every peer receives the canonical POV persona, schema, and a caller-prepared
 # subject payload. The peer also receives the caller-declared repository read
-# scope; private prompt/result scratch stays under workspace `.tmp` or outside
-# that repository.
+# scope; private prompt/result scratch stays outside that repository.
 #
 # Independence is by PROVIDER, not CLI brand. A provider is reached by a ROUTE:
 # its dedicated CLI, or (for the fixed grok-cursor / composer routes) cursor-agent. All
@@ -25,14 +24,13 @@
 #                   explicitly named peer, but its receipt remains unverified;
 #                   automatic discovery must exclude it before calling this worker.
 #   <fixed-route>   one host-resolved and pre-sanctioned route: codex, claude,
-#                   grok-cli, grok-cursor, cursor, composer, opencode, or opencode2. A route failure
-#                   returns no artifact; only the host may disclose and retry a
-#                   different recipient.
+#                   grok-cli, grok-cursor, cursor, composer, opencode, or
+#                   opencode2. A route failure returns no artifact; only the
+#                   host may disclose and retry a different recipient.
 #   <subject-payload> framed question plus any conversation-only subject material.
 #                     Point to repository files instead of copying their contents;
 #                     the peer grounds itself from the shared working tree.
-#   <run-dir>         existing private dir under workspace `.tmp` or outside the
-#                     repository; output ->
+#   <run-dir>         existing private dir outside the repository; output ->
 #                     <run-dir>/pov-<target>.json, where <target> is the resolved
 #                     <fixed-route> target (grok-cli/grok-cursor both collapse to
 #                     grok) -- NOT the <host-serving-family> key.
@@ -262,10 +260,10 @@ adapter_argv() {
       [ "$_oc_model" = "auto" ] || [ -z "$_oc_model" ] || printf '%s\0' --model "$_oc_model"
       ;;
     opencode2)
-      # Distinct from opencode (v1). Flags from `opencode2 run --help` (v2.0.6):
-      # --format json, --file, --model provider/model#variant, --standalone.
-      # No --dir; run_timeout_cmd already cds to READ_ROOT. Do not pass --auto.
-      printf '%s\0' opencode2 run --standalone --format json --file "$PROMPT_FILE"
+      # Surveyed `opencode2 run --help` (v2.0.6): --format json, --file, --model
+      # provider/model#variant. No --dir. Working directory is READ_ROOT via
+      # run_timeout_cmd. Do not reuse opencode env/flags.
+      printf '%s\0' opencode2 run --format json --file "$PROMPT_FILE"
       printf '%s\0' "Follow the attached brief. Return only schema-shaped JSON."
       _oc2_model="$(route_model opencode2)"
       [ "$_oc2_model" = "auto" ] || [ -z "$_oc2_model" ] || printf '%s\0' --model "$_oc2_model"
@@ -345,7 +343,7 @@ else
 fi
 case "$RUN_DIR_RESOLVED/" in
   "$REPO_ROOT/.tmp/"*) ;;
-  "$REPO_ROOT/"*) skip "run-dir must be outside the repository" ;;
+  "$REPO_ROOT/"*) skip "run-dir must be outside the repository or under <workspace>/.tmp" ;;
 esac
 [ -d "$RUN_DIR_RESOLVED" ] || skip "run-dir '$RUN_DIR' must already exist"
 RUN_DIR="$RUN_DIR_RESOLVED"
@@ -460,14 +458,16 @@ log "fixed cross-model POV route: target=$TARGET route=$FIXED_ROUTE (host $HOST_
 # The payload is prepared by ce-pov and embeds the framed question plus any
 # conversation-only subject material needed for this round. Repository evidence
 # stays in the shared working tree for the peer to inspect directly.
-_WS_ROOT="$(cd "$READ_ROOT" && jj workspace root 2>/dev/null || printf '%s' "$REPO_ROOT")"
-mkdir -p "$_WS_ROOT/.tmp" 2>/dev/null || true
-SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-$_WS_ROOT/.tmp}"
+if [ -n "${CROSS_MODEL_SCRATCH_PARENT:-}" ]; then
+  SCRATCH_PARENT="$CROSS_MODEL_SCRATCH_PARENT"
+else
+  SCRATCH_PARENT="$REPO_ROOT/.tmp"
+fi
 [ -d "$SCRATCH_PARENT" ] || mkdir -p "$SCRATCH_PARENT" 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
 SCRATCH_PARENT="$(cd "$SCRATCH_PARENT" && pwd -P)" || skip "cannot resolve private scratch parent"
 case "$SCRATCH_PARENT/" in
   "$REPO_ROOT/.tmp/"*) ;;
-  "$REPO_ROOT/"*) skip "private scratch parent must be outside the repository" ;;
+  "$REPO_ROOT/"*) skip "private scratch parent must be outside the repository or under <workspace>/.tmp" ;;
 esac
 if ! PEER_WORKDIR="$(mktemp -d "$SCRATCH_PARENT/xmodel-pov-peer-XXXXXX")"; then
   skip "provider $TARGET workspace isolation unavailable; skipping provider"
@@ -663,8 +663,7 @@ run_timeout_cmd() {
   # $1 = stdin file ("" -> /dev/null). $2 = hard cap secs. $3 = "idle" | "no-idle".
   RUN_SUCCEEDED=false
   # Run from the declared read root. Private prompt/output paths are absolute and
-  # remain under workspace `.tmp` or outside the repository; route adapters
-  # separately carry the same root.
+  # remain outside the repository; route adapters separately carry the same root.
   local stdin_file="${1:-}"; [ -n "$stdin_file" ] || stdin_file=/dev/null
   local hard_cap="${2:-$HARD_SECS}"
   local idle_mode="${3:-idle}"
@@ -813,7 +812,20 @@ parse_opencode_events() {  # <logfile> <outfile>
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e '.' > "$2" 2>/dev/null && return 0
-  tmp="${PEER_WORKDIR:-.}/opencode-text.tmp"
+  tmp="$(mktemp "$PEER_WORKDIR/ce-opencode-text-XXXXXX")" || return 1
+  printf '%s' "$text" > "$tmp"
+  recover_pov_json "$tmp" "$2"
+  local st=$?
+  rm -f "$tmp"
+  return "$st"
+}
+
+parse_opencode2_events() {  # <logfile> <outfile>
+  local text tmp
+  text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
+  [ -n "$text" ] || return 1
+  printf '%s' "$text" | jq -e '.' > "$2" 2>/dev/null && return 0
+  tmp="$(mktemp "$PEER_WORKDIR/ce-opencode2-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_pov_json "$tmp" "$2"
   local st=$?
@@ -882,9 +894,10 @@ attempt_route() {   # <provider> <route>
       # the exec with E2BIG on low-limit hosts, whereas stdin has no size limit.
       run_timeout_cmd "$PROMPT_FILE" "$HARD_SECS" idle
       [ "$RUN_SUCCEEDED" = true ] && parse_structured "$PEERLOG" "$RAW_OUT" ;;
-    opencode|opencode2)
-                 run_timeout_cmd "" "$HARD_SECS" idle
+    opencode)    run_timeout_cmd "" "$HARD_SECS" idle
                  [ "$RUN_SUCCEEDED" = true ] && parse_opencode_events "$PEERLOG" "$RAW_OUT" ;;
+    opencode2)   run_timeout_cmd "" "$HARD_SECS" idle
+                 [ "$RUN_SUCCEEDED" = true ] && parse_opencode2_events "$PEERLOG" "$RAW_OUT" ;;
   esac
   if [ "$RUN_SUCCEEDED" != true ]; then
     rm -f "$RAW_OUT"

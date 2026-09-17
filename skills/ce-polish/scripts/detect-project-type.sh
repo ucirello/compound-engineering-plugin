@@ -36,7 +36,7 @@
 #   signature files. Deeper nesting is ignored to avoid false positives.
 #
 #   Excluded directories (not real project roots):
-#     node_modules .git .jj vendor dist build coverage .next .nuxt
+#     node_modules vendor dist build coverage .next .nuxt
 #     .svelte-kit .turbo tmp fixtures
 #
 # `multiple` vs `rails`: Rails apps commonly ship a Procfile.dev alongside
@@ -48,13 +48,13 @@ set -u
 
 REPO_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a jj repository" >&2
+  echo "ERROR: not in a Jujutsu workspace" >&2
   exit 1
 fi
 
 REPO_ROOT=$(cd "$REPO_ROOT" 2>/dev/null && pwd -P)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: cannot resolve repo root" >&2
+  echo "ERROR: cannot resolve workspace root" >&2
   exit 1
 fi
 
@@ -76,7 +76,7 @@ fi
 case "$PROJECT_ROOT" in
   "$REPO_ROOT"|"$REPO_ROOT"/*) ;;
   *)
-    echo "ERROR: path must stay inside repo root: $PROJECT_ROOT" >&2
+    echo "ERROR: path must stay inside workspace root: $PROJECT_ROOT" >&2
     exit 1
     ;;
 esac
@@ -154,7 +154,7 @@ esac
 # Exclusion list: directories that ship framework configs as fixtures or build
 # output, not as real project roots.
 
-EXCLUDE_DIRS="node_modules .git .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
+EXCLUDE_DIRS="node_modules vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
 EXCLUDE_ARGS=""
 for d in $EXCLUDE_DIRS; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS -path './$d' -prune -o -path '*/$d' -prune -o"

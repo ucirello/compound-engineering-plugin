@@ -10,10 +10,10 @@ const scriptPath = fileURLToPath(import.meta.url)
 const assetsDir = path.join(path.dirname(scriptPath), "..", "assets")
 const DEFAULT_HOST = "127.0.0.1"
 const DEFAULT_URL_HOST = "localhost"
-const IDLE_TIMEOUT_MS = Number(process.env.LIGHT_WEB_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
-const LIFECYCLE_CHECK_MS = Number(process.env.LIGHT_WEB_LIFECYCLE_CHECK_MS) || 60 * 1000
-const WAIT_TIMEOUT_MS = Number(process.env.LIGHT_WEB_WAIT_TIMEOUT_MS) || 30 * 1000
-const SSE_GRACE_MS = Number(process.env.LIGHT_WEB_SSE_GRACE_MS) || 5000
+const IDLE_TIMEOUT_MS = Number(process.env.CE_LIGHT_WEB_IDLE_TIMEOUT_MS) || 30 * 60 * 1000
+const LIFECYCLE_CHECK_MS = Number(process.env.CE_LIGHT_WEB_LIFECYCLE_CHECK_MS) || 60 * 1000
+const WAIT_TIMEOUT_MS = Number(process.env.CE_LIGHT_WEB_WAIT_TIMEOUT_MS) || 30 * 1000
+const SSE_GRACE_MS = Number(process.env.CE_LIGHT_WEB_SSE_GRACE_MS) || 5000
 const BODY_LIMIT = 64 * 1024
 // Reserved URL namespace for the overlay, so a screen's own /annotate.js or
 // /annotate.css under screens/ is never shadowed.
@@ -322,7 +322,7 @@ function wrapFragment(options, content) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>local web</title>
+  <title>CE local web</title>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; background: #f7f7f8; color: #1f2328; }
     header { padding: 10px 18px; border-bottom: 1px solid #d8dee4; background: #fff; color: #57606a; font-size: 13px; }
@@ -330,7 +330,7 @@ function wrapFragment(options, content) {
   </style>
 </head>
 <body>
-  <header>local web - newest screen, reloads on change</header>
+  <header>CE local web - newest screen, reloads on change</header>
   <main>${content}</main>
   ${refreshScript(options)}
 </body>
@@ -343,7 +343,7 @@ function wrapAnnotateFragment(content, boot) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>local web</title>
+  <title>CE local web</title>
   ${boot}
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; background: #f7f7f8; color: #1f2328; }
@@ -352,7 +352,7 @@ function wrapAnnotateFragment(content, boot) {
   </style>
 </head>
 <body>
-  <header>local web - newest screen</header>
+  <header>CE local web - newest screen</header>
   <main>${content}</main>
 </body>
 </html>`

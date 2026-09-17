@@ -167,9 +167,6 @@ adapter_argv() {
       [ -z "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ] || printf '%s\0' --variant "$CROSS_MODEL_EFFORT_OVERRIDE"
       ;;
     opencode2)
-      # opencode2 is not backward compatible with opencode. Surveyed flags:
-      # run --format json --auto --file --model provider/modelname#variant.
-      # No --dir (the adapter already execs with cwd=$WORKSPACE) and no --variant.
       printf '%s\0' opencode2 run --format json --auto --file "$PROMPT_FILE"
       printf '%s\0' "Follow the attached unit packet. Return only the implementation result JSON."
       [ "$(route_model opencode2)" = auto ] || printf '%s\0' --model "$(route_model opencode2)"
@@ -221,10 +218,14 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-ROOT="$( (cd "$WORKSPACE" && jj workspace root) 2>/dev/null || pwd )"
-mkdir -p "$ROOT/.tmp"
-SCRATCH="$ROOT/.tmp/ce-work-adapter-$$-$RANDOM"
-mkdir -p "$SCRATCH" || exit 2
+ADAPTER_TMP_ROOT=""
+if ADAPTER_WS_ROOT="$( (cd "$WORKSPACE" && jj workspace root) 2>/dev/null )"; then
+  ADAPTER_TMP_ROOT="$ADAPTER_WS_ROOT/.tmp"
+else
+  ADAPTER_TMP_ROOT=".tmp"
+fi
+mkdir -p "$ADAPTER_TMP_ROOT" || exit 2
+SCRATCH="$(mktemp -d "$ADAPTER_TMP_ROOT/ce-work-adapter-XXXXXX")" || exit 2
 chmod 700 "$SCRATCH"
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
@@ -286,7 +287,10 @@ def model_allowed(route, model):
     if route == "opencode":
         return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+", model))
     if route == "opencode2":
-        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(?:#[A-Za-z0-9._-]+)?", model))
+        return model == "auto" or bool(re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(?:#[A-Za-z0-9._-]+)?",
+            model,
+        ))
     return False
 
 try:
@@ -411,7 +415,7 @@ PACKET="$(cd "$(dirname "$PACKET")" && pwd -P)/$(basename "$PACKET")" || exit 2
 RESULT_DIR="$(cd "$RESULT_DIR" && pwd -P)" || exit 2
 case "$RESULT_DIR/" in "$WORKSPACE/"*) log "result dir must be outside the worker workspace"; exit 2 ;; esac
 case "$PACKET" in "$WORKSPACE"/*) log "unit packet must be outside the worker workspace"; exit 2 ;; esac
-(cd "$WORKSPACE" && jj workspace root >/dev/null 2>&1) || { log "workspace is not a jj workspace"; exit 2; }
+(cd "$WORKSPACE" && jj workspace root >/dev/null) || { log "workspace is not a Jujutsu workspace"; exit 2; }
 chmod 700 "$RESULT_DIR" 2>/dev/null || { log "result dir could not be made private"; exit 2; }
 RESULT_DIR_IDENTITY="$("$PY" - "$RESULT_DIR" <<'PY'
 import os, stat, sys
@@ -744,7 +748,7 @@ while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROU
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-MIN_ENV+=("TMPDIR=$ROOT/.tmp")
+[ -n "${TMPDIR:-}" ] && MIN_ENV+=("TMPDIR=$TMPDIR")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")
@@ -755,11 +759,7 @@ case "$ROUTE" in
   codex) [ -n "${CODEX_HOME:-}" ] && MIN_ENV+=("CODEX_HOME=$CODEX_HOME") ;;
   claude) [ -n "${CLAUDE_CONFIG_DIR:-}" ] && MIN_ENV+=("CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR") ;;
   grok-cli) [ -n "${GROK_CONFIG_HOME:-}" ] && MIN_ENV+=("GROK_CONFIG_HOME=$GROK_CONFIG_HOME") ;;
-  opencode)
-    [ -n "${OPENCODE_CONFIG_DIR:-}" ] && MIN_ENV+=("OPENCODE_CONFIG_DIR=$OPENCODE_CONFIG_DIR")
-    [ -n "${OPENCODE_CONFIG:-}" ] && MIN_ENV+=("OPENCODE_CONFIG=$OPENCODE_CONFIG")
-    ;;
-  opencode2)
+  opencode|opencode2)
     [ -n "${OPENCODE_CONFIG_DIR:-}" ] && MIN_ENV+=("OPENCODE_CONFIG_DIR=$OPENCODE_CONFIG_DIR")
     [ -n "${OPENCODE_CONFIG:-}" ] && MIN_ENV+=("OPENCODE_CONFIG=$OPENCODE_CONFIG")
     ;;

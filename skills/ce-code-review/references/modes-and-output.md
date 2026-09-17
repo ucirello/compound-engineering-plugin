@@ -22,7 +22,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 
 **Grouping is presentation, not a mode.** The `grouping:` tokens change how the finding set is organized for triage — never reviewer selection, merge logic, scope rules, or the Stage 5c apply decision.
 
-**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other RocketClaw skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
+**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
 
 **Conflicting arguments:** Stop without dispatching reviewers when:
 - Multiple incompatible scope selectors appear together (e.g. `base:` **and** a PR number/branch target — `base:` means "review the current checkout against this base")
@@ -80,8 +80,8 @@ Every run, lite, focused, or full, leaves its receipt (`review.json` in `mode:ag
 ```json
 {
   "run_id": "<run-id>",
-  "branch": "<jj log -r @ -T 'bookmarks ++ \"\\n\"' --no-graph at dispatch time>",
-  "head_sha": "<jj log -r @ -T 'commit_id ++ \"\\n\"' --no-graph at dispatch time>",
+  "branch": "<jj bookmark list -r @ at dispatch time>",
+  "head_sha": "<jj log -r @ --limit 1 --no-graph -T 'commit_id' at dispatch time>",
   "verdict": "<Ready to merge | Ready with fixes | Not ready>",
   "completed_at": "<ISO 8601 UTC timestamp>"
 }
@@ -106,7 +106,7 @@ Minimum shape:
   "scope": {
     "base": "<merge-base sha, pr:NNN marker, or base: ref>",
     "branch": "<current branch name>",
-    "head_sha": "<jj log -r @ -T 'commit_id ++ \"\\n\"' --no-graph>",
+    "head_sha": "<jj log -r @ --limit 1 --no-graph -T 'commit_id'>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },

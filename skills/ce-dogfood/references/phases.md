@@ -6,50 +6,48 @@ Required read before Phase 0. Full detail for every phase; the skill body carrie
 
 Parse the arguments you were invoked with: a PR number, a bookmark name, or blank (use current bookmark). Strip `--port PORT` if present.
 
-1. **Identify the target — keep PR identity; do not switch the working copy yet.**
-   - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, checkout). Read its head only for display (`GIT_DIR=$(jj git root) gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare bookmark name: a fork PR's head can even be named `main`/`master`. Do not check out yet.
+1. **Identify the target — keep PR identity; do not switch the working tree yet.**
+   - **PR number:** the target *is the PR* — carry the number through every later step (trunk check, isolation, checkout). Read its head only for display (`GIT_DIR="$(jj git root)" GIT_WORK_TREE="$(jj workspace root)" gh pr view <number> --json headRefName,isCrossRepository`), but do **not** reduce it to a bare branch name: a fork PR's head can even be named `main`/`master`. Do not check out yet.
    - **Bookmark name:** the target is that bookmark.
-   - **Blank:** the target is the current bookmark.
-2. **Refuse to run on the trunk — bookmark/blank targets only.** If a *bookmark-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse a `ce-dogfood <number>` invocation just because the PR's head bookmark happens to be named `main`.
+   - **Blank:** the target is the current bookmark (`jj bookmark list -r @`).
+2. **Refuse to run on the trunk — bookmark/blank targets only.** If a *bookmark-name or blank* target resolves to the trunk (`main`/`master`/the detected default), stop — there is no diff to dogfood. A **PR is always diffable** (it has a base), so this check never applies to a PR target; never refuse a `ce-dogfood <number>` invocation just because the PR's head branch happens to be named `main`.
 3. **Decide isolation by what you're testing; let `ce-worktree` own the workspace mechanics.** Do not re-derive workspace detection or creation here — `ce-worktree` handles existing-isolation detection, the harness-native tool, attaching to a ref, and the "already checked out" constraint, and reports its decision back. The only call this skill makes is *whether to ask for isolation at all*:
-   - **Blank / current-bookmark target:** do **not** isolate — dogfood in place. You are already on the bookmark under test, the fix changes belong on it, and jj cannot edit the same change in a second workspace anyway. (If you happen to already be in a workspace, that is fine — you are simply dogfooding here.)
-   - **A PR or a different named bookmark:** this is an existing ref to test without disturbing your current workspace. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` to isolate **that target ref** — it attaches a workspace to the ref (or, if already isolated, checks it out in place; or reports "already checked out at `<path>` — work there" when the ref is live elsewhere). Act on `ce-worktree`'s verdict; the primary workspace is never switched. On **no**, check the target out in place (`GIT_DIR=$(jj git root) gh pr checkout <number>` for a PR, `jj new <bookmark>` for a bookmark), confirming first if working-copy changes would be disturbed.
-4. **Resume if a prior run exists.** Look for an existing report at `<root>/dogfood-reports/*-<bookmark-slug>-dogfood.md` (see the bookmark-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, rebuild the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
+   - **Blank / current-bookmark target:** do **not** isolate — dogfood in place. You are already on the bookmark under test, and the fix changes belong on it. (If you happen to already be in a workspace, that is fine — you are simply dogfooding here.)
+   - **A PR or a different named bookmark:** this is an existing ref to test without disturbing your current checkout. Offer isolation (platform's blocking question tool). On **yes**, invoke `ce-worktree` to isolate **that target ref** — it attaches a workspace to the ref (or, if already isolated, checks it out in place; or reports "already checked out at `<path>` — work there" when the ref is live elsewhere). Act on `ce-worktree`'s verdict; the primary checkout is never switched. On **no**, check the target out in place (`GIT_DIR="$(jj git root)" GIT_WORK_TREE="$(jj workspace root)" gh pr checkout <number>` for a PR, `jj new <bookmark>` for a bookmark), confirming first if working-copy changes would be disturbed.
+4. **Resume if a prior run exists.** Look for an existing report at `<root>/dogfood-reports/*-<branch-slug>-dogfood.md` (see the branch-slug rule under Resumability). If one is found with unfinished scenarios, ask whether to resume it or start fresh. To resume, rebuild the task list from its matrix: `Pass`/`Fixed`/`Skipped` stay done; `Pending` and `in_progress` become the remaining auto-runnable work. The two `Blocked` states are **not** auto-runnable — `Blocked (needs human verify)` and `Blocked (human decision)` are waiting on a person, so surface them to the user and ask how to proceed rather than silently re-queuing them.
 
 ### Resumability (stop and return at any point)
 
 This workflow is designed to be interrupted and resumed. Two pieces of state make that safe:
 
 - **The task list** (the harness's task tool — `TaskCreate`/`TaskUpdate` on Claude Code, `update_plan` on Codex, or the equivalent elsewhere) is the live to-do — one task per matrix scenario. Mark each `in_progress` when you start it and `completed` only when it genuinely passes.
-- **The report doc** at `<root>/dogfood-reports/<YYYY-MM-DD>-<bookmark-slug>-dogfood.md` is the durable checkpoint that survives across sessions. `<bookmark-slug>` is the bookmark name lowercased with every run of non-alphanumeric characters (slashes included) collapsed to a single `-` (e.g. `feature/Foo_Bar` -> `feature-foo-bar`). **Create it as soon as the matrix exists (end of Phase 2) by instantiating `references/dogfood-report-template.md`** (read that template now if you haven't) so the checkpoint carries the template-owned section shape from the start — then fill in every scenario at `Pending`, and **update it incrementally** — after each scenario is judged and after each fix is saved as a change — not only at the end. An interrupted run must leave a template-shaped checkpoint, not a bare matrix.
+- **The report doc** at `<root>/dogfood-reports/<YYYY-MM-DD>-<branch-slug>-dogfood.md` is the durable checkpoint that survives across sessions. `<branch-slug>` is the bookmark name lowercased with every run of non-alphanumeric characters (slashes included) collapsed to a single `-` (e.g. `feature/Foo_Bar` -> `feature-foo-bar`). **Create it as soon as the matrix exists (end of Phase 2) by instantiating `references/dogfood-report-template.md`** (read that template now if you haven't) so the checkpoint carries the template-owned section shape from the start — then fill in every scenario at `Pending`, and **update it incrementally** — after each scenario is judged and after each fix is recorded — not only at the end. An interrupted run must leave a template-shaped checkpoint, not a bare matrix.
 
 Because tasks are session-scoped but the report doc is on disk, the report is the source of truth for resuming. Always keep the two in sync so a later run (or a teammate) can pick up exactly where this one stopped.
 
 ### Phase 1: Analyze Changes
 
-Derive the trunk ref once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default bookmark is `master` (or anything else) would fail with a missing revision.
+Derive the trunk ref once, then pull the full diff against it and read it. Do not hard-code `main` — a repo whose default bookmark is `master` (or anything else) would miss the diff.
 
 ```bash
 # Resolve the trunk to a bookmark that actually exists. Start from the detected
 # default name (gh), then fall back to common names. For each candidate prefer
-# a local bookmark; else use the remote bookmark QUALIFIED as <name>@origin —
-# an unqualified name is a local bookmark, so a remote-only trunk would otherwise
-# miss. This qualification applies to the detected default too (PR/CI checkouts
-# often have only main@origin, no local main).
-DEFAULT=$(GIT_DIR=$(jj git root) gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)
+# a local bookmark; else use the remote bookmark <name>@origin. PR/CI checkouts
+# often have only main@origin, no local main.
+DEFAULT=$(GIT_DIR="$(jj git root)" GIT_WORK_TREE="$(jj workspace root)" gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)
 TRUNK=""
 for cand in "$DEFAULT" main master; do
   [ -n "$cand" ] || continue
-  if jj log -r "$cand" --no-graph -T 'commit_id ++ "\n"' >/dev/null 2>&1; then
+  if [ -n "$(jj bookmark list --color never -T 'name ++ "\n"' -- "$cand" 2>/dev/null)" ]; then
     TRUNK=$cand; break
-  elif jj log -r "${cand}@origin" --no-graph -T 'commit_id ++ "\n"' >/dev/null 2>&1; then
+  elif [ -n "$(jj bookmark list --color never --remote origin -T 'name ++ "\n"' -- "$cand" 2>/dev/null)" ]; then
     TRUNK="${cand}@origin"; break
   fi
 done
 TRUNK=${TRUNK:-main}
 
-jj diff --name-only -r "$TRUNK..@"   # what changed
-jj diff -r "$TRUNK..@"               # how it changed
+jj diff --from "$TRUNK" --to @ --name-only   # what changed
+jj diff --from "$TRUNK" --to @               # how it changed
 ```
 
 Build a mental model of every change: new features, modified behavior, new routes/views/components, touched data flows. Note anything that produces user-visible behavior — that is what the matrix must cover.
@@ -117,17 +115,15 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
 2. **Drive it** with agent-browser — navigate, snapshot for interactive refs, click, fill, submit, follow the journey to its real end state:
 
    ```bash
-   ROOT="$(jj workspace root 2>/dev/null || pwd)";
-   mkdir -p "$ROOT/.tmp/ce-dogfood";
    agent-browser open "http://localhost:${PORT}/<route>"
    agent-browser snapshot -i
    agent-browser click @e1
    agent-browser fill @e2 "value"
-   agent-browser screenshot "$ROOT/.tmp/ce-dogfood/<scenario>.png"   # workspace .tmp, not the repo root
+   agent-browser screenshot "$(mktemp -d "$(jj workspace root)/.tmp/ce-dogfood-XXXXXX")/<scenario>.png"   # workspace .tmp, not the repo root; fallback .tmp/ce-dogfood-XXXXXX
    agent-browser errors      # check console/page errors
    ```
 
-   Write transient screenshots to workspace `.tmp` (e.g. `$ROOT/.tmp/ce-dogfood/<scenario>.png`), never the repo root. Only copy a screenshot into the report's location if you intend to embed it in the final report.
+   Write transient screenshots to workspace `.tmp` (e.g. `mktemp -d "$(jj workspace root)/.tmp/ce-dogfood-XXXXXX"` with fallback `mktemp -d ".tmp/ce-dogfood-XXXXXX"` when `jj workspace root` fails), never the repo root. Only copy a screenshot into the report's location if you intend to embed it in the final report.
 
 3. **Judge** both correctness and experience: right data, right destination, sensible content, no console errors, and does it feel aligned with the product? Then judge the scenario against each pack criterion attached to it in Phase 2: state whether the behavior you drove honors the rule or contradicts it, quoting the rule's text and what the browser showed. A contradicted criterion is a failure-class result carrying its citation, exactly like a functional failure; an honored one is recorded as honored.
 4. **Walk it as each persona.** Re-run the journey in your head from each primary persona's perspective (from Phase 1, pack personas included) and ask where they'd feel a **paper cut** — a small friction that wouldn't fail a functional test but degrades the experience: a confusing label, an extra click, an unexpected jump, a slow-feeling step, missing feedback, copy that doesn't match how that persona thinks. A scenario can be functionally `Pass` yet still carry paper cuts. Note each paper cut, which persona feels it, and its severity; a paper cut felt by a pack persona carries that persona's citation.
@@ -139,7 +135,7 @@ Work the task list **one item at a time**. For each scenario, mark the task `in_
 
 When a scenario fails — a functional failure or a contradicted pack criterion — or a passing scenario carries a sharp paper cut worth fixing now, **fix it and prove it**, but first decide whether the fix is yours to make autonomously or a human's to decide.
 
-**A contradicted pack rule has one more question before you judge the size of the fix: is the contradiction the bookmark's intent?** When the diff deliberately does what the rule forbids — the change's stated purpose, its plan, or its change history chose the behavior the rule rules out — the rule is the thing in question, not the code. Do not implement a fix that fights the product. Record it under **Decisions for a human** as a stale-rule decision (the rule with its citation, what the bookmark does instead and why, and the two options: refine the rule or retire it — a writable pack is refined through `ce-compound`; a remote-sourced pack changes upstream and bumps its `ref`), and mark the scenario `Blocked (human decision)`. When the contradiction is incidental — the bookmark did not mean to break the rule — it is an ordinary failure and the fix-size rule below decides who fixes it.
+**A contradicted pack rule has one more question before you judge the size of the fix: is the contradiction the branch's intent?** When the diff deliberately does what the rule forbids — the change's stated purpose, its plan, or its commit history chose the behavior the rule rules out — the rule is the thing in question, not the code. Do not implement a fix that fights the product. Record it under **Decisions for a human** as a stale-rule decision (the rule with its citation, what the branch does instead and why, and the two options: refine the rule or retire it — a writable pack is refined through `ce-compound`; a git-sourced pack changes upstream and bumps its `ref`), and mark the scenario `Blocked (human decision)`. When the contradiction is incidental — the branch did not mean to break the rule — it is an ordinary failure and the fix-size rule below decides who fixes it.
 
 **Judge the size of the fix before touching code.** Auto-fix when the change is small, well-understood, and low-risk: a clear bug with an obvious correct fix, contained to a few files, no schema/architecture/product trade-off. **Do not auto-fix** when the change is large or ambiguous — it requires an architectural or schema decision, changes product behavior or UX intent, spans many files, has plausible competing solutions, or you're not confident the "right" answer is unambiguous. Forcing a big judgment call autonomously is worse than escalating it.
 
@@ -148,11 +144,11 @@ When a scenario fails — a functional failure or a contradicted pack criterion 
 1. Investigate the root cause. If it's non-obvious, use `ce-debug`.
 2. Apply the fix in the code.
 3. **Add an automated regression test** that fails before the fix and passes after, so the bug can't return. This is the default for behavioral and code bugs. When an automated test is genuinely impractical — a pure copy, spacing, or visual fix with no behavioral assertion to make — substitute a documented browser-replay or screenshot check and **state in the report why no automated test was meaningful**. Do not invent a hollow test just to satisfy the step.
-4. Save the fix with `ce-commit`. One logical fix per change.
+4. Record the fix with `ce-commit`. One logical fix per change.
 5. Re-run the failing scenario in the browser to confirm it now passes; then continue the matrix.
 6. If the bug carried a reusable lesson, capture it with `ce-compound`. A fix that honored a pack rule teaches nothing new — the rule already says it; cite the rule in the report instead of capturing a duplicate.
 
-**Close the loop with the packs.** A judgment from this run that generalizes beyond this bookmark and is prescriptive-shaped — a paper cut a persona would feel on any screen, a check every future scenario of this kind should pass — is knowledge the declared packs may want. Hand each one to `ce-compound` with the pack context (the resolved roots and the citation of any rule it refines); `ce-compound` owns whether it lands in a writable pack, in `<root>/solutions/`, or is already covered by a rule, and it asks before writing to a pack. This skill never writes into a pack or into `config.yaml` itself. In a non-interactive run, list each such judgment under the report's **Pack candidates** instead, so the author can route it later.
+**Close the loop with the packs.** A judgment from this run that generalizes beyond this branch and is prescriptive-shaped — a paper cut a persona would feel on any screen, a check every future scenario of this kind should pass — is knowledge the declared packs may want. Hand each one to `ce-compound` with the pack context (the resolved roots and the citation of any rule it refines); `ce-compound` owns whether it lands in a writable pack, in `<root>/solutions/`, or is already covered by a rule, and it asks before writing to a pack. This skill never writes into a pack or into `config.yaml` itself. In a non-interactive run, list each such judgment under the report's **Pack candidates** instead, so the author can route it later.
 
 **For changes too big to make autonomously:** do not implement. Record it in the report's **Decisions for a human** section with: what's broken, why it's not a safe autonomous fix, the options you see (with trade-offs), and your recommendation. Mark the scenario `Blocked (human decision)` in the matrix, then continue with the rest. Never make a large, irreversible, or product-altering change just to clear a matrix item.
 
@@ -162,6 +158,6 @@ Keep iterating until every task is `completed` or in a terminal `Blocked` state 
 
 ### Phase 6: Write the Report Artifact
 
-The report doc was created at the end of Phase 2 and updated incrementally throughout (see Resumability). When the matrix is green (or every remaining item is explicitly blocked), **finalize** it at `<root>/dogfood-reports/<YYYY-MM-DD>-<bookmark-slug>-dogfood.md` in the repo under test, **save it** as its own change with `ce-commit` (the report is a tracked artifact of the bookmark, like the fix changes before it; never push), then surface a short summary in chat with the file path and the change.
+The report doc was created at the end of Phase 2 and updated incrementally throughout (see Resumability). When the matrix is green (or every remaining item is explicitly blocked), **finalize** it at `<root>/dogfood-reports/<YYYY-MM-DD>-<branch-slug>-dogfood.md` in the repo under test, **record it** as its own change with `ce-commit` (the report is a tracked artifact of the bookmark, like the fix changes before it; never push), then surface a short summary in chat with the file path and the change.
 
 **Finalize against `references/dogfood-report-template.md`** — the same template the Phase 2 checkpoint was instantiated from, which owns the required sections and what each must carry. Confirm every template-owned section is present and complete; do not reconstruct the section list from memory, as that drifts from the template. Carry forward the cross-phase obligations this skill produced: the Mermaid flowcharts from Phase 2a, a matrix row per scenario with its change id, each fix's root cause and the regression test added (or why none was meaningful), paper cuts attributed by persona, the per-rule Pack Compliance verdicts and any stale-rule decisions from Phase 5, pack candidates not yet routed, learnings worth feeding to `ce-compound`, and a final readiness verdict that records the Phase 5 automated-suite result.

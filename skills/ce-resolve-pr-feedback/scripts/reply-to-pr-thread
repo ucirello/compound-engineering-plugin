@@ -17,8 +17,9 @@ PR_NUMBER=$1
 ROOT_COMMENT_ID=$2
 BODY=$(cat)
 
-if GIT_DIR=$(jj git root 2>/dev/null); then
-    export GIT_DIR
+# Pair every gh call with the colocated Git dir of this JJ workspace.
+if git_dir=$(jj git root 2>/dev/null); then
+    export GIT_DIR="$git_dir"
 fi
 
 if [ -n "$3" ]; then

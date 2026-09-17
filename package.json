@@ -38,9 +38,9 @@
     "site:check": "cd site && LC_ALL=C.UTF-8 bundle exec htmlproofer _site --disable-external --allow-missing-href --no-enforce-https --swap-urls '^/compound-engineering/:/'"
   },
   "dependencies": {
-    "@opencode/plugin": "latest",
     "citty": "^0.1.6",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "@opencode/plugin": "latest"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",

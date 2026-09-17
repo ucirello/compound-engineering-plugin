@@ -39,7 +39,24 @@ EFFORT="high"   # settled: elevation runs at high effort
 # any mutating tool. Its output is returned prose, not a file write.
 ALLOWED=(Read Glob Grep WebSearch WebFetch)
 
-build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming, read-only)
+# Off-host harness: default remains the Claude CLI. `opencode2` is its own
+# branch (not an alias of `opencode`); selected via CE_ELEVATION_HARNESS.
+HARNESS="${CE_ELEVATION_HARNESS:-claude}"
+
+build_opencode2_cmd() {  # <model> [<prompt-file>] -> sets CMD (opencode2 run flags only)
+  # Surveyed `opencode2 run --help`. Do not pass `opencode` flags such as --dir.
+  # --model keeps provider/modelname#variant unchanged. --file attaches the
+  # prompt; --format json; --auto auto-approves permissions not explicitly denied.
+  local model="$1" prompt="${2:-}"
+  CMD=(opencode2 run --format json --model "$model" --auto)
+  [ -n "$prompt" ] && CMD+=(--file "$prompt")
+}
+
+build_cmd() {   # <model> <handoff-dir> -> sets CMD array
+  if [ "$HARNESS" = "opencode2" ]; then
+    build_opencode2_cmd "$1" "${PROMPT_FILE:-}"
+    return
+  fi
   # --safe-mode suppresses the user environment's hooks, plugins, and MCP
   # servers; --disable-slash-commands blocks skills. --tools RESTRICTS the
   # available built-in set to this list — Write/Edit/Bash are not present at all.
@@ -51,9 +68,9 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole OS temp root ($TMPDIR / /tmp) instead would
-  # expose every other same-user scratch file and credential to the elevated
-  # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
+  # via --add-dir. Adding the whole workspace `.tmp` instead would expose every
+  # other same-user scratch file and credential to the elevated model; the
+  # scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
   [ -n "${2:-}" ] && add_dirs=(--add-dir "$2")
   # --no-session-persistence: this is a one-shot background model call, so the
@@ -85,7 +102,7 @@ RESULT_PATH="${3:?result-path required}"
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole OS temp root. Pure-bash dirname (no
+# to an absolute path), never the whole workspace `.tmp`. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,7 +120,19 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/elevation-peer-XXXXXX")"
+if [ "$HARNESS" = "opencode2" ] && ! command -v opencode2 >/dev/null 2>&1; then
+  log "opencode2 not found on PATH; cannot dispatch the elevated step — degrading to inline"
+  printf '{"status":"failed","requested_model":"%s","evidence":"opencode2 unavailable on PATH"}' "$MODEL" > "$RESULT_PATH" 2>/dev/null || true
+  exit 0
+fi
+
+if WS_ROOT="$(jj workspace root 2>/dev/null)"; then
+  SCRATCH_ROOT="$WS_ROOT/.tmp"
+else
+  SCRATCH_ROOT=".tmp"
+fi
+mkdir -p "$SCRATCH_ROOT"
+PEERLOG="$(mktemp "$SCRATCH_ROOT/elevation-peer-XXXXXX")"
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
@@ -217,7 +246,11 @@ run_codex_cmd() {
   RUN_SUCCEEDED=false
   local prev; case "$-" in *m*) prev=1;; *) prev=0;; esac
   set -m
-  command "${CMD[@]}" < "$PROMPT_FILE" > "$PEERLOG" 2>&1 &
+  if [ "$HARNESS" = "opencode2" ]; then
+    command "${CMD[@]}" > "$PEERLOG" 2>&1 &
+  else
+    command "${CMD[@]}" < "$PROMPT_FILE" > "$PEERLOG" 2>&1 &
+  fi
   local pid=$!
   ACTIVE_PEER_PID="$pid"
   [ "$prev" = 0 ] && set +m
@@ -244,6 +277,28 @@ run_codex_cmd() {
 # --- main -------------------------------------------------------------------
 build_cmd "$MODEL" "$HANDOFF_DIR"
 run_codex_cmd
+
+if [ "$HARNESS" = "opencode2" ]; then
+  tmp="${RESULT_PATH}.tmp.$$"
+  if [ "$RUN_SUCCEEDED" = true ] && [ -s "$PEERLOG" ]; then
+    if jq --arg m "$MODEL" --rawfile o "$PEERLOG" \
+         '{status:"ok", requested_model:$m, served_model:"unverified", receipt:"unverified", output:$o}' \
+         > "$tmp" 2>/dev/null; then
+      mv -f "$tmp" "$RESULT_PATH"
+      log "elevated step complete: requested=$MODEL served=unverified receipt=unverified harness=opencode2"
+    else
+      rm -f "$tmp"
+      write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"result envelope build failed"}')"
+      log "elevated step: result envelope build failed"
+    fi
+  else
+    write_result "$(jq -n --arg m "$MODEL" --arg e "$(bounded_failure_evidence)" \
+      '{status:"failed", requested_model:$m, evidence:$e}')"
+    log "elevated step failed; wrote failure envelope"
+  fi
+  rm -f "$PEERLOG"
+  exit 0
+fi
 
 # The stream-json terminal event is the LAST line whose type is "result". Match
 # on it rather than `tail -1`, so a diagnostic written to stderr after the result

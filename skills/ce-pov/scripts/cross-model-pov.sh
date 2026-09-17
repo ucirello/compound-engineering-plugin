@@ -24,9 +24,9 @@
 #                   explicitly named peer, but its receipt remains unverified;
 #                   automatic discovery must exclude it before calling this worker.
 #   <fixed-route>   one host-resolved and pre-sanctioned route: codex, claude,
-#                   grok-cli, grok-cursor, cursor, or composer. A route failure
-#                   returns no artifact; only the host may disclose and retry a
-#                   different recipient.
+#                   grok-cli, grok-cursor, cursor, composer, opencode, or
+#                   opencode2. A route failure returns no artifact; only the
+#                   host may disclose and retry a different recipient.
 #   <subject-payload> framed question plus any conversation-only subject material.
 #                     Point to repository files instead of copying their contents;
 #                     the peer grounds itself from the shared working tree.
@@ -38,7 +38,7 @@
 # Test/introspection mode (no model call, no side effects):
 #   cross-model-pov.sh --emit-adapter <route>
 #     prints the exact argv the given route would run (route in:
-#     codex | claude | grok-cli | grok-cursor | cursor | composer). Both this mode and the
+#     codex | claude | grok-cli | grok-cursor | cursor | composer | opencode | opencode2). Both this mode and the
 #     live run build their argv from adapter_argv(), so the U7 route-safety test
 #     asserts on the same command string the peer actually runs.
 #
@@ -125,6 +125,7 @@ route_model() {   # <route> -> the M_* constant that route requests
     cursor)      printf 'auto' ;;
     composer)    printf '%s' "$M_COMPOSER" ;;
     opencode)    printf 'auto' ;;
+    opencode2)   printf 'auto' ;;
   esac
 }
 
@@ -133,6 +134,7 @@ route_target() {
     codex|claude|cursor|composer) printf '%s' "$1" ;;
     grok-cli|grok-cursor) printf 'grok' ;;
     opencode) printf 'opencode' ;;
+    opencode2) printf 'opencode2' ;;
   esac
 }
 
@@ -143,6 +145,7 @@ route_harness() {
     grok-cli) printf 'grok' ;;
     grok-cursor|cursor|composer) printf 'cursor-agent' ;;
     opencode) printf 'opencode' ;;
+    opencode2) printf 'opencode2' ;;
   esac
 }
 
@@ -151,6 +154,7 @@ target_serving_family() {
     codex|claude|grok|composer) printf '%s' "$1" ;;
     cursor) printf 'unknown' ;;
     opencode) printf 'unknown' ;;
+    opencode2) printf 'unknown' ;;
   esac
 }
 
@@ -255,6 +259,15 @@ adapter_argv() {
       _oc_model="$(route_model opencode)"
       [ "$_oc_model" = "auto" ] || [ -z "$_oc_model" ] || printf '%s\0' --model "$_oc_model"
       ;;
+    opencode2)
+      # Surveyed `opencode2 run --help` (v2.0.6): --format json, --file, --model
+      # provider/model#variant. No --dir. Working directory is READ_ROOT via
+      # run_timeout_cmd. Do not reuse opencode env/flags.
+      printf '%s\0' opencode2 run --format json --file "$PROMPT_FILE"
+      printf '%s\0' "Follow the attached brief. Return only schema-shaped JSON."
+      _oc2_model="$(route_model opencode2)"
+      [ "$_oc2_model" = "auto" ] || [ -z "$_oc2_model" ] || printf '%s\0' --model "$_oc2_model"
+      ;;
     *) return 1 ;;
   esac
 }
@@ -276,6 +289,7 @@ apply_model_override() {
     grok-cursor:cursor-grok-* ) ;;
     composer:composer-* ) ;;
     opencode:*/* ) ;;
+    opencode2:*/* ) ;;
     *) return 1 ;;
   esac
 }
@@ -290,7 +304,7 @@ if [ "${1:-}" = "--emit-adapter" ]; then
   apply_model_override "$route" 2>/dev/null || { echo "model override '${CROSS_MODEL_MODEL_OVERRIDE:-}' not compatible with route '$route'" >&2; exit 2; }
   # adapter_argv emits NUL-delimited argv (can't be captured in a shell var), so
   # validate the route first, then render for humans with NUL -> space.
-  adapter_argv "$route" >/dev/null 2>&1 || { echo "unknown route '$route' (want codex|claude|grok-cli|grok-cursor|cursor|composer|opencode)" >&2; exit 2; }
+  adapter_argv "$route" >/dev/null 2>&1 || { echo "unknown route '$route' (want codex|claude|grok-cli|grok-cursor|cursor|composer|opencode|opencode2)" >&2; exit 2; }
   adapter_argv "$route" | tr '\0' ' '; echo
   exit 0
 fi
@@ -308,8 +322,8 @@ READ_ROOT="${CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
 READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve repository/read root '$READ_ROOT'"
 if [ -n "${CROSS_MODEL_REPO_ROOT:-}" ]; then
   REPO_ROOT="$CROSS_MODEL_REPO_ROOT"
-elif command -v git >/dev/null 2>&1 && _git_root="$(git -C "$READ_ROOT" rev-parse --show-toplevel 2>/dev/null)"; then
-  REPO_ROOT="$_git_root"
+elif _jj_root="$(cd "$READ_ROOT" && jj workspace root 2>/dev/null)"; then
+  REPO_ROOT="$_jj_root"
 else
   REPO_ROOT="$(pwd -P)"
 fi
@@ -327,7 +341,10 @@ else
   RUN_PARENT="$(cd "$RUN_PARENT" && pwd -P)" || skip "cannot resolve run-dir parent '$RUN_PARENT'"
   RUN_DIR_RESOLVED="$RUN_PARENT/$RUN_BASENAME"
 fi
-case "$RUN_DIR_RESOLVED/" in "$REPO_ROOT/"*) skip "run-dir must be outside the repository" ;; esac
+case "$RUN_DIR_RESOLVED/" in
+  "$REPO_ROOT/.tmp/"*) ;;
+  "$REPO_ROOT/"*) skip "run-dir must be outside the repository or under <workspace>/.tmp" ;;
+esac
 [ -d "$RUN_DIR_RESOLVED" ] || skip "run-dir '$RUN_DIR' must already exist"
 RUN_DIR="$RUN_DIR_RESOLVED"
 chmod 700 "$RUN_DIR" 2>/dev/null || skip "run-dir '$RUN_DIR' could not be made private"
@@ -340,12 +357,12 @@ case "$HOST_PROVIDER" in
   *) skip "host serving family '$HOST_PROVIDER' invalid (want codex|claude|grok|composer|unknown)" ;;
 esac
 case "$HOST_HARNESS" in
-  codex|claude|grok|cursor|opencode|unknown) ;;
-  *) skip "host harness '$HOST_HARNESS' invalid (want codex|claude|grok|cursor|opencode|unknown)" ;;
+  codex|claude|grok|cursor|opencode|opencode2|unknown) ;;
+  *) skip "host harness '$HOST_HARNESS' invalid (want codex|claude|grok|cursor|opencode|opencode2|unknown)" ;;
 esac
 
 case "$FIXED_ROUTE" in
-  codex|claude|grok-cli|grok-cursor|cursor|composer|opencode) ;;
+  codex|claude|grok-cli|grok-cursor|cursor|composer|opencode|opencode2) ;;
   *) skip "unknown fixed route '${FIXED_ROUTE:-<empty>}'; host must resolve one route before egress" ;;
 esac
 TARGET="$(route_target "$FIXED_ROUTE")" || skip "unknown fixed route '${FIXED_ROUTE:-<empty>}'; host must resolve one route before egress"
@@ -396,6 +413,7 @@ route_allowlisted() {
       in_csv grok "$ALLOW" && { in_csv cursor "$ALLOW" || in_csv composer "$ALLOW"; }
       ;;
     opencode) in_csv opencode "$ALLOW" ;;
+    opencode2) in_csv opencode2 "$ALLOW" ;;
     *) return 1 ;;
   esac
 }
@@ -428,6 +446,7 @@ route_available() {
     grok-cli) command -v grok >/dev/null 2>&1 ;;
     grok-cursor|cursor|composer) command -v cursor-agent >/dev/null 2>&1 ;;
     opencode) command -v opencode >/dev/null 2>&1 ;;
+    opencode2) command -v opencode2 >/dev/null 2>&1 ;;
     *) return 1 ;;
   esac
 }
@@ -439,10 +458,17 @@ log "fixed cross-model POV route: target=$TARGET route=$FIXED_ROUTE (host $HOST_
 # The payload is prepared by ce-pov and embeds the framed question plus any
 # conversation-only subject material needed for this round. Repository evidence
 # stays in the shared working tree for the peer to inspect directly.
-SCRATCH_PARENT="${CROSS_MODEL_SCRATCH_PARENT:-${TMPDIR:-/tmp}}"
+if [ -n "${CROSS_MODEL_SCRATCH_PARENT:-}" ]; then
+  SCRATCH_PARENT="$CROSS_MODEL_SCRATCH_PARENT"
+else
+  SCRATCH_PARENT="$REPO_ROOT/.tmp"
+fi
 [ -d "$SCRATCH_PARENT" ] || mkdir -p "$SCRATCH_PARENT" 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
 SCRATCH_PARENT="$(cd "$SCRATCH_PARENT" && pwd -P)" || skip "cannot resolve private scratch parent"
-case "$SCRATCH_PARENT/" in "$REPO_ROOT/"*) skip "private scratch parent must be outside the repository" ;; esac
+case "$SCRATCH_PARENT/" in
+  "$REPO_ROOT/.tmp/"*) ;;
+  "$REPO_ROOT/"*) skip "private scratch parent must be outside the repository or under <workspace>/.tmp" ;;
+esac
 if ! PEER_WORKDIR="$(mktemp -d "$SCRATCH_PARENT/xmodel-pov-peer-XXXXXX")"; then
   skip "provider $TARGET workspace isolation unavailable; skipping provider"
 fi
@@ -786,7 +812,20 @@ parse_opencode_events() {  # <logfile> <outfile>
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e '.' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "${TMPDIR:-/tmp}/ce-opencode-text-XXXXXX")" || return 1
+  tmp="$(mktemp "$PEER_WORKDIR/ce-opencode-text-XXXXXX")" || return 1
+  printf '%s' "$text" > "$tmp"
+  recover_pov_json "$tmp" "$2"
+  local st=$?
+  rm -f "$tmp"
+  return "$st"
+}
+
+parse_opencode2_events() {  # <logfile> <outfile>
+  local text tmp
+  text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
+  [ -n "$text" ] || return 1
+  printf '%s' "$text" | jq -e '.' > "$2" 2>/dev/null && return 0
+  tmp="$(mktemp "$PEER_WORKDIR/ce-opencode2-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_pov_json "$tmp" "$2"
   local st=$?
@@ -834,6 +873,7 @@ attempt_route() {   # <provider> <route>
     cursor)      note="auto (serving model unverified)" ;;
     composer)    note="$(route_model composer)" ;;
     opencode)    note="auto (serving model unverified)" ;;
+    opencode2)   note="auto (serving model unverified)" ;;
   esac
   log "peer run: provider=$provider route=$route model=$note POV read-only least-privilege (idle ${IDLE_SECS}s / hard ${HARD_SECS}s; grok-cli hard-only ${UNGUARDED_HARD_SECS}s)"
   case "$route" in
@@ -856,6 +896,8 @@ attempt_route() {   # <provider> <route>
       [ "$RUN_SUCCEEDED" = true ] && parse_structured "$PEERLOG" "$RAW_OUT" ;;
     opencode)    run_timeout_cmd "" "$HARD_SECS" idle
                  [ "$RUN_SUCCEEDED" = true ] && parse_opencode_events "$PEERLOG" "$RAW_OUT" ;;
+    opencode2)   run_timeout_cmd "" "$HARD_SECS" idle
+                 [ "$RUN_SUCCEEDED" = true ] && parse_opencode2_events "$PEERLOG" "$RAW_OUT" ;;
   esac
   if [ "$RUN_SUCCEEDED" != true ]; then
     rm -f "$RAW_OUT"

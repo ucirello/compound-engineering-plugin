@@ -14,7 +14,7 @@ At every native subagent boundary in this phase, classify a rejected dispatch by
 
 A **Lightweight** Durable plan does not dispatch the research agents below. Ground it from bounded inline reads of the files the request names and their tests, note any `<root>/solutions/` entry whose title matches the topic and, after running **Pack discovery** below, any resolved pack file whose `applies_when` matches the work, and continue to 1.1b; 1.4b's reclassification still applies when those reads surface an external contract surface.
 
-**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in CE config by running this skill's resolver as one command:
+**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in RocketClaw config by running this skill's resolver as one command:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";

@@ -1,6 +1,6 @@
 # Fix: workspace safety, test-first, and what a failed fix means
 
-Read this before editing any file in Phase 3. SKILL.md runs the branch check and records the pre-fix scope before sending you here. Do not repeat either step, and do not ask a second time about a file whose unstaged edits SKILL.md already confirmed.
+Read this before editing any file in Phase 3. SKILL.md runs the bookmark check and records the pre-fix scope before sending you here. Do not repeat either step, and do not ask a second time about a file whose uncommitted edits SKILL.md already confirmed.
 
 *One change at a time. If you are changing multiple things, stop.*
 
@@ -8,7 +8,7 @@ Read this before editing any file in Phase 3. SKILL.md runs the branch check and
 
 1. Choose the regression test's home. Follow the active project instructions and any applicable subdirectory-scoped instructions, and always inspect existing tests before adding coverage. Use an existing failing test when it already captures the bug, update an existing test when it owns the contract but has the wrong expectation, strengthen an over-mocked test that should have caught the bug, or add a new minimal isolated test only when no existing test is the right home. ("Owns the contract" means that test is the one that defines the behavior the bug broke.) The test must fail on the current bug and pass once the corrected behavior lands. Name it so the failure message explains the bug. Sometimes no available seam can exercise the bug as it actually triggered, because the failure needs a chain of callers or a state the reachable seams cannot set up. In that case do not write a shallow test there for the false confidence. Record the missing seam as a finding in the debug summary, and let defense-in-depth or the post-mortem carry it. SKILL.md's precondition decides whether an existing test may be updated at all: only for a confirmed defect, never for a test whose expectation the change deliberately reverses.
 2. Verify that the test fails for the right reason, meaning the root cause and not unrelated setup. When step 1 recorded a missing seam and wrote no test, Phase 1's reproduction check is the red-green instrument for this step and step 4 instead.
-3. Implement the **minimal** fix: the root cause and nothing else. No drive-by refactors, formatting, or unrelated cleanup. Those are separate commits.
+3. Implement the **minimal** fix: the root cause and nothing else. No drive-by refactors, formatting, or unrelated cleanup. Those are separate changes.
 4. Verify the test passes. Then re-run Phase 1's reproduction check against the original scenario (not only the minimized or test-shaped one) when that check can run here. When it cannot run here, which is the pipeline cannot-reproduce path, say so in the summary or structured return and let the caller's CI run on the pushed fix stand as that verification. Then run the broader suite for regressions.
 5. Self-review the diff. Read every changed line for style violations, missed edge cases, regressions in adjacent behavior, and missing coverage. Temporary debug instrumentation must all be gone before handoff. If you tagged your debug lines with one shared marker while investigating, verifying that is a single grep. The broader polish, review, and PR work belongs to Phase 4, after the debug summary.
 

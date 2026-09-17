@@ -287,6 +287,41 @@ def _iso(dt):
     return dt.isoformat()
 
 
+def _jj_repo_env(env):
+    """Point gh at the colocated Git backend (`GIT_DIR` / `GIT_WORK_TREE`). Cached per process.
+
+    `jj git root` / `jj workspace root` walk ancestors from cwd; do not use `jj -R` here — it
+    would not change cwd for later file lists. If this process is not inside a JJ workspace,
+    leave the env unchanged so gh keeps using cwd as before.
+    """
+    cached = getattr(_jj_repo_env, "_cached", None)
+    if cached is None:
+        extra = {}
+        try:
+            git_dir = subprocess.run(
+                ["jj", "git", "root"],
+                capture_output=True, text=True, encoding="utf-8", timeout=30,
+            )
+            if git_dir.returncode == 0:
+                value = git_dir.stdout.strip()
+                if value:
+                    extra["GIT_DIR"] = value
+            ws = subprocess.run(
+                ["jj", "workspace", "root"],
+                capture_output=True, text=True, encoding="utf-8", timeout=30,
+            )
+            if ws.returncode == 0:
+                value = ws.stdout.strip()
+                if value:
+                    extra["GIT_WORK_TREE"] = value
+        except (OSError, subprocess.TimeoutExpired):
+            extra = {}
+        _jj_repo_env._cached = extra
+        cached = extra
+    env.update(cached)
+    return env
+
+
 def _run(cmd):
     # gh honors CLICOLOR_FORCE / GH_FORCE_TTY even for --json output, and a host that exports them
     # (observed under orca) makes every JSON read unparsable. Pin plain output regardless of caller env.
@@ -294,6 +329,7 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
+    _jj_repo_env(env)
     return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
 
 
@@ -390,8 +426,9 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
     PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST Git-ref endpoint, so that response falls back to a GitHub
+    Git-protocol probe (`git ls-remote` of the remote URL; JJ has no public ls-remote) while
+    preserving exact-ref matching and non-interactive failure behavior.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -432,8 +469,9 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
         remote_url = (f"https://{host or 'github.com'}/"
                       f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
         try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
+            # GitHub Git-protocol fallback when REST returns 404. JJ has no public ls-remote;
+            # this talks to the remote URL (not local VCS) and reuses the gh session as the
+            # credential source so a headless host with no Git helper is not anonymous here.
             git_result = _run_git([
                 "git", "-c", "core.askPass=",
                 "-c", "credential.helper=",
@@ -1303,7 +1341,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace `.tmp` across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):

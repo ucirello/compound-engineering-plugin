@@ -17,14 +17,19 @@ When a scout dispatch is rejected, first check whether an agent launched. If the
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WS_ROOT="$(jj workspace root 2>/dev/null)" || WS_ROOT="";
+if [ -n "$WS_ROOT" ]; then SCRATCH_PARENT="$WS_ROOT/.tmp"; else SCRATCH_PARENT=".tmp"; fi;
+if [ -L "$SCRATCH_PARENT" ]; then echo "unsafe scratch root symlink: $SCRATCH_PARENT" >&2; exit 1; fi;
+(umask 077; mkdir -p "$SCRATCH_PARENT") || exit 1;
+if [ -L "$SCRATCH_PARENT" ] || [ ! -O "$SCRATCH_PARENT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_PARENT" >&2; exit 1; fi;
+chmod 700 "$SCRATCH_PARENT" || exit 1;
+SCRATCH_ROOT="$SCRATCH_PARENT/ce-pov";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
-(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
+SCRATCH_DIR="$(mktemp -d "$SCRATCH_ROOT/XXXXXX")" || exit 1;
+chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
 

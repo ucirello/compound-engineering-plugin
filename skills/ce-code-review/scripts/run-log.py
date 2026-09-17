@@ -54,6 +54,8 @@ def host_from_env() -> str:
         return "cursor"
     if env.get("OPENCODE_TERMINAL"):
         return "opencode"
+    # opencode2 is a distinct harness with no unique env in surveyed --help;
+    # when the host attests it, cost.host may still be unknown here.
     return "unknown"
 
 

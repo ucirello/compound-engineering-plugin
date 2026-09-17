@@ -390,8 +390,8 @@ artifact.
 ### No status field
 
 Unified plan artifacts have no `status` field and no `active → completed`
-lifecycle or readiness flag. Readers assess the contents and unresolved questions. No CE artifact carries mutable progress state; whether work shipped
-is derived from git, not stored in the doc. Do not introduce one.
+lifecycle or readiness flag. Readers assess the contents and unresolved questions. No artifact carries mutable progress state; whether work shipped
+is derived from the repository, not stored in the doc. Do not introduce one.
 
 ### Field-name stability
 

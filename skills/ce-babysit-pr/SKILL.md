@@ -1,7 +1,7 @@
 ---
 name: ce-babysit-pr
 description: "Babysits an open GitHub PR until merge-ready. Use when asked to watch a PR over time — not for one-shot comment resolution or one CI failure. GitHub (incl. Enterprise) only."
-argument-hint: "[PR number|URL|blank=current branch] [watch|checkpoint] [duration] [posture:target|stack-ready|stack-land]"
+argument-hint: "[PR number|URL|blank=current bookmark] [watch|checkpoint] [duration] [posture:target|stack-ready|stack-land]"
 ---
 
 # Babysit a PR
@@ -16,7 +16,7 @@ Keep an open PR moving toward merge by reacting to three streams as each arrives
 
 - `target` — only the named PR; stop at looks-ready; never merges; offer stack-wide once if a confirmed managed stack needs work.
 - `stack-ready` — once a layer has zero actionable backlog (CI may still run), advance to the next open non-draft upstack layer needing work; lower layers stay probed and the lowest that re-opens pulls the walk back; never merges.
-- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `gh stack merge` it + `gh stack sync`.
+- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `GIT_DIR=$(jj git root) gh stack merge` it + `GIT_DIR=$(jj git root) gh stack sync`.
 
 One PR named → `target` (ask once if a confirmed multi-layer stack exists); asked to carry the whole stack → `stack-ready`; asked to land it → `stack-land`. `mode:pipeline` never asks. Restate posture per transition.
 
@@ -32,10 +32,10 @@ One PR named → `target` (ask once if a confirmed multi-layer stack exists); as
 
 ## Step 1: Resolve and arm
 
-1. `gh repo view` must succeed, else say GitHub-only, stop.
-2. Resolve the PR from the argument or current branch (`references/setup.md`); none → report, stop.
+1. `gh repo view` must succeed (same shell as `GIT_DIR=$(jj git root)`; run `jj` from the workspace root), else say GitHub-only, stop.
+2. Resolve the PR from the argument or current bookmark (`references/setup.md`); none → report, stop.
 3. Chain classification comes from the snapshot, never the user; resolve posture before semantic work.
-4. **Checkout must be the PR's head branch with matching upstream** before any delegated mutation; default `gh pr checkout <ref>`; no push access or dirty checkout → stop, say so.
+4. **Working copy must be the PR's head bookmark with matching upstream** before any delegated mutation; default `GIT_DIR=$(jj git root) gh pr checkout <ref>`; no push access or dirty working copy → stop, say so.
 5. **Sustain mode** (`references/watch-loop.md`): Keep monitoring in the current session until a stop condition is met. Use checkpoint mode only when the user requests it or the harness cannot keep the session active while waiting for the watcher's output. The default self-sustaining in-session watch uses `pr-snapshot watch` and runs one tick per `BABYSIT_WAKE`; never collapse the loop into a script. In checkpoint mode, run one tick and report paused monitoring with the resume invocation from `references/setup.md`. **Pipeline** (`mode:pipeline`): bounded synchronous ticks, structured return (`references/pipeline.md`).
 
 ## Step 2: One tick (ordering invariant)
@@ -46,7 +46,7 @@ Snapshot first, then in this order:
 2. **Capture the head SHA**; in a confirmed managed stack also record the pre-push baseline (`references/stack.md`).
 3. **Feedback before CI.** Threads or non-thread candidates present → invoke `ce-resolve-pr-feedback mode:pipeline` once with the PR ref; persist typed decisions through the shared atomic mark and dispatch every other passed comment; pass `trajectory` when a trigger is crossed; never declare non-convergence yourself.
 4. **Stale-SHA cancellation.** Head moved since step 2 → this snapshot's CI is dead; skip.
-5. **CI on the current head**, one pass for all failures: flaky/infra → `gh run rerun <run-id> --failed -R <host>/<owner>/<repo>`; real failure → `ce-debug mode:pipeline` once; mark each check acted on; unfixed checks stay red residuals.
+5. **CI on the current head**, one pass for all failures: flaky/infra → `GIT_DIR=$(jj git root) gh run rerun <run-id> --failed -R <host>/<owner>/<repo>`; real failure → `ce-debug mode:pipeline` once; mark each check acted on; unfixed checks stay red residuals.
 6. **Branch currency** — consume the exact emitted item (`references/branch-currency.md`); no item → nothing. `unrequested_base_merge` is a defect to report, never undo.
 7. **Managed upstack maintenance** after a delegate pushed a confirmed managed target (`references/stack.md`).
 

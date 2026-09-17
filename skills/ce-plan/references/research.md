@@ -14,7 +14,7 @@ At every native subagent boundary in this phase, classify a rejected dispatch by
 
 A **Lightweight** Durable plan does not dispatch the research agents below. Ground it from bounded inline reads of the files the request names and their tests, note any `<root>/solutions/` entry whose title matches the topic and, after running **Pack discovery** below, any resolved pack file whose `applies_when` matches the work, and continue to 1.1b; 1.4b's reclassification still applies when those reads surface an external contract surface.
 
-**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in CE config by running this skill's resolver as one command:
+**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in RocketClaw config by running this skill's resolver as one command:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -51,7 +51,7 @@ Collect:
 - Exact dependency or runtime versions only when they materially affect the plan or an external research decision
 - Relevant architecture and implementation patterns, files, modules, and tests for the requested scope
 - Applicable constraints from the project's active instructions and context
-- Institutional learnings from `<root>/solutions/` and any Compound Pack, each pack finding labeled with its pack id
+- Institutional learnings from `<root>/solutions/` and any Pack, each pack finding labeled with its pack id
 - Product strategy context when any product doc is present — flag any plan decisions that pull away from the active tracks or the stated positioning, or that land inside its stated boundaries or non-goals
 - Agent-native planning findings when the conditional triage dispatched: action/context parity decisions, tool/workspace/execution-lifecycle choices, scope boundaries, and verification scenarios
 
@@ -151,7 +151,7 @@ Summarize:
 
 **Land external findings in decisions, not an appendix.** Any external research that ran must appear where it changes a choice — Key Technical Decisions rationale, Alternatives, Risks, or Sources & Research — not as a detached list with no bearing on the plan. If a finding shaped nothing, it did not matter to the plan; do not pad the plan with it.
 
-**Cite Compound Pack findings where they land.** A requirement, KTD, constraint, or risk that a pack finding shaped ends with `(pack: <id>, <path within the pack>)` (shape in `references/plan-sections.md`, Sources & Research). A pack finding that shaped nothing is not cited, and a plan whose research used no pack finding never mentions packs. If the researcher output contains a `Skipped pack files` line, show it to the user once as a warning naming each file; never write it into the plan.
+**Cite Pack findings where they land.** A requirement, KTD, constraint, or risk that a pack finding shaped ends with `(pack: <id>, <path within the pack>)` (shape in `references/plan-sections.md`, Sources & Research). A pack finding that shaped nothing is not cited, and a plan whose research used no pack finding never mentions packs. If the researcher output contains a `Skipped pack files` line, show it to the user once as a warning naming each file; never write it into the plan.
 
 **Mark whether external research shaped the plan.** Record a single internal flag: did external findings materially shape a KTD, Alternative, Scope boundary, or Risk? This flag answers only that question — it does **not** decide whether research runs (Phase 1.2 decides that). Phase 5.3.2 reads it to decide whether to enter a confidence-scoring pass.
 

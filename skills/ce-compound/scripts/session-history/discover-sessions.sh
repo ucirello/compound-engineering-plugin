@@ -135,6 +135,8 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
+            # Match omp's session-paths.ts encoding (cwd relative to OS temp),
+            # not this skill's scratch root. Do not rewrite to workspace .tmp.
             canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
             case "$cwd" in
                 "$canon_tmp")

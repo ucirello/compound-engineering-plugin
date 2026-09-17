@@ -52,6 +52,8 @@ def host_from_env() -> str:
         return "grok"
     if env.get("CURSOR_AGENT") or env.get("CURSOR_CONVERSATION_ID"):
         return "cursor"
+    if env.get("OPENCODE2") or env.get("OPENCODE2_TERMINAL"):
+        return "opencode2"
     if env.get("OPENCODE_TERMINAL"):
         return "opencode"
     return "unknown"

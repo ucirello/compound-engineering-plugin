@@ -1,10 +1,10 @@
 ---
 name: lfg
-description: "Take a request all the way to done, hands-off, through the right Compound Engineering skills. A code change ends as an open pull request, pushed without stopping. Use only when the user explicitly asks for autonomous end-to-end work or invokes lfg directly. Use ce-plan, ce-work, ce-debug, or ce-commit-push-pr for work the user reviews step by step."
+description: "Take a request all the way to done, hands-off, through the right RocketClaw skills. A code change ends as an open pull request, pushed without stopping. Use only when the user explicitly asks for autonomous end-to-end work or invokes lfg directly. Use ce-plan, ce-work, ce-debug, or ce-commit-push-pr for work the user reviews step by step."
 argument-hint: "[feature, bug, issue reference, or plan path; optionally assign planning and/or implementation to a model or harness]"
 ---
 
-**Outcome.** The request reaches the end state its shape calls for, produced by the Compound Engineering skill whose job that is, with everything unresolved recorded where the user will see it. Most requests end with that skill's result and no branch. A change to the code is the one shape with more steps of its own: it ends in an open pull request whose URL you hold, with CI decided, after being implemented, simplified, reviewed with the eligible findings applied and the rest recorded, any durable learning captured, committed, and pushed. Merging stays with the user unless they granted it for this run.
+**Outcome.** The request reaches the end state its shape calls for, produced by the RocketClaw skill whose job that is, with everything unresolved recorded where the user will see it. Most requests end with that skill's result and no bookmark. A change to the code is the one shape with more steps of its own: it ends in an open pull request whose URL you hold, with CI decided, after being implemented, simplified, reviewed with the eligible findings applied and the rest recorded, any durable learning captured, recorded as a change, and pushed. Merging stays with the user unless they granted it for this run.
 
 **Work source.** On the routes that change the code, nothing is implemented without a work source verified this run, and only two things qualify: an implementation-ready plan, which `ce-work` implements; or a `fixed` return from `ce-debug`, where the fix is the implementation. The plan is one the session identifies, as `references/intake.md` defines. Never search the plans directory for a candidate or act on a file you discovered. Never plan from scratch over an existing plan.
 
@@ -30,21 +30,21 @@ When unsure, take the route that asks more of the evidence.
 
 A stop leaves nothing pushed that was not already pushed.
 
-Resolve every skill named here against the host's available-skills list and invoke that exact entry; some hosts namespace it (`compound-engineering:ce-plan`). Read `references/task-visibility.md` before starting: it defines the stage view published through the platform's task-tracking capability, the chat narration, and the completion rule that a step is done only after it ran, a child skill's return resumes the next numbered step in the same turn, and the turn does not end before DONE or a stop.
+Resolve every skill named here against the host's available-skills list and invoke that exact entry; some hosts namespace it (`rocketclaw:ce-plan`). Read `references/task-visibility.md` before starting: it defines the stage view published through the platform's task-tracking capability, the chat narration, and the completion rule that a step is done only after it ran, a child skill's return resumes the next numbered step in the same turn, and the turn does not end before DONE or a stop.
 
 ## The run (routes that change the code)
 
 1. **Produce the work source** per `references/intake.md`. On the plan route, read `references/plan-brief.md` first; it alone defines the settled-decisions brief and the artifact-root rule. Any explicit `status: blocked` return, including `settled-decision-invalidated`, stops the run. Blocked status outranks an existing artifact and is never retried. Only absence of both a blocker and a plan file `ce-plan` reported writing this run invokes `ce-plan` a second time with the same arguments, reusing the composed brief verbatim; the plan must then pass the readiness check in `references/plan-brief.md`. On the plan route the `plan_model:<alias>` carrier rides beside the request when a planning-stage directive resolved. Record the work source for every later step. LFG never launches `/goal` directly; `ce-work` owns any goal-mode choice and returns control.
 
-2. **Read `references/work-return.md` first**, then invoke the `ce-work` skill with `mode:return-to-caller <plan-path-from-step-1>`. On the defect route this step does not run: `ce-debug` already implemented and committed, and `references/debug-return.md` was its gate. Only a valid `status: complete` may advance; every other status or malformed return stops the pipeline.
+2. **Read `references/work-return.md` first**, then invoke the `ce-work` skill with `mode:return-to-caller <plan-path-from-step-1>`. On the defect route this step does not run: `ce-debug` already implemented and recorded the change, and `references/debug-return.md` was its gate. Only a valid `status: complete` may advance; every other status or malformed return stops the pipeline.
 
-3. **Read `references/review-followup.md` now**; it governs steps 3 through 7. Invoke the `ce-simplify-code` skill on the branch diff; skip only the invocation for a docs-only or roughly sub-10-line change.
+3. **Read `references/review-followup.md` now**; it governs steps 3 through 7. Invoke the `ce-simplify-code` skill on the bookmark diff; skip only the invocation for a docs-only or roughly sub-10-line change.
 
 4. Invoke the `ce-code-review` skill with `mode:agent plan:<plan-path-from-step-1>`; on the defect route omit `plan:`. A `settled_conflict` finding whose evidence shows the settled decision cannot work (infeasible, wrong-thing, or destructive) stops the pipeline as blocked, with the finding reported, before the shipping precondition.
 
-**Shipping precondition (every push from step 5 on).** Run `git remote` once. No remote means local-only: make every commit the steps call for, but skip every push, PR create/edit, and CI-watch action, including step 10 in full. That is terminal, not an error.
+**Shipping precondition (every push from step 5 on).** Run `jj git remote` once. No remote means local-only: make every change the steps call for, but skip every push, PR create/edit, and CI-watch action, including step 10 in full. That is terminal, not an error.
 
-5. **Apply and persist review fixes** as that file defines. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working tree uncommitted.
+5. **Apply and persist review fixes** as that file defines. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working copy, not yet recorded as a change.
 
 6. **Autonomous residual handoff**: whenever an unapplied actionable finding, a `settled_conflict` stamp from step 4, or a proceeded-and-flagged `settled_decision_conflicts` entry from step 2 exists, record it durably per that file: in the PR body, or in tickets or the DONE report when no PR will exist. Skip only when none of the three exists. Do not output DONE until the residuals are durable. Never block DONE on tracker filing failures once the report states them. Do not prompt the user.
 

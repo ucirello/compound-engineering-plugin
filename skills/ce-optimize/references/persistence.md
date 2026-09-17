@@ -39,7 +39,7 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 
 ### File Locations (all under `.context/ce-optimize/<spec-name>/`)
 
-The scratch space under `.context/` is ignored. It survives a local resume but does not travel with the bookmark, so anything needed durably must be exported to a tracked path.
+The scratch space under `.context/` is not tracked. It survives a local resume but does not travel with the bookmark, so anything needed durably must be exported to a tracked path.
 
 | File | Purpose | Written When |
 |------|---------|-------------|

@@ -24,7 +24,7 @@ Requirement strength is inferred from the whole instruction, not one word: "use 
 When implementation resolves to one candidate, retain one transient `implementation_engine` object with exactly these four fields:
 
 - `mode`: `prefer` or `require`
-- `target`: exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, `opencode`, or `opencode2` — a **harness** name, never a model name. `opencode2` is not `opencode`: it is its own route (`opencode2 run --standalone --auto --model provider/model#variant`), never a fallback to `opencode`.
+- `target`: exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, `opencode`, or `opencode2` — a **harness** name, never a model name
 - `model`: the explicit model pin, otherwise `null`
 - `source`: a caller-visible string saying where the binding came from, identifying the current LFG instruction
 

@@ -11,19 +11,21 @@ Read `references/agents/learnings-researcher.md` and dispatch a generic subagent
 Check if `optimize/<spec-name>` bookmark already exists:
 
 ```bash
-jj bookmark list "exact:optimize/<spec-name>"
+jj bookmark list -r "optimize/<spec-name>"
 ```
 
 **If bookmark exists**, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
 - **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning workspace directories for `result.yaml` markers. Then apply the SKILL.md body's resume rule to decide what is skipped and which approval checks run again.
-- **Fresh start**: archive the old bookmark to `optimize-archive/<spec-name>/archived-<timestamp>`, clear the experiment log, start from scratch
+- **Fresh start**: archive the old bookmark to `optimize-archive/<spec-name>/archived-<timestamp>` (`jj bookmark create "optimize-archive/<spec-name>/archived-<timestamp>" -r "optimize/<spec-name>"` then `jj bookmark delete "optimize/<spec-name>"`), clear the experiment log, start from scratch
 
 ### 0.5 Create Optimization Bookmark and Scratch Space
 
 ```bash
-jj bookmark create "optimize/<spec-name>"  # after jj new if needed; or jj new "optimize/<spec-name>" if resuming
+jj new
+jj bookmark create "optimize/<spec-name>"
+# resume: jj new "optimize/<spec-name>"
 ```
 
 Create scratch directory:
@@ -46,7 +48,7 @@ bash "$SKILL_DIR/scripts/<name>"
 
 ### 1.1 Clean-Tree Gate
 
-The SKILL.md body states this gate. Run `jj status`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result. Name the dirty in-scope files, ask the user to describe/commit them or move them aside (`jj new @-`), and do not continue until they are clean.
+The SKILL.md body states this gate. Run `jj status`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result. Name the dirty in-scope files, ask the user to record them (`jj describe` / `jj commit`) or move them off the working copy (`jj new @-`), and do not continue until they are clean.
 
 ### 1.2 Build or Validate Measurement Harness
 

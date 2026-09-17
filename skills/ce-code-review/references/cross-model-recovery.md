@@ -24,10 +24,10 @@ The peer reviews the **current work tree** (read-only) against `jj diff --from <
 
 **Isolation differs from ce-doc-review by design.** Doc-review embeds a self-contained document into a tool-less empty scratch. Code-review needs surrounding code context, so peers run **in-tree read-only**:
 
-- **codex:** `-s read-only` with cwd at the workspace root (may fetch `jj diff --from <base-ref>` itself).
+- **codex:** `-s read-only` with cwd at the repo root (may fetch `jj diff` itself).
 - **claude:** deny mutators / Bash / Task / `mcp__*`; **Read allowed** for context; diff is embedded because Bash is denied.
-- **grok / cursor-agent:** ask/dontAsk + no write/force/yolo; Read allowed; workspace/cwd at the workspace root.
-- **opencode:** `OPENCODE_DISABLE_PROJECT_CONFIG=1` (the reviewed repo's `.opencode/{plugin,agent}` do not load) plus an `OPENCODE_CONFIG_CONTENT` overlay denying `edit`/`bash`/`webfetch`/`task`; Read allowed; `--dir` at the workspace root. This is an enumerated capability denylist, not a tool-less floor: the reviewed content cannot write, run shell, reach the network, or delegate, but a globally-configured (operator-owned, not PR-shipped) MCP server or skill is not denied. That residual is the operator's own machine config, outside the untrusted-reviewed-content threat this control addresses.
-- **opencode2:** distinct from `opencode`. Binary `opencode2`; `opencode2 run --standalone --auto --model provider/model#variant` (no `--dir`, no `--variant` flag). Not a fallback to `opencode`.
+- **grok / cursor-agent:** ask/dontAsk + no write/force/yolo; Read allowed; workspace/cwd at the repo root.
+- **opencode:** `OPENCODE_DISABLE_PROJECT_CONFIG=1` (the reviewed repo's `.opencode/{plugin,agent}` do not load) plus an `OPENCODE_CONFIG_CONTENT` overlay denying `edit`/`bash`/`webfetch`/`task`; Read allowed; `--dir` at the repo root. This is an enumerated capability denylist, not a tool-less floor: the reviewed content cannot write, run shell, reach the network, or delegate, but a globally-configured (operator-owned, not PR-shipped) MCP server or skill is not denied. That residual is the operator's own machine config, outside the untrusted-reviewed-content threat this control addresses.
+- **opencode2:** distinct from opencode. Invokes `opencode2 run --format json --file <prompt>` with cwd at the repo root. Model is `--model provider/modelname#variant` when set. Do not pass `--dir`, `--variant`, or `--auto`. Surveyed `opencode2 run --help` has no permission overlay equivalent to opencode's `OPENCODE_CONFIG_CONTENT`; isolation is cwd plus not enabling auto-approve.
 
 The worst case is disclosure of the reviewed content, not changes to the repo. The script's stderr audit log records each send so every transfer is auditable even in `mode:agent`.

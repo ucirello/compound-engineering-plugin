@@ -37,7 +37,7 @@ Resolve `<root>` only when you first compose a `<root>/` path — a run that com
 **Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -45,7 +45,7 @@ Resolve `<root>` only when you first compose a `<root>/` path — a run that com
 
 Five phases in order: **0 Triage -> 1 Investigate -> 2 Root Cause -> 3 Fix -> 4 Handoff.** Beyond Phase 0's trivial-bug fast-path there is no skipping and no complexity tiers. A hard bug spends longer in each phase; it does not enter fewer.
 
-**Read `references/investigate.md` now and follow it for Phases 0-2** — issue fetching, reproduction, environment sanity and the dirty-tree park experiment, backward tracing, the tracker/PR-history search, hypothesis grounding, and the escalation table. Only the gates below are stated here.
+**Read `references/investigate.md` now and follow it for Phases 0-2** — issue fetching, reproduction, environment sanity and the dirty-tree set-aside experiment, backward tracing, the tracker/PR-history search, hypothesis grounding, and the escalation table. Only the gates below are stated here.
 
 **The issue of record.** If the user handed you a ticket or issue, that is where this bug already lives, whichever system it is in; a Sentry issue counts as much as a Linear ticket. Carry its identifier and URL through to Phase 4. If the input is only a stack trace, test path, or description, this run has **no issue of record**. That is an ordinary state, not a gap to fill: ship the fix without one, never open a ticket to manufacture a record, and never ask the user whether to. Phase 1's tracker search reads prior work and **never establishes a new home for the bug**. An existing ticket for this bug is one to *link* in Phase 4, never one to create.
 
@@ -75,8 +75,8 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **Read `references/fix.md` before editing any file** — the test-first sequence, the failed-fix rule, and the defense-in-depth and post-mortem triggers. Two rules decide whether the fix may start at all, so they stay here:
 
-- **Bookmark.** Check `jj status`; if the user has working-copy changes in files that need modification, confirm before editing. If `@` carries the default/trunk bookmark, create a feature bookmark without asking — derive a name from the bug, `jj bookmark create <name>` after `jj new` if needed, and say which bookmark you moved to. Detect the default by comparing against `main`, `master`, or the trunk name from `jj bookmark list` **with a trailing `@origin` stripped** — the raw remote name is `<name>@origin`, so an unstripped comparison never matches.
-- **Record the pre-fix scope:** current `@` (`jj log -r @ --no-graph -T commit_id`), whether `jj status` is clean, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
+- **Bookmark.** Check `jj status`; if the user has working-copy changes in files that need modification, confirm before editing. If the current bookmark is the default bookmark, create a feature bookmark without asking — derive a name from the bug, `jj new` then `jj bookmark create <name>`, and say which bookmark you moved to. Detect the default by comparing current bookmarks (`jj log -r @ -T 'bookmarks ++ "\n"' --no-graph`) against `main`, `master`, or the remote default name from `GIT_DIR=$(jj git root) gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` when gh can answer. Strip any remote suffix (`@origin`) — an unstripped comparison never matches.
+- **Record the pre-fix scope:** current `@` (`jj log -r @ -T 'commit_id ++ "\n"' --no-graph`), whether `jj status` is clean, and any pre-existing changed files. Then keep a list of **fix-owned files** (the tests and implementation changed for this bug) as you work. Phase 4 answers both of its questions from this record and cannot reconstruct it afterwards.
 
 ### Phase 4: Handoff
 
@@ -109,13 +109,13 @@ If the user chose "Diagnosis only," skip to Phase 4's summary. If they chose "Re
 
 **2. Who commits, and whether it ships.** Exactly one of these runs.
 
-- **Ships** when all three hold: the pre-fix tree was clean, nothing on the bookmark is work the user has not already offered, and `origin` is **PR-capable**: somewhere `gh` can actually open a PR. Establish those however fits the repo in front of you. Pair every `gh` call with `GIT_DIR` set to the path from a prior `jj git root` call. Two facts make it less obvious than it looks.
+- **Ships** when all three hold: the pre-fix tree was clean, nothing on the bookmark is work the user has not already offered, and `origin` is **PR-capable**: somewhere `GIT_DIR=$(jj git root) gh` can actually open a PR. Establish those however fits the repo in front of you. Two facts make it less obvious than it looks.
   - `ce-commit-push-pr` pushes the **whole bookmark**, and its PR spans every change on it, not just your fix. So the question is about the bookmark, not your diff. It also pushes *before* creating the PR, so a remote `gh` cannot open a PR against leaves the bookmark published with no PR.
   - Already pushed is not already **offered**. Changes in an open PR are under review, so they are offered, and this run updates that PR rather than opening a second one. Changes pushed for backup or to trigger CI are not offered, and a first PR would publish them. Compare against the remote rather than a local ref: a local bookmark, including the default bookmark Phase 3 may have created off of, can itself be ahead of what was pushed.
 
   If you cannot establish all three, take the local route instead; that is the safe direction, and the preview is not a substitute for it. Otherwise preview what will be committed, on what bookmark, and whether a PR opens or updates, then **invoke the `ce-commit-push-pr` skill with `branding:on`.** It commits under question 1's scope, so do not commit first. The preview is a statement, not a question. Surface the resulting PR URL.
-- **Stays local** when any of those three fails. Invoke the `ce-commit` skill under question 1's scope and push nothing. Say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first; a local commit is reversible.
-- **Not a jj workspace**: nothing commits. Stop after the summary and the quality block.
+- **Stays local** when any of those three fails. Invoke the `ce-commit` skill under question 1's scope and push nothing. Say in one line what stayed local and why, and that you will push and open the PR on request. Do not ask first; a local change is reversible.
+- **Not a jj repo**: nothing commits. Stop after the summary and the quality block.
 
 **Contextual override** ("don't open PRs from skills", "commit only", "stop after the fix") — follow what the user said, and **Stop here** without committing when that is what they asked for. A vague tonal cue is not an override.
 

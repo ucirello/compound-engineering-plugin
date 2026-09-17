@@ -102,7 +102,7 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj workspace root`).
+1. Workspace root (resolve via `jj workspace root` with cwd = that workspace).
 2. `docs/DESIGN.md`.
 3. `.rocketclaw/DESIGN.md`.
 
@@ -229,7 +229,7 @@ every entry into a browser or IDE.
 Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-jj --no-pager git remote list
+jj git remote list
 ```
 
 Apply linking to three reference shapes:

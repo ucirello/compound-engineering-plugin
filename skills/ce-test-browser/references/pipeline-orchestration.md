@@ -17,7 +17,7 @@ Run the whole thing as **one** command. Shell variables do not survive between s
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-ROOT="$(jj workspace root 2>/dev/null || echo .)";
+ROOT="$(jj workspace root 2>/dev/null || pwd)";
 mkdir -p "$ROOT/.tmp";
 PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh" --free);   # append the explicit port as a further argument when you have one
 echo "Using dev server port: $PORT"

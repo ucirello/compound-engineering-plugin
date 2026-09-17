@@ -40,7 +40,7 @@ def _validate_retry_base(doc: dict, unit: dict, requested_base: str) -> None:
     required = accepted_heads | {original_base, *allowed_heads}
     missing = sorted(
         commit for commit in required
-        if not revision_is_ancestor(repo, commit, requested_base)
+        if not is_ancestor(repo, commit, requested_base)
     )
     if missing:
         raise Operational(
@@ -89,7 +89,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
     with locked_manifest(args.run_id) as doc:
         info = validate_repo(doc)
         repo = info["toplevel"]
-        base = jj_commit_id(repo, args.base)
+        base = commit_id(repo, args.base)
         if info["head"] != base:
             raise Operational("BLOCKED", "canonical HEAD does not equal requested unit base")
         if status_paths(repo):
@@ -215,7 +215,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
             "wave": {"id": args.wave_id, "base": base, "position": args.wave_position, "allowed_heads": [base]},
             "packet_digest": packet_digest,
             "packet": {"path": packet_path, "digest": packet_digest, "bytes": len(packet_bytes), "retained": True},
-            "workspace": {"path": workspace, "base": base, "registered": False},
+            "workspace": {"path": workspace, "name": unit_workspace_name(args.run_id, uid), "base": base, "registered": False},
             "result_dir_identity": result_dir_identity,
             "attempts": [attempt_record],
             "transport": {"base": None, "tree": None, "commit": None, "ref": None, "digest": None, "changed_paths": []},
@@ -263,7 +263,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
             unit["state"] = "queued"
             unit["packet_digest"] = packet_digest
             unit["packet"] = {"path": packet_path, "digest": packet_digest, "bytes": len(packet_bytes), "retained": True}
-            unit["workspace"] = {"path": workspace, "base": base, "registered": False}
+            unit["workspace"] = {"path": workspace, "name": unit_workspace_name(args.run_id, uid), "base": base, "registered": False}
             unit["result_dir_identity"] = result_dir_identity
             _record_retry_base(doc, unit, base)
             unit["attempts"].append(attempt_record)
@@ -274,11 +274,12 @@ def cmd_prepare(args) -> tuple[str, dict]:
             event(doc, "unit-retry-prepared", uid, {"attempt_id": attempt_id, "base": base})
             event(doc, "worktree-add-intent", uid, {"path": workspace, "base": base})
     with locked_manifest(args.run_id) as doc:
-        identity = doc["repository"]["identity_digest"]
         repo = doc["repository"]["toplevel"]
-    with admin_lock(identity):
+        ws_name = doc["units"][uid]["workspace"].get("name") or unit_workspace_name(args.run_id, uid)
+    with admin_lock(repo):
         if not os.path.exists(workspace):
-            add_linked_workspace(repo, workspace, base)
+            os.makedirs(os.path.dirname(workspace), mode=0o700, exist_ok=True)
+            jj(repo, "workspace", "add", workspace, "--name", ws_name, "-r", base, "--sparse-patterns", "full")
             test_fault("after-worktree-add")
         with locked_manifest(args.run_id) as doc:
             unit = doc["units"][uid]
@@ -994,7 +995,8 @@ def transport_ref(run_id: str, unit_id: str) -> str:
 
 
 def no_sequencer(workspace: str) -> None:
-    if jj_conflicted(workspace, "@"):
+    conflicted = jj_text(workspace, "log", "-r", "@", "-T", "conflict", "--no-graph", check=False)
+    if conflicted.strip().lower() == "true":
         raise Operational("BLOCKED", "worker workspace has unresolved conflicts")
 
 
@@ -1090,37 +1092,22 @@ def terminalize(run_id: str, unit_id: str) -> dict:
         repo = doc["repository"]["toplevel"]
     try:
         no_sequencer(workspace)
-        ignored_paths = sorted(ignored_untracked_paths(workspace))
-        if ignored_paths:
-            preview = json.dumps(ignored_paths[:20], ensure_ascii=True)
-            suffix = f" and {len(ignored_paths) - 20} more" if len(ignored_paths) > 20 else ""
-            raise Operational(
-                "BLOCKED",
-                f"worker workspace contains ignored untracked output that cannot enter the transport: {preview}{suffix}",
-                {"ignored_paths": ignored_paths[:100], "ignored_path_count": len(ignored_paths)},
-            )
-        tree = tree_fingerprint(workspace, "@")
-        types = jj_text(workspace, "diff", "--types", "--from", base, "--to", "@")
-        if any(
-            line.split(" ", 1)[0].endswith("G") or line.split(" ", 1)[0].startswith("G")
-            for line in types.splitlines() if line
-        ):
-            raise Operational("BLOCKED", "submodule state cannot be transported implicitly")
+        empty = jj_text(workspace, "log", "-r", "@", "-T", "empty", "--no-graph", check=False)
+        commit = commit_id(workspace, "@-") if empty.strip().lower() == "true" else commit_id(workspace, "@")
+        parent = jj_text(workspace, "log", "-r", commit, "-T", 'parents.map(|c| c.commit_id()).join(" ") ++ "\n"', "--no-graph")
+        if parent != base:
+            raise Operational("BLOCKED", "worker workspace change is not parented on the recorded base")
+        tree = commit
     except Operational as exc:
         record_terminal_validation_failure(run_id, unit_id, exc)
         raise
-    ref = transport_ref(run_id, unit_id)
-    if jj_commit_id(workspace, "@-") != base:
-        raise Operational("BLOCKED", "transport parent is not the recorded unit base")
-    commit = jj_commit_id(workspace, "@")
-    test_fault("after-transport-ref")
-    raw_diff = name_status_bytes(workspace, base, "@")
-    paths = parse_diff_paths(raw_diff) if raw_diff else changed_path_list(workspace, base, "@")
-    tdigest = digest_bytes(base.encode() + b"\0" + tree.encode() + b"\0" + commit.encode() + b"\0" + raw_diff)
+    paths = diff_name_only(workspace, base, commit)
+    inventory = "\n".join(paths).encode()
+    tdigest = digest_bytes(base.encode() + b"\0" + tree.encode() + b"\0" + commit.encode() + b"\0" + inventory)
     transport = {
-        "base": base, "tree": tree, "commit": commit, "ref": ref,
+        "base": base, "tree": tree, "commit": commit, "ref": None,
         "digest": tdigest, "changed_paths": paths,
-        "inventory_b64": base64.b64encode(raw_diff).decode(),
+        "inventory_b64": base64.b64encode(inventory).decode(),
     }
     with locked_manifest(run_id, write=True) as doc:
         unit = doc["units"][unit_id]

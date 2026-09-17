@@ -8,7 +8,7 @@ Parse the input and reach a clear problem statement.
 
 **If the input references an issue in a tracker or an error/alert monitor**, fetch it:
 
-- GitHub (`#123`, `org/repo#123`, a github.com or GitHub Enterprise issue URL): `gh issue view <number> --json title,body,comments,labels`. For URLs, pass the URL directly to `gh` (it targets whatever host it is configured for, GHE included). Pair every `gh` call with `GIT_DIR` set to the path from a prior `jj git root` call.
+- GitHub (`#123`, `org/repo#123`, a github.com or GitHub Enterprise issue URL): `GIT_DIR=$(jj git root) gh issue view <number> --json title,body,comments,labels`. For URLs, pass the URL directly to `gh` (it targets whatever host it is configured for, GHE included).
 - Anything else (Linear, Jira, Sentry, or any tracker/monitor URL): fetch via available MCP tools or by fetching the URL content. Make sure the fetch returns the **full comment thread** and not just the opening description. The read below cannot recover comments the fetch never retrieved. If the fetch fails (auth, missing tool, non-public page), ask the user to paste the relevant issue content.
 
 **Record what you fetched as the issue of record.** SKILL.md's rule defines what counts as an issue of record and what a run without one does.
@@ -41,19 +41,19 @@ Confirm the bug exists and understand its behavior. Run the test, trigger the er
 
 #### 1.2 Verify environment sanity
 
-Before deep tracing, confirm the environment is what you think it is. Each of these is a frequent false lead: correct bookmark and no unintended working-copy changes; dependencies installed and current (stale `node_modules`/`vendor`); the expected interpreter/runtime version (`.tool-versions`, `.nvmrc`, `Gemfile`) actually active; required env vars present and non-empty; no stale build artifacts (`dist/`, `.next/`, binaries from an earlier bookmark); and, when the bug plausibly involves them, dependent local services (database, cache, queue) running at expected versions.
+Before deep tracing, confirm the environment is what you think it is. Each of these is a frequent false lead: correct bookmark and no unintended uncommitted changes; dependencies installed and current (stale `node_modules`/`vendor`); the expected interpreter/runtime version (`.tool-versions`, `.nvmrc`, `Gemfile`) actually active; required env vars present and non-empty; no stale build artifacts (`dist/`, `.next/`, binaries from an earlier bookmark); and, when the bug plausibly involves them, dependent local services (database, cache, queue) running at expected versions.
 
-**A dirty tree is a suspect, not background.** When `jj status` shows working-copy changes, the single most common reason someone is debugging at all is that their own in-progress edit caused it. Name that as a hypothesis before tracing the parent (`@-`), and test it directly whenever the changed files could plausibly reach the failing behavior:
+**A dirty tree is a suspect, not background.** When `jj status` shows uncommitted work, the single most common reason someone is debugging at all is that their own in-progress edit caused it. Name that as a hypothesis before tracing committed code, and test it directly whenever the changed files could plausibly reach the failing behavior:
 
-Record the working-copy change id (`jj log -r @ --no-graph -T change_id`), then park it by creating an empty sibling of the parent:
+Record the current working-copy change (`jj log -r @ -T 'change_id ++ "\n"' --no-graph`). Announce before setting the WIP aside, then:
 
 ```
 jj new @-
 ```
 
-Rerun the reproduction, then restore **only the change this run parked, and only if it parked one.** A bare `jj edit` of the wrong change gets this wrong two ways. First, `jj new @-` is a no-op for the experiment when `@` already has no working-copy changes against `@-` — there is nothing to park, so do not edit "back" to a change you never left. Second, other changes may appear while the reproduction ran, from test tooling or from the user in another terminal. Either way, restoring the wrong change applies and drops work that is not yours. So note the change id you parked and `jj edit` that exact id, in the same step regardless of the reproduction's outcome. There is no index; the working copy is the change. If nothing was parked, do not edit away from `@` and do not report the tree as restored. The working-copy snapshot includes unignored new files; ignored files stay behind, so a bug living only in an ignored file survives the park and reads as "not the WIP." Both results are evidence. If the failure vanishes, the user's own edit is the cause and the investigation is over. If the failure persists, the WIP is ruled out and you have a clean tree to trace against. Announce the park before running it, and confirm `jj edit` restored the tree. If restoring reports conflicts, show the user the conflict output and the parked change id. Never auto-resolve a conflict in someone's working-copy work.
+The old working-copy change remains as a sibling. Rerun the reproduction, then restore **only that sibling, and only if this run created one**, with `jj edit <change-id>`. Do not edit some other change that appeared while the reproduction ran. If `jj new @-` did not isolate the WIP (the working copy was already empty relative to its parent, or the command failed), do not `jj edit` another change and do not report the tree as restored. Both results are evidence. If the failure vanishes, the user's own edit is the cause and the investigation is over. If the failure persists, the WIP is ruled out and you have a clean tree to trace against. Confirm the restore returned you to the recorded change. If restore reports conflicts, show the user the conflict output and the change id. Never auto-resolve a conflict in someone's uncommitted work.
 
-When the park proves the WIP caused the bug, the correction belongs in *their* working-copy changes: report that in the findings and run the Phase 2 gate as usual. Never commit the user's in-progress work as though it were the fix. Skip the experiment when the changed files clearly cannot reach the failing behavior. Never park the working copy to make a later phase's routing simpler; Phase 4 handles a dirty bookmark on its own.
+When the set-aside proves the WIP caused the bug, the correction belongs in *their* uncommitted work: report that in the findings and run the Phase 2 gate as usual. Never commit the user's in-progress work as though it were the fix. Skip the experiment when the changed files clearly cannot reach the failing behavior. Never set WIP aside to make a later phase's routing simpler; Phase 4 handles a dirty bookmark on its own.
 
 #### 1.3 Trace the code path
 
@@ -67,9 +67,9 @@ As you trace:
 
 #### 1.4 Check the tracker and PR history for prior work
 
-The project's institutional memory often already holds the bug, its cause, or a prior attempt at the fix. This is recorded *human* work, distinct from 1.3's live telemetry and change history. Skip on the trivial fast-path; run for non-trivial bugs, with regression signals ("it worked before", a reopened or recurring symptom) as the strongest trigger.
+The project's institutional memory often already holds the bug, its cause, or a prior attempt at the fix. This is recorded *human* work, distinct from 1.3's live telemetry and revision history. Skip on the trivial fast-path; run for non-trivial bugs, with regression signals ("it worked before", a reopened or recurring symptom) as the strongest trigger.
 
-Find the tracker and the code-review host (GitHub, GitLab, or similar) from repo signals: the remote (`jj git remote list`), issue-key patterns in recent changes/bookmarks/PR titles (`ABC-123` -> Jira/Linear), and the tracker named in the project's active instructions and conventions already in your context. Do not assume a specific tool exists, and do not treat a missing CLI or MCP as proof the capability is absent. Use whatever interface that tracker or forge exposes.
+Find the tracker and the code-review host (GitHub, GitLab, or similar) from repo signals: `jj git remote list`, issue-key patterns in recent changes/bookmarks/PR titles (`ABC-123` -> Jira/Linear), and the tracker named in the project's active instructions and conventions already in your context. Do not assume a specific tool exists, and do not treat a missing CLI or MCP as proof the capability is absent. Use whatever interface that tracker or forge exposes.
 
 Run a few targeted queries on the symptom, the error string, and the affected area. This is not an exhaustive sweep, and not a re-derivation of what 1.3's history check already found. Three finds change what you do next:
 

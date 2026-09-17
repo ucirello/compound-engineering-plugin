@@ -15,13 +15,8 @@ fi
 PR_NUMBER=$1
 COMMENT_NODE_ID=$2
 
-# Pair every gh call with GIT_DIR from the colocated Git dir. Prefer a
-# caller-supplied GIT_DIR; otherwise resolve it from jj.
-if [ -z "${GIT_DIR:-}" ]; then
-    _git_dir=$(jj git root 2>/dev/null || true)
-    if [ -n "$_git_dir" ]; then
-        export GIT_DIR="$_git_dir"
-    fi
+if GIT_DIR=$(jj git root 2>/dev/null); then
+    export GIT_DIR
 fi
 
 if [ -n "$3" ]; then
@@ -29,7 +24,7 @@ if [ -n "$3" ]; then
     REPO=$(echo "$3" | cut -d/ -f2)
 else
     # `|| true` is load-bearing: under `set -e`, a failed command substitution
-    # in an assignment aborts the script immediately. Run outside a jj workspace,
+    # in an assignment aborts the script immediately. Run outside a jj repo,
     # `gh repo view` exits 1, its stderr is swallowed by `2>/dev/null`, and the
     # script would die here with rc=1 and no output -- making the friendly error
     # below unreachable. Keep `|| true` so detection failure falls through to it.
@@ -38,7 +33,7 @@ else
 fi
 
 if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from inside the target jj workspace, or pass OWNER/REPO as the third argument (e.g., get-thread-for-comment $PR_NUMBER $COMMENT_NODE_ID EveryInc/cora)." >&2
+    echo "Error: could not resolve owner/repo. Run get-thread-for-comment from inside the target jj repository, or pass OWNER/REPO as the third argument (e.g., get-thread-for-comment $PR_NUMBER $COMMENT_NODE_ID EveryInc/cora)." >&2
     exit 1
 fi
 
@@ -46,9 +41,9 @@ fi
 # more than one page of threads can still resolve a comment to its parent
 # thread. Per-thread comments are still capped at 100 -- threads exceeding
 # that depth are not paginated here.
-_tmp_root="$(jj workspace root 2>/dev/null || echo .)/.tmp"
-mkdir -p "$_tmp_root"
-tmp_threads=$(mktemp "$_tmp_root/ce-pr-threads.XXXXXX")
+ROOT="$(jj workspace root 2>/dev/null || pwd)"
+mkdir -p "$ROOT/.tmp"
+tmp_threads=$(mktemp "$ROOT/.tmp/ce-pr-threads.XXXXXX")
 trap 'rm -f "$tmp_threads"' EXIT
 
 gh api graphql --paginate --slurp \

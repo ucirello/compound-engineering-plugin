@@ -11,7 +11,7 @@ Loaded from SKILL.md when the invocation names a pack to add, create, or scaffol
 ## Facts the scaffold needs
 
 - The pack id is kebab-case ASCII (`a-z`, `0-9`, `-`): the resolver names a pack after its directory, and the id appears in citations as `(pack: <id>, <file>)`. Take it from the `pack:<id>` token, otherwise from the words of the request; ask when neither yields one.
-- The default target is `compound-packs/<id>/` relative to the workspace root (`jj workspace root`). When the user names another workspace-relative directory, the config entry points there instead.
+- The default target is `compound-packs/<id>/` relative to the repository root (`jj workspace root`). When the user names another repo-relative directory, the config entry points there instead.
 - A rule is discovered only when it is a top-level `.md` with `title` and `applies_when` frontmatter; the pack's `README.md` is its description and never a rule; subdirectories and non-`.md` files are storage. The scaffold exists so a first pack starts in this shape.
 - A live pack entry in `config.yaml` is `- source: compound-packs/<id>` under a top-level, uncommented `packs:` key. The bundled template ships that key as a comment, which is not a live key.
 
@@ -23,23 +23,23 @@ Loaded from SKILL.md when the invocation names a pack to add, create, or scaffol
 
 3. **Draft the config change.** When `.rocketclaw/config.yaml` is missing, create it from `references/config-template.yaml` under the same approval. Append `  - source: compound-packs/<id>` (or the directory the user chose) as the last item of the live `packs:` list, matching its indentation; when there is no live key, append this block at the end of the file:
 
-    ```yaml
-    packs:
-      - source: compound-packs/<id>
-    ```
+   ```yaml
+   packs:
+     - source: compound-packs/<id>
+   ```
 
-    Leave the template's commented `# packs:` example and every other line exactly as they are. `config.local.yaml` is not the target; a pack the team shares belongs in the tracked file.
+   Leave the template's commented `# packs:` example and every other line exactly as they are. `config.local.yaml` is not the target; a pack the team shares belongs in the tracked file.
 
 4. **Ask once, showing everything.** Preview the directory, both files in full, and the exact config lines with their placement, then ask:
 
-    ```text
-    Create the Compound Pack `<id>`?
-    1. Yes, write these files and the config entry
-    2. No thanks
-    ```
+   ```text
+   Create the Compound Pack `<id>`?
+   1. Yes, write these files and the config entry
+   2. No thanks
+   ```
 
-    Write only on approval. When the caller declared the run non-interactive, or no question can reach the user, print the same preview, say the scaffold wrote nothing, and stop.
+   Write only on approval. When the caller declared the run non-interactive, or no question can reach the user, print the same preview, say the scaffold wrote nothing, and stop.
 
 5. **Verify with the health check.** Run the bundled `scripts/check-health` exactly as SKILL.md Step 2 does, with the same `SKILL_DIR` anchor, and report its `pack <id>` line. A `Pack config error` or `publishes no packs` line about this pack means the scaffold is not done: fix the cause and run the check again.
 
-6. **Tell the author.** In one sentence: a rule is discovered only when it is a top-level `.md` with `title` and `applies_when`; everything else in the pack folder is storage, and `README.md` is the description. Point at the packs guide, "Pack layout", for the annotated tree. Report the pack under Fixed, or under Skipped when the user declined, in the Phase 3 summary.
+6. **Tell the author.** In one sentence: a rule is discovered only when it is a top-level `.md` with `title` and `applies_when`; everything else in the pack folder is storage, and `README.md` is the description. Point at "Pack layout" in the packs guide for the annotated tree. Report the pack under Fixed, or under Skipped when the user declined, in the Phase 3 summary.

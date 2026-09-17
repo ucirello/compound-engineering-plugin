@@ -37,7 +37,7 @@
 #
 #   Excluded directories (not real project roots):
 #     node_modules .git .jj vendor dist build coverage .next .nuxt
-#     .svelte-kit .turbo tmp .tmp fixtures
+#     .svelte-kit .turbo tmp fixtures
 #
 # `multiple` vs `rails`: Rails apps commonly ship a Procfile.dev alongside
 # bin/dev. To avoid treating every Rails app as a monorepo, the `rails`
@@ -48,7 +48,7 @@ set -u
 
 REPO_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a jj workspace" >&2
+  echo "ERROR: not in a jj repository" >&2
   exit 1
 fi
 
@@ -154,7 +154,7 @@ esac
 # Exclusion list: directories that ship framework configs as fixtures or build
 # output, not as real project roots.
 
-EXCLUDE_DIRS="node_modules .git .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp .tmp fixtures"
+EXCLUDE_DIRS="node_modules .git .jj vendor dist build coverage .next .nuxt .svelte-kit .turbo tmp fixtures"
 EXCLUDE_ARGS=""
 for d in $EXCLUDE_DIRS; do
   EXCLUDE_ARGS="$EXCLUDE_ARGS -path './$d' -prune -o -path '*/$d' -prune -o"

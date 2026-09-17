@@ -60,8 +60,9 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw)
-  CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
+  CE_PEER_JOBS_ROOT         base dir (<workspace>/.tmp/rocketclaw via
+                            `jj workspace root`, else cwd/.tmp/rocketclaw)
+  CE_WORK_RUNS_ROOT         parent ce-work run dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -114,7 +115,8 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the workspace `.tmp/rocketclaw` directory.
+  jobs root defaults under the workspace `.tmp/rocketclaw` (same as POSIX),
+            owner-private.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -145,23 +147,28 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-def _workspace_tmp_root() -> str | None:
-    proc = subprocess.run(
-        ["jj", "--no-pager", "workspace", "root"],
-        capture_output=True, text=True, check=False,
-    )
-    root = proc.stdout.strip() if proc.returncode == 0 else ""
-    if not root:
-        root = os.getcwd()
-    scratch = os.path.join(root, ".tmp", "rocketclaw")
+
+
+def _workspace_tmp() -> str:
+    """Workspace `.tmp` via public `jj workspace root`; else cwd/.tmp."""
     try:
-        os.makedirs(os.path.join(root, ".tmp"), mode=0o700, exist_ok=True)
+        proc = subprocess.run(
+            ["jj", "workspace", "root"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=os.getcwd(),
+        )
+        root = proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else os.getcwd()
     except OSError:
-        return None
-    return scratch
+        root = os.getcwd()
+    return os.path.join(root, ".tmp")
 
 
-DEFAULT_ROOT = _workspace_tmp_root()
+def _default_jobs_root() -> str:
+    return os.path.join(_workspace_tmp(), "rocketclaw")
+
+
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -218,9 +225,9 @@ _RUNNER_HARD_GRACE = 30.0
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe: a sandbox that denies writes under workspace `.tmp`
-    refuses the mkdir, and one that lets a pre-existing root stand still fails
-    the access check.
+    Creation is the probe: a workspace that denies writes under `.tmp` refuses
+    the mkdir, and one that lets a pre-existing root stand still fails the
+    access check.
     """
     try:
         os.mkdir(path, 0o700)
@@ -239,19 +246,26 @@ def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
-    if DEFAULT_ROOT is None:
-        raise RunnerError("cannot derive the jobs root from the workspace .tmp directory")
-    return os.path.abspath(DEFAULT_ROOT)
+    tmp = _workspace_tmp()
+    if not _private_root_usable(tmp):
+        raise RunnerError(f"cannot create workspace scratch dir {tmp}")
+    root = os.path.abspath(_default_jobs_root())
+    if not _private_root_usable(root):
+        raise RunnerError(f"cannot create jobs root {root}")
+    return root
 
 
 def candidate_jobs_root_bases() -> list:
-    """Every root an existing job may live under."""
+    """Every root an existing job may live under: the configured root, or the
+    workspace `.tmp/rocketclaw` root.
+
+    Creation uses jobs_root_base(); lookup of an already-started job must not
+    depend on which root *this* invocation would create under.
+    """
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]
-    if DEFAULT_ROOT is None:
-        raise RunnerError("cannot derive the jobs root from the workspace .tmp directory")
-    return [os.path.abspath(DEFAULT_ROOT)]
+    return [os.path.abspath(_default_jobs_root())]
 
 
 def skill_runs_root(skill: str) -> str:
@@ -841,7 +855,7 @@ def ensure_owned_dirs(base: str, path: str) -> None:
         # managed default (repairing a default left non-private, which is what
         # the POSIX unconditional chmod is for). A pre-existing user-supplied
         # CE_PEER_JOBS_ROOT keeps its ACLs and rests on the owner check.
-        default_root = os.path.abspath(DEFAULT_ROOT) if DEFAULT_ROOT else None
+        default_root = os.path.abspath(_default_jobs_root())
         ours = created_base or (
             default_root is not None
             and os.path.normcase(cur) == os.path.normcase(default_root))
@@ -1937,8 +1951,7 @@ def _require_detach_support() -> None:
         raise RunnerError(
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
-            "a Windows Python 3 build (see "
-            "#1243)."
+            "a Windows Python 3 build (see issue #1243)."
         )
 
 
@@ -2169,7 +2182,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable workspace .tmp path unchecked.
+        # consumer must never read a predictable scratch path unchecked.
         target = os.path.abspath(args.path)
         try:
             data = read_owned(target, cfg()["result_max"])

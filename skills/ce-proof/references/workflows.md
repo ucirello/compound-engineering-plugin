@@ -104,13 +104,14 @@ Sync the current Proof doc state to a local markdown file. Used for:
 Canonical read for this workflow: `GET /api/agent/$SLUG/v3/document`.
 
 ```bash
+ROOT="$(jj workspace root 2>/dev/null || pwd)"
+mkdir -p "$ROOT/.tmp"
+
 SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-ROOT="$(jj workspace root 2>/dev/null || echo .)"
-mkdir -p "$ROOT/.tmp"
-STATE_TMP=$(mktemp "$ROOT/.tmp/ce-proof-state.XXXXXX")
+STATE_TMP="$ROOT/.tmp/ce-proof-state.$$"
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"

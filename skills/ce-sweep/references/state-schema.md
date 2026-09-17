@@ -108,7 +108,7 @@ The lease's guarantee depends on where the state file lives:
 | topology | lease scope | protocol |
 | --- | --- | --- |
 | local-commit mode (default) | Single writer **per checkout**. | The lease serializes overlapping sweeps in the same working tree (e.g. a cron sweep and a manual one). The file is written in-tree (and may be committed locally). No cross-machine guarantee. |
-| pushed-shared-bookmark | One writer **per repo**. | The state file lives on a shared bookmark multiple checkouts push to. `lease-acquire` must be committed, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines.
+| pushed-shared-bookmark | One writer **per repo**. | The state file lives on a shared bookmark multiple workspaces push to. `lease-acquire` must be described/committed, pushed, and confirmed (fetch back and verify our writer won) **before any source-side write**. This makes the lease a repo-wide mutex across machines. |
 
 TTL-based reclaim (`STALE-RECLAIMED`) is what lets a crashed or killed writer's lease be taken over after `ttl_minutes` without manual cleanup.
 
@@ -123,7 +123,7 @@ Records the outcome of a sweep run under `last_run`.
 | `writer` | `--writer` | The writer id that recorded the run. |
 | `counts` | `--counts` (JSON object) | Free-form tallies (per status, per source, etc.). |
 
-`run-record` is intentionally **lease-agnostic**. A run that aborted precisely because the lease was `LOCKED` (`outcome: aborted-locked`) must still be able to record that fact, but that write happens while the lease holder is mid-sweep. To keep it from clobbering the holder's concurrent upserts, every mutating subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its whole load-modify-write, so two concurrent invocations serialize their writes regardless of lease ownership. The lease decides *which writer is running the sweep*. The file lock decides *which process is writing the file right now*. The `.lock` file is ephemeral and never committed. The skill's commit step names only the state file and the plan in the `jj commit` fileset; never a fileset-less commit.
+`run-record` is intentionally **lease-agnostic**. A run that aborted precisely because the lease was `LOCKED` (`outcome: aborted-locked`) must still be able to record that fact, but that write happens while the lease holder is mid-sweep. To keep it from clobbering the holder's concurrent upserts, every mutating subcommand holds an **OS advisory lock** (`flock` on `<state>.lock`) across its whole load-modify-write, so two concurrent invocations serialize their writes regardless of lease ownership. The lease decides *which writer is running the sweep*. The file lock decides *which process is writing the file right now*. The `.lock` file is ephemeral and never committed. The skill's describe/commit step includes only the state file and the plan, never the rest of the working copy.
 
 ## Engine status words
 

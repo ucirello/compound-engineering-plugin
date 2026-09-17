@@ -117,7 +117,7 @@ CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  ROOT="$(jj workspace root 2>/dev/null || echo .)"
+  ROOT="$(jj workspace root 2>/dev/null || pwd)"
   mkdir -p "$ROOT/.tmp"
   CENSOR_STATUS_FILE=$(mktemp "$ROOT/.tmp/ce-optimize-censor-XXXXXX")
 fi

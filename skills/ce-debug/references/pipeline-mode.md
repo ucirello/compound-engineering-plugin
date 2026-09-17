@@ -11,7 +11,7 @@ Being invoked by an orchestrator is **not** itself authorization. You mutate und
 - **Phase 0 (triage):** If an issue fetch fails, do not ask the user to paste content. Proceed with the input you have and note the gap in the return. Do not ask "what have you tried"; infer prior attempts from the input.
 - **Phase 1 (reproduce):** When reproduction cannot run in this environment (a CI- or production-only failure), do not ask for access, artifacts, or a go-ahead. Continue on the best evidence already in reach: the failing job's logs, captured artifacts, the seeded log tails. If a gap-free root cause is still established, the ordinary statuses apply. If not, return `needs-human` with a `decision_context` naming what reproduction requires and what was tried.
 - **Phase 2 (root cause + fix gate):** There is no "Fix it now / Diagnosis only" question. The caller invoked this skill to fix, so **fix by default, but only convergent fixes** (see the boundary below). A divergent fix is deferred, not applied.
-- **Phase 3 (workspace/bookmark):** Operate on the current bookmark. The orchestrator decides bookmark context, so never prompt to create a bookmark and never prompt about working-copy changes. Commit the fix and push. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from project instructions and `git log` ALWAYS wins. Do not impose a fixed type, scope, prefix, footer, or body template. Keep semantic constraints: a CI failure's message should say so; describe the outcome. Never weaken, skip, or mock a failing assertion to make it pass. Repair the real issue or defer.
+- **Phase 3 (workspace/bookmark):** Operate on the current bookmark. The orchestrator decides bookmark context, so never prompt to create a bookmark and never prompt about uncommitted work. Describe and commit the fix, then push with `jj git push --bookmark <name>`. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing local syntax. Use `jj describe -m "<message composed from the standards above>"` and/or `jj commit -m "<message composed from the standards above>"`. When the failure is CI, keep that fact in the message if local standards call for it. Never weaken, skip, or mock a failing assertion to make it pass. Repair the real issue or defer.
 - **Phase 4 (handoff):** No prompt. Emit the structured return below as the last thing this skill writes, then skip the compound offer. The return ends this skill, not the turn. The caller runs in this same session, and its next step follows the return.
 - **Post-fix simplify and review steps:** Skip them in pipeline to bound cost and nesting depth; the orchestrator scopes review at its own level. Keep the Phase 3 tests.
 
@@ -50,7 +50,7 @@ The return in pipeline mode is machine-readable (the caller parses it):
   "summary": "<one line: what happened>",
   "root_cause": "<causal chain, brief>",
   "changed_files": ["..."],
-  "head_sha": "<commit_id of the fix change, when fixed-and-pushed or fixed-not-pushed>",
+  "head_sha": "<sha of the fix change, when fixed-and-pushed or fixed-not-pushed>",
   "residuals": [
     {
       "type": "needs-human",
@@ -72,7 +72,7 @@ The return in pipeline mode is machine-readable (the caller parses it):
 ```
 
 - `fixed-and-pushed`: a convergent fix was applied, tests pass, committed, and the push succeeded.
-- `fixed-not-pushed`: the same fix is applied and committed locally, but the push did not happen (no remote, no push access, an authorized scope that excludes pushing, a rejected push). `head_sha` is the local commit; the first residual says why. Never report this as `fixed-and-pushed` (the caller re-snapshots a remote head that has not moved) or as `diagnosed-no-fix` (the fix is applied).
+- `fixed-not-pushed`: the same fix is applied and committed locally, but the push did not happen (no remote, no push access, an authorized scope that excludes pushing, a rejected push). `head_sha` is the local change; the first residual says why. Never report this as `fixed-and-pushed` (the caller re-snapshots a remote head that has not moved) or as `diagnosed-no-fix` (the fix is applied).
 - `flaky-infra`: a flake or infrastructure failure, not a code defect (the caller may retry).
 - `needs-human`: the failure requires a divergent/product decision; nothing applied; see `residuals`.
 - `diagnosed-no-fix`: root cause found but no safe convergent fix available this run; see `residuals`.

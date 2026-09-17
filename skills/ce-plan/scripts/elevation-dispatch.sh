@@ -39,20 +39,23 @@ EFFORT="high"   # settled: elevation runs at high effort
 # any mutating tool. Its output is returned prose, not a file write.
 ALLOWED=(Read Glob Grep WebSearch WebFetch)
 
-# opencode2 is a distinct harness from opencode (not a fallback). When
-# ELEVATION_HARNESS=opencode2, dispatch the opencode2 binary:
-#   opencode2 run --standalone --auto --model provider/model#variant
-# Variant is `#variant` on --model; there is no `--variant` flag.
-build_cmd_opencode2() {  # <model> -> sets CMD array (opencode2, not opencode)
-  CMD=(opencode2 run --standalone --auto --model "$1")
-}
+ADAPTER="claude"
 
-build_cmd() {   # <model> <handoff-dir> -> sets CMD array
+build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI or opencode2)
+  # opencode2 is a distinct harness (not an alias of opencode). When the model
+  # is provider/modelname#variant, or ELEVATION_HARNESS=opencode2, invoke
+  # `opencode2` with surveyed flags only.
+  local model="$1"
   if [ "${ELEVATION_HARNESS:-}" = "opencode2" ]; then
-    build_cmd_opencode2 "$1"
+    ADAPTER="opencode2"
+  else
+    case "$model" in */*) ADAPTER="opencode2" ;; *) ADAPTER="claude" ;; esac
+  fi
+  if [ "$ADAPTER" = "opencode2" ]; then
+    CMD=(opencode2 run --format json --auto --model "$model")
+    [ -n "${PROMPT_FILE:-}" ] && CMD+=(--file "$PROMPT_FILE")
     return
   fi
-  # claude CLI, streaming, read-only (unchanged opencode-unrelated path)
   # --safe-mode suppresses the user environment's hooks, plugins, and MCP
   # servers; --disable-slash-commands blocks skills. --tools RESTRICTS the
   # available built-in set to this list — Write/Edit/Bash are not present at all.
@@ -116,9 +119,9 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-WS_ROOT="$(jj --no-pager workspace root 2>/dev/null || printf '.')"
-mkdir -p "$WS_ROOT/.tmp"
-PEERLOG="$(mktemp "$WS_ROOT/.tmp/elevation-peer-XXXXXX")"
+ROOT="$(jj workspace root 2>/dev/null || pwd)"
+mkdir -p "$ROOT/.tmp"
+PEERLOG="$(mktemp "$ROOT/.tmp/elevation-peer-XXXXXX")"
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
@@ -259,6 +262,26 @@ run_codex_cmd() {
 # --- main -------------------------------------------------------------------
 build_cmd "$MODEL" "$HANDOFF_DIR"
 run_codex_cmd
+
+if [ "$ADAPTER" = "opencode2" ]; then
+  # opencode2 --format json is NDJSON text parts (surveyed: run --format json).
+  # Receipt is unverified: this route does not report a served-id envelope.
+  tmp="${RESULT_PATH}.tmp.$$"
+  if [ "$RUN_SUCCEEDED" = true ] && jq -rs --arg m "$MODEL" \
+       '[.[] | select(.type=="text") | (.part.text // empty)] | join("") as $o
+        | if $o == "" then empty else {status:"ok", requested_model:$m, served_model:"unverified", receipt:"unverified", output:$o} end' \
+       "$PEERLOG" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    mv -f "$tmp" "$RESULT_PATH"
+    log "elevated step complete: requested=$MODEL served=unverified receipt=unverified adapter=opencode2"
+  else
+    rm -f "$tmp"
+    write_result "$(jq -n --arg m "$MODEL" --arg e "$(bounded_failure_evidence)" \
+      '{status:"failed", requested_model:$m, evidence:$e}')"
+    log "elevated step failed; wrote failure envelope"
+  fi
+  rm -f "$PEERLOG"
+  exit 0
+fi
 
 # The stream-json terminal event is the LAST line whose type is "result". Match
 # on it rather than `tail -1`, so a diagnostic written to stderr after the result

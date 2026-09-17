@@ -32,7 +32,7 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          no positional arg and not inside a jj workspace
+#                          no positional arg and not inside a jj repo
 
 set -u
 
@@ -47,7 +47,7 @@ if [ -n "$TARGET_PATH" ]; then
 else
   TARGET_PATH=$(jj workspace root 2>/dev/null)
   if [ -z "$TARGET_PATH" ]; then
-    echo "ERROR: not in a jj workspace and no path argument provided" >&2
+    echo "ERROR: not in a jj repository and no path argument provided" >&2
     exit 1
   fi
 fi

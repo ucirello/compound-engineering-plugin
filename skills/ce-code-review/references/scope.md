@@ -12,25 +12,28 @@ The caller already knows the diff base. Skip all base-branch detection, remote r
 
 ```
 BASE_ARG="{base_arg}"
-BASE=$(jj --no-pager log -r "heads(::@ & ::$BASE_ARG)" --no-graph -T 'commit_id ++ "\n"' -n 1) || BASE="$BASE_ARG"
+ROOT="$(jj workspace root 2>/dev/null || pwd)"
+BASE="$(cd "$ROOT" && jj log -r "heads(::$BASE_ARG & ::@)" -T 'commit_id ++ "\n"' --no-graph 2>/dev/null | head -1)"
+[ -n "$BASE" ] || BASE="$BASE_ARG"
 ```
 
-Run jj with cwd at the workspace root (`jj workspace root`) so file lists are workspace-relative (`src/example.py`, never `.tmp/.../workspace/src/example.py`). Then produce the same output as the other paths:
+Then produce the same output as the other paths (cwd = workspace root so file lists are repo-relative):
 
 ```
-echo "BASE:$BASE" && echo "FILES:" && jj --no-pager diff --from $BASE --name-only && echo "DIFF:" && jj --no-pager diff --from $BASE --git && echo "UNTRACKED:" && jj --no-pager status
+( cd "$ROOT" && echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --name-only && echo "DIFF:" && jj diff --from "$BASE" --context 10 && echo "UNTRACKED:" && jj status )
 ```
 
-This path works with any ref — a SHA, `main@origin`, a bookmark name. Callers reviewing the current working copy should pass explicit `base:` when auto-detection is unnecessary. **Do not combine `base:` with a PR number or bookmark target.** If both are present, stop with an error: "Cannot use `base:` with a PR number or bookmark target — `base:` implies the current working copy is already the correct bookmark. Pass `base:` alone, or pass the target alone and let scope detection resolve the base."
+This path works with any ref — a SHA, `origin/main`, a branch name. Callers reviewing the current checkout should pass explicit `base:` when auto-detection is unnecessary. **Do not combine `base:` with a PR number or branch target.** If both are present, stop with an error: "Cannot use `base:` with a PR number or branch target — `base:` implies the current checkout is already the correct branch. Pass `base:` alone, or pass the target alone and let scope detection resolve the base."
 
 **If a PR number or GitHub URL is provided as an argument:**
 
-Do **not** check out the PR bookmark. Scope comes from GitHub read APIs plus optional local alignment when `@` already matches the PR head bookmark.
+Do **not** check out the PR branch. Scope comes from GitHub read APIs plus optional local alignment when `@` already matches the PR head bookmark.
 
 **Skip-condition pre-check.** Before scope detection, run a PR-state probe:
 
 ```
-gh pr view <number-or-url> --json state,title,body,files
+ROOT="$(jj workspace root 2>/dev/null || pwd)"
+( cd "$ROOT" && GIT_DIR="$(jj git root)" gh pr view <number-or-url> --json state,title,body,files )
 ```
 
 Apply skip rules in order:
@@ -43,70 +46,71 @@ When any skip rule applies, stop without dispatching reviewers. **Default mode:*
 If no skip rule applies, fetch PR metadata **without checkout**:
 
 ```
-gh pr view <number-or-url> --json title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,files,reviews,comments --jq '{title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}'
+ROOT="$(jj workspace root 2>/dev/null || pwd)"
+( cd "$ROOT" && GIT_DIR="$(jj git root)" gh pr view <number-or-url> --json title,body,baseRefName,headRefName,headRefOid,isCrossRepository,url,files,reviews,comments --jq '{title, body, baseRefName, headRefName, headRefOid, isCrossRepository, url, files: [.files[].path], hasPriorComments: ((.reviews | map(select(.state != "APPROVED" or .body != "")) | length) > 0 or (.comments | length) > 0)}' )
 ```
 
-Set `BASE:` to `pr:<number-or-url>` (logical marker — not a commit id). Set `UNTRACKED:` from `jj status` on the **current** workspace (usually empty during PR-remote review). Pair every `gh` call with `GIT_DIR` set to the path from a prior `jj git root` call (do not nest `$(...)`).
+Set `BASE:` to `pr:<number-or-url>` (logical marker — not a commit id). Set `UNTRACKED:` from `jj status` on the **current** workspace (usually empty during PR-remote review).
 
-**PR scope mode.** Classify as **`local-aligned`** only when **all** of these hold; otherwise use **`pr-remote`**. A matching bookmark name alone is not enough — a fork PR or a stale local bookmark can share a name with the PR head while pointing at unrelated code, and trusting the name would diff and inspect the wrong tree.
+**PR scope mode.** Classify as **`local-aligned`** only when **all** of these hold; otherwise use **`pr-remote`**. A matching branch name alone is not enough — a fork PR or a stale local branch can share a name with the PR head while pointing at unrelated code, and trusting the name would diff and inspect the wrong tree.
 
-1. Bookmarks on `@` (`jj log -r @ --no-graph -T bookmarks`, cwd = workspace root) include `headRefName`.
+1. `jj log -r @ -T 'bookmarks ++ "\n"' --no-graph` includes `headRefName`.
 2. The PR is **not** cross-repository (`isCrossRepository` is false).
-3. The PR head commit is contained in the local working copy: `jj log -r '<headRefOid> & ::@' --no-graph -T commit_id` (cwd = workspace root) prints that id. This confirms the working copy actually carries the PR head (allowing undescribed local fixes layered on top) rather than an unrelated same-named bookmark.
+3. The PR head commit is contained in the local workspace: `jj log -r '<headRefOid> & ::@' -T 'commit_id ++ "\n"' --no-graph` prints that id. This confirms the working copy actually carries the PR head (allowing unpushed local fixes layered on top) rather than an unrelated same-named bookmark.
 
 - **`local-aligned`** — all three checks pass. Local Read/Grep/`jj file annotate` against workspace files are valid for PR changed paths.
 - **`pr-remote`** — any check fails. The working copy is **not** the PR head; workspace file contents for changed paths may be stale or unrelated.
 
 **Diff by scope mode** (do not mix remote and local diffs — contradictory hunks cause false positives):
 
-- **`local-aligned`:** Resolve `<resolved-base-ref>` from `baseRefName` (fetch if needed with `jj git fetch`). Compute `BASE` as `jj log -r 'heads(::@ & ::<resolved-base-ref>)' --no-graph -T commit_id` (cwd = workspace root), then set `FILES:` from `jj diff --from $BASE --name-only` and `DIFF:` from `jj diff --from $BASE --git` (includes described and undescribed working-copy changes on the PR bookmark). Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local tree is canonical. Note in Coverage: `scope: local-aligned (PR; local tree diff)`.
-- **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `gh pr diff <number-or-url> --color=never` with `GIT_DIR` from `jj git root`. If `gh pr diff` fails, stop with an actionable error — do not fall back to checkout.
+- **`local-aligned`:** Resolve `<resolved-base-ref>` from `baseRefName` (fetch if needed). Compute `BASE` from `jj log -r 'heads(::@ & ::<resolved-base-ref>)' -T 'commit_id ++ "\n"' --no-graph`, then set `FILES:` from `jj diff --from $BASE --name-only` and `DIFF:` from `jj diff --from $BASE --context 10` (includes working-copy changes on the PR bookmark). Do **not** call `gh pr diff` or append remote hunks — when unpushed fixes exist, the local tree is canonical. Note in Coverage: `scope: local-aligned (PR; local tree diff)`.
+- **`pr-remote`:** Set `FILES:` from the PR `files` array. Set `DIFF:` from `( cd "$ROOT" && GIT_DIR="$(jj git root)" gh pr diff <number-or-url> --color=never )`. If `gh pr diff` fails, stop with an actionable error — do not fall back to checkout.
 
 When **`pr-remote`**, before Stage 4:
 
-1. Best-effort fetch PR head without switching the working copy: `(cd "$workspace_root" && jj git fetch --no-tags origin <headRefName>)` (substitute PR number from metadata).
-2. When fetch succeeds, set `PR_HEAD_REF` to the fetched head commit id for reviewers and validators. When fetch fails, omit `PR_HEAD_REF` and note in Coverage — reviewers must rely on diff hunks only.
-3. Best-effort fetch the PR base without switching: `(cd "$workspace_root" && jj git fetch --no-tags origin <baseRefName>)`. When it succeeds, set `PR_BASE_REF` to that commit id — a **real jj base ref** reviewers and validators use for file-level diffs (e.g. `data-migration-reviewer` runs `jj diff --from <PR_BASE_REF> -- db/schema.rb`/`structure.sql`). The `pr:<number-or-url>` logical marker in `BASE:` stays the scope marker; `PR_BASE_REF` is the diffable base. When the fetch fails, omit `PR_BASE_REF` and note in Coverage — schema-drift and other diff checks fall back to diff hunks only and must **not** assume `main`.
+1. Best-effort fetch PR head without checking it out: `( cd "$ROOT" && jj git fetch --remote origin -b <headRefName> )` (substitute PR number from metadata).
+2. When fetch succeeds, set `PR_HEAD_REF=<headRefName>@origin` for reviewers and validators. When fetch fails, omit `PR_HEAD_REF` and note in Coverage — reviewers must rely on diff hunks only.
+3. Best-effort fetch the PR base without checking it out: `( cd "$ROOT" && jj git fetch --remote origin -b <baseRefName> )`. When it succeeds, resolve a concrete ref with `jj log -r '<baseRefName>@origin' -T 'commit_id ++ "\n"' --no-graph` and set `PR_BASE_REF` to that commit id — a **real base rev** reviewers and validators use for file-level diffs (e.g. `data-migration-reviewer` runs `jj diff --from <PR_BASE_REF> -- db/schema.rb`/`structure.sql`). The `pr:<number-or-url>` logical marker in `BASE:` stays the scope marker; `PR_BASE_REF` is the diffable base. When the fetch fails, omit `PR_BASE_REF` and note in Coverage — schema-drift and other diff checks fall back to diff hunks only and must **not** assume `main`.
 4. Include `<pr-scope-mode>pr-remote</pr-scope-mode>` and, when set, `<pr-head-ref>...</pr-head-ref>` and `<pr-base-ref>...</pr-base-ref>` in the Stage 4 review context bundle.
 
-Reviewers and Stage 5b validators in **`pr-remote`** mode must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `jj file show -r <PR_HEAD_REF> <path>` (cwd = workspace root) when `PR_HEAD_REF` is set, otherwise use only the provided diff hunks. **`local-aligned`** uses normal workspace inspection.
+Reviewers and Stage 5b validators in **`pr-remote`** mode must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `jj file show -r <PR_HEAD_REF> <path>` when `PR_HEAD_REF` is set, otherwise use only the provided diff hunks. **`local-aligned`** uses normal workspace inspection.
 
-**If a bookmark name is provided as an argument:**
+**If a branch name is provided as an argument:**
 
-Substitute the provided bookmark name as `<branch>`. Do **not** switch the working copy to `<branch>`.
+Substitute the provided branch name as `<branch>`. Do **not** check out `<branch>`.
 
-If bookmarks on `@` include `<branch>`, use the **standalone (current bookmark)** path below — same tree, explicit bookmark name; do not use remote-only diff.
+If `jj log -r @ -T 'bookmarks ++ "\n"' --no-graph` includes `<branch>`, use the **standalone (current bookmark)** path below — same tree, explicit bookmark name; do not use remote-only diff.
 
-Otherwise diff the remote/local ref **without switching**:
+Otherwise diff the remote/local ref **without checkout**:
 
-1. Try `gh pr view <branch> --json baseRefName,url,headRefName` (`GIT_DIR` from `jj git root`) — if a PR exists, prefer the **PR number/URL path** above (same remote diff rules).
-2. Else resolve `<branch>` as `<branch>@origin` or `<branch>` after `jj git fetch --no-tags origin <branch>` when needed (cwd = workspace root).
-3. Resolve default base bookmark (same logic as standalone; trunk `main`/`master`, strip `@origin`). Compute `BASE` as `jj log -r 'heads(::<base-ref> & ::<branch-ref>)' --no-graph -T commit_id` and `jj diff --from $BASE --to <branch-ref> --git`.
-4. If `<branch-ref>` cannot be resolved locally, stop: "Cannot diff bookmark `<branch>` without switching. Edit that bookmark, pass its open PR URL/number, or review the current bookmark with `base:`."
+1. Try `( cd "$ROOT" && GIT_DIR="$(jj git root)" gh pr view <branch> --json baseRefName,url,headRefName )` — if a PR exists, prefer the **PR number/URL path** above (same remote diff rules).
+2. Else resolve `<branch>` as `<branch>@origin` or `<branch>` after `jj git fetch --remote origin -b <branch>` when needed.
+3. Resolve default base bookmark (same logic as standalone). Compute `BASE` from `jj log -r 'heads(::<base-ref> & ::<branch-ref>)' -T 'commit_id ++ "\n"' --no-graph` and `jj diff --from $BASE --to <branch-ref> --context 10`.
+4. If `<branch-ref>` cannot be resolved locally, stop: "Cannot diff branch `<branch>` without checkout. Check out that branch, pass its open PR URL/number, or review the current branch with `base:`."
 
-On success for remote bookmark diff, set **branch-remote scope**. The working copy is **not** `<branch>`. Include `<pr-scope-mode>branch-remote</pr-scope-mode>` and `<branch-head-ref><branch-ref></branch-head-ref>` in the Stage 4 review context bundle. Reviewers and Stage 5b validators must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `jj file show -r <branch-ref> <path>` (cwd = workspace root) or diff hunks only.
+On success for remote branch diff, set **branch-remote scope**. The working copy is **not** `<branch>`. Include `<pr-scope-mode>branch-remote</pr-scope-mode>` and `<branch-head-ref><branch-ref></branch-head-ref>` in the Stage 4 review context bundle. Reviewers and Stage 5b validators must **not** Read/Grep workspace paths for files in `FILES:`. Inspect via `jj file show -r <branch-ref> <path>` or diff hunks only.
 
-Produce (cwd = workspace root):
-
-```
-echo "BASE:$BASE" && echo "FILES:" && jj --no-pager diff --from $BASE --to <branch-ref> --name-only && echo "DIFF:" && jj --no-pager diff --from $BASE --to <branch-ref> --git && echo "UNTRACKED:" && jj --no-pager status
-```
-
-**If no argument (standalone on current bookmark):**
-
-Apply the same base-detection logic as bookmark mode above, using the current bookmark (i.e., `gh pr view --json baseRefName,url` with no argument defaults to the current bookmark; pair `gh` with `GIT_DIR` from `jj git root`).
-
-If no base can be resolved, **stop**. Do not fall back to `jj diff` against `@-` only — a standalone review without the base would only show undescribed working-copy changes and silently miss all described work on the bookmark.
-
-On success, produce the diff (cwd = workspace root):
+Produce:
 
 ```
-echo "BASE:$BASE" && echo "FILES:" && jj --no-pager diff --from $BASE --name-only && echo "DIFF:" && jj --no-pager diff --from $BASE --git && echo "UNTRACKED:" && jj --no-pager status
+( cd "$ROOT" && echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --to "<branch-ref>" --name-only && echo "DIFF:" && jj diff --from "$BASE" --to "<branch-ref>" --context 10 && echo "UNTRACKED:" && jj status )
 ```
 
-Using `jj diff --from $BASE` (without `--to`) diffs the merge-base against the working copy, which includes described and undescribed changes together.
+**If no argument (standalone on current branch):**
 
-**Untracked file handling:** Always inspect `UNTRACKED:`. Extra paths listed by `jj status` that are not in `FILES:` are out of scope. When non-empty, list excluded files in Coverage and continue on the reviewed change only — never stop or prompt.
+Apply the same base-detection logic as branch mode above, using the current bookmark (i.e., `( cd "$ROOT" && GIT_DIR="$(jj git root)" gh pr view --json baseRefName,url )` with no argument defaults to the current bookmark).
+
+If no base can be resolved, **stop**. Do not fall back to `jj diff` (working-copy only) — a standalone review without the base would only show uncommitted changes and silently miss all committed work on the bookmark.
+
+On success, produce the diff:
+
+```
+( cd "$ROOT" && echo "BASE:$BASE" && echo "FILES:" && jj diff --from "$BASE" --name-only && echo "DIFF:" && jj diff --from "$BASE" --context 10 && echo "UNTRACKED:" && jj status )
+```
+
+Using `jj diff --from $BASE` (to defaults to the working-copy change) diffs the merge-base against the working copy, which includes committed and uncommitted changes together.
+
+**Untracked file handling:** Always inspect `UNTRACKED:`. Untracked paths are out of scope unless staged. When non-empty, list excluded files in Coverage and continue on tracked changes only — never stop or prompt.
 
 ### Stage 1b: Compute scope signals (cheap, deterministic)
 
@@ -143,13 +147,11 @@ Candidates are `CODING_STANDARDS.md`, `CLAUDE.md`, and `AGENTS.md` at any depth.
 Create the review run directory now. Every path, lite or full, writes its artifacts there:
 
 ```bash
-ROOT="$(jj workspace root 2>/dev/null || echo .)";
-mkdir -p "$ROOT/.tmp" || exit 1;
-SCRATCH_ROOT="$ROOT/.tmp/rocketclaw";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || { echo "cannot create workspace .tmp/rocketclaw" >&2; exit 1; };
+ROOT="$(jj workspace root 2>/dev/null || pwd)";
+mkdir -p "$ROOT/.tmp";
+SCRATCH_ROOT="$ROOT/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
-if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ');
 RUN_DIR="$SCRATCH_ROOT/ce-code-review/$RUN_ID";

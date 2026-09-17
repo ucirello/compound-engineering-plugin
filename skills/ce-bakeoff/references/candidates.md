@@ -21,9 +21,10 @@ Ask each candidate to return an approach sketch at the requested fidelity, with 
 Create private run scratch once:
 
 ```bash
-ROOT="$(jj workspace root 2>/dev/null || echo .)";
-(umask 077; mkdir -p "$ROOT/.tmp/ce-bakeoff") || exit 1;
-SCRATCH_DIR=$(mktemp -d "$ROOT/.tmp/ce-bakeoff/run-XXXXXX") || exit 1;
+ROOT="$(jj workspace root 2>/dev/null || pwd)";
+mkdir -p "$ROOT/.tmp";
+SCRATCH_DIR="$ROOT/.tmp/ce-bakeoff/run-$$";
+(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1;
 echo "$SCRATCH_DIR";
 ```
 

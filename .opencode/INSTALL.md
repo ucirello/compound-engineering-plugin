@@ -1,51 +1,41 @@
 # Installing RocketClaw for OpenCode
 
-RocketClaw targets **opencode2** v2.0.3. Use the V2 `plugins` key (not V1 `plugin`).
-
-## CLI
-
-Install a published package into the global config:
-
-```sh
-opencode2 plugin add <package>
-```
-
-List active plugins:
-
-```sh
-opencode2 plugin list
-```
-
-## Config
-
-Add RocketClaw to the `plugins` array in your global or project `opencode.json`.
-
-File URL:
+Add RocketClaw to the `plugins` array in your global or project `opencode.json`:
 
 ```json
 {
-  "plugins": ["file:///path/to/this/checkout"]
+  "plugins": ["git+https://github.com/EveryInc/compound-engineering-plugin.git"]
 }
 ```
 
-Package form:
+You can also install it into the global OpenCode config:
+
+```
+opencode2 plugin add git+https://github.com/EveryInc/compound-engineering-plugin.git
+```
+
+Restart OpenCode after changing the config. The OpenCode plugin registers the RocketClaw skills directory directly; no Bun installer or generated skill copy is required.
+
+To pin a release, add a tag. Replace `X.Y.Z` with the release you want — see the [releases page](https://github.com/EveryInc/compound-engineering-plugin/releases) for available tags:
 
 ```json
 {
-  "plugins": [
-    {
-      "package": "file:///path/to/this/checkout"
-    }
-  ]
+  "plugins": ["git+https://github.com/EveryInc/compound-engineering-plugin.git#compound-engineering-vX.Y.Z"]
 }
 ```
 
-A plugin under `.opencode/plugins/` in this checkout is also discovered automatically.
-
-Restart after changing the config:
-
-```sh
-opencode2 service restart
+```
+opencode2 plugin add git+https://github.com/EveryInc/compound-engineering-plugin.git#compound-engineering-vX.Y.Z
 ```
 
-The plugin registers skills from this checkout's `skills/` directory and exposes each user-invocable skill as a slash command that attaches that skill id. No generated skill copy is required.
+## Local Development
+
+From this checkout, point OpenCode at the package path:
+
+```json
+{
+  "plugins": ["/path/to/rocketclaw"]
+}
+```
+
+Restart OpenCode after changing the package source.

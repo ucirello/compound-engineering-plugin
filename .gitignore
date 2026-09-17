@@ -6,12 +6,12 @@ node_modules/
 todos/
 .worktrees
 .context/
-.tmp/
 .claude/worktrees/
 __pycache__/
 *.pyc
 
 .rocketclaw/*.local.yaml
+.tmp/
 
 # Docs site build output (site/ is the Jekyll source)
 site/_site/

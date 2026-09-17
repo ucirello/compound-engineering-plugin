@@ -71,7 +71,9 @@ After review, **dispatch subagents for all remaining applicable findings** unles
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits with a message composed from the repository's current local syntax (Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards) unless workspace-isolated subagents merge per Phase 1. Repeat until all batches complete.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local syntax from project instructions and `git log` always wins when it differs from Go guidance. Apply compatible Go guidance to quality and clarity without replacing local syntax.
+
+**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits with `jj commit -m "<message composed from the standards above>"` unless workspace-isolated subagents merge per Phase 1. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

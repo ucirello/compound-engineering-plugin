@@ -1,7 +1,7 @@
-import path from "path"
-import fs from "fs"
-import { fileURLToPath } from "url"
 import { Plugin } from "@opencode/plugin"
+import fs from "fs"
+import path from "path"
+import { fileURLToPath } from "url"
 
 const pluginDir = path.dirname(fileURLToPath(import.meta.url))
 const skillsDir = path.resolve(pluginDir, "../../skills")
@@ -27,31 +27,25 @@ function parseFrontmatter(content: string) {
   return fields
 }
 
-function skillBody(content: string) {
-  const block = content.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)
-  if (!block) return content
-  return content.slice(block[0].length)
-}
-
-type LoadedSkill = {
+type BundledSkill = {
   name: string
   description?: string
-  suppressed: boolean
   skillPath: string
   body: string
+  suppressed: boolean
 }
 
-function loadSkills(): LoadedSkill[] {
-  const loaded: LoadedSkill[] = []
-  let entries
+function loadSkills() {
+  const skills: BundledSkill[] = []
+  let entries: string[]
   try {
     entries = fs.readdirSync(skillsDir)
   } catch {
-    return loaded
+    return skills
   }
   for (const entry of entries) {
     const skillPath = path.join(skillsDir, entry, "SKILL.md")
-    let content
+    let content: string
     try {
       content = fs.readFileSync(skillPath, "utf8")
     } catch {
@@ -59,16 +53,16 @@ function loadSkills(): LoadedSkill[] {
     }
     const fields = parseFrontmatter(content)
     if (!fields || !fields.name) continue
-    const skill: LoadedSkill = {
+    const skill: BundledSkill = {
       name: fields.name,
-      suppressed: fields["user-invocable"] === "false",
       skillPath,
-      body: skillBody(content),
+      body: content,
+      suppressed: fields["user-invocable"] === "false",
     }
     if (fields.description) skill.description = fields.description
-    loaded.push(skill)
+    skills.push(skill)
   }
-  return loaded
+  return skills
 }
 
 const skills = loadSkills()
@@ -82,12 +76,11 @@ export default Plugin.define({
           id: skill.name,
           name: skill.name,
           ...(skill.description ? { description: skill.description } : {}),
-          location: skill.skillPath,
+          path: skill.skillPath,
           content: skill.body,
         } as Parameters<typeof editor.add>[0])
       }
     })
-
     await ctx.command.transform((editor) => {
       for (const skill of skills) {
         if (skill.suppressed) continue

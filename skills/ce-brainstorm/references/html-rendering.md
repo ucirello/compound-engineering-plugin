@@ -108,7 +108,7 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to another checkout. Users
+Workspace-root only — do not fall through to a main checkout. Users
 working from a workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 

@@ -2,7 +2,7 @@
 
 ### Phase 3: Capture the Requirements-Only Unified Plan
 
-Write or update a requirements-only unified plan only when a file is warranted — see `references/brainstorm-sections.md` "Decide whether a doc is warranted at all" for the condition and the bug-fix stress test. Otherwise the chat paragraph from Phase 2.5 is the result and the decisions flow downstream (ce-plan's prompt, commit message, <root>/solutions/) without a brainstorm artifact in the middle.
+Write or update a requirements-only unified plan only when a file is warranted — see `references/brainstorm-sections.md` "Decide whether a doc is warranted at all" for the condition and the bug-fix stress test. Otherwise the chat paragraph from Phase 2.5 is the result and the decisions flow downstream (ce-plan's prompt, change description, <root>/solutions/) without a brainstorm artifact in the middle. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
 When a doc is warranted, compose it using:
 
@@ -15,7 +15,7 @@ If the grounding scout's gist listed any `pack:<id>` matches, read those entries
 
 **Write tight.** A section being material is not license to pad it. Hold every kept section to the prose-economy discipline in `references/brainstorm-sections.md`: lead with the decision or outcome, one idea per sentence, a requirement is intent plus at most one qualifier, defer forks to Outstanding Questions rather than specifying both arms, resolve superseded text in place rather than stacking strata.
 
-`SKILL.md` states the artifact contract — path shape, frontmatter fields, title, and the Goal-Capsule-plus-Product-Contract body — and it is not restated here. What this step adds: do not allocate a daily sequence number; reserve the candidate path atomically with exclusive creation, retrying the smallest available numeric collision suffix (`-2`, `-3`, …) before the extension rather than overwriting; the extension follows `OUTPUT_FORMAT`; the Goal Capsule holds objective, product authority, and open blockers; there is no conventional-commit prefix on the title. `references/brainstorm-sections.md` defines the artifact content rules, including repo-relative file paths inside the doc.
+`SKILL.md` states the artifact contract — path shape, frontmatter fields, title, and the Goal-Capsule-plus-Product-Contract body — and it is not restated here. What this step adds: do not allocate a daily sequence number; reserve the candidate path atomically with exclusive creation, retrying the smallest available numeric collision suffix (`-2`, `-3`, …) before the extension rather than overwriting; the extension follows `OUTPUT_FORMAT`; the Goal Capsule holds objective, product authority, and open blockers; there is no `feat:`/`fix:` prefix on the title. `references/brainstorm-sections.md` defines the artifact content rules, including repo-relative file paths inside the doc.
 
 **Ready for Planning Check.** After writing the actual file, run the four checks in `references/brainstorm-sections.md`: Complete, Consistent, Focused, and Usable by planning. Fix failures in place when the correction preserves settled intent, then rerun the failed checks. If a correction would choose or change product behavior or scope, ask one targeted question, update the artifact after the answer, and rerun the checks. When confirming in chat after the pass, report the artifact with its absolute path so the reference is clickable.
 

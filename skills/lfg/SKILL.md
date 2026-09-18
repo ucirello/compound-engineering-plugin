@@ -42,9 +42,9 @@ Resolve every skill named here against the host's available-skills list and invo
 
 4. Invoke the `ce-code-review` skill with `mode:agent plan:<plan-path-from-step-1>`; on the defect route omit `plan:`. A `settled_conflict` finding whose evidence shows the settled decision cannot work (infeasible, wrong-thing, or destructive) stops the pipeline as blocked, with the finding reported, before the shipping precondition.
 
-**Shipping precondition (every push from step 5 on).** Resolve the workspace root with `jj workspace root`, then run `jj git remote list` once with cwd set to that root. No remote means local-only: make every commit the steps call for, but skip every push, PR create/edit, and CI-watch action, including step 10 in full. That is terminal, not an error.
+**Shipping precondition (every push from step 5 on).** From the workspace root (`jj workspace root`; do not use `jj -R`), run `jj git remote` once. No remote means local-only: make every `jj commit` / `jj describe` the steps call for, but skip every `jj git push`, PR create/edit, and CI-watch action, including step 10 in full. That is terminal, not an error.
 
-5. **Apply and persist review fixes** as that file defines. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working copy.
+5. **Apply and persist review fixes** as that file defines. Do not proceed to the residual handoff, run browser tests, or output DONE while eligible review fixes remain only in the working copy, not finished with `jj commit`.
 
 6. **Autonomous residual handoff**: whenever an unapplied actionable finding, a `settled_conflict` stamp from step 4, or a proceeded-and-flagged `settled_decision_conflicts` entry from step 2 exists, record it durably per that file: in the PR body, or in tickets or the DONE report when no PR will exist. Skip only when none of the three exists. Do not output DONE until the residuals are durable. Never block DONE on tracker filing failures once the report states them. Do not prompt the user.
 
@@ -52,7 +52,7 @@ Resolve every skill named here against the host's available-skills list and invo
 
 8. Invoke the `ce-test-browser` skill with `mode:pipeline`.
 
-9. **Read `references/shipping.md` first**; it governs steps 9 through 11. Then invoke the `ce-commit-push-pr` skill with `mode:pipeline branding:on`.
+9. **Read `references/shipping.md` first**; it governs steps 9 through 11. Then invoke the `ce-commit-push-pr` skill with `mode:pipeline`.
 
 10. Watch the PR to CI-decided with `ce-babysit-pr mode:pipeline <pr-url>` when an open PR exists, as `references/shipping.md` decides. Do not reimplement CI-watching here.
 

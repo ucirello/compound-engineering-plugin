@@ -10,7 +10,6 @@ fi
 
 THREAD_ID=$1
 
-# Pair every gh call with the colocated Git dir of this JJ workspace.
 if git_dir=$(jj git root 2>/dev/null); then
     export GIT_DIR="$git_dir"
 fi

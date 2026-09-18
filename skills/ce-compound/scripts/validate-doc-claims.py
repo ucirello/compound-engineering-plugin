@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against the Jujutsu tree.
+"""Validate cited claims in a solution doc against the jj workspace.
 
 Usage:
     python3 validate-doc-claims.py <doc-path>
@@ -21,11 +21,11 @@ citations against the repository:
        upstream default bookmark still count as real paths and are classified
        (deleted/uncommitted vs stale checkout). Tokens missing everywhere
        are flagged only when path-shaped; slash-delimited identifiers
-       (bookmark names, git refs, provider/model IDs) and slash-prefixed
+       (bookmark names, refs, provider/model IDs) and slash-prefixed
        URL routes are skipped.
     2. Cited commit SHAs (7-40 hex chars with at least one digit and one
        a-f letter) resolve to commits, classified by reachability from
-       @ and the upstream default bookmark (trunk()). Session ids, content hashes
+       @ and the upstream default bookmark. Session ids, content hashes
        and blob hashes are hex too, so an unresolvable hex word is
        reported in one of two tiers rather than asserted to be fabricated:
        FLAG when the text right before it presents it as a commit (a
@@ -47,7 +47,7 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `jj git fetch` first
+whatever refs exist locally. Run a best-effort `(cd "$(jj workspace root)" && jj git fetch)` first
 when freshness matters. Pure stdlib (no third-party deps).
 """
 import os
@@ -137,7 +137,7 @@ def is_path_candidate(token: str, *, known_path: bool = False) -> bool:
     if "://" in token or token.startswith(("http", "#", "/", "~")):
         return False
     if token.startswith(("origin/", "upstream/", "refs/")):
-        return False  # git refs, not repo paths
+        return False  # bookmark/ref names, not repo paths
     if PLACEHOLDER_CHARS & set(token):
         return False
     if any(sub in token for sub in PLACEHOLDER_SUBSTRINGS):
@@ -147,7 +147,7 @@ def is_path_candidate(token: str, *, known_path: bool = False) -> bool:
 
 def is_path_shaped(token: str, base: str) -> bool:
     """Distinguish a path citation from a slash-delimited identifier
-    (bookmark name, provider/model ID) among tokens found nowhere in the workspace."""
+    (bookmark name, provider/model ID) among tokens found nowhere in the repo."""
     segments = token.split("/")
     if re.search(r"\.[A-Za-z0-9]{1,8}$", segments[-1]):
         return True
@@ -192,7 +192,7 @@ def cites_a_commit(prefix: str) -> bool:
     ("the git history shows session 7e6861b4") describes the surroundings,
     not the token. Digits are word characters so a hash named after its
     algorithm ("SHA256") stays one non-cue word, and command flags drop out
-    first so `git show --format=%H <sha>` reads like `git show <sha>`.
+    first so a flagged command in the doc (`git show --format=%H <sha>`) reads like the unflagged form.
     """
     if REPO_PIN_RE.search(prefix):
         return True  # owner/repo@<sha> pins a commit
@@ -222,7 +222,7 @@ def strip_repo_prefix(token: str, base: str) -> str:
 
     Relative tokens, URL routes, and out-of-repo absolute paths are
     unchanged so the existing candidacy guard still drops them. Realpath
-    both sides so a host where /tmp is a symlink still matches. A
+    both sides so a host where the workspace path is a symlink still matches. A
     successful rewrite is slash-normalized so Windows relpath output
     stays a candidate.
     """
@@ -267,31 +267,23 @@ def main(argv: list[str]) -> int:
     in_jj = code == 0 and bool(repo_root)
     upstream: str | None = None
     if in_jj:
-        code, _ = jj(
-            ["log", "-r", "trunk()", "-n", "1", "-T", "commit_id", "--no-graph"],
-            repo_root,
-        )
-        if code == 0:
-            upstream = "trunk()"
-        else:
-            for candidate in ("main", "master"):
-                code, _ = jj(
-                    ["log", "-r", candidate, "-n", "1", "-T", "commit_id", "--no-graph"],
-                    repo_root,
-                )
-                if code == 0:
-                    upstream = candidate
-                    break
+        for candidate in ("main@origin", "trunk@origin", "master@origin"):
+            code, _ = jj(
+                ["log", "-r", candidate, "--no-graph", "-T", "commit_id", "--limit", "1"],
+                repo_root,
+            )
+            if code == 0:
+                upstream = candidate
+                break
         if upstream:
             code, behind = jj(
-                ["log", "-r", f"@..{upstream}", "--count"],
+                ["log", "-r", f"ancestors({upstream}) ~ ancestors(@)", "--count"],
                 repo_root,
             )
             if code == 0 and behind.isdigit() and int(behind) > 0:
                 infos.append(
-                    f"INFO: workspace is {behind} commits behind {upstream} — "
-                    "verify merge-state claims against remote truth "
-                    '(GIT_DIR="$(jj git root)" gh pr view), '
+                    f"INFO: workspace is {behind} changes behind {upstream} — "
+                    "verify merge-state claims against remote truth (gh pr view), "
                     "not this checkout"
                 )
         else:
@@ -301,25 +293,24 @@ def main(argv: list[str]) -> int:
             )
     else:
         infos.append(
-            "INFO: not a Jujutsu workspace — path and SHA classification skipped "
+            "INFO: jj workspace root unavailable — path and SHA classification skipped "
             "(scaffold and link checks still apply)"
         )
 
     def rev_has_path(rev: str, path: str) -> bool:
-        code, out = jj(["file", "list", "-r", rev, "--", path], repo_root)
-        if code != 0:
-            return False
-        prefix = path.rstrip("/") + "/"
-        return any(ln == path or ln.startswith(prefix) for ln in out.splitlines() if ln)
-
-    def upstream_has_path(path: str) -> bool:
-        if not (in_jj and upstream):
-            return False
-        return rev_has_path(upstream, path)
-
-    def head_has_path(path: str) -> bool:
         if not in_jj:
             return False
+        code, out = jj(["file", "list", "-r", rev, "--", path], repo_root)
+        if code != 0 or not out:
+            return False
+        lines = [ln.strip().replace("\\", "/") for ln in out.splitlines() if ln.strip()]
+        norm = path.replace("\\", "/")
+        return norm in lines or any(ln == norm or ln.startswith(norm + "/") for ln in lines)
+
+    def upstream_has_path(path: str) -> bool:
+        return bool(upstream) and rev_has_path(upstream, path)
+
+    def head_has_path(path: str) -> bool:
         return rev_has_path("@", path)
 
     # --- 1. Cited repo paths ----------------------------------------------
@@ -356,7 +347,7 @@ def main(argv: list[str]) -> int:
         if not (tracked_head or tracked_upstream) and not is_path_shaped(
             check, base
         ):
-            continue  # branch name / provider ID, not a path citation
+            continue  # bookmark name / provider ID, not a path citation
         checked_paths += 1
         loc = loc_suffix(raw)
         if tracked_head:
@@ -402,11 +393,8 @@ def main(argv: list[str]) -> int:
                 seen_shas[sha] = (line_no, True)
         for sha in order:
             line_no, cited = seen_shas[sha]
-            code, _ = jj(
-                ["log", "-r", sha, "-n", "1", "-T", "commit_id", "--no-graph"],
-                repo_root,
-            )
-            resolved = code == 0
+            code, sha_out = jj(["log", "-r", sha, "--no-graph", "-T", "commit_id", "--limit", "1"], repo_root)
+            resolved = code == 0 and bool(sha_out)
             loc = f" (line {line_no})"
             if not resolved:
                 if not cited:
@@ -427,15 +415,18 @@ def main(argv: list[str]) -> int:
                 )
                 continue
             checked_shas += 1
-
-            def is_ancestor(rev: str, of: str) -> bool:
-                c, count = jj(
-                    ["log", "-r", f"{rev} & ::{of}", "--count"], repo_root
+            head_code, head_out = jj(
+                ["log", "-r", f"{sha} & ancestors(@)", "--no-graph", "-T", "commit_id", "--limit", "1"],
+                repo_root,
+            )
+            in_head = head_code == 0 and bool(head_out)
+            in_up = False
+            if upstream is not None:
+                up_code, up_out = jj(
+                    ["log", "-r", f"{sha} & ancestors({upstream})", "--no-graph", "-T", "commit_id", "--limit", "1"],
+                    repo_root,
                 )
-                return c == 0 and count == "1"
-
-            in_head = is_ancestor(sha, "@")
-            in_up = upstream is not None and is_ancestor(sha, upstream)
+                in_up = up_code == 0 and bool(up_out)
             if in_head and (in_up or upstream is None):
                 continue
             if in_head and not in_up:

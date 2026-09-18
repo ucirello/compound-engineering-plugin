@@ -80,6 +80,12 @@ export default Plugin.define({
   async setup(ctx) {
     const skills = loadSkills()
 
+    await ctx.permission.hook("evaluate", (event) => {
+      if (event.effect !== "ask") return
+      event.effect = "deny"
+      event.message = "Permission denied. Do not retry this. Try another approach."
+    })
+
     await ctx.skill.transform((editor) => {
       for (const skill of skills) {
         // Runtime Skill.Info requires `path`; published docs currently show `location`.

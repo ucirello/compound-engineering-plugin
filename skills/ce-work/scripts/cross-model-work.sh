@@ -109,6 +109,7 @@ validate_effort_override() {
     codex:minimal|codex:low|codex:medium|codex:high|codex:xhigh) ;;
     grok-cli:low|grok-cli:medium|grok-cli:high) ;;
     opencode:none|opencode:minimal|opencode:low|opencode:medium|opencode:high|opencode:xhigh|opencode:max|opencode:default) ;;
+    opencode2:none|opencode2:minimal|opencode2:low|opencode2:medium|opencode2:high|opencode2:xhigh|opencode2:max|opencode2:default) ;;
     *) return 1 ;;
   esac
 }
@@ -167,9 +168,21 @@ adapter_argv() {
       [ -z "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ] || printf '%s\0' --variant "$CROSS_MODEL_EFFORT_OVERRIDE"
       ;;
     opencode2)
+      # v2.0.8: `opencode2 run --help` has --format, --file, --auto, --model
+      # provider/model#variant. No --dir (the adapter already cds to WORKSPACE)
+      # and no --variant; effort is the #variant suffix when the pin has none.
       printf '%s\0' opencode2 run --format json --auto --file "$PROMPT_FILE"
       printf '%s\0' "Follow the attached unit packet. Return only the implementation result JSON."
-      [ "$(route_model opencode2)" = auto ] || printf '%s\0' --model "$(route_model opencode2)"
+      oc2_model="$(route_model opencode2)"
+      if [ "$oc2_model" != auto ]; then
+        if [ -n "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ]; then
+          case "$oc2_model" in
+            *#*) ;;
+            *) oc2_model="${oc2_model}#${CROSS_MODEL_EFFORT_OVERRIDE}" ;;
+          esac
+        fi
+        printf '%s\0' --model "$oc2_model"
+      fi
       ;;
     *) return 1 ;;
   esac
@@ -218,14 +231,9 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-ADAPTER_TMP_ROOT=""
-if ADAPTER_WS_ROOT="$( (cd "$WORKSPACE" && jj workspace root) 2>/dev/null )"; then
-  ADAPTER_TMP_ROOT="$ADAPTER_WS_ROOT/.tmp"
-else
-  ADAPTER_TMP_ROOT=".tmp"
-fi
-mkdir -p "$ADAPTER_TMP_ROOT" || exit 2
-SCRATCH="$(mktemp -d "$ADAPTER_TMP_ROOT/ce-work-adapter-XXXXXX")" || exit 2
+SCRATCH_PARENT="$WORKSPACE/.tmp"
+mkdir -p "$SCRATCH_PARENT" || exit 2
+SCRATCH="$(mktemp -d "$SCRATCH_PARENT/ce-work-adapter-XXXXXX")" || exit 2
 chmod 700 "$SCRATCH"
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
@@ -284,13 +292,8 @@ def model_allowed(route, model):
         return bool(re.fullmatch(r"composer-[A-Za-z0-9._-]+", model))
     if route == "grok-cursor":
         return bool(re.fullmatch(r"cursor-grok-[A-Za-z0-9._-]+", model))
-    if route == "opencode":
-        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+", model))
-    if route == "opencode2":
-        return model == "auto" or bool(re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(?:#[A-Za-z0-9._-]+)?",
-            model,
-        ))
+    if route in ("opencode", "opencode2"):
+        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(?:#[A-Za-z0-9._-]+)?", model))
     return False
 
 try:
@@ -415,7 +418,7 @@ PACKET="$(cd "$(dirname "$PACKET")" && pwd -P)/$(basename "$PACKET")" || exit 2
 RESULT_DIR="$(cd "$RESULT_DIR" && pwd -P)" || exit 2
 case "$RESULT_DIR/" in "$WORKSPACE/"*) log "result dir must be outside the worker workspace"; exit 2 ;; esac
 case "$PACKET" in "$WORKSPACE"/*) log "unit packet must be outside the worker workspace"; exit 2 ;; esac
-(cd "$WORKSPACE" && jj workspace root >/dev/null) || { log "workspace is not a Jujutsu workspace"; exit 2; }
+(cd "$WORKSPACE" && jj workspace root >/dev/null 2>&1) || { log "workspace is not a JJ workspace"; exit 2; }
 chmod 700 "$RESULT_DIR" 2>/dev/null || { log "result dir could not be made private"; exit 2; }
 RESULT_DIR_IDENTITY="$("$PY" - "$RESULT_DIR" <<'PY'
 import os, stat, sys
@@ -748,7 +751,7 @@ while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROU
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-[ -n "${TMPDIR:-}" ] && MIN_ENV+=("TMPDIR=$TMPDIR")
+MIN_ENV+=("TMPDIR=$WORKSPACE/.tmp")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")
@@ -920,7 +923,7 @@ def normalize_served_model(value):
 
 try: raw=open(source, encoding="utf-8", errors="replace").read()
 except OSError: raw=""
-if route == "opencode":
+if route in ("opencode", "opencode2"):
     parts=[]
     for line in raw.splitlines():
         try: event=json.loads(line)

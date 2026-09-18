@@ -22,7 +22,7 @@ Only when the caller reached this file **without** already running review (no re
 Invoke the skill explicitly. Do not treat a casual "review my changes" prompt as a substitute unless the harness routed it to `ce-code-review`.
 
 ```
-ce-code-review mode:agent plan:<plan-path> base:<fork-point-or-ref>
+ce-code-review mode:agent plan:<plan-path> base:<merge-base-or-ref>
 ```
 
 - `mode:agent` — JSON output (`review.json` + primary JSON response) for programmatic parsing; same review pipeline as default.
@@ -71,11 +71,7 @@ After review, **dispatch subagents for all remaining applicable findings** unles
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from the Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax.
-
-**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and `jj commit -m "<message composed from the standards above>"` (the message must identify the applied finding `#`s) unless workspace-isolated subagents fold in per Phase 1. Repeat until all batches complete.
+**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`jj commit -m "<message composed from the standards above>"`) unless workspace-isolated subagents merge per Phase 1. Repeat until all batches complete. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repo-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance.
 
 ### Optional inline shortcut (skip subagent spawn)
 

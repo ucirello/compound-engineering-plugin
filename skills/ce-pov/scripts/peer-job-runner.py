@@ -60,9 +60,10 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (`jj workspace root`/.tmp, or cwd .tmp
-                            when `jj workspace root` fails)
-  CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
+  CE_PEER_JOBS_ROOT         base dir (<jj-workspace>/.tmp/rocketclaw, or
+                            ./.tmp/rocketclaw when jj workspace root is
+                            unavailable)
+  CE_WORK_RUNS_ROOT         parent CE Work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -79,7 +80,7 @@ Environment overrides (defaults in parentheses):
                             CE_PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
-the workspace `.tmp`. Every read of job state opens the file first (no-follow) and
+the workspace .tmp/rocketclaw tree. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -115,8 +116,8 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults to the workspace `.tmp` (then cwd `.tmp` when
-            `jj workspace root` fails), owner-private.
+  jobs root defaults under the workspace .tmp/rocketclaw tree (then local
+            .tmp/rocketclaw when jj workspace root is unavailable), owner-private.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -147,9 +148,32 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-# Managed default is the workspace `.tmp` (see _workspace_tmp_root). Tests may
-# assign DEFAULT_ROOT to pin a throwaway root. None means compute at use time.
-DEFAULT_ROOT = None
+def _jj_workspace_root(cwd=None):
+    """Public `jj workspace root` only. Never inspect .jj/ or .git/."""
+    try:
+        proc = subprocess.run(
+            ["jj", "workspace", "root"],
+            cwd=cwd or os.getcwd(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    root = (proc.stdout or "").strip()
+    return root or None
+
+
+def _default_jobs_root() -> str:
+    ws = _jj_workspace_root()
+    if ws:
+        return os.path.join(ws, ".tmp", "rocketclaw")
+    return os.path.abspath(os.path.join(".tmp", "rocketclaw"))
+
+
+DEFAULT_ROOT = _default_jobs_root()
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -206,10 +230,9 @@ _RUNNER_HARD_GRACE = 30.0
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe: a sandbox that denies writes under the workspace
-    `.tmp` refuses the mkdir, and one that lets a pre-existing root stand still
-    fails the access check, so both land on the fallback instead of failing at
-    the first job.
+    Creation is the probe: a sandbox that denies writes under workspace .tmp
+    refuses the mkdir, and one that lets a pre-existing root stand still fails
+    the access check, so both fail closed instead of using a world-shared OS temp directory.
     """
     try:
         os.mkdir(path, 0o700)
@@ -224,69 +247,29 @@ def _private_root_usable(path: str) -> bool:
     return os.access(path, os.W_OK)
 
 
-def _jj_workspace_root():
-    """Workspace root from the public `jj workspace root` command, or None."""
-    try:
-        completed = subprocess.run(
-            ["jj", "workspace", "root"],
-            cwd=os.getcwd(),
-            capture_output=True,
-            text=True,
-        )
-    except OSError:
-        return None
-    if completed.returncode != 0:
-        return None
-    root = completed.stdout.strip()
-    return root or None
-
-
-def _workspace_tmp_root() -> str:
-    ws = _jj_workspace_root()
-    if ws:
-        return os.path.join(ws, ".tmp")
-    return os.path.abspath(".tmp")
-
-
-def _fallback_root() -> str:
-    return os.path.abspath(".tmp")
-
-
-def _resolved_default_root() -> str:
-    if DEFAULT_ROOT is not None:
-        return os.path.abspath(DEFAULT_ROOT)
-    return os.path.abspath(_workspace_tmp_root())
-
-
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
-    default = _resolved_default_root()
-    if IS_WINDOWS or _private_root_usable(default):
-        return default
-    # Same order and candidates as the skills' shell preamble, so a job started
-    # there is found here.
-    return os.path.abspath(_fallback_root())
+    root = _default_jobs_root()
+    if IS_WINDOWS or _private_root_usable(root):
+        return os.path.abspath(root)
+    raise RunnerError(
+        f"cannot create a private jobs root at {root}; set CE_PEER_JOBS_ROOT"
+    )
 
 
 def candidate_jobs_root_bases() -> list:
     """Every root an existing job may live under: the configured root alone, or
-    both the workspace `.tmp` root and the cwd `.tmp` fallback (deduplicated,
-    primary first).
+    the workspace .tmp/rocketclaw default.
 
     Creation uses jobs_root_base(); lookup of an already-started job must not
-    depend on which root *this* invocation would create under, because a
-    sandboxed session and a later unsandboxed one resolve different roots.
+    depend on which root *this* invocation would create under.
     """
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]
-    bases = [_resolved_default_root()]
-    fallback = os.path.abspath(_fallback_root())
-    if fallback not in bases:
-        bases.append(fallback)
-    return bases
+    return [os.path.abspath(_default_jobs_root())]
 
 
 def skill_runs_root(skill: str) -> str:
@@ -1962,8 +1945,8 @@ def _require_detach_support() -> None:
     """Detached peer jobs need a supported detach path: os.fork/os.setsid on
     POSIX, or the native Windows DETACHED_PROCESS path (#1243). Checked first,
     before jobs_root_base()/geteuid, so an unsupported host fails with this clear
-    message instead of jobs_root_base()'s path-derivation error or an
-    AttributeError mid-detach. Native Windows is now
+    message instead of jobs_root_base()'s unrelated "effective user ID is
+    unavailable" error or an AttributeError mid-detach. Native Windows is now
     supported; only a non-win32 Python missing fork/setsid (some embedded
     builds) is rejected here."""
     if IS_WINDOWS:
@@ -1973,7 +1956,7 @@ def _require_detach_support() -> None:
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
             "a Windows Python 3 build (see "
-            "EveryInc/rocketclaw-plugin#1243)."
+            "issue #1243)."
         )
 
 

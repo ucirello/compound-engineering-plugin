@@ -55,7 +55,7 @@ The ideation artifact is produced **automatically** — persistence is not opt-i
    - Extension follows `OUTPUT_FORMAT` (`.html` default, `.md` on override).
    - **Repo mode:** ensure `<root>/ideation/` exists (create if absent).
    - **Elsewhere mode with `<root>/ideation/` already present:** use it.
-   - **Otherwise (no repo, or elsewhere with no `<root>/ideation/`):** write into the run's temp area — the `<scratch-dir>` resolved in Phase 1 (`<scratch-root>/ce-ideate/<run-id>/`). Do **not** write into the user's current working directory, and do **not** create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path.
+   - **Otherwise (no workspace, or elsewhere with no `<root>/ideation/`):** write into the run's scratch directory — the `<scratch-dir>` resolved in Phase 1 (`<scratch-root>/ce-ideate/<run-id>/`). Do **not** write into the user's current working directory, and do **not** create a `<root>/ideation/` tree for a subject unrelated to the repo. Announce the absolute path.
 2. **Choose the file path:** `<dir>/YYYY-MM-DD-<topic>-ideation.<ext>` (or `<dir>/YYYY-MM-DD-open-ideation.<ext>` when no focus exists).
 3. **Load the section contract and rendering reference** (deferred from Phase 0.0): read `references/ideation-sections.md` and the format-rendering reference matching `OUTPUT_FORMAT` — `references/markdown-rendering.md` for `md`, `references/html-rendering.md` for `html`.
 4. **Write the document** per those references. `ideation-sections.md` defines the section contract (metadata, Grounding Context, Topic Axes, Ranked Ideas with per-idea fields, Rejection Summary); the rendering reference defines how the resolved format presents it. Content is identical across formats; only presentation differs.
@@ -117,7 +117,7 @@ If the user already named what they want to work on inline (e.g. "brainstorm the
    > `<title> — <description>. Basis: <basis/evidence>. Why it matters: <rationale>. Known tradeoffs: <downsides>.`
 
    The basis/evidence directly feeds `ce-brainstorm`'s product-pressure-test, so it won't re-derive what we already know. Append a one-line provenance pointer: `(Seeded from ce-ideate: <path>, idea "<title>")` — it records origin and lets brainstorm pull adjacent detail if it wants, without being forced to read anything.
-3. **Load the `ce-brainstorm` skill** with that seed. The saved file is already the record — no extra write step. `OUTPUT_FORMAT` does **not** propagate: ce-brainstorm re-resolves its own `brainstorm_output` config independently. Asymmetric output (`ideation.html` plus a markdown unified plan) is expected; a user who wants HTML for both sets both keys in config (`config.local.yaml` then `config.yaml`).
+3. **Load the `ce-brainstorm` skill** with that seed. The saved file is already the record — no extra write step. `OUTPUT_FORMAT` does **not** propagate: ce-brainstorm re-resolves its own `brainstorm_output` config independently. Asymmetric output (`ideation.html` plus a markdown unified plan) is expected; a user who wants HTML for both sets both keys in RocketClaw config (`config.local.yaml` then `config.yaml`).
 
 **Repo mode only:** do **not** skip brainstorming and go straight to `ce-plan` — `ce-plan` wants a brainstorm-grounded Product Contract. In elsewhere modes, ideation is a legitimate terminal state; brainstorming is optional deeper development of one idea, not a required next rung on an implementation ladder that does not exist in these modes.
 
@@ -138,8 +138,8 @@ This stays in ce-ideate — no skill handoff. It is the "think across the set be
 
 The file is already written, so there is no save step.
 
-- **Inside a JJ workspace:** offer to record only the ideation doc (do not create a bookmark, do not push; if the user declines, leave the working copy as-is). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from the Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax. Use `jj commit -m "<message composed from the standards above>"` with the ideation doc path so only that file is in the change.
-- **Temp-area or non-repo file:** skip the commit offer.
+- **Inside a JJ workspace (`jj workspace root` succeeds):** offer to record only the ideation doc (do not create a bookmark, do not `jj git push`; if the user declines, leave the working copy unchanged). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repo-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing local syntax. From the workspace root, run `(cd "$(jj workspace root)" && jj commit -m "<message composed from the standards above>" -- <repo-relative-ideation-path>)` (or `jj describe -m "<message composed from the standards above>"` when only the description should change). Never invent a staging step.
+- **Scratch-directory or non-workspace file:** skip the change-recording offer.
 
 Then narrate the path and end the session — do not return to the menu.
 
@@ -147,7 +147,7 @@ Then narrate the path and end the session — do not return to the menu.
 
 Only when the file was **created fresh this run**: delete it, confirm the deletion, and end. On a **resume** run (a pre-existing file was updated in place), do **not** delete — tell the user the existing doc at `<path>` remains and offer no destructive action. Discard is never a default; it happens only on an explicit request.
 
-Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the V15 web-research cache reused across run-ids by later ideation invocations in the same session (see `references/web-research-cache.md`), the Checkpoint A/B files, the evidence dossiers, and (in the no-repo case) the deliverable itself. Leave it under workspace `.tmp` (gitignored).
+Do not delete the run's scratch directory (`<scratch-dir>`) on completion — it holds the V15 web-research cache reused across run-ids by later ideation invocations in the same session (see `references/web-research-cache.md`), the Checkpoint A/B files, the evidence dossiers, and (in the no-workspace case) the deliverable itself.
 
 ## Quality Bar
 
@@ -164,6 +164,6 @@ Before finishing, check:
 - if sub-agents were used, they improved diversity without replacing the core workflow
 - every rejected idea has a reason
 - survivors are materially better than a naive "give me ideas" list
-- the deliverable was written automatically in both modes (Phase 4) — to `<root>/ideation/` when present, else the temp area, never the user's CWD
+- the deliverable was written automatically in both modes (Phase 4) — to `<root>/ideation/` when present, else the scratch directory, never the user's CWD
 - the session showed a concise summary, not a reproduction of the full deliverable
 - acting on an idea routes to `ce-brainstorm` (with a substance seed, not the whole file), not directly to implementation

@@ -41,7 +41,7 @@ Round 1 — no prior decisions.
 
 ## Compound Pack constraints
 
-Before dispatch, resolve any Compound Packs declared in RocketClaw config by running this skill's resolver as one command:
+Before dispatch, resolve any Compound Packs declared in config by running this skill's resolver as one command:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";

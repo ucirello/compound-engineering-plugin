@@ -135,6 +135,8 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
+            # omp's own raw-bucket scheme, not this skill's scratch: sessions
+            # whose cwd lived under the OS temp dir are stored as -tmp-<rel>.
             canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
             case "$cwd" in
                 "$canon_tmp")

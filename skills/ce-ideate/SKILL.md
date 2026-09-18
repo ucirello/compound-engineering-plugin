@@ -11,7 +11,7 @@ argument-hint: "[feature, focus area, or constraint] [output:md]"
 
 `ce-ideate` runs before `ce-brainstorm`. This skill answers "which ideas are worth exploring?" `ce-brainstorm` then answers what one chosen idea should mean. `ce-plan` answers how it gets built.
 
-**Done:** a ranked ideation artifact is written to `<root>/ideation/` when that root is present, else to a temp path. Every idea generated has been critiqued, and the survivors are explained. The user is left holding the next-steps menu. No requirements, plans, or code.
+**Done:** a ranked ideation artifact is written to `<root>/ideation/` when that root is present, else to a workspace `.tmp/rocketclaw` path. Every idea generated has been critiqued, and the survivors are explained. The user is left holding the next-steps menu. No requirements, plans, or code.
 
 ## Boundaries
 
@@ -28,13 +28,13 @@ The **focus hint** is any optional context this run was invoked with, from the u
 
 ## Artifact Root
 
-Artifacts go under `<root>/ideation/`, and learnings are read from `<root>/solutions/`. Resolve `<root>` only when you are about to compose one of those paths, and never before the mode is classified — an elsewhere or no-repo run writes to a temp directory and never needs it. Pass a subagent the resolved path, not the config.
+Artifacts go under `<root>/ideation/`, and learnings are read from `<root>/solutions/`. Resolve `<root>` only when you are about to compose one of those paths, and never before the mode is classified — an elsewhere or no-workspace run writes to a scratch directory and never needs it. Pass a subagent the resolved path, not the config.
 
 <!-- ce-docs-root:start -->
 **Resolve the artifact root `<root>` before composing any artifact path.**
 
 - **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the workspace and is neither the workspace root itself. Do not probe `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -62,7 +62,7 @@ Read `references/output-mode.md` whenever a format is resolved. The read is requ
 
 Read `references/grounding.md` before dispatching any grounding agent. The read is required. That reference defines every dispatch in this phase, including the routing test that runs *before* either dispatch block. Grounding runs in parallel, in the **foreground**.
 
-Scratch lives under workspace `.tmp` (`$(jj workspace root)/.tmp/ce-ideate/` when `jj workspace root` succeeds, else local `.tmp/ce-ideate/`), and never `.context/`. Generate one 8-hex `<run-id>` and reuse it for the cache and for every checkpoint.
+Scratch lives under the workspace `.tmp/rocketclaw/` tree when `jj workspace root` succeeds, else local `.tmp/rocketclaw/`, and never `.context/`. Generate one 8-hex `<run-id>` and reuse it for the cache and for every checkpoint.
 
 ## Phase 1.5: Topic-Surface Decomposition
 

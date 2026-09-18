@@ -60,9 +60,9 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir ($(jj workspace root)/.tmp, or .tmp when
-                            not inside a Jujutsu workspace)
-  CE_WORK_RUNS_ROOT         parent Work dir containing all <run-id>/ dirs
+  CE_PEER_JOBS_ROOT         base dir ($(jj workspace root)/.tmp/rocketclaw,
+                            or ./.tmp/rocketclaw when jj cannot name a workspace)
+  CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -79,7 +79,7 @@ Environment overrides (defaults in parentheses):
                             CE_PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
-the workspace `.tmp` (or local `.tmp`). Every read of job state opens the file first (no-follow) and
+the workspace `.tmp/rocketclaw` tree. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -115,8 +115,8 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under the workspace `.tmp` (then local `.tmp`),
-            owner-private.
+  jobs root defaults under the workspace .tmp/rocketclaw tree (then
+            ./.tmp/rocketclaw), owner-private, never OS /tmp.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -147,8 +147,35 @@ TERMINAL_STATES = ("done", "failed", "timeout", "died-without-result")
 IS_WINDOWS = sys.platform == "win32"
 _uid_getter = getattr(os, "geteuid", None) or getattr(os, "getuid", None)
 _EFFECTIVE_UID = _uid_getter() if _uid_getter is not None else None
-# Jobs root is workspace `.tmp` (or local `.tmp`). Computed lazily so cwd
-# matters; never an OS-global temp brand path.
+
+
+def _workspace_root() -> str | None:
+    """Current workspace root via public `jj workspace root`. Never inspect .jj/.git."""
+    if shutil.which("jj") is None:
+        return None
+    try:
+        proc = subprocess.run(
+            ["jj", "workspace", "root"],
+            cwd=os.getcwd(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return None
+    out = (proc.stdout or "").strip()
+    return out if proc.returncode == 0 and out else None
+
+
+def _rocketclaw_tmp() -> str:
+    ws = _workspace_root()
+    base = ws if ws else os.getcwd()
+    return os.path.join(base, ".tmp", "rocketclaw")
+
+
+# Workspace .tmp/rocketclaw on every platform. If jj cannot name a workspace,
+# local ./.tmp/rocketclaw. Never OS /tmp or $TMPDIR.
+DEFAULT_ROOT = _rocketclaw_tmp()
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 # Windows CPython opens os.open() descriptors in CRT *text* mode by default:
 # writes expand \n -> \r\n and reads stop at the first 0x1A (Ctrl-Z EOF), which
@@ -205,9 +232,10 @@ _RUNNER_HARD_GRACE = 30.0
 def _private_root_usable(path: str) -> bool:
     """True when `path` is (or can now be) a directory we own and can write into.
 
-    Creation is the probe: a sandbox that denies writes under the chosen root
-    refuses the mkdir, and one that lets a pre-existing root stand still fails
-    the access check, so both land on the fallback instead of failing at the first job.
+    Creation is the probe: a sandbox that denies writes under the workspace
+    `.tmp` tree refuses the mkdir, and one that lets a pre-existing root stand
+    still fails the access check, so both land on the local `.tmp/rocketclaw`
+    fallback instead of failing at the first job.
     """
     try:
         os.mkdir(path, 0o700)
@@ -222,43 +250,25 @@ def _private_root_usable(path: str) -> bool:
     return os.access(path, os.W_OK)
 
 
-def _jj_workspace_root() -> str | None:
-    """Workspace root via `jj workspace root`. None when jj is missing or cwd
-    is not inside a Jujutsu workspace. Never probes `.jj/` or `.git/`."""
-    if shutil.which("jj") is None:
-        return None
-    proc = subprocess.run(
-        ["jj", "workspace", "root"],
-        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-    )
-    root = (proc.stdout or "").strip()
-    return root if proc.returncode == 0 and root else None
-
-
-def default_jobs_root() -> str:
-    ws = _jj_workspace_root()
-    if ws:
-        return os.path.join(ws, ".tmp")
-    return os.path.abspath(".tmp")
-
-
 def _fallback_root() -> str:
-    return os.path.abspath(".tmp")
+    return os.path.join(os.getcwd(), ".tmp", "rocketclaw")
 
 
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
-    root = default_jobs_root()
-    if IS_WINDOWS or _private_root_usable(root):
-        return os.path.abspath(root)
+    if DEFAULT_ROOT is None:
+        raise RunnerError("cannot derive the jobs root")
+    if IS_WINDOWS or _private_root_usable(DEFAULT_ROOT):
+        return os.path.abspath(DEFAULT_ROOT)
     return os.path.abspath(_fallback_root())
 
 
 def candidate_jobs_root_bases() -> list:
     """Every root an existing job may live under: the configured root alone, or
-    the workspace `.tmp` root and the local `.tmp` fallback (deduplicated).
+    the workspace `.tmp/rocketclaw` root and the local `.tmp/rocketclaw`
+    fallback (deduplicated, primary first).
 
     Creation uses jobs_root_base(); lookup of an already-started job must not
     depend on which root *this* invocation would create under.
@@ -266,7 +276,9 @@ def candidate_jobs_root_bases() -> list:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]
-    bases = [os.path.abspath(default_jobs_root())]
+    if DEFAULT_ROOT is None:
+        raise RunnerError("cannot derive the jobs root")
+    bases = [os.path.abspath(DEFAULT_ROOT)]
     fallback = os.path.abspath(_fallback_root())
     if fallback not in bases:
         bases.append(fallback)
@@ -860,7 +872,7 @@ def ensure_owned_dirs(base: str, path: str) -> None:
         # managed default (repairing a default left non-private, which is what
         # the POSIX unconditional chmod is for). A pre-existing user-supplied
         # CE_PEER_JOBS_ROOT keeps its ACLs and rests on the owner check.
-        default_root = os.path.abspath(default_jobs_root())
+        default_root = os.path.abspath(DEFAULT_ROOT) if DEFAULT_ROOT else None
         ours = created_base or (
             default_root is not None
             and os.path.normcase(cur) == os.path.normcase(default_root))

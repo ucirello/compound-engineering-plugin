@@ -96,10 +96,9 @@ def discover_resume_run(repo: str, plan_digest: str) -> tuple[str, list[dict]]:
     ensure_root()
     info = repo_info(repo)
     candidates: list[dict] = []
-    # A run recorded under the other candidate root (sandboxed vs unsandboxed
-    # session) must still be discoverable; scan every candidate that exists.
-    # Read-only: repairing a root this session cannot write (a leftover .tmp
-    # tree under the sandbox) would abort discovery before the writable one.
+    # A run recorded under another candidate root must still be discoverable;
+    # scan every candidate that exists. Read-only: repairing a root this session
+    # cannot write would abort discovery before the writable one.
     entries = []
     for root in candidate_runs_roots():
         if not os.path.isdir(root) or os.path.islink(root):
@@ -694,7 +693,7 @@ def cmd_complete_fallback(args) -> tuple[str, dict]:
     if not summary or "\0" in summary or len(summary.encode()) > 1024:
         raise Operational("REFUSED", "native fallback summary must be non-empty and at most 1024 bytes")
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", args.accepted_head):
-        raise Operational("REFUSED", "native fallback accepted head must be a change object id")
+        raise Operational("REFUSED", "native fallback accepted head must be a Git object id")
 
     with locked_manifest(args.run_id, write=True) as doc:
         validate_repo(doc)
@@ -720,10 +719,9 @@ def cmd_complete_fallback(args) -> tuple[str, dict]:
             raise Operational("BLOCKED", "canonical branch changed before native fallback completion")
         if snapshot.get("status_empty") is not True:
             raise Operational("BLOCKED", "commit or restore canonical changes before completing native fallback")
-        accepted_commit = resolve_commit(repo, args.accepted_head)
-        accepted_head = current_commit(repo, "@-") if current_empty(repo) else snapshot.get("head")
-        if accepted_commit != args.accepted_head or accepted_head != args.accepted_head:
-            raise Operational("BLOCKED", "accepted native fallback head does not match canonical working copy")
+        accepted_commit = resolve_commit(repo, args.accepted_head, check=False)
+        if accepted_commit != args.accepted_head or snapshot.get("head") != args.accepted_head:
+            raise Operational("BLOCKED", "accepted native fallback head does not match canonical HEAD")
         base = unit.get("workspace", {}).get("base")
         if not isinstance(base, str) or not is_ancestor(repo, base, args.accepted_head):
             raise Operational("BLOCKED", "accepted native fallback head does not descend from the recorded unit base")
@@ -743,8 +741,7 @@ def cmd_complete_fallback(args) -> tuple[str, dict]:
                 or not is_ancestor(repo, claim_head, args.accepted_head)
             ):
                 raise Operational("BLOCKED", "native fallback completion does not extend the latest recorded wave head")
-            raw = diff_summary(repo, claim_head, args.accepted_head)
-            changed_paths = parse_diff_paths(raw)
+            changed_paths = diff_paths(repo, claim_head, args.accepted_head)
             validate_wave_collisions(
                 doc,
                 unit,
@@ -944,31 +941,25 @@ def cmd_cleanup(args) -> tuple[str, dict]:
         workspace = unit["workspace"]["path"]
         ref = unit["transport"].get("ref")
         repo = doc["repository"]["toplevel"]
-        lock_key = doc["repository"]["identity_digest"]
-        workspace_name = unit["workspace"].get("name") or args.unit_id
+        identity = doc["repository"]["identity_digest"]
+        ws_name = unit["workspace"].get("name") or unit_workspace_name(args.run_id, args.unit_id)
     workspace = owned_workspace_path(args.run_id, args.unit_id, workspace)
     with locked_manifest(args.run_id, write=True) as doc:
         event(doc, "cleanup-intent", args.unit_id, {"workspace": workspace, "ref": ref, "abandonment_receipt": abandonment_receipt})
-    with admin_lock(lock_key):
-        present = [
-            r for r in workspace_rows(repo)
-            if r.get("root") and os.path.realpath(str(r.get("root"))) == os.path.realpath(workspace)
-        ]
+    with admin_lock(identity):
+        present = [r for r in worktree_rows(repo) if os.path.realpath(str(r.get("worktree", ""))) == os.path.realpath(workspace)]
         if present:
-            forget_unit_workspace(repo, workspace_name)
+            jj(repo, "workspace", "forget", ws_name)
             test_fault("cleanup-after-worktree-remove")
-        if any(
-            r.get("root") and os.path.realpath(str(r.get("root"))) == os.path.realpath(workspace)
-            for r in workspace_rows(repo)
-        ):
+        if any(os.path.realpath(str(r.get("worktree", ""))) == os.path.realpath(workspace) for r in worktree_rows(repo)):
             raise Operational("BLOCKED", "workspace remained registered after cleanup")
         remove_unregistered_owned_workspace(args.run_id, args.unit_id, workspace)
     if ref and commit:
-        current = bookmark_target(repo, ref)
+        current = resolve_commit(repo, ref, check=False)
         if current and current != commit:
             raise Operational("BLOCKED", "transport bookmark changed; refusing cleanup")
         if current:
-            bookmark_delete(repo, ref)
+            jj(repo, "bookmark", "forget", ref, check=False)
     with locked_manifest(args.run_id, write=True) as doc:
         unit = doc["units"][args.unit_id]
         finalized_state = "native-completed" if unit["state"] == "native-completed" else "cleaned"

@@ -2,7 +2,9 @@
 
 Verification runs in the canonical checkout; ignored state is never copied or
 restored. Two inventories taken before and after verification diff into a
-disclosure of changed, removed, and created ignored paths.
+disclosure of changed, removed, and created ignored paths. Tracked files come
+from `jj file list`; remaining workspace files (except `.jj`) are treated as
+ignored.
 """
 
 from __future__ import annotations
@@ -14,26 +16,24 @@ from unit_workspace_state import Operational, jj_text
 
 
 def ignored_paths(repo: str) -> set[str]:
-    tracked = {
-        line for line in jj_text(repo, "file", "list", "-r", "@").splitlines() if line
-    }
     repo = os.path.abspath(repo)
-    found: set[str] = set()
-    for dirpath, dirnames, filenames in os.walk(repo, followlinks=False):
-        dirnames[:] = [name for name in dirnames if name not in {".jj", ".git"}]
+    tracked = {
+        path for path in jj_text(repo, "file", "list", "-r", "@").splitlines() if path
+    }
+    ignored: set[str] = set()
+    skip = {".jj", ".git"}
+    for dirpath, dirnames, filenames in os.walk(repo):
+        dirnames[:] = [name for name in dirnames if name not in skip]
+        rel_dir = os.path.relpath(dirpath, repo)
+        if rel_dir == ".":
+            rel_dir = ""
+        if rel_dir.split(os.sep, 1)[0] in skip:
+            continue
         for name in filenames:
-            full = os.path.join(dirpath, name)
-            rel = os.path.relpath(full, repo)
+            rel = name if not rel_dir else f"{rel_dir}/{name}".replace("\\", "/")
             if rel not in tracked:
-                found.add(rel)
-        for name in dirnames:
-            full = os.path.join(dirpath, name)
-            rel = os.path.relpath(full, repo)
-            if rel not in tracked and f"{rel}/" not in tracked:
-                # Ignored directories themselves are listed when they have no
-                # tracked children; files inside are walked separately.
-                pass
-    return found
+                ignored.add(rel)
+    return ignored
 
 
 def artifact_path(repo: str, rel: str) -> str:

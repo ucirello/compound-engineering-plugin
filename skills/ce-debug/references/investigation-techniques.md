@@ -76,19 +76,17 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## JJ Bisect for Regressions
+## Bisect for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking change:
+When a bug is a regression ("it worked before"), use binary search to find the breaking change. Run `jj` with cwd at the workspace root from `jj workspace root`. Do not use `jj -R`.
 
 ```bash
-# Heads of the range are assumed bad; ancestors not in the range are assumed good.
-# Each revision is edited into the working copy, then the command is run.
 jj bisect run --range <known-good-ref>..@ -- <test-command>
 ```
 
-For a manual test at each step, pass a shell as the command. When done, `jj edit` back to the original working-copy change.
+Heads of the range are assumed bad; ancestors not in the range are assumed good. Each revision being checked becomes the working copy before the command runs. The test command should exit 0 for good, non-zero for bad, and 125 to skip the revision.
 
-The test command should exit 0 for good, non-zero for bad (125 to skip).
+For a manual check, pass the shell as the command and exit 0 or non-zero after testing.
 
 ---
 
@@ -206,7 +204,7 @@ When the symptom is "slow" rather than "wrong", logs and code reading mislead: i
 
 - Establish a numeric baseline before touching anything — a timing harness around the slow operation, a profiler run, a query plan (`EXPLAIN ANALYZE`). The baseline is Phase 1's reproduction check for a perf bug: the number is the red, and the fix is verified by re-measuring the same thing, not by reasoning that the change should be faster.
 - Attribute before optimizing: a profile or per-stage timings that show where the time actually goes. Optimizing an unmeasured suspect is the perf version of shotgun debugging.
-- If the slowness is a regression, bisect against the measurement (see JJ Bisect above) rather than reading diffs for something that looks expensive.
+- If the slowness is a regression, bisect against the measurement (see Bisect for Regressions above) rather than reading diffs for something that looks expensive.
 
 ---
 

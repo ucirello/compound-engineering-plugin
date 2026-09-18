@@ -15,12 +15,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 ## Phase 1 — Figure out what shipped
 
-A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
+A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source. Resolve the workspace root with `jj workspace root` and run the following from that directory (do not use `jj -R`):
 
-- **Merged/active PR** — `GIT_DIR="$(jj git root)" gh pr view --json title,body,url` (the title and body usually state the user-facing value)
+- **Merged/active PR** — `GIT_DIR=$(jj git root) gh pr view --json title,body,url` (the title and body usually state the user-facing value)
 - **The diff** — `jj diff --from main --to @ --stat`, skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `jj log -n 15 --no-graph -T builtin_log_oneline` for the arc of the change
+- **Recent commits** — `jj log -n 15` for the arc of the change
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

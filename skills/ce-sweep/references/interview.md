@@ -89,22 +89,24 @@ For email sources there are no source-side actions, so approval does not apply. 
 Ask where the sweep's state file lives:
 
 - **Committed to the repo** (recommended when multiple agents or machines share bookmarks, so everyone reads and writes one source of truth). Sets `sweep_state_path` to the committed default under the artifact root's `feedback-sweep/`. Resolve `<root>` to its concrete value first (e.g. the default `docs`), so the persisted value is `<resolved-root>/feedback-sweep/state.yml` and never the literal `<root>` placeholder (per the persist rule below).
-- **Machine-local under workspace `.tmp`** (solo setups; keeps sweep bookkeeping out of the committed tree, with no commit noise). Resolve the path immediately with this shell block, substituting a sanitized repository slug:
+- **Machine-local under workspace `.tmp`** (solo setups; keeps sweep bookkeeping out of committed files, with no commit noise). Resolve the path immediately with this shell block, substituting a sanitized repository slug:
 
   ```bash
-  WS_ROOT="$(jj workspace root 2>/dev/null)" || WS_ROOT="";
-  if [ -n "$WS_ROOT" ]; then SCRATCH_ROOT="$WS_ROOT/.tmp/ce-sweep"; else SCRATCH_ROOT=".tmp/ce-sweep"; fi;
+  WORKSPACE_ROOT="$(jj workspace root 2>/dev/null)";
+  [ -n "$WORKSPACE_ROOT" ] || WORKSPACE_ROOT=".";
+  SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
   if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
   (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+  if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
   chmod 700 "$SCRATCH_ROOT" || exit 1;
-  SWEEP_STATE_PATH="$SCRATCH_ROOT/<repo-slug>/state.yml";
+  SWEEP_STATE_PATH="$SCRATCH_ROOT/ce-sweep/<repo-slug>/state.yml";
   SWEEP_STATE_DIR="$(dirname "$SWEEP_STATE_PATH")"; (umask 077; mkdir -p "$SWEEP_STATE_DIR") || exit 1; chmod 700 "$SWEEP_STATE_DIR" || exit 1;
   echo "$SWEEP_STATE_PATH";
   ```
 
   Persist the echoed absolute path as `sweep_state_path`; never persist a placeholder.
 
-Let the user override the path if they want a different location. If they pick machine-local, note that a fresh checkout or a teammate's machine will not see this state. It is per-machine by design.
+Let the user override the path if they want a different location. If they pick machine-local, note that a fresh checkout or a teammate's machine will not see this state. It is per-checkout by design.
 
 **Capture:** `sweep_state_path` (string).
 
@@ -118,9 +120,9 @@ Let the user override the path if they want a different location. If they pick m
 
 ---
 
-## 6. Shared branch (only if committed state)
+## 6. Shared bookmark (only if committed state)
 
-**Skip this section entirely if the user chose machine-local state in section 4.** The shared-branch topology only applies to committed state.
+**Skip this section entirely if the user chose machine-local state in section 4.** The shared-bookmark topology only applies to committed state.
 
 **Ask:** "Is this a multi-agent setup where several checkouts push the sweep state to a shared docs bookmark? Answer yes only if more than one machine or agent commits and pushes to the same bookmark. Default is no, meaning a single checkout committing locally."
 
@@ -196,7 +198,7 @@ feedback_sources:
 sweep_state_path: <resolved-root>/feedback-sweep/state.yml   # concrete path (<root> resolved before persisting); committed (multi-agent) or a workspace .tmp path (solo)
 sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold; not asked interactively, tunable here
-sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
+sweep_shared_branch: false                        # true: push-gated lease for shared-docs-bookmark topology
 ~~~
 
 Notes:

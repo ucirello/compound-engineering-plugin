@@ -13,7 +13,7 @@ https://HOST/OWNER/REPO/pull/NUMBER#discussion_rCOMMENT_ID
 
 **Step 1** -- Get comment details and GraphQL node ID via REST (cheap, single comment):
 ```bash
-GIT_DIR="$(jj git root)" GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
+GIT_DIR=$(jj git root) GH_HOST=<host> gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID \
   --jq '{node_id, path, line, body}'   # omit GH_HOST=<host> on github.com
 ```
 
@@ -27,7 +27,7 @@ This fetches thread IDs and their first comment IDs (minimal fields, no bodies) 
 
 **Step 3** -- Check for your own unsubmitted review before doing any work. A reply posted while you hold one is absorbed into that draft: the call returns a comment ID and URL as if it succeeded, but the reviewer sees nothing until the draft is submitted. Full Mode gets this free from `get-pr-comments`; targeted mode never calls that script, so check directly (PENDING reviews are only visible to their author, so any hit is yours):
 ```bash
-GIT_DIR="$(jj git root)" GH_HOST=<host> gh api --paginate repos/OWNER/REPO/pulls/PR_NUMBER/reviews --jq '.[] | select(.state == "PENDING") | .id'
+GIT_DIR=$(jj git root) GH_HOST=<host> gh api --paginate repos/OWNER/REPO/pulls/PR_NUMBER/reviews --jq '.[] | select(.state == "PENDING") | .id'
 ```
 `--paginate` is required: this endpoint is chronological and pages at 30, so a draft can sort past page 1. Print IDs rather than a count — `--jq` runs per page, so a count emits one number per page, but IDs simply concatenate and stay empty when there is no draft. (`--slurp` is not an option; `gh` rejects it alongside `--jq`.)
 
@@ -35,7 +35,7 @@ If this prints anything, stop. Tell the user they have an unsubmitted review on 
 
 ## 2. Judge, Fix, Reply, Resolve
 
-Apply Full Mode step 7 (Reply and Resolve)'s completion check before judgment: check separately whether the thread already has a visible submitted reply and whether it is already resolved. When the thread is already `resolution-pending`, step 7 defines the only remaining work: skip judgment, fixing, validation, and commit, then complete the missing resolution without posting again.
+Apply Full Mode step 7 (Reply and Resolve)'s completion check before judgment: check separately whether the thread already has a visible submitted reply and whether it is already resolved. When the thread is already `resolution-pending`, step 7 defines the only remaining work: skip judgment, fixing, validation, and recording a change, then complete the missing resolution without posting again.
 
 **Judge first.** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The rubric's cross-item reasoning does nothing for a single thread, but its read-depth and divert rules apply in full (how deeply to read before judging, and when to stop with a reply, a decline, or a human decision instead of fixing): deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This judgment is what decides whether the finding is valid; don't fix on the reviewer's authority alone.
 
@@ -45,4 +45,4 @@ Apply Full Mode step 7 (Reply and Resolve)'s completion check before judgment: c
 - **`replied` / `not-addressing` / `declined`** — no subagent. Compose the reply text per the rubric and proceed to reply/resolve.
 - **`needs-human`** — compose `decision_context` and the natural-sounding reply per the rubric, leave the thread open (don't resolve), and present the decision to the user (use the platform's blocking question tool as in Full Mode step 9). The shared reply step below posts the reply once — do not post it here.
 
-Then follow the same validate -> commit -> push -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validate/commit when no code changed.
+Then follow the same validate -> `jj commit` -> `jj git push` -> reply -> resolve flow as Full Mode steps 5-7 (in `references/full-mode.md`). Skip validate/`jj commit` when no code changed.

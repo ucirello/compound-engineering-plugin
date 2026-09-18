@@ -1,4 +1,6 @@
-export default {
+import { Plugin } from "@opencode/plugin"
+
+export default Plugin.define({
   id: "continue-on-deny",
   async setup(ctx) {
     await ctx.permission.hook("evaluate", (event) => {
@@ -7,4 +9,4 @@ export default {
       event.message = "Permission denied. Do not retry this. Try another approach."
     })
   },
-}
+})

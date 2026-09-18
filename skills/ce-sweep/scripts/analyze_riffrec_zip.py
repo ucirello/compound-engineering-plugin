@@ -204,29 +204,28 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
         shutil.rmtree(previous_dir, ignore_errors=True)
 
 
-def resolve_workspace_root() -> Path:
+def workspace_root() -> Path:
     try:
         result = subprocess.run(
             ["jj", "workspace", "root"],
+            cwd=Path.cwd(),
             capture_output=True,
             text=True,
-            check=False,
+            timeout=30,
         )
-        if result.returncode == 0:
-            root = result.stdout.strip()
-            if root:
-                return Path(root)
-    except OSError:
-        pass
+    except (OSError, subprocess.TimeoutExpired):
+        return Path.cwd()
+    if result.returncode == 0 and result.stdout.strip():
+        return Path(result.stdout.strip())
     return Path.cwd()
 
 
 def default_output_dir(source_path: Path) -> Path:
-    cwd = resolve_workspace_root()
+    root = workspace_root()
     stem = slugify(source_path.stem)
-    if (cwd / "docs" / "brainstorms").is_dir():
-        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return cwd / "riffrec-feedback" / stem
+    if (root / "docs" / "brainstorms").is_dir():
+        return root / "docs" / "brainstorms" / "riffrec-feedback" / stem
+    return root / "riffrec-feedback" / stem
 
 
 def classify_source(source_path: Path) -> str:
@@ -1271,7 +1270,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = resolve_workspace_root()
+    repo_root = workspace_root()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
@@ -1314,7 +1313,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $rocketclaw:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: $ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

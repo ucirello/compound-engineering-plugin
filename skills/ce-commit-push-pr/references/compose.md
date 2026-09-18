@@ -1,8 +1,8 @@
-# Composing the title and body: evidence and teaching gates
+# Composing the title and body: evidence, teaching, and branding gates
 
-**You MUST read `references/pr-description-writing.md`** in full. It defines value-first framing, sizing, program altitude (where this PR sits in a multi-PR series), related-work references (preserve existing `Related:` / `Fixes` on rewrite), and the pre-apply audit. The only input it needs from this skill is the PR ref, if the mode selection identified one (description-only with a pasted URL, description update, or a confirmed existing-PR rewrite in the full workflow). If Step 1 (resolve bookmark and PR state) found an existing PR, pass its URL to Step 4 when rewriting so PR mode fetches the existing body. In Stack mode, Step 5 (apply and report) follows the post-submit description steps in `references/stack-submit.md` instead of composing one default-base body here.
+**You MUST read `references/pr-description-writing.md`** in full. It defines value-first framing, sizing, program altitude (where this PR sits in a multi-PR series), related-work references (preserve existing `Related:` / `Fixes` on rewrite), the branding body rules, and the pre-apply audit. The only input it needs from this skill is the PR ref, if the mode selection identified one (description-only with a pasted URL, description update, or a confirmed existing-PR rewrite in the full workflow). If Step 1 (resolve bookmark and PR state) found an existing PR, pass its URL to Step 4 when rewriting so PR mode fetches the existing body. In Stack mode, Step 5 (apply and report) follows the post-submit description steps in `references/stack-submit.md` instead of composing one default-base body here.
 
-**Evidence decision** before composition. This workflow has no capture workflow of its own. Use the harness's capture tools or artifacts the user supplied; never invent or upload evidence, and never launch another skill to capture it.
+**Evidence decision** before composition. This skill has no capture workflow of its own. Use the harness's capture tools or artifacts the user supplied; never invent or upload evidence, and never launch another skill to capture it.
 
 1. **User supplied** (URL, markdown image/embed, local path) — incorporate as `## Demo`, `## Screenshots`, or `## Evidence`.
 2. **User asked for evidence but supplied none** — ask for the artifact or tell them to capture with the harness and return.
@@ -12,7 +12,7 @@
 **Concept teaching gate** before composition. Use the workspace root gathered in Context, resolving it with `jj workspace root` if you don't already have it (description-only and description-update modes can skip the Context snapshot). Then apply the ordinary-key rule below.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary RocketClaw yaml keys from the two repo files.**
+**Resolve ordinary yaml keys from the two repo files.**
 
 - **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Gitignore does not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
@@ -24,4 +24,6 @@ Only an **active (non-commented)** `pr_teaching_section:` key counts. Lines star
 - Gate **on** — judge novelty and compose per **Step B2** of the reference.
 - Gate **off** — compose without concept handling: skip the novelty judgment, the `## New concepts` section, the Step 5 concept trailer and `ce-explain` offer, and archival entirely.
 
-Then continue with the reference (Steps A–C and E, including Step B2 when the teaching gate is on). Step E must run before the body is returned.
+**PR branding gate** before composition. Branding additions are **off**. `branding:on` does not append a badge (none is defined). `branding:off` is omit. If both tokens are present, stop and report the conflict rather than guessing. Pass the resolved branding decision, and whether the PR is new or existing, into Step D of the reference, which defines the body rules.
+
+Then continue with the reference (Steps A–E, including Step B2 when the teaching gate is on). Step E must run before the body is returned.

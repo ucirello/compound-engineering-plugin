@@ -17,7 +17,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -85,6 +84,35 @@ def parse_args() -> argparse.Namespace:
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return re.sub(r"-{2,}", "-", slug) or "riffrec-feedback"
+
+
+def resolve_workspace_root() -> Path:
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            cwd=str(Path.cwd()),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return Path.cwd()
+    root = result.stdout.strip()
+    if result.returncode != 0 or not root:
+        return Path.cwd()
+    return Path(root)
+
+
+def make_unique_dir(parent: Path, prefix: str) -> Path:
+    parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(256):
+        candidate = parent / f"{prefix}{os.urandom(4).hex()}"
+        try:
+            candidate.mkdir()
+            return candidate
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"Could not create a unique directory under {parent} with prefix {prefix}")
 
 
 def read_json(path: Path, default: Any) -> Any:
@@ -204,26 +232,12 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
         shutil.rmtree(previous_dir, ignore_errors=True)
 
 
-def resolve_workspace_root() -> Path:
-    try:
-        result = subprocess.run(
-            ["jj", "workspace", "root"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return Path.cwd()
-    root = result.stdout.strip() if result.returncode == 0 else ""
-    return Path(root) if root else Path.cwd()
-
-
 def default_output_dir(source_path: Path) -> Path:
-    root = resolve_workspace_root()
+    workspace_root = resolve_workspace_root()
     stem = slugify(source_path.stem)
-    if (root / "docs" / "brainstorms").is_dir():
-        return root / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return root / "riffrec-feedback" / stem
+    if (workspace_root / "docs" / "brainstorms").is_dir():
+        return workspace_root / "docs" / "brainstorms" / "riffrec-feedback" / stem
+    return workspace_root / "riffrec-feedback" / stem
 
 
 def classify_source(source_path: Path) -> str:
@@ -379,9 +393,7 @@ def populate_source_snapshot(source_path: Path, snapshot_dir: Path, source_kind:
 def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = None) -> dict[str, Any]:
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
-    )
+    staging_dir = make_unique_dir(raw_dir.parent, f".{raw_dir.name}.staging-")
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
         promote_raw_snapshot(staging_dir, raw_dir)
@@ -669,9 +681,7 @@ def select_moments(
 def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[dict[str, Any]]) -> None:
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
-    staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
-    )
+    staging_dir = make_unique_dir(frames_dir.parent, f".{frames_dir.name}.staging-")
     try:
         if not recording_path or not recording_path.exists():
             for moment in moments:
@@ -1020,7 +1030,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; include generated Markdown/JSON/manifests in the current Jujutsu change when useful for brainstorm/planning traceability.",
+        "- Change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; include generated Markdown/JSON/manifests in a JJ change when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -1041,10 +1051,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; do not include in the current Jujutsu change by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; do not include in a JJ change by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be included in the current Jujutsu change by default.")
+    lines.append("Extracted screenshots are retained locally for agent inspection and should not be included in a JJ change by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -1063,7 +1073,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not include these in the current Jujutsu change unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally local-only by default. Do not include these in a JJ change unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")

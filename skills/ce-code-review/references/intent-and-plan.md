@@ -25,14 +25,14 @@ that no claimed U-ID is missing from the plan.
 
 Understand what the change is trying to accomplish. The source of intent depends on which Stage 1 path was taken:
 
-**PR/URL mode:** Use the PR title, body, and linked issues from `GIT_DIR="$(jj git root)" GIT_WORK_TREE="$(jj workspace root)" gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
+**PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
 
-**Branch mode:** Run `jj log -r "${BASE}..<branch-ref>" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'` using the resolved fork-point and resolved branch ref from Stage 1. Use `<branch-ref>` (the resolved `<branch>@origin` or fetched ref), not the raw `<branch>` argument — a remote-only bookmark has no matching local ref, so the raw name would fail or read a stale same-named local bookmark.
+**Branch mode:** Run `(cd "$WORKSPACE_ROOT" && jj --no-pager log -r "${BASE}..<branch-ref>" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"')` using the resolved merge-base and resolved bookmark ref from Stage 1. Use `<branch-ref>` (the resolved `<branch>@origin` or fetched ref), not the raw `<branch>` argument — a remote-only bookmark has no matching local name, so the raw name would fail or read a stale same-named local bookmark.
 
-**Standalone (current branch):** Run:
+**Standalone (current bookmark):** Run:
 
 ```
-echo "BRANCH:" && jj bookmark list -r @ -T 'name ++ "\n"' && echo "COMMITS:" && jj log -r "${BASE}..@" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"'
+echo "BRANCH:" && (cd "$WORKSPACE_ROOT" && jj --no-pager log -r @ -T 'local_bookmarks.map(|b| b.name()).join("\n")' --no-graph) && echo "COMMITS:" && (cd "$WORKSPACE_ROOT" && jj --no-pager log -r "${BASE}..@" --no-graph -T 'commit_id.short() ++ " " ++ description.first_line() ++ "\n"')
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:
@@ -52,7 +52,7 @@ Locate the plan document so Stage 6 can verify requirements completeness. Check 
 
 1. **`plan:` argument.** If the caller passed a plan path, use it directly. Read the file to confirm it exists.
 2. **PR body.** If PR metadata was fetched in Stage 1, scan the body for paths matching `<root>/plans/*.{md,html}` (unified plans may be markdown or HTML). If exactly one match is found and the file exists, use it as `plan_source: explicit`. If multiple plan paths appear, treat as ambiguous — demote to `plan_source: inferred` for the most recent match that exists on disk, or skip if none exist or none clearly relate to the PR title/intent. Always verify the selected file exists before using it — stale or copied plan links in PR descriptions are common.
-3. **Auto-discover.** Extract 2-3 keywords from the branch name (e.g., `feat/onboarding-skill` -> `onboarding`, `skill`). Glob `<root>/plans/*` and filter filenames containing those keywords. If exactly one match, use it. If multiple matches or the match looks ambiguous (e.g., generic keywords like `review`, `fix`, `update` that could hit many plans), **skip auto-discovery** — a wrong plan is worse than no plan. If zero matches, skip.
+3. **Auto-discover.** Extract 2-3 keywords from the bookmark name (e.g., `onboarding-skill` -> `onboarding`, `skill`). Glob `<root>/plans/*` and filter filenames containing those keywords. If exactly one match, use it. If multiple matches or the match looks ambiguous (e.g., generic keywords like `review`, `fix`, `update` that could hit many plans), **skip auto-discovery** — a wrong plan is worse than no plan. If zero matches, skip.
 
 **Confidence tagging:** Record how the plan was found:
 - `plan:` argument -> `plan_source: explicit` (high confidence)
@@ -68,4 +68,4 @@ When the discovered plan's Key Technical Decisions carry `session-settled:` anno
 
 Use the project's active instructions already in context plus the current diff and source. Give each reviewer only the context relevant to its review focus; the `project-standards` reviewer reads the actual standards sources. If a reviewer cannot scope the affected area from the diff and supplied context, allow one targeted probe.
 
-In `pr-remote` / `branch-remote`, current source and any targeted probe must use `jj file show` against the supplied reviewed head ref, or the supplied diff hunks when no head ref is available; never inspect workspace paths.
+In `pr-remote` / `branch-remote`, current source and any targeted probe must use `jj file show -r` against the supplied reviewed head ref (cwd at the workspace root), or the supplied diff hunks when no head ref is available; never inspect workspace paths.

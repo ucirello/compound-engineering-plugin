@@ -25,8 +25,9 @@
 #                   automatic discovery must exclude it before calling this worker.
 #   <fixed-route>   one host-resolved and pre-sanctioned route: codex, claude,
 #                   grok-cli, grok-cursor, cursor, composer, opencode, or
-#                   opencode2. A route failure returns no artifact; only the
-#                   host may disclose and retry a different recipient.
+#                   opencode2. opencode2 is a distinct harness from opencode.
+#                   A route failure returns no artifact; only the host may
+#                   disclose and retry a different recipient.
 #   <subject-payload> framed question plus any conversation-only subject material.
 #                     Point to repository files instead of copying their contents;
 #                     the peer grounds itself from the shared working tree.
@@ -260,10 +261,12 @@ adapter_argv() {
       [ "$_oc_model" = "auto" ] || [ -z "$_oc_model" ] || printf '%s\0' --model "$_oc_model"
       ;;
     opencode2)
-      # Surveyed `opencode2 run --help` (v2.0.6): --format json, --file, --model
-      # provider/model#variant. No --dir. Working directory is READ_ROOT via
-      # run_timeout_cmd. Do not reuse opencode env/flags.
-      printf '%s\0' opencode2 run --format json --file "$PROMPT_FILE"
+      # Distinct harness from opencode (v2.0.8 help): no --dir; cwd is READ_ROOT.
+      # --model format is provider/modelname#variant. --auto is not used (it
+      # auto-approves). --standalone isolates from the background service.
+      printf '%s\0' env 'OPENCODE_DISABLE_PROJECT_CONFIG=1' \
+        'OPENCODE_CONFIG_CONTENT={"permission":{"edit":"deny","bash":"deny","webfetch":"deny","task":"deny"}}' \
+        opencode2 run --standalone --format json --file "$PROMPT_FILE"
       printf '%s\0' "Follow the attached brief. Return only schema-shaped JSON."
       _oc2_model="$(route_model opencode2)"
       [ "$_oc2_model" = "auto" ] || [ -z "$_oc2_model" ] || printf '%s\0' --model "$_oc2_model"
@@ -322,7 +325,7 @@ READ_ROOT="${CROSS_MODEL_READ_ROOT:-$(pwd -P)}"
 READ_ROOT="$(cd "$READ_ROOT" && pwd -P)" || skip "cannot resolve repository/read root '$READ_ROOT'"
 if [ -n "${CROSS_MODEL_REPO_ROOT:-}" ]; then
   REPO_ROOT="$CROSS_MODEL_REPO_ROOT"
-elif _jj_root="$(cd "$READ_ROOT" && jj workspace root 2>/dev/null)"; then
+elif command -v jj >/dev/null 2>&1 && _jj_root="$( (cd "$READ_ROOT" && jj workspace root) 2>/dev/null )"; then
   REPO_ROOT="$_jj_root"
 else
   REPO_ROOT="$(pwd -P)"
@@ -343,7 +346,7 @@ else
 fi
 case "$RUN_DIR_RESOLVED/" in
   "$REPO_ROOT/.tmp/"*) ;;
-  "$REPO_ROOT/"*) skip "run-dir must be outside the repository or under <workspace>/.tmp" ;;
+  "$REPO_ROOT/"*) skip "run-dir must be under workspace .tmp or outside the repository" ;;
 esac
 [ -d "$RUN_DIR_RESOLVED" ] || skip "run-dir '$RUN_DIR' must already exist"
 RUN_DIR="$RUN_DIR_RESOLVED"
@@ -461,13 +464,13 @@ log "fixed cross-model POV route: target=$TARGET route=$FIXED_ROUTE (host $HOST_
 if [ -n "${CROSS_MODEL_SCRATCH_PARENT:-}" ]; then
   SCRATCH_PARENT="$CROSS_MODEL_SCRATCH_PARENT"
 else
-  SCRATCH_PARENT="$REPO_ROOT/.tmp"
+  SCRATCH_PARENT="$REPO_ROOT/.tmp/rocketclaw/ce-pov"
 fi
 [ -d "$SCRATCH_PARENT" ] || mkdir -p "$SCRATCH_PARENT" 2>/dev/null || skip "private scratch parent '$SCRATCH_PARENT' unavailable"
 SCRATCH_PARENT="$(cd "$SCRATCH_PARENT" && pwd -P)" || skip "cannot resolve private scratch parent"
 case "$SCRATCH_PARENT/" in
   "$REPO_ROOT/.tmp/"*) ;;
-  "$REPO_ROOT/"*) skip "private scratch parent must be outside the repository or under <workspace>/.tmp" ;;
+  "$REPO_ROOT/"*) skip "private scratch parent must be under workspace .tmp, not elsewhere in the repository" ;;
 esac
 if ! PEER_WORKDIR="$(mktemp -d "$SCRATCH_PARENT/xmodel-pov-peer-XXXXXX")"; then
   skip "provider $TARGET workspace isolation unavailable; skipping provider"
@@ -812,20 +815,7 @@ parse_opencode_events() {  # <logfile> <outfile>
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e '.' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "$PEER_WORKDIR/ce-opencode-text-XXXXXX")" || return 1
-  printf '%s' "$text" > "$tmp"
-  recover_pov_json "$tmp" "$2"
-  local st=$?
-  rm -f "$tmp"
-  return "$st"
-}
-
-parse_opencode2_events() {  # <logfile> <outfile>
-  local text tmp
-  text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
-  [ -n "$text" ] || return 1
-  printf '%s' "$text" | jq -e '.' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "$PEER_WORKDIR/ce-opencode2-text-XXXXXX")" || return 1
+  tmp="$(mktemp "$PEER_WORKDIR/opencode-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_pov_json "$tmp" "$2"
   local st=$?
@@ -897,7 +887,7 @@ attempt_route() {   # <provider> <route>
     opencode)    run_timeout_cmd "" "$HARD_SECS" idle
                  [ "$RUN_SUCCEEDED" = true ] && parse_opencode_events "$PEERLOG" "$RAW_OUT" ;;
     opencode2)   run_timeout_cmd "" "$HARD_SECS" idle
-                 [ "$RUN_SUCCEEDED" = true ] && parse_opencode2_events "$PEERLOG" "$RAW_OUT" ;;
+                 [ "$RUN_SUCCEEDED" = true ] && parse_opencode_events "$PEERLOG" "$RAW_OUT" ;;
   esac
   if [ "$RUN_SUCCEEDED" != true ]; then
     rm -f "$RAW_OUT"

@@ -29,26 +29,25 @@ Two modes:
 For PR mode, fetch metadata first:
 
 ```bash
-GIT_DIR="$(jj git root)" gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
+GIT_DIR=<git-dir> gh pr view <ref> --json baseRefName,headRefOid,url,body,state,isCrossRepository,headRepositoryOwner
 ```
 
 If `state` is not `OPEN`, report and stop. Use `baseRefName` as `<base>` and `headRefOid` as `<head>`.
 
-For current-bookmark mode, resolve `<base>` in priority order: `jj bookmark list -r trunk()` (parse the trunk bookmark name) → `GIT_DIR="$(jj git root)" gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `jj log -r 'present(<candidate>@origin)'`. If none resolve, ask the user. `<head>` is `@`.
+For current-bookmark mode, resolve `<base>` in priority order: `trunk()` (the default bookmark name from `jj bookmark list -r 'trunk()'`) → `GIT_DIR=<git-dir> gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` → try `main`/`master`/`develop` via `jj bookmark list` for `<candidate>@origin`. If none resolve, ask the user. `<head>` is `@`.
 
 **Base remote:** `origin` for current-bookmark mode and same-repo PRs. For fork PRs, match the PR's base owner/repo against `jj git remote list`. If no local remote matches, skip to the `gh` fallback — do not diff against `origin` (wrong base).
 
 ```bash
 jj git fetch --remote <base-remote> --branch <base>
-jj git fetch --remote <base-remote> --branch <head-bookmark>   # PR mode only, when the head is a named bookmark
-jj log --no-graph -T builtin_log_oneline -r '<base>@<base-remote>..<head>'
-jj log --no-graph -T builtin_log_compact_full_description -r '<base>@<base-remote>..<head>'   # full commit messages for related-reference discovery
-jj diff -r '<base>@<base-remote>..<head>'
+jj log -r '<base>@<base-remote>..<head>' --no-graph
+jj log -r '<base>@<base-remote>..<head>' --no-graph -T 'description'
+jj diff --from '<base>@<base-remote>' --to <head>
 ```
 
 If the commit list is empty, report "No commits to describe" and stop.
 
-**Fallback** — use `GIT_DIR="$(jj git root)" gh pr diff <ref>` and `GIT_DIR="$(jj git root)" gh pr view <ref> --json commits` when local Jujutsu can't reach the refs (fork PR with no matching remote, shallow clone, offline, unrelated histories). There is no public Jujutsu command to fetch `refs/pull/<number>/head` or to read FETCH_HEAD; do not probe `.git/` or `.jj/`. Use the `gh` fallback when the head commit is not already present.
+**Fallback** — use `GIT_DIR=<git-dir> gh pr diff <ref>` and `GIT_DIR=<git-dir> gh pr view <ref> --json commits` when local jj can't reach the refs (fork PR with no matching remote, shallow history, offline, merge-base on unrelated histories). For a PR-mode head that is not reachable after `jj git fetch`, keep using `headRefOid` from `gh pr view` and this API fallback — do not parse `.git/` or `.jj/` files for a fetched SHA.
 
 Note in the user-facing summary when the API fallback was used.
 
@@ -58,7 +57,7 @@ Note in the user-facing summary when the API fallback was used.
 
 **Size by decision cost, not diff shape.** Decision cost is how much a reviewer still has to work out before they can approve; it is not changed-line count, file extension, or visual surface. A 5-line ranking or deploy change can carry more reviewer uncertainty than a 500-line mechanical rename.
 
-Build a compact internal **scope map** from the **complete oneline commit list and final three-dot diff**. Use oneline subjects for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale subjects; consult the fuller messages only when a subject remains opaque or conflicts with the diff. Group into material outcome clusters (one is fine), name one umbrella outcome that covers them, and identify each cluster's **material claims** — what became possible, fixed, riskier, or which design decision the reviewer must assess.
+Build a compact internal **scope map** from the **complete oneline commit list and final from-to diff**. Use oneline subjects for full-range coverage; use the final diff to merge overlaps, discard fix-up-only work, and correct stale subjects; consult the fuller messages only when a subject remains opaque or conflicts with the diff. Group into material outcome clusters (one is fine), name one umbrella outcome that covers them, and identify each cluster's **material claims** — what became possible, fixed, riskier, or which design decision the reviewer must assess.
 
 State the umbrella as what is now different for someone using this, never as the mechanism that produced it. The title and the opening both inherit the map's level of description, so a mechanism-shaped umbrella is not something a later step can correct — every later check compares against it and agrees with it. Derive the umbrella from the full range, never from the latest commit, tracker title, bookmark name, original request, or the story of how the work started — the incident, bug report, or ask that opened the bookmark is one cluster's origin, not the umbrella, and a description that leads with it while the range delivers peer outcomes has misread the map.
 
@@ -95,7 +94,7 @@ A project PR-body contract sets the structural floor; this table sizes the conte
 
 ## Step B: Compose the title
 
-Compose the title from the scope map's umbrella outcome, not one cluster or mechanism, matching repository-local title conventions (project instructions in context, then recent change descriptions). With program context, the title may name this PR's contribution under the program without restating the whole series — it must not make another material outcome sound incidental. Imperative, lowercase, under 72 chars, no trailing period, when that matches local convention. Do not choose a type, scope, prefix, or subject template. **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation.**
+Compose the title from the project's PR-title conventions already in context. When those are silent, match recent-commit conventions. Description: from the scope map's umbrella outcome, not one cluster or mechanism; with program context, the title may name this PR's contribution under the program without restating the whole series — it must not make another material outcome sound incidental. Imperative, lowercase, under 72 chars, no trailing period. Do not apply a Conventional Commit template. **Never use `!` or `BREAKING CHANGE:` without explicit user confirmation.**
 
 ---
 
@@ -108,7 +107,7 @@ This step decides **tracker** close-vs-link semantics. Sibling PR / series narra
 Classify each candidate as:
 
 - **closing reference** — the PR fully resolves the item and the tracker's closing syntax is known.
-- **non-closing reference** — related, partial, investigative, follow-on, validation-only, or tracker semantics unknown.
+- **non-closing reference** — related, partial, investigative, follow-up, validation-only, or tracker semantics unknown.
 - **uncertain** — tracked bug/incident/investigation is clear but ID or close-vs-link intent is missing. Ask (interactive) or use non-closing / omit (non-interactive); never invent a close.
 
 Do not invent a closing keyword. Magic words are workflow actions, not decoration. If ambiguous, neutral related reference or omit — do not scatter the ID through the summary.
@@ -117,7 +116,7 @@ Do not put a non-closing reference next to close/fix/resolve/address/report word
 
 - Bad: "closing one corruption path from #123"
 - Bad: "This addresses the retry-related corruption path reported in #123."
-- Good: "This covers the duplicate-row retry path; concurrent cancellation remains follow-on work."
+- Good: "This covers the duplicate-row retry path; concurrent cancellation remains follow-up work."
 - Good: "Related: #123"
 
 | Tracker | Closing reference | Non-closing reference | Notes |
@@ -139,7 +138,7 @@ Decide whether the change introduces a concept (pattern, technique, library, dom
 **Check each candidate against the base ref, never the working tree** (the working tree contains this PR's own code):
 
 ```bash
-jj file search --name-only -r '<base>@<base-remote>' --pattern "<term>"
+jj file search --pattern "<term>" -r "<base>@<base-remote>" --name-only
 ```
 
 One call per candidate (cap two). Empty output → absent from the base. Teachable only when new *and* transferable. Never teach: established patterns, ordinary refactors/renames/dep bumps, project-internal plumbing. When in doubt, omit. On the `gh`-fallback path, judge from diff context alone and lean conservative.
@@ -155,7 +154,7 @@ Preserve an existing `## New concepts` section and explainer-doc link verbatim o
 
 ## Step C: Assemble the body
 
-When a project PR-body contract supplies headings or order, preserve that structure and place the applicable elements below within the sections it permits. Otherwise: opening → body sections that each answer a remaining reviewer question → related references when they need their own block → test plan if non-obvious → session-settled provenance when a labeled plan is in hand → New concepts section when Step B2 produced one → evidence block if one exists.
+When a project PR-body contract supplies headings or order, preserve that structure and place the applicable elements below within the sections it permits. Otherwise: opening → body sections that each answer a remaining reviewer question → related references when they need their own block → test plan if non-obvious → session-settled provenance when a labeled plan is in hand → New concepts section when Step B2 produced one → evidence block if one exists → branding when Step D calls for it.
 
 When the project PR-body contract supplies a heading or location for the opening, place it there without inventing or renaming a heading. Otherwise, the opening goes under `## Summary` if the body uses any `##` headings; bare paragraph otherwise. No orphaned opening above the first heading.
 
@@ -165,9 +164,19 @@ The why belongs inside that one idea when it is the reason the outcome takes its
 
 **Session-settled provenance:** when a plan is already in hand (caller path or conversation) whose key technical decisions carry a `session-settled:` label, one static sentence naming settled decisions and classes (e.g. "Session-settled decisions carried from planning: X (user-directed, over Y); Z (user-approved)."). Add proceed-under-conflict clauses only when the caller flagged them. Never an outstanding-items ledger; never hunt for plans when none is in hand.
 
-**Evidence:** preserve existing `## Demo` / `## Screenshots` unless focus asks to refresh. Splice caller-passed capture as `## Demo`. Never label test output as "Demo" or "Screenshots." SKILL.md Step 4 (via `references/compose.md`) decides whether to include validation notes or skip them.
+**Evidence:** preserve existing `## Demo` / `## Screenshots` unless focus asks to refresh. Splice caller-passed capture as `## Demo`. Place before any branding block. Never label test output as "Demo" or "Screenshots." SKILL.md Step 4 (via `references/compose.md`) decides whether to include validation notes or skip them.
 
 **Visual aids:** diagram or table when faster than prose (flows, trade-offs, a before/after comparison when observable behavior changed); a navigation hint (which file to start in, or the small but decisive hunk a reviewer would otherwise miss) only when the reviewer would start in the wrong place — never a list of changed files, which the diff already shows; skip all of these for simple/rename/dep-bump. Content pattern decides, never size or file count. Prose wins on conflict. **GitHub:** never prefix list items with `#` (auto-links as issues); use `org/repo#123` or full URL for real refs.
+
+---
+
+## Step D: Branding
+
+For a **new PR body**, do not append a branding badge. None is defined.
+
+Do not add model or harness attribution as a branding block. If the project's PR-body contract requires model/harness disclosure, fill *that* section per the project contract (see "Project PR-body contract").
+
+For an **existing PR body**, preserve an existing branding block verbatim (including legacy model/harness badges). Never add one when absent, and never refresh, normalize, or remove it unless the user explicitly asks to remove or replace that exact content. Branding alone never creates rewrite intent.
 
 ---
 
@@ -184,4 +193,4 @@ Before returning the title and body, check against the scope map and material cl
 - Is every claim the diff can't establish present — and any claim the diff *does* show restated needlessly?
 - Was program altitude actually checked (the map says "none" or names the program)? When program context was present: does the lead place this PR on the arc (program + this contribution, with lead-in and/or lead-out when known)? When program context was absent: does the body invent a multi-PR series? If so, cut it.
 - Is decision-changing evidence a stated result (not unexplained "tests passed"), with demonstrated results distinct from assumptions and mixed/negative outcomes?
-- Can any sentence or section of the *description* be cut without lowering reviewer confidence? If so, cut it, except for headings, fields, checklists, or boilerplate the project's PR-body contract requires. Retain the session-settled provenance sentence when Step C included one — it is intentional, not fluff.
+- Can any sentence or section of the *description* be cut without lowering reviewer confidence? If so, cut it, except for headings, fields, checklists, or boilerplate the project's PR-body contract requires. Retain Step D branding when an existing block is being preserved and the session-settled provenance sentence when Step C included one — both are intentional, not fluff.

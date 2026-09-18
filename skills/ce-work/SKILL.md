@@ -45,7 +45,7 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 Before the first implementation write, including on the Trivial route, read `references/implementation-loop.md`. It decides how evidence is chosen, verification, when to stop a unit, incremental commits, following existing patterns, continuous testing, where simplification stops, UI work, progress tracking, and settled decisions.
 
-The commit rule from this file stays in force throughout: every implementation change names only that unit's owned files. A bare `jj commit` or `jj describe` that does not name those files can absorb the user's pre-existing working-copy changes, so it is forbidden.
+The commit rule from this file stays in force throughout: every implementation commit names only that unit's owned files. A bare `jj commit` without path arguments can absorb the user's pre-existing working-copy changes, so it is forbidden.
 
 ### Phase 3-4: Quality Check and Finishing Work
 

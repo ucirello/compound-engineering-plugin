@@ -7,7 +7,7 @@ Required read before running one of these end to end: reviewing a shared doc, cr
 When given a Proof URL like `https://www.proofeditor.ai/d/abc123?token=xxx`:
 
 1. Extract the slug and token
-2. Bind presence with the AI Assistant identity defaults
+2. Bind presence with the identity defaults
 3. Read via `v3/document`
 4. Edit with `v3/edit` (narrow content ops; review ops for comments/suggestions)
 
@@ -108,9 +108,9 @@ SLUG=<slug>
 TOKEN=<accessToken>
 LOCAL=<absolute-path>
 
-WS_ROOT=$(jj workspace root 2>/dev/null || echo .)
-mkdir -p "$WS_ROOT/.tmp"
-STATE_TMP=$(mktemp "$WS_ROOT/.tmp/ce-proof-state.XXXXXX")
+STATE_DIR="$(jj workspace root 2>/dev/null || echo .)/.tmp/rocketclaw/ce-proof"
+mkdir -p "$STATE_DIR"
+STATE_TMP=$(mktemp "$STATE_DIR/state.XXXXXX")
 curl -sS "https://www.proofeditor.ai/api/agent/$SLUG/v3/document" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Agent-Id: ai:assistant" > "$STATE_TMP"

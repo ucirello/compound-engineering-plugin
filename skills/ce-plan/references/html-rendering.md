@@ -108,7 +108,7 @@ these locations, first match wins:
 
 Read once at compose time. Absent → fall through to the fallback default.
 
-Workspace-root only — do not fall through to another workspace. Users
+Workspace-root only — do not fall through to another checkout. Users
 working from a workspace who want HTML defaults can add DESIGN.md to the
 workspace.
 
@@ -229,10 +229,8 @@ every entry into a browser or IDE.
 Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-jj git remote list
+GIT_DIR="$(jj git root)" gh repo view --json url,defaultBranchRef
 ```
-
-Take the URL for `origin` (first field is the remote name).
 
 Apply linking to three reference shapes:
 

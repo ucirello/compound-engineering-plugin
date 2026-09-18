@@ -30,7 +30,7 @@ Tokens exist so automation and chained calls can force a decision. Plain languag
 
 Classify the remaining text by shape:
 
-- **Diff** — the request names a resolvable change: a sha, branch, PR, "the last commit", "what you just did", "this change".
+- **Diff** — the request names a resolvable change: a change id, bookmark, PR, "the last change", "what you just did", "this change".
 - **Recap** — the request asks what happened over time ("what did I do this week", "catch me up", "prep me for standup"), **or names a time window and little else** ("since last Monday", "last week", "the past 3 days", "this sprint"). A bare window is a recap request, not a topic to be explained — do not read "since last Monday" as a concept called "since last Monday".
 - **Idea** — the request presents a proposal or notion of the user's to be understood: "explain my idea of X", "what would Y imply". The idea is a fixed given (see SKILL.md Boundaries).
 - **Concept** — everything else: a topic, pattern, subsystem, or external subject to learn.

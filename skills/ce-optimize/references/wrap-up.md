@@ -30,7 +30,7 @@ The experiment log and strategy digest remain in local `.context/...` scratch sp
 
 Present these options after the summary:
 
-1. **Run `ce-code-review`** on the cumulative diff (baseline to final), on the optimization bookmark. Do not describe/commit or `jj git push` from this step.
+1. **Run `ce-code-review`** on the cumulative diff (baseline to final), on the optimization bookmark. Do not `jj commit` or `jj git push` from this step.
 2. **Run `ce-compound`** to document the winning strategy as an institutional learning.
 3. **Create PR** from the optimization bookmark to the default bookmark.
 4. **Continue**: re-enter Phase 3, state re-read first.
@@ -38,7 +38,7 @@ Present these options after the summary:
 
 For option 1, load `ce-code-review` on the optimization bookmark, interactive or `mode:agent`, and land eligible fixes under the bar below before moving to the next option.
 
-**Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement. Push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on. Tell the user what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not describe/commit or `jj git push` from this step. Leave the diff on the optimization bookmark for the Create PR option.
+**Mechanical-apply bar:** apply any finding with a concrete `suggested_fix` that is a clear, reversible improvement. Push back (keep, don't apply) when the reviewer is wrong, noting why. Defer anything whose right fix needs a design or product decision (architecture direction, contract shape, behavior change needing sign-off) and any finding with no concrete fix to act on. Tell the user what was deferred. Confirm evidence still matches at `file:line` before editing. After applying, run tests (at least targeted tests for what changed; broader suite for multi-file edits). Do not `jj commit` or `jj git push` from this step. Leave the diff on the optimization bookmark for the Create PR option.
 Option 4 (continue) re-enters Phase 3 with the current state, state re-read from disk first.
 
 ### 4.4 Cleanup

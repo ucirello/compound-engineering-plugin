@@ -70,7 +70,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
 1. **Prepare Validation Context**
 
-   Do not try to launch a dedicated evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
+   Do not try to launch a dedicated CE evidence-capture workflow. Modern harnesses provide their own browser, screenshot, terminal recording, and artifact capture tools; use those directly only when the user asks or when the artifact already exists.
 
    Note whether the completed work has observable behavior (UI rendering, CLI output, API/library behavior with a runnable example, generated artifacts, or workflow output), and summarize any manual validation performed. If the user supplied evidence (URL, markdown embed, local artifact path), pass it to `ce-commit-push-pr` as PR-description context.
 
@@ -82,7 +82,7 @@ This file contains the shipping workflow (Phase 3-4). It is loaded when all Phas
 
    **Project-defined shipping process wins.** If the project's active instructions already in your context name a process that handles the shipping handoff (committing, pushing, and opening the PR), such as a named skill or command (e.g. a `/create-pr` skill), a stacking tool, or documented steps, use that process instead of the default below. Conventions the default already honors (commit-message format, PR title style, PR template) are not a process and do not trigger this. Presence of a skill directory alone is not a directive; the instruction has to say so. Hand the process the same context this step would hand `ce-commit-push-pr` (plan summary, testing notes, evidence, review receipt, unapplied review findings). If it cannot take a piece, state that in the shipping summary. When this run recorded `Code review: skipped (mechanical diff)`, also hand it the condition that a mechanical diff needs no post-PR watch; the process decides how it honors that. The `exclude:` paths are a constraint, not context: if the process cannot keep them out of the commit, do not run it; use the default below, which can. The ship-handoff gate and the publish rule above hold whichever process runs. Precedence: the user's stated preference for this run > the project-defined process > the default. Absent a project-defined process:
 
-   Load the `ce-commit-push-pr` skill to handle describing the change, pushing a bookmark, and PR creation. When this run recorded `Code review: skipped (mechanical diff)`, also pass `babysit:off` (a mechanical diff needs no post-PR watch) and name that in the PR-description context. Pass `exclude:<paths>` naming every file from Phase 1 Step 2's pre-work scope that this run did not commit (untouched WIP and any leave-uncommitted files alike), so the skill's dirty-file scan leaves the user's work out of the shipping change. The skill handles convention detection, bookmark safety, logical change splitting, and adaptive PR descriptions. If the session already stated how the PRs are arranged (a PR stack, and any parent PR or branch to stack on), pass it on that invocation.
+   Load the `ce-commit-push-pr` skill with `branding:on` to handle committing, pushing, and PR creation. When this run recorded `Code review: skipped (mechanical diff)`, also pass `babysit:off` (a mechanical diff needs no post-PR watch) and name that in the PR-description context. Pass `exclude:<paths>` naming every file from Phase 1 Step 2's pre-work scope that this run did not commit (untouched WIP and any leave-uncommitted files alike), so the skill's dirty-file scan leaves the user's work out of the shipping commit. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repo-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing local syntax. This explicit signal records that the workflow produced the work; the skill handles convention detection, bookmark safety, logical commit splitting, adaptive PR descriptions, and PR attribution. If the session already stated how the PRs are arranged (a PR stack, and any parent PR or branch to stack on), pass it on that invocation.
 
    When providing context for the PR description, include:
    - The plan's summary and key decisions
@@ -114,13 +114,13 @@ Before creating PR, verify:
 - [ ] Code follows existing patterns
 - [ ] Figma designs match implementation (if applicable)
 - [ ] Validation/evidence context passed to `ce-commit-push-pr` when the change has observable behavior
-- [ ] Change descriptions follow the composed standards (Go wiki guidance, with repository-local syntax winning)
+- [ ] Commit messages follow the Go/git-log standards above (repo-local syntax wins)
 - [ ] PR description includes Post-Deploy Monitoring & Validation section (or explicit no-impact rationale)
 - [ ] Simplify: `ce-simplify-code` under the threshold selected in Phase 3 (or skipped with reason)
 - [ ] Code review completion gate: completed receipt (`status: complete` + `artifact_path`/`run_id` or markdown Actionable/Coverage/Verdict) **or** exact phrase (`Code review: skipped (mechanical diff)` / `Code review: skipped (ce-code-review unavailable)` / `Code review: harness-native fallback`); residuals handled via the Residual Work Gate
 - [ ] Ship-handoff gate passed before `ce-commit-push-pr` / `ce-commit` (completed receipt or exact phrase in shipping context)
 - [ ] PR description includes summary, testing notes, and evidence when captured
-- [ ] `ce-commit-push-pr` ran for this workflow (or the project-defined shipping process ran with the same context)
+- [ ] `ce-commit-push-pr` received `branding:on` from the workflow (or the project-defined shipping process ran with the same context)
 
 ## Code Review
 

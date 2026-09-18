@@ -35,7 +35,7 @@ REQUESTED_NAME="${1:-}"
 
 REPO_ROOT=$(jj workspace root 2>/dev/null)
 if [ -z "$REPO_ROOT" ]; then
-  echo "ERROR: not in a Jujutsu workspace" >&2
+  echo "ERROR: not in a Jujutsu repository" >&2
   exit 1
 fi
 

@@ -55,7 +55,7 @@ scope:
 
 execution:
   mode: serial
-  backend: workspace
+  backend: worktree
   max_concurrent: 1
 
 parallel:

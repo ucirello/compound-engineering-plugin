@@ -8,7 +8,7 @@
 #
 # Arguments:
 #   path (optional) — directory to inspect. When omitted, defaults to the
-#                     workspace root via `jj workspace root`.
+#                     repo root via `jj workspace root`.
 #
 # Output contract (two lines on stdout):
 #   Line 1: package-manager binary token (`npm` | `pnpm` | `yarn` | `bun`)
@@ -32,7 +32,7 @@
 #
 # Errors (stderr, exit 1):
 #   ERROR: <message>     — path does not exist, is not a directory, or
-#                          no positional arg and not inside a Jujutsu workspace
+#                          no positional arg and not inside a Jujutsu repo
 
 set -u
 
@@ -47,7 +47,7 @@ if [ -n "$TARGET_PATH" ]; then
 else
   TARGET_PATH=$(jj workspace root 2>/dev/null)
   if [ -z "$TARGET_PATH" ]; then
-    echo "ERROR: not in a Jujutsu workspace and no path argument provided" >&2
+    echo "ERROR: not in a Jujutsu repository and no path argument provided" >&2
     exit 1
   fi
 fi

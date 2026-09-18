@@ -34,14 +34,16 @@ State the forbidden set in the prompt as paths, not as a rule to infer. An agent
 
 ## Isolation: separate workspaces or disjoint paths in one tree
 
-Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and finishing the change trivial.
+Disjoint paths in one tree are enough when nothing an agent runs mutates state outside its own paths. That covers most cut passes: edits are text, the manifest is a partition, and a single tree keeps the diff readable and the change trivial.
 
-Pay for a workspace (`jj workspace add`, or equivalent per-agent working copy) when any of these is true:
+Pay for a workspace (or equivalent per-agent working copy) when any of these is true:
 
 - Agents run builds, formatters, generators, or anything that writes outside its unit, such as lockfiles, caches, generated output, or a repo-root config.
-- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on working-copy snapshot state.
-- Agents describe, commit, or use bookmark operations. One working copy shared by parallel agents corrupts the current change.
+- An agent needs to run the suite or the harness to check its own edit. Concurrent runs in one tree race on scratch and on the shared working copy (`@`).
+- Agents describe, commit, or use bookmark operations. JJ has no index; working-copy files are already in `@`. Parallel agents sharing one working copy corrupt `@`.
 - A pass may need to be abandoned wholesale, and a clean discard is worth more than a shared diff.
+
+Create an isolated working copy with `jj workspace add`. When running jj against that workspace, set cwd to its absolute root (`jj workspace root --name <name>`); do not use `jj -R` as a substitute. File lists stay repo-relative. Discard with `jj abandon` or `jj restore` as the meaning requires, and `jj workspace forget` when the extra working copy itself should stop being tracked.
 
 Otherwise the isolation cost is real: N workspaces to create, N results to merge, and merge conflicts reintroduced on exactly the files the manifest was designed to keep apart.
 
@@ -124,18 +126,8 @@ A failure that moves to a later phase is progress and names the next target. A f
 
 ## Ship (Phase 6)
 
-Finish each pass as its own change so the history says which change was made and why, and so release tooling can classify intent. Keep the measurement artifacts.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repo-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing local syntax.
 
-Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
-
-Repository-local commit-message syntax from project instructions and `git log` ALWAYS wins when it differs from the Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing repository-local syntax.
-
-Preserve as constraints on the composed message: each pass is a separate change; the description must say which class was applied and why; release tooling must still be able to classify intent from the description. Do not use a fixed prefix, type, scope, subject, or body.
-
-Describe and finish the working-copy change with:
-
-```
-jj commit -m "<message composed from the standards above>"
-```
+Finish each pass as its own change with `jj commit -m "<message composed from the standards above>"` (or `jj describe -m "<message composed from the standards above>"` when only setting the description). Constraints on that composed message: which pass class landed and why, and that measurement artifacts stay. Do not invent Conventional Commit syntax or a fixed message; let release tooling classify intent from the composed text. Keep the measurement artifacts.
 
 Then write the finding down where the next person will hit it: the mechanism, the before and after, the measured numbers, and the hypotheses that died. **Record the ones that died.** They are what stops the next attempt from re-running a dead end, and they are the part every write-up omits.

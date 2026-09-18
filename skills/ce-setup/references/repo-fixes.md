@@ -5,10 +5,10 @@
 When the bundled `scripts/check-health` is unavailable, perform these checks by hand and report the same findings:
 
 1. Check optional tools with `command -v`: `agent-browser`, `gh`, `jq`, `ast-grep`, `ffmpeg`.
-2. If inside a JJ workspace, resolve the workspace root with `jj workspace root`.
-3. Check for obsolete `rocketclaw.local.md` at the workspace root.
+2. If inside a Jujutsu workspace, resolve the repo root with `jj workspace root`.
+3. Check for obsolete `rocketclaw.local.md` at the repo root.
 4. Check whether `.rocketclaw/config.yaml` exists.
-5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether `.gitignore` covers `.rocketclaw/config.local.yaml` (look for an uncommented `.rocketclaw/*.local.yaml` or equivalent rule; do not probe VCS metadata).
+5. Check whether `.rocketclaw/config.local.yaml` exists and, if it does, whether `(cd "<repo-root>" && jj file list -- .rocketclaw/config.local.yaml)` prints that path. A printed path means the file is in the working copy and is not ignored.
 6. Compare `.rocketclaw/config.example.yaml` with `references/config-template.yaml` when the template is readable; otherwise report that the example refresh must be done manually.
 7. Report a legacy Compound Codex tool map when `${CODEX_HOME:-$HOME/.codex}/AGENTS.md` contains a standalone `<!-- BEGIN COMPOUND CODEX TOOL MAP -->` line followed by a standalone `<!-- END COMPOUND CODEX TOOL MAP -->` line.
 
@@ -16,17 +16,17 @@ This file is read at two points: from Step 2 whenever the bundled health script 
 
 ## Phase 2: Fix Repo-Local Issues
 
-Resolve the workspace root (`jj workspace root`). All paths below are relative to the workspace root, not the current working directory.
+Resolve the repository root (`jj workspace root`). All paths below are relative to the repo root, not the current working directory. Run every `jj` command with cwd at that absolute root; do not use `jj -R`.
 
 ### Step 4: Remove Obsolete Local Config
 
-If `rocketclaw.local.md` exists at the workspace root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.rocketclaw/config.local.yaml` (the optional override). Team defaults live in `config.yaml`.
+If `rocketclaw.local.md` exists at the repo root, explain that it is obsolete because review-agent selection is automatic and surviving machine-local settings now live in `.rocketclaw/config.local.yaml` (the optional override). Team defaults live in `config.yaml`.
 
 Ask whether to delete it now. Delete only if the user approves.
 
 ### Step 5: Refresh Example Config
 
-Copy `references/config-template.yaml` to `<repo-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file is committed to the repo and should always reflect the latest available settings.
+Copy `references/config-template.yaml` to `<repo-root>/.rocketclaw/config.example.yaml`, creating the directory if needed. This file is tracked in the repo and should always reflect the latest available settings.
 
 If leftover `<repo-root>/.rocketclaw/config.local.example.yaml` remains after the new example exists, treat it as stale generated example (not user config) and remove it with `trash` (never `rm`).
 
@@ -52,27 +52,27 @@ If `config.local.yaml` already exists, leave it. After creating (or if both file
 
 Do not create `config.local.yaml`.
 
-### Step 6a: Repair Invalid Work Preferences
+### Step 6a: Repair Invalid Work Engine Preferences
 
-When the health report marks the `ce-work` implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit the layer that supplied the failing value. If the bad ordinary key is only in `config.yaml`, edit that file after preview. Do not hide a broken team value behind a new local override. Preserve every unrelated setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete.
+When the health report marks the ce-work implementation engine unavailable or invalid, detects retired scalar routing keys, or reports malformed dormant `work_engine_preferences`, do not guess the intended recipients. Explain the exact reported problem, derive a valid ordered `work_engine_preferences` block from the user's stated harness/model order (or remove malformed dormant preferences and use `work_engine_mode: off` when they want native-by-default), remove any retired scalar routing keys, and show the complete replacement block. Edit the layer that supplied the failing value. If the bad ordinary key is only in `config.yaml`, edit that file after preview. Do not hide a broken team value behind a new local override. Preserve every unrelated setting. Re-run the health check and require it to report either native or the intended normalized ordered list before setup is complete. `opencode2` is a distinct harness from `opencode` and is not compatible with it; a `provider/modelname#variant` model string is valid.
 
 ### Step 6b: Repair Invalid `docs_root`
 
-When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the repo, `..` traversal, workspace root, or a non-directory component) and the consequence: artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the tracked value to a valid repo-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
+When the health report marks `docs_root` invalid, explain the exact reason it gave (absolute, escapes the repo, `..` traversal, repo root, `.git/`, `.jj/`, or a non-directory component) and the consequence: RocketClaw artifacts will not be written until it is fixed, because `docs_root` fails closed rather than silently falling back to `docs`. `docs_root` is read only from `.rocketclaw/config.yaml`. A `docs_root` in `config.local.yaml` is ignored — if local still has one, say so and offer to move it into `config.yaml`. Offer to either correct the tracked value to a valid repo-relative directory the user names, or remove the bad `docs_root` key from `config.yaml`. Removing it reaches the default `docs`. Edit only those keys after the user approves; preserve every unrelated setting. Re-run the health check and require it to report a resolved artifact root before setup is complete.
 
-### Step 7: Ensure Local Config Is Gitignored
+### Step 7: Ensure Local Config Is Ignored
 
-If `.rocketclaw/config.local.yaml` exists and is not covered by `.gitignore`, offer to add:
+If `.rocketclaw/config.local.yaml` exists and is not ignored, offer to add:
 
 ```text
 .rocketclaw/*.local.yaml
 ```
 
-Append the entry to the repo-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
+A path is not ignored when `(cd "<repo-root>" && jj file list -- .rocketclaw/config.local.yaml)` prints that path. Append the entry to the repo-root `.gitignore` only if the user approves. Do not overwrite unrelated `.gitignore` content.
 
-### Step 8: Offer To Gitignore Scratch Space
+### Step 8: Offer To Ignore Scratch Space
 
-Skills that keep local scratch write it under `.context/`. Probe coverage by reading the repo-root `.gitignore` for an uncommented `.context/` rule — with the trailing slash, so an existing directory-only rule counts before the directory exists. Workspace throwaway and reusable scratch also lives under `.tmp/` (ignored separately). When `.context/` is not covered, offer to add:
+Skills that keep local scratch write it under `.context/`. When that path exists, probe with `(cd "<repo-root>" && jj file list -- .context/)` — a printed path means it is in the working copy and is not ignored. When the path does not exist, public `jj` has no ignore-check for a missing path: treat it as uncovered unless `.gitignore` already has a rule covering `.context/`. When it is not covered, offer to add:
 
 ```text
 .context/
@@ -94,7 +94,7 @@ Runs whenever the repository has a root agent-instructions file (`AGENTS.md`, `C
 <root>/solutions/  # documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (module, tags, problem_type)
 ```
 
-**Compounding directive.** Offer it only when the repository treats the store as tracked, committed knowledge: the workspace tracks at least one file under the resolved `<root>/solutions/` (`jj file list` there is non-empty; an untracked or ignored directory is not evidence), or the user just accepted the store mention. Skip the offer when the file already carries a standing instruction to invoke `ce-compound` at a completion checkpoint, in any wording. Otherwise ask:
+**Compounding directive.** Offer it only when the repository treats the store as tracked, committed knowledge: `jj file list` under the resolved `<root>/solutions/` is non-empty (an untracked or ignored directory is not evidence), or the user just accepted the store mention. Skip the offer when the file already carries a standing instruction to invoke `ce-compound` at a completion checkpoint, in any wording. Otherwise ask:
 
 ```text
 Add a standing instruction so agents capture qualifying learnings with ce-compound?

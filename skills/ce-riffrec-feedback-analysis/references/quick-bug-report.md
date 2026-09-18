@@ -4,7 +4,7 @@ Use this path when the input is a short recording (under ~60 seconds), the user 
 
 ## Workflow
 
-1. Create `OUTPUT_DIR` with `mktemp -d "$(jj workspace root)/.tmp/riffrec-quick-XXXXXX"` (fallback `mktemp -d ".tmp/riffrec-quick-XXXXXX"` when `jj workspace root` fails; create the `.tmp` parent if needed), set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
+1. Set `WORKSPACE_ROOT` from `jj workspace root` with cwd at the current workspace. If JJ cannot provide a root, use the current directory. Create `OUTPUT_DIR` as a unique directory under `"$WORKSPACE_ROOT/.tmp/rocketclaw"` (create that parent first; a unique child such as `riffrec-quick-XXXXXX` is enough). Set `INPUT_PATH` to the supplied capture, and use the invocation in `references/analyzer.md`. Capture the analyzer's printed output directory; later steps read from it.
 
 2. Read only `analysis.md` from the temp output. Skip `problem-analysis.md`, `review-prompt.md`, `requirements-kickoff.md`, and `source-materials.md` — they are designed for the extensive path.
 
@@ -30,7 +30,7 @@ If the workspace is the product source code AND the broken surface is named clea
 
 - No `problem-analysis.md`, no `requirements-kickoff.md`, no Visual / Functional / Requirement / UX category split.
 - No automatic handoff to `ce-brainstorm`. The quick path ends with the bug report.
-- Do not include `raw/` or `frames/` in the current Jujutsu change — they live only in the workspace `.tmp` directory.
+- Do not include `raw/` or `frames/` in a JJ change — they live only under workspace `.tmp` and are not durable artifacts.
 - No source-mapping pass across the codebase.
 
 ## Escalation

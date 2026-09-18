@@ -76,8 +76,8 @@ Start (detached):
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WS_ROOT="$(jj workspace root 2>/dev/null)" || WS_ROOT="";
-if [ -n "$WS_ROOT" ]; then SCRATCH_ROOT="$WS_ROOT/.tmp"; else SCRATCH_ROOT=".tmp"; fi;
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || printf '.')";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -90,8 +90,8 @@ Append `--foreground` to that `start` command for foreground mode. Status and st
 
 ```bash
 SKILL_DIR="<absolute path of the ce-brainstorm skill directory>";
-WS_ROOT="$(jj workspace root 2>/dev/null)" || WS_ROOT="";
-if [ -n "$WS_ROOT" ]; then SCRATCH_ROOT="$WS_ROOT/.tmp"; else SCRATCH_ROOT=".tmp"; fi;
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || printf '.')";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -151,7 +151,7 @@ The user's chat response is authoritative. The visual artifact is supporting con
 
 ## File Placement
 
-Use workspace `.tmp` by default because visual probes are disposable scratch:
+Use the workspace `.tmp/rocketclaw` tree by default because visual probes are disposable scratch:
 
 ```text
 <scratch-root>/ce-brainstorm-visual/<run-id>/

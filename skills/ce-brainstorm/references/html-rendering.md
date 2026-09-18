@@ -102,15 +102,15 @@ carrying layout, color, or typography rules the doc cannot read offline.
 When tier 3 of the precedence stack applies, look for a DESIGN.md file in
 these locations, first match wins:
 
-1. Workspace root (resolve via `jj workspace root`).
+1. Workspace root (resolve via `jj workspace root`, cwd = that workspace).
 2. `docs/DESIGN.md`.
 3. `.rocketclaw/DESIGN.md`.
 
 Read once at compose time. Absent → fall through to the fallback default.
 
 Workspace-root only — do not fall through to another workspace. Users
-working from a workspace who want HTML defaults can add DESIGN.md to the
-workspace.
+working from a named workspace who want HTML defaults can add DESIGN.md to
+that workspace.
 
 **DESIGN.md is a partial override, not all-or-nothing.** Real DESIGN.md
 files vary widely: some are token tables, some are CSS variables, some are
@@ -229,10 +229,8 @@ every entry into a browser or IDE.
 Resolve the repo's GitHub URL once at compose time:
 
 ```bash
-jj git remote list
+(cd "$(jj workspace root)" && jj git remote list)
 ```
-
-Use the URL on the `origin` line (name, then URL). Do not parse `.jj/` or `.git/`.
 
 Apply linking to three reference shapes:
 

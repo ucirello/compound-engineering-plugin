@@ -19,8 +19,8 @@ Exit 0 whenever resolution ran (per-entry failures are data in `errors` /
 availability (e.g. an unreachable git source skipped per the warn-and-continue
 contract).
 
-`--declared-only` answers the config-only question without cloning sources or
-the cache: it parses both config layers, shape-checks each entry, and prints
+`--declared-only` answers the config-only question without touching git or the
+cache: it parses both config layers, shape-checks each entry, and prints
 
     {"declared": <bool|null>, "entries": <n>, "errors": [...]}
 
@@ -41,14 +41,15 @@ Entry shape (documented subset -- anything else under `packs:` is a loud error):
         id: rails-core                         # rename (single-pack entries)
       - source: https://github.com/o/r/tree/main/packs   # tree-URL sugar
 
-Git sources cache under `<workspace>/.tmp/ce-setup/ce-packs/<sha256(url\\nref)>`
+Git sources cache under `<workspace>/.tmp/rocketclaw/ce-packs/<sha256(url\\nref)>`
 with an atomic temp-clone-then-rename, so a keyed path's existence proves a
-complete clone. All jj subprocesses run non-interactively (GIT_TERMINAL_PROMPT=0,
-ssh BatchMode, bounded timeout): missing credentials degrade to a warning, never
-a hang. A missing `jj` binary degrades git sources only (each warns and is
-skipped); path sources still resolve when `jj workspace root` succeeds.
-Environment overrides: CE_PACKS_CACHE_ROOT (cache base for tests),
-CE_PACKS_GIT_TIMEOUT (seconds, default 60).
+complete clone. Remote clones use public `jj git clone` (cwd is the cache
+parent; never the git CLI, never `.jj`/`.git` on disk). Missing credentials
+degrade to a warning, never a hang. A missing `jj` binary degrades git sources
+only (each warns and is skipped); path sources still resolve, with the
+workspace located by `jj workspace root` from the working directory. Environment
+overrides: CE_PACKS_CACHE_ROOT (cache base for tests), CE_PACKS_GIT_TIMEOUT
+(seconds, default 60).
 
 A published pack is a directory a consumer lists and reads itself, so nothing
 in it may link outside its source: a pack whose tree holds such a link is not
@@ -93,7 +94,7 @@ def _within(path: str, parent: str) -> bool:
     return path == parent or path.startswith(parent + os.sep)
 
 
-# --- scratch root (workspace .tmp/ce-setup, fall back to local .tmp) ---
+# --- scratch root (workspace .tmp/rocketclaw; local .tmp if no jj workspace) ---
 
 def _owned_dir(path: str) -> bool:
     """Directory, not a symlink, owned by the effective uid (POSIX)."""
@@ -140,28 +141,14 @@ def cache_base() -> str | None:
         root = os.path.abspath(configured)
         os.makedirs(root, exist_ok=True)
         return root
-    bases = []
-    if shutil.which("jj") is not None:
-        proc = subprocess.run(
-            ["jj", "workspace", "root"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            bases.append(os.path.join(proc.stdout.strip(), ".tmp"))
-    bases.append(os.path.abspath(".tmp"))
-    seen = set()
-    for base in bases:
-        if base in seen:
-            continue
-        seen.add(base)
-        if not _private_root_usable(base):
-            continue
-        root = os.path.join(base, "ce-setup")
-        if _private_root_usable(root):
-            packs = os.path.join(root, "ce-packs")
-            if _private_root_usable(packs):
-                return packs
-    return None
+    workspace = _repo_root() or os.getcwd()
+    parent = os.path.join(workspace, ".tmp", "rocketclaw")
+    try:
+        os.makedirs(parent, exist_ok=True)
+    except OSError:
+        return None
+    root = os.path.join(parent, "ce-packs")
+    return root if _private_root_usable(root) else None
 
 
 # --- minimal YAML reader for the documented packs: subset --------------------
@@ -272,7 +259,7 @@ def _set_key(entry: dict, key: str, raw_val: str, loc: str, errors: list) -> Non
     entry[key] = _parse_value(raw_val)
 
 
-# --- git ---------------------------------------------------------------------
+# --- git sources via public jj git clone -------------------------------------
 
 @functools.lru_cache(maxsize=None)
 def _git_env() -> dict:
@@ -286,10 +273,18 @@ def _git_env() -> dict:
 
 
 def _run_jj(args: list, cwd: str | None = None):
+    """Run public `jj` with cwd set to a workspace root (or clone parent). Never `jj -R`."""
     return subprocess.run(
         ["jj", *args], cwd=cwd, env=_git_env(), timeout=GIT_TIMEOUT,
         capture_output=True, text=True,
     )
+
+
+def _jj_clone_into(url: str, dest: str, parent: str, extra: list) -> subprocess.CompletedProcess:
+    """`jj git clone` requires dest not to exist; parent is the cache workspace-adjacent dir."""
+    if os.path.isdir(dest):
+        os.rmdir(dest)
+    return _run_jj(["--quiet", "git", "clone", "--depth", "1", *extra, url, dest], cwd=parent)
 
 
 def resolve_git_source(url: str, ref: str, warnings: list, label: str) -> str | None:
@@ -320,27 +315,25 @@ def resolve_git_source(url: str, ref: str, warnings: list, label: str) -> str | 
             return None
     tmp = tempfile.mkdtemp(prefix=f"{key}.part-", dir=base)
     try:
-        def _clone(*extra: str):
-            if os.path.isdir(tmp):
-                shutil.rmtree(tmp, ignore_errors=True)
-            os.mkdir(tmp, 0o700)
-            return _run_jj(
-                ["--quiet", "git", "clone", "--depth", "1", *extra, url, tmp],
-                cwd=base,
-            )
-
         try:
-            proc = _clone("-b", ref)
-            if proc.returncode != 0:
-                proc = _clone("-t", ref)
+            proc = _jj_clone_into(url, tmp, base, ["--branch", ref])
         except subprocess.TimeoutExpired:
             warnings.append(f"{label}: jj git clone timed out after {int(GIT_TIMEOUT)}s; source skipped")
             return None
         if proc.returncode != 0:
-            # Public `jj git clone` fetches a branch (`-b`) or tag (`-t`). There is
-            # no public equivalent of fetching an arbitrary commit SHA.
-            warnings.append(f"{label}: cannot fetch `{ref}` from {url}; source skipped")
-            return None
+            try:
+                shutil.rmtree(tmp, ignore_errors=True)
+                proc = _jj_clone_into(url, tmp, base, ["--tag", ref])
+                if proc.returncode != 0:
+                    shutil.rmtree(tmp, ignore_errors=True)
+                    proc = _jj_clone_into(url, tmp, base, [])
+                    fetched = proc.returncode == 0 and _run_jj(["new", ref], cwd=tmp).returncode == 0
+                    if not fetched:
+                        warnings.append(f"{label}: cannot fetch `{ref}` from {url}; source skipped")
+                        return None
+            except subprocess.TimeoutExpired:
+                warnings.append(f"{label}: jj git clone timed out after {int(GIT_TIMEOUT)}s; source skipped")
+                return None
         if not os.path.lexists(dest):
             try:
                 os.replace(tmp, dest)
@@ -453,7 +446,7 @@ def enumerate_packs(source_root: str, boundary: str, escaped: list, self_name: s
     """Map published pack id -> dir. Immediate children only; self = single pack.
 
     `boundary` is the realpath every child directory and rule file must stay
-    within (the source checkout, the repository, or the source root itself); a
+    within (the git checkout, the repository, or the source root itself); a
     child that links outside it is recorded in `escaped` and skipped. Symlinks
     that stay inside the boundary are ordinary content.
     """
@@ -493,7 +486,7 @@ def nested_rules_warning(pack_id: str, pack_dir: str, boundary: str) -> str | No
     where = ", ".join(f"`{name}/`" for name in hits)
     return (
         f"pack `{pack_id}` has {total} rule-shaped file(s) under {where} that discovery"
-        " never reads -- move rules to the pack's top level (see https://everyinc.github.io/rocketclaw-plugin/guides/packs/, Pack layout)"
+        " never reads -- move rules to the pack's top level (see the packs guide, Pack layout)"
     )
 
 
@@ -573,7 +566,11 @@ def resolve_entry(entry: dict, repo_root: str, roots: list, warnings: list, erro
         else:
             source_root = os.path.realpath(os.path.join(repo_root, expanded))
             repo_real = os.path.realpath(repo_root)
-            if not _within(source_root, repo_real):
+            if (
+                not _within(source_root, repo_real)
+                or _within(source_root, os.path.join(repo_real, ".git"))
+                or _within(source_root, os.path.join(repo_real, ".jj"))
+            ):
                 errors.append(f"{label}: repo-relative source `{source}` resolves outside the repository")
                 return
             boundary = repo_real
@@ -668,14 +665,19 @@ def _emit(declared_only: bool, entries: list, roots: list, warnings: list, error
     return 0
 
 
+@functools.lru_cache(maxsize=None)
 def _repo_root() -> str | None:
     """The enclosing workspace root from `jj workspace root`. None when jj is
-    missing or the working directory is not inside a JJ workspace."""
+    missing or the working directory is not inside a workspace. Never infers
+    identity from `.git` or `.jj` on disk."""
     if shutil.which("jj") is None:
         return None
     proc = subprocess.run(
         ["jj", "workspace", "root"],
-        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        cwd=os.getcwd(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
     )
     return proc.stdout.strip() if proc.returncode == 0 else None
 
@@ -684,14 +686,14 @@ def _main(argv: list) -> int:
     parser = argparse.ArgumentParser(description="Resolve the Compound Packs declared in RocketClaw config.")
     parser.add_argument(
         "--declared-only", action="store_true",
-        help="parse and shape-check the packs: entries only; no clone or cache work",
+        help="parse and shape-check the packs: entries only; no git or cache work",
     )
     args = parser.parse_args(argv)
     warnings, errors, roots, entries = [], [], [], []
 
     repo_root = _repo_root()
     if repo_root is None:
-        warnings.append("not inside a Jujutsu workspace; no RocketClaw config to read")
+        warnings.append("not inside a jj workspace; no RocketClaw config to read")
         return _emit(args.declared_only, entries, roots, warnings, errors)
     cfg_dir = os.path.join(repo_root, ".rocketclaw")
     for name in CONFIG_FILES:

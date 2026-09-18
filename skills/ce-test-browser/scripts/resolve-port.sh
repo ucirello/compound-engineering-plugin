@@ -9,7 +9,13 @@
 #
 # Resolution order: EXPLICIT_PORT, a --port flag in package.json, PORT= in .env /
 # .env.local / .env.development, then 3000.
+#
+# package.json and .env* are read from the JJ workspace root (`jj workspace root`).
+# If jj cannot name a workspace, the current directory is used.
 set -u
+
+workspace_root=$(jj workspace root 2>/dev/null || pwd)
+cd "$workspace_root" || exit 1
 
 free=0
 explicit=""

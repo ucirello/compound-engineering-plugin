@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Run one pre-sanctioned, write-capable implementation route in a controller-
-# supplied detached workspace. The adapter never creates worktrees, changes
+# supplied detached workspace. The adapter never creates workspaces, changes
 # recipients, integrates output, or retries through another route.
 #
 # Usage:
 #   cross-model-work.sh <authorization-json> <workspace> <unit-packet> <expected-packet-sha256> <result-dir>
 #
-# Routes: codex | claude | grok-cli | cursor | composer | grok-cursor | opencode
+# Routes: codex | claude | grok-cli | cursor | composer | grok-cursor | opencode | opencode2
 # Output: <result-dir>/implementation-result.json and redacted adapter.log
 # Exit: 0 host-resolvable terminal result, 1 failed/schema-invalid, 2 unavailable
 #
@@ -35,6 +35,7 @@ route_target() {
     codex|claude|cursor|composer) printf '%s' "$1" ;;
     grok-cli|grok-cursor) printf 'grok' ;;
     opencode) printf 'opencode' ;;
+    opencode2) printf 'opencode2' ;;
     *) return 1 ;;
   esac
 }
@@ -46,6 +47,7 @@ route_harness() {
     grok-cli) printf 'grok' ;;
     cursor|composer|grok-cursor) printf 'cursor-agent' ;;
     opencode) printf 'opencode' ;;
+    opencode2) printf 'opencode2' ;;
     *) return 1 ;;
   esac
 }
@@ -65,7 +67,7 @@ route_model() {
     codex|claude|grok-cli|cursor) printf 'auto' ;;
     grok-cursor) printf '%s' "$M_GROK_CURSOR" ;;
     composer) printf '%s' "$M_COMPOSER" ;;
-    opencode) printf 'auto' ;;
+    opencode|opencode2) printf 'auto' ;;
   esac
 }
 
@@ -73,7 +75,7 @@ validate_model_override() {
   local route="$1" override="${CE_WORK_MODEL_OVERRIDE:-}" override_target="${CE_WORK_MODEL_OVERRIDE_TARGET:-}" target override_lower
   [ -n "$override" ] || { [ -z "$override_target" ]; return; }
   case "$override_target" in
-    codex|claude|grok|cursor|composer|opencode) ;;
+    codex|claude|grok|cursor|composer|opencode|opencode2) ;;
     *) return 1 ;;
   esac
   target="$(route_target "$route")" || return 1
@@ -90,7 +92,7 @@ validate_model_override() {
     esac
   fi
   case "$route:$override" in
-    codex:gpt-*|codex:o[0-9]*|claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|composer:composer-*|opencode:*/*) ;;
+    codex:gpt-*|codex:o[0-9]*|claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|composer:composer-*|opencode:*/*|opencode2:*/*) ;;
     *) return 1 ;;
   esac
 }
@@ -107,6 +109,7 @@ validate_effort_override() {
     codex:minimal|codex:low|codex:medium|codex:high|codex:xhigh) ;;
     grok-cli:low|grok-cli:medium|grok-cli:high) ;;
     opencode:none|opencode:minimal|opencode:low|opencode:medium|opencode:high|opencode:xhigh|opencode:max|opencode:default) ;;
+    opencode2:none|opencode2:minimal|opencode2:low|opencode2:medium|opencode2:high|opencode2:xhigh|opencode2:max|opencode2:default) ;;
     *) return 1 ;;
   esac
 }
@@ -164,6 +167,23 @@ adapter_argv() {
       # OpenCode carries effort through --variant, same as the review adapters.
       [ -z "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ] || printf '%s\0' --variant "$CROSS_MODEL_EFFORT_OVERRIDE"
       ;;
+    opencode2)
+      # v2.0.8: `opencode2 run --help` has --format, --file, --auto, --model
+      # provider/model#variant. No --dir (the adapter already cds to WORKSPACE)
+      # and no --variant; effort is the #variant suffix when the pin has none.
+      printf '%s\0' opencode2 run --format json --auto --file "$PROMPT_FILE"
+      printf '%s\0' "Follow the attached unit packet. Return only the implementation result JSON."
+      oc2_model="$(route_model opencode2)"
+      if [ "$oc2_model" != auto ]; then
+        if [ -n "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ]; then
+          case "$oc2_model" in
+            *#*) ;;
+            *) oc2_model="${oc2_model}#${CROSS_MODEL_EFFORT_OVERRIDE}" ;;
+          esac
+        fi
+        printf '%s\0' --model "$oc2_model"
+      fi
+      ;;
     *) return 1 ;;
   esac
 }
@@ -211,7 +231,9 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/ce-work-adapter-XXXXXX")" || exit 2
+SCRATCH_PARENT="$WORKSPACE/.tmp"
+mkdir -p "$SCRATCH_PARENT" || exit 2
+SCRATCH="$(mktemp -d "$SCRATCH_PARENT/ce-work-adapter-XXXXXX")" || exit 2
 chmod 700 "$SCRATCH"
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
@@ -246,6 +268,7 @@ contracts = {
     "composer": ("composer", "cursor-agent", ["cursor"], "adapter-enforced"),
     "grok-cursor": ("grok", "cursor-agent", ["cursor"], "adapter-enforced"),
     "opencode": ("opencode", "opencode", [], "cooperative"),
+    "opencode2": ("opencode2", "opencode2", [], "cooperative"),
 }
 
 def fail(message):
@@ -269,8 +292,8 @@ def model_allowed(route, model):
         return bool(re.fullmatch(r"composer-[A-Za-z0-9._-]+", model))
     if route == "grok-cursor":
         return bool(re.fullmatch(r"cursor-grok-[A-Za-z0-9._-]+", model))
-    if route == "opencode":
-        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+", model))
+    if route in ("opencode", "opencode2"):
+        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+(?:#[A-Za-z0-9._-]+)?", model))
     return False
 
 try:
@@ -395,7 +418,7 @@ PACKET="$(cd "$(dirname "$PACKET")" && pwd -P)/$(basename "$PACKET")" || exit 2
 RESULT_DIR="$(cd "$RESULT_DIR" && pwd -P)" || exit 2
 case "$RESULT_DIR/" in "$WORKSPACE/"*) log "result dir must be outside the worker workspace"; exit 2 ;; esac
 case "$PACKET" in "$WORKSPACE"/*) log "unit packet must be outside the worker workspace"; exit 2 ;; esac
-git -C "$WORKSPACE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { log "workspace is not a Git worktree"; exit 2; }
+(cd "$WORKSPACE" && jj workspace root >/dev/null 2>&1) || { log "workspace is not a JJ workspace"; exit 2; }
 chmod 700 "$RESULT_DIR" 2>/dev/null || { log "result dir could not be made private"; exit 2; }
 RESULT_DIR_IDENTITY="$("$PY" - "$RESULT_DIR" <<'PY'
 import os, stat, sys
@@ -686,7 +709,7 @@ if [ "${CE_WORK_REQUIRE_ENFORCED_CONFINEMENT:-}" = "1" ]; then
       publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
       exit 2
       ;;
-    opencode)
+    opencode|opencode2)
       publish_unavailable "route offers cooperative workspace restriction, not required enforceable confinement" || exit 2
       exit 2
       ;;
@@ -699,6 +722,7 @@ case "$ROUTE" in
   grok-cli) BINARY=grok ;;
   cursor|composer|grok-cursor) BINARY=cursor-agent ;;
   opencode) BINARY=opencode ;;
+  opencode2) BINARY=opencode2 ;;
 esac
 # The Codex desktop app (Codex.app, or ChatGPT.app since the July 2026 merger)
 # ships `codex` at Contents/Resources without linking it onto PATH (#1272).
@@ -727,7 +751,7 @@ while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROU
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-[ -n "${TMPDIR:-}" ] && MIN_ENV+=("TMPDIR=$TMPDIR")
+MIN_ENV+=("TMPDIR=$WORKSPACE/.tmp")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")
@@ -738,7 +762,7 @@ case "$ROUTE" in
   codex) [ -n "${CODEX_HOME:-}" ] && MIN_ENV+=("CODEX_HOME=$CODEX_HOME") ;;
   claude) [ -n "${CLAUDE_CONFIG_DIR:-}" ] && MIN_ENV+=("CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR") ;;
   grok-cli) [ -n "${GROK_CONFIG_HOME:-}" ] && MIN_ENV+=("GROK_CONFIG_HOME=$GROK_CONFIG_HOME") ;;
-  opencode)
+  opencode|opencode2)
     [ -n "${OPENCODE_CONFIG_DIR:-}" ] && MIN_ENV+=("OPENCODE_CONFIG_DIR=$OPENCODE_CONFIG_DIR")
     [ -n "${OPENCODE_CONFIG:-}" ] && MIN_ENV+=("OPENCODE_CONFIG=$OPENCODE_CONFIG")
     ;;
@@ -899,7 +923,7 @@ def normalize_served_model(value):
 
 try: raw=open(source, encoding="utf-8", errors="replace").read()
 except OSError: raw=""
-if route == "opencode":
+if route in ("opencode", "opencode2"):
     parts=[]
     for line in raw.splitlines():
         try: event=json.loads(line)

@@ -12,4 +12,10 @@ After the report, check that the project's instruction files would lead an agent
 
 4. Interactive: show the proposed change and where it goes, explain why it matters (fresh sessions and plugin-less collaborators won't find the store otherwise), and get consent via a blocking question before editing. Non-interactive: emit a "Discoverability recommendation" line in the report instead of editing instruction files — non-interactive scope is doc maintenance, not project config.
 5. If `CONCEPTS.md` exists at the repo root, run the same check for it (e.g., a `CONCEPTS.md  # shared domain vocabulary — read when orienting to the codebase` line). Skip entirely when it doesn't exist — never nag for an artifact the project hasn't adopted.
-6. If this check edited an instruction file after Commit already ran, amend the commit (same branch, not yet pushed) or add a small follow-up commit (e.g., `docs: add solutions discoverability to AGENTS.md`), and push it if the branch was already pushed so an open PR includes it. If the user chose "don't commit", leave the edits uncommitted alongside the rest.
+6. If this check edited an instruction file after Commit already ran, fold the edits into the refresh change with `jj squash` (same bookmark, not yet pushed) or add a small follow-up change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Repo-local syntax from project instructions and `git log` ALWAYS wins when it differs from Go guidance. Apply compatible Go guidance to quality/clarity/structure without replacing local syntax. The follow-up description's constraint: it records the discoverability addition to the instruction file.
+
+```bash
+(cd "$workspace_root" && jj commit -- <instruction-file> -m "<message composed from the standards above>")
+```
+
+If the bookmark was already pushed, `jj git push --bookmark <name>` so an open PR includes it. If the user chose "don't commit", leave the edits in `@` alongside the rest.

@@ -2,6 +2,14 @@
 
 This reference owns the path from invocation to a launched app with log capture running.
 
+## Workspace and evidence
+
+Resolve the workspace root with `jj workspace root`. When the current directory is outside a JJ workspace, use that directory as the local workspace root. Inside a JJ workspace, treat `jj status`, `jj diff`, and `jj log` as authoritative for working-copy state, changed surfaces, and relevant history. Jujutsu has working-copy changes and bookmarks, not a staging area or current branch; do not substitute mutating Git commands for JJ operations.
+
+Preserve operational interoperability rather than translating it into repository mutation. Use `GIT_DIR="$(jj git root)" gh` for GitHub metadata when the user's scope names a PR or other GitHub object. Keep every repository read and mutation in JJ; Git Bash remains a supported shell.
+
+Create one private run directory under `<workspace-root>/.tmp/rocketclaw/ce-test-xcode/<run-id>/` and retain its absolute path. Store screenshots, captured logs, and other temporary evidence only there; do not use operating-system or global temporary storage. Inside JJ, first confirm existing ignore rules exclude `.tmp/` from working-copy snapshots; if they do not, stop with that blocker rather than editing ignore configuration or recording evidence in the change. Outside JJ, the same path is rooted at the local workspace directory.
+
 ## Availability gate
 
 Confirm that the active harness exposes XcodeBuildMCP's simulator-listing capability and that the call succeeds. Host-specific MCP tool prefixes are adapters, not the contract.
@@ -29,4 +37,4 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 
 Any failure before the app is visibly launched with log capture running is a setup blocker: preserve its evidence, report it, and stop later stages.
 
-At handoff, retain the project/workspace, scheme, simulator identity, app identity, and log-capture handle needed by `test-and-report.md`.
+At handoff, retain the project/workspace, scheme, simulator identity, app identity, log-capture handle, and evidence-directory path needed by `test-and-report.md`.

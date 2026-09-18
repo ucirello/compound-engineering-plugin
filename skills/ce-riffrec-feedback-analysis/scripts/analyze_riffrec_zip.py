@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and CE-friendly markdown
+transcript, high-signal video frames when available, and RocketClaw-friendly markdown
 artifacts.
 """
 
@@ -17,7 +17,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -85,6 +84,35 @@ def parse_args() -> argparse.Namespace:
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return re.sub(r"-{2,}", "-", slug) or "riffrec-feedback"
+
+
+def resolve_workspace_root() -> Path:
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"],
+            cwd=str(Path.cwd()),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return Path.cwd()
+    root = result.stdout.strip()
+    if result.returncode != 0 or not root:
+        return Path.cwd()
+    return Path(root)
+
+
+def make_unique_dir(parent: Path, prefix: str) -> Path:
+    parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(256):
+        candidate = parent / f"{prefix}{os.urandom(4).hex()}"
+        try:
+            candidate.mkdir()
+            return candidate
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"Could not create a unique directory under {parent} with prefix {prefix}")
 
 
 def read_json(path: Path, default: Any) -> Any:
@@ -205,11 +233,11 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
 
 
 def default_output_dir(source_path: Path) -> Path:
-    cwd = Path.cwd()
+    workspace_root = resolve_workspace_root()
     stem = slugify(source_path.stem)
-    if (cwd / "docs" / "brainstorms").is_dir():
-        return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
-    return cwd / "riffrec-feedback" / stem
+    if (workspace_root / "docs" / "brainstorms").is_dir():
+        return workspace_root / "docs" / "brainstorms" / "riffrec-feedback" / stem
+    return workspace_root / "riffrec-feedback" / stem
 
 
 def classify_source(source_path: Path) -> str:
@@ -365,9 +393,7 @@ def populate_source_snapshot(source_path: Path, snapshot_dir: Path, source_kind:
 def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = None) -> dict[str, Any]:
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
-    )
+    staging_dir = make_unique_dir(raw_dir.parent, f".{raw_dir.name}.staging-")
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
         promote_raw_snapshot(staging_dir, raw_dir)
@@ -655,9 +681,7 @@ def select_moments(
 def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[dict[str, Any]]) -> None:
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
-    staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
-    )
+    staging_dir = make_unique_dir(frames_dir.parent, f".{frames_dir.name}.staging-")
     try:
         if not recording_path or not recording_path.exists():
             for moment in moments:
@@ -833,7 +857,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a RocketClaw requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -1006,7 +1030,7 @@ def write_source_materials(
         f"- Source kind: `{source_kind}`",
         f"- Original path: `{source_path}`",
         f"- Local raw copy: `{link(copied_source) if copied_source else 'n/a'}`",
-        "- Commit policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; commit generated Markdown/JSON/manifests when useful for brainstorm/planning traceability.",
+        "- Change policy: raw media, audio chunks, zip contents, session dumps, and extracted screenshots are local-only by default; include generated Markdown/JSON/manifests in a JJ change when useful for brainstorm/planning traceability.",
         f"- Session URL: `{session.get('url', 'unknown')}`",
         f"- Duration: `{session.get('duration_seconds', 'unknown')}` seconds",
         "",
@@ -1027,10 +1051,10 @@ def write_source_materials(
 
     if chunk_files:
         lines.append("- Transcription chunks:")
-        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; not commit-safe by default.")
+        lines.append(f"  - retained locally in `{link(raw_dir / 'transcription_chunks')}`; do not include in a JJ change by default.")
 
     lines.extend(["", "## Local-Only Frames", ""])
-    lines.append("Extracted screenshots are retained locally for agent inspection and should not be committed by default.")
+    lines.append("Extracted screenshots are retained locally for agent inspection and should not be included in a JJ change by default.")
     lines.append("")
     if moments:
         lines.append("| Moment | Time | Screenshot | Why selected |")
@@ -1049,7 +1073,7 @@ def write_source_materials(
             lines.append(f"- `{link(frame)}`")
 
     lines.extend(["", "## Local Raw Files", ""])
-    lines.append("Raw files are intentionally local-only by default. Do not commit these unless the user explicitly asks and privacy/security is acceptable.")
+    lines.append("Raw files are intentionally local-only by default. Do not include these in a JJ change unless the user explicitly asks and privacy/security is acceptable.")
     lines.append("")
     for raw_file in raw_files[:50]:
         lines.append(f"- `{link(raw_file)}`")
@@ -1254,7 +1278,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = Path.cwd()
+    repo_root = resolve_workspace_root()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
@@ -1297,7 +1321,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: $rocketclaw:ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

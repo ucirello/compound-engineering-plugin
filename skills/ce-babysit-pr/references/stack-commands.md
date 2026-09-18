@@ -7,23 +7,25 @@ Always non-interactive. Prefer JSON/view probes and explicit branch names; never
 ## After an owned push on the active layer (dependents exist)
 
 ```bash
+GIT_DIR=$(jj git root)
 gh stack rebase "<first-open-dependent-branch>" --upstack --no-trunk --remote <tracking-remote>
 gh stack push --remote <tracking-remote>
 ```
 
-Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — git branch names may contain shell metacharacters. On conflict: `gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
+Starting at the first dependent excludes the active target from the cascading rebase. Quote the branch name — branch names may contain shell metacharacters. On conflict: `GIT_DIR=$(jj git root) gh stack rebase --abort`, then surface a needs-human / stack-sync residual.
 
 ## Discover order / next open layer
 
 ```bash
-gh stack view --json
+GIT_DIR=$(jj git root) gh stack view --json
 ```
 
 ## Land one prefix (only under `posture:stack-land`)
 
-Merge the **bottom-most open settled** PR — `gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
+Merge the **bottom-most open settled** PR — `GIT_DIR=$(jj git root) gh stack merge <PR>` merges the full stack prefix through that PR atomically. Never merge an upstack active PR while downstack PRs remain open when single-prefix landing is intended.
 
 ```bash
+GIT_DIR=$(jj git root)
 gh stack merge <BOTTOM_MOST_OPEN_SETTLED_PR> --yes --squash
 gh stack sync --remote <tracking-remote>
 ```
@@ -36,4 +38,4 @@ Re-probe the landed PR before advancing: on merge-queue bases the CLI may succee
 gh pr merge …
 ```
 
-Use `gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.
+Use `GIT_DIR=$(jj git root) gh stack merge` only. Under `posture:target` and `posture:stack-ready`, print the exact merge command when reporting ready-as-next; do not execute it.

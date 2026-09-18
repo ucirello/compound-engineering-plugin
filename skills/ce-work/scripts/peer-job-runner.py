@@ -60,11 +60,9 @@ outcome exactly once; when both the worker's internal cap and the
 supervisor's window fire, the supervisor's record wins.
 
 Environment overrides (defaults in parentheses):
-  CE_PEER_JOBS_ROOT         base dir (/tmp/compound-engineering-<effective-uid>,
-                            or $TMPDIR/compound-engineering-<effective-uid> when
-                            /tmp cannot host a writable private root, e.g. under
-                            a sandbox that only allowlists $TMPDIR)
-  CE_WORK_RUNS_ROOT         parent CE Work dir containing all <run-id>/ dirs
+  CE_PEER_JOBS_ROOT         base dir ($(jj workspace root)/.tmp/rocketclaw,
+                            or .tmp/rocketclaw when JJ is unavailable)
+  CE_WORK_RUNS_ROOT         parent ce-work dir containing all <run-id>/ dirs
   CE_PEER_IDLE_SECS         idle window, no out.log growth (240)
   CE_PEER_HARD_SECS         hard cap on worker wall clock
                             (default: max(1230, CROSS_MODEL_HARD_SECS+30);
@@ -81,7 +79,7 @@ Environment overrides (defaults in parentheses):
                             CE_PEER_BASH is unset (#1268)
 
 Security posture: the job root is a predictable, owner-private directory under
-world-shared /tmp. Every read of job state opens the file first (no-follow) and
+the workspace `.tmp/rocketclaw` tree. Every read of job state opens the file first (no-follow) and
 verifies the descriptor's owner (os.fstat st_uid == os.geteuid, guarded where
 geteuid is unavailable) before any content is emitted; a mismatch reports
 "unreadable", never content. Reads are bounded by size caps — out.log is never
@@ -117,8 +115,8 @@ POSIX path is behaviorally unchanged:
             handle (GetSecurityInfo) exactly like the POSIX fstat-by-fd check.
   privacy   0700/0600 modes become a hardened ACL (icacls: break inheritance,
             grant only the user + SYSTEM + Administrators — the root-equivalents).
-  jobs root defaults under %LOCALAPPDATA%\\compound-engineering-jobs (then the
-            user temp dir), owner-private, since there is no shared /tmp.
+  jobs root defaults under %LOCALAPPDATA%\\rocketclaw-jobs (then the
+            user temp dir), owner-private.
 
 Pure stdlib. No third-party dependencies.
 """
@@ -155,9 +153,7 @@ if IS_WINDOWS:
     # under LOCALAPPDATA (falling back to the user temp dir) with a hardened ACL
     # so R6 has a working default rather than a required override.
     _WIN_ROOT_BASE = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
-    DEFAULT_ROOT = os.path.join(_WIN_ROOT_BASE, "compound-engineering-jobs")
-elif _EFFECTIVE_UID is not None:
-    DEFAULT_ROOT = os.path.join("/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
+    DEFAULT_ROOT = os.path.join(_WIN_ROOT_BASE, "rocketclaw-jobs")
 else:
     DEFAULT_ROOT = None
 O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
@@ -214,12 +210,7 @@ _RUNNER_HARD_GRACE = 30.0
 
 
 def _private_root_usable(path: str) -> bool:
-    """True when `path` is (or can now be) a directory we own and can write into.
-
-    Creation is the probe: a sandbox that denies writes under /tmp refuses the
-    mkdir, and one that lets a pre-existing root stand still fails the access
-    check, so both land on the fallback instead of failing at the first job.
-    """
+    """True when `path` is (or can now be) a directory we own and can write into."""
     try:
         os.mkdir(path, 0o700)
     except FileExistsError:
@@ -233,42 +224,41 @@ def _private_root_usable(path: str) -> bool:
     return os.access(path, os.W_OK)
 
 
-def _fallback_root() -> str:
-    return os.path.join(os.environ.get("TMPDIR") or "/tmp", f"compound-engineering-{_EFFECTIVE_UID}")
+def _workspace_scratch_root() -> str:
+    proc = subprocess.run(
+        ["jj", "workspace", "root"],
+        cwd=os.getcwd(),
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        root = proc.stdout.decode("utf-8", "surrogateescape").strip()
+        if root:
+            return os.path.join(os.path.realpath(root), ".tmp", "rocketclaw")
+    return os.path.abspath(os.path.join(".tmp", "rocketclaw"))
 
 
 def jobs_root_base() -> str:
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return os.path.abspath(configured)
-    if DEFAULT_ROOT is None:
-        raise RunnerError("effective user ID is unavailable; cannot derive the jobs root")
-    if IS_WINDOWS or _private_root_usable(DEFAULT_ROOT):
+    if IS_WINDOWS:
+        if DEFAULT_ROOT is None:
+            raise RunnerError("Windows jobs root is unavailable")
         return os.path.abspath(DEFAULT_ROOT)
-    # Same order and candidates as the skills' shell preamble, so a job started
-    # there is found here.
-    return os.path.abspath(_fallback_root())
+    return _workspace_scratch_root()
 
 
 def candidate_jobs_root_bases() -> list:
-    """Every root an existing job may live under: the configured root alone, or
-    both the /tmp root and the $TMPDIR fallback (deduplicated, primary first).
-
-    Creation uses jobs_root_base(); lookup of an already-started job must not
-    depend on which root *this* invocation would create under, because a
-    sandboxed session and a later unsandboxed one resolve different roots.
-    """
+    """Every root an existing job may live under."""
     configured = os.environ.get("CE_PEER_JOBS_ROOT")
     if configured:
         return [os.path.abspath(configured)]
-    if DEFAULT_ROOT is None:
-        raise RunnerError("effective user ID is unavailable; cannot derive the jobs root")
-    bases = [os.path.abspath(DEFAULT_ROOT)]
-    if not IS_WINDOWS:
-        fallback = os.path.abspath(_fallback_root())
-        if fallback not in bases:
-            bases.append(fallback)
-    return bases
+    if IS_WINDOWS:
+        if DEFAULT_ROOT is None:
+            raise RunnerError("Windows jobs root is unavailable")
+        return [os.path.abspath(DEFAULT_ROOT)]
+    return [_workspace_scratch_root()]
 
 
 def skill_runs_root(skill: str) -> str:
@@ -1955,7 +1945,7 @@ def _require_detach_support() -> None:
             "detached peer jobs require os.fork/os.setsid on this platform; no "
             "job was started. Run under a POSIX Python, or on native Windows use "
             "a Windows Python 3 build (see "
-            "EveryInc/compound-engineering-plugin#1243)."
+            "issue #1243)."
         )
 
 
@@ -2186,7 +2176,7 @@ def cmd_result(args) -> int:
         # Verified read of an arbitrary artifact: same fd-ownership check and
         # bounded read as job results. Exists because fold-in filenames can embed
         # values unknown at start time (so no --result-path was declared), yet the
-        # consumer must never read a predictable /tmp path unchecked.
+        # consumer must never read a predictable scratch path unchecked.
         target = os.path.abspath(args.path)
         try:
             data = read_owned(target, cfg()["result_max"])

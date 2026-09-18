@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compound Engineering environment health check.
+# RocketClaw environment health check.
 # Reports optional tool capabilities and repo-local config safety in one pass.
 
 set -o pipefail
@@ -90,13 +90,13 @@ resolve_real_best_effort() {
 # config.local.yaml is ignored. Unset -> default root `docs`. A configured
 # value is validated and rejected (never silently defaulted) when it is
 # absolute, escapes the repository via path or symlink, resolves to the repo
-# root or inside .git/, or names an existing non-directory. Sets
+# root or inside .git/ or .jj/, or names an existing non-directory. Sets
 # docs_root_status (default|configured|invalid), docs_root_value,
 # docs_root_source, docs_root_error, and docs_root_local_ignored.
 resolve_docs_root() {
   local repo_root="$1"
-  local local_cfg="$repo_root/.compound-engineering/config.local.yaml"
-  local tracked_cfg="$repo_root/.compound-engineering/config.yaml"
+  local local_cfg="$repo_root/.rocketclaw/config.local.yaml"
+  local tracked_cfg="$repo_root/.rocketclaw/config.yaml"
   local value="" source="" repo_real real local_docs probe
 
   docs_root_error=""
@@ -121,8 +121,8 @@ resolve_docs_root() {
   # Reject any `..` path component up front. resolve_real_best_effort only
   # collapses `..` within the existing prefix (via cd/pwd -P); a `..` that
   # traverses a not-yet-created segment would otherwise survive literally and
-  # escape the repo, hit the repo root, or reach .git/ while still string-prefix
-  # matching. A legitimate repo-relative artifact root never needs `..`.
+  # escape the repo, hit the repo root, or reach .git/ or .jj/ while still
+  # string-prefix matching. A legitimate repo-relative artifact root never needs `..`.
   case "/$value/" in
     */../*) docs_root_error="path traversal ('..') is not allowed; use a plain repo-relative path"; return ;;
   esac
@@ -135,6 +135,7 @@ resolve_docs_root() {
   [ "$real" = "$repo_real" ] && { docs_root_error="resolves to the repository root itself"; return; }
   case "$real/" in
     "$repo_real/.git/"*) docs_root_error="resolves inside .git/"; return ;;
+    "$repo_real/.jj/"*) docs_root_error="resolves inside .jj/"; return ;;
   esac
   if [ -e "$real" ] && [ ! -d "$real" ]; then
     docs_root_error="names an existing non-directory"; return
@@ -287,7 +288,9 @@ read_work_engine_preferences() {
 }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "yes" || echo "no")
+repo_root=$(jj workspace root 2>/dev/null || true)
+in_repo="no"
+[ -n "$repo_root" ] && in_repo="yes"
 
 # Retired Bun-era Codex tool map (#1099). The block is present only when a
 # standalone BEGIN line is followed by a standalone END line.
@@ -351,28 +354,37 @@ tracked_cfg="skip"
 project_issues=0
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
-  local_config_path="$repo_root/.compound-engineering/config.local.yaml"
-  tracked_config_path="$repo_root/.compound-engineering/config.yaml"
+  local_config_path="$repo_root/.rocketclaw/config.local.yaml"
+  tracked_config_path="$repo_root/.rocketclaw/config.yaml"
   resolve_docs_root "$repo_root"
   [ "$docs_root_status" = "invalid" ] && project_issues=$((project_issues + 1))
   legacy_cfg="missing"
-  [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
+  [ -f "$repo_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    if git check-ignore -q "$local_config_path" 2>/dev/null; then
-      repo_cfg_gitignore="ok"
-    else
+    # A printed path means the file is in the working copy and is not ignored.
+    # Public jj has no check-ignore; ignored files are absent from `jj file list`.
+    if listed=$(cd "$repo_root" && jj file list -- .rocketclaw/config.local.yaml 2>/dev/null) && [ -n "$listed" ]; then
       repo_cfg_gitignore="missing"
+    else
+      repo_cfg_gitignore="ok"
     fi
   fi
 
-  # Trailing slash is load-bearing: without it an existing directory-only rule
-  # is missed before the directory exists, and a configured repo reads as bare.
+  # When `.context/` exists, a printed `jj file list` path means it is in the
+  # working copy and is not ignored. When it does not exist, public jj has no
+  # ignore-check for a missing path: treat it as covered only if `.gitignore`
+  # already has a rule covering `.context/`.
   scratch_gitignore="missing"
-  if git -C "$repo_root" check-ignore -q .context/compound-engineering/ 2>/dev/null; then
+  if [ -e "$repo_root/.context" ]; then
+    if listed=$(cd "$repo_root" && jj file list -- .context/ 2>/dev/null) && [ -n "$listed" ]; then
+      scratch_gitignore="missing"
+    else
+      scratch_gitignore="ok"
+    fi
+  elif [ -f "$repo_root/.gitignore" ] && grep -Eq '(^|/)\.context(/|$)' "$repo_root/.gitignore"; then
     scratch_gitignore="ok"
   fi
 
@@ -419,7 +431,7 @@ if [ "$in_repo" = "yes" ]; then
         ITEM)
           work_engine_preferences_count=$((work_engine_preferences_count + 1))
           case "$preference_harness" in
-            codex|claude|grok|cursor|opencode) ;;
+            codex|claude|grok|cursor|opencode|opencode2) ;;
             *)
               [ -z "$work_engine_preferences_error" ] && work_engine_preferences_error="invalid harness '$preference_harness' in work_engine_preferences"
               ;;
@@ -428,7 +440,7 @@ if [ "$in_repo" = "yes" ]; then
             case "$preference_model" in
               [A-Za-z0-9]*)
                 case "$preference_model" in
-                  *[!A-Za-z0-9._:/-]*)
+                  *[!A-Za-z0-9._:/-#]*)
                     [ -z "$work_engine_preferences_error" ] && work_engine_preferences_error="invalid model '$preference_model' in work_engine_preferences"
                     ;;
                 esac
@@ -494,7 +506,7 @@ if [ "$in_repo" = "yes" ]; then
 
   script_dir="$(cd "$(dirname "$0")" && pwd)"
   template="$script_dir/../references/config-template.yaml"
-  example="$repo_root/.compound-engineering/config.example.yaml"
+  example="$repo_root/.rocketclaw/config.example.yaml"
   if [ ! -f "$example" ]; then
     example_cfg="missing"
   elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -556,35 +568,35 @@ if [ "$in_repo" = "yes" ]; then
   section "Project config"
 
   if [ "$legacy_cfg" = "present" ]; then
-    warn "Obsolete compound-engineering.local.md exists"
+    warn "Obsolete rocketclaw.local.md exists"
     project_issues=$((project_issues + 1))
   else
-    ok "No obsolete compound-engineering.local.md"
+    ok "No obsolete rocketclaw.local.md"
   fi
 
   if [ "$tracked_cfg" = "present" ]; then
-    ok ".compound-engineering/config.yaml exists"
+    ok ".rocketclaw/config.yaml exists"
   else
-    skip "No repo config yet (.compound-engineering/config.yaml)"
+    skip "No repo config yet (.rocketclaw/config.yaml)"
   fi
 
   if [ "$local_cfg" = "present" ]; then
-    ok ".compound-engineering/config.local.yaml exists"
+    ok ".rocketclaw/config.local.yaml exists"
     if [ "$repo_cfg_gitignore" = "ok" ]; then
-      ok "Local config is gitignored"
+      ok "Local config is ignored"
     else
-      warn "Local config is not safely gitignored"
+      warn "Local config is not safely ignored"
       project_issues=$((project_issues + 1))
     fi
   else
-    skip "No local override yet (.compound-engineering/config.local.yaml)"
+    skip "No local override yet (.rocketclaw/config.local.yaml)"
   fi
 
   if [ "$scratch_gitignore" = "ok" ]; then
-    ok "CE scratch space is gitignored"
+    ok "Scratch space is ignored"
   else
-    skip "CE scratch space is not gitignored"
-    detail "Skills that keep local scratch write it under .context/compound-engineering/"
+    skip "Scratch space is not ignored"
+    detail "Skills that keep local scratch write it under .context/"
   fi
 
   if [ "$docs_root_status" = "default" ]; then
@@ -593,14 +605,14 @@ if [ "$in_repo" = "yes" ]; then
     ok "Artifact root: ${docs_root_value}/ (from ${docs_root_source})"
   elif [ "$docs_root_status" = "invalid" ]; then
     warn "Invalid docs_root '${docs_root_value}' in ${docs_root_source}: ${docs_root_error}"
-    detail "CE artifacts will not be written until docs_root is corrected or removed."
+    detail "RocketClaw artifacts will not be written until docs_root is corrected or removed."
   fi
   if [ -n "$docs_root_local_ignored" ]; then
     skip "Local docs_root '${docs_root_local_ignored}' is ignored; set docs_root only in config.yaml"
   fi
 
   if [ "$work_engine_cfg" = "native" ]; then
-    ok "CE Work implementation engine: native (${work_engine_detail})"
+    ok "ce-work implementation engine: native (${work_engine_detail})"
     if [ -n "$work_engine_preferences_note" ]; then
       if [ "$work_engine_preferences_note_level" = "warn" ]; then
         warn "$work_engine_preferences_note"
@@ -609,18 +621,18 @@ if [ "$in_repo" = "yes" ]; then
       fi
     fi
   elif [ "$work_engine_cfg" = "prefer" ] || [ "$work_engine_cfg" = "require" ]; then
-    ok "CE Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
+    ok "ce-work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "unavailable" ]; then
-    warn "CE Work implementation engine unavailable: ${work_engine_detail}"
+    warn "ce-work implementation engine unavailable: ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "invalid" ]; then
-    warn "CE Work implementation engine: ${work_engine_detail}"
+    warn "ce-work implementation engine: ${work_engine_detail}"
   fi
   [ -n "$work_engine_migration_note" ] && warn "$work_engine_migration_note"
 
   if [ "$example_cfg" = "ok" ]; then
     ok "Example config is current"
   elif [ "$example_cfg" = "missing" ]; then
-    warn "Example config missing (.compound-engineering/config.example.yaml)"
+    warn "Example config missing (.rocketclaw/config.example.yaml)"
     project_issues=$((project_issues + 1))
   elif [ "$example_cfg" = "outdated" ]; then
     warn "Example config outdated (new settings available)"
@@ -651,6 +663,7 @@ if [ "$in_repo" = "yes" ]; then
     else
       packs_report="$(printf '%s' "$packs_json" | "$packs_python" -c '
 import json, os, re, subprocess, sys
+from urllib.parse import quote
 data = json.load(sys.stdin)
 roots, errors, warns = data.get("roots", []), data.get("errors", []), data.get("warnings", [])
 if not roots and not errors and not warns:
@@ -672,16 +685,23 @@ for r in roots:
                 _ssh = genv.get("GIT_SSH_COMMAND") or "ssh"
                 if "BatchMode" not in _ssh:
                     genv["GIT_SSH_COMMAND"] = _ssh + " -o BatchMode=yes"
-                names = ["refs/tags/" + ref + "^{}", "refs/tags/" + ref, "refs/heads/" + ref]
-                remote = subprocess.run(["git", "ls-remote", "--end-of-options", url, *names],
-                                        capture_output=True, text=True, timeout=10, env=genv)
-                targets = {}
-                for row in remote.stdout.splitlines() if remote.returncode == 0 else []:
-                    sha, _, name = row.partition("\t")
-                    if name:
-                        targets[name] = sha
-                rsha = next((targets[n] for n in names if n in targets), "")
-                local = subprocess.run(["git", "-C", r["dir"], "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10)
+                rsha = ""
+                m = re.match(r"https?://(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", url)
+                if m:
+                    owner, repo = m.group(1), m.group(2)
+                    for kind, encoded in (("tags", quote(ref, safe="")), ("heads", quote(ref, safe="/"))):
+                        remote = subprocess.run(
+                            ["gh", "api", f"repos/{owner}/{repo}/git/ref/{kind}/{encoded}", "--jq", ".object.sha"],
+                            capture_output=True, text=True, timeout=10, env=genv,
+                        )
+                        sha = (remote.stdout or "").strip()
+                        if remote.returncode == 0 and sha:
+                            rsha = sha
+                            break
+                local = subprocess.run(
+                    ["jj", "log", "-r", "@", "-T", "commit_id", "--no-graph", "-n", "1"],
+                    cwd=r["dir"], capture_output=True, text=True, timeout=10,
+                )
                 lsha = local.stdout.strip() if local.returncode == 0 else ""
                 if rsha and lsha and rsha != lsha:
                     line += " -- cached resolution is behind upstream"
@@ -711,7 +731,7 @@ for e in errors:
   fi
 else
   section "Project config"
-  skip "Not inside a git repository"
+  skip "Not inside a Jujutsu workspace"
 fi
 
 echo ""

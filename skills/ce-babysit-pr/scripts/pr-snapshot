@@ -287,6 +287,33 @@ def _iso(dt):
     return dt.isoformat()
 
 
+_CACHED_JJ_GIT_ROOT = None
+_CACHED_JJ_GIT_ROOT_CHECKED = False
+
+
+def _jj_git_root():
+    """GIT_DIR for gh calls that talk to the colocated git store. Never read .jj/ or .git/."""
+    global _CACHED_JJ_GIT_ROOT, _CACHED_JJ_GIT_ROOT_CHECKED
+    if _CACHED_JJ_GIT_ROOT_CHECKED:
+        return _CACHED_JJ_GIT_ROOT
+    _CACHED_JJ_GIT_ROOT_CHECKED = True
+    ws = subprocess.run(
+        ["jj", "workspace", "root"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    workspace_root = (ws.stdout or "").strip() if ws.returncode == 0 else ""
+    if not workspace_root:
+        return None
+    r = subprocess.run(
+        ["jj", "git", "root"],
+        capture_output=True, text=True, encoding="utf-8",
+        cwd=workspace_root,
+    )
+    git_dir = (r.stdout or "").strip() if r.returncode == 0 else ""
+    _CACHED_JJ_GIT_ROOT = git_dir or None
+    return _CACHED_JJ_GIT_ROOT
+
+
 def _run(cmd):
     # gh honors CLICOLOR_FORCE / GH_FORCE_TTY even for --json output, and a host that exports them
     # (observed under orca) makes every JSON read unparsable. Pin plain output regardless of caller env.
@@ -294,18 +321,10 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
+    git_dir = _jj_git_root()
+    if git_dir:
+        env["GIT_DIR"] = git_dir
     return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
-    )
 
 
 def _run_checked(cmd, label):
@@ -428,30 +447,15 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     ])
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
-        exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
-        try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
-        except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+        # REST 404 on some private OAuth sessions still needs an exact-ref read.
+        # No public `jj` command ls-remotes a URL; use gh matching-refs instead.
+        encoded_match = quote(f"heads/{ref}", safe="/")
+        r = _run([
+            "gh", "api", *_host_args(host),
+            f"repos/{owner}/{name}/git/matching-refs/{encoded_match}",
+            "--jq", ".[0].object.sha",
+        ])
+        current_oid = (r.stdout or "").strip()
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -718,7 +722,8 @@ def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, hos
     """Classify manager membership and ordinary dependency relationships without mutation.
 
     The local manager is the fast/rich path, but its output is accepted only when it contains the
-    requested PR. `gh stack view` has no target argument and may describe a different current stack.
+    requested PR. `gh stack view` (paired with GIT_DIR from `jj git root`) has no target argument
+    and may describe a different current stack.
     """
     local = _run(["gh", "stack", "view", "--json"])
     if local.returncode == 0:
@@ -1303,7 +1308,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):

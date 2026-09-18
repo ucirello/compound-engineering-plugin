@@ -112,7 +112,7 @@ The names below are skill-local prompt asset file stems under `references/agents
 - `framework-docs-researcher` for official framework or library behavior
 - `best-practices-researcher` for current external patterns and industry guidance
 - `web-researcher` for landscape/prior-art gaps — competitor patterns, market signals, or an unsettled external option set (which library/provider/approach) that recommendations depend on
-- Add `git-history-analyzer` only when historical rationale or prior art is materially missing
+- Add `git-history-analyzer` (Jujutsu history) only when historical rationale or prior art is materially missing
 
 **Key Technical Decisions**
 - `architecture-strategist` for design integrity, boundaries, and architectural tradeoffs
@@ -176,10 +176,14 @@ Signals that justify artifact-backed mode:
 
 If artifact-backed mode is not clearly warranted, stay in direct mode.
 
-Artifact-backed mode uses a per-run OS-temp scratch directory. Create it once before dispatching sub-agents and capture its **absolute path** — pass that absolute path to each sub-agent so they write to it directly. Do not use `.context/`; the artifacts are per-run throwaway that are cleaned up when deepening ends (see 5.3.6b), matching the repo Scratch Space convention for one-shot artifacts. Do not pass unresolved shell-variable strings to sub-agents; they need the resolved absolute path.
+Artifact-backed mode uses a per-run workspace-local scratch directory. Resolve the workspace root with `jj workspace root`; when Jujutsu is unavailable, use the current local directory. Create an owner-private unique directory under `<resolved-root>/.tmp/rocketclaw/ce-plan-deepen/`, capture its **absolute path**, and pass that path to each subagent so it writes there directly. Do not pass unresolved shell-variable strings to subagents.
 
 ```bash
-SCRATCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ce-plan-deepen-XXXXXX")"
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw/ce-plan-deepen";
+(umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
+SCRATCH_DIR="$SCRATCH_ROOT/$(date +%Y%m%dT%H%M%S)-$$-$RANDOM";
+(umask 077; mkdir "$SCRATCH_DIR") || exit 1;
 echo "$SCRATCH_DIR"
 ```
 
@@ -255,7 +259,7 @@ Allowed changes:
 
 Do **not**:
 - Add implementation code — no imports, exact method signatures, or framework-specific syntax. Pseudo-code sketches and DSL grammars are allowed
-- Add git commands, commit choreography, or exact test command recipes
+- Add jj commands, commit choreography, or exact test command recipes
 - Add generic `Research Insights` subsections everywhere
 - Rewrite the entire plan from scratch
 - Invent new product requirements, scope changes, or success criteria without stating them explicitly

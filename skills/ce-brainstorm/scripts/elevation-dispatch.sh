@@ -51,7 +51,7 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole OS temp root ($TMPDIR / /tmp) instead would
+  # via --add-dir. Adding the whole workspace `.tmp` tree instead would
   # expose every other same-user scratch file and credential to the elevated
   # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
@@ -68,12 +68,28 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
        --max-turns "${ELEVATION_MAX_TURNS:-30}")
 }
 
+# opencode2 is its own harness, never folded into `opencode` or the Claude CLI.
+# Surveyed opencode2 v2.0.8 (`opencode2 --help`, `opencode2 run --help`):
+#   opencode2 run --model provider/model#variant --format json --auto --file FILE
+# `--dir` is not a flag on this version; do not invent it. Preserve the model
+# string as provider/modelname#variant.
+build_opencode2_cmd() {   # <model>
+  CMD=(opencode2 run --format json --auto --file "$PROMPT_FILE")
+  [ -n "${1:-}" ] && CMD+=(--model "$1")
+}
+
 # Test hook: print the argv the worker would exec, without calling a model.
 # Accepts an optional handoff dir ($3) so the emitted argv shows the scoped
 # --add-dir; without it the flag is omitted (no dir to grant).
 if [ "${1:-}" = "--emit-adapter" ]; then
   [ -n "${2:-}" ] || { log "--emit-adapter requires <model>"; exit 2; }
-  build_cmd "$2" "${3:-}"
+  HARNESS="${ELEVATION_HARNESS:-claude}"
+  if [ "$HARNESS" = "opencode2" ]; then
+    PROMPT_FILE="<prompt-file>"
+    build_opencode2_cmd "$2"
+  else
+    build_cmd "$2" "${3:-}"
+  fi
   printf '%s\0' "${CMD[@]}"
   exit 0
 fi
@@ -85,7 +101,7 @@ RESULT_PATH="${3:?result-path required}"
 
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole OS temp root. Pure-bash dirname (no
+# to an absolute path), never the whole workspace `.tmp` tree. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,7 +119,17 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/elevation-peer-XXXXXX")"
+# Workspace .tmp/rocketclaw; local .tmp/rocketclaw if jj cannot name a workspace.
+# Never OS /tmp or $TMPDIR. Public jj only; cwd is the launch dir (the workspace).
+_workspace_tmp() {
+  local ws
+  ws="$(jj workspace root 2>/dev/null || true)"
+  [ -n "$ws" ] || ws="."
+  printf '%s' "$ws/.tmp/rocketclaw"
+}
+ELEVATION_TMP="$(_workspace_tmp)"
+mkdir -p "$ELEVATION_TMP" || { log "cannot create $ELEVATION_TMP"; exit 2; }
+PEERLOG="$(mktemp "$ELEVATION_TMP/elevation-peer-XXXXXX")"
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a
@@ -242,8 +268,45 @@ run_codex_cmd() {
 }
 
 # --- main -------------------------------------------------------------------
-build_cmd "$MODEL" "$HANDOFF_DIR"
+HARNESS="${ELEVATION_HARNESS:-claude}"
+if [ "$HARNESS" = "opencode2" ]; then
+  build_opencode2_cmd "$MODEL"
+else
+  build_cmd "$MODEL" "$HANDOFF_DIR"
+fi
 run_codex_cmd
+
+if [ "$HARNESS" = "opencode2" ]; then
+  # Distinct from the Claude stream-json parser. `opencode2 run --format json`
+  # writes JSON (or JSON-ish) to stdout; keep the same result envelope.
+  if [ "$RUN_SUCCEEDED" = true ] && [ -s "$PEERLOG" ]; then
+    tmp="${RESULT_PATH}.tmp.$$"
+    if jq --arg m "$MODEL" \
+         '{status:"ok", requested_model:$m, served_model:"unverified", receipt:"unverified", output: (if type == "object" then (.result // .text // .output // .) else . end | if type == "string" then . else tostring end)}' \
+         "$PEERLOG" > "$tmp" 2>/dev/null; then
+      mv -f "$tmp" "$RESULT_PATH"
+      log "elevated step complete: requested=$MODEL harness=opencode2 receipt=unverified"
+    else
+      rm -f "$tmp"
+      if jq -n --arg m "$MODEL" --rawfile o "$PEERLOG" \
+           '{status:"ok", requested_model:$m, served_model:"unverified", receipt:"unverified", output:$o}' \
+           > "$tmp" 2>/dev/null; then
+        mv -f "$tmp" "$RESULT_PATH"
+        log "elevated step complete: requested=$MODEL harness=opencode2 receipt=unverified"
+      else
+        rm -f "$tmp"
+        write_result "$(jq -n --arg m "$MODEL" '{status:"failed", requested_model:$m, evidence:"result envelope build failed"}')"
+        log "elevated step: result envelope build failed"
+      fi
+    fi
+  else
+    write_result "$(jq -n --arg m "$MODEL" --arg e "$(bounded_failure_evidence)" \
+      '{status:"failed", requested_model:$m, evidence:$e}')"
+    log "elevated step failed; wrote failure envelope"
+  fi
+  rm -f "$PEERLOG"
+  exit 0
+fi
 
 # The stream-json terminal event is the LAST line whose type is "result". Match
 # on it rather than `tail -1`, so a diagnostic written to stderr after the result

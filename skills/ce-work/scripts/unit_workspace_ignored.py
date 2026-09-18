@@ -1,8 +1,10 @@
-"""Metadata inventory of the canonical checkout's git-ignored entries.
+"""Metadata inventory of the canonical checkout's ignored entries.
 
 Verification runs in the canonical checkout; ignored state is never copied or
 restored. Two inventories taken before and after verification diff into a
-disclosure of changed, removed, and created ignored paths.
+disclosure of changed, removed, and created ignored paths. Tracked files come
+from `jj file list`; remaining workspace files (except `.jj`) are treated as
+ignored.
 """
 
 from __future__ import annotations
@@ -10,12 +12,28 @@ from __future__ import annotations
 import os
 import stat
 
-from unit_workspace_state import Operational, git
+from unit_workspace_state import Operational, jj_text
 
 
 def ignored_paths(repo: str) -> set[str]:
-    raw = git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--")
-    return set(filter(None, raw.decode("utf-8", "surrogateescape").split("\0")))
+    repo = os.path.abspath(repo)
+    tracked = {
+        path for path in jj_text(repo, "file", "list", "-r", "@").splitlines() if path
+    }
+    ignored: set[str] = set()
+    skip = {".jj", ".git"}
+    for dirpath, dirnames, filenames in os.walk(repo):
+        dirnames[:] = [name for name in dirnames if name not in skip]
+        rel_dir = os.path.relpath(dirpath, repo)
+        if rel_dir == ".":
+            rel_dir = ""
+        if rel_dir.split(os.sep, 1)[0] in skip:
+            continue
+        for name in filenames:
+            rel = name if not rel_dir else f"{rel_dir}/{name}".replace("\\", "/")
+            if rel not in tracked:
+                ignored.add(rel)
+    return ignored
 
 
 def artifact_path(repo: str, rel: str) -> str:

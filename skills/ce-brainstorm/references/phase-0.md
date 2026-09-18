@@ -2,7 +2,7 @@
 
 #### 0.1 Resume Existing Work When Appropriate
 
-This resume scan needs `<root>/plans/`, so it applies only to a repo-backed run. If there is no git repository, or resolving `<root>` fails (a bad `docs_root`), skip the scan and continue — do not fail the run here, since Phase 0.1b may route non-software work to `references/universal-brainstorming.md`, whose contract does not write a unified plan under `<root>/plans/`.
+This resume scan needs `<root>/plans/`, so it applies only to a repo-backed run. If there is no jj workspace (`jj workspace root` fails), or resolving `<root>` fails (a bad `docs_root`), skip the scan and continue — do not fail the run here, since Phase 0.1b may route non-software work to `references/universal-brainstorming.md`, whose contract does not write a unified plan under `<root>/plans/`.
 
 Only when that check passes — a repo-backed run whose `<root>` resolved — evaluate this resume condition; never resolve `<root>` here on a run the check told you to skip. When it applies, if the user references an existing brainstorm topic or document, or there is an obvious recent matching unified plan in `<root>/plans/` with `artifact_contract: ce-unified-plan/v1` and `product_contract_source: ce-brainstorm`, whose contents are still a Product Contract without implementation planning:
 - Read the document
@@ -56,7 +56,7 @@ Use the feature description plus a light repo scan to classify the work:
 
 If the scope is unclear, ask one targeted question to disambiguate and then proceed; when it stays uncertain, take the heavier tier.
 
-**Lightweight ends in chat.** The result is a paragraph in the synthesis: what is being built, the one or two decisions made, and where they go next (`ce-plan`'s prompt, the commit message). No file is written, and Phase 1.1's scout, Phase 2's approach generation, and Phase 2.6's verifier do not run. A file is written only when the dialogue produced a decision that a downstream consumer needs recorded under a stable ID, or when the user asks for one; then Phase 3 (write the plan) writes it from the dialogue's decisions, and the Ready for Planning Check covers what the dialogue established.
+**Lightweight ends in chat.** The result is a paragraph in the synthesis: what is being built, the one or two decisions made, and where they go next (`ce-plan`'s prompt, the change description). Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. No file is written, and Phase 1.1's scout, Phase 2's approach generation, and Phase 2.6's verifier do not run. A file is written only when the dialogue produced a decision that a downstream consumer needs recorded under a stable ID, or when the user asks for one; then Phase 3 (write the plan) writes it from the dialogue's decisions, and the Ready for Planning Check covers what the dialogue established.
 
 **Coherent-work gate.** Before entering Phase 1, check whether the request contains more than one independently plannable product outcome: each has its own user value or acceptance boundary and could be delivered without completing the others. Shared actors, one end-to-end outcome, or coverage across named devices/providers do not by themselves justify a split.
 

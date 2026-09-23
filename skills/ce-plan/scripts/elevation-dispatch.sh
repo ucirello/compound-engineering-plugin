@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # elevation-dispatch.sh — off-host model-elevation worker for ce-plan / ce-brainstorm.
 #
-# Runs one reasoning-heavy step on a user-chosen model via the Claude CLI, as a
+# Runs one reasoning-heavy step on a user-chosen model via the selected CLI, as a
 # detached job supervised by peer-job-runner.py. Streams NDJSON so the idle
 # window observes genuine progress, not just liveness — a buffered format would
 # make a healthy long run byte-identical to a wedged one. See
 # docs/solutions/skill-design/cli-output-buffering-for-progress-detection.md.
 #
-# Read-only posture (R7): the CLI is allowlisted to Read/Glob/Grep plus
-# WebSearch/WebFetch, so writes, shell, skills, and MCP are unavailable; the
-# model reads the repo and web to verify its brief and returns prose.
+# Read-only posture (R7): Claude restricts tools; OpenCode V2 restricts session
+# permissions in opencode-elevation.py. The model reads the repo and web to
+# verify its brief and returns prose.
 #
 # Usage:
 #   elevation-dispatch.sh <model> <prompt-file> <result-path>
+#   ELEVATION_HARNESS=opencode elevation-dispatch.sh <provider/model#variant> <prompt-file> <result-path>
 #   elevation-dispatch.sh --emit-adapter <model>   # print argv, no model call (test hook)
 #
 # NOTE ON THE FUNCTION NAMED run_codex_cmd: it is NOT codex-specific here. It is
@@ -51,7 +52,7 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
   # Grant read access to ONLY the single per-run handoff dir ($2, where the
   # orchestrator co-located the prompt and evidence), which sits outside the
   # launch dir. Claude's file access defaults to the launch dir and is extended
-  # via --add-dir. Adding the whole OS temp root ($TMPDIR / /tmp) instead would
+   # via --add-dir. Adding the whole workspace scratch root instead would
   # expose every other same-user scratch file and credential to the elevated
   # model; the scoped dir does not. Read-only (only Read/Glob/Grep available).
   local add_dirs=()
@@ -68,12 +69,27 @@ build_cmd() {   # <model> <handoff-dir> -> sets CMD array (claude CLI, streaming
        --max-turns "${ELEVATION_MAX_TURNS:-30}")
 }
 
-# Test hook: print the argv the worker would exec, without calling a model.
-# Accepts an optional handoff dir ($3) so the emitted argv shows the scoped
-# --add-dir; without it the flag is omitted (no dir to grant).
+build_opencode_cmd() {   # <model> <prompt-file> <result-path> -> CMD
+  local py="${CE_PEER_PYTHON:-}"
+  if [ -z "$py" ]; then
+    py="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"
+  fi
+  [ -n "$py" ] || { log "no working Python interpreter"; return 2; }
+  CMD=("$py" "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/opencode-elevation.py" "$1" "$2" "$3")
+}
+
+# Test hook: print the selected adapter argv without calling a model.
+# Claude accepts an optional handoff dir ($3); OpenCode emits placeholders for
+# the prompt and result paths that its Python worker receives at runtime.
 if [ "${1:-}" = "--emit-adapter" ]; then
   [ -n "${2:-}" ] || { log "--emit-adapter requires <model>"; exit 2; }
-  build_cmd "$2" "${3:-}"
+  case "${ELEVATION_HARNESS:-claude}" in
+    opencode)
+      build_opencode_cmd "$2" "<prompt-file>" "<result-path>" || exit $?
+      ;;
+    claude) build_cmd "$2" "${3:-}" ;;
+    *) log "unsupported elevation harness: $ELEVATION_HARNESS"; exit 2 ;;
+  esac
   printf '%s\0' "${CMD[@]}"
   exit 0
 fi
@@ -83,9 +99,18 @@ PROMPT_FILE="${2:?prompt-file required}"
 RESULT_PATH="${3:?result-path required}"
 [ -f "$PROMPT_FILE" ] || { log "prompt file not found: $PROMPT_FILE"; exit 2; }
 
+case "${ELEVATION_HARNESS:-claude}" in
+  opencode)
+    build_opencode_cmd "$MODEL" "$PROMPT_FILE" "$RESULT_PATH" || exit $?
+    exec "${CMD[@]}"
+    ;;
+  claude) ;;
+  *) log "unsupported elevation harness: $ELEVATION_HARNESS"; exit 2 ;;
+esac
+
 # The orchestrator co-locates the prompt and every evidence file in one private
 # per-run dir; grant the elevated model read access to just that dir (resolved
-# to an absolute path), never the whole OS temp root. Pure-bash dirname (no
+# to an absolute path), never the whole scratch root. Pure-bash dirname (no
 # external `dirname`): strip the last /component, defaulting to cwd if none.
 HANDOFF_DIR="${PROMPT_FILE%/*}"
 [ "$HANDOFF_DIR" = "$PROMPT_FILE" ] && HANDOFF_DIR="."
@@ -103,7 +128,10 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/elevation-peer-XXXXXX")"
+WORKSPACE_ROOT="$(jj --ignore-working-copy workspace root 2>/dev/null || pwd -P)"
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"
+[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1
+PEERLOG="$(mktemp "$SCRATCH_ROOT/elevation-peer-XXXXXX")"
 
 # Idle window is the primary stall signal; the hard cap is a raised backstop (R11).
 # Keep this inner cap >= the runner's CE_PEER_HARD_SECS so it never reaps a

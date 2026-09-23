@@ -84,7 +84,7 @@
   const error = composer.querySelector(".ce-annotate-error")
 
   const overlaySession = document.currentScript?.getAttribute("data-ce-session") || ""
-  const STATE_KEY = overlaySession ? `ce-annotate-state:${overlaySession}` : "ce-annotate-state"
+  const STATE_KEY = overlaySession ? `rocketclaw-annotate-state:${overlaySession}` : "rocketclaw-annotate-state"
   const PIN_STATUS = { held: "pending", queued: "pending", working: "working" }
   let commentToolOn = false
   let sessionEnded = false

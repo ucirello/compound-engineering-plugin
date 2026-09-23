@@ -17,17 +17,21 @@ Run the whole thing as **one** command. Shell variables do not survive between s
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
-PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh" --free);   # append the explicit port as a further argument when you have one
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null) || WORKSPACE_ROOT="$PWD"
+cd "$WORKSPACE_ROOT" || exit 1
+mkdir -p "$WORKSPACE_ROOT/.tmp" || exit 1
+PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh" --free) || exit 1;   # append the explicit port to the script arguments when you have one
+SERVER_LOG="$WORKSPACE_ROOT/.tmp/dev-server-${PORT}.log"
 echo "Using dev server port: $PORT"
 
-# start in the background (the scan guarantees this port is free), then wait up to 30s
+# Start in the background, then wait up to 30s. The scan does not reserve the port.
 echo "Starting dev server on port ${PORT}..."
 if [ -f "bin/dev" ]; then
-  PORT=${PORT} bin/dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} bin/dev > "$SERVER_LOG" 2>&1 &
 elif [ -f "bin/rails" ]; then
-  bin/rails server -p ${PORT} > /tmp/dev-server-${PORT}.log 2>&1 &
+  bin/rails server -p ${PORT} > "$SERVER_LOG" 2>&1 &
 elif [ -f "package.json" ]; then
-  PORT=${PORT} npm run dev > /tmp/dev-server-${PORT}.log 2>&1 &
+  PORT=${PORT} npm run dev > "$SERVER_LOG" 2>&1 &
 fi
 for i in $(seq 1 30); do
   lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1 && break
@@ -35,7 +39,7 @@ for i in $(seq 1 30); do
 done
 if ! lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server did not start in 30s. Last output:"
-  tail -20 /tmp/dev-server-${PORT}.log 2>/dev/null
+  tail -20 "$SERVER_LOG" 2>/dev/null
   exit 1
 fi
 ```

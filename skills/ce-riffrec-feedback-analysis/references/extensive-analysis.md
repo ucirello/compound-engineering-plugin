@@ -1,6 +1,6 @@
 # Extensive analysis path
 
-Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full Compound Engineering-compatible artifact set that feeds `ce-brainstorm`.
+Use this path when the input is a longer recording (over ~60 seconds), contains multiple issues, requirements, or workflow walkthroughs, or the user explicitly wants requirements material. The goal is a full RocketClaw-compatible artifact set that feeds `ce-brainstorm`.
 
 ## Workflow
 
@@ -28,6 +28,8 @@ Use this path when the input is a longer recording (over ~60 seconds), contains 
    - **Requirements:** product behavior needed to resolve the problem.
 
 7. When the current workspace contains the product source code, run a source-mapping pass before or during brainstorm. Use the transcript language, visible UI labels, screenshot paths, route names, and generated requirements to search the codebase for likely components, controllers, services, models, tests, and state stores. For larger sessions, split this mapping by product area and use sub-agents when available so independent areas can be inspected in parallel.
+
+   Honor explicit subagent and harness routing from the effective `.rocketclaw/config.yaml` and `.rocketclaw/config.local.yaml` settings, with local settings overriding repo settings. OpenCode V2 is a distinct harness (`opencode`). If no explicit subagent or alternative-harness routing applies, the current harness is OpenCode, and both `opencode.models` and native subagent calls with an optional model are available, discover exact model IDs and variants and delegate natively with `provider/model#variant`. Preserve the requested capability tier and cross-model intent; do not guess a model or silently reuse the current one. Otherwise preserve configured routing and use the host's available delegation mechanism. If an explicit route is unavailable, report that blocker; with no explicit route and no delegation capability, perform the mapping locally.
 
 8. Add source mapping to the brainstorm material as suspected implementation surfaces, not as proven root cause unless the code clearly proves it. Include confidence levels and short evidence notes explaining why each file or component is relevant.
 
@@ -75,7 +77,7 @@ The analyzer writes:
 - `problem-analysis.md`: a categorized problem statement scaffold for visual, functional, requirement, and UX findings.
 - `review-prompt.md`: a filled prompt containing screenshot paths and transcript for a deeper visual analysis pass.
 - `source-materials.md`: a manifest linking the original source location, local-only raw files, transcript locations, chunks, local-only frames, and generated artifacts.
-- `requirements-kickoff.md`: a CE-friendly requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
+- `requirements-kickoff.md`: a RocketClaw-friendly requirements starter with Problem Frame, Actors, Key Flows, R-IDs, Acceptance Examples, Success Criteria, Scope Boundaries, Questions, and Next Steps.
 - `analysis.json`: structured session, event, transcript, moment, and artifact metadata.
 - `frames/`: extracted PNG screenshots for selected moments. Local-only by default.
 - `raw/`: normalized capture contents and copied standalone media. Local-only by default.

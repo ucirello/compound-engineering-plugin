@@ -19,6 +19,8 @@ Write the receipt and `metadata.json` (## Run artifacts in `references/modes-and
 
 ### Focused path
 
+For an eligible OpenCode V2 native peer, use the native launch, bounded collection, and release contract in `references/cross-model-review.md` in place of the shell start, runner wait/reap, and job-directory deletion below. Record the same peer stage events around native launch and collection.
+
 Focused is the lite review plus one independent adversarial read of the same diff, merged in this context. It exists for a change that can fail silently but does not need the full roster: the defects it targets are the ones a second, differently-seated reader finds and a single reader rationalizes away. No finish leaves run; the round is small enough to finish where it was dispatched.
 
 Do the lite path's four pieces of work above, in this context, and additionally read the Stage 2 section of `references/intent-and-plan.md` and write the intent summary, because the independent read needs it. In default mode, tell the user the review is focused and that one independent adversarial read will run; in `mode:agent` the receipt is the only output.

@@ -98,11 +98,11 @@ For each hypothesis in the batch, dispatch according to `execution.mode`. In `se
 
 The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-optimize` skill directory; see the Bundled scripts note in Phase 1). Shell state does not persist from Phase 1, so each block carries its own assignment.
 
-**Worktree backend:**
-1. Create experiment worktree:
+**Worktree backend (the preserved spec token for JJ workspace isolation):**
+1. Create an experiment workspace. All harness routes below use this same manager-created workspace:
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-   WORKTREE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates optimize-exp/<spec_name>/exp-<NNN>
+   WORKTREE_PATH=$(bash "$SKILL_DIR/scripts/experiment-worktree.sh" create "<spec_name>" <exp_index> "optimize/<spec_name>" <shared_files...>)  # creates JJ workspace optimize-<spec_name>-exp-<NNN>
    ```
 2. Apply port parameterization if configured (set env vars for the measurement script)
 3. Fill the experiment prompt template (`references/experiment-prompt-template.md`) with:
@@ -112,38 +112,45 @@ The Phase 3 blocks below each set `SKILL_DIR` inline as well (the loaded `ce-opt
    - Mutable and immutable scope
    - Constraints and approved dependencies
    - Rolling window of last 10 experiments (concise summaries)
-4. Dispatch a subagent with the filled prompt, working in the experiment worktree
+4. Dispatch a subagent with the filled prompt, working in the experiment workspace
+
+**OpenCode V2 routing:**
+When the body's native-dispatch conditions hold, use a separate native subagent with the discovered `provider/model#variant` and the absolute experiment workspace as its working directory. This replaces subprocess delegation. Explicit OpenCode routing outside that case uses V2: inspect installed `opencode --help` and `opencode run --help`, select the configured model (discover it with the available model catalog), and run the filled prompt from the experiment workspace:
+```bash
+opencode run --model "<provider/model#variant>" --format json "$(cat '<absolute workspace-root>/.tmp/optimize/optimize-exp-XXXXX.txt')"
+```
+Do not use V1 flags or silently switch model/harness when a configured route is unavailable. Report the blocker. Keep judges separate from experiment contexts and each other.
 
 **Codex backend:**
-1. Check environment guard -- do NOT delegate if already inside a Codex sandbox:
+1. Check the active harness context and environment guard -- do NOT delegate recursively if already inside a Codex sandbox. Missing environment variables alone do not prove that recursion is safe:
    ```bash
-   # If these exist, we're already in Codex -- fall back to subagent
-   test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}" || test ! -w .git
+   # If these exist, we're already in Codex -- apply the fallback policy below
+   test -n "${CODEX_SANDBOX:-}" || test -n "${CODEX_SESSION_ID:-}"
    ```
 2. Fill the experiment prompt template
-3. Write the filled prompt to a temp file
+3. Write the filled prompt to a file under the controller workspace's `.tmp/optimize/`; create the isolated experiment workspace with the same manager before dispatch
 4. Dispatch via Codex:
    ```bash
-   cat /tmp/optimize-exp-XXXXX.txt | codex exec --skip-git-repo-check - 2>&1
+   codex exec --skip-git-repo-check - < "<absolute workspace-root>/.tmp/optimize/optimize-exp-XXXXX.txt" 2>&1
    ```
-5. Security posture: use the user's selection (ask once per session if not set in spec)
+5. Set cwd to the absolute experiment workspace. Security posture: use the user's selection (ask once per session if not set in spec)
 
 ### 3.3 Collect and Persist Results
 
-Persist a `comparisons` record for each distinct reference, candidate, and workload pairing used in a decision. Each side's identity must uniquely identify the bytes that were measured; a shared HEAD is not enough when the candidate is uncommitted. Record the workload, both snapshots, and the decision's uncertainty and correctness evidence. Standalone and integrated pairings stay distinct in this array; a later in-place update must not replace a previously persisted distinct pairing. A runner-up's contribution is its confirmed change against the branch it was added to, not its standalone gain. These records explain results. `decide.mjs` still makes the accept or revert decision, using the existing snapshot fields.
+Persist a `comparisons` record for each distinct reference, candidate, and workload pairing used in a decision. Each side's identity must uniquely identify the bytes that were measured; a JJ change ID alone is insufficient because its contents can change. Snapshot each side with `jj log -r @ --no-graph -T commit_id` in its absolute workspace root and record the full commit ID. Record the workload, both snapshots, and the decision's uncertainty and correctness evidence. Standalone and integrated pairings stay distinct in this array; a later in-place update must not replace a previously persisted distinct pairing. A runner-up's contribution is its confirmed change against the revision it was added to, not its standalone gain. These records explain results. `decide.mjs` still makes the accept or revert decision, using the existing snapshot fields.
 
 Process experiments as they complete: do NOT wait for the entire batch to finish before writing results.
 
 For each completed experiment, **immediately**:
 
-1. **Run measurement** in the experiment's worktree. Spend only the measurement the current decision needs (see Phase 1). When `stability.mode` is `ladder` and a smoke command is set, run that smoke check first. A smoke failure is terminally `degenerate`, and success proceeds to the first exploratory sample of `measurement.command` before comparison. Otherwise start with one exploratory sample. Pass `CE_OPTIMIZE_CENSOR_AFTER` to `measure.sh` only when elapsed wall time itself proves the candidate cannot become eligible, meaning every required objective is already hopeless, not merely the primary. Otherwise let measurement finish so other required objectives can still win, and let `decide.mjs` assess futility after the payload is complete.
+1. **Run measurement** in the experiment's workspace. Spend only the measurement the current decision needs (see Phase 1). When `stability.mode` is `ladder` and a smoke command is set, run that smoke check first. A smoke failure is terminally `degenerate`, and success proceeds to the first exploratory sample of `measurement.command` before comparison. Otherwise start with one exploratory sample. Pass `ROCKETCLAW_OPTIMIZE_CENSOR_AFTER` to `measure.sh` only when elapsed wall time itself proves the candidate cannot become eligible, meaning every required objective is already hopeless, not merely the primary. Otherwise let measurement finish so other required objectives can still win, and let `decide.mjs` assess futility after the payload is complete.
    ```bash
    SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
    bash "$SKILL_DIR/scripts/measure.sh" "<measurement.command>" <timeout_seconds> "<worktree_path>/<measurement.working_directory or .>" <env_vars...>
    ```
    When mode is `repeat`, keep running `repeat_count` times and aggregating as in Phase 1. When mode is `stable`, run once.
 
-2. **Write crash-recovery marker.** Immediately after measurement, write `result.yaml` in the experiment worktree containing the raw metrics. This keeps the measurement recoverable even if the agent crashes before updating the main log.
+2. **Write crash-recovery marker.** Immediately after measurement, write `.tmp/optimize/result.yaml` in the experiment workspace containing the raw metrics. Keep it ignored so it cannot enter the winning source revision. This keeps the measurement recoverable even if the agent crashes before updating the main log.
 
 3. **Read raw JSON output** from the measurement script
 
@@ -172,7 +179,7 @@ For each completed experiment, **immediately**:
    ```
    If that probe finds no runtime, do not invoke an empty command. Mark the experiment `error` with that reason and continue the batch. Use `decision` and `next_measurement`. Collect the requested measurement and repeat this sequence whenever `next_measurement` is not `none`. Do not keep a candidate until `next_measurement` is `none`. Record `inconclusive` and `censored` as those outcomes, not as `reverted`. Each extra sample belongs to this same experiment: write it onto the existing entry at CP-3, then decide again.
 
-7. **IMMEDIATELY persist this experiment on disk (CP-3).** Do not defer this to batch evaluation. The durable unit is one log entry per experiment at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`. After the first measurement, append that entry. After every later ladder sample for the same experiment, write the accumulated metrics and current outcome onto that same entry. Do not append a second entry for the same hypothesis, and do not rewrite a different experiment's samples. Write a decide terminal only when `next_measurement` is `none`. Until then the entry stays nonterminal, `promising` while the keep path still needs samples and `measured` otherwise (including an inconclusive result that still wants samples). When `next_measurement` is `none`, an eligible result stays `measured` until its diff is on the optimization branch; a non-eligible result gets the decide terminal (`reverted`, `inconclusive`, `censored`, `degenerate`). `kept` and `runner_up_kept` wait until that integration. The raw metrics are on disk and safe from context compaction.
+7. **IMMEDIATELY persist this experiment on disk (CP-3).** Do not defer this to batch evaluation. The durable unit is one log entry per experiment at `.tmp/optimize/<spec-name>/experiment-log.yaml`. After the first measurement, append that entry. After every later ladder sample for the same experiment, write the accumulated metrics and current outcome onto that same entry. Do not append a second entry for the same hypothesis, and do not rewrite a different experiment's samples. Write a decide terminal only when `next_measurement` is `none`. Until then the entry stays nonterminal, `promising` while the keep path still needs samples and `measured` otherwise (including an inconclusive result that still wants samples). When `next_measurement` is `none`, an eligible result stays `measured` until its diff is on the optimization bookmark; a non-eligible result gets the decide terminal (`reverted`, `inconclusive`, `censored`, `degenerate`). `kept` and `runner_up_kept` wait until that integration. The raw metrics are on disk and safe from context compaction.
 
 8. **VERIFY the write (CP-3 verification).** Read the experiment log back from disk and confirm the entry just written is present. If verification fails, retry the write. Do NOT proceed to the next experiment until this entry is confirmed on disk.
 
@@ -187,24 +194,24 @@ After all experiments in the batch have been measured:
 2. **Rank** the eligible experiments in the batch by the script's `rank_score` (primary relative gain when the primary moved; otherwise the strongest required-objective relative gain). Identify that winner as the experiment to keep. An eligible experiment may be kept even if the ranking primary did not move.
 
 3. **If `decide.mjs` returns `keep` for that winner: KEEP**
-   - Commit the experiment branch first so the winning diff exists as a real commit before any merge or cherry-pick
-   - Include only mutable-scope changes in that commit; if no eligible diff remains, treat the experiment as non-improving and revert it
-   - Merge the committed experiment branch into the optimization branch
-   - Use the message `optimize(<spec-name>): <hypothesis description>` for the experiment commit
-   - After the merge succeeds, clean up the winner's experiment worktree and branch; the integrated commit on the optimization branch is the durable artifact
+   - At the experiment's absolute workspace root, snapshot its current revision and check the diff against the recorded baseline. Include only mutable-scope changes; exclude `result.yaml`, shared resources, and measurement output. If no eligible diff remains, treat it as non-improving. If its source bytes changed after measurement, confirm them again before keeping.
+   - Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+     Here `git log` means history inspected with `jj log` in this JJ workflow. Runtime project instructions and history syntax override the Go guidance. Preserve the hypothesis and relevant issue/PR references in the description.
+   - Describe the winning revision with `jj describe -r <winner-revision> -m "<message composed from the standards above>"`. The recorded immutable commit ID must reflect this final description. Integrate only if it is based on the current accepted revision and has no conflicts; then advance `optimize/<spec-name>` with `jj bookmark set -r <winner-revision> "optimize/<spec-name>"` from the controller workspace. If the base moved, rebase the candidate and remeasure before advancing the bookmark.
+   - Use `jj new "optimize/<spec-name>"` in the controller workspace only when its own pending change is empty or safely preserved. Verify the accepted bookmark points to the non-empty result, not the empty `@` above it. Only then clean up the winner's experiment workspace; the accepted revision is the durable artifact.
    - This is now the new baseline for subsequent batches
 
 4. **Check file-disjoint runners-up** (up to `max_runner_up_merges_per_batch`):
    - For each runner-up that also improved, check file-level disjointness with the kept experiment
    - **File-level disjointness**: two experiments are disjoint if they modified completely different files. Same file = overlapping, even if different lines.
-   - If disjoint, cherry-pick the runner-up onto the new baseline and run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot. Do not reuse the standalone experiment's accumulated samples; they were measured against the previous baseline. Collect further measurement whenever `next_measurement` is not `none`. Persist the combined pairing as `kind: integrated` on that same log entry without replacing the standalone comparison. Keep the original standalone log entry for audit.
-   - Keep the cherry-pick only when that result is eligible and `next_measurement` is `none` (outcome: `runner_up_kept`); then clean up that runner-up's experiment worktree and branch
-   - Otherwise revert the cherry-pick, log it as "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's experiment worktree and branch
+   - If disjoint, preserve the standalone commit ID, then use `jj rebase -r <runner-up-revision> -d "optimize/<spec-name>"` with cwd set to the runner-up's absolute workspace root. Run the same decide loop as step 3.3 against a fresh sample set for that combined snapshot. Do not reuse standalone samples. Collect further measurement whenever `next_measurement` is not `none`. Persist the combined pairing as `kind: integrated` on that same log entry without replacing the standalone comparison.
+   - Advance the optimization bookmark to the combined revision only when that result is eligible, conflict-free, and `next_measurement` is `none` (outcome: `runner_up_kept`); describe it using the standards above and clean up its experiment workspace after verification.
+   - Otherwise leave the accepted bookmark unchanged, log "promising alone but neutral/harmful in combination" (outcome: `runner_up_reverted`), then clean up the runner-up's workspace. Rejected experiment revisions must not become accepted history.
    - Stop after first failed combination
 
 5. **Handle deferred dependencies.** Experiments that need unapproved dependencies get outcome `deferred_needs_approval`
 
-6. **Close the rest.** Cleanup worktrees. `kept` and `runner_up_kept` are only for diffs on the optimization branch. Eligible candidates that were not integrated become `not_selected`. Leave `inconclusive`, `censored`, and `degenerate` as `decide.mjs` returned them.
+6. **Close the rest.** Cleanup experiment workspaces through the manager. `kept` and `runner_up_kept` are only for diffs on the optimization bookmark. Eligible candidates that were not integrated become `not_selected`. Leave `inconclusive`, `censored`, and `degenerate` as `decide.mjs` returned them.
 
 ### 3.5 Update State (CP-4)
 
@@ -216,7 +223,7 @@ After all experiments in the batch have been measured:
 
 3. **Update the `best` section** in the experiment log if a new best was found. Write to disk.
 
-4. **Write strategy digest** to `.context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md`:
+4. **Write strategy digest** to `.tmp/optimize/<spec-name>/strategy-digest.md`:
    - Categories tried so far (with success/failure counts)
    - Key learnings from this batch and overall
    - Remaining opportunities, their supporting evidence, and whether current measurements still support their estimates; mark stale estimates for reassessment before selecting them
@@ -251,7 +258,7 @@ If none is met, proceed to the next batch (3.1).
 
 ### 3.7 Cross-Cutting Concerns
 
-**Codex failure cascade**: Track consecutive Codex delegation failures. After 3 consecutive failures, auto-disable Codex for remaining experiments and fall back to subagent dispatch. Log the switch.
+**Delegation fallback:** A blocked route may switch only to a fallback allowed by the effective configuration. Explicit harness/model selections remain authoritative; if no permitted route is available, report the blocker rather than silently changing them. Track consecutive Codex delegation failures and disable that route after 3 failures. For an implicitly selected Codex route, or when its recursion guard blocks dispatch, use subagent dispatch under the body's native model-discovery policy if configuration permits it. Log any switch and preserve the intended model tier and cross-model independence.
 
 **Error handling**: Classify a failed measurement from what `measure.sh` actually signaled. The censored stderr marker (with exit 125) is `censored`. Exit 124 is `timeout`. Any other non-zero exit (including 125 without that marker) is `error`. Log that outcome with the error message, revert the experiment, and continue the batch.
 

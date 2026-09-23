@@ -18,7 +18,7 @@ Read this when checking the V15 cache before dispatching `web-researcher`, or wh
 ]
 ```
 
-Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` is `<scratch-root>/ce-ideate/<run-id>`, resolved once in `references/grounding.md` Phase 1.
+Files live under `<scratch-dir>/web-research-cache.json`, where `<scratch-dir>` is `<scratch-root>/ideate/<run-id>`, resolved once in `references/grounding.md` Phase 1.
 
 ## Reuse check
 
@@ -44,10 +44,7 @@ After a fresh dispatch, append the new result to the current run's cache file at
 
 `topic_surface_hash` hashes the user-supplied content the web research is grounded on. That content is:
 - **Elsewhere modes (`elsewhere-software`, `elsewhere-non-software`):** the user's topic prompt plus any Phase 0.4 intake answers (the actual subject the agent is researching). The two sub-modes are keyed separately — a reclassification between software and non-software for the same topic hash must force a fresh dispatch, since the research domain differs.
-- **Repo mode:** the focus hint plus a stable repo discriminator. This keeps the cache key meaningful when focus is empty — two bare-prompt invocations in the same repo legitimately share research, but the key still differentiates repos. Since cache files from every repo's runs now live under the shared OS-temp root, a bare basename like `app` or `frontend` would collide across unrelated repos. Resolve the discriminator with this fallback chain and hash the result (first 8 hex chars of sha256 is sufficient):
-    1. `git remote get-url origin` — stable across machines, correct for collaborators on the same remote.
-    2. `git rev-parse --show-toplevel` — absolute repo path; machine-local but always available in a git checkout.
-    3. The current working directory's absolute path — last resort when not in a git repo.
+- **Repo mode:** the focus hint plus the `origin` URL from `jj git remote list` as a stable repo discriminator. This keeps the cache key meaningful when focus is empty while differentiating repos if caches are copied. Run the command with cwd set to the absolute workspace root, and hash the URL (first 8 hex chars of sha256 is sufficient). If no origin URL is available, disable cross-run cache reuse and use the current run-id as the discriminator. Do not infer repository identity from filesystem paths or metadata.
 
 Normalize before hashing: lowercase, collapse whitespace. (The repo discriminator hash is computed from the raw command output; only the focus hint and topic text are normalized.)
 

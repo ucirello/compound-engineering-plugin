@@ -15,4 +15,6 @@ ANALYZER_ARGS=("$INPUT_PATH"); [ -z "$OUTPUT_DIR" ] || ANALYZER_ARGS+=(--output-
 
 Accepted inputs are a Riffrec `.zip` or unpacked capture directory containing `session.json` and `events.json`; `.mp4`, `.mov`, or `.webm` video; `.m4a`, `.mp3`, or `.wav` audio; or meeting-notes `.md`.
 
+The analyzer stages snapshot replacements under the JJ workspace root's `.tmp`, falling back to the current directory's `.tmp` outside JJ. The output directory must share that filesystem so replacement and rollback remain atomic. Retained raw evidence and frames remain in the selected output directory.
+
 If no interpreter works or the analyzer fails, report the command's exit status and stderr and stop that path. Do not silently substitute a partial artifact set.

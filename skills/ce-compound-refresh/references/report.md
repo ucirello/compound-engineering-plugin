@@ -3,7 +3,7 @@
 **Print the full report as markdown — it is the deliverable, not an internal summary.** After processing the scope:
 
 ```text
-Compound Refresh Summary
+Learning Refresh Summary
 ========================
 Scanned: N learnings
 

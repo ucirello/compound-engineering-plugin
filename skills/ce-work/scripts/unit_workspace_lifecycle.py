@@ -68,10 +68,9 @@ def unfinished_run(doc: dict, canonical_head: str) -> bool:
             and completion.get("base") == unit.get("workspace", {}).get("base")
             and isinstance(completion.get("snapshot"), dict)
             and completion["snapshot"].get("head") == completion["accepted_head"]
-            and completion["snapshot"].get("branch_ref") == doc.get("branch", {}).get("ref")
+            and completion["snapshot"].get("bookmark") == doc.get("bookmark", {}).get("name")
             and completion["snapshot"].get("status_empty") is True
-            and completion["snapshot"].get("worktree_index_empty") is True
-            and completion["snapshot"].get("head_tree") == completion["snapshot"].get("index_tree")
+            and completion["snapshot"].get("diff_empty") is True
             and completion["snapshot"].get("status_sha256") == digest_bytes(b"")
         ):
             raise TrustFailure(f"native fallback completion receipt is malformed: {uid}")
@@ -98,8 +97,7 @@ def discover_resume_run(repo: str, plan_digest: str) -> tuple[str, list[dict]]:
     candidates: list[dict] = []
     # A run recorded under the other candidate root (sandboxed vs unsandboxed
     # session) must still be discoverable; scan every candidate that exists.
-    # Read-only: repairing a root this session cannot write (a leftover /tmp
-    # tree under the sandbox) would abort discovery before the writable one.
+    # Read-only: discovery scans the workspace scratch root this invocation resolves.
     entries = []
     for root in candidate_runs_roots():
         if not os.path.isdir(root) or os.path.islink(root):
@@ -117,16 +115,15 @@ def discover_resume_run(repo: str, plan_digest: str) -> tuple[str, list[dict]]:
         if doc.get("schema_version") != SCHEMA_VERSION or doc.get("run_id") != entry.name:
             raise TrustFailure(f"manifest schema or run identity mismatch: {entry.path}")
         repository = doc.get("repository")
-        branch = doc.get("branch")
+        bookmark = doc.get("bookmark")
         plan = doc.get("plan")
         source = doc.get("source")
-        if not isinstance(repository, dict) or not isinstance(branch, dict) or not isinstance(plan, dict):
-            raise TrustFailure(f"manifest repository, branch, or plan record is malformed: {entry.path}")
+        if not isinstance(repository, dict) or not isinstance(bookmark, dict) or not isinstance(plan, dict):
+            raise TrustFailure(f"manifest repository, bookmark, or plan record is malformed: {entry.path}")
         if (
-            repository.get("identity_digest") != info["identity_digest"]
+            repository.get("workspace_name") != info["workspace_name"]
             or repository.get("toplevel") != info["toplevel"]
-            or repository.get("git_dir") != info["git_dir"]
-            or branch.get("ref") != info["branch_ref"]
+            or bookmark.get("name") != info["bookmark"]
         ):
             continue
         if source is not None and not isinstance(source, dict):
@@ -460,10 +457,10 @@ def cmd_resume(args) -> tuple[str, dict]:
                 not isinstance(restore_evidence, dict)
                 or restore_evidence.get("exact") is not True
                 or not isinstance(pre_fold, dict)
-                or restore_evidence.get("snapshot") != pre_fold
+                or not snapshots_equal(restore_evidence.get("snapshot", {}), pre_fold)
             ):
                 raise Operational("BLOCKED", "preserved-unit recovery lacks exact restoration evidence")
-            if semantic_snapshot(doc["repository"]["toplevel"]) != pre_fold:
+            if not snapshots_equal(semantic_snapshot(doc["repository"]["toplevel"]), pre_fold):
                 raise Operational("BLOCKED", "canonical checkout no longer matches the exact restored snapshot")
             integration_release(run_id, uid, lock["nonce"])
             resolve_unit_recovery_blockers(
@@ -480,7 +477,7 @@ def cmd_resume(args) -> tuple[str, dict]:
             validate_lock(doc, uid, lock["nonce"])
             repo = doc["repository"]["toplevel"]
             snap = semantic_snapshot(repo)
-            if snap == unit["integration"]["pre_fold"]:
+            if snapshots_equal(snap, unit["integration"]["pre_fold"]):
                 exact = restore(run_id, uid, lock["nonce"])
                 if not exact:
                     raise Operational("BLOCKED", "exact pre-fold preservation could not be proven")
@@ -499,11 +496,11 @@ def cmd_resume(args) -> tuple[str, dict]:
                     current_unit["state"] = "integrated"
                     current_unit["integration"]["applied"] = {
                         "at": now_iso(),
-                        "post_index_tree": snap["index_tree"],
+                        "change_id": snap["change_id"],
                         "status_sha256": snap["status_sha256"],
                         "reconciled": True,
                     }
-                    event(current, "transport-apply-reconciled", uid, {"post_index_tree": snap["index_tree"]})
+                    event(current, "transport-apply-reconciled", uid, {"change_id": snap["change_id"]})
                 actions.append({"unit_id": uid, "action": "apply-reconciled"})
         elif state in {"integrated", "verified"} and lock and lock.get("unit_id") == uid:
             validate_lock(doc, uid, lock["nonce"])
@@ -547,7 +544,7 @@ def fallback_basis(doc: dict, unit: dict) -> tuple[str, dict]:
         if (
             snap["head"] not in allowed_heads
             and not dependency_advanced_head(doc, unit, snap["head"])
-        ) or not snap["status_empty"] or snap["index_tree"] != snap["head_tree"]:
+        ) or not snap["status_empty"] or not snap["diff_empty"]:
             raise Operational("BLOCKED", "canonical checkout diverged or is dirty; native fallback is not safe")
         return "terminal-validation-failure", attempt
     if process_state in TERMINAL_PROCESS - {"done"} or (process_state == "never-started" and attempt.get("job_id")):
@@ -556,7 +553,7 @@ def fallback_basis(doc: dict, unit: dict) -> tuple[str, dict]:
         if (
             snap["head"] not in allowed_heads
             and not dependency_advanced_head(doc, unit, snap["head"])
-        ) or not snap["status_empty"] or snap["index_tree"] != snap["head_tree"]:
+        ) or not snap["status_empty"] or not snap["diff_empty"]:
             raise Operational("BLOCKED", "canonical checkout diverged or is dirty; native fallback is not safe")
         recorded = attempt.get("terminal_receipt")
         if process_state == "failed" and isinstance(recorded, dict) and recorded.get("terminal_status") in {"unavailable", "failed"}:
@@ -576,7 +573,7 @@ def fallback_basis(doc: dict, unit: dict) -> tuple[str, dict]:
             raise Operational("REFUSED", "release the integration lock after exact restoration before fallback")
         actual = semantic_snapshot(doc["repository"]["toplevel"])
         expected = unit["integration"].get("pre_fold")
-        if actual != expected:
+        if not isinstance(expected, dict) or not snapshots_equal(actual, expected):
             raise Operational("BLOCKED", "canonical checkout no longer matches the exact restored snapshot")
         return "canonical-attempt-preserved", attempt
     if process_state == "running":
@@ -677,9 +674,7 @@ def validate_fallback_ancestry(doc: dict, unit: dict, accepted_head: str) -> Non
 
     missing = [
         item for item in required
-        if git_text(
-            doc["repository"]["toplevel"], "merge-base", item["commit"], accepted_head, check=False,
-        ) != item["commit"]
+        if not is_ancestor(doc["repository"]["toplevel"], item["commit"], accepted_head)
     ]
     if missing:
         raise Operational(
@@ -696,7 +691,7 @@ def cmd_complete_fallback(args) -> tuple[str, dict]:
     if not summary or "\0" in summary or len(summary.encode()) > 1024:
         raise Operational("REFUSED", "native fallback summary must be non-empty and at most 1024 bytes")
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", args.accepted_head):
-        raise Operational("REFUSED", "native fallback accepted head must be a Git object id")
+        raise Operational("REFUSED", "native fallback accepted head must be a commit id")
 
     with locked_manifest(args.run_id, write=True) as doc:
         validate_repo(doc)
@@ -718,15 +713,15 @@ def cmd_complete_fallback(args) -> tuple[str, dict]:
 
         repo = doc["repository"]["toplevel"]
         snapshot = semantic_snapshot(repo)
-        if snapshot.get("branch_ref") != doc["branch"]["ref"]:
-            raise Operational("BLOCKED", "canonical branch changed before native fallback completion")
-        if snapshot.get("status_empty") is not True:
-            raise Operational("BLOCKED", "commit or restore canonical changes before completing native fallback")
-        accepted_commit = git_text(repo, "rev-parse", "--verify", f"{args.accepted_head}^{{commit}}", check=False)
+        if snapshot.get("bookmark") != doc["bookmark"]["name"]:
+            raise Operational("BLOCKED", "canonical bookmark changed before native fallback completion")
+        if snapshot.get("status_empty") is not True or snapshot.get("diff_empty") is not True:
+            raise Operational("BLOCKED", "finish or restore canonical changes before completing native fallback")
+        accepted_commit = resolve_commit(repo, args.accepted_head, check=False)
         if accepted_commit != args.accepted_head or snapshot.get("head") != args.accepted_head:
-            raise Operational("BLOCKED", "accepted native fallback head does not match canonical HEAD")
+            raise Operational("BLOCKED", "accepted native fallback head does not match canonical working copy")
         base = unit.get("workspace", {}).get("base")
-        if not isinstance(base, str) or git_text(repo, "merge-base", base, args.accepted_head, check=False) != base:
+        if not isinstance(base, str) or not is_ancestor(repo, base, args.accepted_head):
             raise Operational("BLOCKED", "accepted native fallback head does not descend from the recorded unit base")
         validate_fallback_ancestry(doc, unit, args.accepted_head)
 
@@ -741,11 +736,10 @@ def cmd_complete_fallback(args) -> tuple[str, dict]:
                 not isinstance(claim_head, str)
                 or not allowed_heads
                 or claim_head != allowed_heads[-1]
-                or git_text(repo, "merge-base", claim_head, args.accepted_head, check=False) != claim_head
+                or not is_ancestor(repo, claim_head, args.accepted_head)
             ):
                 raise Operational("BLOCKED", "native fallback completion does not extend the latest recorded wave head")
-            raw = git(repo, "diff-tree", "-r", "-M", "--name-status", "-z", claim_head, args.accepted_head)
-            changed_paths = parse_diff_paths(raw)
+            changed_paths = diff_summary_paths(repo, from_rev=claim_head, to_rev=args.accepted_head)
             validate_wave_collisions(
                 doc,
                 unit,
@@ -943,26 +937,33 @@ def cmd_cleanup(args) -> tuple[str, dict]:
         elif unit["state"] != "committed":
             raise Operational("REFUSED", "uncommitted output is retained unless explicitly abandoned")
         workspace = unit["workspace"]["path"]
-        ref = unit["transport"].get("ref")
+        workspace_name = unit["workspace"].get("name")
+        ref = unit["transport"].get("bookmark") or unit["transport"].get("ref")
         repo = doc["repository"]["toplevel"]
-        common = doc["repository"]["common_dir"]
     workspace = owned_workspace_path(args.run_id, args.unit_id, workspace)
     with locked_manifest(args.run_id, write=True) as doc:
-        event(doc, "cleanup-intent", args.unit_id, {"workspace": workspace, "ref": ref, "abandonment_receipt": abandonment_receipt})
-    with admin_lock(common):
-        present = [r for r in worktree_rows(repo) if os.path.realpath(str(r.get("worktree", ""))) == os.path.realpath(workspace)]
-        if present:
-            git(repo, "worktree", "remove", "--force", workspace)
+        event(doc, "cleanup-intent", args.unit_id, {"workspace": workspace, "bookmark": ref, "abandonment_receipt": abandonment_receipt})
+    with admin_lock(repo):
+        present = [row for row in workspace_rows(repo) if row.get("name") == workspace_name]
+        if present and workspace_name:
+            named_root = workspace_root_named(repo, workspace_name)
+            if os.path.realpath(named_root) != os.path.realpath(workspace):
+                raise Operational("BLOCKED", "registered workspace root changed; refusing cleanup")
+            if os.path.lexists(workspace):
+                validate_workspace(doc, unit)
+            jj(repo, "workspace", "forget", workspace_name)
             test_fault("cleanup-after-worktree-remove")
-        if any(os.path.realpath(str(r.get("worktree", ""))) == os.path.realpath(workspace) for r in worktree_rows(repo)):
-            raise Operational("BLOCKED", "worktree remained registered after cleanup")
+        if workspace_name and any(row.get("name") == workspace_name for row in workspace_rows(repo)):
+            raise Operational("BLOCKED", "workspace remained registered after cleanup")
+        if os.path.lexists(workspace):
+            validate_canonical_membership(doc, workspace)
         remove_unregistered_owned_workspace(args.run_id, args.unit_id, workspace)
     if ref and commit:
-        current = git_text(repo, "rev-parse", "-q", "--verify", ref, check=False)
+        current = resolve_commit(repo, ref, check=False)
         if current and current != commit:
-            raise Operational("BLOCKED", "transport ref changed; refusing cleanup")
+            raise Operational("BLOCKED", "transport bookmark changed; refusing cleanup")
         if current:
-            git(repo, "update-ref", "-d", ref, commit)
+            jj(repo, "bookmark", "delete", ref)
     with locked_manifest(args.run_id, write=True) as doc:
         unit = doc["units"][args.unit_id]
         finalized_state = "native-completed" if unit["state"] == "native-completed" else "cleaned"

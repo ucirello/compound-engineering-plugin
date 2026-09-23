@@ -1,42 +1,38 @@
-# Repository context, branch, and PR state
+# Repository context, bookmark, and PR state
 
-Gather this before Step 1 (resolve branch and PR state), and re-verify branch, remote, and PR state immediately before each
-consequential step (the push in Step 3, `gh pr create` in Step 5).
+Run each probe as its own argv-form call and interpret its exit status. Resolve the absolute workspace root with `jj workspace root` from the known checkout; set that absolute root as cwd for every subsequent JJ subprocess, never substituting `-R`. Use only public JJ commands, never repository internals or filesystem identity. If workspace membership matters, use `jj workspace list` and `jj workspace root --name <name>`.
 
-Gather the repository context by running each command below as its **own** shell tool call — a single argv-style invocation (just the program and its arguments). Do **not** join them with `;`, `&&`, `||`, pipes, `$(...)`, or redirects like `2>/dev/null`: that syntax parses only under POSIX shells and aborts under Windows PowerShell. Read each command's exit status directly. A non-zero exit is a normal state to interpret (no PR yet, no `origin/HEAD`, detached HEAD), not a failure to suppress.
+Before every `gh` call, obtain `jj git root` in this workspace and set the returned value as the call's `GIT_DIR` environment variable. This is the portable equivalent of `GIT_DIR=$(jj git root)`; use the host's environment facility, not POSIX substitution on a non-POSIX host. Pass the base repository explicitly with `-R <base-owner>/<repo>` on fork operations. Description-only and update modes must also perform this setup.
 
-Run them in order — the existing-PR check needs the branch name from `git branch --show-current`:
-
-| Command | Purpose | Non-zero exit / empty output means |
+| Command | Purpose | Failure meaning |
 | --- | --- | --- |
-| `git rev-parse --show-toplevel` | Repo root | Not a git repository — report and stop |
-| `git status` | Working-tree state | (fails only outside a repo) |
-| `git diff HEAD` | Uncommitted changes | Unborn repo with no commits yet |
-| `git branch --show-current` | Current branch (`<branch>`) | Empty output = detached HEAD (Step 1 handles it) |
-| `git log --oneline -10` | Recent commit / PR-title style | Unborn repo — no history yet |
-| `git rev-parse --abbrev-ref origin/HEAD` | Remote default branch | No `origin/HEAD` set — resolve per Step 1 |
-| `gh pr list --head <branch> --state open --json number,url,title,body,state,isDraft,headRefName,headRepositoryOwner` | Open PR for this branch (run only once `<branch>` is non-empty) | Exit 0 with `[]` = no open PR. Non-zero = `gh` missing, unauthenticated, or offline — PR state is **unknown**, not "none"; never treat a non-zero check as "no PR"; re-check before creating (Step 5) |
+| `jj workspace root` | Absolute workspace root | Outside JJ: report and stop |
+| `jj status` | Working-copy and conflict state | Unknown state: stop |
+| `jj diff` | Current change's content | Unknown content: stop |
+| `jj log -r '@ \| @-'` | Current change and parent | Do not infer a head if unresolved |
+| `jj bookmark list --all-remotes` | Feature bookmarks and tracking state | Unknown destination: stop |
+| `jj log -r 'ancestors(@, 10)'` | Recent commit and title conventions | Report if history unavailable |
+| `jj git remote list` | Head and base repository mapping | Resolve missing remote before publishing |
+| `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'` | Default branch | Resolve from verified project context or ask; pipeline stops rather than guesses |
+| `gh pr list -R <base-owner>/<repo> --head <branch> --state open --json number,url,title,body,state,isDraft,headRefName,headRepositoryOwner` | Existing PR for resolved bookmark | Only exit-0 `[]` means none; non-zero is unknown |
 
-Substitute `<branch>` with the current branch from `git branch --show-current`, and pass the branch **name only**. Two traps:
+## Step 1: Resolve the intended head and PR
 
-- **Empty branch (detached HEAD):** skip the PR check entirely — `gh pr list` with an empty `--head` drops the filter and lists unrelated PRs. Resolve it after Step 1 creates a branch.
-- **Fork checkout:** do **not** pass `<owner>:<branch>` — `gh pr list --head` does not accept that syntax and silently returns `[]` for it, which reads as "no PR" and opens a duplicate. The PR lives on the base repo, so make `gh` target the base: rely on its default-repo resolution, or pass `-R <base-owner>/<repo>` explicitly when the default is the fork.
+JJ has no current Git branch or staging index. Choose the intended feature bookmark from invocation, verified local/remote bookmarks, and work ancestry. Inspect both `@` and `@-`: after a commit, `@` may be an empty child while the publishable head and bookmark are at `@-`. If `@` holds excluded or unrelated work, the publishable head is the selected committed ancestor, never that remainder. Do not create a duplicate bookmark merely because `@` is empty. If multiple candidates remain, stop and ask; pipeline reports the ambiguity.
 
-Everything gathered here is a snapshot taken before any action — treat it as a hint, not ground truth. Re-verify the branch, remote, and existing-PR state immediately before each consequential step (the push in Step 3, `gh pr create` in Step 5), since they can change between gathering and acting.
+- **No feature bookmark with publishable work:** derive a non-conflicting feature name from the change and create it at the verified intended revision. No branch-confirmation question is needed.
+- **Default bookmark with work:** use `references/branch-creation.md`; do not move or publish the default bookmark.
+- **Default bookmark with no work:** report no feature work and stop.
+- **Existing feature bookmark:** retain it, verifying ownership and destination before moving it.
 
-## Step 1 detail: resolve branch and PR state
+Never query with an empty head. Pass the branch name only: `--head <owner>:<branch>` silently returns `[]`. The PR lives in the base repository, not necessarily the head remote. Match results by both `headRepositoryOwner` and `headRefName`; never take index 0 without matching. Stop on ambiguity and show candidates. Keep the matching URL and body for Steps 4 and 5.
 
-The remote default branch returns something like `origin/main`; strip the `origin/` prefix. If that command exited non-zero (no `origin/HEAD` set) or returned bare `HEAD`, try `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`. If both fail, fall back to `main`. For the existing-PR check: an empty `[]` array means no open PR for this branch; a non-zero exit means `gh` is missing, unauthenticated, or offline — treat PR state as **unknown** (not "no PR") and re-run the check, or `gh auth status`, before creating a new PR in Step 5 rather than assuming none exists.
+Probe output is a snapshot. Re-check the intended revision, bookmark, remote, and PR immediately before push and creation. Resolve non-zero PR checks through authentication/connectivity evidence; they never authorize creation.
 
-Which branch path to take:
+## Step 2: Conventions
 
-- **Detached HEAD** — automatically create a feature branch from the current `HEAD` before continuing. Derive the branch name from the change content, run `git checkout -b <branch-name>`, re-read `git branch --show-current`, and use that result for the rest of the workflow. Do not ask whether to create the branch — invoking the full commit/push/PR workflow is already confirmation that the work should become branch-backed. If the derived branch name already exists, choose a non-conflicting suffix or ask only if the conflict cannot be resolved safely.
-- **On default branch with work to do** (uncommitted, unpushed, or no upstream) — automatically create a feature branch (pushing the default directly is not supported). Derive a name from the change content and continue at Step 3, which handles branch creation safely. Do not ask whether to branch — committing on the default is not an option here.
-- **On default branch with no work** — report no feature branch work and stop.
-- **Feature branch** — continue.
+Read https://go.dev/wiki/CommitMessage before composing or validating messages.
 
-If the PR check returned a non-empty array, do **not** blindly take index 0. In a base repo with multiple forks, another contributor's PR can share the same branch name (`--head` filters by branch only, not `<owner>:<branch>`). Select the entry whose `headRepositoryOwner` and `headRefName` match the current head — the branch and fork this workflow is pushing. Note the URL and body from that entry (all entries are open — the check filtered `--state open`). If exactly one entry matches, use it. If multiple entries share the branch name from different owners and none can be confirmed as the current head's, treat it as ambiguous: stop and show the candidates to the user rather than acting on the wrong PR. Step 5 uses the URL to choose between creating a new PR and updating the existing one. Step 4 uses the existing body as context for what to preserve when rewriting.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-## Step 2 detail: conventions
-
-Match repo style for commit messages and PR titles (project instructions in context > recent commits > conventional commits as default). With conventional commits, default to `fix:` over `feat:` when ambiguous — adding code to remedy broken or missing behavior is `fix:`. Reserve `feat:` for capabilities the user could not previously accomplish. The user may override. The description reference's title step uses this same type default.
+Here `git log` refers to history inspected with `jj log` for this JJ workflow; never execute Git. Runtime project instructions and visible history override Go-specific syntax. Match PR titles to those project conventions too; do not impose a fixed prefix or template.

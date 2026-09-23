@@ -21,7 +21,7 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 - Never dogfood the trunk on a branch-name or blank target — there is no diff. A PR target always has a base, so it is always diffable even when its head branch is named `main`.
 - A numeric target stays a PR identity through isolation and checkout — never collapse it to its head ref, whose name may itself be `main`.
 - Never switch the primary checkout out from under the user. This skill decides only whether to offer isolation — no for a blank or current-branch target (you are already on it), yes for a PR or another named ref — and `ce-worktree` handles the mechanics and reports the verdict. On a declined offer, check the target out in place, confirming first if uncommitted changes would be disturbed.
-- Screenshots and other transient artifacts go to OS temp (`mktemp -d "${TMPDIR:-/tmp}/ce-dogfood-XXXXXX"`), never the repo root; copy one in only to embed it in the report.
+- Screenshots and other transient artifacts go under the workspace's `.tmp/` (resolve with `jj workspace root`; fall back to the current directory's `.tmp/` outside JJ). Create a unique `dogfood-XXXXXX` directory there and copy a screenshot into the report only to embed it.
 - Auto-fix only what is small, well-understood, and low-risk. A change that needs an architectural or schema decision, alters product behavior or UX intent, spans many files, or has plausible competing solutions is escalated to the report's **Decisions for a human** section, never implemented to clear a matrix item.
 
 ## Prerequisites
@@ -42,16 +42,20 @@ This is **diff-scoped**, not whole-app exploration. You test what *this branch* 
 Reports live under `<root>/dogfood-reports/` and personas under `<root>/personas/`. Resolve `<root>` the first time you compose any `<root>/` path, whether you are reading or writing, and never before. A run that composes none skips it.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.jj/` or `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
 ## Delegation
 
-`ce-dogfood` is an orchestrator: prefer an existing CE skill over re-deriving its behavior. Isolate a PR or named-branch target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
+`ce-dogfood` is an orchestrator: prefer an existing RocketClaw skill over re-deriving its behavior. Isolate a PR or named-bookmark target with `ce-worktree`; take a non-obvious root cause to `ce-debug`; commit each fix with `ce-commit`; capture a reusable lesson with `ce-compound`.
+
+Preserve explicit effective `.rocketclaw/config.yaml` / `config.local.yaml` subagent and harness settings when a callee delegates. Treat `opencode` as its own V2 harness, including `cross_model_peer: opencode`, `work_engine_preferences: [{harness: opencode, model: provider/model#variant}]`, and `plan_model` / `brainstorm_model` paired with `plan_harness: opencode` / `brainstorm_harness: opencode`. Each callee owns the settings it consumes and its dispatch mechanics.
+
+When the current harness is OpenCode and effective configuration declares no explicit subagent or alternative-harness route, prefer native delegation if `opencode.models` and `subagent` with an optional `model` parameter are available. Discover exact model IDs and variants through `opencode.models`, then pass the selected `provider/model#variant` through the native `subagent` model parameter, preserving model tiers and cross-model intent. Never guess an ID, silently reuse the current model, or substitute shell delegation for this native route. If that capability is unavailable, retain configured dispatch behavior and report any blocked delegation; do not substitute OpenCode V1 commands.
 
 ## Compound Packs
 

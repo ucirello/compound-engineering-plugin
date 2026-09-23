@@ -51,6 +51,8 @@ Detection is reasoning-based. Do not maintain an enumerated checklist of files t
 
 ## Probe timing and caching
 
+Run repository-scoped `gh` calls with cwd set to the absolute JJ workspace root and `GIT_DIR=$(jj git root)`. Use the finished parent `@-` for the ticket's commit evidence when `@` is an empty working-copy change, and resolve its bookmark explicitly.
+
 Availability probes run **at most once per session** and **only when Defer execution is imminent**. Never speculatively at review start, never per-Defer, never per-walk-through-finding. The cached tuple is reused for every Defer action in the same run.
 
 Typical probe sequence:

@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — resolve the Git directory with `jj --ignore-working-copy git root`, then run `gh pr view <PR-number-or-URL> --json title,body,url` with that successful, nonempty result set as `GIT_DIR` (the title and body usually state the user-facing value). Use an explicit PR from context or the bookmark associated with the shipped change; if `@` is empty, inspect `@-` for that bookmark rather than assuming a checked-out branch.
+- **The diff** — `jj --ignore-working-copy diff --from 'fork_point(main | @)' --to @ --stat`, using the actual base bookmark in place of `main` and skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent commits** — `jj --ignore-working-copy log -r 'ancestors(@, 15)' --no-graph` for the arc of the change
+
+Resolve the absolute workspace root with `jj --ignore-working-copy workspace root` from the known project directory, then set the command working directory to that absolute root for every JJ or GitHub command. Use `--ignore-working-copy` for JJ inspection so drafting does not snapshot unrelated local work; its results describe the recorded revisions, not unsnapshotted edits. These sources are optional when no JJ workspace or PR is available.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

@@ -55,9 +55,9 @@ Recent experiments and their outcomes (for context -- avoid re-trying approaches
 2. Implement the hypothesis described above
 3. Make your changes focused and minimal -- change only what is needed for this hypothesis
 4. Do NOT run the measurement harness (the orchestrator handles this)
-5. Do NOT commit (the orchestrator will commit the winning diff before merge if this experiment succeeds)
+5. Do NOT describe revisions, move bookmarks, or integrate changes (JJ snapshots edits automatically; the orchestrator finalizes a winning revision)
 6. Do NOT modify files outside the mutable scope
-7. When done, run `git diff --stat` so the orchestrator can see your changes
+7. When done, run `jj diff --stat` with cwd set to the absolute experiment workspace root so the orchestrator can see your changes
 8. If you discover you need an unapproved dependency, note it and stop
 
 Focus on implementing the hypothesis well. The orchestrator will measure and evaluate the results.
@@ -83,7 +83,8 @@ Focus on implementing the hypothesis well. The orchestrator will measure and eva
 ## Notes
 
 - This template works for both subagent and Codex dispatch. No platform-specific assumptions.
-- For Codex dispatch: write the filled template to a temp file and pipe via stdin (`cat /tmp/optimize-exp-XXXXX.txt | codex exec --skip-git-repo-check - 2>&1`).
+- For Codex dispatch: write the filled template under the controller workspace's `.tmp/optimize/` and pass it on stdin (`codex exec --skip-git-repo-check - < "<absolute workspace-root>/.tmp/optimize/optimize-exp-XXXXX.txt" 2>&1`) with cwd set to the absolute experiment workspace root.
+- For OpenCode V2 dispatch: follow the controller's effective harness/model settings and native-dispatch conditions. Native subagents receive the filled prompt; external V2 calls use `opencode run --model "<provider/model#variant>" --format json "$(cat '<absolute workspace-root>/.tmp/optimize/optimize-exp-XXXXX.txt')"` from the absolute experiment workspace root.
 - For subagent dispatch: pass the filled template as the subagent prompt.
 - Keep `{recent_experiment_summaries}` concise -- 2-3 lines per experiment, last 10 only. Do not include the full experiment log.
 - The worker should NOT read the full experiment log or strategy digest. It receives only what the orchestrator provides.

@@ -50,7 +50,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts under the workspace root's `.tmp/` when a later workflow or report needs file paths; otherwise in-app evidence is sufficient. Resolve the root with `jj workspace root`, falling back to local `.tmp/` outside JJ.
 
 ## Human verification (when required)
 
@@ -103,7 +103,7 @@ Did it work correctly?
 ```markdown
 ## Browser Test Results
 
-**Test Scope:** PR #[number] / [branch name]
+**Test Scope:** PR #[number] / [JJ bookmark or change]
 **Server:** http://localhost:<port>
 
 ### Pages Tested: [count]

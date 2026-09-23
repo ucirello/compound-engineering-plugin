@@ -84,27 +84,29 @@ After completing each task, evaluate whether to create an incremental commit:
 | Logical unit complete (model, service, component) | Small part of a larger unit |
 | Tests pass + meaningful progress | Tests failing |
 | About to switch contexts (backend → frontend) | Purely scaffolding with no behavior |
-| About to attempt risky/uncertain changes | Would need a "WIP" commit message |
+| About to attempt risky/uncertain changes | The logical unit is incomplete |
 
-**Heuristic:** "Can I write a commit message that describes a complete, valuable change? If yes, commit. If the message would be 'WIP' or 'partial X', wait."
+**Heuristic:** Commit when the message can describe a complete, valuable change; wait when the logical unit is still incomplete.
 
 If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
 
 **Commit workflow:**
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+The quoted history command means history inspected with `jj log -r ::@`. Runtime project instructions and that history's message syntax override Go guidance; determine syntax from those sources rather than imposing it here.
+
+There is no index. Finish only the owned paths:
+
 ```bash
 # 1. Verify tests pass (use project's test command)
 # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-# 2. Stage only files related to this logical unit (not `git add .`)
-git add <files related to this logical unit>
-
-# 3. Commit with conventional message, limited to those same paths
-git commit -m "feat(scope): description of this unit" -- <files related to this logical unit>
+# 2. Finish the working-copy change for this unit's owned paths only
+jj commit <files related to this logical unit> -m "<message composed from the standards above>"
 ```
 
-**Handling merge conflicts:** If conflicts arise during rebasing or merging, resolve them immediately. Incremental commits make conflict resolution easier since each commit is small and focused.
-
-**Note:** Incremental commits use clean conventional messages without attribution footers. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
+**Handling merge conflicts:** If conflicts arise during rebasing or merging, resolve them immediately. Incremental changes make conflict resolution easier since each change is small and focused.
 
 **Parallel subagent mode:** commit ownership follows the isolation mode chosen at dispatch — see `references/execution-strategy.md`.
 

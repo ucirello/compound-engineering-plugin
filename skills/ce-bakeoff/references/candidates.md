@@ -6,7 +6,9 @@ Use fresh contexts that receive neither the coordinator's preferred answer nor s
 
 Name the independent authors **Baker A**, **Baker B**, and so on in dispatch labels and payloads. Use “bakers” for the workers in progress updates and “candidates” for their proposed solutions.
 
-Honor explicit candidate model choices or mixes, otherwise the caller's resolved model preference. Without a model preference, seek different model families across the bakers. Prefer native host access to serve the selected models, then try available authorized model CLIs for families the host cannot serve. If those routes are unavailable or fail, use fresh agents on the host's own model and disclose the fallback. An explicit restriction on models or providers still applies; do not silently substitute for a required model.
+Honor explicit candidate model choices or mixes, otherwise the caller's resolved model preference. Resolve delegation settings from the effective `.rocketclaw/config.yaml` and optional `config.local.yaml` overrides; explicit subagent or alternative-harness routing wins. OpenCode V2 is a distinct `opencode` harness, including caller preferences such as `work_engine_preferences: [{harness: opencode, model: provider/modelname#variant}]`, `plan_harness: opencode` with `plan_model`, or `brainstorm_harness: opencode` with `brainstorm_model`. Without a model preference, seek different model families across the bakers. Prefer native host access to serve the selected models, then try available authorized model CLIs for families the host cannot serve. If those routes are unavailable or fail, use fresh agents on the host's own model and disclose the fallback. An explicit restriction on models or providers still applies; do not silently substitute for a required model.
+
+On OpenCode V2, when no explicit subagent or alternative-harness route applies and `opencode.models` plus native subagent dispatch with an optional model are available, discover exact model IDs and variants and dispatch fresh native agents with `model: provider/model#variant` instead of shell subprocesses. Preserve the requested tier and cross-model intent; never guess an ID or silently reuse the current model. When these capabilities are absent, retain the authorized routes above. For an explicitly configured `opencode` route, use the V2 interface and its current help; do not fall back to V1.
 
 Bake-off owns candidate dispatch. Use the host's actual capabilities and each available CLI's current help to establish supported model selection, a fresh context, read scope, output collection, and cancellation. Keep CLI calls direct and scoped; do not invoke the peer-job Python framework or build a new dispatch system for this task. Do not invent model IDs or flags, install tools, or change credentials. A failed route should lead to the next usable route within budget, not repeated setup or troubleshooting. Cancel any outstanding attempt before replacing it, and count actual candidate launches against the run's allowance.
 
@@ -18,17 +20,16 @@ Ask each candidate to return an approach sketch at the requested fidelity, with 
 
 ## Scratch and completion
 
-Create private run scratch once:
+Create private run scratch once. Resolve the absolute workspace root with public `jj workspace root`, or the absolute current directory outside JJ. Run every subsequent JJ subprocess with its cwd set to that absolute workspace root. Substitute that resolved path below:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="<absolute workspace root or current directory outside JJ>";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-(umask 077; mkdir -p "$SCRATCH_ROOT/ce-bakeoff") || exit 1;
-SCRATCH_DIR=$(mktemp -d "$SCRATCH_ROOT/ce-bakeoff/run-XXXXXX") || exit 1;
+SCRATCH_DIR=$(mktemp -d "$SCRATCH_ROOT/bakeoff-XXXXXX") || exit 1;
 echo "$SCRATCH_DIR";
 ```
 

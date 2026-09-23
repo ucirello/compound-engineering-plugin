@@ -1,28 +1,28 @@
-# Compound Engineering -- repo config
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# RocketClaw -- repo config
+# Copy to .rocketclaw/config.yaml in your project root (team defaults).
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # docs_root is repo layout -- set it only here; local docs_root is ignored.
 # All settings are optional. Invalid ordinary values continue to the next layer.
 # docs_root fails closed on an unusable value.
 
 # --- Artifact root ---
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every RocketClaw-written artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
 # feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location CE reads
-# and writes; CE never falls back to reading `docs/`.
+# byte-identical to today. A configured root becomes the sole location RocketClaw reads
+# and writes; RocketClaw never falls back to reading `docs/`.
 #
-# Set this only in this tracked file so every clone and worktree share one
+# Set this only in this tracked file so every clone and workspace share one
 # artifact tree. A docs_root in config.local.yaml is ignored.
 #
 # The value must be a repo-relative directory whose real (symlink-resolved) path
-# stays inside the repo, is not the repo root itself, and is not under `.git/`.
+# stays inside the repo, is not the repo root itself, and is not under `.jj/` or `.git/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- RocketClaw stops with an error so a typo can't silently write artifacts into
 # the location you configured away from. `/ce-setup` reports the resolved root.
 
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # repo-relative dir (default: docs)
 
 # --- Product pulse ---
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
@@ -66,13 +66,26 @@
 # model in a prompt for a one-off, which overrides these keys.
 #
 # Cross-harness: setting a key means every harness you run these skills in will
-# attempt that model. The host serves it natively where it can; otherwise the
+# attempt that model. Unless an explicit harness route is set below, the host
+# serves it natively where it can; otherwise the
 # Claude CLI is invoked when installed and authenticated; otherwise the step runs
 # on your session model and the run says so. Invalid/commented/missing -> no
 # elevation.
 
 # plan_model: fable              # model alias for plan authoring; candidate preference when a Bake-off runs (no default)
 # brainstorm_model: fable        # model alias for approach generation; candidate preference when a Bake-off runs (no default)
+# plan_harness: opencode         # explicitly route plan_model through OpenCode V2
+# brainstorm_harness: opencode   # explicitly route brainstorm_model through OpenCode V2
+# For either opencode harness, set the paired model to provider/modelname#variant,
+# using an exact discovered model ID and optional variant, not a Claude alias.
+# Effective config.local.yaml/config.yaml subagent and harness settings win.
+# With no explicit subagent or alternative-harness route, an OpenCode host with
+# opencode.models and subagent(model) discovers exact IDs and variants, then
+# delegates through subagent(model: exact-reference), preserving any #variant.
+# This native route takes precedence over the generic CLI/session-model fallback
+# above. Preserve the requested tier and cross-model distinction; if no suitable
+# model is available, report that rather than guessing or reusing the current model.
+# Explicit opencode routing requires OpenCode V2; do not use a V1 fallback.
 
 # --- PR concept teaching (ce-commit-push-pr) ---
 # When a PR introduces a concept new to the codebase, the generated PR
@@ -127,9 +140,12 @@
 # xhigh plus max and ultra on the models that list them, grok low|medium|high|
 # xhigh; cursor/composer routes take none. A value the peer cannot honor skips
 # the pass with a stated reason -- never substituted.
+# OpenCode effort must match the discovered #variant in cross_model_model;
+# it is not a separate CLI effort flag.
 
 # cross_model_review_mode: off   # auto | off (default: auto)
 # cross_model_peer: codex          # codex | claude | grok | cursor | composer | opencode
+# OpenCode V2: cross_model_peer: opencode with cross_model_model: provider/modelname#variant
 # cross_model_model: fable         # model alias or full id for the resolved peer target (no default)
 # cross_model_effort: xhigh        # reasoning effort for the resolved peer target (no default)
 
@@ -153,11 +169,15 @@
 #   - harness: codex
 #     model: "gpt-6-sol"
 #   - harness: claude             # configured default model
+#   - harness: opencode           # OpenCode V2
+#     model: "provider/modelname#variant"
 
 # Reasoning effort for the external worker, per harness. Each value is one of
 # that harness's own effort levels. An unset harness keeps its own default:
 # Codex and Claude at high, native Grok at xhigh, OpenCode with no variant.
 # Cursor routes take no effort. A map in config.local.yaml replaces this one.
+# OpenCode effort must match the discovered #variant in the selected model;
+# omit the effort entry to keep that model's variant as configured.
 
 # work_engine_effort:
 #   codex: xhigh
@@ -180,12 +200,12 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or workspace .tmp path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology
 
-# --- Compound Packs ---
+# --- RocketClaw Packs ---
 
 # Prescriptive domain knowledge folders that planning reads and cites.
 # Declared, never scanned: an entry names a source (repo-relative path,
@@ -199,8 +219,8 @@
 # Rules are top-level .md files with title + applies_when; subfolders are storage.
 
 # packs:
-#   - source: compound-packs/local-rules                       # repo-relative, read live
-#   - source: ~/compound-packs/kk-style                        # machine-local, read live
-#   - source: https://github.com/org/rails-ce-pack    # git, cached at ref
+#   - source: packs/local-rules                       # repo-relative, read live
+#   - source: ~/packs/kk-style                        # machine-local, read live
+#   - source: https://github.com/org/rails-pack    # git transport through JJ, cached at ref
 #     ref: v1.2.0
 #     pack: [rails, inertia]

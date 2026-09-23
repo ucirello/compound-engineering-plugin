@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Compound Engineering environment health check.
+# RocketClaw environment health check.
 # Reports optional tool capabilities and repo-local config safety in one pass.
 
 set -o pipefail
+script_dir="$(cd "$(dirname "$0")" && pwd)"
 
 # =====================================================
 #  Optional capability config
@@ -95,8 +96,8 @@ resolve_real_best_effort() {
 # docs_root_source, docs_root_error, and docs_root_local_ignored.
 resolve_docs_root() {
   local repo_root="$1"
-  local local_cfg="$repo_root/.compound-engineering/config.local.yaml"
-  local tracked_cfg="$repo_root/.compound-engineering/config.yaml"
+  local local_cfg="$repo_root/.rocketclaw/config.local.yaml"
+  local tracked_cfg="$repo_root/.rocketclaw/config.yaml"
   local value="" source="" repo_real real local_docs probe
 
   docs_root_error=""
@@ -135,6 +136,7 @@ resolve_docs_root() {
   [ "$real" = "$repo_real" ] && { docs_root_error="resolves to the repository root itself"; return; }
   case "$real/" in
     "$repo_real/.git/"*) docs_root_error="resolves inside .git/"; return ;;
+    "$repo_real/.jj/"*) docs_root_error="resolves inside .jj/"; return ;;
   esac
   if [ -e "$real" ] && [ ! -d "$real" ]; then
     docs_root_error="names an existing non-directory"; return
@@ -207,6 +209,25 @@ resolve_structured_layer() {
   fi
 }
 
+valid_opencode_model() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*/[A-Za-z0-9][A-Za-z0-9._:/-]*(#[A-Za-z0-9][A-Za-z0-9._-]*)?$ ]]
+}
+
+# Scalar routes use the same model syntax as work preferences, after each
+# setting has been resolved independently through the local override layer.
+note_opencode_model_form() {
+  local harness_key="$1" model_key="$2" model
+  resolve_ordinary_scalar "$local_config_path" "$tracked_config_path" "$harness_key"
+  [ "$ordinary_value" = "opencode" ] || return 0
+  resolve_ordinary_scalar "$local_config_path" "$tracked_config_path" "$model_key"
+  model="$ordinary_value"
+  [ -n "$model" ] || return 0
+  if ! valid_opencode_model "$model"; then
+    opencode_model_notes+=("invalid OpenCode ${model_key} '${model}' in ${ordinary_source} (${harness_key}: opencode); use provider/modelname with an optional #variant")
+    project_issues=$((project_issues + 1))
+  fi
+}
+
 # Read the narrow YAML sequence used by work_engine_preferences. The local
 # config remains human-authored YAML, but setup health needs only this one
 # deterministic shape rather than a general parser.
@@ -239,6 +260,27 @@ read_work_engine_preferences() {
       harness = ""
       model = ""
     }
+    function flow_item(text, count, parts, i, key, value) {
+      text = trim(text)
+      if (text !~ /^\{.*\}$/) {
+        print "ERROR\tunsupported work_engine_preferences entry: " text
+        return
+      }
+      text = substr(text, 2, length(text) - 2)
+      count = split(text, parts, ",")
+      have_item = 1
+      for (i = 1; i <= count; i++) {
+        key = parts[i]
+        sub(/:.*/, "", key)
+        key = trim(key)
+        value = parts[i]
+        sub(/^[^:]*:[[:space:]]*/, "", value)
+        if (key == "harness") harness = scalar(value)
+        else if (key == "model") model = scalar(value)
+        else print "ERROR\tunsupported work_engine_preferences key: " key
+      }
+      emit_item()
+    }
     /^[^[:space:]#-][^:]*[[:space:]]*:/ {
       if (active) {
         emit_item()
@@ -247,11 +289,34 @@ read_work_engine_preferences() {
     }
     /^work_engine_preferences[[:space:]]*:/ {
       active = 1
+      rest = $0
+      sub(/^work_engine_preferences[[:space:]]*:[[:space:]]*/, "", rest)
+      sub(/[[:space:]]+#.*$/, "", rest)
+      rest = trim(rest)
+      if (rest != "") {
+        active = 0
+        if (rest !~ /^\[.*\]$/) print "ERROR\twork_engine_preferences must be a list"
+        else {
+          rest = trim(substr(rest, 2, length(rest) - 2))
+          if (rest != "") {
+            gsub(/\}[[:space:]]*,[[:space:]]*\{/, "}\n{", rest)
+            n = split(rest, items, "\n")
+            for (j = 1; j <= n; j++) flow_item(items[j])
+          }
+        }
+      }
       next
     }
     active {
       line = $0
       if (line ~ /^[[:space:]]*($|#)/) next
+      if (line ~ /^[[:space:]]*-[[:space:]]*\{/) {
+        emit_item()
+        sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+        sub(/[[:space:]]+#.*$/, "", line)
+        flow_item(line)
+        next
+      }
       if (line ~ /^[[:space:]]*-[[:space:]]*harness[[:space:]]*:/) {
         emit_item()
         sub(/^[[:space:]]*-[[:space:]]*harness[[:space:]]*:[[:space:]]*/, "", line)
@@ -348,7 +413,33 @@ read_work_engine_effort_keys() {
 }
 
 has_brew=$(command -v brew >/dev/null 2>&1 && echo "yes" || echo "no")
-in_repo=$(git rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "yes" || echo "no")
+repo_root=$(jj workspace root --ignore-working-copy 2>/dev/null)
+in_repo="no"
+if [ -n "$repo_root" ] && [ -d "$repo_root" ]; then
+  cd "$repo_root" || exit 1
+  in_repo="yes"
+fi
+
+# JJ honors .gitignore but exposes no public check-ignore command. Verify the
+# setup-owned root rules conservatively; unfamiliar patterns remain unverified.
+# Never call a path safe when it is already tracked or a nested rule may undo it.
+ignore_verified() {
+  local path="$1" tracked rule
+  tracked=$(jj file list --ignore-working-copy -- "$path" 2>/dev/null) || return 1
+  [ -z "$tracked" ] || return 1
+  [ -f "$repo_root/.gitignore" ] || return 1
+  case "$path" in
+    .rocketclaw/*)
+      [ ! -e "$repo_root/.rocketclaw/.gitignore" ] || return 1
+      rule='^/?(\.rocketclaw/|\.rocketclaw/\*\.local\.yaml|\.rocketclaw/config\.local\.yaml)$'
+      ;;
+    .tmp/) rule='^/?\.tmp/$' ;;
+    *) return 1 ;;
+  esac
+  # A negation can re-include an ancestor or a descendant; do not guess its scope.
+  grep -q '^!' "$repo_root/.gitignore" && return 1
+  grep -Eq "$rule" "$repo_root/.gitignore"
+}
 
 # Retired Bun-era Codex tool map (#1099). The block is present only when a
 # standalone BEGIN line is followed by a standalone END line.
@@ -398,6 +489,7 @@ scratch_gitignore="skip"
 local_cfg="skip"
 example_cfg="skip"
 retired_keys=()
+opencode_model_notes=()
 work_engine_cfg="skip"
 work_engine_detail=""
 work_engine_preferences_note=""
@@ -412,18 +504,17 @@ tracked_cfg="skip"
 project_issues=0
 
 if [ "$in_repo" = "yes" ]; then
-  repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
-  local_config_path="$repo_root/.compound-engineering/config.local.yaml"
-  tracked_config_path="$repo_root/.compound-engineering/config.yaml"
+  local_config_path="$repo_root/.rocketclaw/config.local.yaml"
+  tracked_config_path="$repo_root/.rocketclaw/config.yaml"
   resolve_docs_root "$repo_root"
   [ "$docs_root_status" = "invalid" ] && project_issues=$((project_issues + 1))
   legacy_cfg="missing"
-  [ -f "$repo_root/compound-engineering.local.md" ] && legacy_cfg="present"
+  [ -f "$repo_root/rocketclaw.local.md" ] && legacy_cfg="present"
 
   local_cfg="missing"
   if [ -e "$local_config_path" ]; then
     local_cfg="present"
-    if git check-ignore -q "$local_config_path" 2>/dev/null; then
+    if ignore_verified .rocketclaw/config.local.yaml; then
       repo_cfg_gitignore="ok"
     else
       repo_cfg_gitignore="missing"
@@ -433,7 +524,7 @@ if [ "$in_repo" = "yes" ]; then
   # Trailing slash is load-bearing: without it an existing directory-only rule
   # is missed before the directory exists, and a configured repo reads as bare.
   scratch_gitignore="missing"
-  if git -C "$repo_root" check-ignore -q .context/compound-engineering/ 2>/dev/null; then
+  if ignore_verified .tmp/; then
     scratch_gitignore="ok"
   fi
 
@@ -486,10 +577,17 @@ if [ "$in_repo" = "yes" ]; then
               ;;
           esac
           if [ "$preference_model" != "default" ]; then
+            if [ "$preference_harness" = "opencode" ]; then
+              if ! valid_opencode_model "$preference_model"; then
+                [ -z "$work_engine_preferences_error" ] && work_engine_preferences_error="invalid OpenCode model '$preference_model'; use provider/modelname#variant"
+              fi
+            elif [[ "$preference_model" == *'#'* ]]; then
+              [ -z "$work_engine_preferences_error" ] && work_engine_preferences_error="variant suffix requires harness opencode"
+            fi
             case "$preference_model" in
               [A-Za-z0-9]*)
                 case "$preference_model" in
-                  *[!A-Za-z0-9._:/-]*)
+                  *[!A-Za-z0-9._:/#-]*)
                     [ -z "$work_engine_preferences_error" ] && work_engine_preferences_error="invalid model '$preference_model' in work_engine_preferences"
                     ;;
                 esac
@@ -568,9 +666,12 @@ if [ "$in_repo" = "yes" ]; then
       ;;
   esac
 
-  script_dir="$(cd "$(dirname "$0")" && pwd)"
+  note_opencode_model_form "plan_harness" "plan_model"
+  note_opencode_model_form "brainstorm_harness" "brainstorm_model"
+  note_opencode_model_form "cross_model_peer" "cross_model_model"
+
   template="$script_dir/../references/config-template.yaml"
-  example="$repo_root/.compound-engineering/config.example.yaml"
+  example="$repo_root/.rocketclaw/config.example.yaml"
   if [ ! -f "$example" ]; then
     example_cfg="missing"
   elif [ -f "$template" ] && ! diff -q "$template" "$example" >/dev/null 2>&1; then
@@ -632,35 +733,35 @@ if [ "$in_repo" = "yes" ]; then
   section "Project config"
 
   if [ "$legacy_cfg" = "present" ]; then
-    warn "Obsolete compound-engineering.local.md exists"
+    warn "Obsolete rocketclaw.local.md exists"
     project_issues=$((project_issues + 1))
   else
-    ok "No obsolete compound-engineering.local.md"
+    ok "No obsolete rocketclaw.local.md"
   fi
 
   if [ "$tracked_cfg" = "present" ]; then
-    ok ".compound-engineering/config.yaml exists"
+    ok ".rocketclaw/config.yaml exists"
   else
-    skip "No repo config yet (.compound-engineering/config.yaml)"
+    skip "No repo config yet (.rocketclaw/config.yaml)"
   fi
 
   if [ "$local_cfg" = "present" ]; then
-    ok ".compound-engineering/config.local.yaml exists"
+    ok ".rocketclaw/config.local.yaml exists"
     if [ "$repo_cfg_gitignore" = "ok" ]; then
       ok "Local config is gitignored"
     else
-      warn "Local config is not safely gitignored"
+      warn "Local config ignore coverage is missing or unverified"
       project_issues=$((project_issues + 1))
     fi
   else
-    skip "No local override yet (.compound-engineering/config.local.yaml)"
+    skip "No local override yet (.rocketclaw/config.local.yaml)"
   fi
 
   if [ "$scratch_gitignore" = "ok" ]; then
-    ok "CE scratch space is gitignored"
+    ok "RocketClaw scratch space is ignored"
   else
-    skip "CE scratch space is not gitignored"
-    detail "Skills that keep local scratch write it under .context/compound-engineering/"
+    skip "RocketClaw scratch ignore coverage is missing or unverified"
+    detail "Skills that keep local scratch write it under the workspace .tmp/"
   fi
 
   if [ "$docs_root_status" = "default" ]; then
@@ -669,14 +770,14 @@ if [ "$in_repo" = "yes" ]; then
     ok "Artifact root: ${docs_root_value}/ (from ${docs_root_source})"
   elif [ "$docs_root_status" = "invalid" ]; then
     warn "Invalid docs_root '${docs_root_value}' in ${docs_root_source}: ${docs_root_error}"
-    detail "CE artifacts will not be written until docs_root is corrected or removed."
+    detail "RocketClaw artifacts will not be written until docs_root is corrected or removed."
   fi
   if [ -n "$docs_root_local_ignored" ]; then
     skip "Local docs_root '${docs_root_local_ignored}' is ignored; set docs_root only in config.yaml"
   fi
 
   if [ "$work_engine_cfg" = "native" ]; then
-    ok "CE Work implementation engine: native (${work_engine_detail})"
+    ok "RocketClaw Work implementation engine: native (${work_engine_detail})"
     if [ -n "$work_engine_preferences_note" ]; then
       if [ "$work_engine_preferences_note_level" = "warn" ]; then
         warn "$work_engine_preferences_note"
@@ -685,11 +786,11 @@ if [ "$in_repo" = "yes" ]; then
       fi
     fi
   elif [ "$work_engine_cfg" = "prefer" ] || [ "$work_engine_cfg" = "require" ]; then
-    ok "CE Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
+    ok "RocketClaw Work implementation engine: ${work_engine_cfg} -> ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "unavailable" ]; then
-    warn "CE Work implementation engine unavailable: ${work_engine_detail}"
+    warn "RocketClaw Work implementation engine unavailable: ${work_engine_detail}"
   elif [ "$work_engine_cfg" = "invalid" ]; then
-    warn "CE Work implementation engine: ${work_engine_detail}"
+    warn "RocketClaw Work implementation engine: ${work_engine_detail}"
   fi
   [ -n "$work_engine_migration_note" ] && warn "$work_engine_migration_note"
   for effort_note in ${work_engine_effort_notes[@]+"${work_engine_effort_notes[@]}"}; do
@@ -697,10 +798,14 @@ if [ "$in_repo" = "yes" ]; then
     project_issues=$((project_issues + 1))
   done
 
+  for model_note in "${opencode_model_notes[@]}"; do
+    warn "$model_note"
+  done
+
   if [ "$example_cfg" = "ok" ]; then
     ok "Example config is current"
   elif [ "$example_cfg" = "missing" ]; then
-    warn "Example config missing (.compound-engineering/config.example.yaml)"
+    warn "Example config missing (.rocketclaw/config.example.yaml)"
     project_issues=$((project_issues + 1))
   elif [ "$example_cfg" = "outdated" ]; then
     warn "Example config outdated (new settings available)"
@@ -715,10 +820,10 @@ if [ "$in_repo" = "yes" ]; then
     esac
     project_issues=$((project_issues + 1))
   done
-  # --- Compound Packs (packs: config key) -------------------------------------
-  section "Compound Packs"
+  # --- RocketClaw Packs (packs: config key) -------------------------------------
+  section "RocketClaw Packs"
   packs_python="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"
-  packs_resolver="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/packs-resolve.py"
+  packs_resolver="$script_dir/packs-resolve.py"
   if [ -z "$packs_python" ]; then
     skip "No Python interpreter found; pack health not checked"
   elif [ ! -f "$packs_resolver" ]; then
@@ -729,8 +834,11 @@ if [ "$in_repo" = "yes" ]; then
       warn "packs-resolve.py failed to run"
       project_issues=$((project_issues + 1))
     else
-      packs_report="$(printf '%s' "$packs_json" | "$packs_python" -c '
-import json, os, re, subprocess, sys
+      packs_report="$(printf '%s' "$packs_json" | "$packs_python" -B -c '
+import importlib.util, json, os, re, sys
+spec = importlib.util.spec_from_file_location("packs_resolver", sys.argv[1])
+resolver = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(resolver)
 data = json.load(sys.stdin)
 roots, errors, warns = data.get("roots", []), data.get("errors", []), data.get("warnings", [])
 if not roots and not errors and not warns:
@@ -740,30 +848,12 @@ for r in roots:
     url, ref = r.get("url"), r.get("ref")
     if url and ref:
         line += " (" + ref + ")"
-        # Only a full commit id is immutable. A branch tip advances and a tag can
-        # be force-moved upstream, so for either compare the cached HEAD with the
-        # remote target of that name -- the peeled commit for an annotated tag,
-        # which is why the ls-remote asks for `<tag>^{}` too.
+        # Compare the frozen cached parent against refreshed public JJ refs.
         if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", ref):
             try:
-                genv = dict(os.environ)
-                genv["GIT_TERMINAL_PROMPT"] = "0"
-                genv.setdefault("GIT_ASKPASS", "true")
-                _ssh = genv.get("GIT_SSH_COMMAND") or "ssh"
-                if "BatchMode" not in _ssh:
-                    genv["GIT_SSH_COMMAND"] = _ssh + " -o BatchMode=yes"
-                names = ["refs/tags/" + ref + "^{}", "refs/tags/" + ref, "refs/heads/" + ref]
-                remote = subprocess.run(["git", "ls-remote", "--end-of-options", url, *names],
-                                        capture_output=True, text=True, timeout=10, env=genv)
-                targets = {}
-                for row in remote.stdout.splitlines() if remote.returncode == 0 else []:
-                    sha, _, name = row.partition("\t")
-                    if name:
-                        targets[name] = sha
-                rsha = next((targets[n] for n in names if n in targets), "")
-                local = subprocess.run(["git", "-C", r["dir"], "rev-parse", "HEAD"], capture_output=True, text=True, timeout=10)
-                lsha = local.stdout.strip() if local.returncode == 0 else ""
-                if rsha and lsha and rsha != lsha:
+                resolver.GIT_TIMEOUT = 10
+                workspace = resolver._run_jj(["workspace", "root", "--ignore-working-copy"], r["dir"])
+                if workspace.returncode == 0 and resolver.cached_source_behind(workspace.stdout.strip(), ref):
                     line += " -- cached resolution is behind upstream"
             except Exception:
                 pass  # offline or slow remote: silently skip the drift note
@@ -777,7 +867,7 @@ for w in warns:
     print("WARN\t" + w)
 for e in errors:
     print("ERROR\t" + e)
-')"
+' "$packs_resolver")"
       while IFS=$'\t' read -r kind msg; do
         [ -z "$kind" ] && continue
         case "$kind" in
@@ -791,7 +881,7 @@ for e in errors:
   fi
 else
   section "Project config"
-  skip "Not inside a git repository"
+  skip "Not inside a JJ workspace"
 fi
 
 echo ""

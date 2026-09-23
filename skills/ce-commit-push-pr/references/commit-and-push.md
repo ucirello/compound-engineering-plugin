@@ -1,26 +1,33 @@
 # Committing and pushing
 
-If `references/stack-submit.md` already built and committed the stack layers before this step, skip the ordinary single-branch commit and push and continue to Step 4 (compose the PR title and body); `gh stack submit` in Step 5 (apply and report) pushes the stack.
+If stack construction already committed its layers, continue to Step 4; Step 5 pushes and submits them. For work based on the default bookmark, first follow `references/branch-creation.md` so stale base and unpushed local work are resolved safely.
 
-If you are on the default branch, creating the feature branch has to handle three things: a stale local `<base>`, unpushed commits on local `<base>`, and uncommitted changes that collide with the fresh remote base. Read `references/branch-creation.md` and follow its decision flow before continuing.
+Scan changed files for naturally distinct concerns. When clearly separate, use two or three file-level groups; otherwise one commit is fine. Do not force a hunk split. Honor `exclude:<paths>`: excluded and unrelated files stay in the working-copy change and out of every published ancestor. Report what was left out. JJ automatically snapshots files, so selection means explicit commit filesets, not staging.
 
-Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate commits (2-3 max). Group at file level only — no `git add -p`. When ambiguous, one commit is fine.
+Read https://go.dev/wiki/CommitMessage before composing or validating each message.
 
-Stage and commit each group. **Avoid `git add -A` and `git add .`** — they sweep in `.env`, build artifacts, and generated files. **Honor `exclude:<paths>` when the invocation carries it.** The caller names files that must stay uncommitted, typically the user's own in-progress edits it could not separate from its work. Never stage or commit them, and say in the report that they were left out. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-commit message here
-EOF
-)" -- file1 file2 file3
-```
+Here `git log` means history inspected using `jj log`; never execute Git. Runtime project instructions and visible history syntax override Go guidance. Preserve relevant issue/PR references. When a plan Implementation Unit ID is already in hand for this group, include it in the message using project conventions; omit it when unclear, spanning units, or unavailable. Do not hunt for a plan.
 
-The trailing path list on `git commit` matters. A bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would end up in the commit. Naming the paths commits exactly the group and leaves other index entries alone.
-
-Then apply the **Project publishing gate**. Immediately before pushing, re-confirm you are on the intended feature branch with `git branch --show-current`. The branch gathered in Context is a hint, and Step 1 (resolve branch and PR state) may have created or switched branches since. Push the live `HEAD` so it reflects the current checkout, never a stale branch name:
+From the absolute workspace root, commit each group with literal, verified filesets. Use `file:"<literal-path>"` for each selected file, retaining the inner fileset quotes and escaping their contents according to JJ string-literal syntax; argv or shell quoting alone does not escape fileset operators or wildcards.
 
 ```bash
-git push -u origin HEAD
+jj commit -m "<message composed from the standards above>" -- <selected-files>
 ```
 
-If the working tree is clean and all commits are already pushed, this step is a no-op.
+Inspect `jj show -r @-` and `jj diff` after each group: selected content must be in the completed change, remaining content in `@`. Never omit the path list while unrelated files remain. Resolve conflicts before publishing. Verify the entire outgoing range, not just the last change, excludes user work.
+
+Apply the **Project publishing gate** to the exact outgoing state. Re-resolve the feature bookmark and its head: after commit the publishable change is normally `@-`, even when `@` contains excluded work. Create a missing bookmark or move the existing intended bookmark to that verified revision; never move the default or an unrelated bookmark. Do not silently rewrite published history or use a backwards move to bypass a mismatch.
+
+```bash
+jj bookmark create <branch> -r <publishable-head>
+```
+
+For an existing intended bookmark use `jj bookmark set <branch> -r <publishable-head>`. Then push only that bookmark to the confirmed head remote:
+
+```bash
+jj git push --remote <head-remote> --bookmark <branch>
+```
+
+Use `--allow-new` only when creating the verified remote bookmark for the first time and the installed help requires it. If all selected work is already committed and pushed, this step is a no-op.

@@ -2,6 +2,8 @@
 
 This reference owns the path from invocation to a launched app with log capture running.
 
+Keep run scratch and saved evidence under the workspace root's `.tmp/test-xcode/` in a unique run directory. Resolve the root with `jj workspace root` from the absolute workspace directory; outside JJ, use the current project directory's `.tmp/test-xcode/`. Set screenshot and log output paths there when the adapter supports them; otherwise copy returned evidence there before temporary adapter files expire. Retain these evidence paths for the report.
+
 ## Availability gate
 
 Confirm that the active harness exposes XcodeBuildMCP's simulator-listing capability and that the call succeeds. Host-specific MCP tool prefixes are adapters, not the contract.

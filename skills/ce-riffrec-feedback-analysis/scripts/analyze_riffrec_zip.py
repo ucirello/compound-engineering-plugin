@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and CE-friendly markdown
+transcript, high-signal video frames when available, and RocketClaw-friendly markdown
 artifacts.
 """
 
@@ -154,7 +154,7 @@ def validate_raw_destination(raw_dir: Path) -> None:
 
 def promote_raw_snapshot(staging_dir: Path, raw_dir: Path) -> None:
     validate_raw_destination(raw_dir)
-    previous_dir = raw_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
+    previous_dir = staging_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
     if previous_dir.exists() or previous_dir.is_symlink():
         raise SourceInputError(f"Temporary raw snapshot path already exists: {previous_dir}")
 
@@ -186,7 +186,7 @@ def validate_frames_destination(frames_dir: Path) -> None:
 
 def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
     validate_frames_destination(frames_dir)
-    previous_dir = frames_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
+    previous_dir = staging_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
     if previous_dir.exists() or previous_dir.is_symlink():
         raise SourceInputError(f"Temporary frames snapshot path already exists: {previous_dir}")
 
@@ -204,12 +204,41 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
         shutil.rmtree(previous_dir, ignore_errors=True)
 
 
+def workspace_root() -> Path:
+    """Discover the workspace through public JJ, or retain the starting directory."""
+    start = Path.cwd().resolve()
+    try:
+        result = subprocess.run(
+            ["jj", "--ignore-working-copy", "--color=never", "workspace", "root"],
+            cwd=start,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return start
+    root = Path(result.stdout.strip())
+    return root if result.returncode == 0 and root.is_absolute() else start
+
+
 def default_output_dir(source_path: Path) -> Path:
-    cwd = Path.cwd()
+    cwd = workspace_root()
     stem = slugify(source_path.stem)
     if (cwd / "docs" / "brainstorms").is_dir():
         return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
     return cwd / "riffrec-feedback" / stem
+
+
+def snapshot_staging_dir(destination: Path) -> Path:
+    """Keep scratch in workspace .tmp while preserving atomic snapshot replacement."""
+    scratch_root = workspace_root() / ".tmp"
+    scratch_root.mkdir(parents=True, exist_ok=True)
+    if scratch_root.stat().st_dev != destination.parent.stat().st_dev:
+        raise SourceInputError(
+            f"Output {destination} must share a filesystem with workspace scratch {scratch_root} "
+            "for atomic snapshot replacement. Choose an output directory on that filesystem."
+        )
+    return Path(tempfile.mkdtemp(prefix=f".{destination.name}.staging-", dir=scratch_root))
 
 
 def classify_source(source_path: Path) -> str:
@@ -365,9 +394,7 @@ def populate_source_snapshot(source_path: Path, snapshot_dir: Path, source_kind:
 def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = None) -> dict[str, Any]:
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
-    )
+    staging_dir = snapshot_staging_dir(raw_dir)
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
         promote_raw_snapshot(staging_dir, raw_dir)
@@ -655,9 +682,7 @@ def select_moments(
 def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[dict[str, Any]]) -> None:
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
-    staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
-    )
+    staging_dir = snapshot_staging_dir(frames_dir)
     try:
         if not recording_path or not recording_path.exists():
             for moment in moments:
@@ -833,7 +858,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a RocketClaw requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -1254,7 +1279,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = Path.cwd()
+    repo_root = workspace_root()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
@@ -1297,7 +1322,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

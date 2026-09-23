@@ -6,6 +6,8 @@ After individual docs, evaluate the set: overlaps, supersession (an older narrow
 
 **Subagents.** Use them for context isolation, choosing the lightest approach that fits: main thread for small scopes, parallel investigation subagents for 3+ independent docs, batches for broad sweeps; docs that overlap or share a root issue are investigated together, not parallelized. When spawning any subagent, omit the `mode` parameter so the user's permission settings apply, and include in its prompt:
 
+Use the skill's Artifact Root section to resolve delegation routing for both investigation and successor-writing agents.
+
 ## Subagent prompt
 
 Every investigation subagent's prompt carries these three clauses verbatim:

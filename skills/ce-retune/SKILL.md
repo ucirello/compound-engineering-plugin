@@ -28,6 +28,12 @@ If any is missing, **stop and say so**, naming what to build. Do not fall back t
 
 State the target model and the harness you found before continuing.
 
+## Workspace and scratch
+
+Use JJ for version history and change management. Run every JJ command with cwd set to the absolute workspace root; discover it with `jj workspace root`, and use `jj workspace list` and `jj workspace root --name NAME` to resolve other workspaces. Do not inspect repository internals. When using `gh`, set `GIT_DIR` to the output of `jj git root` from the correct workspace.
+
+Keep per-run scratch under `$(jj workspace root)/.tmp/retune/`, with a unique directory per engagement. Outside JJ, use the current project root's `.tmp/retune/`. Explicitly place temporary files and generated extractor or harness scratch there rather than using OS temporary directories or default `mktemp` / `tempfile` locations. Durable measurement artifacts still belong in the project's docs location.
+
 ## The phases
 
 They run in order, and each names the reference it cannot start without. Read `references/workflow-shapes.md` before dispatching any phase: the wrong orchestration shape is the common failure. Fan out by disjoint file ownership, never by item. Items cross files, and agents that share a file lose each other's edits.

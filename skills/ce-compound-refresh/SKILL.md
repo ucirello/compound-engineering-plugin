@@ -4,7 +4,7 @@ description: Refresh the repo's captured learnings against the current codebase.
 argument-hint: "[optional: scope hint — directory, filename, module, or keyword] [mode:non-interactive] "
 ---
 
-# Compound Refresh
+# Learning Refresh
 
 Audit the learnings under `<root>/solutions/` against the current codebase, apply the maintenance actions the evidence supports, and deliver a complete per-doc report plus committed changes. The report and the corrected document set are the deliverables. The store only compounds value if every doc can be trusted.
 
@@ -33,11 +33,15 @@ On option 1, **read `references/worth-audit.md`** before Investigate; it adds th
 
 Resolve `<root>` when you first compose a `<root>/solutions/` path. Pass the resolved `<root>/solutions/` path to any subagent, not the config. Every subagent spawn omits the `mode` parameter, so the user's permission settings apply.
 
-<!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+For every investigation, replacement, or split dispatch, honor explicit delegation settings in `.rocketclaw/config.yaml` with `.rocketclaw/config.local.yaml` overrides. Treat `opencode` as its own V2 harness. When the current harness is OpenCode and the effective config declares neither explicit subagents nor an alternative delegation harness, use native `subagent` if it and `opencode.models` are available. Discover exact model IDs and variants through `opencode.models`, then pass the selected `provider/model#variant` through the native `model` parameter. Preserve capability tiers and cross-model intent; never guess an ID, silently use the current model, or replace this native route with shell delegation. If that route is unavailable, preserve configured mechanisms and apply the dispatch-failure fallback in `references/investigate.md`.
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+Keep any scratch files under the absolute JJ workspace root's `.tmp/`, falling back to the local project's `.tmp/` outside JJ. Pass that location to delegated agents. Durable learnings belong under the artifact root below.
+
+<!-- ce-docs-root:start -->
+**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
+
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`, falling back to the local project root outside JJ). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before. Run subsequent JJ commands with the absolute workspace root as cwd.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -81,7 +85,7 @@ Edits apply silently in every mode. The report's `CONCEPTS.md` line records what
 
 ## Commit
 
-Skip if nothing changed. Otherwise stage **only** the files this refresh modified, and commit in the repo's convention. **Read `references/commit.md`** for the per-mode branch decision and the git-failure fallback.
+Skip if nothing changed. Otherwise isolate **only** the changes this refresh made in a JJ revision, and commit in the repo's convention. **Read `references/commit.md`** for the per-mode bookmark decision, message standards, and JJ-failure fallback.
 
 ## Discoverability Check
 

@@ -8,7 +8,7 @@ How an explainer renders as HTML. Load at compose time, not earlier. These requi
 - **All metadata appears as visible text — single source of truth.** The visible `<h1>` is the title. A visible header `<dl>` uses the exact field labels `Date`, `Input shape`, and `Subject`; `Input shape` is exactly one of `concept`, `diff`, `idea`, or `recap`, and `Subject` names the topic, ref, or recap window. When grounding fell back to model knowledge, the same header also carries the label `Unverified — from model knowledge, not checked against current sources`. When the request identifies another reader, the header carries one more row labelled exactly `Rendered for`, naming that reader; a personal rendering omits the row entirely rather than saying "the user". No hidden machine-readable copy: no JSON script block, no `data-*` mirror, no `<meta>` duplication. Keep these existing artifact field names and enum values stable. Do not invent additional metadata rows.
 - **Display-only.** No forms, no click handlers, no interactive quizzes, no "submit" affordances, no scripts. The check-in, when present, is the static `Check yourself` section that `references/check-in.md` owns: questions first, then their answers, all visible text.
 - **ASCII identifiers.** Class names and element IDs are ASCII-only.
-- **Composition signal.** A visible footer names the composition timestamp and the composing skill: `Composed 2026-07-02 by ce-explain`.
+- **Composition timestamp.** A visible footer names the composition timestamp: `Composed 2026-07-02`.
 
 ## Presentation
 

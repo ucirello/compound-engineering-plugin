@@ -9,16 +9,20 @@
 - **No** — skip the description rewrite and continue to the babysit handoff rule below.
 - **Yes** — run Step 4 (compose the PR title and body) if not already done, then preview and apply (see below).
 
-**Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep the existing title and body and do not call `gh pr edit`. If the only difference is a branding-only delta and the user did not explicitly request that exact branding change, also keep the existing title and body; branding alone never creates apply intent. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, the user may pass focus text back for a regenerate; do not apply. If confirmed, apply per "Applying via gh" below using `gh pr edit` and report the URL.
+**Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep the existing title and body and do not call `gh pr edit`. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, the user may pass focus text back for a regenerate; do not apply. If confirmed, apply per "Applying via gh" below using `gh pr edit` and report the URL.
 
-**Explainer archival** — runs only in the full workflow, when all of these hold: `pr_teaching_archive` is on, the composed body has a `## New concepts` section, and the apply was confirmed (a new-PR create, or an existing-PR rewrite the user accepted). A declined rewrite skips archival entirely, so no unlinked doc commit is left behind. Resolve every path from the repo root gathered in Context, never from the CWD. With two taught concepts, write one file per concept and stage both in the single commit. Run these steps, in order, immediately before the `gh` call:
+**Explainer archival** — runs only in the full workflow, when all of these hold: `pr_teaching_archive` is on, the composed body has a `## New concepts` section, and the apply was confirmed (a new-PR create, or an existing-PR rewrite the user accepted). A declined rewrite skips archival entirely, so no unlinked doc commit is left behind. Resolve every path from the workspace root gathered in Context, never from an arbitrary CWD. With two taught concepts, write one file per concept and include both in a single path-selected commit. Before composing that message, read https://go.dev/wiki/CommitMessage.
 
-1. `git check-ignore -q <root>/explainers/YYYY-MM-DD-<concept-slug>.md` (from the repo root) — the check works on paths that do not exist yet. If the path is ignored, print a one-line warning and skip archival entirely, writing nothing (never `git add -f`).
-2. Write the file (create the directory if needed) with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. If the file already exists from a prior run, overwrite it.
-3. `git add` those file(s) only (never `-A`) and commit with `docs(explainer): teach <concept>[, <concept>]`. Re-apply the **Project publishing gate** to the resulting commit state, then push. If the commit reports nothing to commit, the doc is already committed from a prior run — keep the link and continue.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+The quoted history command refers to `jj log` here; never execute Git. Runtime project instructions and visible history syntax override Go guidance. The message must explain which concepts are taught. Run these steps, in order, immediately before the `gh` call:
+
+1. Establish that `<root>/explainers/YYYY-MM-DD-<concept-slug>.md` is allowed by effective ignore rules before writing it. If ignored or its eligibility cannot be determined through supported interfaces, warn and skip archival entirely, writing nothing. Never force-track ignored content.
+2. Write the file (create the directory if needed) with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. Reuse an existing identical explainer. Replace differing content only when it is verified as this run's generated artifact; otherwise choose an unused path and recheck its eligibility before writing. Preserve user-authored files and edits.
+3. Use `jj file track <doc-paths>` without `--include-ignored` if needed, verify the docs are tracked, and commit only those files with `jj commit -m "<message composed from the standards above>" -- <doc-paths>`. Verify the resulting `@-` contains only the archival change and no excluded work. Move the intended feature bookmark to the verified completed head, re-apply the **Project publishing gate**, and push that bookmark with `jj git push --remote <head-remote> --bookmark <head-branch>`. If the selected diff was empty, keep the existing committed link without creating an empty commit.
 4. Add a head-branch blob URL for each doc into the `## New concepts` section before applying. Build the URL for the repo's actual host — for example `gh browse -n -b <head-branch> -- <path>` prints the link on whatever host `gh` targets, GitHub Enterprise included. Do not hardcode `github.com`, or the link 404s on GHE.
 
-If the doc write, commit, or push fails, warn and continue to PR creation without the link. Never leave the flow stopped between the commit and the PR.
+If the doc write, commit, or push fails, warn and continue to PR creation without the link, describing only the last successfully published state. A failed Project publishing gate still blocks external writes; never bypass it to finish archival.
 
 **User-runnable invocation rendering.** For the output handoffs below, default to `/ce-explain <name>`. Use `$ce-explain <name>` only when the active host is Codex or explicitly documents dollar-prefixed skill invocation. Render only the invocation as inline code and output one form only.
 
@@ -27,12 +31,14 @@ If the doc write, commit, or push fails, warn and continue to PR creation withou
 **Resolve the standing opt-out before applying the handoff rule below.** Read `auto_babysit` by the rule here, at the handoff. A config read from an earlier step does not carry over: a run that reaches the handoff without having read the key hands off against the user's standing choice, and a compacted run is the ordinary way that happens.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
+
+**OpenCode V2 (`opencode`):** use these effective layers and invoke `ce-babysit-pr` through the native skill mechanism. Explicit subagent and alternative-harness settings remain authoritative for delegation owned by that callee. Other harnesses use their own callable skill mechanism; this handoff does not select a worker model.
 
 Babysit is off only when the winning active value is exactly `false`; a missing key or any other value leaves the default **on**. A handoff the user opted out of is a **successful terminal for this run**, not a blocked one — report the PR URL, say in one line that babysit was skipped by standing config, and stop.
 
@@ -61,17 +67,11 @@ A draft-only stack submit is a hard residual before babysit when babysit is on.
 
 The body **must** be written to a temp file and passed via `--body-file <path>`. Never use `--body-file -`, stdin pipes, heredoc-to-stdin, or `--body "$(cat ...)"` — wrappers and stdin handling can silently produce an empty PR body while `gh` still exits 0 and returns a URL.
 
-```bash
-BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-pr-body.XXXXXX") && cat >> "$BODY_FILE" <<'__CE_PR_BODY_END__'
-<the composed body markdown goes here, verbatim>
-__CE_PR_BODY_END__
-```
-
-The quoted sentinel keeps `$VAR`, backticks, and any literal `EOF` inside the body from being expanded.
+Create a unique body file under `<workspace-root>/.tmp/commit-push-pr/` using the host's file-writing tool, with the composed markdown verbatim. Keep `$VAR`, backticks, and literal `EOF` text unexpanded. Outside JJ, scratch may use an absolute local `.tmp/` path, but repository operations stop until a workspace is resolved.
 
 For `<TITLE>`: substitute verbatim. If it contains `"`, `` ` ``, `$`, or `\`, escape them or switch to single quotes.
 
 ```bash
-gh pr create --title "<TITLE>" --body-file "$BODY_FILE"   # new PR
-gh pr edit   --title "<TITLE>" --body-file "$BODY_FILE"   # existing PR
+gh pr create -R <base-owner>/<repo> --head <head-owner>:<head-branch> --base <base> --title "<TITLE>" --body-file <absolute-body-path>
+gh pr edit <pr-url> --title "<TITLE>" --body-file <absolute-body-path>
 ```

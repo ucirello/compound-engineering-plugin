@@ -87,6 +87,7 @@ Evaluate two things before planning:
 When research is recommended, do it — don't just offer. Stale recommendations (closed restaurants, rethemed attractions, outdated prices) are worse than no recommendations. The user invoked `ce-plan` because they want a good plan, not a disclaimer about training data.
 
 **Research decomposition pattern:**
+Read and apply the opening routing rules in `references/research.md` before dispatch, including actual config loading, effective explicit configuration precedence, model tiers, and exact OpenCode V2 model/variant discovery.
 1. Identify 2-5 independent research questions based on the task. Good questions target facts the model is least confident about: current prices, hours, availability, recent changes, seasonal specifics.
 2. Dispatch parallel research. Prefer user-named surfaces first per Core Principle 8 in SKILL.md; fall back to web search for questions those surfaces don't cover.
 3. Collate findings into a brief research summary before proceeding to planning.
@@ -156,7 +157,7 @@ After structuring the plan, ask the user how they want to receive it using the h
 1. **Save to disk** — Write the plan as a markdown file. Ask where:
    - `<root>/plans/` (only show if this directory exists)
    - Current working directory
-   - `/tmp`
+   - Workspace-root `.tmp` (resolve with `jj workspace root`; outside JJ use local `.tmp`)
    - A custom path
    - Use filename convention: `YYYY-MM-DD-HHMM-<descriptive-name>-plan.md`, taking `HHMM` from the local wall-clock time at write; reserve the path atomically and, on collision, retry with the smallest available numeric suffix before the extension rather than overwriting
    - Start the document with a `# Title` heading, followed by `Created: YYYY-MM-DD` on the next line. No YAML frontmatter.

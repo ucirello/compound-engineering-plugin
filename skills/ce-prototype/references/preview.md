@@ -10,21 +10,14 @@ Resolve the question directory once, at the start of the run, and reuse the abso
 
 `RUN_SLUG` is `<date>-<short-question-slug>` for the run; `QUESTION_SLUG` is `NN-<question-slug>` for the question being built. A run that covers a second related question resolves a second question directory under the same run directory.
 
-Settle durability before you run this block; it reads both decisions once and there is no second pass. Set `RUN_KEEP="no"` when the user asked that this run not be left in the repo, and run the block as it stands — it sends the run to OS temp and nothing else changes. Otherwise, when the run is inside a git repository, probe the repo root for `.context/compound-engineering/`; if it is not covered, offer to append that one line to the repo-root `.gitignore`, appending only if the user agrees and leaving the rest of the file alone. A run that is headed for OS temp either way gets no offer.
+All run storage is workspace-local scratch. Run every JJ command with cwd set to the absolute workspace root supplied by the active project context; outside JJ, use the absolute project directory. Resolve the root through the public CLI, never filesystem repository metadata.
 
 ```bash
 RUN_SLUG="<YYYY-MM-DD>-<run-slug>";
-RUN_KEEP="yes";
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)";
-TEMP_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$TEMP_ROOT" ] && (umask 077; mkdir -p "$TEMP_ROOT") 2>/dev/null && [ ! -L "$TEMP_ROOT" ] && [ -O "$TEMP_ROOT" ] && [ -w "$TEMP_ROOT" ] || TEMP_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
-if [ "$RUN_KEEP" = yes ] && [ -n "$REPO_ROOT" ] && [ ! -L "$REPO_ROOT/.context" ] && [ ! -L "$REPO_ROOT/.context/compound-engineering" ] && git -C "$REPO_ROOT" check-ignore -q .context/compound-engineering/ 2>/dev/null; then
-ROOT="$REPO_ROOT/.context/compound-engineering";
-else
-ROOT="$TEMP_ROOT";
-fi;
-while :; do
-BASE="$ROOT/ce-prototype";
+REPO_ROOT="$(jj workspace root --ignore-working-copy 2>/dev/null)";
+ROOT="${REPO_ROOT:-$PWD}/.tmp";
+BASE="$ROOT/prototype";
+ROOT_READY=no;
 if [ -L "$ROOT" ]; then echo "unsafe root symlink: $ROOT" >&2;
 elif ! (umask 077; mkdir -p "$ROOT"); then echo "could not create $ROOT" >&2;
 elif [ -L "$ROOT" ] || [ ! -O "$ROOT" ]; then echo "root is not owned by the current user: $ROOT" >&2;
@@ -33,10 +26,8 @@ elif [ -L "$BASE" ]; then echo "unsafe base symlink: $BASE" >&2;
 elif ! (umask 077; mkdir -p "$BASE"); then echo "could not create $BASE" >&2;
 elif [ ! -O "$BASE" ]; then echo "base is not owned by the current user: $BASE" >&2;
 elif ! chmod 700 "$BASE"; then echo "could not restrict $BASE" >&2;
-else break; fi;
-if [ "$ROOT" = "$TEMP_ROOT" ]; then echo "no usable run root" >&2; exit 1; fi;
-echo "falling back to $TEMP_ROOT" >&2; ROOT="$TEMP_ROOT";
-done;
+else ROOT_READY=yes; fi;
+if [ "${ROOT_READY:-}" != yes ]; then echo "no usable run root" >&2; exit 1; fi;
 RUN_DIR="$BASE/$RUN_SLUG"; n=1;
 while ! (umask 077; mkdir "$RUN_DIR") 2>/dev/null; do
 if [ ! -e "$RUN_DIR" ]; then echo "could not create $RUN_DIR" >&2; exit 1; fi;
@@ -47,7 +38,7 @@ chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR"
 ```
 
-Three things this block is careful about. The symlink and ownership checks run against both the **root** — the directory sitting in a shared or world-writable location — and the `ce-prototype` directory beneath it, because that one survives between runs: `mkdir -p` follows a symlink that is already there, and `chmod` would then change the link's target rather than anything inside the validated root. Every check is inside the retry loop, so an unsafe in-repo path at either level falls back to OS temp rather than aborting — a hostile or misconfigured `.context` costs the run its durability, not the run itself, and only a temp root that also fails is fatal.
+The symlink and ownership checks protect both the scratch root and its persistent `prototype` child: `mkdir -p` follows an existing symlink, and `chmod` would otherwise change its target. An unsafe root is a blocker, not permission to write elsewhere.
 
 Creating the directory is how it is claimed — never test whether the name is free and then write, which two runs starting together both pass. There is no rejoin: this block runs once per invocation, so a second question never re-derives the run directory and can neither split into a suffixed sibling nor adopt a finished run's directory.
 
@@ -57,7 +48,11 @@ Then, once per question, create that question's directory under the run director
 RUN_DIR="<absolute run directory the resolution block printed>";
 QUESTION_SLUG="<NN>-<question-slug>";
 if [ -L "$RUN_DIR" ] || [ ! -O "$RUN_DIR" ]; then echo "unsafe run directory: $RUN_DIR" >&2; exit 1; fi;
-PROTO_DIR="$RUN_DIR/$QUESTION_SLUG"; (umask 077; mkdir -p "$PROTO_DIR") || exit 1; chmod 700 "$PROTO_DIR" || exit 1;
+PROTO_DIR="$RUN_DIR/$QUESTION_SLUG";
+if [ -L "$PROTO_DIR" ]; then echo "unsafe question directory: $PROTO_DIR" >&2; exit 1; fi;
+(umask 077; mkdir -p "$PROTO_DIR") || exit 1;
+if [ -L "$PROTO_DIR" ] || [ ! -O "$PROTO_DIR" ]; then echo "unsafe question directory: $PROTO_DIR" >&2; exit 1; fi;
+chmod 700 "$PROTO_DIR" || exit 1;
 echo "$PROTO_DIR"
 ```
 
@@ -93,7 +88,7 @@ A default start reloads only when the newest screen changes; it must not continu
 Write screens under:
 
 ```text
-<repo>/.context/compound-engineering/ce-prototype/<YYYY-MM-DD>-<run-slug>/
+<workspace-root>/.tmp/prototype/<YYYY-MM-DD>-<run-slug>/
   decisions.md               # run capsule for the next skill; not a plan
   01-<question-slug>/
     screens/
@@ -107,7 +102,7 @@ Write screens under:
     state/
 ```
 
-The fallback root takes the same shape under `/tmp/compound-engineering-<uid>/ce-prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
+Outside JJ, use the same shape under the local `.tmp/prototype/`. The capsule sits at the run directory and names each question directory; `--root` is always a question directory, never the run directory.
 
 ## Handoff
 

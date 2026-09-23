@@ -76,27 +76,17 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ Bisection for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), use binary search to find the breaking commit. First record the original working-copy change and commit IDs with `jj log -r @` and verify its work is snapshotted. Run all JJ commands from the absolute workspace root. Do not bisect if unsnapshotted content or concurrent edits prevent preserving the user's work.
 
 ```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
+jj bisect run --range '<known-good-revision>..<known-bad-revision>' -- <test-command>
 ```
 
-The test command should exit 0 for good, non-zero for bad.
+The test command exits 0 for good, 125 to skip an untestable revision, 127 to abort for a missing command, and any other non-zero status for bad. For manual classification, use a shell as the command, run the reproduction, and exit with the corresponding status. Bisection assumes descendants of a bad revision in the range are bad; do not classify unrelated setup failures as this regression.
+
+The command edits candidate revisions directly. After success, failure, or interruption, return with `jj edit <recorded-original-change-id>` and verify the saved work is intact. Preserve any experiment changes separately; never restore over or abandon the user's work. If the installed JJ lacks this command, inspect `jj --help` and perform the same good/bad narrowing with public revision commands, or report the limitation.
 
 ---
 
@@ -214,7 +204,7 @@ When the symptom is "slow" rather than "wrong", logs and code reading mislead: i
 
 - Establish a numeric baseline before touching anything — a timing harness around the slow operation, a profiler run, a query plan (`EXPLAIN ANALYZE`). The baseline is Phase 1's reproduction check for a perf bug: the number is the red, and the fix is verified by re-measuring the same thing, not by reasoning that the change should be faster.
 - Attribute before optimizing: a profile or per-stage timings that show where the time actually goes. Optimizing an unmeasured suspect is the perf version of shotgun debugging.
-- If the slowness is a regression, bisect against the measurement (see Git Bisect above) rather than reading diffs for something that looks expensive.
+- If the slowness is a regression, bisect against the measurement (see JJ Bisection above) rather than reading diffs for something that looks expensive.
 
 ---
 
@@ -295,8 +285,10 @@ agent-browser fill @ref "text"    # fill a form field
 agent-browser snapshot -i         # capture state after interaction
 
 # Save visual evidence
-agent-browser screenshot bug-evidence.png
+agent-browser screenshot "<workspace-root>/.tmp/debug/bug-evidence.png"
 ```
+
+Resolve `<workspace-root>` with `jj workspace root` and create the scratch directory before capturing evidence; outside JJ use local `.tmp/debug/`.
 
 **Port detection:** If your in-context project instructions explicitly state the dev-server port, use it (don't grep instruction prose for a port — it's false-positive-prone); otherwise check `package.json` dev scripts, then `.env` files, falling back to `3000`.
 

@@ -1,6 +1,6 @@
 # Fix: workspace safety, test-first, and what a failed fix means
 
-Read this before editing any file in Phase 3. SKILL.md runs the branch check and records the pre-fix scope before sending you here. Do not repeat either step, and do not ask a second time about a file whose unstaged edits SKILL.md already confirmed.
+Read this before editing any file in Phase 3. SKILL.md runs the bookmark check and records the pre-fix scope before sending you here. Do not repeat either step, and do not ask a second time about a file whose pre-existing edits SKILL.md already confirmed.
 
 *One change at a time. If you are changing multiple things, stop.*
 

@@ -4,7 +4,7 @@
 
 `SKILL.md` states the two rules that must hold even when this file is not read: the mode is exclusive, and markdown is written unless HTML was requested. This file states the precedence that decides the rest — in-prompt request > user-stated preference > config > default (`md`) — and the token-parsing convention.
 
-**Read config.** Resolve `<repo-root>` with `git rev-parse --show-toplevel`, then apply the ordinary-key rule stated in `SKILL.md`. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
+**Read config.** Resolve `<repo-root>` with `jj workspace root`, then apply the ordinary-key rule stated in `SKILL.md`. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
 
 Resolution steps:
 
@@ -17,7 +17,7 @@ Resolution steps:
 
 There is no pipeline override. A headless or non-interactive run resolves the format by the same four steps; if it asked for HTML, or its config or project instructions say HTML, it gets HTML. Downstream skills read either format.
 
-**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, `brainstorm_model:<alias>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including conventional commit prefixes like `feat:`, `fix:`, `chore:` that may appear inside a feature description — pass through verbatim. A stripped `brainstorm_model:<alias>` token (passed by an orchestrator) is kept for the model-elevation step before approach generation; it is not woven into the feature description.
+**Token-parsing convention:** only literal-prefix flag tokens (`output:`, `mode:`, `brainstorm_model:<alias>`, `brainstorm_harness:<harness>`, `delegate:` where applicable) are consumed and stripped. Other `<word>:<word>` tokens — including conventional commit prefixes like `feat:`, `fix:`, `chore:` that may appear inside a feature description — pass through verbatim. A stripped `brainstorm_model:<alias>` token (passed by an orchestrator), including OpenCode's `provider/model#variant` form, and its paired `brainstorm_harness` token are kept for the model-elevation step before approach generation; they are not woven into the feature description.
 
 **Model-elevation visibility.** Treat a stripped `brainstorm_model:<alias>` token, or a `brainstorm_model` config value you have read, as a pending input to Phase 2 (Explore Approaches), not a resolved choice. Phase 2 resolves the choice from the current conversation, the token, and the config immediately before generating approaches, so later user intent cannot be lost. A headless or non-interactive run still evaluates the token and the config.
 

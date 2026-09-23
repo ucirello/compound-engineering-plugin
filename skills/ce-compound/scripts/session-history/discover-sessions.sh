@@ -11,7 +11,7 @@
 #   repo-name  Folder name of the repo (e.g., "my-repo"). Used for directory matching.
 #   days       Scan window in days (e.g., 7). Files older than this are skipped.
 #   --cwd      Absolute repo root. Used for exact Pi encoded-CWD discovery
-#              and the omp raw-bucket probe. Claude listing is unfiltered;
+#              and downstream omp metadata filtering. Claude listing is unfiltered;
 #              extract-metadata.py --cwd-filter matches recorded cwd.
 #   --platform Restrict to a single platform. Omit to search all.
 
@@ -114,45 +114,6 @@ discover_pi() {
 }
 
 # --- oh-my-pi (omp) ---
-# Encode omp's raw bucket name for a cwd: home-relative "-<rel>",
-# tmp-relative "-tmp-<rel>", and otherwise "--<abs>--", with path separators
-# and ":" encoded as "-" (session-paths.ts getDefaultSessionDirName /
-# encodeLegacyAbsoluteSessionDirName). This raw scheme predates the hashed
-# scheme and is current again since omp 17.2.9 (#7646 restored it and removed
-# automatic migration), so buckets in the wild use both shapes. Canonicalize
-# with physical paths so symlinked cwds resolve to the same bucket, mirroring
-# omp's resolveEquivalentPath. Prints nothing when the cwd cannot be resolved.
-encode_omp_raw_cwd() {
-    local cwd canon_home canon_tmp rel
-    cwd="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
-    canon_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || canon_home="$HOME"
-    case "$cwd" in
-        "$canon_home")
-            printf -- '-'
-            ;;
-        "$canon_home"/*)
-            rel="$(printf '%s' "${cwd#"$canon_home"/}" | sed 's/[/\\:]/-/g')"
-            printf -- '-%s' "$rel"
-            ;;
-        *)
-            canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
-            case "$cwd" in
-                "$canon_tmp")
-                    printf -- '-tmp'
-                    ;;
-                "$canon_tmp"/*)
-                    rel="$(printf '%s' "${cwd#"$canon_tmp"/}" | sed 's/[/\\:]/-/g')"
-                    printf -- '-tmp-%s' "$rel"
-                    ;;
-                *)
-                    rel="$(printf '%s' "${cwd#/}" | sed 's/[/\\:]/-/g')"
-                    printf -- '--%s--' "$rel"
-                    ;;
-            esac
-            ;;
-    esac
-}
-
 discover_omp() {
     local config_dir="${PI_CONFIG_DIR:-.omp}"
 
@@ -187,9 +148,9 @@ discover_omp() {
     # basename contains characters the hashed scheme normalizes (e.g. spaces)
     # still match, and glob the raw form so raw-scheme buckets whose basename
     # sanitizes differently (e.g. "my repo" in "--Users-test-Code-my repo--")
-    # are found too. When --cwd is supplied, also probe the exact raw bucket
-    # name: it catches buckets the basename globs miss when the bucket's path
-    # segments no longer resemble the repo name as typed.
+    # are found too. With --cwd, list all recent bucket files and let recorded
+    # cwd metadata decide membership. This preserves historical raw and hashed
+    # buckets without reconstructing their names from an OS temporary root.
     local sanitized
     sanitized="$(printf '%s' "$REPO_NAME" | sed -E 's/[^a-zA-Z0-9._-]+/-/g; s/^-+//; s/-+$//' | tail -c 80)"
     [ -n "$sanitized" ] || sanitized="project"
@@ -209,24 +170,16 @@ discover_omp() {
         esac
     fi
     {
-        local root dir encoded
-        if [ -n "$REPO_CWD" ]; then
-            encoded="$(encode_omp_raw_cwd "$REPO_CWD")"
-            if [ -n "$encoded" ]; then
-                for root in "$agent_dir/sessions" \
-                            "$HOME/$config_dir"/profiles/*/agent/sessions \
-                            ${xdg_omp:+"$xdg_omp/sessions"} \
-                            ${xdg_omp:+"$xdg_omp"/profiles/*/sessions}; do
-                    [ -d "$root/$encoded" ] || continue
-                    find "$root/$encoded" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
-                done
-            fi
-        fi
+        local root dir
         for root in "$agent_dir/sessions" \
                     "$HOME/$config_dir"/profiles/*/agent/sessions \
                     ${xdg_omp:+"$xdg_omp/sessions"} \
                     ${xdg_omp:+"$xdg_omp"/profiles/*/sessions}; do
             [ -d "$root" ] || continue
+            if [ -n "$REPO_CWD" ]; then
+                find "$root" -mindepth 2 -maxdepth 2 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
+                continue
+            fi
             for dir in "$root"/*"$sanitized"*/; do
                 [ -d "$dir" ] || continue
                 find "$dir" -maxdepth 1 -name "*.jsonl" -mtime "-${DAYS}" 2>/dev/null
@@ -238,7 +191,7 @@ discover_omp() {
                 done
             fi
         done
-    # The probe and the globs can hit the same bucket; emit each path once.
+    # Configured roots and fallback globs may overlap; emit each path once.
     } | awk '!seen[$0]++'
 }
 

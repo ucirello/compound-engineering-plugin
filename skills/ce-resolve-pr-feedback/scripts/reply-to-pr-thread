@@ -17,6 +17,8 @@ PR_NUMBER=$1
 ROOT_COMMENT_ID=$2
 BODY=$(cat)
 
+source "$(dirname "${BASH_SOURCE[0]}")/workspace-env.sh"
+
 if [ -n "$3" ]; then
     OWNER=$(echo "$3" | cut -d/ -f1)
     REPO=$(echo "$3" | cut -d/ -f2)

@@ -29,7 +29,7 @@
 #                   promote agreement.
 #   <candidates>    comma-separated ordered provider keys to consider, e.g.
 #                   "codex,claude,grok,composer". The skill front-loads any
-#                   resolved preference (conversation > CE config cascade >
+#                   resolved preference (conversation > RocketClaw config cascade >
 #                   project-instructions-in-context); the script excludes the
 #                   host, applies the CROSS_MODEL_PEERS allowlist, and walks this
 #                   order picking the first available provider(s) up to
@@ -100,15 +100,31 @@ M_GROK="grok-4.7"              # grok CLI             (--effort xhigh)
 M_GROK_CURSOR="grok-4.7-xhigh" # cursor-agent --list-models; 4.7 has no cursor- prefix, effort is in the id
 M_COMPOSER="composer-2.5-fast" # cursor-agent composer (no high tier; -fast is the ceiling)
 
+opencode_model_spec() {
+  local model="${CROSS_MODEL_MODEL_OVERRIDE:-}" effort="${CROSS_MODEL_EFFORT_OVERRIDE:-}" variant
+  [ "${CROSS_MODEL_MODEL_OVERRIDE_TARGET:-}" = opencode ] || return 1
+  [[ "$model" =~ ^[A-Za-z0-9._-]+/[^[:space:]#]+(#[A-Za-z0-9._-]+)?$ ]] || return 1
+  if [[ "$model" = *\#* ]]; then
+    variant="${model##*#}"
+    [ -z "$effort" ] || [ "$effort" = "$variant" ] || return 1
+  elif [ -n "$effort" ]; then
+    [[ "$effort" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+    model="$model#$effort"
+  fi
+  [[ "$model" = *\#* ]] || return 1
+  printf '%s' "$model"
+}
+
 route_effort() {   # <route> -> requested effort: the override where the route takes one, else editorial
+  if [ "$1" = opencode ]; then
+    local model
+    model="$(opencode_model_spec)" || return 1
+    case "$model" in *\#*) printf '%s' "${model##*#}" ;; *) printf 'unverified' ;; esac
+    return 0
+  fi
   if [ -n "${CROSS_MODEL_EFFORT_OVERRIDE:-}" ]; then
     case "$1" in
       codex|claude|grok-cli) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
-      opencode)
-        case "$CROSS_MODEL_EFFORT_OVERRIDE" in
-          none|minimal|low|medium|high|xhigh|max|default) printf '%s' "$CROSS_MODEL_EFFORT_OVERRIDE"; return 0 ;;
-        esac
-        ;;
     esac
   fi
   case "$1" in
@@ -117,7 +133,6 @@ route_effort() {   # <route> -> requested effort: the override where the route t
     grok-cursor) printf 'model-implied-xhigh' ;;
     composer) printf 'fast' ;;
     cursor) printf 'unverified' ;;
-    opencode) printf 'unverified' ;;
   esac
 }
 
@@ -142,6 +157,7 @@ expected_model_prefix() {   # <requested-alias-or-id> -> expected served-id fami
 }
 
 route_model() {   # <route> -> the M_* constant that route requests
+  if [ "$1" = opencode ]; then opencode_model_spec; return; fi
   local target
   target="$(route_target "$1")"
   if [ -n "${CROSS_MODEL_MODEL_OVERRIDE:-}" ] &&
@@ -157,7 +173,6 @@ route_model() {   # <route> -> the M_* constant that route requests
     grok-cursor) printf '%s' "$M_GROK_CURSOR" ;;
     cursor)      printf 'auto' ;;
     composer)    printf '%s' "$M_COMPOSER" ;;
-    opencode)    printf 'auto' ;;
   esac
 }
 
@@ -284,16 +299,13 @@ adapter_argv() {
         --sandbox enabled --workspace "$PEER_WORKDIR" --output-format stream-json
       ;;
     opencode)
+      # V2 uses cwd and a single provider/model#variant flag. Agent-local
+      # deny-all rules follow global permissions; the brief is attached content.
+      _oc_model="$(opencode_model_spec)" || return 1
       printf '%s\0' env 'OPENCODE_DISABLE_PROJECT_CONFIG=1' \
-        'OPENCODE_CONFIG_CONTENT={"permission":{"edit":"deny","bash":"deny","webfetch":"deny","task":"deny"}}' \
-        opencode run --dir "$PEER_WORKDIR" --format json \
+        'OPENCODE_CONFIG_CONTENT={"agents":{"rocketclaw-review":{"mode":"primary","description":"Read the attached review brief without tools","permissions":[{"action":"*","resource":"*","effect":"deny"}]}},"permissions":[{"action":"*","resource":"*","effect":"deny"}]}' \
+        opencode run --standalone --agent rocketclaw-review --format json --model "$_oc_model" \
         "Follow the attached brief. Return only schema-shaped JSON." --file "$PROMPT_FILE"
-      _oc_model="$(route_model opencode)"
-      [ "$_oc_model" = "auto" ] || [ -z "$_oc_model" ] || printf '%s\0' --model "$_oc_model"
-      _oc_effort="$(route_effort opencode)"
-      case "$_oc_effort" in
-        none|minimal|low|medium|high|xhigh|max|default) printf '%s\0' --variant "$_oc_effort" ;;
-      esac
       ;;
     *) return 1 ;;
   esac
@@ -307,6 +319,7 @@ adapter_argv() {
 # family segment after the namespace is still checked.
 validate_model_override() {
   local route="$1" override="${CROSS_MODEL_MODEL_OVERRIDE:-}" override_target="${CROSS_MODEL_MODEL_OVERRIDE_TARGET:-}" target
+  if [ "$route" = opencode ]; then opencode_model_spec >/dev/null; return; fi
   [ -n "$override" ] || { [ -z "$override_target" ]; return; }
   [ -n "$override_target" ] || return 1
   target="$(route_target "$route")" || return 1
@@ -328,12 +341,12 @@ validate_model_override() {
 # invalid for the route rather than silently dropped. Empty means "no override".
 validate_effort_override() {
   local route="$1" effort="${CROSS_MODEL_EFFORT_OVERRIDE:-}"
+  if [ "$route" = opencode ]; then opencode_model_spec >/dev/null; return; fi
   [ -n "$effort" ] || return 0
   case "$route:$effort" in
     claude:low|claude:medium|claude:high|claude:xhigh|claude:max) ;;
     codex:low|codex:medium|codex:high|codex:xhigh|codex:max|codex:ultra) ;;
     grok-cli:low|grok-cli:medium|grok-cli:high|grok-cli:xhigh) ;;
-    opencode:none|opencode:minimal|opencode:low|opencode:medium|opencode:high|opencode:xhigh|opencode:max|opencode:default) ;;
     *) return 1 ;;
   esac
 }
@@ -528,13 +541,19 @@ fi
 # with the same context slots the in-process persona adapts on. The reviewer
 # field is normalized to <reviewer-name>-<provider> after the run, so the prompt
 # asks only for the short name.
-PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-prompt-XXXXXX")"
-PEERLOG="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-log-XXXXXX")"
+WORKSPACE_ROOT="$(jj --ignore-working-copy workspace root 2>/dev/null || pwd -P)"
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp"
+[ ! -L "$SCRATCH_ROOT" ] || skip "scratch root is a symlink; skipping"
+(umask 077; mkdir -p "$SCRATCH_ROOT") || skip "cannot create workspace scratch; skipping"
+[ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] || skip "scratch root is not owned by current user; skipping"
+chmod 700 "$SCRATCH_ROOT" || skip "cannot protect workspace scratch; skipping"
+PROMPT_FILE="$(mktemp "$SCRATCH_ROOT/xmodel-doc-prompt-XXXXXX")"
+PEERLOG="$(mktemp "$SCRATCH_ROOT/xmodel-doc-log-XXXXXX")"
 # Peer stderr goes to its own file, NOT merged into PEERLOG: PEERLOG must stay
 # clean stdout for the findings raw_decode scan and the receipt jq-parse. An
 # auth/quota/rate-limit message often lands on stderr, so capture it separately
 # and surface it in the skip evidence (grok's 402 is on stdout, others on stderr).
-PEERERR="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-err-XXXXXX")"
+PEERERR="$(mktemp "$SCRATCH_ROOT/xmodel-doc-err-XXXXXX")"
 PEER_WORKDIR=""
 RAW_OUT=""
 RUN_SUCCEEDED=false
@@ -1034,7 +1053,7 @@ parse_opencode_events() {  # <logfile> <outfile>
   text="$(jq -rs '[.[] | select(.type=="text") | (.part.text // empty)] | join("")' "$1" 2>/dev/null)" || text=""
   [ -n "$text" ] || return 1
   printf '%s' "$text" | jq -e 'select((.findings|type)=="array")' > "$2" 2>/dev/null && return 0
-  tmp="$(mktemp "${TMPDIR:-/tmp}/ce-opencode-text-XXXXXX")" || return 1
+  tmp="$(mktemp "$SCRATCH_ROOT/rocketclaw-opencode-text-XXXXXX")" || return 1
   printf '%s' "$text" > "$tmp"
   recover_findings_json "$tmp" "$2"
   local st=$?
@@ -1054,7 +1073,7 @@ attempt_route() {   # <provider> <route>
     codex|claude|grok-cli) note="$(route_model "$route") (effort $(route_effort "$route"))" ;;
     grok-cursor|composer)  note="$(route_model "$route")" ;;
     cursor)                note="auto (serving model unverified)" ;;
-    opencode)              note="auto (serving model unverified)" ;;
+    opencode)              note="$(route_model opencode) (effort $(route_effort opencode))" ;;
   esac
   log "peer run: provider=$provider route=$route model=$note lens=$REVIEWER_NAME read-only least-privilege (idle ${IDLE_SECS}s / attempt hard ${attempt_hard}s); full document content egresses to this provider via this route"
   case "$route" in
@@ -1112,10 +1131,9 @@ run_provider() {   # <provider>
   # The peer's cwd/workspace and its RAW_OUT live here, so a read-capable peer
   # (codex/cursor-agent) can neither list a shared cwd nor read another lens's
   # published <lens>-<provider>.json -- it has no path handle to RUN_DIR at all.
-  # OUT is published to RUN_DIR only after the peer process exits (normalize below),
-  # never written into RUN_DIR by the peer itself. Falls back to RUN_DIR only if
-  # mktemp fails (preserves prior behavior over failing the pass).
-  PEER_WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/xmodel-doc-peer-XXXXXX")" || PEER_WORKDIR="$RUN_DIR"
+  # OUT is published to RUN_DIR only after the peer process exits (normalize below).
+  # An unavailable isolated workspace skips the peer rather than exposing siblings.
+  PEER_WORKDIR="$(mktemp -d "$SCRATCH_ROOT/xmodel-doc-peer-XXXXXX")" || { log "cannot create isolated peer workspace; skipping"; rm -f "$OUT"; return 0; }
   RAW_OUT="$PEER_WORKDIR/$REVIEWER_NAME-$provider.raw.json"
   [ -n "$fixed" ] || { log "host must resolve one fixed route before egress; skipping"; rm -f "$OUT"; return 0; }
   [ "$(route_target "$fixed")" = "$provider" ] || { log "fixed route '$fixed' does not match target '$provider'; skipping"; rm -f "$OUT"; return 0; }
@@ -1172,7 +1190,7 @@ run_provider() {   # <provider>
   # (orphaned launch), synthesis finds no .json in RUN_DIR.
   rm -f "$OUT"
   if [ -s "$RAW_OUT" ]; then
-    _norm="$(mktemp "${TMPDIR:-/tmp}/xmodel-doc-norm-XXXXXX")"
+    _norm="$(mktemp "$SCRATCH_ROOT/xmodel-doc-norm-XXXXXX")"
     case "$ACTUAL_ROUTE:$MODEL_ACTUAL" in
       cursor:*) _target_family="unknown" ;;
       composer:unverified|grok-cursor:unverified) _target_family="unknown" ;;

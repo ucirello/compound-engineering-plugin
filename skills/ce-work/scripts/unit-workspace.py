@@ -41,12 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("checkpoint-plan")
     p.add_argument("--run-id", required=True)
+    p.add_argument("--commit-message")
 
     p = sub.add_parser("prepare")
     p.add_argument("--run-id", required=True)
     p.add_argument("--unit-id", required=True)
     p.add_argument("--base", required=True)
     p.add_argument("--packet", required=True)
+    p.add_argument("--transport-message", required=True)
     p.add_argument("--attempt-id", default="attempt-1")
     p.add_argument("--activity-posture", choices=("incremental", "hard-only"), default="hard-only")
     p.add_argument("--dependency", action="append", default=[])

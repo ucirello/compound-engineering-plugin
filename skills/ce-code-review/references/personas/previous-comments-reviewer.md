@@ -8,14 +8,14 @@ This persona only applies when reviewing a PR. The orchestrator passes PR metada
 
 ## How to gather prior comments
 
-Extract the PR number from the `<pr-context>` block. Then fetch all review comments and review threads:
+Extract the PR number from the `<pr-context>` block. Set cwd to the absolute workspace root, then fetch all review comments and review threads:
 
 ```
-gh pr view <PR_NUMBER> --json reviews,comments --jq '.reviews[].body, .comments[].body'
+GIT_DIR=$(jj git root) gh pr view <PR_NUMBER> --json reviews,comments --jq '.reviews[].body, .comments[].body'
 ```
 
 ```
-gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/comments --jq '.[] | {path: .path, line: .line, body: .body, created_at: .created_at, user: .user.login}'
+GIT_DIR=$(jj git root) gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/comments --jq '.[] | {path: .path, line: .line, body: .body, created_at: .created_at, user: .user.login}'
 ```
 
 If the PR has no prior review comments, return an empty findings array immediately. Do not invent findings.

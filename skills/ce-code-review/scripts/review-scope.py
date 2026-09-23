@@ -85,20 +85,27 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
-    )
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["jj", "--color=never", "--no-pager", *args], cwd=repo_root(),
+            capture_output=True, text=True, check=False, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return subprocess.CompletedProcess(["jj", *args], 1, "", str(exc))
 
 
 def valid_commit(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+    result = jj("log", "--no-graph", "-r",
+                f"heads(ancestors({base}) & ancestors({head}))",
+                "-T", 'commit_id ++ "\n"')
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -125,15 +132,12 @@ def normalize_docs_root(docs_root: str | None) -> str:
 
 @functools.lru_cache(maxsize=None)
 def repo_root() -> Path:
-    """The repository root, matching how docs_root is resolved everywhere else.
-
-    docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
-    """
-    result = git("rev-parse", "--show-toplevel")
+    """Resolve the enclosing workspace through JJ's public interface."""
+    try:
+        result = subprocess.run(["jj", "workspace", "root"], cwd=Path.cwd().resolve(),
+                                capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return Path.cwd().resolve()
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
     return Path.cwd().resolve()
@@ -158,17 +162,17 @@ def has_learnings_corpus(docs_root: str | None) -> bool:
 
 
 PACKS_RESOLVER = Path(__file__).resolve().parent / "packs-resolve.py"
-# Parse-only mode does no git or cache work, so this bound only guards against a
+# Parse-only mode does no remote or cache work, so this bound only guards against a
 # wedged interpreter; the helper is meant to be cheap and must never hang scope.
 PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local RocketClaw config declares Compound Packs, from the config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
-    git or cache work. Its `declared` is true when any entry parsed or the block
+    `packs:` list from both RocketClaw config layers and shape-checks each entry with no
+    remote or cache work. Its `declared` is true when any entry parsed or the block
     is malformed -- a broken declaration is still one the learnings pass must
     surface in Coverage. ``None`` means the helper could not tell (resolver
     missing, crashed, timed out, or answered without `declared`); the caller
@@ -262,7 +266,7 @@ def matching_classes(
 
 
 def numstat_path(name: str) -> str:
-    """Return the destination path from a `git diff --numstat` rename display name."""
+    """Return the destination path from a compact rename display name."""
     if " => " not in name:
         return name
     if "{" in name and "}" in name:
@@ -294,34 +298,57 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
+    diff_args = ["--from", args.base, "--to", "@"]
     if args.head:
         merge_base = unique_merge_base(args.base, args.head)
         if merge_base is None:
             print(json.dumps(fail_closed("merge base unavailable or ambiguous", repo), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_args = ["--from", merge_base, "--to", args.head]
 
-    numstat = git("diff", "--numstat", *diff_args)
-    raw = git("diff", "--raw", *diff_args)
-    if numstat.returncode != 0 or raw.returncode != 0:
-        print(json.dumps(fail_closed("git diff failed", repo), sort_keys=True))
+    names = jj("diff", "-T", 'json(path) ++ "\t" ++ source.conflict() ++ "\t" ++ target.conflict() ++ "\n"', *diff_args)
+    if names.returncode != 0:
+        print(json.dumps(fail_closed("jj diff failed", repo), sort_keys=True))
         return 0
 
+    # JJ exposes Git-format hunks, not numstat/raw. Inspect each literal path so
+    # rename quoting and spaces cannot misattribute counts to another file.
+    rows: list[tuple[str, int | None]] = []
     executable_mode_paths: set[str] = set()
-    for line in raw.stdout.splitlines():
-        if "\t" not in line:
+    for entry in names.stdout.splitlines():
+        try:
+            encoded_name, source_conflict, target_conflict = entry.split("\t")
+            name = json.loads(encoded_name)
+            if not isinstance(name, str):
+                raise ValueError("path is not a string")
+        except (ValueError, TypeError):
+            print(json.dumps(fail_closed("unreadable diff path", repo), sort_keys=True))
+            return 0
+        if "true" in (source_conflict, target_conflict):
+            rows.append((name, None))
             continue
-        meta, path_field = line.split("\t", 1)
-        fields = meta.lstrip(":").split(" ")
-        if len(fields) < 2:
+        patch = jj("diff", "--git", "--context", "0", *diff_args, "--",
+                   f"file:{json.dumps(name)}")
+        if patch.returncode != 0 or not patch.stdout:
+            rows.append((name, None))
             continue
-        old_mode, new_mode = fields[0], fields[1]
-        mode = old_mode if new_mode == "000000" else new_mode
-        if not mode.endswith("755"):
+        lines = patch.stdout.splitlines()
+        modes = [line for line in lines if re.match(r"(?:old mode|new mode|new file mode|deleted file mode|index) ", line)]
+        if any(line.endswith("100755") for line in modes):
+            executable_mode_paths.add(name)
+        if any(line.startswith(("Binary files ", "GIT binary patch", "Submodule ")) for line in lines) or any("160000" in line for line in modes):
+            rows.append((name, None))
             continue
-        for path in path_field.split("\t"):
-            executable_mode_paths.add(path)
+        total = 0
+        in_hunk = False
+        for line in lines:
+            if line.startswith("diff --git "):
+                in_hunk = False
+            elif line.startswith("@@ "):
+                in_hunk = True
+            elif in_hunk and line.startswith(("+", "-")):
+                total += 1
+        rows.append((name, total))
 
     files: list[str] = []
     executable_lines = 0
@@ -329,19 +356,9 @@ def main() -> int:
     unclassified_lines: dict[str, int] = {}
     changed_lines = 0
     uncounted = 0
-    for line in numstat.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        added, deleted, name = parts[0], parts[1], parts[2]
-        resolved_name = numstat_path(name)
+    for resolved_name, total in rows:
         files.append(resolved_name)
-        if added == "-" or deleted == "-":
-            uncounted += 1
-            continue
-        try:
-            total = int(added) + int(deleted)
-        except ValueError:
+        if total is None:
             uncounted += 1
             continue
         changed_lines += total

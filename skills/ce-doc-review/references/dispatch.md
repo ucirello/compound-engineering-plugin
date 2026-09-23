@@ -1,6 +1,6 @@
 # Dispatching the reviewers
 
-Dispatch generic subagents with **bounded parallelism** using the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Omit the `mode` parameter so the user's configured permission settings apply.
+Dispatch generic subagents with **bounded parallelism** using the platform's subagent primitive (e.g., `Agent` in Claude Code, `spawn_agent` in Codex, native subagents in OpenCode V2) where available; otherwise run the work inline or serially. Omit the `mode` parameter so the user's configured permission settings apply.
 
 Respect the harness's active-subagent limit: dispatch only as many selected reviewers as it accepts and queue the remainder. Treat active-agent/thread/concurrency-limit spawn errors as backpressure, not reviewer failure: the harness is full, so wait for a slot rather than marking the reviewer failed. Keep rejected reviewers queued while active work finishing, or a supported release of an agent, can free capacity, and retry when a slot frees. When capacity cannot recover, use the incomplete-stop condition in Phase 2 (dispatch) rather than retrying indefinitely. Record a reviewer as failed only after a successful dispatch times out or fails, or when dispatch fails for a non-capacity reason that survives correcting the invocation.
 
@@ -8,13 +8,15 @@ Respect the harness's active-subagent limit: dispatch only as many selected revi
 
 For each selected reviewer, read `references/personas/<reviewer-name>.md` and pass its full content as `{persona_file}`. Do not dispatch standalone agents by type/name and do not rely on platform-level custom-agent registration.
 
-**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. Apply these dispatch-time preferences when the platform exposes a known model override; otherwise omit the override and inherit the parent model rather than guessing a platform-specific model name:
+**Model tiering lives here, not in prompt assets.** Local prompt files have no frontmatter and carry no model metadata. Effective `.rocketclaw/config.yaml` / `config.local.yaml` subagent and harness settings take precedence (local overrides ordinary repo keys). On OpenCode V2, when no explicit subagent or alternative-harness routing is set and `opencode.models` plus native subagents with an optional model are available, discover exact IDs and variants, then pass `model: provider/model#variant` to native delegation at the tiers below. Never guess an ID or silently reuse the current model when discovery cannot satisfy a tier; report unavailable coverage. On other hosts, apply these preferences when a known model override exists; otherwise inherit the parent model:
 
 - `coherence-reviewer`: cheapest capable extraction/reasoning tier.
-- `security-lens-reviewer`, `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: inherit the parent model unless the harness has an established high-capability review tier.
+- `security-lens-reviewer`, `feasibility-reviewer`, `product-lens-reviewer`, `adversarial-document-reviewer`: high-capability review tier on OpenCode; elsewhere inherit the parent model unless the harness has an established high-capability review tier.
 - `design-lens-reviewer`, `scope-guardian-reviewer`: platform mid-tier model.
 
 Each subagent receives the prompt built from the subagent template included below, with these variables filled:
+
+Keep temporary reviewer slices, prompts, and run artifacts under the current workspace's `.tmp` directory, resolving the workspace through `jj workspace root`; outside a JJ workspace, use the current directory's `.tmp`. This applies to native and CLI delegation. Never use OS temporary storage. Keep functional skill IDs in routing metadata, but omit their `ce-` prefix from storage directory names.
 
 | Variable | Value |
 |----------|-------|

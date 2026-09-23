@@ -21,7 +21,7 @@ A section belongs only when it serves one of these audiences. Omit padding.
 
 ## Unified plan artifact contract
 
-`ce-plan` writes the canonical compound-engineering plan artifact. The same
+`ce-plan` writes the canonical RocketClaw plan artifact. The same
 artifact may begin as a requirements-only skeleton from `ce-brainstorm` and
 later be enriched by `ce-plan`; it is still one plan file moving through
 planning stages, not a requirements doc plus a separate implementation doc.
@@ -387,17 +387,18 @@ plan.
   (e.g., `Highlighter Tool - Plan`), matching the H1 (markdown) or document
   `<h1>` (HTML) so file metadata and visible heading don't drift. Stable
   across planning stages (it is a plan at every stage). Do not put a
-  conventional-commit prefix (`feat:`/`fix:`) in the title — the `type` field
+   commit-message prefix in the title — the `type` field
   carries that classification.
-- **`type`** — conventional-commit-prefix-aligned classification (`feat`,
-  `fix`, `refactor`, `chore`, `docs`, `perf`, `test`, etc.). Carries the
-  intent the eventual commit message should reflect.
+- **`type`** — the project's change-intent classification. Carries the intent
+  the eventual commit message should reflect, without prescribing its syntax.
 - **`date`** — creation date in ISO 8601 (`YYYY-MM-DD`), ASCII digits only.
 
 Plans carry **no `status` field** — a plan is a decision artifact, not a
 tracked work item. `ce-work` does not mutate the plan at ship time;
-whether a plan shipped is derived from git, not stored in the doc. Do not
+whether a plan shipped is derived from JJ, not stored in the doc. Do not
 add a `status` field or an `active → completed` lifecycle.
+
+When recommending the eventual commit message, read https://go.dev/wiki/CommitMessage. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. Here `git log` means history inspected with `jj log` in this JJ workflow. Runtime project instructions and history-derived syntax override the Go guidance. Keep required issue/PR references and the change's intent; the plan does not prescribe a message template.
 
 ### Optional but well-known
 

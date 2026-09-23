@@ -40,6 +40,8 @@ For human-facing shipping, invoke `ce-code-review` without `mode:agent` if markd
 
 ## Check findings before applying fixes
 
+Before any research or fix delegation, read `references/execution-strategy.md` and apply its harness/model selection, including OpenCode's native model-discovery route when effective configuration has no explicit subagent or alternative-harness routing. This also applies when another caller loads this reference directly.
+
 The calling agent decides which findings are valid and which fixes it has permission to apply. Verify each finding against the evidence and the requested outcome. Reject incorrect claims, problems with no supporting evidence, and preferences whose benefit does not justify the change. Record why they were rejected; do not carry them forward as unfinished work.
 
 Apply justified fixes within the agreed scope when they can be reversed. Use project evidence and conventions to choose technical fixes; a design choice does not automatically need a user decision. Neither `confidence`, `autofix_class`, nor a concrete `suggested_fix` proves benefit or grants permission. If a significant problem has no suggested fix, investigate it before deciding to defer it.
@@ -61,7 +63,7 @@ After review, **dispatch subagents for all remaining applicable findings** unles
 
 1. Sort applicable findings by severity (P0 first).
 2. **Group by `file`.** All eligible findings on the same file → **one subagent** (it loads the file once and works through its `#` list in severity order).
-3. **Parallel waves:** batches with **disjoint file sets** may run in parallel (same worktree / shared-directory rules as `ce-work`'s execution strategy in `references/execution-strategy.md`).
+3. **Parallel waves:** batches with **disjoint file sets** may run in parallel (same workspace / shared-directory rules as `ce-work`'s execution strategy in `references/execution-strategy.md`).
 4. **Same file, many findings:** keep one subagent per file. If the prompt would exceed a comfortable size (~8 findings), split into **serial** subagent passes on that file (first batch highest severity, then next batch after merge or after the prior agent returns).
 5. **Cross-file coupling:** do not merge unrelated files into one subagent just to reduce agent count; file grouping is the default. Only co-batch multiple files when findings explicitly reference the same small related change (rare); when in doubt, separate by file.
 
@@ -69,9 +71,9 @@ After review, **dispatch subagents for all remaining applicable findings** unles
 - Work through assigned `#` in severity order; at each `file:line`, skip with a one-line reason if evidence no longer matches
 - Follow the review and permission rules above; choose technical fixes from project evidence and return decisions that still need the user
 - Do not re-run `ce-code-review`
-- Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
+- Shared-directory fallback: do not finish the working-copy change; return which `#` were applied or skipped and which files changed
 
-**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and finishes the change. Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards. The quoted history command means history inspected with `jj log`; runtime project instructions and history syntax override Go guidance. The message must name the applied finding numbers. Use `jj commit -m "<message composed from the standards above>"` with only owned paths unless workspace-isolated subagents integrate per Phase 1. Repeat until all batches complete.
 
 ### Optional inline shortcut (skip subagent spawn)
 

@@ -9,6 +9,15 @@ import re
 import stat
 
 from unit_workspace_state import *
+from unit_workspace_state import _valid_commit_id
+
+
+def unit_workspace_name(run_id: str, unit_id: str) -> str:
+    return "w" + digest_bytes(f"{run_id}/{unit_id}".encode())[:20]
+
+
+def transport_bookmark_name(run_id: str, unit_id: str) -> str:
+    return "t" + digest_bytes(f"{run_id}/{unit_id}".encode())[:20]
 
 
 def _valid_retry_commit_id(value: object) -> bool:
@@ -40,7 +49,7 @@ def _validate_retry_base(doc: dict, unit: dict, requested_base: str) -> None:
     required = accepted_heads | {original_base, *allowed_heads}
     missing = sorted(
         commit for commit in required
-        if git_text(repo, "merge-base", commit, requested_base, check=False) != commit
+        if not is_ancestor(repo, commit, requested_base)
     )
     if missing:
         raise Operational(
@@ -82,14 +91,20 @@ def _record_retry_base(doc: dict, unit: dict, requested_base: str) -> None:
 
 
 def cmd_prepare(args) -> tuple[str, dict]:
+    # Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+    # The host inspects history with jj log; runtime project instructions and
+    # history syntax override Go guidance. Record its message for later recovery.
     uid = safe_id(args.unit_id, "unit id")
     attempt_id = safe_id(args.attempt_id, "attempt id")
+    transport_message = getattr(args, "transport_message", None)
+    if not isinstance(transport_message, str) or not transport_message.strip() or "\0" in transport_message:
+        raise Operational("REFUSED", "prepare requires --transport-message composed from runtime project standards")
     packet_bytes = read_external_packet(args.packet)
     packet_digest = digest_bytes(packet_bytes)
     with locked_manifest(args.run_id) as doc:
         info = validate_repo(doc)
         repo = info["toplevel"]
-        base = git_text(repo, "rev-parse", f"{args.base}^{{commit}}")
+        base = resolve_commit(repo, args.base)
         if info["head"] != base:
             raise Operational("BLOCKED", "canonical HEAD does not equal requested unit base")
         if status_paths(repo):
@@ -111,6 +126,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
             "authorization": authorization,
             "authorization_path": authorization_path,
             "authorization_digest": authorization_digest,
+            "transport_message": transport_message,
         }
         retrying = False
         if existing:
@@ -157,6 +173,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
                 "authorization": attempt.get("authorization"),
                 "authorization_path": attempt.get("authorization_path"),
                 "authorization_digest": attempt.get("authorization_digest"),
+                "transport_message": attempt.get("transport_message"),
             }
             if observed_contract != expected_contract or existing.get("packet", {}).get("path") != packet_path:
                 raise Operational("BLOCKED", "resumed prepare contract differs from the recorded unit")
@@ -206,6 +223,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
         "authorization_retained": True,
         "adapter": os.path.realpath(os.path.join(os.path.dirname(__file__), "cross-model-work.sh")),
         "terminal_receipt": None,
+        "transport_message": transport_message,
     }
     if not existing:
         unit = {
@@ -215,10 +233,10 @@ def cmd_prepare(args) -> tuple[str, dict]:
             "wave": {"id": args.wave_id, "base": base, "position": args.wave_position, "allowed_heads": [base]},
             "packet_digest": packet_digest,
             "packet": {"path": packet_path, "digest": packet_digest, "bytes": len(packet_bytes), "retained": True},
-            "workspace": {"path": workspace, "base": base, "registered": False},
+            "workspace": {"path": workspace, "name": unit_workspace_name(args.run_id, uid), "base": base, "registered": False},
             "result_dir_identity": result_dir_identity,
             "attempts": [attempt_record],
-            "transport": {"base": None, "tree": None, "commit": None, "ref": None, "digest": None, "changed_paths": []},
+            "transport": {"base": None, "commit": None, "change_id": None, "bookmark": None, "ref": None, "digest": None, "changed_paths": []},
             "integration": {"intent_revision": None, "pre_fold": None, "expected_apply": None, "applied": None, "verification": None, "canonical_commit": None, "restore": None},
             "cleanup": None,
             "recovery_path": unit_root,
@@ -227,7 +245,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
             if uid in doc["units"]:
                 raise Operational("BLOCKED", "unit was concurrently claimed")
             doc["units"][uid] = unit
-            event(doc, "worktree-add-intent", uid, {"path": workspace, "base": base})
+            event(doc, "workspace-add-intent", uid, {"path": workspace, "base": base})
     elif retrying:
         with locked_manifest(args.run_id, write=True) as doc:
             unit = doc["units"].get(uid)
@@ -263,22 +281,23 @@ def cmd_prepare(args) -> tuple[str, dict]:
             unit["state"] = "queued"
             unit["packet_digest"] = packet_digest
             unit["packet"] = {"path": packet_path, "digest": packet_digest, "bytes": len(packet_bytes), "retained": True}
-            unit["workspace"] = {"path": workspace, "base": base, "registered": False}
+            unit["workspace"] = {"path": workspace, "name": unit_workspace_name(args.run_id, uid), "base": base, "registered": False}
             unit["result_dir_identity"] = result_dir_identity
             _record_retry_base(doc, unit, base)
             unit["attempts"].append(attempt_record)
-            unit["transport"] = {"base": None, "tree": None, "commit": None, "ref": None, "digest": None, "changed_paths": []}
+            unit["transport"] = {"base": None, "commit": None, "change_id": None, "bookmark": None, "ref": None, "digest": None, "changed_paths": []}
             unit["integration"] = {"intent_revision": None, "pre_fold": None, "expected_apply": None, "applied": None, "verification": None, "canonical_commit": None, "restore": None}
             unit["cleanup"] = None
             unit["recovery_path"] = unit_root
             event(doc, "unit-retry-prepared", uid, {"attempt_id": attempt_id, "base": base})
-            event(doc, "worktree-add-intent", uid, {"path": workspace, "base": base})
+            event(doc, "workspace-add-intent", uid, {"path": workspace, "base": base})
     with locked_manifest(args.run_id) as doc:
-        common = doc["repository"]["common_dir"]
         repo = doc["repository"]["toplevel"]
-    with admin_lock(common):
+        workspace_name = doc["units"][uid]["workspace"]["name"]
+    with admin_lock(repo):
         if not os.path.exists(workspace):
-            git(repo, "worktree", "add", "--detach", workspace, base)
+            jj(repo, "workspace", "add", "--name", workspace_name, "--revision", base, workspace)
+            os.chmod(workspace, 0o700)
             test_fault("after-worktree-add")
         with locked_manifest(args.run_id) as doc:
             unit = doc["units"][uid]
@@ -286,7 +305,7 @@ def cmd_prepare(args) -> tuple[str, dict]:
     with locked_manifest(args.run_id, write=True) as doc:
         unit = doc["units"][uid]
         unit["workspace"]["registered"] = True
-        event(doc, "worktree-prepared", uid, {"path": workspace, "base": base})
+        event(doc, "workspace-prepared", uid, {"path": workspace, "base": base, "name": workspace_name})
     return "PREPARED", {
         "unit_id": uid, "attempt_id": attempt_id,
         "workspace": workspace, "result_dir": os.path.join(unit_root, "result"),
@@ -991,14 +1010,12 @@ def cmd_sync_job(args) -> tuple[str, dict]:
 
 
 def transport_ref(run_id: str, unit_id: str) -> str:
-    return f"refs/ce-work/{digest_bytes(run_id.encode())[:20]}/{digest_bytes(unit_id.encode())[:20]}"
+    return transport_bookmark_name(run_id, unit_id)
 
 
 def no_sequencer(workspace: str) -> None:
-    git_dir = git_text(workspace, "rev-parse", "--path-format=absolute", "--absolute-git-dir")
-    for name in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"):
-        if os.path.exists(os.path.join(git_dir, name)):
-            raise Operational("BLOCKED", f"worker workspace has unresolved Git operation: {name}")
+    if working_copy(workspace)["conflict"]:
+        raise Operational("BLOCKED", "worker workspace working copy is conflicted")
 
 
 def parse_diff_paths(raw: bytes) -> list[str]:
@@ -1091,60 +1108,47 @@ def terminalize(run_id: str, unit_id: str) -> dict:
         workspace = unit["workspace"]["path"]
         base = unit["workspace"]["base"]
         repo = doc["repository"]["toplevel"]
+        message = find_attempt(unit).get("transport_message")
+    ref = transport_ref(run_id, unit_id)
+    existing = resolve_commit(repo, ref, check=False)
     try:
         no_sequencer(workspace)
-        ignored_raw = git(workspace, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
-        ignored_paths = [
-            part.decode("utf-8", "surrogateescape")
-            for part in ignored_raw.split(b"\0")
-            if part
-        ]
-        if ignored_paths:
-            preview = json.dumps(ignored_paths[:20], ensure_ascii=True)
-            suffix = f" and {len(ignored_paths) - 20} more" if len(ignored_paths) > 20 else ""
-            raise Operational(
-                "BLOCKED",
-                f"worker workspace contains ignored untracked output that cannot enter the transport: {preview}{suffix}",
-                {"ignored_paths": ignored_paths[:100], "ignored_path_count": len(ignored_paths)},
-            )
-        git(workspace, "add", "-A", "--", ".")
-        tree = git_text(workspace, "write-tree")
-        mode_diff = git(repo, "diff-tree", "-r", "--raw", "-z", "--no-renames", base, tree)
-        if diff_changes_gitlink(mode_diff):
+        wc = working_copy(workspace)
+        recovered_transport = bool(existing and wc["parent"] == existing and wc["empty"])
+        if wc["parent"] != base and wc["commit_id"] != base and not recovered_transport:
+            raise Operational("BLOCKED", "worker workspace is not based on the recorded base")
+        if diff_has_submodule(workspace, base, "@"):
             raise Operational("BLOCKED", "submodule state cannot be transported implicitly")
     except Operational as exc:
         record_terminal_validation_failure(run_id, unit_id, exc)
         raise
-    ref = transport_ref(run_id, unit_id)
-    existing = git_text(repo, "rev-parse", "-q", "--verify", ref, check=False)
-    if existing:
-        parents = git_text(repo, "rev-list", "--parents", "-n", "1", existing).split()
-        existing_tree = git_text(repo, "rev-parse", f"{existing}^{{tree}}")
-        if parents != [existing, base] or existing_tree != tree:
-            raise Operational("BLOCKED", "preexisting transport ref does not match final tree/base")
+    if existing and _valid_commit_id(existing):
+        parents = log_template(repo, existing, 'parents.map(|c| c.commit_id()).join(" ")').split()
+        if parents != [base] or changed_name_only(workspace, from_rev=existing, to_rev="@"):
+            raise Operational("BLOCKED", "preexisting transport bookmark does not match the recorded base and final tree")
         commit = existing
+        change_id = log_template(repo, commit, "change_id")
     else:
-        env = {
-            "GIT_AUTHOR_NAME": "ce-work transport",
-            "GIT_AUTHOR_EMAIL": "ce-work@localhost",
-            "GIT_COMMITTER_NAME": "ce-work transport",
-            "GIT_COMMITTER_EMAIL": "ce-work@localhost",
-        }
-        commit = git(repo, "commit-tree", tree, "-p", base, input_data=f"ce-work transport {run_id}/{unit_id}\n".encode(), env=env).decode().strip()
-        zero = "0" * len(commit)
-        git(repo, "update-ref", ref, commit, zero)
+        # Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+        # The host inspects history with jj log. Runtime project instructions and
+        # history syntax override Go guidance; prepare records the composed message.
+        if not isinstance(message, str) or not message.strip() or "\0" in message:
+            raise Operational("REFUSED", "transport needs a host-composed message recorded by prepare")
+        # Describe and pin the existing working-copy revision. Starting a new
+        # change here would lose the recorded base during crash recovery.
+        jj(workspace, "describe", "-m", message)
+        commit = resolve_commit(workspace, "@")
+        jj(workspace, "bookmark", "set", ref, "-r", commit)
+        change_id = log_template(workspace, commit, "change_id")
         test_fault("after-transport-ref")
-    raw_diff = git(repo, "diff-tree", "-r", "-M", "--name-status", "-z", base, commit)
-    paths = parse_diff_paths(raw_diff)
-    tdigest = digest_bytes(base.encode() + b"\0" + tree.encode() + b"\0" + commit.encode() + b"\0" + raw_diff)
+    paths = changed_name_only(workspace, from_rev=base, to_rev=commit)
+    inventory = "\n".join(paths).encode()
+    tdigest = digest_bytes(base.encode() + b"\0" + commit.encode() + b"\0" + change_id.encode() + b"\0" + inventory)
     transport = {
-        "base": base, "tree": tree, "commit": commit, "ref": ref,
-        "digest": tdigest, "changed_paths": paths,
-        "inventory_b64": base64.b64encode(raw_diff).decode(),
+        "base": base, "commit": commit, "change_id": change_id, "bookmark": ref, "ref": ref,
+        "digest": tdigest, "changed_paths": paths, "ignored_output_check": "unavailable",
+        "inventory_b64": base64.b64encode(inventory).decode(),
     }
-    # Make successful cleanup non-destructive: after F is pinned, normalize the
-    # retained inspection worktree to the exact transported tree.
-    git(workspace, "reset", "--hard", commit)
     with locked_manifest(run_id, write=True) as doc:
         unit = doc["units"][unit_id]
         if unit["state"] not in ("authored", "integration-pending"):

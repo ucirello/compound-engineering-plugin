@@ -26,22 +26,24 @@ The feature description is what the invocation carries, whether the user wrote i
 Resolve `<root>` the first time you compose or read a `<root>/` path, never earlier; a scratch-only or no-repo run that touches none skips this entirely.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the RocketClaw artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only (`<repo-root>` = `jj workspace root`). Run JJ commands with cwd set to the absolute workspace root after discovery. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
-`brainstorm_output` and `brainstorm_model` resolve by this rule instead:
+`brainstorm_output`, `brainstorm_model`, `brainstorm_harness`, and subagent routing settings resolve by this rule instead:
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution. OpenCode V2 is a distinct supported harness (`brainstorm_harness: opencode`, with `brainstorm_model: provider/modelname#variant`); effective explicit subagent and alternative-harness settings win over automatic native routing.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
+
+Before the first delegated task, actually read both ordinary config layers (reuse their contents if already read at output-mode resolution). Resolve `brainstorm_model`, `brainstorm_harness`, and any explicit subagent routing from those contents before deciding that routing is unset. Preserve the `#variant` suffix in a model value: it is not a YAML comment unless separated from an unquoted value by whitespace. If a present file cannot be read or parsed, report the unresolved routing and keep the task inline rather than selecting an automatic route. `cross_model_peer: opencode` and `work_engine_preferences: [{harness: opencode, model: provider/model#variant}]` are valid downstream preferences; pass them intact to their owning skills, not as overrides for this skill's scout or verifier.
 
 ## Execution Flow
 

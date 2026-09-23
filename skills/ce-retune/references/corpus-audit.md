@@ -16,7 +16,7 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite. Grep a distinctive substring of the target text.
-3. Version history. Run `git log -S '<substring>'` for the commit that introduced the line, then read that commit message and the PR it belongs to.
+3. Version history. From the absolute JJ workspace root, use `jj log -r 'diff_lines("<substring>")'` to find changes touching the target text, then `jj show <revision>` to identify the introduction and read its description and associated PR. If using `gh`, set `GIT_DIR` from `jj git root` in that workspace.
 
 Source 3 is unavailable in a corpus checkout with no history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone. That combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a checkout that has history, or record the whole audit's provenance basis as partial.
 
@@ -95,6 +95,8 @@ For three categories the default inverts: **absence of provenance is not grounds
 2. **Security guards.**
 3. **Platform gotchas where the wrong behavior looks like success.** Their unifying property: *the model cannot discover them by trying*, because trying returns something that looks fine. A flag that returns empty instead of erroring, so a run reports zero findings and calls itself clean. A config key whose commented-out example matched a naive substring check and silently forced every user into the wrong mode.
 
+Preserve the scoped ignored-file inventory exception owned by `ce-work`'s `unit_workspace_ignored.py`: its read-only Git ignored-file listing uses the absolute JJ workspace root as cwd and `GIT_WORK_TREE`, with `GIT_DIR` obtained through `jj git root`. That exception protects before/after ignored metadata and reporting; it is not grounds to remove the inventory or permit other executable Git commands.
+
 What *is* cuttable around all three is the justification clause, the sentence explaining that a separate consumer is waiting on the string. Keep the data, cut the story about who wants it. That is usually a `reduce`, and it is frequently also a `phantom-handoff`.
 
 `cross-unit-duplication` collides with this category more than any other class. Before proposing a factor-out, check whether the duplication is mandated: a documented decision, or a test that forbids sharing the block. The most-duplicated block in a corpus is often the one thing that must stay duplicated. In the engagement it was a security guard whose duplication a test explicitly required, and the largest duplication mandate was itself the documented fix for a bug that had regressed twice.
@@ -125,4 +127,4 @@ Expect roughly half of `reduce` items to be pinned by a test asserting exact str
 - **A cut with no provenance found after a real search is a confident cut. A cut the defender saves with a citation is off the list.** Do not relitigate a defended keep.
 - **Absence of evidence is weaker than the project's own standard for a change.** Where the guidance requires a reproduced failure or an exact failing path, a search that found nothing is a verification task, not a change. Say which of your cuts rest on that weaker basis.
 
-Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and git history. Expect the audit to contradict the premise you started with. That is its value.
+Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and JJ history. Expect the audit to contradict the premise you started with. That is its value.

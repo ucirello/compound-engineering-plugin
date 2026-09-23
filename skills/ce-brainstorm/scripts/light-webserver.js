@@ -324,7 +324,7 @@ function wrapFragment(options, content) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CE local web</title>
+  <title>RocketClaw local web</title>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; background: #f7f7f8; color: #1f2328; }
     header { padding: 10px 18px; border-bottom: 1px solid #d8dee4; background: #fff; color: #57606a; font-size: 13px; }
@@ -332,7 +332,7 @@ function wrapFragment(options, content) {
   </style>
 </head>
 <body>
-  <header>CE local web - newest screen, reloads on change</header>
+  <header>RocketClaw local web - newest screen, reloads on change</header>
   <main>${content}</main>
   ${refreshScript(options)}
 </body>
@@ -345,7 +345,7 @@ function wrapAnnotateFragment(content, boot) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CE local web</title>
+  <title>RocketClaw local web</title>
   ${boot}
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; background: #f7f7f8; color: #1f2328; }
@@ -354,7 +354,7 @@ function wrapAnnotateFragment(content, boot) {
   </style>
 </head>
 <body>
-  <header>CE local web - newest screen</header>
+  <header>RocketClaw local web - newest screen</header>
   <main>${content}</main>
 </body>
 </html>`
@@ -1164,7 +1164,7 @@ async function serve(options) {
   server.listen(options.port, options.host, () => {
     const address = server.address()
     const port = typeof address === "object" && address ? address.port : options.port
-    cookieName = `ce-light-web-${port}`
+    cookieName = `rocketclaw-light-web-${port}`
     const baseUrl = `http://${DEFAULT_URL_HOST}:${port}`
     const info = {
       status: "running",

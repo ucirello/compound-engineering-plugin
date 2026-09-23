@@ -10,6 +10,8 @@ fi
 
 THREAD_ID=$1
 
+source "$(dirname "${BASH_SOURCE[0]}")/workspace-env.sh"
+
 gh api graphql -f threadId="$THREAD_ID" -f query='
 mutation ResolveReviewThread($threadId: ID!) {
   resolveReviewThread(input: {threadId: $threadId}) {

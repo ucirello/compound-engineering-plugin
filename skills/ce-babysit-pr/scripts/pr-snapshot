@@ -12,6 +12,9 @@ drops out of the unresolved fetch). So if a resolve/debug pass crashes or fails
 before the agent marks it, the item is still actionable on the next tick.
 
 Subcommands:
+  discover [--repo HOST/O/R] [--bookmark NAME] [--include-drafts]
+           Read-only PR/head discovery at @ and, when empty, its parent @-.
+           Does not start an invocation or create state files.
   snapshot --pr N [--repo O/R] --state-dir DIR [--fetch-file F]
            Fetch (or load F), diff against on-disk state, persist the
            observed state atomically, emit the actionable set as JSON.
@@ -291,24 +294,31 @@ def _iso(dt):
     return dt.isoformat()
 
 
-def _run(cmd):
+def _run(cmd, timeout=None):
     # gh honors CLICOLOR_FORCE / GH_FORCE_TTY even for --json output, and a host that exports them
     # (observed under orca) makes every JSON read unparsable. Pin plain output regardless of caller env.
     env = os.environ.copy()
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
-
-
-def _run_git(cmd):
-    env = os.environ.copy()
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    env["GCM_INTERACTIVE"] = "never"
-    env["GIT_ASKPASS"] = ""
-    env["SSH_ASKPASS"] = ""
+    # The caller resolves the workspace root before starting the helper. Do not inherit a
+    # different repository's GIT_DIR, or rely on gh discovering a colocated Git checkout.
+    cwd = os.path.abspath(os.getcwd())
+    root = subprocess.run(
+        ["jj", "--ignore-working-copy", "workspace", "root"], cwd=cwd,
+        capture_output=True, text=True, encoding="utf-8", timeout=30)
+    if root.returncode != 0 or not root.stdout.strip():
+        raise SystemExit("run pr-snapshot from the JJ workspace root")
+    cwd = os.path.abspath(root.stdout.strip())
+    git_root = subprocess.run(
+        ["jj", "--ignore-working-copy", "git", "root"], cwd=cwd,
+        capture_output=True, text=True, encoding="utf-8", timeout=30)
+    if git_root.returncode != 0 or not git_root.stdout.strip():
+        raise SystemExit("cannot resolve JJ's Git transport for gh")
+    env["GIT_DIR"] = git_root.stdout.strip()
     return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
+        cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", env=env,
+        timeout=timeout,
     )
 
 
@@ -317,6 +327,114 @@ def _run_checked(cmd, label):
     if r.returncode != 0:
         raise SystemExit(f"{label} failed: {r.stderr.strip()}")
     return r
+
+
+def _jj_read(*args):
+    """Public, non-snapshotting reads; the caller runs from the absolute workspace root."""
+    result = subprocess.run(
+        ["jj", "--ignore-working-copy", "--color=never", "--no-pager", *args],
+        cwd=os.path.abspath(os.getcwd()), capture_output=True, text=True,
+        encoding="utf-8", timeout=30)
+    if result.returncode != 0:
+        raise SystemExit(f"JJ discovery failed: {result.stderr.strip()}")
+    return result.stdout
+
+
+def _remote_repository(url):
+    """Host/owner/repo identity from an HTTPS/SSH remote, without examining repository files."""
+    if "://" not in url:
+        match = re.fullmatch(r"(?:[^@/]+@)?([^:/]+):(.+)", url)
+        if not match:
+            return None
+        host, path = match.groups()
+    else:
+        parsed = urlsplit(url)
+        host, path = parsed.hostname, parsed.path
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    if not host or len(path.split("/")) != 2:
+        return None
+    return f"{host}/{path}".lower()
+
+
+def discover_pr(repo=None, bookmark=None, include_drafts=False):
+    """Resolve the published PR at @ or its parent when @ is empty, without starting a watch."""
+    root = _jj_read("workspace", "root").strip()
+    if not root or os.path.abspath(root) != os.path.abspath(os.getcwd()):
+        raise SystemExit("run discover with the absolute JJ workspace root as cwd")
+    current = _jj_read("log", "--no-graph", "-r", "@", "-T",
+                       'commit_id ++ "\\t" ++ empty ++ "\\n"').strip().split("\t")
+    if len(current) != 2 or not _valid_oid(current[0]) or current[1] not in ("true", "false"):
+        raise SystemExit("could not identify the current JJ revision")
+    revisions = {current[0]: "@"}
+    if current[1] == "true":
+        parents = _jj_read("log", "--no-graph", "-r", "@-", "-T",
+                           'commit_id ++ "\\n"').splitlines()
+        if not parents or any(not _valid_oid(oid) for oid in parents):
+            raise SystemExit("could not identify the empty revision's parent")
+        revisions.update({oid: "@-" for oid in parents})
+    records = _jj_read(
+        "bookmark", "list", "--all-remotes", "-T",
+        'name ++ "\\t" ++ remote ++ "\\t" ++ tracked ++ "\\t" ++ '
+        'if(normal_target, normal_target.commit_id(), "") ++ "\\n"')
+    candidates = []
+    local_targets = {}
+    for line in records.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 4:
+            raise SystemExit("malformed bookmark discovery output")
+        name, remote, tracked, oid = fields
+        if not remote:
+            local_targets[name] = oid
+        if (remote and remote != "git" and tracked == "true" and oid in revisions
+                and (bookmark is None or name == bookmark)):
+            candidates.append((name, remote, oid))
+    # A tracked remote alone is not a verified local head: its local bookmark may
+    # have advanced, been deleted, or become conflicted since the last fetch.
+    candidates = [candidate for candidate in candidates
+                  if local_targets.get(candidate[0]) == candidate[2]]
+    remotes = {}
+    for line in _jj_read("git", "remote", "list").splitlines():
+        fields = line.split(None, 1)
+        if len(fields) == 2:
+            remotes[fields[0]] = _remote_repository(fields[1])
+    repo_args = [repo] if repo else []
+    info = json.loads(_run_checked(
+        ["gh", "repo", "view", *repo_args, "--json", "url"], "gh repo view").stdout)
+    base_repo = _remote_repository(info.get("url") or "")
+    if not base_repo:
+        raise SystemExit("could not identify the base repository")
+    found = {}
+    for name, remote, oid in candidates:
+        head_repo = remotes.get(remote)
+        if not head_repo:
+            raise SystemExit(f"cannot identify head repository for remote {remote}")
+        rows = json.loads(_run_checked([
+            "gh", "pr", "list", "--repo", base_repo, "--state", "open", "--head", name,
+            "--limit", "100", "--json",
+            "number,url,state,isDraft,headRefName,headRefOid,headRepository,headRepositoryOwner",
+        ], "gh pr list").stdout)
+        if not isinstance(rows, list) or len(rows) >= 100:
+            raise SystemExit("PR discovery is malformed or truncated; pass an explicit PR")
+        for pr in rows:
+            owner = (pr.get("headRepositoryOwner") or {}).get("login")
+            repository = (pr.get("headRepository") or {}).get("name")
+            actual_head_repo = f"{base_repo.split('/')[0]}/{owner}/{repository}".lower()
+            if (pr.get("state") != "OPEN" or pr.get("headRefName") != name
+                    or pr.get("headRefOid") != oid or actual_head_repo != head_repo
+                    or (pr.get("isDraft") and not include_drafts)):
+                continue
+            key = (pr.get("url"), name, remote)
+            found[key] = {**pr, "bookmark": name, "remote": remote, "head_repository": head_repo,
+                          "repo": base_repo, "revision": revisions[oid], "working_copy_empty": current[1] == "true"}
+    if len(found) != 1:
+        raise SystemExit(f"expected one eligible PR, found {len(found)}; pass an explicit PR/bookmark")
+    return next(iter(found.values()))
+
+
+def cmd_discover(args):
+    print(json.dumps(discover_pr(args.repo, args.bookmark, args.include_drafts), separators=(",", ":")))
 
 
 def _split_repo(repo):
@@ -481,8 +599,8 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     `baseRefOid` is retained only as historical PR metadata. Current identity comes from both the
     PR's `baseRef.target.oid` and an exact Git-ref read; a usable generated test merge must then
     name that base and the observed PR head as its two parents. Some valid private-repository OAuth
-    sessions return 404 from the REST Git-ref endpoint, so that response falls back to the Git
-    transport while preserving exact-ref matching and non-interactive failure behavior.
+    sessions return 404 from the REST Git-ref endpoint, so that response falls back to a separate
+    exact-ref GraphQL query while preserving non-interactive failure behavior.
     """
     historical_oid = (merge_identity or {}).get("baseRefOid")
     head_oid = (merge_identity or {}).get("headRefOid")
@@ -520,29 +638,28 @@ def fetch_base_ref(owner, name, ref, merge_identity, host=None):
     current_oid = (r.stdout or "").strip()
     if r.returncode != 0 and re.search(r"\bHTTP\s+404\b", r.stderr or "", re.IGNORECASE):
         exact_ref = f"refs/heads/{ref}"
-        remote_url = (f"https://{host or 'github.com'}/"
-                      f"{quote(owner, safe='')}/{quote(name, safe='')}.git")
+        query = """query($owner:String!,$repo:String!,$ref:String!){
+          repository(owner:$owner,name:$repo){ref(qualifiedName:$ref){
+            prefix name target{oid}
+          }}
+        }"""
         try:
-            # Reuse the gh session (GH_TOKEN or keyring) as git's credential source so a
-            # headless host with no configured Git credential helper is not anonymous here.
-            git_result = _run_git([
-                "git", "-c", "core.askPass=",
-                "-c", "credential.helper=",
-                "-c", "credential.helper=!gh auth git-credential",
-                "ls-remote", "--exit-code", "--refs",
-                remote_url, exact_ref,
-            ])
+            fallback = _run([
+                "gh", "api", "graphql", *_host_args(host),
+                "-f", f"owner={owner}", "-f", f"repo={name}",
+                "-f", f"ref={exact_ref}", "-f", f"query={query}",
+            ], timeout=30)
         except (subprocess.TimeoutExpired, OSError):
-            git_result = None
-        if git_result is not None and git_result.returncode == 0:
-            matches = []
-            for line in (git_result.stdout or "").splitlines():
-                fields = line.split()
-                if len(fields) == 2 and fields[1] == exact_ref and _valid_oid(fields[0]):
-                    matches.append(fields[0])
-            if len(matches) == 1:
-                current_oid = matches[0]
-                r = git_result
+            return base
+        if fallback.returncode == 0:
+            try:
+                value = json.loads(fallback.stdout)["data"]["repository"]["ref"]
+                oid = value["target"]["oid"]
+                if value["prefix"] + value["name"] == exact_ref and _valid_oid(oid):
+                    current_oid = oid
+                    r = fallback
+            except (KeyError, TypeError, ValueError):
+                pass
     if r.returncode != 0 or not _valid_oid(current_oid):
         return base
     base["oid"] = current_oid
@@ -726,49 +843,88 @@ def _chain_from_stack_view(raw, pr, target_url):
 
 
 def _fetch_graphql_stack(pr, owner, name, host=None):
-    """Read-only remote membership fallback. A successful null stack is distinct from failure."""
+    """Remote manager membership, including gh-stack link stacks with no local tracking."""
     query = """
-query($owner:String!,$repo:String!,$pr:Int!){
+query($owner:String!,$repo:String!,$pr:Int!,$cursor:String){
   repository(owner:$owner,name:$repo){
     defaultBranchRef{ name }
     pullRequest(number:$pr){
     stackEntry{ position }
     stack{ id number size baseRefName
-      entries(first:100){ nodes{ position pullRequest{
+      entries(first:100,after:$cursor){ pageInfo{ hasNextPage endCursor } nodes{ position pullRequest{
         number url state isDraft baseRefName headRefName headRefOid
+        baseRef{ target{ oid } }
       } } }
     }
   } }
 }"""
     args = ["gh", "api", "graphql", *_host_args(host), "-f", f"owner={owner}", "-f", f"repo={name}",
             "-F", f"pr={pr}", "-f", f"query={query}"]
-    r = _run(args)
-    if r.returncode != 0:
-        if _stack_schema_unavailable(r.stderr):
-            default_branch = _fetch_default_branch(owner, name, host)
-            if default_branch:
-                return MANAGER_ABSENT, None, default_branch
-        return MANAGER_PROBE_ERROR, None, None
-    try:
-        repository = json.loads(r.stdout)["data"]["repository"]
-        default_branch = (repository.get("defaultBranchRef") or {}).get("name")
-        node = repository["pullRequest"]
-        stack = node.get("stack")
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-        return MANAGER_PROBE_ERROR, None, None
-    if stack is None:
-        return MANAGER_ABSENT, None, default_branch
+    nodes, cursors = [], set()
+    cursor, stack_identity, default_branch = None, None, None
+    while True:
+        r = _run(args + (["-f", f"cursor={cursor}"] if cursor else []))
+        if r.returncode != 0:
+            if cursor is None and _stack_schema_unavailable(r.stderr):
+                default_branch = _fetch_default_branch(owner, name, host)
+                if default_branch:
+                    return MANAGER_ABSENT, None, default_branch
+            return MANAGER_PROBE_ERROR, None, default_branch
+        try:
+            repository = json.loads(r.stdout)["data"]["repository"]
+            default_branch = (repository.get("defaultBranchRef") or {}).get("name")
+            node = repository["pullRequest"]
+            stack = node["stack"]
+            if stack is None:
+                return (MANAGER_PROBE_ERROR if cursor else MANAGER_ABSENT), None, default_branch
+            identity = tuple(stack[key] for key in ("id", "number", "size", "baseRefName"))
+            if stack_identity is not None and identity != stack_identity:
+                return MANAGER_PROBE_ERROR, None, default_branch
+            stack_identity = identity
+            connection = stack["entries"]
+            page = connection["pageInfo"]
+            nodes.extend(connection["nodes"])
+            more = page["hasNextPage"]
+            if not isinstance(more, bool):
+                return MANAGER_PROBE_ERROR, None, default_branch
+            if not more:
+                break
+            cursor = page["endCursor"]
+            if not cursor or cursor in cursors:
+                return MANAGER_PROBE_ERROR, None, default_branch
+            cursors.add(cursor)
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return MANAGER_PROBE_ERROR, None, default_branch
+    if len(nodes) != stack.get("size"):
+        return MANAGER_PROBE_ERROR, None, default_branch
     entries = []
-    for raw in (stack.get("entries") or {}).get("nodes") or []:
+    for raw in nodes:
+        if not isinstance(raw, dict) or not isinstance(raw.get("pullRequest"), dict):
+            return MANAGER_PROBE_ERROR, None, default_branch
         remote_pr = raw.get("pullRequest") or {}
+        head_oid = remote_pr.get("headRefOid")
+        base_oid = ((remote_pr.get("baseRef") or {}).get("target") or {}).get("oid")
+        needs_rebase = None
+        if _valid_oid(base_oid) and _valid_oid(head_oid):
+            comparison = _api_json(f"repos/{owner}/{name}/compare/{base_oid}...{head_oid}", host)
+            status = (comparison or {}).get("status")
+            if status in ("ahead", "identical"):
+                needs_rebase = False
+            elif status in ("behind", "diverged"):
+                needs_rebase = True
         entries.append({
             "position": raw.get("position"),
             "name": remote_pr.get("headRefName"),
             "head": remote_pr.get("headRefOid"),
             "base_ref_name": remote_pr.get("baseRefName"),
-            "needs_rebase": None,
+            "needs_rebase": needs_rebase,
             **(_pr_summary(remote_pr) or {}),
         })
+    positions = [entry.get("position") for entry in entries]
+    if (not entries or any(type(position) is not int or position < 1 for position in positions)
+            or len(set(positions)) != len(positions)):
+        return MANAGER_PROBE_ERROR, None, default_branch
+    entries.sort(key=lambda entry: entry["position"])
     chain = _chain_from_entries(entries, pr, "graphql", stack.get("baseRefName"),
                                 manager_id=stack.get("id"), manager_number=stack.get("number"))
     return ((MANAGER_CONFIRMED, chain, default_branch) if chain
@@ -806,20 +962,7 @@ def _manual_relationships(pr, repo, base_ref_name, head_ref_name, owner, name,
 
 
 def fetch_pr_chain(pr, repo, url, base_ref_name, head_ref_name, owner, name, host=None):
-    """Classify manager membership and ordinary dependency relationships without mutation.
-
-    The local manager is the fast/rich path, but its output is accepted only when it contains the
-    requested PR. `gh stack view` has no target argument and may describe a different current stack.
-    """
-    local = _run(["gh", "stack", "view", "--json"])
-    if local.returncode == 0:
-        try:
-            chain = _chain_from_stack_view(json.loads(local.stdout), pr, url)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            chain = None
-        if chain:
-            return chain
-
+    """Remote manager truth works for both linked JJ stacks and locally tracked gh stacks."""
     manager_status, chain, default_branch = _fetch_graphql_stack(pr, owner, name, host)
     if manager_status == MANAGER_CONFIRMED:
         chain["default_branch"] = default_branch
@@ -1399,7 +1542,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in workspace .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):
@@ -3544,6 +3687,12 @@ class _WatchHintingParser(argparse.ArgumentParser):
 def main():
     p = argparse.ArgumentParser(prog="pr-snapshot")
     sub = p.add_subparsers(dest="cmd", required=True, parser_class=_WatchHintingParser)
+
+    d = sub.add_parser("discover", help="read-only PR discovery from JJ bookmarks, including empty @'s parent")
+    d.add_argument("--repo", default=None)
+    d.add_argument("--bookmark", default=None)
+    d.add_argument("--include-drafts", action="store_true")
+    d.set_defaults(func=cmd_discover)
 
     s = sub.add_parser("snapshot")
     s.add_argument("--pr", type=int, required=True)

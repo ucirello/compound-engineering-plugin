@@ -8,16 +8,17 @@ Before generating ideas, gather grounding. The dispatch set depends on the mode 
 
 **Surprise-me grounding depth.** In surprise-me mode, grounding goes deeper than specified mode — apply the 0.2 table's `1 grounding` row, and pass issue themes as first-class input rather than a footnote when issue intelligence runs. Specified mode keeps the shallower scan: the user's named subject anchors what is relevant.
 
-**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Scratch lives beneath the effective user's private CE root — `/tmp/compound-engineering-<uid>` when it is usable, else the validated `$TMPDIR` fallback the block below selects — never `.context/`. Run this to validate the owner-private root, create the run directory, and capture its absolute path:
+**Pre-resolve the scratch directory.** Generate a `<run-id>` once (8 hex chars) and reuse it for the V15 cache and the Phase 2/4 checkpoints so they share one per-run directory. Resolve the absolute workspace root through public `jj workspace root` (outside JJ, use the absolute current directory), then run the following with cwd set to that root. Scratch stays under its `.tmp`, never `.context/`:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+SCRATCH_ROOT="<absolute workspace root or current directory>/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
-chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-ideate/<run-id>";
+if [ ! -w "$SCRATCH_ROOT" ]; then echo "scratch root is not writable: $SCRATCH_ROOT" >&2; exit 1; fi;
+if [ -L "$SCRATCH_ROOT/ideate" ]; then echo "unsafe scratch parent symlink" >&2; exit 1; fi;
+SCRATCH_DIR="$SCRATCH_ROOT/ideate/<run-id>";
+if [ -L "$SCRATCH_DIR" ]; then echo "unsafe scratch directory symlink" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
@@ -32,7 +33,7 @@ Run grounding agents in parallel in the **foreground** (do not background — re
 
 **Repo mode dispatch:**
 
-1. **Quick context scan** — dispatch a general-purpose subagent using the platform's cheapest capable model when the harness exposes a known override; otherwise inherit. Per the routing test above, any named file already classified as evidence goes on the prompt's research-artifacts line rather than into `User-named references`. Dispatch with this prompt:
+1. **Quick context scan** — dispatch a general-purpose subagent on the extraction tier using the model-routing rules below. Per the routing test above, any named file already classified as evidence goes on the prompt's research-artifacts line rather than into `User-named references`. Dispatch with this prompt:
 
    > **Grounding scope:** use the supplied project context and go directly to current patterns bearing on the focus, pain points, leverage points, applicable workflow constraints, and in surprise-me mode representative files plus recent activity. If the focus cannot be scoped, use one targeted root or workspace probe.
    >
@@ -86,7 +87,7 @@ Always-on for both modes. Skip when the user said "no external research", "skip 
 
 Reuse prior web research within a session via a sidecar cache — see `references/web-research-cache.md` for the cache file shape, reuse check, append behavior, and platform-degradation rules. Read it the first time the `web-researcher` local prompt would be dispatched in this run (and on every subsequent dispatch where the cache might apply).
 
-When dispatching web research, read `references/agents/web-researcher.md` and seed a generic subagent with that prompt. Pass the focus hint, a brief planning context summary (one or two sentences), and the mode. Do not pass codebase content — the prompt operates externally. Use the platform's mid-tier model when a known override exists; otherwise omit the override and inherit.
+When dispatching web research, read `references/agents/web-researcher.md` and seed a generic subagent with that prompt. Pass the focus hint, a brief planning context summary (one or two sentences), and the mode. Do not pass codebase content — the prompt operates externally. Use the generation tier under the model-routing rules below.
 
 #### User-Supplied Research Artifacts
 
@@ -117,13 +118,15 @@ Consolidate all dispatched results into a short grounding summary using these se
 
 ## Model tiers (applies to every dispatch in this skill)
 
-Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
+Sub-agent dispatch is tiered by task shape, never hardcoded to a model name. Resolve explicit subagent/model/harness settings using the ordinary config layers in `SKILL.md` first; configured routing wins.
+
+**OpenCode V2:** when the current harness is OpenCode, no explicit subagent or alternative-harness routing is configured, and the host exposes both `opencode.models` and native subagent dispatch with an optional model, discover exact provider/model IDs and variants, then dispatch natively with `model: provider/model#variant` (omit the suffix when no variant is selected). Select models matching the extraction, generation, and ceiling tiers below, preserving any cross-model intent. Do not guess IDs or silently reuse the current model when discovery fails; report the unavailable selection and use the phase's degraded path. This native branch replaces shell delegation only under these conditions. Otherwise preserve configured routing and the portable tier fallback below.
 
 - **Extraction tier** — evidence scouts and other retrieval/quoting work. Use the platform's cheapest capable model when the harness exposes a known override; escalate to the generation tier when the repo is large or the stack obscure.
 - **Generation tier** — evidence-driven ideation frames and basis verification. Use the platform's mid-tier model when the harness exposes a known override.
-- **Ceiling tier** — ceiling ideation frames, cross-cutting synthesis, and final arbitration. Inherit the orchestrator's model by omitting the model parameter.
+- **Ceiling tier** — ceiling ideation frames, cross-cutting synthesis, and final arbitration. On the OpenCode V2 native branch, discover and explicitly select a ceiling-capable model; otherwise inherit the orchestrator's model by omitting the model parameter unless configured routing says otherwise.
 
-If model names are unknown, omit the override and inherit rather than guessing.
+Outside the OpenCode V2 native branch, if model names are unknown, omit the override and inherit rather than guessing.
 
 **Degradation rule.** When the platform's subagent primitive does not support per-agent model selection, dispatch everything on the inherited model and keep the read budgets and dossier caps — cost control then comes from structure, not tiering.
 

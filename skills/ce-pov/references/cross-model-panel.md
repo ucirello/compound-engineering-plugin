@@ -15,8 +15,8 @@ materially change the POV and context cannot distinguish them.
 
 Keep four identities separate for the host and every peer:
 
-- **target** — the user-facing choice (`codex`, `claude`, `grok`, `cursor`, or
-  `composer`);
+- **target** — the user-facing choice (`codex`, `claude`, `grok`, `cursor`,
+  `composer`, or `opencode`);
 - **harness/intermediary route** — the CLI or intermediary that runs it;
 - **requested model** — an explicit model or the route's declared default; and
 - **served model** — the model the worker's receipt (its record of the route
@@ -27,7 +27,7 @@ model is a claim about the backend and is known only from a receipt. `unverified
 means no receipt exists, not that the model is unknown. In anything the user
 reads, name a peer by its target and requested model. Add a serving caveat only
 when a receipt disagrees with the request, or when the route requested no model
-(Cursor default/Auto, OpenCode auto). A receipt-less route with a requested model
+(Cursor default/Auto). A receipt-less route with a requested model
 carries `model_actual: unverified` in the panel record and needs no caveat in
 the chat note.
 
@@ -59,11 +59,11 @@ environment markers it already names, and where it yields `unknown` on a harness
 you can identify from your own runtime, attest what you know instead. A harness
 the snippet does not name needs no new branch here.
 
-Cursor is the one identity self-knowledge cannot complete, because the harness
+Cursor and OpenCode are identities the harness name cannot complete, because the harness
 does not determine the serving model: it keeps harness `cursor` and family
 `unknown` unless an observable serving-family attestation lets you set
 `XHOST_FAMILY` to `codex`, `claude`, `grok`, or `composer`.
-Never infer serving family from the Cursor brand.
+Never infer serving family from the Cursor or OpenCode brand. Use an observable serving-model attestation for OpenCode too.
 
 Section 4 passes `XHOST_FAMILY` as the worker's first argument and
 `XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; a provider name such as
@@ -80,6 +80,15 @@ job and produce no artifact.
   `cursor-agent`.
 - `grok` prefers the native Grok CLI; Grok through Cursor is a different route
   and recipient. Section 3 binds which token.
+- `opencode` is OpenCode V2 and requires an exact discovered `provider/model#variant`
+  matching the requested family and tier. Preserve any configured variant. If no
+  compatible model can be resolved, report that peer unavailable. Serving family
+  and independence remain unverified until a serving receipt establishes them.
+
+Resolve `.rocketclaw/config.yaml` with `config.local.yaml` overrides before selecting
+participants or delegation. Explicit subagent/harness settings and
+`cross_model_peer: opencode` win over automatic routing. OpenCode model references
+use `provider/model#variant`; do not reinterpret OpenCode as another harness.
 
 Apply exactly one participation branch:
 
@@ -143,9 +152,16 @@ never promise that secrets inside the readable scope are inaccessible. Peers may
 search and read within the declared scope but may not mutate the project or
 intentionally inspect outside it.
 
-Before initial dispatch, capture one **repository-scope identity**: the committed
-revision plus a digest of dirty and untracked content inside the normalized
-scope. Include it in every peer payload. Revalidate it before every reconcile
+Before initial dispatch, capture one **repository-scope identity** using public JJ
+commands from the absolute workspace root: the working-copy commit `@` and a
+digest of the allowed subject content, including material not tracked by JJ.
+Use `jj log` and `jj diff` for revision evidence; never inspect `.jj` or `.git`
+internals or compare filesystem identities. Outside a JJ workspace, capture the
+same scoped content digest and record revision evidence as unavailable; local
+documents still support a panel. Exclude `.tmp/**`, `.jj/**`, and
+`.git/**` from every peer's read scope and from the content digest so scratch
+writes do not invalidate the panel or reveal another peer's opinion.
+Include the identity in every peer payload. Revalidate it before every reconcile
 dispatch and before final fold-in. If it changed, never reconcile or fold stale
 voices into the current project: disclose the change and either restart all
 voices on the new identity or return an incomplete panel result.
@@ -253,12 +269,25 @@ Verify that the same complete payload fits every selected route; never truncate
 it per provider. A route that cannot accept it is unavailable under the ordinary
 partial-panel degradation rule.
 
-Use `scripts/cross-model-pov.sh` from this skill's directory to run one resolved
+**OpenCode V2 native dispatch.** When the current harness is OpenCode, there is no
+explicit subagent or alternative-harness routing, and `opencode.models` plus native
+subagent dispatch with an optional model are available, discover exact IDs and
+variants and use native subagents with `model: provider/model#variant` instead of
+shell delegation. Preserve each peer's requested family, reasoning tier, independent
+initial context, read-only scope, canonical payload, schema, bounded retry, deadline,
+and receipt requirements. Never guess an ID or silently reuse the current model.
+Collect native results directly and record the actual dispatch route; do not invent
+CLI job IDs or served-model receipts. Explicit configured behavior and named
+alternative harnesses retain their routes. If native dispatch is unavailable, use
+the fixed CLI route below. Probe OpenCode V2 `opencode --help` and `opencode run
+--help`; never fall back to V1 flags.
+
+For CLI routes, use `scripts/cross-model-pov.sh` from this skill's directory to run one resolved
 fixed route per peer, and `scripts/peer-job-runner.py` for detached lifecycle
 control. Fill in the start command below rather than reconstructing the worker's
 arguments from its usage header. Pass the actual repository root separately from
 any narrower read root, and pre-create the round output directory as private
-scratch outside the repository. For named peers, start one job per exact target;
+scratch under workspace `.tmp`, excluded from peer reads. For named peers, start one job per exact target;
 for a selected panel, start one job per selected peer. Start all jobs before
 waiting.
 
@@ -327,11 +356,11 @@ tool's CWD is the user's project on every host, not the skill directory.
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-CE_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_REPO_ROOT="<repo-root>" CROSS_MODEL_READ_ROOT="<read-root>" CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
+CE_PEER_JOBS_ROOT="<scratch-dir>" CE_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-pov --run-id "<run-id>" --label "<target>" --result-path "<run-dir>/pov-<target>.json" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_REPO_ROOT="<repo-root>" CROSS_MODEL_READ_ROOT="<read-root>" CROSS_MODEL_SCRATCH_PARENT="<scratch-dir>" bash "$SKILL_DIR/scripts/cross-model-pov.sh" "<host-serving-family>" "<fixed-route>" "<payload-path>" "<run-dir>"
 ```
 
 - `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or
-  `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`, or
+  `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`, `opencode`, or
   `unknown`. Both are the Section 1 attestation, not a provider name.
 - `<fixed-route>` is the sanctioned route token from Section 3's table;
   `<target>` is its resolved target, with `grok-cli` and `grok-cursor`
@@ -343,15 +372,20 @@ CE_PEER_HARD_SECS= "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill c
   actual repository root containing it.
 - Add `CROSS_MODEL_INCLUDE_PATHS` / `CROSS_MODEL_EXCLUDE_PATHS` only when
   Section 2 resolved patterns, and `CROSS_MODEL_MODEL_OVERRIDE_TARGET` /
-  `CROSS_MODEL_MODEL_OVERRIDE` only for a Section 3 same-family substitution.
+   `CROSS_MODEL_MODEL_OVERRIDE` for a Section 3 same-family substitution or an
+    explicit OpenCode model selection. Both override variables are required for
+    the OpenCode CLI route, including when discovery selected the model.
 
-Record every job id and the epoch after the final start. Poll all jobs in
+Run all CLI lifecycle calls with cwd set to the absolute workspace root. Record
+every job id and its absolute job-directory path under `<scratch-dir>/pov/<run-id>/jobs/`;
+use those absolute paths for subsequent lifecycle calls so shell-local environment
+settings need not persist. Record the epoch after the final start. Poll all jobs in
 bounded slices (resolve `$PY` again in each tool call — shells do not persist):
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/peer-job-runner.py" wait --max-secs 30 --json <job-ids...>
+"$PY" "$SKILL_DIR/scripts/peer-job-runner.py" wait --max-secs 30 --json <absolute-job-directory-paths...>
 ```
 
 Job ids or job-directory paths are positional. `--skill`, `--run-id`, and
@@ -368,7 +402,7 @@ deadline, reap each nonterminal job in a short call, then make one final wait:
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/peer-job-runner.py" wait --max-secs 10 --json <job-ids...>
+"$PY" "$SKILL_DIR/scripts/peer-job-runner.py" wait --max-secs 10 --json <absolute-job-directory-paths...>
 ```
 
 Classify every started job from its terminal state; `done` alone does not

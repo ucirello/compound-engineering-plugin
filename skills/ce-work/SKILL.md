@@ -17,6 +17,8 @@ argument-hint: "[Plan path, work description, or recovery request with run id; b
 
 **Bundled references must be read, never approximated.** Resolve each reference or script path named below from this skill's loaded `SKILL.md` directory, using the full skill path the harness supplied, and never glob the target repository to find a bundled file. Read each reference when you enter the phase it governs; a read made before that phase does not satisfy it, and a reference this file says to read again is read again at its step even when already in context. If the harness does not expose the skill directory, or a required file cannot be read, stop before the action it governs and report which file is missing. Do not reconstruct its rules from memory; report the missing reference instead of continuing natively.
 
+Runtime scratch belongs under `<workspace-root>/.tmp/rocketclaw/`, using the public `jj workspace root` result; outside JJ use the current directory's `.tmp/rocketclaw/`. Keep durable deliverables in their normal project locations.
+
 ### Phase 0: Input Triage
 
 **Recovery activation comes first.** Before classifying the input as a plan, a path, a blank, or a bare prompt, recognize requests to resume, inspect, reap, or clean up an existing run. Recovery never dispatches a new worker, selects a new route, discovers another plan, reruns completed verification, or enters either shipping path. If the run id is missing, ask for it; never guess one.
@@ -31,7 +33,7 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 ### Phase 1: Quick Start
 
-1. **Establish the workspace.** Before moving branches, editing, dispatching, or committing, read `references/workspace-setup.md`. It decides the writable checkout, plan clarification, branch placement, the pre-work inventory, already-dirty files, and task setup. Never write without a writable canonical checkout, and never write on the real default branch unless the user explicitly directed that in this session.
+1. **Establish the workspace.** Before moving bookmarks, editing, dispatching, or committing, read `references/workspace-setup.md`. It decides the writable workspace, plan clarification, bookmark placement, the pre-work inventory, already-dirty files, and task setup. Never write without a writable canonical workspace, and never write on the real default bookmark unless the user explicitly directed that in this session.
 
    **Do not commit or publish anything the user did not offer.** When a unit needs a file that was already dirty, standalone mode asks once whether to include or exclude that file. Return-to-Caller Mode neither asks nor edits it; it returns blocked, naming the collision and how to recover.
 
@@ -45,7 +47,11 @@ When triage selects Return-to-Caller Mode, read `references/return-to-caller.md`
 
 Before the first implementation write, including on the Trivial route, read `references/implementation-loop.md`. It decides how evidence is chosen, verification, when to stop a unit, incremental commits, following existing patterns, continuous testing, where simplification stops, UI work, progress tracking, and settled decisions.
 
-The commit rule from this file stays in force throughout: every implementation commit names only that unit's owned files. A bare `git commit` can absorb the user's pre-existing index, so it is forbidden.
+The commit rule from this file stays in force throughout: every implementation change description covers only that unit's owned files. There is no index. A bare `jj commit` with no path arguments finishes the whole working-copy change, so it is forbidden when the working copy contains files the unit does not own. Finish with `jj commit -m "<message composed from the standards above>"` and the owned paths.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Here the quoted history command means history inspected with `jj log`. Runtime project instructions and the history's message syntax override Go guidance. Run every JJ command with cwd set to the absolute workspace root. For repository-scoped GitHub CLI calls, set `GIT_DIR=$(jj git root)` in that same workspace.
 
 ### Phase 3-4: Quality Check and Finishing Work
 

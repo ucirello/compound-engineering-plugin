@@ -13,8 +13,8 @@ Design rules (shared with the repo's other state helpers):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
-    POSIX), so a concurrent reader never sees a torn file.
+  - Writes are atomic: a workspace .tmp file + os.replace (atomic on POSIX).
+    A state destination on another filesystem fails without replacing it.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
     values with --timestamp so behavior is reproducible.
@@ -28,6 +28,8 @@ STATUS WORDS (line 1 of stdout for every subcommand):
   LEASE-LOST       a mutating call was made by a writer that does not own the
                    lease (or a release of another writer's lease); no write
   REFUSED          cursor-advance: unknown past-item, or non-monotonic cursor
+                   verify-ancestor: the SHA is not a bare hexadecimal value
+  UNVERIFIED       verify-ancestor: the SHA is not an ancestor of trunk()
   ERROR            an unexpected internal error (defensive; never a traceback)
 
 The state file is genuine YAML restricted to a small, deliberate subset so a
@@ -38,11 +40,16 @@ JSON tokens (strings always double-quoted on one line); lists and empty dicts
 are emitted as inline JSON flow on a single line — itself valid YAML.
 """
 import argparse
+import hashlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
+
+sys.dont_write_bytecode = True
+from sweep_scratch import scratch_directory
 
 try:
     import fcntl  # POSIX advisory locks (macOS, Linux — this repo's Unix targets)
@@ -255,7 +262,7 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # A machine-local state file can live under world-shared /tmp, and
+            # A machine-local state file can live under workspace .tmp, and
             # it is a correctness dependency (lease, cursors, closed status) as
             # well as an injection sink (item bodies re-read into agent
             # context). Reject a file not owned by us so a co-tenant cannot
@@ -293,7 +300,7 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    fd, tmp = tempfile.mkstemp(dir=scratch_directory(), prefix="state-", suffix=".yml")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
@@ -676,6 +683,124 @@ def _import_legacy_items(legacy, data):
 
 
 # --------------------------------------------------------------------------- #
+# Default-bookmark ancestry (read-only jj against trunk())
+# --------------------------------------------------------------------------- #
+
+_SHA = re.compile(r"^[0-9a-f]{7,40}$")
+
+
+def _workspace_root(start):
+    """Resolve a supplied workspace root through the public jj interface."""
+    start = os.path.abspath(start or os.getcwd())
+    result = _jj(start, ["workspace", "root"])
+    root = (result.stdout or "").strip()
+    if result.returncode != 0 or not os.path.isabs(root):
+        raise ValueError("unable to resolve an absolute jj workspace root")
+    return root
+
+
+def _jj(workspace, args):
+    return subprocess.run(
+        ["jj", "--ignore-working-copy", "--color=never", *args],
+        cwd=os.path.abspath(workspace),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def _nonempty_lines(text):
+    return [line.strip() for line in (text or "").splitlines() if line.strip()]
+
+
+def _default_bookmark_names(workspace):
+    """Names targeting trunk(); an empty list is unresolved, never guessed."""
+    listed = _jj(workspace, ["bookmark", "list", "-r", "trunk()", "-T", 'self.name() ++ "\\n"'])
+    if listed.returncode != 0:
+        return []
+    names = _nonempty_lines(listed.stdout)
+    if names:
+        return names
+    remote = _jj(workspace, [
+        "log", "-r", "trunk()", "--no-graph", "-T",
+        'bookmarks.map(|b| b.name()).join("\\n")',
+    ])
+    if remote.returncode != 0:
+        return []
+    return _nonempty_lines(remote.stdout)
+
+
+def _workspace_membership(workspace):
+    """Resolve workspace names and roots using only public jj commands."""
+    listed = _jj(workspace, ["workspace", "list", "-T", 'self.name() ++ "\\n"'])
+    if listed.returncode != 0:
+        return []
+    members = []
+    for name in _nonempty_lines(listed.stdout):
+        rooted = _jj(workspace, ["workspace", "root", "--name", name])
+        root = (rooted.stdout or "").strip() if rooted.returncode == 0 else ""
+        if root:
+            members.append({"name": name, "root": root})
+    return members
+
+
+def cmd_repo_context(args):
+    """Workspace membership and the default bookmark. Read-only."""
+    workspace = _workspace_root(args.workspace)
+    tip = _jj(workspace, ["log", "-r", "trunk()", "--no-graph", "-T", "commit_id"])
+    working = _jj(workspace, ["log", "-r", "@", "--no-graph", "-T", "commit_id"])
+    bookmarks = _default_bookmark_names(workspace)
+    payload = {
+        "workspace_root": workspace,
+        "workspaces": _workspace_membership(workspace),
+        "default_bookmarks": bookmarks,
+        "default_bookmark": bookmarks[0] if len(bookmarks) == 1 else None,
+        "trunk_commit_id": (tip.stdout or "").strip() if tip.returncode == 0 else None,
+        "working_copy_commit_id": (working.stdout or "").strip() if working.returncode == 0 else None,
+    }
+    if tip.returncode != 0 and not payload["workspaces"]:
+        return emit("ERROR", payload)
+    return emit("OK", payload)
+
+
+def cmd_verify_ancestor(args):
+    """Report whether a bare SHA is an ancestor of trunk()."""
+    sha = (args.sha or "").strip().lower()
+    if not _SHA.fullmatch(sha):
+        return emit("REFUSED")
+    workspace = _workspace_root(args.workspace)
+    resolved = _jj(workspace, [
+        "log", "-r", 'commit_id("{}")'.format(sha),
+        "--no-graph", "-T", 'commit_id ++ "\\n"',
+    ])
+    candidates = _nonempty_lines(resolved.stdout)
+    if resolved.returncode != 0 or len(candidates) != 1:
+        return emit("UNVERIFIED")
+    full_sha = candidates[0]
+    tip = _jj(workspace, ["log", "-r", "trunk()", "--no-graph", "-T", "commit_id"])
+    if tip.returncode != 0:
+        return emit("ERROR")
+    hit = _jj(workspace, [
+        "log", "-r", 'commit_id("{}") & ::trunk()'.format(full_sha),
+        "--no-graph", "-T", "commit_id",
+    ])
+    if hit.returncode != 0:
+        return emit("ERROR")
+    found = (hit.stdout or "").strip()
+    payload = {
+        "on_default_bookmark": bool(found),
+        "commit_id": found or None,
+        "default_bookmark": None,
+        "default_bookmarks": _default_bookmark_names(workspace),
+        "default_bookmark_commit_id": (tip.stdout or "").strip() or None,
+        "workspaces": _workspace_membership(workspace),
+    }
+    if len(payload["default_bookmarks"]) == 1:
+        payload["default_bookmark"] = payload["default_bookmarks"][0]
+    return emit("OK" if found else "UNVERIFIED", payload)
+
+
+# --------------------------------------------------------------------------- #
 # CLI wiring
 # --------------------------------------------------------------------------- #
 
@@ -724,6 +849,13 @@ def build_parser():
     rr.add_argument("--counts", required=True)
     rr.add_argument("--timestamp", required=True)
 
+    rc = sub.add_parser("repo-context")
+    rc.add_argument("--workspace", help="Absolute workspace root (default: current directory).")
+
+    va = sub.add_parser("verify-ancestor")
+    va.add_argument("--sha", required=True)
+    va.add_argument("--workspace", help="Absolute workspace root (default: current directory).")
+
     il = with_state(sub.add_parser("import-legacy"))
     il.add_argument("--file", required=True)
     il.add_argument(
@@ -745,6 +877,8 @@ _HANDLERS = {
     "lease-release": cmd_lease_release,
     "run-record": cmd_run_record,
     "import-legacy": cmd_import_legacy,
+    "repo-context": cmd_repo_context,
+    "verify-ancestor": cmd_verify_ancestor,
 }
 
 # Subcommands that read-modify-write the state file. The lease is a high-level
@@ -762,11 +896,11 @@ _MUTATING = {
 
 
 def _run_locked(handler, args):
-    lock_path = str(args.state) + ".lock"
-    try:
-        lock_fd = open(lock_path, "w", encoding="utf-8")
-    except OSError:
-        return handler(args)  # cannot create a lock file; degrade to unlocked
+    state_key = hashlib.sha256(os.path.realpath(args.state).encode()).hexdigest()
+    lock_path = scratch_directory() / (state_key + ".lock")
+    if lock_path.is_symlink():
+        raise OSError("unsafe state lock symlink")
+    lock_fd = open(lock_path, "w", encoding="utf-8")
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
         return handler(args)

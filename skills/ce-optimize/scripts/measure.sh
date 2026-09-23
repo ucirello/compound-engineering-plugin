@@ -17,7 +17,7 @@
 #   stdout: Raw JSON output from the measurement command
 #   stderr: Passed through from the measurement command
 #   exit code: Same as the measurement command (124 for timeout, 125 when
-#              CE_OPTIMIZE_CENSOR_AFTER fires before timeout_seconds)
+#              ROCKETCLAW_OPTIMIZE_CENSOR_AFTER fires before timeout_seconds)
 
 set -euo pipefail
 
@@ -38,6 +38,14 @@ for arg in "$@"; do
     export "$arg"
   fi
 done
+
+# Resolve scratch before entering a measurement subdirectory. The caller runs
+# this script with cwd set to the absolute workspace root (or a local directory
+# outside JJ). No JJ command runs from the measurement subdirectory.
+SCRATCH_ROOT=""
+if [[ -n "${ROCKETCLAW_OPTIMIZE_CENSOR_AFTER:-}" ]]; then
+  SCRATCH_ROOT=$(jj workspace root 2>/dev/null) || SCRATCH_ROOT="$PWD"
+fi
 
 # Change to working directory
 cd "$WORKDIR" || {
@@ -107,17 +115,18 @@ PY
   exit 1
 }
 
-# Optional futility bound: CE_OPTIMIZE_CENSOR_AFTER=<seconds> kills a live
+# Optional futility bound: ROCKETCLAW_OPTIMIZE_CENSOR_AFTER=<seconds> kills a live
 # run that has already exceeded a predeclared noncompetitive bound. Distinct
 # from timeout_seconds (the spec's hard cap). Exit 125 means censored; 124
 # still means the configured timeout fired.
-CENSOR_AFTER="${CE_OPTIMIZE_CENSOR_AFTER:-}"
+CENSOR_AFTER="${ROCKETCLAW_OPTIMIZE_CENSOR_AFTER:-}"
 CENSORING=0
 CENSOR_STATUS_FILE=""
 if [[ -n "$CENSOR_AFTER" ]] && awk -v a="$CENSOR_AFTER" -v t="$TIMEOUT" 'BEGIN { exit !(a ~ /^[0-9]+(\.[0-9]+)?$/ && t+0 == t && a+0 > 0 && a+0 < t+0) }'; then
   TIMEOUT="$CENSOR_AFTER"
   CENSORING=1
-  CENSOR_STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-optimize-censor-XXXXXX")
+  mkdir -p "$SCRATCH_ROOT/.tmp/optimize"
+  CENSOR_STATUS_FILE=$(mktemp "$SCRATCH_ROOT/.tmp/optimize/censor-XXXXXX")
 fi
 
 # Run the measurement command with timeout

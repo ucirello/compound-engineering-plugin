@@ -9,6 +9,12 @@ Two primitives are assumed, both platform-neutral:
 
 Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
 
+## Harness routing
+
+Read effective `.rocketclaw/config.yaml` and optional `.rocketclaw/config.local.yaml` settings before selecting delegation; local overrides win. Explicit subagent and alternative-harness settings take precedence. OpenCode V2 is a distinct `opencode` harness: honor `cross_model_peer: opencode`, `work_engine_preferences: [{harness: opencode, model: provider/modelname#variant}]`, and paired `plan_model` / `plan_harness: opencode` or `brainstorm_model` / `brainstorm_harness: opencode` settings when applicable to the delegated role.
+
+When no explicit subagent or alternative-harness route applies, the current harness is OpenCode, and both `opencode.models` and native subagent dispatch with an optional model are available, discover exact model IDs and variants through `opencode.models` and pass the selected `provider/model#variant` through the native subagent's `model` parameter. Preserve the role's model tier and any cross-model requirement; never guess an identifier or silently substitute the current model. This native branch replaces shell subprocess delegation only under those conditions. Otherwise preserve the configured host's dispatch mechanism. If a configured OpenCode route cannot be fulfilled through the available V2 interface, report the blocker rather than falling back to V1 or changing the model.
+
 ## The shapes
 
 | Phase | Shape | Why | Failure when mismatched |

@@ -1,93 +1,75 @@
-"""Metadata inventory of the canonical checkout's git-ignored entries.
+"""Read-only ignored-path metadata inventory for verification receipts.
 
-Verification runs in the canonical checkout; ignored state is never copied or
-restored. Two inventories taken before and after verification diff into a
-disclosure of changed, removed, and created ignored paths.
+The sole authorized Git operation is ls-files --others --ignored
+--exclude-standard -z --, with GIT_DIR from the public jj git root API.
+Inventories never copy contents, restore files, or delete files.
 """
 
 from __future__ import annotations
 
 import os
 import stat
+import subprocess
 
-from unit_workspace_state import Operational, git
-
-
-def ignored_paths(repo: str) -> set[str]:
-    raw = git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--")
-    return set(filter(None, raw.decode("utf-8", "surrogateescape").split("\0")))
+from unit_workspace_state import Operational, jj_text, sanitized_process_environment
 
 
-def artifact_path(repo: str, rel: str) -> str:
-    repo = os.path.abspath(repo)
-    target = os.path.abspath(os.path.join(repo, rel))
-    if target == repo or os.path.commonpath([repo, target]) != repo:
-        raise Operational("BLOCKED", "ignored artifact path escaped canonical repository")
-    return target
-
-
-def _entry_type(mode: int) -> str:
-    if stat.S_ISLNK(mode):
-        return "symlink"
-    if stat.S_ISDIR(mode):
-        return "directory"
-    if stat.S_ISREG(mode):
-        return "file"
-    return "other"
-
-
-def inventory_ignored_state(repo: str) -> dict[str, tuple]:
-    """lstat every ignored entry; an entry that cannot be inspected is recorded, not refused."""
-    repo = os.path.abspath(repo)
-    inventory: dict[str, tuple] = {}
-    for rel in ignored_paths(repo):
-        try:
-            entry = os.lstat(artifact_path(repo, rel))
-        except OSError:
-            inventory[rel] = ("uninspectable",)
-            continue
-        inventory[rel] = (
-            _entry_type(entry.st_mode),
-            entry.st_size,
-            entry.st_mtime_ns,
-            entry.st_ino,
-            entry.st_dev,
-            entry.st_nlink,
-            stat.S_IMODE(entry.st_mode),
-            entry.st_ctime_ns,
+def inventory_ignored_state(repo: str) -> dict:
+    root = os.path.abspath(repo)
+    try:
+        git_dir = jj_text(root, "git", "root")
+        if not git_dir:
+            return {"available": False, "reason": "jj git root returned no Git directory"}
+        proc = subprocess.run(
+            ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--"],
+            cwd=root,
+            env=sanitized_process_environment({"GIT_DIR": git_dir, "GIT_WORK_TREE": root}),
+            capture_output=True,
+            check=False,
         )
-    return inventory
+        if proc.returncode:
+            return {"available": False, "reason": proc.stderr.decode("utf-8", "replace").strip()}
+    except (OSError, Operational) as exc:
+        return {"available": False, "reason": str(exc)}
+    entries = {}
+    for raw in proc.stdout.split(b"\0"):
+        if not raw:
+            continue
+        relative = os.fsdecode(raw)
+        if os.path.isabs(relative) or ".." in relative.split("/"):
+            return {"available": False, "reason": "ignored inventory contained an unsafe path"}
+        try:
+            info = os.lstat(os.path.join(root, relative))
+            entries[relative] = {
+                "mode": info.st_mode,
+                "size": info.st_size,
+                "mtime_ns": info.st_mtime_ns,
+                "ctime_ns": info.st_ctime_ns,
+                "symlink": stat.S_ISLNK(info.st_mode),
+            }
+        except OSError as exc:
+            entries[relative] = {"uninspectable": True, "reason": str(exc)}
+    return {"available": True, "entries": entries}
 
 
-def _comparable(record: tuple) -> tuple:
-    # Windows ctime is creation time, so it cannot signal an in-place mutation there.
-    return record if os.name != "nt" else record[:-1]
-
-
-def diff_ignored_state(before: dict[str, tuple], after: dict[str, tuple], sample_limit: int = 20) -> dict:
-    changed: list[str] = []
-    uninspectable = 0
-    for rel in before.keys() & after.keys():
-        old, new = before[rel], after[rel]
-        if old[0] == "uninspectable" or new[0] == "uninspectable":
-            uninspectable += 1
-        elif _comparable(old) != _comparable(new):
-            changed.append(rel)
-    removed = sorted(before.keys() - after.keys())
-    created = sorted(after.keys() - before.keys())
-    changed.sort()
+def diff_ignored_state(before: dict, after: dict, sample_limit: int = 20) -> dict:
+    available = before.get("available", False) and after.get("available", False)
+    old = before.get("entries", {})
+    new = after.get("entries", {})
+    changed = sorted(path for path in old.keys() & new.keys() if old[path] != new[path]) if available else []
+    removed = sorted(old.keys() - new.keys()) if available else []
+    created = sorted(new.keys() - old.keys()) if available else []
+    uninspectable = {path for entries in (old, new) for path, metadata in entries.items() if metadata.get("uninspectable")}
     return {
-        "before": len(before),
-        "after": len(after),
-        "changed": len(changed),
-        "removed": len(removed),
-        "created": len(created),
-        "uninspectable": uninspectable,
-        "sample": {
-            "changed": changed[:sample_limit],
-            "removed": removed[:sample_limit],
-            "created": created[:sample_limit],
-        },
+        "available": bool(available),
+        "reason": None if available else before.get("reason") or after.get("reason"),
+        "before": len(old) if before.get("available") else None,
+        "after": len(new) if after.get("available") else None,
+        "changed": len(changed) if available else None,
+        "removed": len(removed) if available else None,
+        "created": len(created) if available else None,
+        "uninspectable": len(uninspectable),
+        "sample": {"changed": changed[:sample_limit], "removed": removed[:sample_limit], "created": created[:sample_limit]},
         "sample_limit": sample_limit,
         "restored": False,
     }

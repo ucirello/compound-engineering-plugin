@@ -4,13 +4,14 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and CE-friendly markdown
+transcript, high-signal video frames when available, and RocketClaw-friendly markdown
 artifacts.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -23,6 +24,9 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+sys.dont_write_bytecode = True
+from sweep_scratch import scratch_directory, workspace_root
 
 
 COMPLAINT_CUES = (
@@ -154,7 +158,7 @@ def validate_raw_destination(raw_dir: Path) -> None:
 
 def promote_raw_snapshot(staging_dir: Path, raw_dir: Path) -> None:
     validate_raw_destination(raw_dir)
-    previous_dir = raw_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
+    previous_dir = staging_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
     if previous_dir.exists() or previous_dir.is_symlink():
         raise SourceInputError(f"Temporary raw snapshot path already exists: {previous_dir}")
 
@@ -186,7 +190,7 @@ def validate_frames_destination(frames_dir: Path) -> None:
 
 def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
     validate_frames_destination(frames_dir)
-    previous_dir = frames_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
+    previous_dir = staging_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
     if previous_dir.exists() or previous_dir.is_symlink():
         raise SourceInputError(f"Temporary frames snapshot path already exists: {previous_dir}")
 
@@ -205,7 +209,7 @@ def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
 
 
 def default_output_dir(source_path: Path) -> Path:
-    cwd = Path.cwd()
+    cwd = workspace_root()
     stem = slugify(source_path.stem)
     if (cwd / "docs" / "brainstorms").is_dir():
         return cwd / "docs" / "brainstorms" / "riffrec-feedback" / stem
@@ -366,7 +370,7 @@ def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = N
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
+        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=scratch_directory())
     )
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
@@ -656,7 +660,7 @@ def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
+        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=scratch_directory())
     )
     try:
         if not recording_path or not recording_path.exists():
@@ -833,7 +837,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a RocketClaw requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -1208,8 +1212,14 @@ def main() -> int:
         )
         return 2
     output_dir.mkdir(parents=True, exist_ok=True)
-    raw_dir = output_dir / "raw"
-    frames_dir = output_dir / "frames"
+    # Keep local-only media and transactional staging out of durable artifacts.
+    output_key = hashlib.sha256(str(output_dir).encode()).hexdigest()
+    media_dir = scratch_directory() / output_key
+    if media_dir.is_symlink():
+        raise SourceInputError(f"Unsafe media directory symlink: {media_dir}")
+    media_dir.mkdir(mode=0o700, exist_ok=True)
+    raw_dir = media_dir / "raw"
+    frames_dir = media_dir / "frames"
     try:
         validate_frames_destination(frames_dir)
     except SourceInputError as exc:
@@ -1254,7 +1264,7 @@ def main() -> int:
     findings = summarize_candidate_findings(moments, transcript.get("text", ""))
 
     topic = slugify(args.topic or source_path.stem)
-    repo_root = Path.cwd()
+    repo_root = workspace_root()
     analysis_md = output_dir / "analysis.md"
     problem_analysis_md = output_dir / "problem-analysis.md"
     review_prompt_md = output_dir / "review-prompt.md"
@@ -1297,7 +1307,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

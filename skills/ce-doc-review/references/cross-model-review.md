@@ -4,7 +4,7 @@ Runs ce-doc-review's **conditional judgment lenses** through one separately rout
 
 The trio is the three **conditional** judgment lenses whose output diverges most across model families: `adversarial-document-reviewer`, `product-lens-reviewer`, `security-lens-reviewer`. The convergent lenses (`coherence`, `scope-guardian`) and the always-on `feasibility` lens do **not** run cross-model. Feasibility is excluded specifically so the pass stays conditional and does not spawn on every review.
 
-The host resolves and approves one concrete route before any document content leaves the machine (this reference calls that egress). The bundled **`scripts/cross-model-doc-review.sh`** enforces that fixed route, composes the prompt, applies least privilege, captures schema-shaped JSON, and normalizes the model-identity records it returns. The pass is non-blocking: a failed route writes no fold-in artifact and never switches recipients internally.
+The host resolves and approves one concrete route before any document content leaves the machine (this reference calls that egress). For CLI delegation, the bundled **`scripts/cross-model-doc-review.sh`** enforces that fixed route, composes the prompt, applies least privilege, captures schema-shaped JSON, and normalizes the model-identity records it returns. Step 4 defines equivalent native OpenCode V2 delegation when eligible. The pass is non-blocking: a failed route writes no fold-in artifact and never switches recipients internally.
 
 ## Condition — run only when this holds
 
@@ -27,24 +27,24 @@ else XHOST_HARNESS=unknown; XHOST_FAMILY=unknown; fi
 
 Pass `XHOST_HARNESS` as `CROSS_MODEL_HOST_HARNESS`; pass `XHOST_FAMILY` as the first worker argument. The snippet is evidence, not the verdict: it resolves the harnesses whose environment markers it already names, and where it yields `unknown` on a harness you can identify from your own runtime, attest what you know instead. A harness the snippet does not name needs no new branch here. Both tokens come from the peer-key vocabulary the worker accepts, never a provider's corporate name: family `codex`, `claude`, `grok`, `composer`, or `unknown`; harness `codex`, `claude`, `grok`, `cursor`, `opencode`, or `unknown`. A name such as `anthropic`, `openai`, or `xai` in either slot makes the worker stop with no artifact.
 
-Cursor is the one identity self-knowledge cannot complete, because the harness does not determine the serving model: it keeps family `unknown` unless an observable serving-family attestation supplies `codex`, `claude`, `grok`, or `composer`. Never infer serving family from the Cursor brand. An unknown host family cannot satisfy automatic same-family exclusion, so skip the automatic cross-model pass.
+Cursor and OpenCode do not determine the serving model: keep family `unknown` unless an observable serving-family attestation supplies `codex`, `claude`, `grok`, or `composer`. Never infer serving family from the harness brand. An unknown host family cannot satisfy automatic same-family exclusion, so skip the automatic cross-model pass.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`, invoked from the absolute workspace directory). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
 
-**Checkout egress policy — evaluate this first.** Read `cross_model_review_mode:` from the same two repo CE config files under the ordinary-key rule. Valid values are `auto` (default) and `off`; anything else is invalid and continues to the next layer, then `auto`. When it resolves to `off`, skip the automatic cross-model pass here, before peer resolution, disclosure, or any job start, unless the user explicitly asked for a cross-model peer for this run in conversation (a `cross_model_peer` value or a project-instruction preference is not that opt-in). Record the skip reason as **disabled by checkout config**, distinct from an un-attestable host or an unavailable or non-independent route; each trio lens keeps its in-process twin exactly as it does for any peer that never started, and the whole-document sweep does not run. A live user prohibition still overrides `auto`.
+**Checkout egress policy — evaluate this first.** Read `cross_model_review_mode:` from the same two repo RocketClaw config files under the ordinary-key rule. Valid values are `auto` (default) and `off`; anything else is invalid and continues to the next layer, then `auto`. When it resolves to `off`, skip the automatic cross-model pass here, before peer resolution, disclosure, or any job start, unless the user explicitly asked for a cross-model peer for this run in conversation (a `cross_model_peer` value or a project-instruction preference is not that opt-in). Record the skip reason as **disabled by checkout config**, distinct from an un-attestable host or an unavailable or non-independent route; each trio lens keeps its in-process twin exactly as it does for any peer that never started, and the whole-document sweep does not run. A live user prohibition still overrides `auto`.
 
 Resolve the preference in this order:
 
 1. A preference the user **states in conversation** (e.g. "use grok for the cross-model pass").
-2. `cross_model_peer:` from the two repo CE config files (`config.local.yaml` then `config.yaml`). Apply the ordinary-key rule: first active supported target wins; an invalid value continues to the next layer, then step 3.
+2. `cross_model_peer:` from the two repo RocketClaw config files (`config.local.yaml` then `config.yaml`). Apply the ordinary-key rule: first active supported target wins; an invalid value continues to the next layer, then step 3. `cross_model_peer: opencode` selects OpenCode V2 as a distinct harness.
 3. A preference already in your **project instructions** (the active instructions in your context), taken from context and **never** read from a named file.
-4. **Default:** first available attested-different target in `codex → claude → grok → composer`; Cursor-default participates only when explicitly preferred.
+4. **Default:** use Step 4's native OpenCode V2 route when its capability/config conditions hold; otherwise use the first available attested-different target in `codex → claude → grok → composer`. Cursor-default participates only when explicitly preferred.
 
 Before any content is sent, resolve each selected target to one concrete installed route, announce it, and pass it as `CROSS_MODEL_FIXED_ROUTE`. `CROSS_MODEL_PEERS` is an optional egress restriction, not a required approval: when it is set, every recipient (target and intermediary) must be sanctioned by it under the alias rule below, and an unsanctioned recipient is a named skip; when it is unset or empty, no recipient is filtered and the pass proceeds. In that case this skill invocation plus the pre-egress disclosure is the sanction (in non-interactive mode the invoking skill's request is that sanction and the stderr audit log is the disclosure). Do not inspect the worker source to rediscover this; it implements exactly this contract. `CROSS_MODEL_FIXED_ROUTE` accepts exactly these tokens; the worker stops on anything else (including route-shaped guesses like `codex-cli`):
 
@@ -61,7 +61,7 @@ The host harness does not choose the Grok route. Target `grok` binds `grok-cli` 
 
 A failed dispatched route returns no artifact; it never changes provider or intermediary internally. Retrying the same resolved route retains its existing sanction and disclosure; changing the route or any recipient requires a new resolution, sanction, and disclosure before dispatch. The worker may repeat that same route once only after an exact provider-overload 529; it keeps the recipient, model, scope, and shared peer deadline fixed. For backward compatibility, either `cursor` or `composer` in `CROSS_MODEL_PEERS` sanctions Cursor as an intermediary, but selecting a Cursor-default voice itself requires target `cursor`; `grok` alone never sanctions Grok-via-Cursor.
 
-**Checkout-configured model and effort.** After the target is resolved, read `cross_model_model:` and `cross_model_effort:` from the same two repo CE config files under the ordinary-key rule. When `cross_model_model` is set, pass `CROSS_MODEL_MODEL_OVERRIDE_TARGET=<resolved-target>` and `CROSS_MODEL_MODEL_OVERRIDE=<value>`; when `cross_model_effort` is set, pass `CROSS_MODEL_EFFORT_OVERRIDE=<value>`. Both ride the `env` prefix of the start invocation below. The worker validates each against the route it actually runs. A model must be the resolved target's own family (an alias such as `fable` or a full id such as `claude-opus-5-5` for `claude`; `gpt-*` for `codex`, optionally namespace-qualified such as `openai.gpt-6-sol` when that CLI routes through a non-default `model_provider`); an effort must be a level that CLI documents; and cursor-agent routes accept no effort override. An incompatible value stops the pass with a named skip reason rather than substituting. Unset keys leave the script's editorial mapping unchanged. Announce the configured model and effort in the Step 3 line exactly as requested. A model or effort the user states in conversation outranks the config keys.
+**Checkout-configured model and effort.** After the target is resolved, read `cross_model_model:` and `cross_model_effort:` from the same two repo RocketClaw config files under the ordinary-key rule. When `cross_model_model` is set, pass `CROSS_MODEL_MODEL_OVERRIDE_TARGET=<resolved-target>` and `CROSS_MODEL_MODEL_OVERRIDE=<value>`; when `cross_model_effort` is set, pass `CROSS_MODEL_EFFORT_OVERRIDE=<value>`. Both ride the `env` prefix of the start invocation below. The worker validates each against the route it actually runs. A model must be the resolved target's own family (an alias such as `fable` or a full id such as `claude-opus-5-5` for `claude`; `gpt-*` for `codex`, optionally namespace-qualified such as `openai.gpt-6-sol` when that CLI routes through a non-default `model_provider`). For OpenCode V2, discover and require an exact `provider/model#variant`; an effort override is a discovered variant and must agree with any variant already in the model reference. An effort must be a level that CLI documents; cursor-agent routes accept no effort override. An incompatible value stops the pass with a named skip reason rather than substituting. Unset keys leave other routes' editorial mapping unchanged. Announce the configured model and effort in the Step 3 line exactly as requested. A model or effort the user states in conversation outranks the config keys.
 
 Preferred model mappings run first. Only after the preferred ID is observed unavailable, obsolete, or incompatible may the host inspect current CLI capabilities and choose the closest compatible **same-target/same-family** replacement. Bind it with both `CROSS_MODEL_MODEL_OVERRIDE_TARGET=<target>` and `CROSS_MODEL_MODEL_OVERRIDE=<model-id>`. Never substitute across families, apply one target's override to another route, silently change an explicit model, or add a recipient.
 
@@ -83,7 +83,9 @@ Pre-dispatch eligibility is based on installed route presence and sanction, not 
 
 ## Step 4 — Run the bundled script (one call per activated trio lens, in parallel with the persona reviewers)
 
-Each call is a CLI shell-out, not a subagent. Resolve one target and one fixed route once per document review, then launch every activated lens against that same sanctioned target/route. Launch each call as a detached job through `scripts/peer-job-runner.py` in the same dispatch wave as the in-process reviewers. A failed route does not fall through inside the worker.
+**Native OpenCode V2 route.** When effective repo/local config has no explicit subagent or alternative-harness routing, the current harness is OpenCode, and `opencode.models` plus native subagents with an optional model are available, replace shell delegation with native calls. Discover exact IDs and variants and choose one attested-different family at the high/extra-high reasoning tier above. Never guess or silently reuse the current model. Explicit config and conversation routing win. Preserve the egress policy, allowlist, disclosure, sliced trio payloads, whole-doc sweep, tool restrictions, deadline, and collection contract. Pass `model: provider/model#variant`, the embedded document, canonical persona, schema, output contract, and context-slot rules; no project reads or other tools are needed. If the native route cannot enforce the isolated read-only scope or select the required tier, name unavailable coverage rather than silently substituting. Normalize each returned JSON with the same reviewer naming, peer `safe_auto` -> `gated_auto` downgrade, identity fields, and independence rule as the script; a requested ID alone is not a served-model receipt. Collect and release every native agent using the host's lifecycle rather than passing its ID to the shell runner.
+
+Otherwise each call is a CLI shell-out. Resolve one target and one fixed route once per document review, then launch every activated lens against that same sanctioned target/route. Launch each call as a detached job through `scripts/peer-job-runner.py` in the same dispatch wave as the in-process reviewers. A failed route does not fall through inside the worker. The runner commands below apply only to this shell route.
 
 **Two modes — slice the trio, sweep the whole doc (R20, KTD6):**
 
@@ -117,13 +119,14 @@ Disclose that this is not launcher-only isolation: the detached worker inherits 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the ce-doc-review SKILL.md you read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="$(jj --ignore-working-copy workspace root 2>/dev/null || pwd -P)";
+cd "$WORKSPACE_ROOT" || exit 1;
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-RUN_DIR="$SCRATCH_ROOT/ce-doc-review/<run-id>"; (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
+RUN_DIR="$SCRATCH_ROOT/doc-review/<run-id>"; (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "peer-deadline-secs=$(( ${CROSS_MODEL_HARD_SECS:-1200} + 10 ))";
 CE_PEER_HARD_SECS= CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_FIXED_ROUTE="<fixed-route>" "$PY" "$SKILL_DIR/scripts/peer-job-runner.py" start --skill ce-doc-review --run-id "<run-id>" --label "<reviewer-name>" -- env CROSS_MODEL_HOST_HARNESS="<host-harness>" CROSS_MODEL_FIXED_ROUTE="<fixed-route>" bash "$SKILL_DIR/scripts/cross-model-doc-review.sh" "<host-serving-family>" "<target>" "<reviewer-name>" "<document-path>" "<document-type>" "<origin>" "$RUN_DIR"
 ```
@@ -136,7 +139,7 @@ The nested windows are one budget with one knob, `CROSS_MODEL_HARD_SECS`. The ru
 
 Omit `--result-path`; `done` means only that the worker exited. The fixed target determines the expected `<reviewer-name>-<target>.json` filename.
 
-- `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`, or `unknown`.
+- `<host-serving-family>` is `codex`, `claude`, `grok`, `composer`, or `unknown`; `<host-harness>` is `codex`, `claude`, `grok`, `cursor`, `opencode`, or `unknown`.
 - `<target>` is exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, or `opencode`; `<fixed-route>` is its already-sanctioned concrete route token from the Step 1 table (`codex`, `claude`, `grok-cli`, `grok-cursor`, `cursor`, `composer`, or `opencode`).
 - `<reviewer-name>` = the activated lens (`security-lens`, `adversarial`, or `product-lens`). The script derives the persona-brief filename and (per provider) model from this allowlisted value — the brief path is never caller-controlled.
 - `<document-path>` = the document under review.

@@ -1,18 +1,18 @@
 # Prepare the live polish loop
 
-This reference owns checkout safety, server startup, reachability, and browser handoff. It does not own the user's iterative polish decisions.
+This reference owns JJ workspace safety, server startup, reachability, and browser handoff. It does not own the user's iterative polish decisions.
 
 ## Resolve the workspace
 
-If the user named a PR or branch, first locate whether its branch is already checked out in a worktree. Enter that existing worktree when the harness can; if it cannot, report the blocker and stop. Only use the harness's checkout capability in the current workspace when no other worktree owns the target. With no argument, stay in the current checkout.
+Run JJ commands with cwd set to the absolute workspace root, discovered with `jj workspace root`; do not substitute `-R` or inspect repository internals. If the user named a PR or bookmark, resolve its revision and locate any workspace already working on it using `jj workspace list`, `jj log`, and `jj workspace root --name <name>`. Account for an empty working change `@` whose parent `@-` carries the feature bookmark or PR head. Enter that existing workspace when the harness can; if it cannot, report the blocker and stop. Only select the target in the current workspace when no other workspace owns it and doing so preserves existing user changes. With no argument, stay in the current workspace. For GitHub lookups through `gh`, set `GIT_DIR` from `jj git root` in that workspace.
 
-Confirm the resulting branch is neither the repository's default branch nor detached. Report and stop when a safe feature-branch workspace cannot be reached; do not create another worktree behind the harness or move uncommitted user changes.
+Confirm the resulting working change is mutable and is not the repository's default-bookmark revision. JJ changes need not carry a bookmark: a mutable feature change, including an empty child of the default revision, is valid. Report and stop when a safe feature workspace cannot be reached; do not create another workspace behind the harness or move user changes.
 
 ## Resolve the start command
 
-The commands below execute scripts bundled with this skill. For every self-contained shell call, set `SKILL_DIR` to the absolute directory containing the loaded `ce-polish` `SKILL.md`; shell state does not carry between calls.
+The commands below execute scripts bundled with this skill. Set each shell call's cwd to the absolute workspace root. For every self-contained shell call, set `SKILL_DIR` to the absolute directory containing the loaded `ce-polish` `SKILL.md`; shell state does not carry between calls.
 
-First inspect the repo-root launch configuration:
+First inspect the repo-root launch configuration. On OpenCode V2, use this same project-owned `.claude/launch.json` format as launch data through the bundled reader, not as OpenCode configuration. Other harnesses use the same reader:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
@@ -48,7 +48,7 @@ Startup may proceed only when the tuple has a usable command, working directory,
 
 ## Start and hand off
 
-Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle, and write its output under a directory created with `mktemp -d "${TMPDIR:-/tmp}/ce-polish-XXXXXX"`.
+Inspect the chosen port and select exactly one intended server instance before handoff. Reuse a process already serving that port only when evidence identifies it as the intended project server. Only when no intended instance is selected may the resolved command be launched in the background with the project's working directory and environment; that process becomes the selected instance. Keep its process or session handle. Store output under the workspace root's `.tmp`: resolve the root with `jj workspace root` (use the current directory outside JJ), create its `.tmp` directory, then create a unique directory with `mktemp -d "$WORKSPACE_ROOT/.tmp/polish-XXXXXX"`.
 
 An occupied port that cannot be attributed to the intended project server remains an unresolved collision. Ask the user whether to stop that process, choose another port, or stop this run; never kill it or launch past it.
 

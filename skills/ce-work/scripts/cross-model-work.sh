@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run one pre-sanctioned, write-capable implementation route in a controller-
-# supplied detached workspace. The adapter never creates worktrees, changes
+# supplied linked workspace. The adapter never creates workspaces, changes
 # recipients, integrates output, or retries through another route.
 #
 # Usage:
@@ -78,6 +78,10 @@ validate_model_override() {
   esac
   target="$(route_target "$route")" || return 1
   [ "$override_target" = "$target" ] || return 0
+  if [ "$route" = opencode ]; then
+    [[ "$override" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*(#[A-Za-z0-9][A-Za-z0-9._-]*)?$ ]]
+    return
+  fi
   if [ "$route" = cursor ]; then
     case "$override" in
       [A-Za-z0-9]*)
@@ -90,25 +94,29 @@ validate_model_override() {
     esac
   fi
   case "$route:$override" in
-    codex:gpt-*|codex:o[0-9]*|claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|grok-cursor:grok-4.7-*|composer:composer-*|opencode:*/*) ;;
+    codex:gpt-*|codex:o[0-9]*|claude:fable|claude:opus|claude:sonnet|claude:haiku|claude:claude-*|grok-cli:grok-*|grok-cursor:cursor-grok-*|grok-cursor:grok-4.7-*|composer:composer-*) ;;
     *) return 1 ;;
   esac
 }
 
 validate_effort_override() {
-  # Reject a tier the selected route cannot honor instead of forwarding it to a
+  # Same per-route allowlists as the ce-code-review / ce-doc-review peer paths:
+  # reject a tier the selected route cannot honor instead of forwarding it to a
   # CLI that will fail the attempt after controller authorization. Routes with
   # no effort knob (cursor, composer, grok-cursor) reject any override.
-  # Levels checked 2026-09-19 against claude and grok CLI help and codex 0.155.0's
-  # model list; codex levels vary per model, so a listed level can still fail
-  # after launch on a model that lacks it.
-  local route="$1" effort="${EFFORT_REQUESTED:-}"
+  local route="$1" effort="${CROSS_MODEL_EFFORT_OVERRIDE:-}"
   [ -n "$effort" ] || return 0
   case "$route:$effort" in
     claude:low|claude:medium|claude:high|claude:xhigh|claude:max) ;;
     codex:low|codex:medium|codex:high|codex:xhigh|codex:max|codex:ultra) ;;
     grok-cli:low|grok-cli:medium|grok-cli:high|grok-cli:xhigh) ;;
-    opencode:none|opencode:minimal|opencode:low|opencode:medium|opencode:high|opencode:xhigh|opencode:max|opencode:default) ;;
+    opencode:*)
+      local selected
+      selected="$(route_model opencode)"
+      # V2 effort is an explicit model variant, not an independent CLI knob.
+      # Only a discovered, pinned variant proves this request can be honored.
+      [ "$selected" != auto ] && [ "${selected##*#}" = "$effort" ] && [ "$selected" != "${selected#*#}" ] || return 1
+      ;;
     *) return 1 ;;
   esac
 }
@@ -117,13 +125,12 @@ adapter_argv() {
   case "$1" in
     codex)
       # --ignore-user-config drops the user's model_reasoning_effort, so pin the
-      # editorial tier explicitly. Claude stays high; native Grok defaults to xhigh.
-      # EFFORT_REQUESTED retunes all three effort-taking routes. Production
-      # starts take it only from the controller authorization; the ambient
-      # CROSS_MODEL_EFFORT_OVERRIDE feeds it in --emit-adapter mode alone.
+      # editorial tier explicitly, matching the claude/grok routes' --effort high.
+      # CROSS_MODEL_EFFORT_OVERRIDE retunes all three effort-taking routes, the
+      # same knob the ce-code-review / ce-doc-review peer paths honor.
       printf '%s\0' codex exec --ignore-user-config --ignore-rules --ephemeral \
         -s workspace-write -C "$WORKSPACE" --json -o "$RAW_RESULT" \
-        -c model_reasoning_effort="${EFFORT_REQUESTED:-high}"
+        -c model_reasoning_effort="${CROSS_MODEL_EFFORT_OVERRIDE:-high}"
       [ "$(route_model codex)" = auto ] || printf '%s\0' -m "$(route_model codex)"
       printf '%s\0' -
       ;;
@@ -133,14 +140,14 @@ adapter_argv() {
       printf '%s\0' claude -p --safe-mode --no-session-persistence \
         --permission-mode bypassPermissions --tools Read,Write,Edit,Bash \
         --allowed-tools 'Bash(*)' \
-        --effort "${EFFORT_REQUESTED:-high}" --output-format stream-json --verbose
+        --effort "${CROSS_MODEL_EFFORT_OVERRIDE:-high}" --output-format stream-json --verbose
       [ "$claude_model" = auto ] || printf '%s\0' --model "$claude_model"
       ;;
     grok-cli)
       local grok_model
       grok_model="$(route_model grok-cli)"
       printf '%s\0' grok --prompt-file "$PROMPT_FILE" --cwd "$WORKSPACE" \
-        --effort "${EFFORT_REQUESTED:-xhigh}" --permission-mode acceptEdits \
+        --effort "${CROSS_MODEL_EFFORT_OVERRIDE:-high}" --permission-mode acceptEdits \
         --tools Read,Write,Edit --disable-web-search --no-memory --no-subagents \
         --no-plan --max-turns 50 --output-format streaming-json --verbatim
       [ "$grok_model" = auto ] || printf '%s\0' --model "$grok_model"
@@ -161,11 +168,14 @@ adapter_argv() {
         --force --sandbox enabled --trust --workspace "$WORKSPACE" --model "$(route_model grok-cursor)"
       ;;
     opencode)
-      printf '%s\0' opencode run --dir "$WORKSPACE" --format json --auto \
+      # Surveyed opencode v2.0.12 has no --dir and no --variant. The caller cds
+      # to the workspace. Variant belongs inside --model as provider/model#variant.
+      local opencode_model
+      opencode_model="$(route_model opencode)"
+      [ -n "$opencode_model" ] && [ "$opencode_model" != auto ] || return 1
+      printf '%s\0' opencode run --format json --auto \
         "Follow the attached unit packet. Return only the implementation result JSON." --file "$PROMPT_FILE"
-      [ "$(route_model opencode)" = auto ] || printf '%s\0' --model "$(route_model opencode)"
-      # OpenCode carries effort through --variant, same as the review adapters.
-      [ -z "${EFFORT_REQUESTED:-}" ] || printf '%s\0' --variant "$EFFORT_REQUESTED"
+      printf '%s\0' --model "$opencode_model"
       ;;
     *) return 1 ;;
   esac
@@ -176,13 +186,12 @@ if [ "${1:-}" = "--emit-adapter" ]; then
   PROMPT_FILE="<prompt-file>"
   RAW_RESULT="<raw-result>"
   ROUTE="${2:-}"
-  EFFORT_REQUESTED="${CROSS_MODEL_EFFORT_OVERRIDE:-}"
   validate_model_override "$ROUTE" || {
     printf "model override '%s' not compatible with route '%s'\n" "${CE_WORK_MODEL_OVERRIDE:-}" "$ROUTE" >&2
     exit 2
   }
   validate_effort_override "$ROUTE" || {
-    printf "effort override '%s' not compatible with route '%s'\n" "$EFFORT_REQUESTED" "$ROUTE" >&2
+    printf "effort override '%s' not compatible with route '%s'\n" "${CROSS_MODEL_EFFORT_OVERRIDE:-}" "$ROUTE" >&2
     exit 2
   }
   adapter_argv "$ROUTE" >/dev/null 2>&1 || { printf "unknown route '%s'\n" "$ROUTE" >&2; exit 2; }
@@ -215,8 +224,18 @@ PERSONA="$SKILL_ROOT/references/agents/implementation-worker.md"
 SCHEMA="$SKILL_ROOT/references/implementation-result-schema.json"
 [ -f "$PERSONA" ] && [ -f "$SCHEMA" ] || { log "worker persona or result schema missing"; exit 2; }
 
-SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/ce-work-adapter-XXXXXX")" || exit 2
-chmod 700 "$SCRATCH"
+workspace_root="$(cd "$WORKSPACE" && { jj workspace root 2>/dev/null || pwd; })" || workspace_root="$WORKSPACE"
+scratch_parent="$workspace_root/.tmp/rocketclaw/ce-work"
+mkdir -p "$scratch_parent" || exit 2
+SCRATCH=""
+for _try in 1 2 3 4 5 6 7 8; do
+  candidate="$scratch_parent/adapter-$$-${RANDOM}${RANDOM}"
+  if mkdir -m 700 "$candidate" 2>/dev/null; then
+    SCRATCH="$candidate"
+    break
+  fi
+done
+[ -n "$SCRATCH" ] || exit 2
 PROMPT_FILE="$SCRATCH/prompt.md"
 RAW_STDOUT="$SCRATCH/stdout.log"
 RAW_STDERR="$SCRATCH/stderr.log"
@@ -274,7 +293,7 @@ def model_allowed(route, model):
     if route == "grok-cursor":
         return bool(re.fullmatch(r"(?:cursor-grok-[A-Za-z0-9._-]+|grok-4\.7-[A-Za-z0-9._-]+)", model))
     if route == "opencode":
-        return model == "auto" or bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+", model))
+        return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*(?:#[A-Za-z0-9][A-Za-z0-9._-]*)?", model))
     return False
 
 try:
@@ -311,7 +330,7 @@ try:
         value = json.loads(b"".join(chunks))
     except (ValueError, UnicodeDecodeError) as exc:
         fail(f"authorization is malformed JSON: {exc}")
-    if not isinstance(value, dict) or set(value) - {"effort_requested"} != required:
+    if not isinstance(value, dict) or not required.issubset(value) or set(value) - required - {"effort_requested"}:
         fail("authorization keys do not match the exact controller schema")
     if type(value["schema_version"]) is not int or value["schema_version"] != 1:
         fail("authorization schema_version must be 1")
@@ -331,9 +350,9 @@ try:
         fail("authorization restrictions must be a string list")
     if not model_allowed(route, value["model_requested"]):
         fail("authorization model is incompatible with the fixed route")
-    effort = value.get("effort_requested", "")
-    if "effort_requested" in value and (not isinstance(effort, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", effort)):
-        fail("authorization effort_requested is not a short plain token")
+    effort = value.get("effort_requested")
+    if effort is not None and (not isinstance(effort, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", effort)):
+        fail("authorization effort is invalid")
     packet_digest = value["packet_digest"]
     if not isinstance(packet_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", packet_digest):
         fail("authorization packet_digest is not lowercase SHA-256")
@@ -342,7 +361,7 @@ try:
     authorization_digest = __import__("hashlib").sha256(b"".join(chunks)).hexdigest()
     fields = (
         authorization_digest, value["run_id"], value["unit_id"], value["attempt_id"],
-        route, target, harness, value["model_requested"], value["activity_posture"], posture, effort,
+        route, target, harness, value["model_requested"], value["activity_posture"], posture, effort or "",
     )
     out = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
@@ -369,7 +388,8 @@ AUTH_HARNESS="${AUTH_FIELDS[6]}"
 MODEL_REQUESTED="${AUTH_FIELDS[7]}"
 ACTIVITY_POSTURE="${AUTH_FIELDS[8]}"
 RESTRICTION_POSTURE="${AUTH_FIELDS[9]}"
-EFFORT_REQUESTED="${AUTH_FIELDS[10]}"
+CROSS_MODEL_EFFORT_OVERRIDE="${AUTH_FIELDS[10]}"
+export CROSS_MODEL_EFFORT_OVERRIDE
 RUNNER_JOB_ID="${CE_PEER_JOB_ID:-}"
 [[ "$RUNNER_JOB_ID" =~ ^[A-Za-z0-9._-]{1,128}$ && "$RUNNER_JOB_ID" =~ [A-Za-z0-9_-] ]] || {
   log "runner job identity is missing or unsafe"
@@ -403,7 +423,7 @@ PACKET="$(cd "$(dirname "$PACKET")" && pwd -P)/$(basename "$PACKET")" || exit 2
 RESULT_DIR="$(cd "$RESULT_DIR" && pwd -P)" || exit 2
 case "$RESULT_DIR/" in "$WORKSPACE/"*) log "result dir must be outside the worker workspace"; exit 2 ;; esac
 case "$PACKET" in "$WORKSPACE"/*) log "unit packet must be outside the worker workspace"; exit 2 ;; esac
-git -C "$WORKSPACE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { log "workspace is not a Git worktree"; exit 2; }
+(cd "$WORKSPACE" && jj workspace root >/dev/null 2>&1) || { log "workspace is not a jj workspace"; exit 2; }
 chmod 700 "$RESULT_DIR" 2>/dev/null || { log "result dir could not be made private"; exit 2; }
 RESULT_DIR_IDENTITY="$("$PY" - "$RESULT_DIR" <<'PY'
 import os, stat, sys
@@ -669,9 +689,9 @@ publish_unavailable() {
     }
     LOG_RETAINED=1
   fi
-  "$PY" - "$ROUTE" "$TARGET" "$HARNESS" "$MODEL_REQUESTED" "$EXPECTED_PACKET_DIGEST" "$LOG_FILE" "$reason" "$ACTIVITY_POSTURE" "$RESTRICTION_POSTURE" "$terminal_status" "$actual_route" "$EFFORT_REQUESTED" <<'PY' | write_result_receipt
-import json, sys
-route, target, harness, requested, packet_digest, log, reason, activity, restriction, terminal_status, actual_route, effort = sys.argv[1:]
+  "$PY" - "$ROUTE" "$TARGET" "$HARNESS" "$MODEL_REQUESTED" "$EXPECTED_PACKET_DIGEST" "$LOG_FILE" "$reason" "$ACTIVITY_POSTURE" "$RESTRICTION_POSTURE" "$terminal_status" "$actual_route" <<'PY' | write_result_receipt
+import json, os, sys
+route, target, harness, requested, packet_digest, log, reason, activity, restriction, terminal_status, actual_route = sys.argv[1:]
 value = {
   "schema_version": 1, "terminal_status": terminal_status,
   "summary": "External route failed after launch" if terminal_status == "failed" else "External route unavailable",
@@ -679,7 +699,7 @@ value = {
   "requested_route": route, "actual_route": actual_route or None, "target": target, "harness": harness,
   "intermediaries": ["cursor"] if route in ("composer", "grok-cursor") else [],
   "model_requested": requested, "model_actual": "unverified", "model_receipt_status": "unverified",
-  "effort_requested": effort or None,
+  "effort_requested": os.environ.get("CROSS_MODEL_EFFORT_OVERRIDE") or None,
   "packet_digest": packet_digest,
   "activity_posture": activity, "restriction_posture": restriction,
   "failure_reason": reason, "raw_log": log,
@@ -726,7 +746,7 @@ if ! command -v "$BINARY" >/dev/null 2>&1; then
 fi
 
 validate_effort_override "$ROUTE" || {
-  publish_unavailable "effort override '$EFFORT_REQUESTED' not compatible with route '$ROUTE'" || exit 2
+  publish_unavailable "effort override '${CROSS_MODEL_EFFORT_OVERRIDE:-}' not compatible with route '$ROUTE'" || exit 2
   exit 2
 }
 
@@ -736,7 +756,6 @@ while IFS= read -r -d '' token; do ARGS+=("$token"); done < <(adapter_argv "$ROU
 MIN_ENV=(env -i "PATH=$PATH" "PYTHONDONTWRITEBYTECODE=1")
 [ -n "${HOME:-}" ] && MIN_ENV+=("HOME=$HOME")
 [ -n "${USER:-}" ] && MIN_ENV+=("USER=$USER")
-[ -n "${TMPDIR:-}" ] && MIN_ENV+=("TMPDIR=$TMPDIR")
 [ -n "${LANG:-}" ] && MIN_ENV+=("LANG=$LANG")
 [ -n "${LC_ALL:-}" ] && MIN_ENV+=("LC_ALL=$LC_ALL")
 [ -n "${XDG_CONFIG_HOME:-}" ] && MIN_ENV+=("XDG_CONFIG_HOME=$XDG_CONFIG_HOME")
@@ -853,9 +872,9 @@ SOURCE="$RAW_STDOUT"
 set +e
 CE_WORK_REDACT_FILE="${CE_WORK_REDACT_FILE:-}" "$PY" - \
   "$SOURCE" "$RAW_STDOUT" "$ROUTE" "$TARGET" "$HARNESS" \
-  "$MODEL_REQUESTED" "$EXPECTED_PACKET_DIGEST" "$LOG_FILE" "$ACTIVITY_POSTURE" "$RESTRICTION_POSTURE" "$MODEL_DISPLAY_HINT" "$EFFORT_REQUESTED" <<'PY' | write_result_receipt
+  "$MODEL_REQUESTED" "$EXPECTED_PACKET_DIGEST" "$LOG_FILE" "$ACTIVITY_POSTURE" "$RESTRICTION_POSTURE" "$MODEL_DISPLAY_HINT" <<'PY' | write_result_receipt
 import json, os, re, sys
-source, stream, route, target, harness, requested, packet_digest, log, activity, restriction, display_hint, effort = sys.argv[1:]
+source, stream, route, target, harness, requested, packet_digest, log, activity, restriction, display_hint = sys.argv[1:]
 
 def redactions():
     p=os.environ.get("CE_WORK_REDACT_FILE", "")
@@ -967,7 +986,8 @@ base={
   "schema_version":1,
   "requested_route":route, "actual_route":route, "target":target, "harness":harness,
   "intermediaries":intermediaries, "model_requested":requested, "model_actual":served,
-  "model_receipt_status":receipt, "effort_requested":effort or None, "activity_posture":activity,
+  "model_receipt_status":receipt, "activity_posture":activity,
+  "effort_requested":os.environ.get("CROSS_MODEL_EFFORT_OVERRIDE") or None,
   "packet_digest":packet_digest,
   "restriction_posture":restriction,
   "failure_reason":None, "raw_log":log,

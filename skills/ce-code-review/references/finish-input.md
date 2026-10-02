@@ -27,8 +27,8 @@ The dispatch context writes this file after every local reviewer is collected, a
     "base": "<BASE: marker>",
     "diff_a": "<DIFF_A>", "diff_b": "<DIFF_B or null>",
     "pr": { "number": null, "url": null, "title": null, "body": null, "base_ref_name": null, "head_ref_oid": null, "head_ref": null, "base_ref": null, "has_prior_comments": false },
-    "branch": "<git branch --show-current at dispatch>",
-    "head_sha": "<git rev-parse HEAD at dispatch>",
+    "branch": "<bookmark associated with @ or empty tip's @- at dispatch>",
+    "head_sha": "<jj log --no-graph -r @ -T commit_id at dispatch>",
     "files": "<run-dir>/files.txt",
     "diff": "<run-dir>/full.diff",
     "tree_is_reviewed_head": true,
@@ -68,6 +68,8 @@ Every path in this file exists before a leaf is launched: the dispatch context w
 Each leaf reads, from `skill_dir`, `references/finish-review.md` and every reference that file names for the stages the leaf owns: `references/action-class-rubric.md` for routing, `references/diff-scope.md` for how to inspect source, `references/intent-and-plan.md` for the plan rules, `references/review-output-template.md` for the report skeleton, `references/validator-batch-template.md` only in the dispatch context. When `scope.tree_is_reviewed_head` is false, the working tree is not the reviewed head: a leaf never reads a changed path from the workspace and inspects the reviewed head (`scope.diff_b`) the way `diff-scope.md` directs reviewers to, including its search across unchanged files; that reference owns the mechanism.
 
 ## How the dispatch context launches a leaf
+
+Every leaf receives the target workspace's **absolute root** and the repository-command rule: execute JJ with that root as cwd (never `-R` alone), execute repository-scoped gh with `GIT_DIR=$(jj git root)` there, and keep temporary/fallback/error files under that root's `.tmp/`. This is execution context, not a new authority to mutate. Native OpenCode subagents carry these fields directly; removed harness/workspace bridges are not used.
 
 Put the full contents of `finish-input.json` inline in the leaf's prompt, together with the absolute paths of the run directory, this reference, and `references/finish-review.md`, and tell it which stages it owns, to read those two references first, and to record its own stage in the stage log with `scripts/run-log.py` under `skill_dir` (the recipe is in `references/scope.md`, Stage log). Inline the file rather than only naming it: the facts it carries are small, and a subagent that has them in its prompt cannot skip the read. Everything larger (the diff, the per-reviewer artifacts, the compact returns) stays on disk and is read by path. No override on the model: both leaves inherit the session model. Tell each leaf plainly that it launches no subagents.
 

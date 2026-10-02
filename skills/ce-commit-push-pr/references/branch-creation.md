@@ -1,47 +1,8 @@
-# Branch creation from default branch
+# Feature bookmark creation from the default bookmark
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
+Run from the absolute workspace root. Consult https://docs.jj-vcs.dev/latest/cli-reference/ .
 
-## Decision flow
-
-### 1. Fetch fresh remote base
-
-```bash
-git fetch --no-tags origin <base>
-```
-
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
-
-### 2. Check for unpushed local commits on `<base>`
-
-```bash
-git log origin/<base>..HEAD --oneline
-```
-
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
-
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
-
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
-
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
-
-### 3. Create the feature branch
-
-```bash
-git checkout --no-overwrite-ignore -b <branch-name> "$BASE_REF"
-```
-
-If checkout fails because uncommitted or ignored files would be overwritten, stop and ask the user to handle the colliding paths. In `mode:pipeline`, report the blocker without asking. Do not stash or remove the colliding paths.
-
-## Fetch failure fallback
-
-If `git fetch` fails, branch from current local HEAD:
-
-```bash
-git checkout -b <branch-name>
-```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+1. Fetch fresh base with `jj git fetch --remote origin --branch <base>`.
+2. Compare local committed work with `<base>@origin` using `jj log -r '<base>@origin..<committed-tip>'`. With no extra commits use the fetched base. Otherwise show the list and ask whether to carry them or leave them on the local default bookmark. Pipeline mode stops with a residual instead of guessing. Never silently carry foreign commits.
+3. Preserve the current change ID and operation ID before moving work. Create a non-conflicting feature bookmark at the chosen committed tip using `jj bookmark create <branch-name> -r <chosen-tip>`. If working-copy changes must move onto a fresh base, rebase only that unpublished working-copy change with `jj rebase -r <working-change> -d <chosen-tip>`; preserve unrelated/excluded paths and stop on conflicts or collisions rather than stashing/removing files. Never move the default bookmark or rewrite published history implicitly.
+4. On fetch failure, create the feature bookmark from the current committed tip and report that base freshness was not verified. Skip the unreliable unpushed-commit comparison.

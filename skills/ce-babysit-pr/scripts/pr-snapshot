@@ -298,17 +298,31 @@ def _run(cmd):
     env["NO_COLOR"] = "1"
     env.pop("CLICOLOR_FORCE", None)
     env.pop("GH_FORCE_TTY", None)
-    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
+    workspace_root, git_dir = _workspace_context()
+    env["GIT_DIR"] = git_dir
+    return subprocess.run(cmd, cwd=workspace_root, capture_output=True, text=True, encoding="utf-8", env=env)
+
+
+def _workspace_context():
+    """Resolve JJ context before repository-scoped gh calls, never via Git cwd guesses."""
+    # Python equivalent of (cd "$workspace_root" && export GIT_DIR=$(jj git root); gh ...).
+    root = subprocess.run(["jj", "workspace", "root"], cwd=os.path.abspath(os.getcwd()),
+                          capture_output=True, text=True, check=True).stdout.strip()
+    backend = subprocess.run(["jj", "git", "root"], cwd=root,
+                             capture_output=True, text=True, check=True).stdout.strip()
+    return root, backend
 
 
 def _run_git(cmd):
     env = os.environ.copy()
+    workspace_root, git_dir = _workspace_context()
+    env["GIT_DIR"] = git_dir
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GCM_INTERACTIVE"] = "never"
     env["GIT_ASKPASS"] = ""
     env["SSH_ASKPASS"] = ""
     return subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
+        cmd, cwd=workspace_root, capture_output=True, text=True, encoding="utf-8", env=env, timeout=30,
     )
 
 
@@ -1399,7 +1413,7 @@ def _empty_trajectory():
 
 def _load_trajectory(state):
     """Load the trajectory, tolerating a partial or non-dict value from an older on-disk
-    state.json (persisted in /tmp across script versions) — backfill missing keys so a new
+    state.json (persisted in local .tmp across script versions) — backfill missing keys so a new
     field never KeyErrors an old state, and a null/garbage value never crashes."""
     tj = state.get("trajectory")
     if not isinstance(tj, dict):

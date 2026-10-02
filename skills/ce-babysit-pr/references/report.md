@@ -2,6 +2,8 @@
 
 Write every summary through the `ce-noslop` skill. The rules below are what this skill adds on top.
 
+Every rendered repository-scoped GitHub command, including merge handoffs below, must include its absolute target cwd and JJ backend: `(cd "<absolute target workspace root>" && export GIT_DIR=$(jj git root); gh ...)`. Do not hand the user an unqualified command that depends on the assistant's transient shell environment.
+
 Every stop — and every checkpoint tick — ends with a summary. Below the first line, write it however reads cleanly; the format is yours. What matters is that it meets these goals, because each one counters a specific way these summaries fail:
 
 - **Outcome first, unmissable — open with one status line.** Emoji, state, then one clause of evidence taken from the final snapshot (quiet time, CI, remaining backlog, parked residuals — your wording, real values), so the state is scannable instead of buried in prose. Only the state phrases are fixed:

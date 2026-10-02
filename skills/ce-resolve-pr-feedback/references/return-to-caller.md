@@ -1,5 +1,7 @@
 # Return to Caller
 
+For every shell call, work from the target workspace's absolute root and export `GIT_DIR=$(jj git root)` there before invoking `gh` or bundled helpers, as SKILL.md requires. All handoff and private input/reply files belong beneath that workspace's `.tmp/`.
+
 Prepare review feedback under the caller's inherited scope and preserve the judged batch for completion after the caller publishes. The resolver owns judgment, fixes, local validation, a fix-owned commit, and the saved actions. It never pushes and never asks a blocking question. Invocation cannot broaden the caller's authority; merge, rebase, force-push, and CI approval remain excluded.
 
 Full and targeted feedback scopes keep their existing judgment and fix flow. A code-fix batch returns with its entire remote tail pending, including actions that require no fix themselves. A no-change batch may finish immediately through Full Mode's existing reply/resolve protocol. Its record distinguishes verified completion from an incomplete write or resolution. Human decisions retain the rubric's typed `needs-human` payload and remain open.
@@ -14,7 +16,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" preflight
 ```
 
-When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private OS scratch directory and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
+When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Handoff destinations and prepared input files must be beneath the target workspace's local `.tmp/`; an outside path is rejected, never silently relocated. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private workspace-local `.tmp/` directory and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
 
 If preflight fails, stop before editing and return the blocker. Do not substitute another destination for a rejected caller path. Creation also refuses overwrite, so a destination that appears during preparation cannot be replaced.
 

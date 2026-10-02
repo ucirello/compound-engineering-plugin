@@ -135,6 +135,8 @@ encode_omp_raw_cwd() {
             printf -- '-%s' "$rel"
             ;;
         *)
+            # Read-only compatibility probe for omp's existing raw buckets;
+            # this never allocates or writes temporary storage.
             canon_tmp="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || canon_tmp=""
             case "$cwd" in
                 "$canon_tmp")

@@ -8,6 +8,8 @@ After individual docs, evaluate the set: overlaps, supersession (an older narrow
 
 **Subagents.** Use them for context isolation, choosing the lightest approach that fits: main thread for small scopes, parallel investigation subagents for 3+ independent docs, batches for broad sweeps; docs that overlap or share a root issue are investigated together, not parallelized. When spawning any subagent, omit the `mode` parameter so the user's permission settings apply, and include in its prompt:
 
+Use OpenCode-native subagents for these roles. Resolve configured model choices and tiers through `opencode.models` before launch; configuration remains authoritative and must not be upgraded. Where no model is configured, retain the lightest approach above. Use shell only for required local operations, not another harness's dispatcher. For repository-scoped GitHub checks, run from the absolute target workspace root with `GIT_DIR=$(jj git root)`; all temporary/fallback/error files stay under local `.tmp/`.
+
 ## Subagent prompt
 
 Every investigation subagent's prompt carries these three clauses verbatim:

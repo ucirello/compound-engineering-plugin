@@ -25,8 +25,8 @@ The summary must contain:
 
 ### 4.3 Preserve and Offer Next Steps
 
-The optimization branch (`optimize/<spec-name>`) is preserved with all commits from kept experiments.
-The experiment log and strategy digest remain in local `.context/...` scratch space for resume and audit on this machine only; they do not travel with the branch because `.context/` is gitignored.
+The optimization bookmark (`optimize/<spec-name>`) is preserved with all revisions from kept experiments.
+The experiment log and strategy digest remain in local `.tmp/...` scratch space for resume and audit on this machine only; they do not travel with the bookmark because `.tmp/` is ignored.
 
 Present these options after the summary:
 
@@ -47,7 +47,7 @@ Clean up scratch space:
 ```bash
 # Keep the experiment log for local resume/audit on this machine
 # Remove temporary batch artifacts
-rm -f .context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md
+rm -f .tmp/ce-optimize/<spec-name>/strategy-digest.md
 ```
 
 Do NOT delete the experiment log if the user may resume locally or wants a local audit trail. If they need a durable shared artifact, summarize or export the results into a tracked path before cleanup.

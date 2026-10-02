@@ -29,8 +29,12 @@ Use one driver for the entire run. A selected host-native driver may fall back t
 
 Read `references/route-and-report.md` from this skill's directory before step 3 (Map changed files to routes). It carries the route-mapping patterns, the port and server commands, the per-page checks, the two human-facing prompts, and the summary format.
 
-1. **Select the driver** per the policy above and record it. This also requires a git repository with changes to test.
-2. **Determine test scope** from the argument: a PR number → `gh pr view [number] --json files -q '.files[].path'`; `current` or empty → `git diff --name-only main...HEAD`; a branch name → `git diff --name-only main...[branch]`.
+1. **Select the driver** per the policy above and record it. This also requires a JJ repository with changes to test. Resolve its absolute root with `jj workspace root` and run scope commands from that root so file paths are repository-relative.
+2. **Determine test scope** from the argument, using the project's actual base bookmark instead of `main` when different:
+   - PR number: `(cd "$workspace_root" && export GIT_DIR=$(jj git root); gh pr view [number] --json files -q '.files[].path')`.
+   - `current` or empty: `(cd "$workspace_root" && jj diff --name-only --from 'heads(::main & ::@)' --to @)`.
+   - Bookmark name: `(cd "$workspace_root" && jj diff --name-only --from 'heads(::main & ::<bookmark>)' --to '<bookmark>')`.
+   These revsets select the common-ancestor base, preserving branch-change scope rather than comparing unrelated tip changes. Resolve ambiguous or missing base bookmarks before proceeding. See the [JJ command reference](https://docs.jj-vcs.dev/latest/cli-reference/) and [Git migration guide](https://docs.jj-vcs.dev/latest/git-experts/).
 3. **Map changed files to routes** and build the list of URLs to test.
 4. **Determine the dev server port.** `scripts/resolve-port.sh` resolves it and prints the port alone on stdout: an explicit port argument; else a `--port` flag in a `package.json` dev/start script; else `PORT=` in `.env`, `.env.local`, or `.env.development`; else `3000`. Pass an explicit port when the user gave `--port N`, or when your active project instructions already in context state the dev-server port. Do not grep instruction files for one: prose mentions in docs, examples, and troubleshooting are unreliable and false-positive-prone, while config files and `.env` are trustworthy. Each mode runs the script in the shell call that needs the port, so no port value has to survive between shell calls or be transcribed out of prose; the reference gives the command. Manual mode uses that port as-is: the user controls their own server, so do not scan for alternatives.
 5. **Verify the dev server is running** before asking the headed/headless question — a manual run with no server stops here, so asking first would waste the question.

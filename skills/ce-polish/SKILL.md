@@ -11,7 +11,7 @@ Put a working feature in front of the user and turn their live observations into
 
 **Done:** the user ends the polish loop, every requested fix is reflected in the live feature or reported as blocked, and the in-scope changes are saved in local commit(s). A live session also ends with a residual list of the units that were not applied and the path of its session log. A server or checkout blocker also ends the run when it is reported with the evidence needed to resume.
 
-**Boundaries:** the user drives what to inspect and change; do not invent an autonomous checklist or expand into general QA. Never work on the repository's default branch. This workflow may edit and locally commit the requested polish, and in live mode the disclosed riffrec setup commit, but it never pushes or opens a PR.
+**Boundaries:** the user drives what to inspect and change; do not invent an autonomous checklist or expand into general QA. Never edit the repository's default-bookmark change; use dedicated JJ feature changes in a safe workspace as specified in `references/run.md`. This workflow may edit and locally commit the requested polish, and in live mode the disclosed riffrec setup commit, but it never pushes or opens a PR.
 
 ## Run
 

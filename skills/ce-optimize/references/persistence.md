@@ -37,9 +37,9 @@ These are non-negotiable write-then-verify steps. At each checkpoint, the agent 
 3. Confirm the expected content is present
 4. If verification fails, retry the write. If it fails twice, alert the user.
 
-### File Locations (all under `.context/compound-engineering/ce-optimize/<spec-name>/`)
+### File Locations (all under `.tmp/ce-optimize/<spec-name>/`)
 
-The scratch space under `.context/` is gitignored. It survives a local resume but does not travel with the branch, so anything needed durably must be exported to a tracked path.
+The scratch space under `.tmp/` must be ignored in `.gitignore`. It survives a local resume but does not travel with the bookmark, so anything needed durably must be exported to a tracked path.
 
 | File | Purpose | Written When |
 |------|---------|-------------|

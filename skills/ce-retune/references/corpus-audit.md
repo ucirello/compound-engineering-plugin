@@ -16,7 +16,7 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite. Grep a distinctive substring of the target text.
-3. Version history. Run `git log -S '<substring>'` for the commit that introduced the line, then read that commit message and the PR it belongs to.
+3. Version history. From the history-bearing workspace's absolute root, inspect `jj log -r 'ancestors(@)'` and search the relevant file's revision diffs with `jj diff --from <revision>- --to <revision> -- <path>` for the addition of the distinctive substring. Read that revision's description with `jj log -r <revision> --no-graph -T description`, then read the PR it belongs to. Run repository-scoped GitHub calls from that same root with `export GIT_DIR=$(jj git root)` before `gh`. JJ history and diff guidance: https://docs.jj-vcs.dev/latest/cli-reference/ .
 
 Source 3 is unavailable in a corpus checkout with no history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone. That combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a checkout that has history, or record the whole audit's provenance basis as partial.
 
@@ -125,4 +125,4 @@ Expect roughly half of `reduce` items to be pinned by a test asserting exact str
 - **A cut with no provenance found after a real search is a confident cut. A cut the defender saves with a citation is off the list.** Do not relitigate a defended keep.
 - **Absence of evidence is weaker than the project's own standard for a change.** Where the guidance requires a reproduced failure or an exact failing path, a search that found nothing is a verification task, not a change. Say which of your cuts rest on that weaker basis.
 
-Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and git history. Expect the audit to contradict the premise you started with. That is its value.
+Dispatch shape: one agent per skill, each reading that skill's full directory and proposing cuts with a target and a reason; then a second agent per skill whose job is the opposite, to **defend the existing prose** using the project's own documented learnings, its tests, and JJ history. Expect the audit to contradict the premise you started with. That is its value.

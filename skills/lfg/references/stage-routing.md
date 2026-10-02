@@ -1,5 +1,9 @@
 # Per-stage routing carriers
 
+## Native execution of compatibility carriers
+
+The harness names and carrier grammar below are retained compatibility inputs, not authorization to launch another harness. `ce-plan` and `ce-work` execute assignments through OpenCode-native `opencode.models` selection and `subagents`/`shell`, never a dispatcher or workspace-bridge script. Resolve aliases to available provider/model IDs with `opencode.models`; retain explicit pins, configured model choices and tiers from `.rocketclaw/config.yaml` and `config.local.yaml`, requirement strength, and ordered fallback order. If a harness-specific requirement cannot be represented natively, report it as unavailable rather than claim that harness ran. Preserve requested-versus-actual route/model receipts, independent worker context, bounded recovery, verification and failure coverage, and the return gates in `work-return.md`. LFG passes intent; the child skill owns execution and receipts. Disclosure must distinguish a requested compatibility target from the actual OpenCode provider/model route. References below to routing implementation to a harness mean this compatibility intent, never cross-harness dispatch.
+
 A carrier is the prefix string that passes a stage assignment (which model or harness should do that stage's work) to a child skill. LFG has two routable stages, each with its own carrier. This file defines how to detect an assignment, how to resolve its scope and strength, the carrier grammar, the ordered-fallback case, how to strip routing from the feature request, and how each carrier is passed when LFG invokes the child skill.
 
 LFG is otherwise hands-off and never stops to ask. The single question it may ask is the one in scope rule 3 below, and only on an interactive host.

@@ -30,14 +30,14 @@ You classify the learning and draft its body in this context, because both depen
 **Run ID and run dir (before dispatching the finder):** generate a unique run identifier and create the run directory. This scopes every Phase 1 artifact file to the same directory so the orchestrator can Read them back in Phase 2.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT=$(jj workspace root 2>/dev/null || pwd -P);
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
 RUN_ID=$(date +%Y%m%d-%H%M%S)-$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' ');
-RUN_DIR="$SCRATCH_ROOT/ce-compound/$RUN_ID";
+RUN_DIR="$SCRATCH_ROOT/learning/$RUN_ID";
 (umask 077; mkdir -p "$RUN_DIR") || exit 1; chmod 700 "$RUN_DIR" || exit 1;
 echo "$RUN_DIR";
 ```
@@ -54,6 +54,8 @@ Pass `{run_id}` and the resolved absolute `{run_dir}` into every Phase 1 subagen
 **Return the full output inline whenever the artifact write did not succeed.** This covers both cases where the orchestrator's Phase 2 inline fallback would otherwise have nothing to read: (a) `{run_id}` is empty or did not resolve (non-Claude-Code platforms where the pre-resolution failed), so there is no path to write to; and (b) `{run_id}` resolved but the write itself failed (tool permission denied, absolute-path writes unavailable, disk error, or the post-write existence check came back empty). In either case the subagent must return its complete structured output inline instead of a path, because the path would point at a file that does not exist. Return only the bare path when, and only when, the write is confirmed on disk. The artifact pattern is a reliability improvement, not a hard requirement; the orchestrator handles a missing artifact in Phase 2 by using the inline return.
 
 **Resolve declared Compound Packs before dispatch** by running this skill's resolver as one command:
+
+The retained resolver is pack-source caching, not a dispatch/workspace bridge. It uses native JJ branch/tag clones, with a narrowly scoped Git fallback only for arbitrary commit-SHA fetches unsupported by JJ's branch/tag filters. Cache and partial-clone paths stay beneath workspace-local `.tmp/`; ensure `.tmp/` is ignored. See https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-command-table/.
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -137,6 +139,6 @@ Classify a rejected dispatch by whether an agent launched: correct a pre-launch 
 
    **GitHub issue search:**
 
-   Prefer the `gh` CLI for searching related issues: `gh issue list --search "<keywords>" --state all --limit 5`. If `gh` is not installed, fall back to the GitHub MCP tools (e.g., `unblocked` data_retrieval) if available. If neither is available, skip GitHub issue search and note it was skipped in the output.
+   Prefer the `gh` CLI for searching related issues: resolve the absolute `workspace_root=$(jj workspace root)` and run `(cd "$workspace_root" && export GIT_DIR=$(jj git root); gh issue list --search "<keywords>" --state all --limit 5)`. If `gh` is not installed, fall back to the GitHub MCP tools (e.g., `unblocked` data_retrieval) if available. If neither is available, skip GitHub issue search and note it was skipped in the output.
 
 </parallel_tasks>

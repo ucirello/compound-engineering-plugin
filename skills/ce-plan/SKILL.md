@@ -53,7 +53,7 @@ Phases run in order unless a reference routes out or short-circuits. Read a phas
 ### Phase 5: Review, Write, Deepen, and Hand Off
 
 7. Read `references/final-review.md` before the pre-write review; it defines Phase 5.1 through 5.3.2. On an interactive run from a brainstorm, the user sees the Phase 5.1.5 scoping synthesis in chat before the write: a confirmation to wait on, or its one-line auto-proceed announcement.
-8. **Model elevation.** Immediately before authoring, read `references/reasoning-elevation.md`, resolve the choice at this boundary, and follow it. Do not author until activation resolution has completed and any selected dispatch or transparent fallback has settled.
+8. **Model elevation.** Immediately before authoring, read `references/reasoning-elevation.md`, resolve the choice at this boundary using `opencode.models` and native subagents, and follow it. Preserve configured models and tiers. Do not author until activation resolution has completed and any selected dispatch or transparent fallback has settled.
 9. In pipeline mode, evidence that invalidates a decision settled earlier in the session stops the write. Return the exact token `settled-decision-invalidated`, the decision, and the reason; do not resolve it silently.
 10. Write the plan before presenting options, then complete the confidence path `final-review.md` defines.
 

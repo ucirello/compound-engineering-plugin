@@ -9,13 +9,13 @@
 - **No** — skip the description rewrite and continue to the babysit handoff rule below.
 - **Yes** — run Step 4 (compose the PR title and body) if not already done, then preview and apply (see below).
 
-**Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep the existing title and body and do not call `gh pr edit`. If the only difference is a branding-only delta and the user did not explicitly request that exact branding change, also keep the existing title and body; branding alone never creates apply intent. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, the user may pass focus text back for a regenerate; do not apply. If confirmed, apply per "Applying via gh" below using `gh pr edit` and report the URL.
+**Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep the existing title and body and do not call `gh pr edit`. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, the user may pass focus text back for a regenerate; do not apply. If confirmed, apply per "Applying via gh" below using `gh pr edit` and report the URL.
 
 **Explainer archival** — runs only in the full workflow, when all of these hold: `pr_teaching_archive` is on, the composed body has a `## New concepts` section, and the apply was confirmed (a new-PR create, or an existing-PR rewrite the user accepted). A declined rewrite skips archival entirely, so no unlinked doc commit is left behind. Resolve every path from the repo root gathered in Context, never from the CWD. With two taught concepts, write one file per concept and stage both in the single commit. Run these steps, in order, immediately before the `gh` call:
 
-1. `git check-ignore -q <root>/explainers/YYYY-MM-DD-<concept-slug>.md` (from the repo root) — the check works on paths that do not exist yet. If the path is ignored, print a one-line warning and skip archival entirely, writing nothing (never `git add -f`).
+1. `jj file list <root>/explainers/` and the applicable ignore files (from the absolute workspace root) — determine whether the prospective path is ignored before writing. If the path is ignored, print a one-line warning and skip archival entirely, writing nothing; never force-track it. If JJ cannot determine ignore matching for a nonexistent path, a read-only `GIT_DIR=$(jj git root) git check-ignore -q <path>` is permitted here; distinguish exit 1 (not ignored) from an error.
 2. Write the file (create the directory if needed) with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. If the file already exists from a prior run, overwrite it.
-3. `git add` those file(s) only (never `-A`) and commit with `docs(explainer): teach <concept>[, <concept>]`. Re-apply the **Project publishing gate** to the resulting commit state, then push. If the commit reports nothing to commit, the doc is already committed from a prior run — keep the link and continue.
+3. Before composing the archival message, read `references/message-standards.md` in full and execute its runtime full-Go-guide and several-subjects-and-bodies comparison; repository-local syntax always wins. The message must describe teaching the named concepts, without a fixed prefix or format. Commit only those file(s) with `jj commit -m "<message composed from the standards>" -- <explainer-paths>`. If there is no diff for those paths, the docs are already committed — keep the links and continue without creating an empty commit. Move the verified feature bookmark to the committed tip, re-apply the **Project publishing gate** to that exact state, then `jj git push --remote <head-remote> --bookmark <head-branch>`.
 4. Add a head-branch blob URL for each doc into the `## New concepts` section before applying. Build the URL for the repo's actual host — for example `gh browse -n -b <head-branch> -- <path>` prints the link on whatever host `gh` targets, GitHub Enterprise included. Do not hardcode `github.com`, or the link 404s on GHE.
 
 If the doc write, commit, or push fails, warn and continue to PR creation without the link. Never leave the flow stopped between the commit and the PR.
@@ -27,9 +27,9 @@ If the doc write, commit, or push fails, warn and continue to PR creation withou
 **Resolve the standing opt-out before applying the handoff rule below.** Read `auto_babysit` by the rule here, at the handoff. A config read from an earlier step does not carry over: a run that reaches the handoff without having read the key hands off against the user's standing choice, and a compacted run is the ordinary way that happens.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -62,9 +62,11 @@ A draft-only stack submit is a hard residual before babysit when babysit is on.
 The body **must** be written to a temp file and passed via `--body-file <path>`. Never use `--body-file -`, stdin pipes, heredoc-to-stdin, or `--body "$(cat ...)"` — wrappers and stdin handling can silently produce an empty PR body while `gh` still exits 0 and returns a URL.
 
 ```bash
-BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-pr-body.XXXXXX") && cat >> "$BODY_FILE" <<'__CE_PR_BODY_END__'
+mkdir -p "$workspace_root/.tmp"
+BODY_FILE=$(mktemp "$workspace_root/.tmp/pr-body.XXXXXX")
+cat >> "$BODY_FILE" <<'__PR_BODY_END__'
 <the composed body markdown goes here, verbatim>
-__CE_PR_BODY_END__
+__PR_BODY_END__
 ```
 
 The quoted sentinel keeps `$VAR`, backticks, and any literal `EOF` inside the body from being expanded.
@@ -75,3 +77,32 @@ For `<TITLE>`: substitute verbatim. If it contains `"`, `` ` ``, `$`, or `\`, es
 gh pr create --title "<TITLE>" --body-file "$BODY_FILE"   # new PR
 gh pr edit   --title "<TITLE>" --body-file "$BODY_FILE"   # existing PR
 ```
+
+## Archival message composition standard
+
+"Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards."
+
+Before composing, read the full Go guide at runtime and compare several recent subjects AND bodies with `(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -10 --format=%B)`, from the absolute target workspace root. Compare prefixes/package names, casing, verb tense, subject/body separation, wrapping, and issue placement. Repository-local instructions and observed syntax ALWAYS win; apply compatible Go guidance within that pattern. Without history, use explicit project/user instructions and Go guidance without inventing precedent. The following is verbatim source guidance, not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.

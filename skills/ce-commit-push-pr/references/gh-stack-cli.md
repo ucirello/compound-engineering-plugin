@@ -1,83 +1,24 @@
-# `gh stack` semantics this skill relies on
+# GitHub stack compatibility with JJ-managed layers
 
-Verified against `gh stack version 0.1.0`. `gh stack <command> --help` is authoritative — if it
-disagrees with anything here, follow `--help` and say so in your report. (`gh stack help <command>`
-does not work; it prints top-level help.)
+Use `gh stack <command> --help` as authoritative for installed version behavior; `gh stack help <command>` is not equivalent. Run every repository-scoped `gh` command from the absolute JJ workspace root with `GIT_DIR=$(jj git root)` exported. Git-backed checkout/init/add/submit commands are not the workspace manager here: use JJ bookmarks and native publication in `stack-submit.md`.
 
-Only the behavior that changes a decision in stack mode is listed. This file is self-contained on
-purpose: do not depend on the user having a separate `gh-stack` skill installed.
+## Classifying a parent without checkout
 
-## Classifying a parent
+Resolve a parent PR by number with `gh pr view <number> --json headRefName,headRefOid,author,baseRefName,url,state`. A branch-only parent can be classified locally but cannot establish PR authorship. Inspect `gh stack view --json` when supported without checkout; do not parse stderr as topology. A read failure is unknown, not standalone. Disambiguation, unavailable stacks, invalid arguments, or missing parent evidence are residuals rather than guessed topology.
 
-```bash
-gh stack checkout "<parent-pr-number>"
-```
+`gh stack view --json` reports `trunk`, `currentBranch`, and `branches[]` with name, head, base, isCurrent, isMerged, needsRebase, and PR metadata. `base` is the last known contained parent SHA, not its current tip. There is no documented branch ordering or top field: derive ordering from verified JJ ancestry and PR bases, never array order. A Git currentBranch may be absent in JJ; do not create a fake checkout to make this field appear.
 
-Resolve a parent by **PR number** whenever one exists — that is what pulls a stack down from
-GitHub. A bare branch name resolves against **local** stacks only, so a branch-only parent can be
-classified locally and no further.
+For interpreting existing CLI receipts only, version 0.1.0 classified a parent with exit 0 (in a stack), 2 (standalone), 5 (invalid arguments), 6 (disambiguation required), or 9 (stacked PRs unavailable). Do not run its checkout command to obtain these receipts in a JJ workspace. Follow installed help if codes differ and report the difference. In JJ-native classification, require equivalent positive metadata evidence; absence or a failed probe is never standalone. The old `add` exit 5 meant not at top; that remains a topology residual, not permission to select another parent.
 
-Branch on the exit code; status text goes to stderr and must not be parsed.
+Resolve the parent by exact `headRefOid`, not name alone: names can be stale, absent, or collide. Fetch the parent bookmark through `jj git fetch`, verify its commit ID against PR metadata, and use API evidence or stop if the exact SHA cannot be reached. Never reset a colliding bookmark or move unrelated work. Prefer the current remote tip unless latest parent work is verified local-only, in which case use that exact local tip.
 
-| Exit | Meaning | What it means here |
-|---|---|---|
-| 0 | Success | Parent is in a stack, and `HEAD` has moved to it |
-| 2 | Not in a stack | Parent is standalone; nothing was checked out or fetched |
-| 5 | Invalid arguments | Fix the invocation; see `--help` |
-| 6 | Disambiguation required | Branch is in several stacks — check out a non-shared branch |
-| 9 | Stacked PRs unavailable | Not enabled on this repository; tell the user and stop |
+## GitHub-managed external layers
 
-```bash
-gh stack view --json    # JSON on stdout: trunk, currentBranch,
-                        # branches[] { name, head, base, isCurrent, isMerged, needsRebase,
-                        #              pr { number, url, state } }
-```
-
-`base` is the parent SHA the branch was last known to contain, not the parent's current tip;
-`needsRebase` is true when that tip is no longer an ancestor. There is no field naming the top of
-the stack and no documented branch ordering, so do not derive position from this payload — use
-`add`'s exit 5 instead.
-
-## Resolving a PR head
-
-`gh pr view "<n>" --json headRefName,headRefOid,author` identifies the head; `headRefName` alone
-does not, because a same-repo name can be absent or stale locally and can collide with an unrelated
-branch. Create a local branch at `headRefOid`, fetching `refs/pull/<n>/head` when that commit is not
-reachable — reachability leaves the commit with no branch to name.
-
-## Building
-
-```bash
-gh stack init [--base "<trunk>"] "<branch>"...
-```
-
-Processes branches bottom to top and checks out the **last** one. **Existing branches are adopted;
-missing ones are created** — the first from the trunk, each later one from the branch before it.
-There is no separate adopt mode: existence decides. `--base` selects a non-default trunk, so a
-parent branch can serve as the trunk without joining the stack.
-
-```bash
-gh stack add "<branch>"
-```
-
-Must run from the **top** branch of the stack (or the trunk while it is still empty); anywhere else
-exits **5**. Exit 5 here means "you are not on the top", and moving there with `gh stack top` is a
-decision, not a fix: it changes which layer the new branch is parented to. Whether that is correct
-belongs to the caller — when a specific parent was named, it is not. Without `-Am`, `add` does not
-touch the working tree, so staged and unstaged changes follow onto the new branch.
-
-```bash
-gh stack submit --auto [--open]
-```
-
-`--auto` avoids a title prompt per new PR. `--open` creates PRs ready for review instead of drafts,
-and also marks pre-existing drafts ready.
+`gh stack link` is GitHub-only and is intended for external managers including JJ. Check its installed help and explicit repository availability before using it to register externally managed parent/child PRs. It creates no local tracking: later local `gh stack submit/view/merge` must not be assumed to see those layers. If required server topology or landing cannot be verified, return a hard residual rather than pretending the stack is managed. Do not silently replace required stack intent with independent PRs.
 
 ## Never
 
-- **`gh stack link`** — GitHub-only by design, creates no local tracking, so a later
-  `gh stack submit`, `gh stack view`, or `gh stack merge` will not see the layer. It exists for
-  branches managed by external tools (jj, Sapling, git-town).
-- **`gh pr merge`** on a stack member — it cannot merge a stack. Landing uses `gh stack merge`.
-- **Bare `view` / `submit` / `init` / `add` / `checkout`** — each prompts or opens a TUI that
-  blocks under a PTY. Always pass the arguments and flags shown above.
+- Run interactive/TUI stack commands without explicit arguments.
+- Use `gh stack checkout`, `init`, `add`, or `top` to move a JJ workspace or choose a different parent.
+- Treat an unknown parent as standalone or reorder layers from undocumented JSON ordering.
+- Use `gh pr merge` to land a managed stack member. Landing belongs to `ce-babysit-pr` under `posture:stack-land` or the user, through a verified server-compatible stack merge route; unavailable routes are residuals.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Resolve the Compound Packs declared in this repo's CE config into pack roots.
+"""Resolve the Compound Packs declared in this repo's config into pack roots.
 
-Reads the `packs:` list from `<repo-root>/.compound-engineering/config.yaml`
+Reads the `packs:` list from `<repo-root>/.rocketclaw/config.yaml`
 and `config.local.yaml` (both layers concatenate; local adds, never replaces),
 validates each entry, resolves path and git sources, enumerates the packs each
 source publishes, applies selection, and prints one JSON object to stdout:
@@ -94,7 +94,7 @@ def _within(path: str, parent: str) -> bool:
     return path == parent or path.startswith(parent + os.sep)
 
 
-# --- scratch root (peer-job-runner shape: probe /tmp, fall back to TMPDIR) ---
+# --- workspace-local scratch root ---
 
 def _owned_dir(path: str) -> bool:
     """Directory, not a symlink, owned by the effective uid (POSIX)."""
@@ -139,21 +139,18 @@ def cache_base() -> str | None:
     configured = os.environ.get("CE_PACKS_CACHE_ROOT")
     if configured:
         root = os.path.abspath(configured)
+        local_tmp = os.path.realpath(os.path.join(_repo_root() or os.getcwd(), ".tmp"))
+        if os.path.commonpath([os.path.realpath(root), local_tmp]) != local_tmp:
+            return None
         os.makedirs(root, exist_ok=True)
         return root
-    if IS_WINDOWS:
-        base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
-        root = os.path.join(base, "compound-engineering-packs")
-        return root if _private_root_usable(root) else None
-    if _EFFECTIVE_UID is None:
+    base = os.path.join(_repo_root() or os.getcwd(), ".tmp")
+    try:
+        os.makedirs(base, exist_ok=True)
+    except OSError:
         return None
-    for base in ("/tmp", os.environ.get("TMPDIR") or "/tmp"):
-        root = os.path.join(base, f"compound-engineering-{_EFFECTIVE_UID}")
-        if _private_root_usable(root):
-            packs = os.path.join(root, "ce-packs")
-            if _private_root_usable(packs):
-                return packs
-    return None
+    root = os.path.join(base, "rocketclaw-packs")
+    return root if _private_root_usable(root) else None
 
 
 # --- minimal YAML reader for the documented packs: subset --------------------
@@ -268,7 +265,10 @@ def _set_key(entry: dict, key: str, raw_val: str, loc: str, errors: list) -> Non
 
 @functools.lru_cache(maxsize=None)
 def _git_env() -> dict:
+    # Shallow pack caching has no JJ equivalent; Git is confined to pack sources.
     env = dict(os.environ)
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+        env.pop(key, None)
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_ASKPASS"] = env.get("GIT_ASKPASS") or "true"
     ssh = env.get("GIT_SSH_COMMAND") or "ssh"
@@ -484,7 +484,7 @@ def nested_rules_warning(pack_id: str, pack_dir: str, boundary: str) -> str | No
     where = ", ".join(f"`{name}/`" for name in hits)
     return (
         f"pack `{pack_id}` has {total} rule-shaped file(s) under {where} that discovery"
-        " never reads -- move rules to the pack's top level (see https://everyinc.github.io/compound-engineering-plugin/guides/packs/, Pack layout)"
+        " never reads -- move rules to the pack's top level (see https://everyinc.github.io/rocketclaw-plugin/guides/packs/, Pack layout)"
     )
 
 
@@ -660,17 +660,14 @@ def _emit(declared_only: bool, entries: list, roots: list, warnings: list, error
 
 
 def _repo_root() -> str | None:
-    """The enclosing checkout's top level: git's answer when git is on PATH,
-    otherwise the nearest ancestor of the working directory holding a `.git`
-    entry (a directory, or the file a worktree or submodule leaves). None when
-    the working directory is not inside a checkout."""
-    if shutil.which("git") is not None:
-        proc = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+    """The enclosing JJ workspace's absolute root or nearest `.jj` ancestor."""
+    if shutil.which("jj") is not None:
+        proc = subprocess.run(["jj", "workspace", "root"], cwd=os.path.abspath(os.getcwd()),
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         return proc.stdout.strip() if proc.returncode == 0 else None
     current = os.getcwd()
     while True:
-        if os.path.lexists(os.path.join(current, ".git")):
+        if os.path.lexists(os.path.join(current, ".jj")):
             return current
         parent = os.path.dirname(current)
         if parent == current:
@@ -679,7 +676,7 @@ def _repo_root() -> str | None:
 
 
 def _main(argv: list) -> int:
-    parser = argparse.ArgumentParser(description="Resolve the Compound Packs declared in CE config.")
+    parser = argparse.ArgumentParser(description="Resolve the Compound Packs declared in project config.")
     parser.add_argument(
         "--declared-only", action="store_true",
         help="parse and shape-check the packs: entries only; no git or cache work",
@@ -689,9 +686,9 @@ def _main(argv: list) -> int:
 
     repo_root = _repo_root()
     if repo_root is None:
-        warnings.append("not inside a git repository; no CE config to read")
+        warnings.append("not inside a JJ workspace; no project config to read")
         return _emit(args.declared_only, entries, roots, warnings, errors)
-    cfg_dir = os.path.join(repo_root, ".compound-engineering")
+    cfg_dir = os.path.join(repo_root, ".rocketclaw")
     for name in CONFIG_FILES:
         entries.extend(parse_packs_block(os.path.join(cfg_dir, name), errors))
 

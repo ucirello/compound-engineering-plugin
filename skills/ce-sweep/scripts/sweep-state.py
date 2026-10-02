@@ -13,7 +13,7 @@ Design rules (shared with the repo's other state helpers):
   - Every OPERATIONAL failure path prints a parseable STATUS WORD on line 1 and
     exits 0 — it never raises a traceback to the caller. Only genuine CLI
     misuse (bad/missing subcommand args) exits non-zero via argparse.
-  - Writes are atomic: a temp file in the state dir + os.replace (atomic on
+  - Writes are atomic: a workspace-local .tmp file + os.replace (atomic on
     POSIX), so a concurrent reader never sees a torn file.
   - The script never calls the wall clock for the values it stores EXCEPT the
     lease timestamp (staleness needs "now"). Tests pin it with --now / stamp
@@ -40,6 +40,7 @@ are emitted as inline JSON flow on a single line — itself valid YAML.
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -255,7 +256,7 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # A machine-local state file can live under world-shared /tmp, and
+            # A machine-local state file can live under local .tmp, and
             # it is a correctness dependency (lease, cursors, closed status) as
             # well as an injection sink (item bodies re-read into agent
             # context). Reject a file not owned by us so a co-tenant cannot
@@ -293,7 +294,20 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    workspace_root = os.path.abspath(os.getcwd())
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"], cwd=workspace_root,
+            capture_output=True, text=True, check=True,
+        )
+        workspace_root = result.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        pass  # Outside JJ, keep temporary storage local to the invocation.
+    scratch = os.path.join(workspace_root, ".tmp")
+    if os.path.islink(scratch):
+        raise OSError("unsafe local .tmp symlink")
+    os.makedirs(scratch, mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=scratch, prefix=".tmp-sweep-", suffix=".yml")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)

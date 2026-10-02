@@ -30,3 +30,5 @@ Also stop with the missing prerequisite when Xcode, its command-line tools, a va
 Any failure before the app is visibly launched with log capture running is a setup blocker: preserve its evidence, report it, and stop later stages.
 
 At handoff, retain the project/workspace, scheme, simulator identity, app identity, and log-capture handle needed by `test-and-report.md`.
+
+Save run screenshots, captured logs, and temporary evidence (including fallback and error output) under the target workspace's `.tmp/`, not OS-global temporary storage. Resolve the absolute workspace root with `jj workspace root` from the target workspace and use `<workspace-root>/.tmp/`; outside a JJ repository, use local `.tmp/`. Create the directory before writing and ensure `.tmp/` is ignored in the project's `.gitignore`. Where XcodeBuildMCP supports output paths, point them there; otherwise copy its returned evidence there before handoff.

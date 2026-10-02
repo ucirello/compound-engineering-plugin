@@ -1,12 +1,43 @@
 # Branch currency (third stream)
 
+## Native JJ repair and message standards
+
+Run commands in the target workspace's absolute root, including the mark command below; export `GIT_DIR=$(jj git root)` before repository-scoped `gh`. Fetch the exact observed refs with `jj git fetch`, verifying their commit IDs. Preview a merge without changing the active workspace by reading `jj show`, `jj diff` and the exact ancestor/side file contents; if the conflict cannot be fully established without a workspace, use a disposable `jj workspace add` under local `.tmp/rocketclaw` and run its commands from that workspace's absolute root. For an authorized mechanical repair only, create a two-parent change with `jj new <observed-head> <observed-base>`, inspect `jj resolve --list`, and resolve only the evidenced conflicts. Fingerprint sorted conflict paths and ancestor/side blob identities (JJ conflict terms, equivalent to Git stage identities), excluding the base OID. Record the operation ID before mutation; reconcile interrupted work or undo only the owned operation when no unrelated intervening work would be discarded. Compose the description below, use `jj describe -m "<message composed from the standards below>"`, move only the verified head bookmark, and `jj git push --remote <head-remote> --bookmark <head-bookmark>` after remote revalidation. No target rebase or raw force push. Keep the existing claim/receipt/confirmation lifecycle and bounded recovery unchanged.
+
+**Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.** Before composing any repair or landing description, read the full guide and compare several recent subjects AND bodies with `(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -10 --format=%B)`. Establish actual prefixes/package names, casing, verb tense, subject/body separation, wrapping, and issue-reference placement. Repository-local instructions and observed syntax always win; apply compatible Go guidance to clarity and structure without selecting a fixed syntax here. With no history, follow project/user instructions and Go guidance without inventing precedent. Describe the mechanical repair and relevant PR/issue, not a prescribed subject. Omit creator/model/harness attribution.
+
+Verbatim source guidance from the Go guide, illustrative and subordinate to the runtime repository pattern, not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
 Branch currency is consumption-only: a base-into-head update happens only for the exact `branch_currency` item the snapshot emitted, and this step never creates an item of its own. No item means no base-into-head mutation, whatever else moved.
 
 6. **Branch currency & conflicts (the third stream — after comments and CI).** Act on the exact current `branch_currency` item; never infer a new item from merge-state prose. `UNKNOWN` mergeability or any non-null `base_ref_blocker` yields no item and is only re-polled. Managed stacks and `probe-error` are excluded from this step. A `normal-base` item may be target-local for an independent PR or an eligible manual dependency; do not redirect a manual dependency to its parent. An open child dependent does not disqualify a root PR, but this step never rewrites, rebases, or mutates dependent heads.
    - **Inspection and claim lifecycle.** When the snapshot invalidates a grouped decision, the currency source still carries its ordinary mutation-safety facts; apply them as usual. If `attention == "decide"`, return the exact currency source as a typed `needs-human` residual through the shared `--residual-file` mark (the same record review and CI use) and do not claim it; only an exact matching recorded answer can authorize another mutation. If `attention == "inspect"`, first preview the current conflict and compute its semantic conflict fingerprint. Compare it with `parked_semantic_fingerprints`, then mark the exact item with `--currency-inspected-fingerprint <fingerprint>`. Unchanged evidence stays parked; changed evidence retires the old park and reopens the item. Do not claim before that inspection clears. For `attention == "claim"`, and only while fixed budget remains, atomically mark the exact item **before any external mutation or local merge starts**:
 
      ```bash
-     SKILL_DIR="<absolute path of this skill's directory>"; STATE_DIR="<the $STATE_DIR resolved above: $SCRATCH_ROOT/ce-babysit-pr/<host>-<owner>-<repo>-<N>>"; RUN_INVOCATION_ID="<invocation_id>"; RUN_STARTED_AT="<invocation_started_at>"; RUN_BUDGET_SECONDS="<invocation_budget_seconds>";
+     workspace_root="<absolute target workspace root>"; cd "$workspace_root" || exit 1; export GIT_DIR=$(jj git root); SKILL_DIR="<absolute path of this skill's directory>"; STATE_DIR="<the local .tmp STATE_DIR resolved above>"; RUN_INVOCATION_ID="<invocation_id>"; RUN_STARTED_AT="<invocation_started_at>"; RUN_BUDGET_SECONDS="<invocation_budget_seconds>";
      PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
      "$PY" "$SKILL_DIR/scripts/pr-snapshot" mark --state-dir "$STATE_DIR" --invocation-id "$RUN_INVOCATION_ID" --session-started-at "$RUN_STARTED_AT" --invocation-budget-seconds "$RUN_BUDGET_SECONDS" --currency-key <currency_key> --currency-disposition claimed
      ```

@@ -10,7 +10,7 @@ When the selected engine is cross-model execution, this loop still decides unit 
 while (tasks remain):
   - Mark task as in-progress
   - Read any referenced files from the plan or discovered during Phase 0
-  - **If any part of the unit's completion depends on out-of-repo state** (a console setting, DNS record, CMS object, live-system rows), that part has no git-derived completion signal: decide it from the observed state of the deliverable, never from a clean tree or a tracker write. Mark it complete only when that state is already satisfied; execute only when it is observably unsatisfied and re-applying is safe or the user has authorized it; otherwise ask or block.
+  - **If any part of the unit's completion depends on out-of-repo state** (a console setting, DNS record, CMS object, live-system rows), that part has no JJ-derived completion signal: decide it from the observed state of the deliverable, never from a clean tree or a tracker write. Mark it complete only when that state is already satisfied; execute only when it is observably unsatisfied and re-applying is safe or the user has authorized it; otherwise ask or block.
   - **If the unit's entire completion signal is repository-derived and that work is already present and matches the plan's intent** (files exist with the expected capability, or the unit's `Verification` criteria are already satisfied by the current code), the work has likely shipped on a prior branch or session. Verify it matches, mark the task complete, and move on. Do not silently reimplement.
   - Look for similar patterns in codebase
   - Find existing test files for implementation files being changed (Test Discovery — see below)
@@ -82,27 +82,55 @@ After completing each task, evaluate whether to create an incremental commit:
 
 If the plan has Implementation Units, use them as a starting guide for commit boundaries — but adapt based on what you find during implementation. A unit might need multiple commits if it's larger than expected, or small related units might land together. Use each unit's Goal to inform the commit message.
 
-**Message convention:** match project commit conventions already in context; else match the recent log pattern; else conventional commits (`type(scope): description`). User override wins.
+**Message convention:** Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Before composing, read the full Go guide and compare several recent subjects AND bodies from `(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -10 --format=%B)` against project/user instructions. Establish prefixes/package names, casing, verb tense, subject/body separation, wrapping and issue-reference placement. Repository-local syntax always wins; apply compatible Go guidance to clarity and structure, not as a replacement template. Without history use explicit project/user instructions and Go guidance without inventing precedent. Preserve the unit's Goal, files and required issue/finding references as semantic constraints, not fixed syntax.
+
+Verbatim Go source guidance (illustrative, not a mandatory repository template):
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
 
 Preserve the full resolved message as data through the selected engine's canonical commit owner. If that owner cannot accept the full message, stop and report the blocker rather than truncate it or bypass the owner's protocol. Cross-model commits follow the controller integration contract in `references/cross-model-execution.md`.
 
-For native host-owned Git commits, write the full resolved message to a file outside the repo with your file-write tool. Pass that file to Git so the shell never interprets message text.
+For native host-owned JJ commits, write the full resolved message with your file-write tool under ignored workspace-local `.tmp/`. Read it as data and pass it as one argv value so the shell never interprets message text; `jj commit` has no message-file option.
 
-**Native Git commit workflow:**
+**Native JJ commit workflow:**
 ```bash
 # 1. Verify tests pass (use project's test command)
 # Examples: bin/rails test, npm test, pytest, go test, etc.
 
-# 2. Stage only files related to this logical unit (not `git add .`)
-git add <files related to this logical unit>
+# 2. Inspect the complete delta and preserve all pre-work exclusions
+(cd "$workspace_root" && jj diff)
 
-# 3. Commit with the resolved message, limited to those same paths
-git commit -F <message-file> -- <files related to this logical unit>
+# 3. Commit only this unit's owned paths using the runtime-composed message
+# Via shell, run a bounded Python call (workspace_root is absolute):
+# subprocess.run(["jj", "commit", "--message", Path(message_file).read_text(),
+#                 *unit_owned_paths], cwd=workspace_root, check=True)
 ```
 
 **Handling merge conflicts:** If conflicts arise during rebasing or merging, resolve them immediately. Incremental commits make conflict resolution easier since each commit is small and focused.
 
-**Note:** Incremental commits add no plugin-generated attribution. The final Phase 4 handoff passes `branding:on` so `ce-commit-push-pr` can add generic Compound Engineering branding to the PR.
 
 **Parallel subagent mode:** commit ownership follows the isolation mode chosen at dispatch — see `references/execution-strategy.md`.
 

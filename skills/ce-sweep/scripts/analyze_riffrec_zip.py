@@ -4,7 +4,7 @@ Analyze a product feedback source.
 
 Supported sources: Riffrec zip or unpacked capture directory, standalone
 video, standalone audio, and meeting notes text/markdown. The script extracts
-transcript, high-signal video frames when available, and CE-friendly markdown
+transcript, high-signal video frames when available, and planning-friendly markdown
 artifacts.
 """
 
@@ -154,7 +154,7 @@ def validate_raw_destination(raw_dir: Path) -> None:
 
 def promote_raw_snapshot(staging_dir: Path, raw_dir: Path) -> None:
     validate_raw_destination(raw_dir)
-    previous_dir = raw_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
+    previous_dir = staging_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
     if previous_dir.exists() or previous_dir.is_symlink():
         raise SourceInputError(f"Temporary raw snapshot path already exists: {previous_dir}")
 
@@ -186,7 +186,7 @@ def validate_frames_destination(frames_dir: Path) -> None:
 
 def promote_frames_snapshot(staging_dir: Path, frames_dir: Path) -> None:
     validate_frames_destination(frames_dir)
-    previous_dir = frames_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
+    previous_dir = staging_dir.parent / staging_dir.name.replace(".staging-", ".previous-", 1)
     if previous_dir.exists() or previous_dir.is_symlink():
         raise SourceInputError(f"Temporary frames snapshot path already exists: {previous_dir}")
 
@@ -362,11 +362,29 @@ def populate_source_snapshot(source_path: Path, snapshot_dir: Path, source_kind:
     }
 
 
+def local_temp_root() -> Path:
+    """Keep staging and error-path scratch in workspace-local storage."""
+    workspace_root = Path.cwd().resolve()
+    try:
+        result = subprocess.run(
+            ["jj", "workspace", "root"], cwd=workspace_root,
+            capture_output=True, text=True, check=True,
+        )
+        workspace_root = Path(result.stdout.strip())
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    scratch = workspace_root / ".tmp"
+    if scratch.is_symlink():
+        raise OSError("unsafe local .tmp symlink")
+    scratch.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return scratch
+
+
 def prepare_source(source_path: Path, raw_dir: Path, source_kind: str | None = None) -> dict[str, Any]:
     source_kind = source_kind or classify_source(source_path)
     raw_dir.parent.mkdir(parents=True, exist_ok=True)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=raw_dir.parent)
+        tempfile.mkdtemp(prefix=f".{raw_dir.name}.staging-", dir=local_temp_root())
     )
     try:
         source = populate_source_snapshot(source_path, staging_dir, source_kind)
@@ -656,7 +674,7 @@ def extract_frames(recording_path: Path | None, frames_dir: Path, moments: list[
     frames_dir.parent.mkdir(parents=True, exist_ok=True)
     validate_frames_destination(frames_dir)
     staging_dir = Path(
-        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=frames_dir.parent)
+        tempfile.mkdtemp(prefix=f".{frames_dir.name}.staging-", dir=local_temp_root())
     )
     try:
         if not recording_path or not recording_path.exists():
@@ -833,7 +851,7 @@ def write_analysis_md(
     lines.append("- Open each selected screenshot and name the exact visible control or state.")
     lines.append("- Tie transcript language to the closest click or visible UI state.")
     lines.append("- Promote only confirmed product problems into requirements.")
-    lines.append("- Use repo-relative screenshot paths when moving evidence into a CE requirements document.")
+    lines.append("- Use repo-relative screenshot paths when moving evidence into a requirements document.")
     output_path.write_text("\n".join(lines) + "\n")
 
 
@@ -1297,7 +1315,7 @@ def main() -> int:
     print("Analysis complete. Ready to brainstorm the findings.")
     print(f"Source materials: {display_path(source_materials_md, repo_root)}")
     print(f"Problem statements: {display_path(problem_analysis_md, repo_root)}")
-    print(f"Brainstorm handoff: $compound-engineering:ce-brainstorm {display_path(kickoff_md, repo_root)}")
+    print(f"Brainstorm handoff: /ce-brainstorm {display_path(kickoff_md, repo_root)}")
     print("Brainstorm should first confirm whether the captured requirements are complete and correctly grouped, then write the durable unified plan under the plans artifact directory.")
     return 0
 

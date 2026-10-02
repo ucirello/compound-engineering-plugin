@@ -6,6 +6,15 @@ Phase 1 of `ce-plan`. Read this before dispatching any research subagent.
 
 All specialist research and deepening prompts used in this phase are skill-local prompt assets under `references/agents/`. When dispatching one, read the matching file and seed a generic subagent with that prompt content plus the task-specific context below. Do not dispatch standalone agents by type/name.
 
+**Active OpenCode dispatch:** Resolve any configured researcher model and tier
+with `opencode.models`, then use native subagents with that exact selection.
+Keep independent researchers parallel and await every launched result; preserve
+the sequential mixed-intent dependency below. Use shell only for local `.tmp/`
+bookkeeping, not another harness's dispatcher. If native subagents are
+unavailable, run inline or serially and disclose the limitation. The named
+Claude Code and Codex tool mappings below are compatibility examples, not
+requirements or fallback dispatchers for an OpenCode run.
+
 This skill, not the prompt assets, decides which model tier each subagent uses. Local prompt files have no frontmatter. Use the platform's mid-tier model for external/organizational research prompts such as `slack-researcher` and `web-researcher` when the current harness exposes a known override; otherwise omit the override and inherit. Use inherited model for high-judgment architecture, migration, and planning-deepening prompts unless the harness has an established cheaper capable tier.
 
 #### 1.1 Local Research
@@ -14,7 +23,7 @@ At every native subagent boundary in this phase, classify a rejected dispatch by
 
 A **Lightweight** Durable plan does not dispatch the research agents below. Ground it from bounded inline reads of the files the request names and their tests, note any `<root>/solutions/` entry whose title matches the topic and, after running **Pack discovery** below, any resolved pack file whose `applies_when` matches the work, and continue to 1.1b; 1.4b's reclassification still applies when those reads surface an external contract surface.
 
-**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in CE config by running this skill's resolver as one command:
+**Pack discovery.** For every Durable plan — before composing the `learnings-researcher` dispatch, or inline on the Lightweight path — resolve the packs declared in RocketClaw config by running this skill's resolver as one command:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
@@ -36,13 +45,13 @@ Pass the project's active instructions and the planning context summary to `repo
 When this phase dispatches a researcher, create one scratch directory first and reuse that absolute path for every researcher this run. Pass each researcher the absolute path of its own file. It writes its document there and returns a gist plus that path. Read a dossier when its gist can change a decision. Do not load every dossier into context. Later dispatches in this phase reuse the directory. If a later dispatch is the first one, create the directory then.
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="$(jj workspace root 2>/dev/null || pwd -P)";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-plan-research/$(openssl rand -hex 4)";
+SCRATCH_DIR="$SCRATCH_ROOT/plan-research/$(openssl rand -hex 4)";
 (umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
@@ -141,7 +150,7 @@ Announce the decision and the intent briefly before continuing. Examples:
 
 #### 1.3 External Research (Conditional)
 
-If Step 1.2 indicates external research is useful, dispatch by the **intent** classified in Stage 2, using the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex) where available; otherwise run the work inline or serially. Read the selected prompt asset from `references/agents/` and seed a generic subagent with it. For `web-researcher.md`, pass a focus hint plus the planning context summary and do **not** pass codebase content — it operates externally.
+If Step 1.2 indicates external research is useful, dispatch by the **intent** classified in Stage 2, using OpenCode-native subagents and the configured model/tier resolved through `opencode.models` where available; otherwise run the work inline or serially. Compatibility tool mappings remain (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex), but are not active OpenCode routes. Read the selected prompt asset from `references/agents/` and seed a generic subagent with it. For `web-researcher.md`, pass a focus hint plus the planning context summary and do **not** pass codebase content — it operates externally.
 
 - **Implementation-guidance** — run in parallel:
   - `references/agents/best-practices-researcher.md` with the planning context summary and `$SCRATCH_DIR/best-practices.md`.

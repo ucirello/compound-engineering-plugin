@@ -1,6 +1,6 @@
 # Shipping (LFG steps 9–11)
 
-The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `git remote` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out.
+The shipping steps are the last stretch of the run: commit, push, PR, CI, and close-out. LFG's SKILL.md defines the shipping precondition (the `jj git remote list` check) and the two invocation strings. This file defines everything else: which handoff runs, what LFG passes into it, what it does with the result, and how the run closes out. Before any repository-scoped `gh` call, export `GIT_DIR=$(jj git root)` from the target workspace's absolute root.
 
 ## Step 9 — a project-defined process may replace the default handoff
 
@@ -14,7 +14,7 @@ Pass the recorded plan path from step 1 into the `ce-commit-push-pr` invocation,
 
 This commits any remaining changes, pushes the branch, and opens a pull request, non-interactively because of the `mode:pipeline` token. If it prints a `New concepts:` trailer after the PR URL, record the concept name(s) for step 11. If a PR already exists for the branch (check with `gh pr view --json number,url,state 2>/dev/null`), skip PR creation but still commit and push any uncommitted changes. Pipeline mode leaves an existing PR body alone by default, so the description context above would be lost there; after the push, invoke `ce-commit-push-pr` again in its description-update mode on that PR with the same context, so the record reaches the reviewer.
 
-**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** The default's commit step pushes unconditionally (`git push -u origin HEAD`), so a literal invocation would still hit the impossible push. Instead commit the files this run changed, by name (the work source's files, the review fixes, and any captured learning), and skip the push and PR creation entirely. Never `git add -A`: a file that was already dirty before the run, or one the defect route's `pre_fix_scope` lists, stays uncommitted and is named in the report.
+**Per the shipping precondition, when no remote is configured, do NOT invoke `ce-commit-push-pr` or a project-defined shipping process.** A literal shipping invocation would still hit the impossible push. Instead read `commit-guidance.md`, then commit the files this run changed, by name (the work source's files, the review fixes, and any captured learning), with `jj commit -m "<message composed from the standards above>" <run-owned-paths>` from the target workspace's absolute root, and skip the push and PR creation entirely. Never commit all paths indiscriminately: a file that was already dirty before the run, or one the defect route's `pre_fix_scope` lists, stays uncommitted and is named in the report.
 
 ## Step 10 — stack handoff from step 9
 

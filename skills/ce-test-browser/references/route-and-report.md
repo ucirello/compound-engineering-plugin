@@ -50,7 +50,7 @@ For each affected route, use the selected driver to navigate and capture fresh r
 
 **Test critical interactions:** derive locators or element references from the selected driver's latest inspected state, perform the click/fill/press action, then inspect the resulting state. Do not guess selectors or reuse stale references.
 
-**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts when a later workflow or report needs file paths; otherwise in-app evidence is sufficient.
+**Take screenshots:** capture viewport and full-page evidence when the selected driver supports it. Materialize screenshots as local artifacts under the absolute workspace root's `.tmp/browser-tests/` when a later workflow or report needs file paths; otherwise in-app evidence is sufficient. Create that directory first and ensure `.tmp/` is ignored in `.gitignore`. Outside JJ, use the local project root's `.tmp/`. This also applies to fallback and error captures.
 
 ## Human verification (when required)
 

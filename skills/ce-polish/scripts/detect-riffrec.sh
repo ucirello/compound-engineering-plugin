@@ -8,7 +8,7 @@
 #
 # Arguments:
 #   path (optional) — project root to inspect. Defaults to the repository
-#                     root via `git rev-parse --show-toplevel`, then to the
+#                     root via `jj workspace root`, then to the
 #                     current directory.
 #
 # Output contract (one JSON object on stdout, exit 0):
@@ -48,7 +48,7 @@ if [ -n "$TARGET_PATH" ]; then
     exit 1
   fi
 else
-  TARGET_PATH=$(git rev-parse --show-toplevel 2>/dev/null)
+  TARGET_PATH=$(jj workspace root 2>/dev/null)
   if [ -z "$TARGET_PATH" ]; then
     TARGET_PATH=$(pwd)
   fi
@@ -206,7 +206,7 @@ fi
 # Mount detection: a JSX opening tag for RiffrecProvider in a source file.
 # Import lines alone do not count; the tag is what mounts the provider.
 if find "$TARGET_PATH" \
-    \( -name node_modules -o -name .git -o -name dist -o -name build -o -name coverage \
+    \( -name node_modules -o -name .git -o -name .jj -o -name .tmp -o -name dist -o -name build -o -name coverage \
        -o -name .next -o -name .nuxt -o -name .svelte-kit -o -name .turbo -o -name tmp \
        -o -name vendor -o -name public \) -prune -o \
     -type f \( -name '*.tsx' -o -name '*.jsx' -o -name '*.ts' -o -name '*.js' -o -name '*.mjs' \) \

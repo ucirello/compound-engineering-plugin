@@ -18,6 +18,28 @@ VERDICTS = {"fixed", "fixed-differently", "replied", "not-addressing", "declined
 KINDS = {"thread", "comment", "review"}
 
 
+def workspace_context() -> tuple[Path, dict]:
+    env = os.environ.copy()
+    try:
+        result = subprocess.run(["jj", "workspace", "root"], capture_output=True,
+                                text=True, check=False, cwd=Path.cwd())
+    except FileNotFoundError:
+        return Path.cwd().resolve(), env
+    root = Path(result.stdout.strip()).resolve() if result.returncode == 0 else Path.cwd().resolve()
+    if result.returncode == 0:
+        backend = subprocess.run(["jj", "git", "root"], cwd=root,
+                                 capture_output=True, text=True, check=True)
+        env["GIT_DIR"] = backend.stdout.strip()
+    return root, env
+
+
+def local_path(value: str, root: Path) -> Path:
+    path = Path(value).absolute()
+    require(path.resolve().is_relative_to((root / ".tmp").resolve()),
+            "handoff and input files must be beneath the workspace-local .tmp directory")
+    return path
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
@@ -205,9 +227,10 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    root, env = workspace_context()
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, check=False, cwd=root, env=env,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
     return object_value(json.loads(result.stdout), "GitHub response")
@@ -256,19 +279,22 @@ def main() -> None:
         if command in {"create", "checkpoint"}:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
+    root, _ = workspace_context()
+    scratch = root / ".tmp"
+    scratch.mkdir(exist_ok=True)
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        path = local_path(args.path, root) if args.path else Path(tempfile.mkdtemp(dir=scratch, prefix="pending-feedback-")) / "pending.json"
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
         with tempfile.TemporaryFile(dir=path.parent):
             pass
         print(json.dumps({"handoff": str(path)}))
         return
-    path = Path(args.path).absolute()
+    path = local_path(args.path, root)
     if args.command in {"validate", "inspect-publication"}:
         record, _ = read_record(path)
     else:
-        record, raw = read_record(Path(args.input))
+        record, raw = read_record(local_path(args.input, root))
         if args.command == "checkpoint":
             previous, _ = read_record(path)
             require(prepared_content(previous) == prepared_content(record), "checkpoint cannot replace the prepared batch")

@@ -9,6 +9,12 @@ You are a precedent-&-activity scout for a verdict skill. Your job is to find wh
 
 ## Methodology
 
+For repository-scoped `gh` calls, run from the target workspace's absolute root
+and obtain its Git backend there: `(cd "$workspace_root" && export GIT_DIR=$(jj git root); gh ...)`.
+Use JJ for local repository inspection, not Git workspace discovery; see
+https://docs.jj-vcs.dev/latest/git-experts/ and
+https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace .
+
 1. **Always read the local decision record first** — `<root>/solutions/`, ADRs, and design docs for a prior stance on this question. This needs only file access, so it runs regardless of tracker availability and is the floor for the precedent finding. **Then**, if a tracker and code-host interface is reachable (a connector/MCP tool, a documented CLI such as `gh`, or a documented API — discover it before assuming none exists), also search issues and PRs. If no tracker is reachable, note that the tracker/PR portion was skipped and continue with the local-doc findings. Do not stop or fail loudly; a missing tracker is a missing tool, not an error.
 2. Search the tracker and PRs **by topic and incumbent name**. Read issue and PR **descriptions and comments** for rationale. **Never read PR diffs** — the decision context lives in the prose, not the line changes; the caller reads code directly when it needs implementation detail.
 3. Targeted, not exhaustive. Budget **~15 reads**. Do not cluster or theme the whole tracker; that is a different skill's job. Pull only what bears on this question.

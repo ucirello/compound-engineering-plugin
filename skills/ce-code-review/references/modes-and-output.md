@@ -22,7 +22,7 @@ Parse the arguments you were invoked with for optional tokens. Strip each recogn
 
 **Grouping is presentation, not a mode.** The `grouping:` tokens change how the finding set is organized for triage — never reviewer selection, merge logic, scope rules, or the Stage 5c apply decision.
 
-**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other CE skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
+**Mode alias:** `mode:headless` normalizes to `mode:agent`. `mode:agent` + `mode:headless` is not a conflict. `mode:non-interactive` is **not** an alias for `mode:agent` — that token means “suppress prompts” in other skills; if it appears here, treat it as an unrecognized, conflicting `mode:` token and stop rather than guessing what was meant.
 
 **Conflicting arguments:** Stop without dispatching reviewers when:
 - Multiple incompatible scope selectors appear together (e.g. `base:` **and** a PR number/branch target — `base:` means "review the current checkout against this base")
@@ -41,7 +41,7 @@ Emit a one-line failure reason. In `mode:agent`, return JSON: `{"status":"failed
 |------------|-------------|
 | **Default** | Report-only markdown (pipe-delimited finding tables) + Actionable Findings summary |
 | **Explicit local apply** | The same markdown report plus verified local fixes and an Applied section |
-| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `/tmp/.../ce-code-review/<run-id>/` artifacts |
+| **`mode:agent`** | One JSON object (see ## JSON output format below) + the same `<workspace-root>/.tmp/rocketclaw/ce-code-review/<run-id>/` artifacts |
 
 Default and `mode:agent` are **report-only**. `mode:agent` changes only the serialization from markdown to JSON for programmatic callers; it does not change reviewer selection, merge logic, or scope rules. `apply:local` is separate mutation authority, not an output mode. The default markdown is the human view; keep it ASCII-safe (pipe tables, `->` not middot `·`, no box-drawing) so it degrades gracefully across terminals.
 
@@ -63,7 +63,7 @@ Sequence:
 
 Decide after Stage 1 (its 1b facts and 1c mapping), before reading any later reference. This skill owns the decision; a caller may pass `depth:full` but never a depth of its own. Three paths exist: **lite** (this context alone), **focused** (this context plus one independent adversarial read), and **full** (the multi-agent spine from Stage 2).
 
-Floors that run the full spine from Stage 2, whatever the diff looks like: `depth:full`; the helper's `hard_block_full` (the helper reports facts. It never awards lite. `hard_block_full` is a floor, and it covers a named hard-block class, any file the helper could not count, and a `size_band` of `large`, which means the executable non-test changed lines reached the full floor); a Stage 1c criteria search that failed or whose scope is uncertain; and apply authority (`apply:local` or an explicit apply request), which needs Stage 5c's verified-apply mechanics. Line counts below the floor, prose and test volume, `unclassified_lines`, and `signals` are prompts to consider, not floors.
+Floors that run the full spine from Stage 2, whatever the diff looks like: `depth:full`; Stage 1b's `hard_block_full` (native scope mechanics report facts, never award lite; the floor covers a named hard-block class, any uncounted file and a `size_band` of `large`, meaning executable non-test changed lines reached the full floor); a Stage 1c criteria search that failed or whose scope is uncertain; and apply authority (`apply:local` or an explicit apply request), which needs Stage 5c's verified-apply mechanics. Line counts below the floor, prose and test volume, `unclassified_lines`, and `signals` are prompts to consider, not floors.
 
 With no floor set, read the Stage 1 diff and decide whether a wrong version of this change would fail loudly where it is made, or silently somewhere else. It fails silently when it would break a silent-pass guard, an auth / money / data boundary, or a public contract, or would let a system degrade under load, failure, or contention with no error at the change site (retry, timeout, ordering, locking, background work). Executable code the helper could not name, visible in `unclassified_lines` under its extension, is executable code for this question; a markdown or data file listed there is what it is. Loud and local → lite. Silent, or unsure → focused, unless the silent failure sits on an auth, money, or public-contract boundary, where the specialist lenses only the full spine carries are the point: then continue from Stage 2.
 
@@ -80,8 +80,8 @@ Every run, lite, focused, or full, leaves its receipt (`review.json` in `mode:ag
 ```json
 {
   "run_id": "<run-id>",
-  "branch": "<git branch --show-current at dispatch time>",
-  "head_sha": "<git rev-parse HEAD at dispatch time>",
+  "branch": "<bookmark associated with @ or empty tip's @- at dispatch time>",
+  "head_sha": "<jj log --no-graph -r @ -T commit_id at dispatch time>",
   "verdict": "<Ready to merge | Ready with fixes | Not ready>",
   "completed_at": "<ISO 8601 UTC timestamp>"
 }
@@ -106,7 +106,7 @@ Minimum shape:
   "scope": {
     "base": "<merge-base sha, pr:NNN marker, or base: ref>",
     "branch": "<current branch name>",
-    "head_sha": "<git rev-parse HEAD>",
+    "head_sha": "<jj log --no-graph -r @ -T commit_id>",
     "pr_url": "<url or null>",
     "files_changed": 0
   },

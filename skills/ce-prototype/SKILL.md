@@ -33,9 +33,9 @@ A question is settled by seeing when the judgment lands on the rendered result: 
 
 Default substrate: the web, whatever the product is written in — a native app's navigation feel gets a web approximation, not SwiftUI. `references/build.md` defines yields and artifacts.
 
-Build under `.context/compound-engineering/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to `/tmp/compound-engineering-<uid>/ce-prototype/<date>-<slug>/`, where survival is best-effort. `references/build.md` names every case that forces the fallback root.
+Build under `.context/ce-prototype/<date>-<slug>/`, so the prototype survives for the implementation that follows. Fall back to `<workspace root>/.tmp/rocketclaw/ce-prototype/<date>-<slug>/` (local `.tmp/` outside JJ), where survival is best-effort. `references/build.md` names every case that forces the fallback root.
 
-The `.context` path has to be gitignored first. Probe it from the repo root with `git -C <repo root> check-ignore -q .context/compound-engineering/`; the trailing slash is required. When it is not covered, the offer to add that line comes before the root is resolved, or accepting it cannot help this run.
+The `.context` path has to be ignored first. Resolve the absolute workspace root with `jj workspace root`; from that root use `GIT_DIR=$(jj git root) GIT_WORK_TREE="$PWD" git check-ignore -q .context/` (the trailing slash is required). This read-only backend fallback is needed because JJ has no ignore-query command; see https://docs.jj-vcs.dev/latest/git-command-table/. When it is not covered, the offer to add that line comes before the root is resolved, or accepting it cannot help this run. Ensure `.tmp/` is also in the workspace-root `.gitignore` before temporary output is created.
 
 `references/preview.md` defines that offer and the resolution that follows it. Do not create the run directory yourself; a second claim splits the screens from the capsule.
 

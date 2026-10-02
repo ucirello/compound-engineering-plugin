@@ -10,7 +10,7 @@ The goal of these post-fix steps is a **PR-ready** fix, not merely a locally gre
 
 **Skip these steps only with a reason:** purely mechanical fixes (typo/import-only, formatting/lint-only, dependency-only, generated artifacts, docs-only, or roughly under 10 changed lines that touch nothing sensitive). Keep the Phase 3 tests and self-review regardless, and carry the skip reason into the summary.
 
-**Scope rule for both passes below: never let either pass reach work the user did not offer up.** Phase 3 recorded the fix-owned files (the files this fix changed) and which files were already dirty; that is the scope. Never widen it to the branch because the branch looks safe. A branch diff equals the fix scope only when the tree was clean anyway, so widening buys nothing there, and it silently swallows the user's WIP when the tree was not clean. Branch creation is not evidence of a clean tree: `git checkout -b` carries uncommitted work forward.
+**Scope rule for both passes below: never let either pass reach work the user did not offer up.** Phase 3 recorded the fix-owned files (the files this fix changed) and which files were already dirty; that is the scope. Never widen it to the branch because the branch looks safe. A branch diff equals the fix scope only when the tree was clean anyway, so widening buys nothing there, and it silently swallows the user's WIP when the tree was not clean. Bookmark creation is not evidence of a clean working copy: `jj bookmark create <name> -r @` labels existing work without removing it.
 
 **Simplify before review when useful.** Invoke `ce-simplify-code` when the fix diff is non-mechanical and large enough to benefit (default: >=30 changed lines), touches multiple implementation files, introduces a new helper or abstraction, or affects shared or risky areas (auth/authz, public contracts, persistence, concurrency, background jobs, external services). Always pass the fix-owned files that were clean before Phase 3 as an explicit scope, never the branch diff. `ce-simplify-code` treats a named scope as authoritative and will not widen it, and it *modifies* what it is given, so a named scope is the guardrail. If a fix-owned file already had pre-existing user edits, skip it and record `Simplify: skipped for overlapping pre-existing edits`. File-level simplification could rewrite unrelated hunks the user did not authorize.
 
@@ -45,11 +45,11 @@ SKILL.md's Phase 4 **Routing** block defines the bare per-case actions: which sk
 
 **The preview is not a question.** State what gets committed, on what branch, and that a PR will be opened, then proceed without waiting. It exists so the user can interrupt.
 
-**`branding:on` is required.** The explicit branding signal records that `ce-debug` produced the fix. A handoff without it loses that provenance.
-
 **Link what already exists; never open a new record.** Reference the issue of record from Phase 0, plus any existing ticket Phase 1.4 found for this same bug. Linking something that already exists is always fine, and on an auto-closing tracker it is how the fix closes it. What is forbidden is *creating* a record for this bug. Do not open a ticket in a different system because the repo happens to use it, and do not ask the user whether you should. A Sentry issue, an alert, or a GitHub issue is as much the record as a Linear or Jira ticket, and a duplicate is noise the user then has to close. When Phase 0 found no issue of record (a pasted stack trace, a failing test), this run has none. Ship the fix without one rather than opening a ticket to fill the slot. A new ticket is warranted only for a *different* problem you found along the way, per the residual rule above.
 
 **Issue auto-close syntax.** When the issue you are linking lives in a tracker with auto-close support, include that tracker's syntax in the location it requires, so the fix flows back to the issue and closes it on merge. Most trackers parse PR descriptions (`Fixes #N` for GitHub, `Closes ABC-123` for Linear), but some parse only commit messages (Jira Smart Commits). When the record has no such syntax (an error monitor like Sentry, or a pasted alert), just link it in the PR description and say what the fix addresses.
+
+When recommending or composing a commit message for tracker syntax or learning artifacts, read `commit-guidance.md` first and apply its full-guide and runtime history comparison requirement; tracker-required semantic content does not impose a fixed subject template.
 
 ## Learning-capture criteria (after a PR is open)
 

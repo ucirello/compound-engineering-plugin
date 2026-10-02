@@ -12,7 +12,7 @@ The A/A also tests the instrument. Identical builds that differ significantly ar
 
 Required capability: a harness that can point a run at a specific source checkout of the corpus (Phase 0's build selector) and writes a per-run artifact you can parse. Both arms must go through the *same* runner, task, and model configuration.
 
-1. Materialize two checkouts of the corpus at the same commit. Record the commit for each arm.
+1. Materialize two JJ workspaces of the corpus at the same commit with `(cd "$workspace_root" && jj workspace add --revision <commit> <absolute-arm-path>)` for each arm. Record the commit for each arm. Run later JJ commands from each arm's absolute root. See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace .
 2. Hash both trees and assert equality before the first run (`find <dir> -type f | sort` then a checksum over the file list and contents). An accidental difference between arms gets read as noise and poisons the floor silently.
 3. Label the arms concretely by path, not by intent (`build-a`, `build-b`). Nothing downstream should be able to guess an arm from a filename that also encodes a hypothesis.
 4. **Prove the selector is honored, in one run, before planning any.** Point a single run at `build-a`, then open the finished artifact and confirm it names `build-a` in the durable field below. Two failures both look like a normal run: a harness that silently falls back to its installed copy of the corpus, and one that records the arm nowhere. Either makes all 12 runs unlabeled and unusable, and both are invisible until you try to score. If you want a positive control, put a harmless unique string in a **third**, throwaway checkout and confirm it reaches that run's trace. Never put it in either arm, which step 2 requires to stay byte-identical, and re-assert the hashes before the counted runs begin.
@@ -95,7 +95,7 @@ For one pre-specified attempt under the fixed `p = 0.58` null:
 | 5 | 0.066 | 1 in 15 |
 | 8 | 0.0128 | 1 in 78 |
 
-**Keep the search history when interpreting the result.** Across 20 independent attempts under that same null, the probability of at least one eight-run success is `1 - (1 - 0.58^8)^20`, about 0.2272, not 0.0128. This is an illustrative calculation, not a measured CE error rate; adaptive candidates need not be independent. A search-wide significance claim must account for candidate selection and the stopping rule. Changing a candidate resets its streak, not the search history.
+**Keep the search history when interpreting the result.** Across 20 independent attempts under that same null, the probability of at least one eight-run success is `1 - (1 - 0.58^8)^20`, about 0.2272, not 0.0128. This is an illustrative calculation, not a measured error rate; adaptive candidates need not be independent. A search-wide significance claim must account for candidate selection and the stopping rule. Changing a candidate resets its streak, not the search history.
 
 **Stop an attempt at the first behavioral failure.** A failed streak is a finding to diagnose before changing the candidate, not permission to repeat it until it passes. Keep every attempt and classify infrastructure retries under the registered broken-run rule. Never pool successes across builds. A cleared operational bar without a supported statistical analysis remains descriptive confirmation. A streak probability is not an effect-size estimate or a percentage improvement.
 

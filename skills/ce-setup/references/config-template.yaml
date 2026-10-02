@@ -1,17 +1,17 @@
-# Compound Engineering -- repo config
-# Copy to .compound-engineering/config.yaml in your project root (team defaults).
-# Optional override: .compound-engineering/config.local.yaml, same keys.
+# RocketClaw -- repo config
+# Copy to .rocketclaw/config.yaml in your project root (team defaults).
+# Optional override: .rocketclaw/config.local.yaml, same keys.
 # Ordinary keys: local wins when set, then this file, then the skill default.
 # docs_root is repo layout -- set it only here; local docs_root is ignored.
 # All settings are optional. Invalid ordinary values continue to the next layer.
 # docs_root fails closed on an unusable value.
 
 # --- Artifact root ---
-# Relocate every CE-written artifact folder (solutions, plans, ideation,
+# Relocate every artifact folder (solutions, plans, ideation,
 # explainers, pulse-reports, dogfood-reports,
 # feedback-sweep, personas) under one repo-relative root. Unset -> `docs`,
-# byte-identical to today. A configured root becomes the sole location CE reads
-# and writes; CE never falls back to reading `docs/`.
+# byte-identical to today. A configured root becomes the sole artifact location
+# for reads and writes; never fall back to reading `docs/`.
 #
 # Set this only in this tracked file so every clone and worktree share one
 # artifact tree. A docs_root in config.local.yaml is ignored.
@@ -19,10 +19,10 @@
 # The value must be a repo-relative directory whose real (symlink-resolved) path
 # stays inside the repo, is not the repo root itself, and is not under `.git/`.
 # Unlike every other setting here, an unusable value does NOT fall through to the
-# default -- CE stops with an error so a typo can't silently write artifacts into
+# default -- stop with an error so a typo can't silently write artifacts into
 # the location you configured away from. `/ce-setup` reports the resolved root.
 
-# docs_root: .compound-engineering/artifacts   # repo-relative dir (default: docs)
+# docs_root: .rocketclaw/artifacts   # repo-relative dir (default: docs)
 
 # --- Product pulse ---
 # Settings written by /ce-product-pulse first-run interview. Re-run the skill with
@@ -105,6 +105,16 @@
 # plan_skip_scoping_confirm: true   # true | false (default: false)
 
 # --- Cross-model review policy and preference ---
+# All configured routes execute natively in OpenCode: resolve model aliases and
+# provider selectors with opencode.models, then dispatch independent subagents
+# at the exact configured model/tier. Legacy harness keys and examples below
+# are compatibility/provider mappings, never permission to invoke another CLI.
+# Native execution overrides historical harness-default/CLI wording below.
+# Preserve ordered preferences, mode gates, configuration precedence, bounded
+# recovery, explicit failure/fallback disclosure and requested/resolved identity,
+# tier, status and coverage receipts. Unavailable models/tiers are not substituted;
+# failed peers never count as completed review. Independence requires a distinct
+# model identity. Shell performs workspace/verification commands, not dispatch.
 # `cross_model_review_mode` decides whether ce-doc-review and ce-code-review may
 # automatically send review content (diffs, documents) to a second model
 # provider when their conditional cross-model pass activates. `off` skips that
@@ -129,7 +139,7 @@
 # the pass with a stated reason -- never substituted.
 
 # cross_model_review_mode: off   # auto | off (default: auto)
-# cross_model_peer: codex          # codex | claude | grok | cursor | composer | opencode
+# cross_model_peer: opencode       # legacy compatibility: codex | claude | grok | cursor | composer
 # cross_model_model: fable         # model alias or full id for the resolved peer target (no default)
 # cross_model_effort: xhigh        # reasoning effort for the resolved peer target (no default)
 
@@ -148,11 +158,14 @@
 
 # work_engine_mode: prefer        # off | prefer | require (default: off)
 # work_engine_preferences:
-#   - harness: cursor
-#     model: composer
-#   - harness: codex
+#   - harness: opencode
+#     model: composer              # resolve advertised provider/model, or report unavailable
+#   - harness: opencode
 #     model: "gpt-6.1-sol"
-#   - harness: claude             # configured default model
+#   - harness: claude             # compatibility selector for configured default;
+#                                # resolve natively, never invoke Claude CLI
+# Compatibility examples retained: { harness: cursor, model: composer },
+# { harness: codex, model: "gpt-6.1-sol" }, { harness: claude }.
 
 # Reasoning effort for the external worker, per harness. Each value is one of
 # that harness's own effort levels. An unset harness keeps its own default:
@@ -160,8 +173,9 @@
 # Cursor routes take no effort. A map in config.local.yaml replaces this one.
 
 # work_engine_effort:
-#   codex: xhigh
-#   claude: max
+#   codex: xhigh                  # native model variant, compatibility selector
+#   claude: max                   # native model variant, compatibility selector
+# Keep per-model tiers authoritative; do not collapse or downgrade them.
 
 # --- ce-promote ---
 # Written automatically when you decline the Spiral setup offer in /ce-promote.
@@ -180,7 +194,7 @@
 #   - { type: github-issues, id: gh-issues, target: owner/repo, ack_action: "feedback:ack", closeout_action: "feedback:resolved", sensitive: false, approved: true }
 
 # Sweep-owned settings.
-# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or /tmp path (solo)
+# sweep_state_path: docs/feedback-sweep/state.yml   # committed (multi-agent) or .tmp/ path (solo)
 # sweep_ack_cap: 25                                 # max acks per source per run before the circuit breaker
 # sweep_lease_ttl_minutes: 60                       # single-writer lease staleness threshold
 # sweep_shared_branch: false                        # true: push-gated lease for shared-docs-branch topology

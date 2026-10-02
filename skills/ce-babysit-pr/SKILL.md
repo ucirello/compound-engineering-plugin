@@ -12,11 +12,13 @@ Keep an open PR moving toward merge by reacting to three streams as each arrives
 
 **What each tick looks at and every change it makes come from the bundled `pr-snapshot` output — never by prose, events you notice, or a coordinator's say-so** (readiness also applies the review judgment in `references/settle.md`, which reads live state this output does not model). Read `references/tick.md` before the first snapshot; `references/envelope.md` states the full boundaries.
 
+**JJ and OpenCode execution.** Resolve the target workspace's absolute root and run all JJ/helper commands there. Every repository-scoped `gh` call throughout these references requires `(cd "$workspace_root" && export GIT_DIR=$(jj git root); gh ...)`. All scratch, logs, residual files, fallback and error artifacts stay under `$workspace_root/.tmp/rocketclaw`; never fall back to OS-global temporary storage. An empty `@` may sit above the PR head: inspect `@-`, its bookmarks, remote branch and eligible PR before reporting no work. Pass the explicit resolved PR to the helper. Use OpenCode-native `opencode.models` and subagents/shell for delegated work, preserving configured model choices/tiers and independent bounded passes; do not invoke cross-harness dispatch bridges. Follow https://docs.jj-vcs.dev/latest/git-experts/ and https://docs.jj-vcs.dev/latest/cli-reference/. `pr-snapshot` is retained state/lock support, not a workspace bridge.
+
 ## Posture (one value per run)
 
 - `target` — only the named PR; stop at looks-ready; never merges; offer stack-wide once if a confirmed managed stack needs work.
 - `stack-ready` — once a layer has zero actionable backlog (CI may still run), advance to the next open non-draft upstack layer needing work; lower layers stay probed and the lowest that re-opens pulls the walk back; never merges.
-- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, `gh stack merge` it + `gh stack sync`.
+- `stack-land` — as `stack-ready`, and selecting it **is** land authorization: once the bottom-most open layer is settled, host-merge it with `gh stack merge`, then synchronize using native JJ as defined in `references/stack-commands.md`.
 
 One PR named → `target` (ask once if a confirmed multi-layer stack exists); asked to carry the whole stack → `stack-ready`; asked to land it → `stack-land`. `mode:pipeline` never asks. Restate posture per transition.
 

@@ -4,7 +4,7 @@ Which orchestration shape fits each phase, and what breaks when you pick the wro
 
 Two primitives are assumed, both platform-neutral:
 
-- **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
+- **OpenCode-native subagents** that launch independent agents with their own context windows and return results to the orchestrator. Resolve configured model choices and tiers with `opencode.models`; configuration remains authoritative, and an unavailable configured model is a blocker rather than permission to silently substitute one. Use shell for deterministic local extraction and benchmark execution, not another harness's dispatch bridge. Only two properties matter: fresh context per agent, and a result the orchestrator can read.
 - **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
 
 Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
@@ -65,6 +65,8 @@ Run the mechanical suite once, as one check, not once per agent. Keep the cohere
 **Pass large context by path plus a short gist.** Give an agent the file paths it must read and two or three sentences of why, not the inlined contents. Inlining spends the orchestrator's context to fill an agent's, which is backwards. The fresh context window is the reason you dispatched.
 
 **Every artifact of this method needs a path decided before the phase that writes it.** The registration and the scored run table (`references/noise-floor.md`), the phase-marker map and the extractor (`references/baseline-mining.md`), the ruled finding set (`references/corpus-audit.md`), the file-assignment manifest and the rewrite contract (`references/cut-passes.md`). Pick one directory for the whole engagement and keep them together. The registration must be re-readable by a skeptic after results exist. The extractor and map must be re-runnable when the taxonomy changes. A contract or manifest passed only through a dispatch prompt cannot be checked afterward against what the agents actually did. The durable ones (registration, final scored table, write-up) belong in the repo's own docs location; per-run scratch does not.
+
+Put all per-run scratch, temporary copies, fallback files, and error logs under the target workspace's local `.tmp/` (or local `.tmp/` without a JJ repository), and ensure `.tmp/` is ignored in `.gitignore`. Resolve the root with `jj workspace root` from the target workspace, then run workspace commands from its absolute root; do not use OS-global temporary storage.
 
 **Give a schema to anything you will aggregate.** If the orchestrator will count, sort, dedup, or compare results, specify the fields and the enum values in the dispatch prompt. Parsing prose across dozens of returns is where item counts quietly stop matching.
 

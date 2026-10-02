@@ -97,9 +97,36 @@ Local apply does not authorize reversing a settled decision. When a retained def
 - If a reviewer item is useful information with no defect, code contract change, or test gap, report it as advisory only after it passes the same admission rule. Do not patch it or describe it as a missed defect; omit information without a present benefit.
 If this self-review changes files, rerun the affected tests or lint for those follow-up edits before committing or reporting; the earlier validation only covers the original autofix diff.
 
-**Commit when the pre-review tree was clean.** Before applying, note whether the working tree already had uncommitted changes (`git status --porcelain`). The step that makes a change permanent is the **push**, not the commit; a local commit is private and reversible (`git reset --soft HEAD~1`).
+**Describe an isolated change when the pre-review tree was clean.** Before applying, save the reviewed `@` commit ID and inspect `jj diff --from @- --to @` to determine whether the working-copy change was already nonempty. JJ snapshots the reviewed code; do not mistake an empty tip for absence of work. When clean, create a separate fix change on the reviewed revision with `jj new <reviewed-revision>` before edits. Local changes remain private and reversible with JJ operations; never push. Run all commands from the target workspace's absolute root.
 
-- **Clean before the review:** after applying and verifying, commit the fixes as one isolated, review-labeled fix commit: `fix(review): <summary>`, or the repo's nearest convention if `review` isn't an allowed scope. Labeled and reversible, returning the tree to a known state.
+**Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.** Before composing the fix change description, read the full Go guide and compare several recent subjects **and bodies** using `(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -10 --format=%B)` against the read-only Git backend. Establish actual prefixes/package names, casing, verb tense, subject/body separation, wrapping and issue-reference placement. Repository-local project/user instructions and history always win over conflicting Go syntax. Apply compatible Go advice for clear, concise descriptions and bodies; do not infer syntax from the example. Without history, use explicit project/user instructions and Go guidance without inventing precedent. Describe the applied fixes and their review purpose, with relevant issue/PR context, using runtime-established syntax. Set `jj describe -m "<message composed from the standards above>"`; never add creator/model/harness bylines or coauthor trailers.
+
+The following verbatim Go source excerpts are illustrative guidance, **not a mandatory repository template**:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+- **Clean before the review:** after applying and verifying, describe the fixes as one isolated change using the runtime standards above. Preserve the semantic fact that it is a review fix, without prescribing a type, scope or prefix. Labeled and reversible, returning the tree to a known state.
 - **Dirty before the review:** apply but do **not** commit. The fixes interleave with the user's in-flight work and ride along with the commit they were already going to make. The Applied section lists what changed.
 - **Never push, open a PR, or file tickets.** That is the outward-facing step the user decides on.
 
@@ -132,7 +159,7 @@ Write the human-readable findings through the `ce-noslop` skill. Preserve exact 
 - **The Verdict and Actionable list are present, last, and self-sufficient.** This is satisfied by the closing, not the section skeleton: the Verdict is the final report section, immediately followed by the post-report prioritized Actionable recap (default mode; see *Emit actionable findings summary* below). The in-report `Actionable Findings` section keeps its skeleton position (5) as the detailed table; the recap is the self-sufficient last word the reader sees without scrolling. (If for some layout you cannot emit the recap, move the Actionable list itself to just after the Verdict.)
 
 1. **Header.** Scope, intent, mode, reviewer team with per-conditional justifications.
-2. **Applied (explicit local apply only).** When Stage 5c applied fixes, list them first, before the findings, in an Applied section (see review output template). Each entry carries `#`, file, the fix, and reviewer (a multi-file fix is one row with one `#`), then a one-line validation outcome (e.g. "pin tests 4 -> 6; suite 94 pass, lint clean") and commit status (committed on a clean tree as `fix(review): …` or the repo's nearest convention, or left uncommitted for the user on a dirty one). Flag green-but-unverifiable edits (auth/contract/concurrency) prominently. Omit this section when local apply was not authorized or nothing was applied. Applied findings appear here, not in the severity tables.
+2. **Applied (explicit local apply only).** When Stage 5c applied fixes, list them first, before the findings, in an Applied section (see review output template). Each entry carries `#`, file, the fix, and reviewer (a multi-file fix is one row with one `#`), then a one-line validation outcome (e.g. "pin tests 4 -> 6; suite 94 pass, lint clean") and change status (isolated and described on a clean tree using the runtime standards above, or left with the user's in-flight work on a dirty one). Flag green-but-unverifiable edits (auth/contract/concurrency) prominently. Omit this section when local apply was not authorized or nothing was applied. Applied findings appear here, not in the severity tables.
 2b. **Triage Groups.** When finalized `triage_groups` exist (after validation in Stage 5b step 5 and after apply in Stage 5c), render a `### Triage Groups` section before the findings as a compact table (`| Group | Findings | Context | Preferred Resolution | Why |`); a table fits this content well. The `Findings` cell lists the stable `#`s it covers; the resolution names the order/dependency. **Mark whether each group is an apply-queue or a decision-gate** (a group of mechanical fixes an automated fixer can apply, or a group that needs a design decision first, so the fixer stops there). Every referenced `#` must appear in the findings below; groups supplement the findings, never replace them. Omit the section when `grouping:off` is active or no groups survived. In `mode:agent` this section is carried by the `triage_groups` JSON field instead.
 3. **Findings.** Grouped by severity (`### P0 -- Critical`, `### P1 -- High`, `### P2 -- Moderate`, `### P3 -- Low`), rendered per the per-finding direction above and consistent within the section. Show the decision-vs-mechanical split where it helps the actor (flag the design calls). Omit empty severity levels. Finding numbers come from the stable assignment in Stage 5 -- never re-derive them per severity section or triage group.
 4. **Requirements Completeness.** Include only when a plan was found in Stage 2b (Plan discovery). For each requirement (R1, R2, etc.) and implementation unit in the plan, report whether corresponding work appears in the diff. Use a simple checklist: met / not addressed / partially addressed. Unaddressed requirements or implementation units are findings routed by `plan_source` under the rule in the Plan Requirements Completeness section of `references/intent-and-plan.md` (explicit: P1 `manual` / `downstream-resolver`, into the actionable queue; inferred: P3 `advisory` / `human`, report only). Then run that section's reverse check against the reviewed diff and the plan document itself (`plan.path`), not only the extracted lists, and list each unrequested behavior rule it finds.
@@ -163,7 +190,7 @@ Before delivering the review, verify:
 2. **No false positives from skimming.** For each finding, verify the surrounding code was actually read. Check that the "bug" isn't handled elsewhere in the same function, that the "unused import" isn't used in a type annotation, that the "missing null check" isn't guarded by the caller.
 3. **Severity is calibrated.** A style nit is never P0. A SQL injection is never P3. Re-check every severity assignment.
 4. **Line numbers are accurate.** Verify each cited line number against the file content. A finding pointing to the wrong line is worse than no finding.
-5. **Protected artifacts are respected.** Discard any finding that recommends deleting or gitignoring a CE pipeline artifact, per the Protected Artifacts rule in `references/action-class-rubric.md`: any file under a `plans/`, `solutions/`, or legacy `brainstorms/` directory whose immediate parent is the artifact root (a directory named `docs`, or the configured `docs_root` when resolved). Categories nest (`solutions/<category>/`); a `references/personas/` skill asset, parented by `references`, is not a protected artifact.
+5. **Protected artifacts are respected.** Discard any finding that recommends deleting or gitignoring a pipeline artifact, per the Protected Artifacts rule in `references/action-class-rubric.md`: any file under a `plans/`, `solutions/`, or legacy `brainstorms/` directory whose immediate parent is the artifact root (a directory named `docs`, or the configured `docs_root` when resolved). Categories nest (`solutions/<category>/`); a `references/personas/` skill asset, parented by `references`, is not a protected artifact.
 6. **Findings don't duplicate linter output.** Don't flag things the project's linter/formatter would catch (missing semicolons, wrong indentation). Focus on semantic issues.
 
 ## Protected Artifacts

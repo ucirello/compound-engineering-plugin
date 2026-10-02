@@ -36,8 +36,8 @@ agent-browser type @e1 "text"
 agent-browser press Enter
 
 # Capture evidence
-agent-browser screenshot out.png
-agent-browser screenshot --full out-full.png
+agent-browser screenshot .tmp/browser-tests/out.png
+agent-browser screenshot --full .tmp/browser-tests/out-full.png
 
 # Navigation and waits
 agent-browser back
@@ -45,3 +45,5 @@ agent-browser wait @e1
 ```
 
 Use the installed core documentation for console-error inspection and any command not shown here. Do not switch to another browser driver after the first route is tested.
+
+Run evidence commands from the absolute workspace root (`jj workspace root`, or the local project root outside JJ), creating `.tmp/browser-tests` first. Keep all temporary evidence, including fallback and error captures, under that local `.tmp/`; ensure `.tmp/` is ignored in `.gitignore`.

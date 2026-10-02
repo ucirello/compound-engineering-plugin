@@ -2,6 +2,8 @@
 
 Read this when dispatching a sub-agent (a source-persona fetch subagent or a media-analyzer subagent). Sub-agent dispatch is tiered by task shape, never hardcoded to a model name:
 
+Use OpenCode-native `opencode.models` to resolve available model IDs and pricing, then native `subagents` for dispatch and `shell` for connector/analyzer commands. Configured model choices and tiers from `.rocketclaw/config.local.yaml` then `config.yaml` remain authoritative; preserve them rather than substituting another harness's dispatcher. Apply the capability, degradation and failure rules below when selection or dispatch is unavailable.
+
 - **Extraction tier** is for the source-persona fetch subagents. This is retrieval and quoting work (pulling items and their media paths out of a source connector). Use the platform's cheapest capable model when the current harness exposes a known override. "Capable" is part of the spec. Escalate to the generation tier when the source is large or the connector obscure.
 - **Generation tier** is for the media-analyzer subagents. This is evidence-driven mechanical work that turns downloaded frames and transcripts into a bug-report-shaped finding. Use the platform's mid-tier model when the current harness exposes a known override. If model names are unknown, omit the override and inherit rather than guessing.
 - **Ceiling tier** is the orchestrator's judgment. The decision round and plan reconciliation run in the main conversation on the orchestrator's model. Nothing is dispatched for them.

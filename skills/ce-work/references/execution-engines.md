@@ -33,16 +33,16 @@ A validated recovery run id selects durable state. It never authorizes a fresh d
 
 ### Target and identity vocabulary
 
-Keep `target`, harness/intermediary route, requested model, served model, and receipt status separate. Target `cursor` means the Cursor harness with its configured default model. Target `composer` is shorthand for a Composer-family model requested through Cursor. The host must attempt the documented adapter recipe first. If the installed harness differs, it may inspect local CLI help or version information and adapt only within the same sanctioned harness/model family and only when the fixed adapter can still enforce the route and restrictions. Otherwise that candidate is unavailable. Disclose any compatible model alias or substitution and never relabel an unverified served model.
+Keep `target`, requested harness/intermediary route, requested model, served model, and receipt status separate. Compatibility target `cursor` means its configured default model; `composer` is shorthand for its Composer-family model. Resolve configured choices through `opencode.models` and execute with native model-pinned `subagents` / bounded `shell`, never another harness's dispatcher. Preserve provider/model pins and tiers; a required harness restriction not enforceable natively makes the candidate unavailable. Disclose compatible aliases and never relabel an unverified served model. Follow `cross-model-execution.md` for the native lifecycle and recovery contract.
 
 When the target resolves to the current host's default execution route and no distinct model or serving route was requested, collapse the request to native execution and record requested-versus-actual identity rather than shelling out to the same host.
 
 ### Per-checkout configuration
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = `jj workspace root`, run from the target workspace's absolute root). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -68,13 +68,13 @@ work_engine_effort:
 - optional `model`: a model id or family understood by that harness; omission means its configured default
 - optional `work_engine_effort`: a map from harness to the reasoning effort its external worker runs at, written in that harness's own levels; a harness left out keeps its default
 
-Do not put CLI commands or flags in configuration. The list expresses implementation intent; the skill's adapter recipes and local inspection determine how to invoke it. Composer is therefore `{ harness: cursor, model: composer }`, while `{ harness: cursor }` means Cursor's configured default.
+Do not put CLI commands or flags in configuration. The list expresses implementation intent; `opencode.models` and native capability inspection determine how to invoke it. Composer is therefore `{ harness: cursor, model: composer }`, while `{ harness: cursor }` means Cursor's configured default model.
 
-Normalize a qualified candidate to the controller's fixed route: Codex -> `codex`, Claude -> `claude`, native Grok -> `grok-cli`, Cursor with no model -> `cursor`, a Composer-family Cursor model -> `composer`, a Grok-family Cursor model -> `grok-cursor`, another explicit Cursor model -> `cursor` with that controller-authorized model selector, and OpenCode -> `opencode`. A model selector is data, never shell syntax; if it cannot be represented by the fixed adapter's safe model token, the candidate is unavailable.
+Preserve requested compatibility route values: Codex -> `codex`, Claude -> `claude`, native Grok -> `grok-cli`, Cursor with no model -> `cursor`, Composer-family -> `composer`, Grok through Cursor -> `grok-cursor`, another Cursor model -> `cursor`, OpenCode -> `opencode`. Record actual execution separately as the native OpenCode provider/model route. Model selectors are data, never shell syntax. Query `opencode.models` for the exact configured choice and supported tier; unsupported choices are unavailable rather than silently replaced.
 
 Traverse each ordered candidate during preflight. If a candidate is equivalent to the current host and its current/default model, continue to the next candidate rather than shelling out to self; an explicit different model in the same harness is still a distinct candidate. If a candidate is unavailable before any work is sent out, record why and continue to the next candidate. The first qualified candidate becomes the fixed recipient. After dispatch begins, the recipient is locked by the cross-model contract and list traversal stops.
 
-`work_engine_effort` resolves on its own under the same two-file rule, and a present local map replaces the team map. It requests an effort for every candidate of that harness, including a candidate a caller binding or live intent selected, and it applies whatever `work_engine_mode` says. A candidate that cannot run at the effort requested for it is unavailable before any work is sent, the same as any other unavailable candidate, and nothing runs at a different effort than the one requested. The adapter script owns which levels each route accepts; ask it at preflight rather than judging the value yourself. A candidate that collapses to native execution runs at the session's own effort, so say that the configured effort was not applied. A value that is not a harness map requests nothing: say once that it was ignored and continue with each route's default.
+`work_engine_effort` resolves on its own under the same two-file rule, and a present local map replaces the team map. It requests an effort for every candidate of that harness, including a candidate a caller binding or live intent selected, and it applies whatever `work_engine_mode` says. Query `opencode.models` and the native dispatch capability for supported variants; a candidate unable to run at the requested effort is unavailable before egress. Never select a different tier. A candidate collapsed to current-session execution retains session effort; disclose that configured effort was not applied. A non-map requests nothing: disclose once and use route defaults.
 
 `off` disables only the standing preference. It does not cancel applicable live intent or a typed caller binding. An enabled mode without a valid candidate list is unavailable rather than guessed. When the list is exhausted, both `prefer` and `require` disclose every attempted route and reason once, then continue natively on the current harness and session model. A required route is never replaced by another unrequested external recipient. Standing configuration supplies defaults, not permission to change recipient or broaden authority.
 
@@ -87,7 +87,7 @@ An engine is usable only when the host exposes a callable primitive for it. Do n
 | **Inline / subagent** | Always. The orchestrator runs units inline or dispatches subagents via the platform's subagent primitive (`Agent`/`Task` in Claude Code, `spawn_agent` in Codex, `subagent` in Pi). | Always callable in-session. This is the default. |
 | **Goal-mode** | The host exposes a callable goal *tool* a skill can invoke — e.g. Codex `create_goal` (sets **and activates** a persistent objective for the current session) plus `update_goal(complete\|blocked)` for terminal status. | **No goal tools exposed.** `/goal` is a top-level user command only; a skill cannot invoke it or any goal tool. Emit a copyable `/goal` prompt for the user to paste, or run inline/subagents. **Codex differs — it does expose `create_goal` (see below).** |
 | **Dynamic-workflow** | The host exposes a callable dynamic-workflow / ultracode-style orchestration primitive that returns structured results and blockers without mid-run user decisions. | **Not callable from inside a skill.** Dynamic workflows start from a user prompt (`ultracode:` or `/effort ultracode`). `ce-work` can only emit a copyable prompt block. |
-| **Cross-model execution** | A resolved fixed route has a qualified, write-capable adapter and satisfies every caller restriction. Load `cross-model-execution.md` only after this engine is selected. | Availability depends on the installed target CLI and its qualified adapter, not on the host's native subagent tools. A same-host default request collapses to native execution. |
+| **Cross-model execution** | A resolved provider/model and tier are available through `opencode.models` and callable native `subagents`, satisfying every caller restriction. Load `cross-model-execution.md` only after selection. | Use native dispatch, not an installed external target CLI. A same-host default request collapses to current-session execution. |
 
 Rule of thumb: **probe for the callable tool, don't infer from the command's existence.** If the host exposes a callable goal tool (Codex `create_goal`), goal-mode is a real callable engine — use it. If it exposes only a user-typed `/goal` (Claude Code), goal-mode is prompt-emission only — emit a copyable prompt. The literal `/goal` slash command is not skill-invocable on any host; the *tool* path is what makes Codex callable.
 
@@ -116,7 +116,7 @@ Follow the dispatch strategy in `references/execution-strategy.md` (inline, seri
 
 ### Cross-model execution
 
-Read `references/cross-model-execution.md` only after routing selects this engine. Resolve and disclose its fixed recipient and restrictions before sending any work out, then follow its serial external-unit transaction through the bundled controller, detached runner, and fixed adapter. If the route is unavailable at preflight, apply the preference/requirement behavior defined there; never let the detached worker select a fallback recipient.
+Read `references/cross-model-execution.md` only after routing selects this engine. Resolve and disclose its fixed recipient and restrictions before sending work, then follow its native subagent/JJ transaction, durable receipts and recovery contract. If unavailable at preflight, apply its preference/requirement behavior; workers never select fallback recipients.
 
 ### Goal-mode and dynamic-workflow
 
@@ -164,4 +164,4 @@ Using goal-mode or a dynamic workflow is a way to get better sustained implement
 
 ## Progress visibility (independent of tail ownership)
 
-Whoever runs the finishing steps opens the **final** PR; that does not forbid progress signals during a long run. For multi-hour goals, meaningful commits as units complete and an optional scratch progress artifact (outside the plan body) are encouraged so a long trajectory stays observable. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when it was explicitly given that job; in return-to-caller mode `ce-work` must not open any PR, but may commit and return a progress report in its structured summary. Never write progress or status into the plan body; git, commits, and the returned summary carry it.
+Whoever runs the finishing steps opens the **final** PR; that does not forbid progress signals during a long run. For multi-hour goals, meaningful commits as units complete and an optional local `.tmp/` scratch progress artifact (outside the plan body) are encouraged so a long trajectory stays observable. Only final PR creation is gated: a standalone top-level goal may open a **draft** PR only when explicitly given that job; in return-to-caller mode `ce-work` must not open any PR, but may commit and return a progress report. Never write progress or status into the plan body; JJ changes and the returned summary carry it.

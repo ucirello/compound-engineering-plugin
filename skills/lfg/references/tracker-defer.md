@@ -2,6 +2,8 @@
 
 This reference covers how Defer actions file tickets in the project's tracker. `ce-code-review`'s `SKILL.md` loads it in three places: when Interactive mode's routing question needs to decide whether to offer option C (File tickets), when the walk-through's Defer option executes, and when the bulk-preview of option C is shown. Autonomous callers such as `lfg` also load it to file leftover actionable findings without user prompts; see Execution Modes below.
 
+Run every repository-scoped `gh` probe, ticket creation, and update from the target workspace's absolute root with `GIT_DIR` exported there via `export GIT_DIR=$(jj git root)`. Temporary request bodies, fallback files, and error output belong under that workspace's `.tmp/` (local `.tmp/` when no JJ repository exists).
+
 ---
 
 ## Execution Modes

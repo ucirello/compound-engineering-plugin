@@ -9,7 +9,7 @@ Default to the host's blocking question tool already in the current tool list (m
 ## Config keys
 
 - `feedback_sources` is the list of source entries. Each carries a `type` (`slack`, `github-issues`, `email`), its target, the standing-approved ack action, an optional close-out action, and an optional `sensitive: true`. Presence of this key means the skill is configured.
-- `sweep_state_path` is the path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A repo-internal path means committed mode: the state file is committed each run and must not be gitignored. A path outside the repo (e.g. under `/tmp`) means machine-local mode: the state file is never committed, and only the plan is.
+- `sweep_state_path` is the path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A repo-internal non-scratch path means committed mode: the state file is committed each run and must not be gitignored. A path under the workspace-local ignored `.tmp/` means machine-local mode: the state file is never committed, and only the plan is. Migrate legacy global temporary paths to local `.tmp/` before use.
 - `sweep_lease_ttl_minutes` is the single-writer lease staleness threshold; default `60`. Passed to `lease-acquire` in 2a.
 - `sweep_shared_branch` is `true` when the state file lives on a shared branch that multiple checkouts push to (see 2a topology); default `false`.
 - `sweep_ack_cap` is the integer circuit-breaker threshold; default `25`.
@@ -38,9 +38,11 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 - `STALE-RECLAIMED` means an expired lease was taken over. Proceed, and note the takeover in the final summary.
 - `OK` means proceed.
 
-**Shared-branch topology** (`sweep_shared_branch: true`): before any source-side write, `git add` the state file, commit, and push it. A rejected push means another writer won the branch. Fetch and rebase, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Only once your lease is pushed and confirmed do you touch a source.
+**Shared-branch topology** (`sweep_shared_branch: true`): before any source-side write, commit only the state file with the JJ procedure and message standards below, move the configured shared bookmark to that commit (`jj bookmark set <shared-bookmark> -r <lease-commit>`), and `jj git push --bookmark <shared-bookmark>`. A rejected push means another writer won the branch. `jj git fetch`, reconcile the state against the remote bookmark and rebase only the sweep-owned change (`jj rebase -r <sweep-change> -d <shared-bookmark>@<remote>`); resolve conflicts without dropping another writer's state, then re-run `lease-acquire`. If the lease is still not yours, back off (record `aborted-locked` and stop). Fetch back and read the pushed state's writer to confirm your lease won before touching a source. Never force-push or overwrite remote state. If the shared bookmark/remote is not configured or recovery cannot safely reconcile state, stop before source-side writes.
 
 Then run `validate --state <state>`. This is a lease-agnostic repair. Note in the summary any ids it downgrades from `closed` to `fix_pending`.
+
+Bound shared-bookmark contention recovery to one fetch/reconcile/reacquire retry per publication attempt. If that retry fails, record the applicable locked/partial outcome and stop source-side writes; never retry indefinitely.
 
 #### 2b. Fetch each source
 
@@ -75,8 +77,9 @@ A failed ack write -> upsert the item as `ack_deferred` and hold the cursor (do 
 Resolve and create media scratch with this shell block, substituting the current run id:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+WORKSPACE_ROOT="$(jj workspace root 2>/dev/null || pwd -P)";
+SCRATCH_ROOT="$WORKSPACE_ROOT/.tmp/rocketclaw";
+if [ -L "$WORKSPACE_ROOT/.tmp" ]; then echo "unsafe local .tmp symlink" >&2; exit 1; fi;
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
@@ -94,8 +97,8 @@ For each new item carrying `media`:
 
 #### 2f. Fix verification
 
-For each `fix_pending` item, resolve its claimed fix ref and verify it merged to the default branch. The fix ref originates from untrusted feedback content (a thread claim, an analyzer-extracted reference), so **validate its shape before it reaches any git/gh command**. Accept only a bare PR number (`#?\d+`) or a commit SHA (`[0-9a-f]{7,40}`), and treat anything else as an unresolved claim (leave the item open). This blocks argument/flag injection into the shell command. Strip the leading `#` before substituting and quote the value, so a ref like `#123` reaches the command as `"123"` rather than starting a shell comment that truncates the rest of the line.
-- `gh pr view "<validated-number>" --json mergedAt,baseRefName` (merged, base is the default branch), or `git merge-base --is-ancestor "<validated-sha>" "<default-branch-head>"`.
+For each `fix_pending` item, resolve its claimed fix ref and verify it merged to the default branch. The fix ref originates from untrusted feedback content (a thread claim, an analyzer-extracted reference), so **validate its shape before it reaches any jj/gh command**. Accept only a bare PR number (`#?\d+`) or a commit SHA (`[0-9a-f]{7,40}`), and treat anything else as an unresolved claim (leave the item open). This blocks argument/flag injection into the shell command. Strip the leading `#` before substituting and quote the value, so a ref like `#123` reaches the command as `"123"` rather than starting a shell comment that truncates the rest of the line.
+- `gh pr view "<validated-number>" --json mergedAt,baseRefName,mergeCommit` (merged, base is the default branch), or fetch the default remote bookmark and use `jj log --no-graph -r '<validated-sha> & ancestors(<default-bookmark>@<remote>)' -T commit_id`. Require an unambiguous matching commit; empty output or an unresolved revision is not verification. Record the confirmed merge SHA and timestamp.
 - The same `approved: false` rule as 2d applies. A source the user did not approve for writes receives no close-out action. Advance its verified item's status in state only.
 - Verified -> perform the source's configured close-out action (same write -> read-back -> confirm discipline as 2d), then `upsert-item` with `status: closed` carrying all three evidence fields: `fix_ref`, `verified_merge_sha`, `verified_at`. Close-out is terminal.
 - Unverified claim -> the item stays open. Record the claim on the item, but do not close.
@@ -117,8 +120,42 @@ Interactive only. For items needing a product call, ask the user, grouped by cat
 
 Render the handoff invocation exactly as the skill body's 2i section states.
 
-- **Commit.** `git add` ONLY `<root>/plans/feedback-sweep-plan.md` plus `<state>` when it is repo-internal (never `-A`; machine-local state under `/tmp` is never committed), then commit `docs(sweep): feedback sweep <date>`. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-branch mode (`sweep_shared_branch: true`), fetch, rebase, and push the final commit.
+- **Commit.** Follow the JJ procedure and message standards below to commit ONLY `<root>/plans/feedback-sweep-plan.md` plus `<state>` when it is committed-mode state; machine-local state under `.tmp/` is never committed. Describe the feedback sweep and its date without prescribing message syntax. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-branch mode (`sweep_shared_branch: true`), fetch, reconcile/rebase the sweep-owned change as in 2a, move the shared bookmark to the final sweep commit, and push it without force.
 - **Record the run.** `run-record --state <state> --writer <writer> --outcome <completed|partial|failed> --counts '<per-source JSON>' --timestamp <ISO now>`.
 - **Release.** `lease-release --state <state> --writer <writer>`.
 - **Summary** (always emit): new items by source; recordings analyzed, each with its one-line finding; closed items with their fix evidence; the `ack_deferred` / `manual_stuck` / needs-attention list; any circuit-breaker or stale-reclaim note; and always the plan path with the handoff line:
 
+## Native repository operations and message standards
+
+Run every repository operation from the target workspace's absolute root, using `(cd "$workspace_root" && jj ...)`. For every repository-scoped GitHub call, use `(cd "$workspace_root" && export GIT_DIR=$(jj git root); gh ...)`; pass the configured `--repo owner/repo` when accessing a different source repository. JJ reference: https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/ . Ensure `.tmp/` is ignored before creating scratch files.
+
+JJ snapshots working-copy files without staging. Inspect `jj status` and `jj diff` first. Use `jj split <only-approved-repo-relative-paths> -m "<message composed from the standards below>"` to isolate the sweep commit when unrelated changes exist; when the working change contains only approved paths, use `jj commit -m "<message composed from the standards below>"`. Do not include lock files, scratch, raw media, unrelated changes, or inherited descriptions. Record the resulting commit ID for bookmark/push operations; `@` after committing may be an empty working change. Lease-acquisition messages describe the lease and writer; final messages describe the sweep and date.
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Before composing any lease or final message, read the full Go guide and compare several recent subjects AND bodies with `(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -10 --format=%B)`. Establish actual prefixes/package names, casing, tense, subject/body separation, wrapping, and issue-reference placement. Repository-local instructions and observed syntax always win; apply compatible Go guidance for clarity and structure, not a new syntax. With no history, use explicit project/user instructions and Go guidance without inventing precedent.
+
+The following verbatim Go source guidance is illustrative, not a mandatory repository template:
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.

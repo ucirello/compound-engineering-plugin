@@ -1,5 +1,7 @@
 # Resume a Saved Feedback Batch
 
+For every shell call, work from the target workspace's absolute root and export `GIT_DIR=$(jj git root)` there before invoking `gh` or bundled helpers, as SKILL.md requires. Handoff and input/reply scratch files must remain beneath that workspace's `.tmp/`, including checkpoint and error paths.
+
 Complete only the conversation actions preserved in the handoff, then return their verified progress to the caller. The original transcript is not required: the record owns PR identity, publication commit, verdicts, exact responses, checklist intent and human decisions. A checkpoint records observations; fresh GitHub state remains authoritative.
 
 ## Validate the original record and prove publication

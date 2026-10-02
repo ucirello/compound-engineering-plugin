@@ -2,12 +2,20 @@
 name: ce-resolve-pr-feedback
 description: Judge PR feedback centrally, apply valid fixes, and complete review conversations with publication verified. Use when addressing feedback already left on a PR, preparing local fixes for a caller to publish, or completing a saved feedback batch. Use ce-code-review for reviewing code before feedback exists.
 argument-hint: "[mode:pipeline | mode:return-to-caller | mode:resume] [PR number, comment URL, or blank for current branch's PR] [handoff:<path>]"
-allowed-tools: Bash(gh *), Bash(git *), Bash(bash *), Bash(python3 *), Read, Write
+allowed-tools: Bash(gh *), Bash(jj *), Bash(bash *), Bash(python3 *), Read, Write
 ---
 
 # Resolve PR Review Feedback
 
 Judge fresh PR review feedback centrally, then dispatch generic subagents seeded with the bundled fixer prompt only for approved fixes. Publish the fixes before replying and resolving. Resume completes saved judgments without another fix pass.
+
+## JJ and OpenCode execution context
+
+Run every repository command and bundled helper from the target workspace's absolute root. In each shell call, set `workspace_root="<absolute target workspace root>"`, `cd "$workspace_root"`, and `export GIT_DIR=$(jj git root)` before any repository-scoped `gh` call. This context applies to every command example in the references, including fallback, error and resume paths; shell state does not persist between calls. Use JJ for history, changes and publication (https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/). Read-only backend Git history is reserved for commit-message standards.
+
+All private scratch files, prepared JSON inputs and handoffs belong beneath `"$workspace_root/.tmp/"`; ensure `.tmp/` is ignored. Without a JJ repository use an absolute local project root and its `.tmp/`, passing explicit PR host/repository identity. Never fall back to OS-global temporary storage.
+
+Use OpenCode-native `subagents` for delegated fixes and `shell` for commands. Before selecting a model, read applicable `.rocketclaw/config.yaml`, `config.local.yaml` or `config.example.yml` choices and tiers, and resolve configured model IDs with `opencode.models`; preserve those choices and tiers. Do not invoke another harness's dispatcher. Preserve the references' inline fallback, conflict avoidance, per-item receipts, failure handling and complete class-item coverage.
 
 **Done:** Every selected item has a verdict and verified conversation completion or a reported residual. Completed threads have a visible submitted reply with quoted context and authoritative resolution; `needs-human` threads stay open. Ordinary and pipeline runs publish valid fixes before completion. Return-to-caller preserves its local fix commit and exact pending actions in a readable validated handoff, or records actual no-change completion. Resume verifies fresh publication and returns checkpointed completion or pending saved actions with retry evidence. Pending actions are never reported as resolved.
 

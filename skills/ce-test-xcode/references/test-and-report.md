@@ -1,6 +1,6 @@
 # Test and report
 
-This reference owns evidence collection after the app launches.
+This reference owns evidence collection after the app launches. Use the absolute workspace root and local `.tmp/` evidence directory retained by `setup-and-build.md`; keep screenshots, logs, and temporary fallback output there rather than in global temporary storage.
 
 ## Exercise the requested surfaces
 
@@ -18,7 +18,7 @@ A simulated action reporting success is not proof of the expected state change; 
 Simulated taps do not trigger gesture recognizers on SwiftUI `Text` views with inline `AttributedString` links because the link is not exposed as a separate accessibility element. When such a tap reports success but has no visible effect, ask the user to tap the link manually in the simulator. If the target URL is known, this is the direct fallback:
 
 ```bash
-xcrun simctl openurl <device-uuid> <URL>
+(cd "$workspace_root" && xcrun simctl openurl <device-uuid> <URL>)
 ```
 
 Record which fallback supplied the verification; do not report the automated tap itself as a pass.

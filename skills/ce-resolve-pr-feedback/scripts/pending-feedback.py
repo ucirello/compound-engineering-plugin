@@ -183,6 +183,9 @@ def prepared_content(record: dict) -> dict:
 
 
 def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
+    scratch = Path.cwd().resolve() / ".tmp"
+    require(path.parent.resolve().is_relative_to(scratch.resolve()),
+            "handoff writes and checkpoint scratch must stay under workspace-local .tmp")
     if checkpoint:
         temporary = None
         try:
@@ -205,9 +208,18 @@ def write_record(path: Path, raw: bytes, *, checkpoint: bool) -> None:
 
 
 def github_json(host: str, endpoint: str) -> dict:
+    # The caller sets cwd to the verified target root; an inherited environment
+    # variable must not redirect publication inspection to another workspace.
+    workspace_root = Path.cwd().resolve()
+    root = subprocess.run(["jj", "workspace", "root"], cwd=workspace_root,
+                          capture_output=True, text=True, check=True)
+    workspace_root = Path(root.stdout.strip()).resolve()
+    backend = subprocess.run(["jj", "git", "root"], cwd=workspace_root,
+                             capture_output=True, text=True, check=True)
+    environment = dict(os.environ, GIT_DIR=backend.stdout.strip())
     result = subprocess.run(
         ["gh", "api", "--hostname", host, "--method", "GET", endpoint],
-        capture_output=True, text=True, check=False,
+        cwd=workspace_root, env=environment, capture_output=True, text=True, check=False,
     )
     require(result.returncode == 0, result.stderr.strip() or f"GitHub GET failed: {endpoint}")
     return object_value(json.loads(result.stdout), "GitHub response")
@@ -240,7 +252,7 @@ def inspect_publication(record: dict) -> dict:
         require(proof["comparison_status"] in {"ahead", "identical"} and merge_base.get("sha") == commit,
                 "recorded fix commit is not positively reachable from the fresh PR head")
         proof.update(verified=True, reason="recorded fix commit is reachable from the fresh PR head")
-    except (OSError, ValueError, TypeError) as error:
+    except (OSError, ValueError, TypeError, subprocess.CalledProcessError) as error:
         proof["reason"] = str(error)
     return proof
 
@@ -257,7 +269,11 @@ def main() -> None:
             command_parser.add_argument("--input", required=True)
     args = parser.parse_args()
     if args.command == "preflight":
-        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(prefix="ce-pending-feedback-")) / "pending.json"
+        scratch = Path.cwd().resolve() / ".tmp"
+        scratch.mkdir(exist_ok=True)
+        path = Path(args.path).absolute() if args.path else Path(tempfile.mkdtemp(dir=scratch, prefix="pending-feedback-")) / "pending.json"
+        require(path.parent.resolve().is_relative_to(scratch.resolve()),
+                "handoff destination must stay under workspace-local .tmp")
         require(not os.path.lexists(path), "handoff destination already exists")
         require(path.parent.is_dir(), "handoff parent directory does not exist")
         with tempfile.TemporaryFile(dir=path.parent):

@@ -1,47 +1,27 @@
-# Branch creation from default branch
+# Feature bookmark creation from the default bookmark
 
-Local `<base>` may have stale commits (another session/worktree advanced it) or commits the user authored intending to branch from later. Local git can't distinguish these — ask when unpushed commits are present.
-
-## Decision flow
-
-### 1. Fetch fresh remote base
+Fetch the verified base remote from the absolute workspace root:
 
 ```bash
-git fetch --no-tags origin <base>
+(cd "$workspace_root" && jj git fetch --remote origin)
+(cd "$workspace_root" && jj log -r '<base>@origin..<verified-local-tip>')
 ```
 
-If fetch fails (network, auth, no remote), use the fallback at the bottom.
+If local default-bookmark commits are not on the refreshed base, show them and ask whether to carry them or leave them on the local base. Pipeline mode reports this decision as a residual. Never silently include foreign commits. Carry uses the verified local tip; leave uses the verified remote base and preserves the local bookmark and recovery references.
 
-### 2. Check for unpushed local commits on `<base>`
+Create a collision-free feature bookmark at the chosen revision with `(cd "$workspace_root" && jj bookmark create "<feature-bookmark>" -r "<verified-tip>")`. Preserve working changes. If transferring owned changes to the fresh base is required, inspect their exact revision and use native `jj rebase` only for those owned unpublished revisions after preserving a recovery bookmark. Stop on conflicts or possible tracked/ignored/untracked collisions; never stash, reset, discard, or move excluded files. Do not rebase published history without explicit authorization.
+
+On fetch failure, retain the current verified local tip and report that freshness is unverified; skip the unreliable remote comparison. Do not invent a base.
+
+If isolation is needed, detect existing isolation first and invoke `ce-worktree` through the native harness lifecycle. Reuse its verified existing identity, even nondated; never recreate or rename it. New workspaces use a local creation date captured once and a meaningful `YYYYMMDD-<task/pr/revision-slug>` identity, normalized without double prefix, with the same registered name and destination basename under the source workspace's local `.tmp/`. Check registrations and destinations; suffix collisions `-2`, `-3`; retain names across retries/resumes/midnight.
 
 ```bash
-git log origin/<base>..HEAD --oneline
+(cd "$workspace_root" && jj workspace add --colocate --name "<dated-unique-name>" --revision "<verified-base>" "<absolute-owned-destination>")
+(cd "<absolute-owned-destination>" && jj git colocation status)
 ```
 
-- **Empty output:** set `BASE_REF=origin/<base>` and proceed to step 3.
-- **Non-empty output:** show the commit list and ask (per the "Asking the user" convention in `SKILL.md`):
+Use supported harness-native creation/adoption and move the active session to that absolute root. Unsupported colocation/date identity is a compatibility blocker, not a Git fallback or permission bypass.
 
-  > "Local `<base>` has N unpushed commits not on `origin/<base>`. Carry them onto the new feature branch, or leave them on local `<base>`?"
+Retirement is separately authorized: stop workers, move the session to a surviving absolute root, verify exact registered name/path/run ownership and integration where required, preserve recovery bookmarks, copy/read back evidence outside the target, and inspect changes/conflicts/ignored/untracked content (snapshots do not protect ignored/untracked files). Never remove unclear, unrelated, still-referenced, or nondisposable content. Use `(cd "$surviving_workspace_root" && jj workspace remove "<verified-name>")`; verify deregistration AND directory disappearance. On warnings/failure preserve remaining state and report a blocker, never force-delete or use Git cleanup. `jj workspace forget` is only unregister-with-files-preserved. Bookmark deletion is separate; retain best/archive/recovery references and respect harness lifecycle authority.
 
-  - **Carry forward** → `BASE_REF=HEAD`. The new branch starts from local HEAD, preserving the commits.
-  - **Leave on `<base>`** → `BASE_REF=origin/<base>`. The new branch starts clean; commits remain on local `<base>`.
-
-  Never default silently — carrying foreign commits into a PR is worse than asking again.
-
-### 3. Create the feature branch
-
-```bash
-git checkout --no-overwrite-ignore -b <branch-name> "$BASE_REF"
-```
-
-If checkout fails because uncommitted or ignored files would be overwritten, stop and ask the user to handle the colliding paths. In `mode:pipeline`, report the blocker without asking. Do not stash or remove the colliding paths.
-
-## Fetch failure fallback
-
-If `git fetch` fails, branch from current local HEAD:
-
-```bash
-git checkout -b <branch-name>
-```
-
-Note in the user-facing summary that base freshness was not verified. Skip the unpushed-commits check — without a fresh `origin/<base>`, the answer is unreliable.
+See https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace and https://docs.jj-vcs.dev/latest/git-experts/ .

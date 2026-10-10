@@ -2,12 +2,16 @@
 
 Which orchestration shape fits each phase, and what breaks when you pick the wrong one.
 
-Two primitives are assumed, both platform-neutral:
+Two OpenCode-native primitives are assumed:
 
-- **A dispatch primitive** that launches an independent agent with its own context window and returns a result to the orchestrator (in one host it is a subagent-spawning tool; in another a job runner). Only two properties matter: fresh context per agent, and a result the orchestrator can read.
-- **A concurrency cap** the host enforces on how many agents run at once (often around 10). Dispatches above the cap queue rather than fail, so a 31-unit fan-out is three waves, not one. Plan the wave count; do not assume flat cost.
+- **Native subagents** that launch independent agents with fresh contexts and return readable results. This skill explicitly requests the proposers, defenders, editors and independent checks described below; under a user-or-loaded-skill delegation rule that satisfies the skill-requested exception without another approval. Respect unconditional prohibitions, unavailable tools and actual denials; never substitute shell-driven model dispatch or another harness.
+- **Runtime capacity** for concurrency and nesting. Discover the applicable OpenCode configuration sources and precedence, inspect `experimental.subagent_depth` and the current session nesting, then use actual dispatch results to establish available capacity. A configured depth is not permission or proof a child can start; do not assume overflow queues. Plan bounded waves against observed capacity.
 
-Classify a rejected dispatch by whether an agent launched. Correct a pre-launch argument rejection once, and leave capacity-limited work queued. Any other launch failure follows the phase's own failure direction. In the corpus audit, the proposal and defense contexts must be independent for the audit to mean anything, so a launch failure there is a blocker: stop the audit rather than running the missing side inline.
+Use `opencode.models` to resolve configured model choices and tiers to available native routes; configuration remains authoritative intent. Delegation permission is separate from model-override permission. If an optional model argument requires an explicit user model request, omit it and use suitable inherited-model reviewers when that satisfies the contract. Disclose unmet fixed routes or different-model requirements; separate same-model contexts provide reviewer independence, not cross-model independence. Benchmark arms must use the same verified native model/settings and preserve build selectors, durable receipts and tool traces; an unavailable required route blocks the affected measurement, not permission to invoke a model bridge.
+
+Per-run scratch belongs under the absolute workspace root's `.tmp/rocketclaw/retune/`, never global temporary storage. Without a JJ repository, use the project's local `.tmp/`.
+
+Classify actual errors separately as nesting/capacity, permission denial, model-argument rejection or missing tool, and record whether an agent launched. Correct a non-denied pre-launch argument mistake once only when allowed; never retry a denied operation or evade depth through another harness. Queue capacity-limited work only if the runtime supports it. A parent-coordinator fallback is allowed only if it can dispatch the required independent contexts within its own authority and capacity. In the corpus audit, a missing independent proposal or defense is a blocker: stop the audit rather than running the missing side inline, and report incomplete coverage.
 
 ## The shapes
 

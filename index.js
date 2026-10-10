@@ -1,5 +1,2 @@
-// Root entrypoint so OpenCode resolves the plugin whether it is installed as a
-// package (git/npm) or referenced as a local directory. The implementation
-// lives in .opencode/plugins/compound-engineering.js, which also makes it
-// auto-discoverable when this repository itself is opened as a project.
-export { CompoundEngineeringPlugin as default, CompoundEngineeringPlugin } from "./.opencode/plugins/compound-engineering.js"
+// Compatibility forwarding entry; package loading uses the manifest's V2 entry.
+export { default } from "./.opencode/plugins/rocketclaw.ts"

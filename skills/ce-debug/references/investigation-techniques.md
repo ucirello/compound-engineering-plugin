@@ -76,27 +76,18 @@ One run, and the log shows precisely which layer drops the value — secrets →
 
 ---
 
-## Git Bisect for Regressions
+## JJ Revision Bisection for Regressions
 
-When a bug is a regression ("it worked before"), use binary search to find the breaking commit:
-
-```bash
-git bisect start
-git bisect bad                    # current commit is broken
-git bisect good <known-good-ref> # a commit where it worked
-# git bisect will checkout a middle commit — test it
-# mark as good or bad, repeat until the breaking commit is found
-git bisect reset                  # return to original branch when done
-```
-
-For automated bisection with a test script:
+When a bug is a regression ("it worked before"), use binary search over immutable JJ commit IDs to find the breaking change. Use the isolated, run-owned comparison workspace and all creation/colocation/cleanup safeguards in `investigate.md`; never switch the user's working copy. Verify a known-good ancestor and known-bad descendant, record both, and list the candidate ancestry:
 
 ```bash
-git bisect start HEAD <known-good-ref>
-git bisect run <test-command>
+(cd "$comparison_root" && jj log -r '<known-good-id>..<known-bad-id>')
+(cd "$comparison_root" && jj new <verified-middle-commit-id>)
+# Run the reproduction from comparison_root; record candidate ID and result.
+# Narrow the good/bad bounds and repeat, preserving probe changes/evidence.
 ```
 
-The test command should exit 0 for good, non-zero for bad.
+Choose a midpoint on the relevant ancestry, test it, and move the appropriate recorded bound until the introducing change is isolated. Branching/merge history may need testing multiple parents; do not assume log display order is a linear causal chain. Mark untestable candidates as skipped, not bad. For automation, drive this same bounded loop with native shell commands, retaining candidate/result receipts under `$comparison_root/.tmp/`; the test exits 0 for good, a confirmed reproduction failure for bad, and unrelated environment errors remain unknown. Preserve any tracked probes and ignored/untracked evidence before selecting another revision. Return to the original session/root when done and retire only with the authorization and recovery safeguards in `investigate.md`. See https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/revsets/ .
 
 ---
 
@@ -214,7 +205,7 @@ When the symptom is "slow" rather than "wrong", logs and code reading mislead: i
 
 - Establish a numeric baseline before touching anything — a timing harness around the slow operation, a profiler run, a query plan (`EXPLAIN ANALYZE`). The baseline is Phase 1's reproduction check for a perf bug: the number is the red, and the fix is verified by re-measuring the same thing, not by reasoning that the change should be faster.
 - Attribute before optimizing: a profile or per-stage timings that show where the time actually goes. Optimizing an unmeasured suspect is the perf version of shotgun debugging.
-- If the slowness is a regression, bisect against the measurement (see Git Bisect above) rather than reading diffs for something that looks expensive.
+- If the slowness is a regression, bisect against the measurement (see JJ Revision Bisection above) rather than reading diffs for something that looks expensive.
 
 ---
 

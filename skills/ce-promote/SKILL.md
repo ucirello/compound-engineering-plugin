@@ -17,10 +17,12 @@ It works **with or without Spiral**: with nothing installed it drafts directly f
 
 A free-form description in the arguments is the source of truth. Otherwise derive it from context, using what is available and never waiting on any single source:
 
-- **Merged/active PR** — `gh pr view --json title,body,url` (the title and body usually state the user-facing value)
-- **The diff** — `git diff main...HEAD --stat`, skimming notable changes so the claim is grounded in what actually changed
+- **Merged/active PR** — `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view --json title,body,url)` (the title and body usually state the user-facing value)
+- **The diff** — verify the project's base bookmark (do not assume `main`), inspect `(cd "$workspace_root" && jj log -r 'heads(::<verified-base> & ::@)')` to identify the common ancestor, then `(cd "$workspace_root" && jj diff --from "<verified-common-ancestor>" --to @ --stat)`, skimming notable changes so the claim is grounded in what actually changed
 - **Changelog** — the top or `[Unreleased]` entry in `docs/changelog.md`, `CHANGELOG.md`, or similar
-- **Recent commits** — `git log --oneline -15` for the arc of the change
+- **Recent changes** — `(cd "$workspace_root" && jj log -r 'ancestors(@, 15)')` for the arc of the change
+
+First establish the target workspace's absolute root from the harness/project context and verify it with `(cd "$workspace_root" && jj workspace root)`; run every repository operation from that root so file paths remain repository-relative. If no JJ repository is available, use the explicit description, changelog, and other available context rather than making repository discovery a blocker. JJ command guidance: https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-command-table/. Any temporary output belongs under that workspace's `.tmp/` (or the local project's `.tmp/` without JJ), never global temporary storage.
 
 Then write a 1-3 sentence summary of the **user-facing value**: what a user can now do that they couldn't before, and why they'd care. Outcome, not implementation — "You can now export any report to CSV in one click", not "Added a CsvSerializer and an export endpoint." If you can't confidently tell what shipped, ask one short question rather than guessing.
 

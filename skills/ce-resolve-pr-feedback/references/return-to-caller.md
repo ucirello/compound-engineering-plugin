@@ -6,15 +6,20 @@ Full and targeted feedback scopes keep their existing judgment and fix flow. A c
 
 ## Prepare the destination before editing
 
-Run the bundled helper from the absolute directory containing this skill's `SKILL.md`; set the anchor in each shell call because shell state does not persist. Preflight happens before edits, not after the commit:
+In every independent shell call below, first `cd "$workspace_root"` to the absolute target root and `export GIT_DIR=$(jj git root)`. Input JSON and scratch files stay under its local `.tmp/`. Message composition and fix-revision ownership follow Full Mode step 6, including full Go-guide reading and runtime subject/body history comparison; no fixed message template is implied by this handoff.
+
+Run the bundled helper with its working directory set to the verified absolute target workspace root. `SKILL_DIR` is only the absolute script-path anchor for locating the installed helper, never its working directory; set it in each shell call because shell state does not persist. Preflight happens before edits, not after the commit:
 
 ```bash
+cd "$workspace_root" || exit 1
+GIT_DIR=$(jj git root) || exit 1
+export GIT_DIR
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" preflight
 ```
 
-When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private OS scratch directory and returns an unused `pending.json` path. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
+When the invocation supplies `handoff:<path>`, append `--path '<caller path>'` to that command, preserving the actual argument. Preflight refuses an existing destination, including a dangling symlink, and probes exclusive temporary-file creation in its parent directory. Without a supplied path it allocates a private workspace-local `.tmp/` scratch directory and returns an unused `pending.json` path. Caller destinations and checkpoint scratch must also be under local `.tmp/`; reject global temporary destinations rather than relocating them silently. Retain the returned absolute `handoff` path. Do not clean it up at skill completion; the caller owns retention.
 
 If preflight fails, stop before editing and return the blocker. Do not substitute another destination for a rejected caller path. Creation also refuses overwrite, so a destination that appears during preparation cannot be replaced.
 
@@ -81,12 +86,15 @@ Build the versioned JSON record in a separate private input file. Source fingerp
 Create the handoff from the input file:
 
 ```bash
+cd "$workspace_root" || exit 1
+GIT_DIR=$(jj git root) || exit 1
+export GIT_DIR
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" create --input '<prepared JSON file>' --path '<preflight handoff path>'
 ```
 
-The helper validates the original bytes, creates the destination exclusively with private permissions, reads it back, and returns `{handoff, record}`. Preparation is complete only after this succeeds. `validate --path '<handoff path>'` reads and validates an existing record. `checkpoint --input '<updated JSON file>' --path '<handoff path>'` atomically saves progress, status and residuals while preserving the prepared PR, fix SHA, verification, source identities, exact replies and tick intent. These commands never mutate GitHub.
+The helper validates the original bytes, creates the destination exclusively with private permissions, reads it back, and returns `{handoff, record}`. Preparation is complete only after this succeeds. Invoke the same absolute helper path from the verified absolute target workspace root for `validate --path '<handoff path>'`, which reads and validates an existing record, and `checkpoint --input '<updated JSON file>' --path '<handoff path>'`, which atomically saves progress, status and residuals while preserving the prepared PR, fix SHA, verification, source identities, exact replies and tick intent. Repeat the root/GIT_DIR preamble for each independent call. These commands never mutate GitHub.
 
 If a save or checkpoint fails, report the actual local commit and any observed remote success, plus the precise failure. Do not lose the fix SHA behind a generic failed status or describe an unreadable record as a usable handoff.
 

@@ -6,9 +6,9 @@ Dispatch context supplies: `{window}` (a date range, relative window, or since-r
 
 Work through these sources for the window, cheapest first:
 
-1. **Git activity** — `git log` over the window (subjects, shas, dates, authors), and for the substantial commits, a stat-level view of what they touched. Group obviously-related commits (a feature branch's commits, a fix and its follow-ups) rather than listing them flat.
-2. **Merged and open PRs** — only when a PR interface is reachable (a `gh` CLI that responds, a connector/MCP tool). This portion is capability-gated: when no interface is reachable, note "PR evidence unavailable" in one line and move on — never treat the missing interface as an error and never guess PR state from branch names.
-3. **Project docs** — plans, brainstorms, and solution docs added or modified in the window (`<root>/plans/`, `docs/brainstorms/`, `<root>/solutions/`, or wherever this repo keeps them). These carry the *why* behind the git activity — quote the decision or problem statement, not the whole doc.
+1. **JJ activity** — run `jj log` over the verified revision/date window from the supplied absolute `{repo-root}` (shell `(cd "$workspace_root" && jj log <window-options>)`, where `workspace_root` is that root), recording subjects, commit IDs, dates, and authors. For substantial changes use `(cd "$workspace_root" && jj diff --stat -r "<revision>")`. Resolve since-refs and dates without substituting a different window; follow https://docs.jj-vcs.dev/latest/cli-reference/. Group obviously-related commits (a feature bookmark's commits, a fix and its follow-ups) rather than listing them flat.
+2. **Merged and open PRs** — only when a PR interface is reachable (a `gh` CLI that responds, a connector/MCP tool). Repository-scoped CLI calls run `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh <arguments>)`. This portion is capability-gated: when no interface is reachable, note "PR evidence unavailable" in one line and move on — never treat the missing interface as an error and never guess PR state from bookmark names.
+3. **Project docs** — plans, brainstorms, and solution docs added or modified in the window (`<root>/plans/`, `docs/brainstorms/`, `<root>/solutions/`, or wherever this repo keeps them). These carry the *why* behind the JJ activity — quote the decision or problem statement, not the whole doc.
 
 ## Output
 

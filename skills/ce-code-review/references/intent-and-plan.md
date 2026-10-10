@@ -29,12 +29,12 @@ Understand what the change is trying to accomplish. The source of intent depends
 
 **PR/URL mode:** Use the PR title, body, and linked issues from `gh pr view` metadata. Supplement with commit messages from the PR if the body is sparse.
 
-**Branch mode:** Run `git log --oneline ${BASE}..<branch-ref>` using the resolved merge-base and resolved branch ref from Stage 1. Use `<branch-ref>` (the resolved `origin/<branch>` or fetched ref), not the raw `<branch>` argument — a remote-only branch has no matching local ref, so the raw name would fail or read a stale same-named local branch.
+**Branch mode:** Run `(cd "$workspace_root" && jj log --no-graph -r "$BASE..<branch-ref>")` using the verified common ancestor and concrete head revision from Stage 1, not a raw possibly stale bookmark name. Repository-scoped gh uses `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`.
 
 **Standalone (current branch):** Run:
 
 ```
-echo "BRANCH:" && git rev-parse --abbrev-ref HEAD && echo "COMMITS:" && git log --oneline ${BASE}..HEAD
+(cd "$workspace_root" && jj log --no-graph -r "$BASE..@")
 ```
 
 Combined with conversation context (plan section summary, PR description), write a 2-3 line intent summary:
@@ -70,4 +70,4 @@ When the discovered plan's Key Technical Decisions carry `session-settled:` anno
 
 Use the project's active instructions already in context plus the current diff and source. Give each reviewer only the context relevant to its review focus; the `project-standards` reviewer reads the actual standards sources. If a reviewer cannot scope the affected area from the diff and supplied context, allow one targeted probe.
 
-In `pr-remote` / `branch-remote`, current source and any targeted probe must use `git show` against the supplied reviewed head ref, or the supplied diff hunks when no head ref is available; never inspect workspace paths.
+In remote scope, source/probes use root-scoped `jj file show -r <reviewed-head> <path>` or supplied hunks, never workspace changed-file paths.

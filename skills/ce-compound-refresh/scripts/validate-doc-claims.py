@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate cited claims in a solution doc against the git tree.
+"""Validate cited claims in a solution doc against the JJ tree.
 
 Usage:
     python3 validate-doc-claims.py <doc-path>
@@ -17,7 +17,7 @@ citations against the repository:
        exist in the working tree, including already-absolute citations that
        fall inside the repo (rewritten to repo-relative before candidacy).
        Tokens containing '../' resolve from the doc's directory (those
-       escaping the repo are skipped). Misses tracked at HEAD or the
+        escaping the repo are skipped). Misses tracked at the parent of @ or the
        upstream default branch still count as real paths and are classified
        (deleted/uncommitted vs stale checkout). Tokens missing everywhere
        are flagged only when path-shaped; slash-delimited identifiers
@@ -25,7 +25,7 @@ citations against the repository:
        URL routes are skipped.
     2. Cited commit SHAs (7-40 hex chars with at least one digit and one
        a-f letter) resolve to commits, classified by reachability from
-       HEAD and the upstream default branch. Session ids, content hashes
+        parent of @ and the upstream default bookmark. Session ids, content hashes
        and blob hashes are hex too, so an unresolvable hex word is
        reported in one of two tiers rather than asserted to be fabricated:
        FLAG when the text right before it presents it as a commit (a
@@ -47,8 +47,11 @@ decides per flag: fix, annotate as historical, or confirm intentional.
 Only the summary exit code distinguishes "clean" from "needs a look".
 
 The script never touches the network (no fetch); classification uses
-whatever refs exist locally. Run a best-effort `git fetch --quiet` first
-when freshness matters. Pure stdlib (no third-party deps).
+whatever references exist locally. Run a best-effort `jj git fetch` from
+the absolute workspace root first when freshness matters. Repository-scoped
+gh calls require GIT_DIR obtained by `jj git root` from that root.
+Pure stdlib (no third-party deps). JJ command reference:
+https://docs.jj-vcs.dev/latest/cli-reference/
 """
 import os
 import re
@@ -101,11 +104,11 @@ def usage_fail(msg: str) -> "NoReturn":
     sys.exit(2)
 
 
-def git(args: list[str], cwd: str) -> tuple[int, str]:
+def jj(args: list[str], cwd: str) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
+            ["jj", *args],
+            cwd=os.path.abspath(cwd),
             capture_output=True,
             text=True,
             timeout=30,
@@ -222,7 +225,7 @@ def strip_repo_prefix(token: str, base: str) -> str:
 
     Relative tokens, URL routes, and out-of-repo absolute paths are
     unchanged so the existing candidacy guard still drops them. Realpath
-    both sides so a host where /tmp is a symlink still matches. A
+    both sides so symlinked workspace parents still match. A
     successful rewrite is slash-normalized so Windows relpath output
     stays a candidate.
     """
@@ -263,26 +266,53 @@ def main(argv: list[str]) -> int:
     flags: list[str] = []
 
     # --- Repo context -----------------------------------------------------
-    code, repo_root = git(["rev-parse", "--show-toplevel"], doc_dir)
+    # Discover the workspace marker without running JJ from a nested doc
+    # directory; all JJ commands use the target's absolute root as cwd.
+    marker_root = doc_dir
+    while not os.path.isdir(os.path.join(marker_root, ".jj")):
+        parent = os.path.dirname(marker_root)
+        if parent == marker_root:
+            marker_root = ""
+            break
+        marker_root = parent
+    code, repo_root = (
+        jj(["workspace", "root"], marker_root) if marker_root else (1, "")
+    )
     in_git = code == 0 and bool(repo_root)
     upstream: str | None = None
     if in_git:
-        code, ref = git(["rev-parse", "--abbrev-ref", "origin/HEAD"], repo_root)
-        if code == 0 and ref:
-            upstream = ref
-        else:
-            for candidate in ("origin/main", "origin/master"):
-                code, _ = git(
-                    ["rev-parse", "--verify", "--quiet", candidate], repo_root
+        # JJ has no default-branch discovery equivalent. Read only the
+        # backend's symbolic remote HEAD, then resolve its native bookmark.
+        code, backend = jj(["git", "root"], repo_root)
+        ref = ""
+        if code == 0 and backend:
+            try:
+                result = subprocess.run(
+                    ["git", "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
+                    cwd=repo_root,
+                    env={**os.environ, "GIT_DIR": backend},
+                    capture_output=True, text=True, timeout=30,
                 )
-                if code == 0:
-                    upstream = candidate
-                    break
-        if upstream:
-            code, behind = git(
-                ["rev-list", "--count", f"HEAD..{upstream}"], repo_root
+                if result.returncode == 0:
+                    ref = result.stdout.strip().removeprefix("refs/remotes/origin/")
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        candidates = [f'{ref}@origin'] if ref else ["main@origin", "master@origin"]
+        for candidate in candidates:
+            code, resolved = jj(
+                ["log", "--no-graph", "-r", candidate, "-T", 'commit_id ++ "\\n"'],
+                repo_root,
             )
-            if code == 0 and behind.isdigit() and int(behind) > 0:
+            if code == 0 and resolved:
+                upstream = candidate
+                break
+        if upstream:
+            code, missing = jj(
+                ["log", "--no-graph", "-r", f"@-..{upstream}",
+                 "-T", 'commit_id ++ "\\n"'], repo_root
+            )
+            behind = len(missing.splitlines()) if code == 0 and missing else 0
+            if behind > 0:
                 infos.append(
                     f"INFO: worktree is {behind} commits behind {upstream} — "
                     "verify merge-state claims against remote truth (gh pr view), "
@@ -291,25 +321,25 @@ def main(argv: list[str]) -> int:
         else:
             infos.append(
                 "INFO: no upstream default branch found — "
-                "path/SHA classification limited to HEAD"
+                "path/SHA classification limited to @-"
             )
     else:
         infos.append(
-            "INFO: not a git repository — path and SHA classification skipped "
+            "INFO: not a JJ workspace — path and SHA classification skipped "
             "(scaffold and link checks still apply)"
         )
 
     def upstream_has_path(path: str) -> bool:
         if not (in_git and upstream):
             return False
-        code, _ = git(["cat-file", "-e", f"{upstream}:{path}"], repo_root)
-        return code == 0
+        code, paths = jj(["file", "list", "-r", upstream, path], repo_root)
+        return code == 0 and bool(paths)
 
     def head_has_path(path: str) -> bool:
         if not in_git:
             return False
-        code, _ = git(["cat-file", "-e", f"HEAD:{path}"], repo_root)
-        return code == 0
+        code, paths = jj(["file", "list", "-r", "@-", path], repo_root)
+        return code == 0 and bool(paths)
 
     # --- 1. Cited repo paths ----------------------------------------------
     checked_paths = 0
@@ -350,7 +380,7 @@ def main(argv: list[str]) -> int:
         loc = loc_suffix(raw)
         if tracked_head:
             flags.append(
-                f"FLAG path `{token}`{loc} — tracked at HEAD but missing from "
+                f"FLAG path `{token}`{loc} — tracked at @- but missing from "
                 "the working tree: deleted or uncommitted removal? Annotate as "
                 "historical (e.g. removed by this fix) or restore it."
             )
@@ -391,8 +421,14 @@ def main(argv: list[str]) -> int:
                 seen_shas[sha] = (line_no, True)
         for sha in order:
             line_no, cited = seen_shas[sha]
-            code, _ = git(["cat-file", "-e", f"{sha}^{{commit}}"], repo_root)
-            resolved = code == 0
+            code, commit_ids = jj(
+                ["log", "--no-graph", "-r", sha, "-T", 'commit_id ++ "\\n"'],
+                repo_root,
+            )
+            # A hex citation is a Git commit ID, not a JJ change ID.
+            resolved = code == 0 and any(
+                commit_id.startswith(sha) for commit_id in commit_ids.splitlines()
+            )
             loc = f" (line {line_no})"
             if not resolved:
                 if not cited:
@@ -413,31 +449,32 @@ def main(argv: list[str]) -> int:
                 )
                 continue
             checked_shas += 1
-            in_head = (
-                git(["merge-base", "--is-ancestor", sha, "HEAD"], repo_root)[0] == 0
-            )
-            in_up = (
-                upstream is not None
-                and git(["merge-base", "--is-ancestor", sha, upstream], repo_root)[0]
-                == 0
-            )
+            def reachable(revision: str) -> bool:
+                code, matches = jj(
+                    ["log", "--no-graph", "-r", f"{sha} & ancestors({revision})",
+                     "-T", 'commit_id ++ "\\n"'], repo_root
+                )
+                return code == 0 and bool(matches)
+
+            in_head = reachable("@-")
+            in_up = upstream is not None and reachable(upstream)
             if in_head and (in_up or upstream is None):
                 continue
             if in_head and not in_up:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — reachable from HEAD but not {upstream}: "
+                    f"FLAG sha {sha}{loc} — reachable from @- but not {upstream}: "
                     "local-only commit whose SHA may be rewritten on merge "
                     "(rebase/squash). Prefer citing the PR number."
                 )
             elif in_up:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — not reachable from HEAD but reachable "
+                    f"FLAG sha {sha}{loc} — not reachable from @- but reachable "
                     f"from {upstream}: this checkout predates the merge. Add a "
                     "temporal qualifier or verify the claim via gh."
                 )
             else:
                 flags.append(
-                    f"FLAG sha {sha}{loc} — exists but unreachable from HEAD"
+                    f"FLAG sha {sha}{loc} — exists but unreachable from @-"
                     + (f" or {upstream}" if upstream else "")
                     + ": likely a rebased-away commit. Prefer citing the PR number."
                 )

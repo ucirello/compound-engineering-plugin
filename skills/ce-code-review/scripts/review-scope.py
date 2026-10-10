@@ -85,20 +85,36 @@ AGENT_SURFACE_PATTERN = re.compile(
 )
 
 
-def git(*args: str) -> subprocess.CompletedProcess[str]:
+def jj(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=False
+        ["jj", *args], cwd=repo_root(), capture_output=True, text=True, check=False
+    )
+
+
+def git(*args: str) -> subprocess.CompletedProcess[str]:
+    """Read-only backend fallback for JJ's unsupported raw/numstat formats.
+
+    Compare explicit snapshot revisions, never the colocated Git index/HEAD.
+    """
+    backend = jj("git", "root")
+    if backend.returncode != 0 or not backend.stdout.strip():
+        return subprocess.CompletedProcess(["git", *args], 1, "", "JJ Git backend unavailable")
+    env = dict(os.environ, GIT_DIR=backend.stdout.strip())
+    return subprocess.run(
+        ["git", *args], cwd=repo_root(), env=env,
+        capture_output=True, text=True, check=False,
     )
 
 
 def valid_commit(ref: str | None) -> bool:
     if not ref:
         return False
-    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode == 0
+    result = jj("log", "--no-graph", "-r", ref, "-T", 'commit_id ++ "\\n"')
+    return result.returncode == 0 and len(result.stdout.splitlines()) == 1
 
 
 def unique_merge_base(base: str, head: str) -> str | None:
-    result = git("merge-base", "--all", base, head)
+    result = jj("log", "--no-graph", "-r", f"heads(common_ancestors({base}, {head}))", "-T", 'commit_id ++ "\\n"')
     candidates = [line for line in result.stdout.splitlines() if line]
     if result.returncode != 0 or len(candidates) != 1:
         return None
@@ -128,15 +144,20 @@ def repo_root() -> Path:
     """The repository root, matching how docs_root is resolved everywhere else.
 
     docs_root is repo-relative (``<repo-root>/<docs_root>``), so the corpus
-    check must resolve against the git toplevel, not the current working
-    directory. ce-code-review can run from a subdirectory (``git diff`` still
-    works there), where ``Path.cwd()`` would join docs_root under the subdir and
-    wrongly report the corpus absent. Fall back to cwd when git can't answer.
+    check must resolve against the absolute JJ workspace root, not a caller's
+    subdirectory, or the corpus would wrongly appear absent. Root discovery
+    starts at the caller's absolute cwd; all later JJ calls use the found root.
     """
-    result = git("rev-parse", "--show-toplevel")
+    current = Path.cwd().resolve()
+    while not (current / ".jj").exists() and current.parent != current:
+        current = current.parent
+    result = subprocess.run(
+        ["jj", "workspace", "root"], cwd=current,
+        capture_output=True, text=True, check=False,
+    )
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
-    return Path.cwd().resolve()
+    return current
 
 
 def has_learnings_corpus(docs_root: str | None) -> bool:
@@ -164,10 +185,10 @@ PACKS_RESOLVER_TIMEOUT = 30.0
 
 
 def declared_packs() -> tuple[bool | None, int]:
-    """Whether the local CE config declares Compound Packs, from the config alone.
+    """Whether the local config declares Compound Packs, from the config alone.
 
     Runs the sibling resolver in `--declared-only` mode, which parses the
-    `packs:` list from both CE config layers and shape-checks each entry with no
+    `packs:` list from both config layers and shape-checks each entry with no
     git or cache work. Its `declared` is true when any entry parsed or the block
     is malformed -- a broken declaration is still one the learnings pass must
     surface in Coverage. ``None`` means the helper could not tell (resolver
@@ -283,6 +304,14 @@ def main() -> int:
     parser.add_argument("--docs-root", default="docs")
     args = parser.parse_args()
 
+    # Endpoint text is data, never executable revset syntax supplied by callers.
+    # Accept simple commit IDs/bookmarks, including remote bookmark notation.
+    if not re.fullmatch(r"[A-Za-z0-9_./@+-]+", args.base or "") or (
+        args.head is not None and not re.fullmatch(r"[A-Za-z0-9_./@+-]+", args.head or "")
+    ):
+        print(json.dumps(fail_closed("invalid endpoint syntax", repo_signals(args.docs_root, args.head is None)), sort_keys=True))
+        return 0
+
     # Remote scope (pr-remote / branch-remote) always passes --head, even when a
     # best-effort fetch left it empty; the local config is not that tree's config.
     repo = repo_signals(args.docs_root, local_scope=args.head is None)
@@ -294,13 +323,15 @@ def main() -> int:
         print(json.dumps(fail_closed("invalid head endpoint", repo), sort_keys=True))
         return 0
 
-    diff_args = [args.base]
+    base_id = jj("log", "--no-graph", "-r", args.base, "-T", "commit_id").stdout.strip()
+    head_id = jj("log", "--no-graph", "-r", args.head or "@", "-T", "commit_id").stdout.strip()
+    diff_args = [base_id, head_id]
     if args.head:
         merge_base = unique_merge_base(args.base, args.head)
         if merge_base is None:
             print(json.dumps(fail_closed("merge base unavailable or ambiguous", repo), sort_keys=True))
             return 0
-        diff_args = [merge_base, args.head]
+        diff_args = [merge_base, head_id]
 
     numstat = git("diff", "--numstat", *diff_args)
     raw = git("diff", "--raw", *diff_args)

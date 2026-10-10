@@ -4,7 +4,7 @@
 
 `SKILL.md` states the two rules that must hold even when this file is not read: the mode is exclusive, and markdown is written unless HTML was requested. This file states the precedence that decides the rest — in-prompt request > user-stated preference > config > default (`md`) — and the token-parsing convention.
 
-**Read config.** Resolve `<repo-root>` with `git rev-parse --show-toplevel`, then apply the ordinary-key rule stated in `SKILL.md`. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
+**Read config.** Resolve `<repo-root>` with `(cd "$workspace_root" && jj workspace root)` from the verified absolute workspace root, then apply the ordinary-key rule stated in `SKILL.md`. Read both files when they exist. If the root cannot be resolved, fall through to the defaults below.
 
 Resolution steps:
 

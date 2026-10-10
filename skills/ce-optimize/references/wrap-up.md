@@ -46,9 +46,17 @@ Option 4 (continue) re-enters Phase 3 with the current state, state re-read from
 Clean up scratch space:
 ```bash
 # Keep the experiment log for local resume/audit on this machine
-# Remove temporary batch artifacts
-rm -f .context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md
+# Remove only verified disposable temporary batch artifacts after preserving evidence.
+# Keep strategy-digest.md with the experiment log for resume and audit.
 ```
 
 Do NOT delete the experiment log if the user may resume locally or wants a local audit trail. If they need a durable shared artifact, summarize or export the results into a tracked path before cleanup.
 Do NOT delete experiment worktrees that are still being referenced.
+
+### Native JJ retirement (also applies after each batch)
+
+Completion alone is not deletion authorization. Retire only explicitly disposable, run-owned experiment workspaces within existing cleanup authorization and harness lifecycle authority. Stop workers, leave the target and move any active OpenCode session to the surviving absolute root first. Verify exact registered name, absolute path and logged ownership. For winners prove integration into the optimization bookmark by revision/diff and recorded measurement; preserve best/archive/recovery bookmarks separately. Copy `result.yaml`, ignored/untracked resources, prompt/result receipts and required evidence outside the target, then read them back and verify CP-3/CP-4. Inspect tracked changes, conflicts, ignored and untracked files: removal snapshots do not protect ignored/untracked content. Never remove unrelated, ambiguous, still-referenced or nondisposable state.
+
+From the surviving root use `(cd "$workspace_root" && jj workspace remove "$verified_workspace_name")`. `jj workspace forget` is only for unregistering while preserving files. Verify both deregistration with `(cd "$workspace_root" && jj workspace list)` and actual directory disappearance; deletion warnings can mean incomplete cleanup. On failure preserve remaining state and report the blocker, never force-remove or use Git cleanup. Bookmark deletion is separate and must retain every needed recovery/archive/best reference. For a rejected combined candidate retain recovery evidence and keep the optimization bookmark on the prior verified best; do not reset/discard unrelated work.
+
+All source operations use the absolute target root as cwd; returned paths stay repo-relative. Repository-scoped GitHub calls use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Temporary files belong under that workspace's local `.tmp/` (local `.tmp/` also outside JJ). Native command guidance: https://docs.jj-vcs.dev/latest/git-command-table/ and https://docs.jj-vcs.dev/latest/cli-reference/#jj-workspace .

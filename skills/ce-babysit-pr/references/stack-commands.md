@@ -4,6 +4,8 @@ Load this file when the active run uses a confirmed managed stack (`manager_stat
 
 Always non-interactive. Prefer JSON/view probes and explicit branch names; never rely on interactive prompts. Substitute `<tracking-remote>` with the stack branches' actual tracking remote (often `origin`, but may be `upstream` or a fork remote) — never hard-code `origin` when SKILL.md already resolved a different tracking remote.
 
+Run these manager-owned operations from the absolute verified colocated workspace root with `GIT_DIR` exported from `jj git root` in that shell call. `gh stack` is retained for its unsupported managed-stack protocol, not as a workspace bridge. Verify its view still matches JJ bookmarks/remote commits after each operation; if it cannot safely operate on this JJ workspace, return a precise stack residual instead of a Git checkout/reset workaround. Local fetch, alignment, status, and commit verification use JJ per setup; a transition means verified bookmark/head alignment, never inferred Git current-branch identity.
+
 ## After an owned push on the active layer (dependents exist)
 
 ```bash

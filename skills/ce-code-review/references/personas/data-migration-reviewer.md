@@ -13,17 +13,17 @@ Think in terms of the deploy window: old code on new schema, new code on old dat
 Run this **first** when `db/schema.rb` or `db/structure.sql` appears in the diff. Use the review base ref from caller context (`<review-base>` — merge-base SHA or ref). **Never assume `main`.**
 
 ```bash
-git diff <review-base> --name-only -- db/migrate/
+(cd "$workspace_root" && jj diff --from "<review-base>" --to "<reviewed-head>" --name-only db/migrate/)
 ```
 
 Then diff each dump file that is actually in the PR diff (one or both may apply):
 
 ```bash
 # When db/schema.rb is in the diff:
-git diff <review-base> -- db/schema.rb
+(cd "$workspace_root" && jj diff --from "<review-base>" --to "<reviewed-head>" --git db/schema.rb)
 
 # When db/structure.sql is in the diff:
-git diff <review-base> -- db/structure.sql
+(cd "$workspace_root" && jj diff --from "<review-base>" --to "<reviewed-head>" --git db/structure.sql)
 ```
 
 Cross-reference every change in each in-scope dump against migrations **in this PR's diff**:
@@ -36,15 +36,17 @@ When drift is present, emit a **P1** finding on the affected dump path (`db/sche
 
 ```bash
 # schema.rb:
-git checkout <review-base> -- db/schema.rb
-bin/rails db:migrate
+(cd "$isolated_workspace_root" && jj restore --from "<review-base>" db/schema.rb)
+(cd "$isolated_workspace_root" && bin/rails db:migrate)
 
 # structure.sql (regenerate after restoring and migrating):
-git checkout <review-base> -- db/structure.sql
-bin/rails db:migrate
+(cd "$isolated_workspace_root" && jj restore --from "<review-base>" db/structure.sql)
+(cd "$isolated_workspace_root" && bin/rails db:migrate)
 ```
 
 If neither dump file is in the diff, skip this step.
+
+`<reviewed-head>` is `@` only for local scope; remote scope uses the verified supplied head revision, or hunks only when unavailable. Restore/migrate commands above are suggested remediation, never executed by this read-only reviewer; an authorized resolver first preserves a checkpoint and unrelated work, and runs them only in verified faithful owned isolation.
 
 ## Migration safety (what you're hunting for)
 

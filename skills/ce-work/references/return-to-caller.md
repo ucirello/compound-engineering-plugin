@@ -16,14 +16,14 @@ Return:
 - `implementation_engine_binding`: the resolved one-run `mode`, `target`, `model`, and `source`, or `null` when native execution was selected without a binding
 - `requested_route` and `actual_route`: target plus harness/intermediary identity, kept separate when fallback or same-family substitution occurred
 - `requested_model` and `actual_model`: the model that was requested and the model identity the route's receipt reports as served (`unverified` when the route supplies no trustworthy receipt)
-- `requested_effort`: the reasoning effort requested for the external worker, or `null` when none was requested or execution was native
+- `requested_effort`: configured reasoning effort requested for the model worker, or `null` when none; disclose unsupported intent and keep served effort unverified without runtime evidence
 - `fallback_reason`: `null` when none, otherwise the observed route-unavailable or substitution reason
-- `run_id`: durable external run identifier, or `null` for native execution
-- `source_kind` and `source_digest`: what the controller recorded as the implementation source (`plan` plus its digest in Return-to-Caller Mode; standalone bare-prompt runs use `prompt`)
-- `unit_receipts`: route, model, detached-process, integration, verification, canonical-commit, and cleanup state for each attempted unit
+- `run_id`: durable routed-model run identifier, or `null` for ordinary native execution
+- `source_kind` and `source_digest`: what the durable native run record records as source (`plan` plus digest in Return-to-Caller Mode; standalone bare-prompt runs use `prompt`)
+- `unit_receipts`: requested/actual route and model, native handle/attempt terminal evidence, integration, verification, canonical JJ revision, ignored-state divergence and separately authorized cleanup state for each attempted unit
 - `plan_checkpoint`: the disclosed checkpoint commit when the selected plan was the only canonical dirt, otherwise `null`
 - `blockers`
-- `recovery_path`: the run/workspace location the controller preserved and checked, when recovery remains; otherwise `null`
+- `recovery_path`: the workspace-local `.tmp/rocketclaw/ce-work/` run record and preserved workspace locations the host verified, when recovery remains; otherwise `null`
 - `settled_decision_conflicts`: conflicts with `session-settled:`-labeled KTDs or Key Decisions encountered during implementation — each entry names the labeled entry, the evidence, and how it was routed (proceeded-and-flagged vs blocker); empty when none
 - `behavior_change`: whether behavior-bearing code changed
 - `standalone_shipping_skipped: true`

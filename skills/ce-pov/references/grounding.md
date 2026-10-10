@@ -6,25 +6,32 @@ Read this before dispatching scouts. It defines how the Ground step (SKILL.md Ph
 
 Dispatch is tiered by task shape, never hardcoded to a model name:
 
-- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when the harness exposes a known override; otherwise inherit.
-- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when a known override exists; otherwise inherit.
+- **Extraction tier** — the project-grounding scout and the precedent-&-activity scout: search-and-quote work. Use the platform's cheapest capable model when a native override is available and permitted; otherwise inherit.
+- **Generation tier** — the external-evidence researcher: web/docs retrieval and entailment checking. Use the platform's mid-tier model when a native override is available and permitted; otherwise inherit.
 - **Ceiling tier** — the final assessment stays with the agent running `ce-pov`, even when another agent delegated the task to it. That agent checks whether the evidence is sufficient, weighs skeptical findings, and produces the required result. Research subagents gather evidence; they do not make this final assessment.
 
-**When per-agent models cannot be chosen.** If the platform's subagent mechanism cannot select a model per agent, dispatch every scout on the inherited model and keep their read budgets. Cost control then comes from the read budgets and the tier-sensitive scout count, not from tiering.
+**Native dispatch and authority.** This skill explicitly requests the scouts below. When host policy permits user-OR-loaded-skill-requested delegation, that satisfies the delegation exception without another approval. An unconditional prohibition, missing native subagent tool, or actual denial still applies; never bypass it through shell or another harness. Use `opencode.models` to discover configured model choices and tiers, and native subagents for dispatch. Configuration remains authoritative intent, not permission to override a model: if an override requires an explicit user model request, omit the optional model argument and use suitable inherited-model scouts, retaining budgets and disclosing unmet tier intent.
 
-When a scout dispatch is rejected, first check whether an agent launched. If the rejection was a bad argument before launch, correct it once. If the platform is out of capacity, leave the work queued. If a launch still fails after the correction, gather that scout's bounded evidence inline and lower the verdict's stated confidence.
+**Capacity is separate.** Discover configuration sources for the current absolute project location through OpenCode's native configuration discovery (`/api/config?location%5Bdirectory%5D=<encoded-absolute-root>` when available). The response is a source-entry array; inspect document paths, `info.experimental.subagent_depth`, and discovery precedence under https://opencode.ai/v2/docs/config. Package depth defaults do not automatically merge into a consuming project. Do not modify runtime/global configuration, assume depth 3 applies, or equate a setting with remaining nesting capacity. Confirm launch capacity from the actual dispatch result.
+
+When a scout dispatch is rejected, first check whether an agent launched. Classify the actual error as permission denial, missing tool, model-argument rejection, depth/capacity, or recoverable invalid argument. Correct a non-policy argument error once before launch; never retry a denied operation or evade depth. Queue only when capacity can become available within a bounded run. Otherwise gather the scout's bounded evidence inline (this grounding contract permits it), preserve the mandatory local precedent pass and all grounding floors, disclose the fallback, and lower confidence where appropriate. Inline grounding is not an independent peer or cross-model pass.
 
 Create the scratch dir once, and reuse the echoed path for every scout this run:
 
+Before creation, verify the absolute project's existing `.tmp` ancestors are
+owned directories, not symlinks, and the resolved scratch parent stays inside
+the project. Stop on an unsafe or unwritable parent; never fall back globally.
+Use equivalent owner-private ACLs on platforms without POSIX ownership/modes.
+
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+workspace_root="<resolved absolute project root>";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-SCRATCH_DIR="$SCRATCH_ROOT/ce-pov/$(openssl rand -hex 4)";
-(umask 077; mkdir -p "$SCRATCH_DIR") || exit 1; chmod 700 "$SCRATCH_DIR" || exit 1;
+SCRATCH_DIR="$(umask 077; mktemp -d "$SCRATCH_ROOT/pov.XXXXXXXX")" || exit 1;
+chmod 700 "$SCRATCH_DIR" || exit 1;
 echo "$SCRATCH_DIR";
 ```
 

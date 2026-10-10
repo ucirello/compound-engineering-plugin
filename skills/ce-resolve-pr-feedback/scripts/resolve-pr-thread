@@ -2,6 +2,11 @@
 
 set -e
 
+workspace_root=$(jj workspace root) || exit 1
+cd "$workspace_root" || exit 1
+GIT_DIR=$(jj git root) || exit 1
+export GIT_DIR
+
 if [ $# -eq 0 ]; then
     echo "Usage: resolve-pr-thread THREAD_ID"
     echo "Example: resolve-pr-thread PRRT_kwDOABC123"

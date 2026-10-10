@@ -255,7 +255,7 @@ def load_state(path):
     ('ok', dict). A file that parses but lacks schema_version is corrupt."""
     try:
         with open(path, encoding="utf-8") as f:
-            # A machine-local state file can live under world-shared /tmp, and
+            # A machine-local state file lives under workspace-local .tmp, and
             # it is a correctness dependency (lease, cursors, closed status) as
             # well as an injection sink (item bodies re-read into agent
             # context). Reject a file not owned by us so a co-tenant cannot
@@ -293,7 +293,9 @@ def write_state(path, state):
     text = emit_document(state)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-sweep-", suffix=".yml")
+    scratch = os.path.join(os.getcwd(), ".tmp", "rocketclaw", "feedback-sweep")
+    os.makedirs(scratch, mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=scratch, prefix=".tmp-sweep-", suffix=".yml")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)

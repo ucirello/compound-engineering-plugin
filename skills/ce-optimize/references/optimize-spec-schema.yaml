@@ -16,7 +16,7 @@ required_fields:
   name:
     type: string
     pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for git refs and worktree paths)"
+    description: "Unique identifier for this optimization run (lowercase kebab-case, safe for JJ bookmarks and workspace paths)"
     example: "improve-issue-clustering"
 
   description:
@@ -371,21 +371,21 @@ optional_fields:
       backend:
         type: enum
         values:
-          - worktree  # git worktrees for isolation (default)
-          - codex     # Codex sandboxes for isolation
+          - worktree  # native colocated JJ workspaces for isolation (default)
+          - codex     # compatibility route intent, executed with native OpenCode isolation
         default: worktree
       max_concurrent:
         type: integer
         default: 4
         minimum: 1
-        description: "Maximum experiments to run in parallel. Capped at 6 for worktree backend. 8+ only valid for Codex backend."
+        description: "Maximum experiments to run in parallel. Capped at 6 for worktree backend. 8+ only valid for the alternate configured backend, subject to native runtime capacity."
       codex_security:
         type: enum
         values:
           - full-auto                                # --full-auto (workspace write)
           - yolo                                     # --dangerously-bypass-approvals-and-sandbox
         default: null
-        description: "Codex security posture. If null, user is asked once per session."
+        description: "Compatibility security posture applied to native execution where supported. If null, user is asked once per session; unsupported requirements are reported, never bypassed."
 
   parallel:
     type: object

@@ -29,6 +29,10 @@ The caller decides how to show the result to the user. The non-interactive mode 
 
 ---
 
+## Repository context
+
+For every repository-scoped `gh` probe, issue creation, or update below, use the verified absolute target root and export backend context first: `(cd "$workspace_root" && export GIT_DIR=$(jj git root) && gh <arguments>)`. Any body files or error-path temporary data belong under `$workspace_root/.tmp/`, never global temporary storage. Resolve the source bookmark and immutable head with JJ from that same root; an empty `@` may require inspecting `@-`.
+
 ## Detection
 
 The agent determines the project's tracker from whatever documentation is obvious. Primary source: the project's active instructions and conventions already in its context — no need to open or name specific instruction files. Read a file directly only when the relevant instructions aren't already in context: a subdirectory-scoped instruction file governing the area you're working in, or when you're a fresh subagent that wasn't given the project's instructions. Supplementary signals (when primary documentation is ambiguous): `CONTRIBUTING.md`, `README.md`, PR templates under `.github/`, visible tracker URLs in the repo.

@@ -2,6 +2,16 @@
 
 Required read before Phase 2 of `ce-sweep`. The body carries the ordering invariant, the boundaries, and the stop classes. This file carries the full detail of each phase.
 
+## Workspace and change publication
+
+Resolve `workspace_root` to the absolute target workspace root once. Every JJ command runs with that cwd, e.g. `(cd "$workspace_root" && jj status)`; paths returned by JJ remain repo-relative. Every repository-scoped `gh` command runs as `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Supply this root and command context to every subagent. Native JJ reference: https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-command-table/ .
+
+**Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.** Before composing any sweep or lease change description, read the full Go guide and compare several recent subjects AND bodies using `(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -10 --format=%B)`. Derive prefixes/package names, case, tense, separation, wrapping and issue placement at runtime. Repository instructions and observed history always win over differing Go syntax; apply compatible Go quality guidance. With no history, use project/user instructions and Go guidance without inventing precedent. Describe the sweep date/results or lease acquisition semantically, not with a fixed message template.
+
+Inspect `(cd "$workspace_root" && jj status)` and conflicts before publication. Preserve unrelated work. Use `(cd "$workspace_root" && jj commit -m "<message composed from the standards above>" -- <explicit-repo-relative-paths>)` to commit only the intended plan/state paths; this leaves unrelated working-copy changes in the new working copy. Do not include scratch, lock files, raw media, or use a blanket file selection. If the state or intended paths conflict, stop publication safely and report it; never reset/discard. Machine-local mode includes any ignored state under workspace `.tmp`, even though it is physically inside the repo.
+
+For authorized shared-bookmark publishing, verify the configured shared bookmark and remote, then fetch with `(cd "$workspace_root" && jj git fetch --remote "<verified-remote>")`, advance only the verified shared bookmark to the intended completed change, and push with `(cd "$workspace_root" && jj git push --remote "<verified-remote>" --bookmark "<verified-shared-bookmark>")`. Rejected pushes require fetching and reconciling the competing state by its schema, rebasing only owned changes with `jj rebase`, resolving conflicts without overwriting the winning writer, and retrying lease acquisition. Never force push. Fetch back and read the remote-bookmark state to confirm the writer/lease before source writes; inability to establish ownership means back off.
+
 ## Interaction method
 
 Default to the host's blocking question tool already in the current tool list (match by capability, not by a host-specific name). Presence in the current tool list is proof the tool exists; never call a user-facing question tool to discover whether it exists. If a matching tool is listed but unloaded, use the host's tool-discovery primitive to load that capability. Do not search for another host's tool name. Never silently skip a question you owe the user. If no blocking tool exists in the harness, the run is non-interactive. Ask one question at a time. The decision round (2h) may group by category but still asks one blocking question per category.
@@ -9,7 +19,7 @@ Default to the host's blocking question tool already in the current tool list (m
 ## Config keys
 
 - `feedback_sources` is the list of source entries. Each carries a `type` (`slack`, `github-issues`, `email`), its target, the standing-approved ack action, an optional close-out action, and an optional `sensitive: true`. Presence of this key means the skill is configured.
-- `sweep_state_path` is the path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A repo-internal path means committed mode: the state file is committed each run and must not be gitignored. A path outside the repo (e.g. under `/tmp`) means machine-local mode: the state file is never committed, and only the plan is.
+- `sweep_state_path` is the path to the state file, established at setup; fallback `<root>/feedback-sweep/state.yml`. A nonignored repo-internal path means committed mode: the state file is committed each run. A path under workspace-local `.tmp` means machine-local mode: the state file is never committed, and only the plan is. Keep `.tmp/` ignored; do not use global temporary storage.
 - `sweep_lease_ttl_minutes` is the single-writer lease staleness threshold; default `60`. Passed to `lease-acquire` in 2a.
 - `sweep_shared_branch` is `true` when the state file lives on a shared branch that multiple checkouts push to (see 2a topology); default `false`.
 - `sweep_ack_cap` is the integer circuit-breaker threshold; default `25`.
@@ -28,7 +38,7 @@ Every Bash call that runs the bundled engine sets `SKILL_DIR` inline (shell stat
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
-"$PY" "$SKILL_DIR/scripts/sweep-state.py" <subcommand> --state <state> ...
+(cd "$workspace_root" && "$PY" "$SKILL_DIR/scripts/sweep-state.py" <subcommand> --state <absolute-state-path> ...)
 ```
 
 #### 2a. Acquire lease + validate
@@ -38,7 +48,7 @@ PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c 
 - `STALE-RECLAIMED` means an expired lease was taken over. Proceed, and note the takeover in the final summary.
 - `OK` means proceed.
 
-**Shared-branch topology** (`sweep_shared_branch: true`): before any source-side write, `git add` the state file, commit, and push it. A rejected push means another writer won the branch. Fetch and rebase, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Only once your lease is pushed and confirmed do you touch a source.
+**Shared-bookmark topology** (`sweep_shared_branch: true`): before any source-side write, commit only the state file and publish/confirm the lease using the JJ procedure above. A rejected push means another writer may have won. Fetch and reconcile state, rebase only owned changes, re-run `lease-acquire`, and if the lease is still not yours, back off (record `aborted-locked` and stop). Only once your lease is pushed and confirmed do you touch a source.
 
 Then run `validate --state <state>`. This is a lease-agnostic repair. Note in the summary any ids it downgrades from `closed` to `fix_pending`.
 
@@ -75,13 +85,13 @@ A failed ack write -> upsert the item as `ack_deferred` and hold the cursor (do 
 Resolve and create media scratch with this shell block, substituting the current run id:
 
 ```bash
-SCRATCH_ROOT="/tmp/compound-engineering-$(id -u)";
-[ ! -L "$SCRATCH_ROOT" ] && (umask 077; mkdir -p "$SCRATCH_ROOT") 2>/dev/null && [ ! -L "$SCRATCH_ROOT" ] && [ -O "$SCRATCH_ROOT" ] && [ -w "$SCRATCH_ROOT" ] || SCRATCH_ROOT="${TMPDIR:-/tmp}/compound-engineering-$(id -u)";
+SCRATCH_ROOT="$workspace_root/.tmp/rocketclaw";
+[ ! -L "$workspace_root/.tmp" ] || { echo "unsafe local temporary parent" >&2; exit 1; };
 if [ -L "$SCRATCH_ROOT" ]; then echo "unsafe scratch root symlink: $SCRATCH_ROOT" >&2; exit 1; fi;
 (umask 077; mkdir -p "$SCRATCH_ROOT") || exit 1;
 if [ -L "$SCRATCH_ROOT" ] || [ ! -O "$SCRATCH_ROOT" ]; then echo "scratch root is not owned by the current user: $SCRATCH_ROOT" >&2; exit 1; fi;
 chmod 700 "$SCRATCH_ROOT" || exit 1;
-MEDIA_DIR="$SCRATCH_ROOT/ce-sweep/<run-id>";
+MEDIA_DIR="$SCRATCH_ROOT/feedback-sweep/<run-id>";
 (umask 077; mkdir -p "$MEDIA_DIR") || exit 1; chmod 700 "$MEDIA_DIR" || exit 1;
 ```
 
@@ -94,8 +104,8 @@ For each new item carrying `media`:
 
 #### 2f. Fix verification
 
-For each `fix_pending` item, resolve its claimed fix ref and verify it merged to the default branch. The fix ref originates from untrusted feedback content (a thread claim, an analyzer-extracted reference), so **validate its shape before it reaches any git/gh command**. Accept only a bare PR number (`#?\d+`) or a commit SHA (`[0-9a-f]{7,40}`), and treat anything else as an unresolved claim (leave the item open). This blocks argument/flag injection into the shell command. Strip the leading `#` before substituting and quote the value, so a ref like `#123` reaches the command as `"123"` rather than starting a shell comment that truncates the rest of the line.
-- `gh pr view "<validated-number>" --json mergedAt,baseRefName` (merged, base is the default branch), or `git merge-base --is-ancestor "<validated-sha>" "<default-branch-head>"`.
+For each `fix_pending` item, resolve its claimed fix ref and verify it merged to the default branch. The fix ref originates from untrusted feedback content (a thread claim, an analyzer-extracted reference), so **validate its shape before it reaches any jj/gh command**. Accept only a bare PR number (`#?\d+`) or a commit SHA (`[0-9a-f]{7,40}`), and treat anything else as an unresolved claim (leave the item open). This blocks argument/flag injection into the shell command. Strip the leading `#` before substituting and quote the value, so a ref like `#123` reaches the command as `"123"` rather than starting a shell comment that truncates the rest of the line.
+- `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view "<validated-number>" --json mergedAt,baseRefName,mergeCommit)` (merged, base is the independently verified default branch), or fetch the verified remote and use `(cd "$workspace_root" && jj log --no-graph -r '<validated-sha> & ancestors(<verified-default-remote-bookmark>)' -T 'commit_id ++ "\n"')`. Require exactly the resolved commit in the ancestor intersection; absent, ambiguous, or unresolved revisions remain unverified. Record the actual merge/resolved SHA, not the untrusted claim alone.
 - The same `approved: false` rule as 2d applies. A source the user did not approve for writes receives no close-out action. Advance its verified item's status in state only.
 - Verified -> perform the source's configured close-out action (same write -> read-back -> confirm discipline as 2d), then `upsert-item` with `status: closed` carrying all three evidence fields: `fix_ref`, `verified_merge_sha`, `verified_at`. Close-out is terminal.
 - Unverified claim -> the item stays open. Record the claim on the item, but do not close.
@@ -117,8 +127,7 @@ Interactive only. For items needing a product call, ask the user, grouped by cat
 
 Render the handoff invocation exactly as the skill body's 2i section states.
 
-- **Commit.** `git add` ONLY `<root>/plans/feedback-sweep-plan.md` plus `<state>` when it is repo-internal (never `-A`; machine-local state under `/tmp` is never committed), then commit `docs(sweep): feedback sweep <date>`. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-branch mode (`sweep_shared_branch: true`), fetch, rebase, and push the final commit.
+- **Commit.** Use the runtime description and path-limited JJ procedure above for ONLY `<root>/plans/feedback-sweep-plan.md` plus committed-mode `<state>`; ignored machine-local state is never committed. A commit failure is reported, not fatal. In local-commit mode, never push. In shared-branch mode (`sweep_shared_branch: true`), fetch, reconcile/rebase owned changes, and publish the final change using the verified shared bookmark.
 - **Record the run.** `run-record --state <state> --writer <writer> --outcome <completed|partial|failed> --counts '<per-source JSON>' --timestamp <ISO now>`.
 - **Release.** `lease-release --state <state> --writer <writer>`.
 - **Summary** (always emit): new items by source; recordings analyzed, each with its one-line finding; closed items with their fix evidence; the `ack_deferred` / `manual_stuck` / needs-attention list; any circuit-breaker or stale-reclaim note; and always the plan path with the handoff line:
-

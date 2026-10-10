@@ -1,26 +1,63 @@
 # Committing and pushing
 
-If `references/stack-submit.md` already built and committed the stack layers before this step, skip the ordinary single-branch commit and push and continue to Step 4 (compose the PR title and body); `gh stack submit` in Step 5 (apply and report) pushes the stack.
+If stack mode already committed its layers, continue to Step 4; Step 5 publishes the stack. On the default bookmark, first follow `references/branch-creation.md`.
 
-If you are on the default branch, creating the feature branch has to handle three things: a stale local `<base>`, unpushed commits on local `<base>`, and uncommitted changes that collide with the fresh remote base. Read `references/branch-creation.md` and follow its decision flow before continuing.
+## Runtime message standards
 
-Scan changed files for naturally distinct concerns. If they clearly group into separate logical changes, create separate commits (2-3 max). Group at file level only — no `git add -p`. When ambiguous, one commit is fine.
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
 
-Stage and commit each group. **Avoid `git add -A` and `git add .`** — they sweep in `.env`, build artifacts, and generated files. **Honor `exclude:<paths>` when the invocation carries it.** The caller names files that must stay uncommitted, typically the user's own in-progress edits it could not separate from its work. Never stage or commit them, and say in the report that they were left out. When a plan Implementation Unit ID is already in hand for this commit (conversation, caller, or the files belong to one unit), append that unit's U-ID in parentheses — `(U3)` means unit 3. Do not hunt for a plan. Omit when the commit spans units, the unit is unclear, or no plan is in hand.
-
-```bash
-git add file1 file2 file3 && git commit -m "$(cat <<'EOF'
-commit message here
-EOF
-)" -- file1 file2 file3
-```
-
-The trailing path list on `git commit` matters. A bare `git commit` takes the whole index, so anything already staged before this run (a caller's `exclude:` paths, or work the user staged and did not name) would end up in the commit. Naming the paths commits exactly the group and leaves other index entries alone.
-
-Then apply the **Project publishing gate**. Immediately before pushing, re-confirm you are on the intended feature branch with `git branch --show-current`. The branch gathered in Context is a hint, and Step 1 (resolve branch and PR state) may have created or switched branches since. Push the live `HEAD` so it reflects the current checkout, never a stale branch name:
+Before composing, read the full Go guide and repository instructions, then compare several recent subjects AND bodies:
 
 ```bash
-git push -u origin HEAD
+(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -10 --format=%B)
 ```
 
-If the working tree is clean and all commits are already pushed, this step is a no-op.
+Determine actual prefixes/package names, casing, tense, subject/body separation, wrapping, and issue-reference placement at execution time. Repository instructions and observed history ALWAYS win differing syntax; apply compatible Go guidance for clarity and quality. Without history, use explicit project/user instructions plus Go guidance, never invented precedent. Apply this rule to every layer, explainer commit, title recommendation, and message validation in this workflow.
+
+### Go source guidance (subordinate to runtime repository pattern, not a mandatory template)
+
+> Commit messages, also known as CL (changelist) descriptions, should be formatted per https://go.dev/doc/contribute#commit_messages. For example,
+
+```text
+net/http: handle foo when bar
+
+[longer description here in the body]
+
+Fixes #12345
+```
+
+> Notably, for the subject (the first line of description):
+> - the name of the package affected by the change goes before the colon
+> - the part after the colon uses the verb tense + phrase that completes the blank in, “this change modifies Go to **___**”
+> - the verb after the colon is lowercase
+> - there is no trailing period
+> - it should be kept as short as possible (many git viewing tools prefer under ~72 characters, though Go isn’t super strict about this).
+
+> For the body (the rest of the description):
+> - the text should be wrapped to ~72 characters (to appease git viewing tools, mainly), unless you really need longer lines (e.g. for ASCII art, tables, or long links).
+> - the Fixes line goes after the body with a blank newline separating the two. (It is acceptable but not required to use a trailing period, such as Fixes #12345.).
+> - there is no Markdown in the commit message.
+> - similarly, we do not use Co-authored-by and Assisted-by lines. Don’t add them.
+
+## Selective changes and publication
+
+Scan for distinct logical concerns (2–3 groups maximum); split whole files, not hunks. Honor `exclude:<paths>` and preserve all unrelated tracked, ignored, and untracked work. JJ has no Git staging-index contract: explicitly select the group's paths with `jj split` when `@` also contains unrelated work, inspect both resulting changes, and describe only the intended revision. Do not include generated files or `.env`. Stop on conflicts or ambiguous ownership rather than discard work.
+
+When an Implementation Unit ID is already in hand, include it in the dynamically composed message in repository-compatible form; do not hunt for a plan or invent a unit. Omit for unclear or multi-unit changes.
+
+```bash
+(cd "$workspace_root" && jj status)
+(cd "$workspace_root" && jj diff)
+(cd "$workspace_root" && jj describe -r "<verified-group-revision>" -m "<message composed from the standards above>")
+(cd "$workspace_root" && jj bookmark set "<feature-bookmark>" -r "<verified-publishable-tip>")
+```
+
+Apply the Project publishing gate to the exact resulting tip. Re-verify repository, remote, bookmark, and intended commit before publication; do not publish a stale bookmark or unrelated change. Push only this bookmark; explicit `--bookmark` also establishes tracking for a new remote bookmark. Track an existing fetched remote bookmark explicitly only when needed:
+
+```bash
+(cd "$workspace_root" && jj git push --remote origin --bookmark "<feature-bookmark>")
+```
+
+Already-published work is a no-op. An empty `@` directly above the published tip is normal; inspect `@-` and its bookmarks rather than concluding there is no PR.
+
+Native command semantics: https://docs.jj-vcs.dev/latest/cli-reference/ and https://docs.jj-vcs.dev/latest/git-command-table/ .

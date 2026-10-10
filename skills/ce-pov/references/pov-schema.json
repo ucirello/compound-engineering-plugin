@@ -8,7 +8,7 @@
     "voice": {
       "type": "string",
       "minLength": 1,
-      "description": "Short identity for the peer voice; the worker namespaces it to the provider."
+      "description": "Short identity for the peer voice; the coordinator namespaces it to the resolved target after validating the native result."
     },
     "position": {
       "type": "string",

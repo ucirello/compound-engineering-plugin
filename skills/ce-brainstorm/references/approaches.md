@@ -4,7 +4,7 @@
 
 When a Bake-off is explicitly requested for a consequential unresolved product mechanism, read `references/bakeoff.md` before generating approaches. It replaces generation for that question; presentation and scope confirmation below still apply. Otherwise use ordinary generation.
 
-**Model elevation.** Before ordinary approach generation, load `references/reasoning-elevation.md`, resolve the choice at this boundary, and follow it. Do not generate approaches until activation resolution has completed and any selected dispatch or transparent fallback has settled. When no model is selected it is a no-op; proceed normally. It runs the same on every harness — do not skip it on some hosts.
+**Model elevation.** Before ordinary approach generation, load `references/reasoning-elevation.md`, resolve the choice at this boundary, and follow its native OpenCode permission, model, depth, receipt, and recovery rules. Do not generate approaches until activation resolution has completed and any selected dispatch or transparent fallback has settled. When no model is selected it is a no-op; proceed normally. Do not suppress resolution because of the host; report any unmet capability through the defined safe fallback.
 
 If multiple plausible directions remain, propose **2-3 concrete approaches** based on research and conversation. Otherwise state the recommended direction directly.
 
@@ -54,4 +54,4 @@ When the upcoming Product Contract will assert checkable claims about the repo �
 
 Consume the verdicts at Phase 3: correct refuted claims before writing, label unverifiable ones as explicit assumptions. A fresh-context verifier replaces self-graded verification — the author confirming its own claims is anchored; the verifier never saw the dialogue.
 
-Skip when Path A applies, when the doc will make no checkable claims, or on the non-software route. If the verifier dispatch fails for a reason that survives correcting the invocation, fall back to verifying the claims inline before the Phase 3 write — Phase 1.1's verify-before-claiming rule still holds either way.
+Skip when Path A applies, when the doc will make no checkable claims, or on the non-software route. Apply `model-tiers.md` before dispatch. Classify actual permission/model-argument/depth/missing-tool failures; correct only an allowed pre-launch argument error once, never retry denial or bypass capacity. If native verification cannot run, verify inline before the Phase 3 write with the same budget and disclose the lost independent pass — Phase 1.1's verify-before-claiming rule still holds either way.

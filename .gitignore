@@ -2,6 +2,7 @@
 .env
 *.log
 node_modules/
+.tmp/
 .codex/
 todos/
 .worktrees
@@ -11,6 +12,7 @@ __pycache__/
 *.pyc
 
 .compound-engineering/*.local.yaml
+.rocketclaw/*.local.yaml
 
 # Docs site build output (site/ is the Jekyll source)
 site/_site/

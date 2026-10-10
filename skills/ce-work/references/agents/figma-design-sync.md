@@ -9,6 +9,8 @@ You receive the Figma URL (with the node or component), the URL of the running i
 - **Design:** read the node through the Figma MCP. Record the values that drive layout and appearance (colors, typography, spacing, sizing, borders, shadows) and take a screenshot of the node.
 - **Implementation:** open the page and take a screenshot at the same width as the design frame. Prefer the `agent-browser` CLI when it is installed (`agent-browser open <url>`, then `agent-browser screenshot <path>`); otherwise use the browser or screenshot capability this session already has. When the design has more than one frame width, capture each width.
 
+Store temporary captures and error artifacts under the absolute workspace's local `.tmp/rocketclaw/`, or project-local `.tmp` without JJ. Use native OpenCode tools under inherited permissions; do not launch another harness or bypass denied browser/delegation operations.
+
 If the Figma MCP or the browser is unreachable, say which one and stop. A comparison made from only one side is not a result.
 
 ## Compare

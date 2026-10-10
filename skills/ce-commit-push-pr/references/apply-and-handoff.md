@@ -1,21 +1,27 @@
 # Applying the PR, reporting, and the babysit handoff
 
+All commands inherit the target absolute cwd and exported `GIT_DIR` from `SKILL.md`; all temp files use local `.tmp/`. For explainer message composition, the strongest rule is:
+
+Based on https://go.dev/wiki/CommitMessage and on past commit messages that you can see in `git log`, compose commit messages adherent to the present standards.
+
+Read the full guide and the verbatim source excerpts in `references/commit-and-push.md`; compare several recent subjects AND bodies using `(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -10 --format=%B)` before choosing syntax. Repository instructions/history always win differing syntax; with no history use project/user instructions and compatible Go guidance without inventing precedent.
+
 **Description-only mode** — print the title and body. Stop unless the user asks to apply.
 
 **New PR** (full workflow, no existing PR from Step 1, resolve branch and PR state) — if **Stack mode** is active, follow the Submit section of `references/stack-submit.md` instead of `gh pr create`; then report the bottom open non-draft PR URL and continue to the babysit handoff. Otherwise, immediately before creating, **always** re-run `gh pr list --head <branch> --state open --json number,url,isDraft,headRefName,headRepositoryOwner` (branch name only; target the base repo on a fork, per Context). This catches a PR that appeared since Step 1, or one the Step 1 check missed because it came back **unknown**, so you do not open a duplicate. If the list now shows a PR whose `headRepositoryOwner` and `headRefName` match the current head, switch to the existing-PR path. When several forks match, pick by head owner as in Step 1 rather than assuming index 0. If this re-check itself exits non-zero, resolve `gh auth status` or connectivity before creating; do not assume no PR exists. Otherwise apply per "Applying via gh" below using `gh pr create`. Report the URL.
 
-**Existing PR** (full workflow, found in Step 1) — if **Stack mode** is active, still follow the Submit section of `references/stack-submit.md` so the remaining stack layers submit or sync (shipping from the middle of a stack is normal); then report the bottom open non-draft PR URL and continue to the babysit handoff with the posture derived below. Otherwise the new commits are already on the PR from Step 3 (commit and push). Report the PR URL, then ask whether to rewrite the description.
+**Existing PR** (full workflow, found in Step 1) — if **Stack mode** is active, still follow the Submit section of `references/stack-submit.md` so remaining layers submit or sync; report the bottom open non-draft PR URL and continue to the handoff. Otherwise new commits are already on the PR. Report the URL. During authorized babysitting, factually refresh stale run results without asking, preserving unrelated authored content and issue links. Explicit apply intent needs no second approval. Outside that authority, optional rewrites require a separate approval, never bundled with alignment or monitoring and never a prerequisite to handoff.
 
 - **No** — skip the description rewrite and continue to the babysit handoff rule below.
 - **Yes** — run Step 4 (compose the PR title and body) if not already done, then preview and apply (see below).
 
-**Description update mode, or existing-PR rewrite confirmed** — preview before applying. First compare the proposed title and body with the existing PR. If they are identical, keep the existing title and body and do not call `gh pr edit`. If the only difference is a branding-only delta and the user did not explicitly request that exact branding change, also keep the existing title and body; branding alone never creates apply intent. Otherwise ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, the user may pass focus text back for a regenerate; do not apply. If confirmed, apply per "Applying via gh" below using `gh pr edit` and report the URL.
+**Description update mode, or authorized existing-PR rewrite** — compare proposed title/body with the existing PR; identical content needs no edit. Authorized factual maintenance or explicit apply requests apply directly. Otherwise preview and ask: "New title: `<title>` (`<N>` chars). Summary leads with: `<first two sentences>`. Total body: `<L>` lines. Apply?" If declined, retain the current description; focus text may regenerate, but otherwise-authorized monitoring still proceeds. Never ask again for a rewrite already approved. Description-only requests print a draft and do not mutate.
 
 **Explainer archival** — runs only in the full workflow, when all of these hold: `pr_teaching_archive` is on, the composed body has a `## New concepts` section, and the apply was confirmed (a new-PR create, or an existing-PR rewrite the user accepted). A declined rewrite skips archival entirely, so no unlinked doc commit is left behind. Resolve every path from the repo root gathered in Context, never from the CWD. With two taught concepts, write one file per concept and stage both in the single commit. Run these steps, in order, immediately before the `gh` call:
 
-1. `git check-ignore -q <root>/explainers/YYYY-MM-DD-<concept-slug>.md` (from the repo root) — the check works on paths that do not exist yet. If the path is ignored, print a one-line warning and skip archival entirely, writing nothing (never `git add -f`).
+1. Inspect applicable ignore rules for `<root>/explainers/YYYY-MM-DD-<concept-slug>.md` from the absolute workspace root before writing. If ignored, warn and skip archival entirely, writing nothing; never force-track it.
 2. Write the file (create the directory if needed) with YAML frontmatter `title`, `date`, `input_shape: concept`, `subject`, and the teaching content. If the file already exists from a prior run, overwrite it.
-3. `git add` those file(s) only (never `-A`) and commit with `docs(explainer): teach <concept>[, <concept>]`. Re-apply the **Project publishing gate** to the resulting commit state, then push. If the commit reports nothing to commit, the doc is already committed from a prior run — keep the link and continue.
+3. Select only those files using the native selective-change workflow in `references/commit-and-push.md`; dynamically compose a message describing the concepts taught after reading the full Go guide and comparing recent subjects AND bodies. Use `jj describe -m "<message composed from the standards above>"` from the absolute root. Re-apply the **Project publishing gate** to the exact resulting tip, then push its verified feature bookmark with native JJ. If no change remains, keep the already-published link and continue.
 4. Add a head-branch blob URL for each doc into the `## New concepts` section before applying. Build the URL for the repo's actual host — for example `gh browse -n -b <head-branch> -- <path>` prints the link on whatever host `gh` targets, GitHub Enterprise included. Do not hardcode `github.com`, or the link 404s on GHE.
 
 If the doc write, commit, or push fails, warn and continue to PR creation without the link. Never leave the flow stopped between the commit and the PR.
@@ -27,9 +33,9 @@ If the doc write, commit, or push fails, warn and continue to PR creation withou
 **Resolve the standing opt-out before applying the handoff rule below.** Read `auto_babysit` by the rule here, at the handoff. A config read from an earlier step does not carry over: a run that reaches the handoff without having read the key hands off against the user's standing choice, and a compacted run is the ordinary way that happens.
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` = the absolute `jj workspace root`). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -43,6 +49,8 @@ After a stack submit, hand off the bottom open non-draft PR with the derived `po
 **Success** = `ce-babysit-pr` owns the monitoring lifecycle. Load and follow its instructions before choosing the monitoring mode. If you are running it in this session, continue until its stop condition permits a final report. In `mode:pipeline`, wait for its pipeline stop and return the structured result. Before reporting success, render every returned typed `needs-human` residual unchanged under `## Needs your decision` and pass the same objects up to the top-level coordinator. `babysit:off` disables only new monitoring; it does not suppress a typed residual already known to this run or supplied by its caller.
 
 Never start babysit mechanics yourself: do not run `pr-snapshot`, arm a watcher, or reconstruct the loop. Never substitute `ci-watcher`, `gh pr checks --watch`, ad-hoc polls, or a promise to babysit later. **Handoff blocked:** if the skill cannot be loaded or started, stop and report the failure. Do not invent a parallel or narrower watch.
+
+Clean workspace alignment to the exact verified pushed PR head and authorized monitoring/rearming need no extra approval. Verify repository, head bookmark, remote, and commit; an empty `@` directly above that head is aligned. Otherwise use native `jj new <verified-head>` only with clean, unambiguous state. Preserve unrelated tracked/ignored/untracked work. Dirty/conflicted state, unknown push authority, target ambiguity, or denied permission requires a safe decision, never reset/discard. Inspect `@-` and its bookmarks/PR before interpreting an empty `@` as no eligible PR. Keep final merge, scope expansion, watch boundaries, and typed needs-human decisions intact.
 
 A `babysit:` token on this invocation decides this run whatever the config says — `off` skips, `continuous` and `checkpoint` force that mode and run even under a standing opt-out. With no such token, the resolved `auto_babysit` above decides.
 
@@ -62,9 +70,13 @@ A draft-only stack submit is a hard residual before babysit when babysit is on.
 The body **must** be written to a temp file and passed via `--body-file <path>`. Never use `--body-file -`, stdin pipes, heredoc-to-stdin, or `--body "$(cat ...)"` — wrappers and stdin handling can silently produce an empty PR body while `gh` still exits 0 and returns a URL.
 
 ```bash
-BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/ce-pr-body.XXXXXX") && cat >> "$BODY_FILE" <<'__CE_PR_BODY_END__'
+cd "$workspace_root"
+export GIT_DIR="$(jj git root)"
+mkdir -p "$workspace_root/.tmp"
+BODY_FILE=$(mktemp "$workspace_root/.tmp/pr-body.XXXXXX")
+cat >> "$BODY_FILE" <<'__PR_BODY_END__'
 <the composed body markdown goes here, verbatim>
-__CE_PR_BODY_END__
+__PR_BODY_END__
 ```
 
 The quoted sentinel keeps `$VAR`, backticks, and any literal `EOF` inside the body from being expanded.

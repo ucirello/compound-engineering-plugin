@@ -2,7 +2,7 @@
 # This is the canonical schema for the experiment log file that accumulates
 # across an optimization run.
 #
-# Location: .context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml
+# Location: .context/ce-optimize/<spec-name>/experiment-log.yaml
 #
 # PERSISTENCE MODEL:
 # The experiment log on disk is the SINGLE SOURCE OF TRUTH. The agent's
@@ -197,8 +197,8 @@ experiment_entry:
         - error                   # measurement command crashed, timed out, or produced malformed output
         - deferred_needs_approval # experiment needs an unapproved dependency -> set aside for batch approval
         - timeout                 # measurement command exceeded timeout_seconds
-        - runner_up_kept          # file-disjoint runner-up that was cherry-picked and re-measured successfully
-        - runner_up_reverted      # file-disjoint runner-up that was cherry-picked but combined measurement was not better
+        - runner_up_kept          # file-disjoint runner-up integrated with native JJ and re-measured successfully
+        - runner_up_reverted      # native JJ combined candidate measurement was not better
       description: >
         The loop branches on this value.
         'measured' and 'promising' are non-terminal: CP-3 persists raw metrics
@@ -310,7 +310,7 @@ experiment_entry:
 
     commit:
       type: string
-      description: "Git commit SHA on the optimization branch (only for 'kept' and 'runner_up_kept' outcomes)"
+      description: "JJ revision ID on the optimization bookmark (only for 'kept' and 'runner_up_kept' outcomes)"
 
     deferred_reason:
       type: string
@@ -343,7 +343,7 @@ experiment_entry:
 #             -> decide.mjs eligible, next_measurement none -> stay measured until integration
 #               -> diff on optimization branch -> outcome: kept
 #               -> eligible leftover             -> outcome: not_selected
-#             -> runner-up, file-disjoint -> cherry-pick + re-measure
+#             -> runner-up, file-disjoint -> native JJ integration + re-measure
 #               -> combined eligible and integrated -> outcome: runner_up_kept
 #               -> combined not kept              -> outcome: runner_up_reverted
 #             -> inconclusive             -> outcome: inconclusive
@@ -358,7 +358,7 @@ experiment_entry:
 # ============================================================================
 #
 # Written after each batch to:
-#   .context/compound-engineering/ce-optimize/<spec-name>/strategy-digest.md
+#   .context/ce-optimize/<spec-name>/strategy-digest.md
 #
 # Contains a compressed summary of:
 # - What hypothesis categories have been tried

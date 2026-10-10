@@ -4,9 +4,14 @@ Complete only the conversation actions preserved in the handoff, then return the
 
 ## Validate the original record and prove publication
 
-Pass the supplied path directly to the bundled helper. It reads and validates the original JSON bytes; do not reconstruct a received record from chat or normalize it into another file first. Set the skill directory in each shell call because shell state does not persist:
+Each independent shell call below begins with `cd "$workspace_root"` to the absolute target root and `export GIT_DIR=$(jj git root)`. Use workspace-local `.tmp/` for reply/input/checkpoint scratch; preserve the original handoff unchanged when validation or storage compatibility fails.
+
+Pass the supplied path directly to the bundled helper. It reads and validates the original JSON bytes; do not reconstruct a received record from chat or normalize it into another file first. `SKILL_DIR` is only the absolute script-path anchor, never the helper's working directory. Set it in each shell call because shell state does not persist; execute from the verified absolute target workspace root:
 
 ```bash
+cd "$workspace_root" || exit 1
+GIT_DIR=$(jj git root) || exit 1
+export GIT_DIR
 SKILL_DIR="<absolute path of the directory containing the ce-resolve-pr-feedback SKILL.md>";
 PY="$(for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && "$c" -c '' >/dev/null 2>&1 && { echo "$c"; break; }; done)"; [ -n "$PY" ] || { echo "no working Python 3 interpreter on PATH" >&2; exit 1; };
 "$PY" "$SKILL_DIR/scripts/pending-feedback.py" inspect-publication --path '<handoff path>'
@@ -34,7 +39,7 @@ For each still-valid saved action, enter Full Mode step 7 at its first unsatisfi
 
 Apply only the saved checklist ticks against the freshly fetched PR body. An already checked saved bullet is complete. Change only the saved unchecked bullet's `[ ]` to `[x]`, preserving the rest of the current body. When the saved bullet cannot be identified unambiguously, retain that tick as pending instead of rewriting the author's checklist.
 
-After verified progress, checkpoint a separate updated JSON file with `checkpoint --input '<updated JSON file>' --path '<handoff path>'` through the same helper and directory anchor above. Preserve all prepared content; update only observed progress, status and the existing typed residuals. Checkpoint successful earlier actions before returning on a later failure. If checkpointing fails, report the observed remote successes and use `incomplete-handoff`; do not describe stale progress as safely saved.
+After verified progress, checkpoint a separate updated JSON file with `checkpoint --input '<updated JSON file>' --path '<handoff path>'` through the same absolute helper path above, repeating its root/GIT_DIR preamble so the working directory remains the verified absolute target workspace root, not `SKILL_DIR`. Preserve all prepared content; update only observed progress, status and the existing typed residuals. Checkpoint successful earlier actions before returning on a later failure. If checkpointing fails, report the observed remote successes and use `incomplete-handoff`; do not describe stale progress as safely saved.
 
 Re-fetch to verify the saved actions after the remote tail. `completed` means every eligible saved reply, resolution and tick is verified; human threads intentionally left open do not prevent it. Unrelated new feedback is returned for a separate pass, never processed in this run. Related new feedback that invalidates a saved action leaves that action pending even when the saved root body is unchanged.
 

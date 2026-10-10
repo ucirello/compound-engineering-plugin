@@ -1,5 +1,7 @@
 # Validator Batch Prompt Template
 
+Use the target absolute workspace root as cwd for every source operation; inspect via native JJ and verified reviewed revisions, never a mismatched remote-scope workspace. Repository-scoped gh requires `GIT_DIR=$(jj git root)` obtained there; unsupported read-only backend history uses that same context. Put all scratch/probe inputs and failure-path temporary data under local `.tmp/`. This is a native leaf reviewer with no child delegation; the caller applies delegation permission, model-override permission, and effective-depth gates separately.
+
 Use one fresh validator subagent for one batch of already-merged findings. Eight findings is the normal cap. When more than eight P0/P1 findings survive, expand that same batch to include every surviving P0/P1; never omit a blocker or split the work into another batch. The validator is independent of the originating reviewers and the orchestrator. Fill `{run_dir}` with the review's run directory; the orchestrator waits on the verdicts file there, so the file, not the in-band return, is the contract.
 
 ```

@@ -30,9 +30,9 @@ A validated recovery run id selects durable state. It never authorizes a fresh d
 ### Standing configuration
 
 <!-- ce-config-layers:start -->
-**Resolve ordinary CE yaml keys from the two repo files.**
+**Resolve ordinary RocketClaw yaml keys from the two repo files.**
 
-- **Read** `<repo-root>/.compound-engineering/config.local.yaml`, then `config.yaml` (`<repo-root>` = `git rev-parse --show-toplevel`). Missing files are skipped. Gitignore does not change resolution.
+- **Read** `<repo-root>/.rocketclaw/config.local.yaml`, then `config.yaml` (`<repo-root>` is the absolute root returned by `jj workspace root` from the candidate workspace). Missing files are skipped. Ignore rules do not change resolution.
 - **Win** with the first active (non-commented) value. For scalars, empty is unset; an invalid value continues to the next layer, then the skill default. For lists and maps, a present key — including an empty list or map — replaces the whole key.
 - **Do not** use this rule for `docs_root` — that key is `config.yaml` only.
 <!-- ce-config-layers:end -->
@@ -48,7 +48,7 @@ For a bare prompt, cross-model execution is eligible only after Phase 0 has esta
 ## Run the chosen engine
 
 - **Native:** follow `references/execution-strategy.md` for scheduling and dispatch, and the Phase 2 loop in `references/implementation-loop.md`. `ce-work` creates the tasks, orders the units, dispatches, verifies, and commits.
-- **Cross-model:** follow the serial external-unit transaction in `references/cross-model-execution.md` through the bundled controller, detached runner, and fixed adapter. Never let the detached worker select a fallback recipient.
+- **Cross-model:** follow the native OpenCode model/subagent transaction in `references/cross-model-execution.md`, with host-owned JJ integration and durable receipts. Never invoke removed bridges or another harness; workers cannot select fallback recipients. Check delegation, optional model permission and effective nesting capacity separately, preserving configured route/tier intent and disclosing unavailable fixed routes.
 
 ## Resume the correct tail
 
@@ -61,4 +61,4 @@ After either engine finishes implementation, inspect the diff and continue with 
 
 ## Progress visibility (independent of tail ownership)
 
-Whoever runs the finishing steps opens the PR. During a long run, commit each completed unit so progress stays observable in git. In return-to-caller mode `ce-work` must not open any PR, but it may commit and report progress in its structured summary. Never write progress or status into the plan body; git, commits, and the returned summary carry it.
+Whoever runs the finishing steps opens the PR. During a long run, describe each completed unit so progress stays observable in JJ. In return-to-caller mode `ce-work` must not open any PR, but it may commit and report progress in its structured summary. Never write progress or status into the plan body; JJ changes and the returned summary carry it.

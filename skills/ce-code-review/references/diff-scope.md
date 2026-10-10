@@ -7,10 +7,10 @@ These rules apply to every reviewer. They define what is "your code to review" v
 Determine the diff to review using this priority order:
 
 1. **User-specified scope.** If the caller passed `BASE:`, `FILES:`, or `DIFF:` markers, use that scope exactly.
-2. **Working copy changes.** If there are unstaged or staged changes (`git diff HEAD` is non-empty), review those.
-3. **Unpushed commits vs base branch.** If the working copy is clean, review `git diff $(git merge-base HEAD <base>)..HEAD` where `<base>` is the default branch (main or master).
+2. **Working copy changes.** If root-scoped `jj diff` is nonempty, review the resolved tracked working-copy changes.
+3. **Unpushed revisions vs base bookmark.** Review the resolved base-to-`@` diff from `scope.md`, including committed work above the verified repository base, not just an empty tip.
 
-The scope step in the SKILL.md handles discovery and passes you the resolved diff. You do not need to run git commands yourself unless PR scope mode requires it (below).
+The scope step handles discovery and passes the resolved diff. Run every JJ command with cwd at the target absolute workspace root, never `jj -R`; gh needs GIT_DIR from `jj git root` in that same root. Prefer native JJ inspection; unsupported backend line-history formatting may use read-only Git with that context.
 
 ## Remote scope (`pr-remote` and `branch-remote`)
 
@@ -18,7 +18,7 @@ When the review context includes `<pr-scope-mode>pr-remote</pr-scope-mode>` or `
 
 Instead:
 
-- Prefer `git show <remote-head-ref>:<path>` when `<pr-head-ref>` or `<branch-head-ref>` is provided in context.
+- Prefer `(cd "$workspace_root" && jj file show -r "<remote-head-ref>" "<path>")` when a reviewed remote head is provided.
 - Otherwise rely on diff hunks in the provided `<diff>` only.
 - Do not treat local workspace contents as evidence for findings on changed files.
 
@@ -32,7 +32,7 @@ Recall depends on how you find related code. A diff-local read plus a text `grep
 
 No tool is complete: dynamic dispatch, reflection, dependency injection, string-keyed routes/config, generated code, and external consumers hide usages from all of them. This only bites a claim that rests on *exhaustive* coverage — "this symbol is unused," "nothing else calls this," "safe to change." For such a claim, when coverage is text-search-only or a hiding construct could apply, record the unresolved boundary in `residual_risks` (e.g. `callsite completeness: grep-only`) or step the finding down, rather than asserting absence or safety. A finding that does not turn on exhaustive coverage needs no such note.
 
-In `pr-remote` / `branch-remote` scope these tiers inspect the working tree, which is not the reviewed head — apply the Remote scope rules above (`git show` / `git grep <remote-head-ref>`) instead of local search.
+In remote scope do not search the mismatched working tree. Enumerate reviewed paths with root-scoped `jj file list -r <remote-head-ref>`, inspect `jj file show` output, or search an owned local `.tmp/` snapshot of that exact revision without checkout.
 
 ## Finding Classification Tiers
 

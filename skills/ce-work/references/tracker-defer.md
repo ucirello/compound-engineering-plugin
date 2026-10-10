@@ -35,6 +35,8 @@ The agent determines the project's tracker from whatever documentation is obviou
 
 A tracker can be reached through an MCP tool (e.g., a Linear MCP server), a CLI (e.g., `gh`), or a direct API. All are acceptable. The detection output is a tuple with two availability flags. One is for the named tracker specifically and drives label confidence in Interactive mode. The other is for the full fallback chain and drives whether Defer is offered at all:
 
+For every repository-scoped `gh` probe/create/update below, use the absolute target workspace root and its JJ backend: `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh <arguments>)`, or export that `GIT_DIR` once in a shell whose cwd is that root. Resolve the root before use; never inherit another workspace's Git context. Ticket body files and error/fallback artifacts belong under workspace-local `.tmp/rocketclaw/`, never global temporary storage. Native connector/API operations retain their normal repository/project identity checks.
+
 ```
 { tracker_name, confidence, named_sink_available, any_sink_available }
 ```

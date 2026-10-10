@@ -71,7 +71,9 @@ Dispatch file-grouped subagent batches when fixes need code you have not read, o
 - Do not re-run `ce-code-review`
 - Shared-directory fallback: do not stage or commit; return which `#` were applied or skipped and which files changed
 
-**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), commits (`fix(review): apply findings #…`) unless worktree-isolated subagents merge per Phase 1. Repeat until all batches complete.
+**After inline fixes and after each wave:** orchestrator reviews diffs (scope = assigned `#` only), runs tests (`requires_verification: true` on any applied finding → at least targeted tests; multi-file → broader suite), and creates a host-owned JJ change describing the applied finding ids. Read the message-standards and unit separation workflow in `references/implementation-loop.md` before composing: derive syntax from the full Go guide and recent subjects/bodies at runtime, never a fixed review prefix. Isolated worker results require scope inspection and authoritative verification before integration. Repeat until all batches complete.
+
+These instructions explicitly request file-grouped subagents. Under a user-OR-loaded-skill delegation rule no second ask is needed; unconditional prohibitions and actual denials still apply. Optional model selection is separately permissioned; config tiers do not authorize an override when the host requires an explicit user model request. Use suitable inherited-model workers when allowed, disclose unmet fixed-route/different-model requirements, and never count same-model workers as cross-model independence. Inspect effective configuration discovery/precedence and current nesting before dispatch; classify actual depth/capacity, permission, model-argument and missing-tool errors distinctly. Use inline fallback only where this apply contract allows it, not to claim independent review coverage or bypass denials through shell/another harness.
 
 ### Summary (required)
 

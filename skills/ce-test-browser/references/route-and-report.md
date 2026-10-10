@@ -24,6 +24,8 @@ Map each changed file to the route(s) that render it, then build the list of URL
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing the SKILL.md you just read>";
+workspace_root="<verified absolute target workspace root>";
+cd "$workspace_root" || exit 1;
 PORT=$(bash "$SKILL_DIR/scripts/resolve-port.sh");
 if lsof -i ":${PORT}" -sTCP:LISTEN -t >/dev/null 2>&1; then
   echo "Server running on port ${PORT}";

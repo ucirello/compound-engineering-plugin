@@ -46,10 +46,10 @@ Depth is chosen only by an explicit token, only in non-interactive mode, and at 
 Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a subagent the resolved path rather than the config.
 
 <!-- ce-docs-root:start -->
-**Resolve the CE artifact root `<root>` before composing any artifact path.**
+**Resolve the artifact root `<root>` before composing any artifact path.**
 
-- **Read** `docs_root` from `<repo-root>/.compound-engineering/config.yaml` only (`<repo-root>` = `git rev-parse --show-toplevel`). Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
-- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
+- **Read** `docs_root` from `<repo-root>/.rocketclaw/config.yaml` only. Discover the enclosing absolute workspace root, then verify it with `(cd "$workspace_root" && jj workspace root)`. Do not read it from `config.local.yaml`. Unset -> `<root>` is `docs`, exactly as before.
+- **Validate** a set value: a repo-relative directory whose real, symlink-resolved path stays inside the repo and is neither the repo root nor under `.git/` or `.jj/`. Otherwise stop with an error naming `docs_root` and the value -- never fall back to `docs`.
 - **Use** `<root>` as the sole artifact location: create it if absent, compose each path as `<root>/<subdir>` with this skill's own subdirectory, and never also read `docs`.
 <!-- ce-docs-root:end -->
 
@@ -57,7 +57,7 @@ Resolve `<root>` when you first compose a `<root>/solutions/` path, and pass a s
 
 **Only the orchestrator writes product files.** Phase 1 subagents write to per-run scratch only, and never touch `<root>/`, project instruction files, or any other tracked path.
 
-The orchestrator writes the one learning under `<root>/solutions/`, plus two maintenance side effects that its own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.compound-engineering/config.yaml`. Creating `CONCEPTS.md` when it is absent is expected rather than a violation. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to `ce-compound-refresh`, which this skill recommends or invokes with a narrow scope but never stands in for.
+The orchestrator writes the one learning under `<root>/solutions/`, plus two maintenance side effects that its own step describes: `CONCEPTS.md` during vocabulary capture, and — **only in interactive Full mode after consent** — a small discoverability line in a project instruction file. Two further writes exist **only in interactive Full mode when the user selects them at the assembly destination step**: a rule file inside a writable declared Compound Pack, and the `packs:` entry appended to `.rocketclaw/config.yaml`. Creating `CONCEPTS.md` when it is absent is expected rather than a violation. An instruction file is only ever edited, never created. Nothing else in the tree is written. Edits to *other* docs belong to `ce-compound-refresh`, which this skill recommends or invokes with a narrow scope but never stands in for.
 
 ## Choosing the path
 
@@ -66,6 +66,14 @@ The orchestrator writes the one learning under `<root>/solutions/`, plus two mai
 Lightweight mode skips session history entirely; non-interactive Full runs the same automatic probe, which asks nothing and so preserves the non-interactive contract.
 
 ## Full Mode
+
+### Native execution contract
+
+Run every JJ command from the target absolute workspace root, never with `jj -R`; retain repo-relative file results. Repository-scoped GitHub commands run as `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh ...)`. Use workspace-local `.tmp/` for all scratch, including failures and fallback; without JJ use the current project's local `.tmp/`. Native JJ reference: https://docs.jj-vcs.dev/latest/cli-reference/.
+
+This skill explicitly requests its Full-mode research and validator subagents. Under a user-OR-loaded-skill delegation rule this satisfies permission without a second approval; respect unconditional prohibitions, missing tools, and actual denials. Use OpenCode-native subagents, and `opencode.models` to resolve configured model choices and tiers when selection is allowed. Delegation permission does not authorize an optional model override: if explicit user model selection is required and absent, use a suitable inherited model, preserve configured intent, and disclose unmet fixed-route or different-model coverage. Separate same-model reviewers are not cross-model independence.
+
+Discover applicable OpenCode configuration sources and precedence (https://opencode.ai/v2/docs/config), including the effective `experimental.subagent_depth`, and account for the current nesting level before dispatch. A shipped default does not establish consuming-project capacity. Classify actual errors as capacity/depth, permission, model-argument rejection, or missing tool. Never retry a denied operation or evade depth through shell/another harness. The parent may perform research roles or grounding inline when dispatch is unavailable, preserving scope, evidence and artifact contracts and reporting loss of independent review; do not call unavailable independent coverage fully verified.
 
 Run these in order. Each reference is a required read at the step that names it.
 

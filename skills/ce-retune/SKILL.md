@@ -26,7 +26,7 @@ This skill cannot run without a way to observe behavior. Check for all three, an
 
 If any is missing, **stop and say so**, naming what to build. Do not fall back to a static audit and present it as retuning: an audit can say what looks cuttable and never whether cutting helped. An audit-only pass is a legitimate thing to want; it is a different request.
 
-State the target model and the harness you found before continuing.
+State the target model and the harness you found before continuing. Execute active model and peer dispatch through native OpenCode model discovery and subagents, following `references/workflow-shapes.md`; do not invoke a cross-harness bridge. Preserve the benchmark's build selector, settings, traces and durable receipts. An unavailable required model route or independent context is an explicit coverage blocker, not a reason to bypass permissions.
 
 ## The phases
 

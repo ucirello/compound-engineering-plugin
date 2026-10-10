@@ -16,6 +16,7 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 | Harness | Run and wait tools | Durable beyond the session? |
 |---------|--------------------|-----------------------------|
+| OpenCode | native shell background detector; await completion notification, then tick and re-arm | Session-bound; checkpoint when native waiting is unavailable |
 | Claude Code (CLI) | background `Bash` + a `Monitor`/wait; or `ScheduleWakeup` under `/loop` | No (session-bound) — cron for durable |
 | Grok (CLI/TUI) | background `run_terminal_command` + `get_command_or_subagent_output`; `scheduler_create --durable` for a cross-session schedule | Yes via `scheduler_create --durable` (60s min, 7d) |
 | Cursor (CLI) | `Shell` background + `notify_on_output` sentinel (its `/loop` is user-typed, **not** skill-invocable) | No (session-bound) |
@@ -25,7 +26,7 @@ Use the harness's tools to run the detector and wait for its output. A skill dri
 
 **Checkpoint:** Use checkpoint mode only when the user requests it or the harness cannot keep the session active while waiting for the detector's output. Run one tick, persist state, report, and print the exact host-rendered resume invocation. Say monitoring is paused. Never fake a loop with a foreground `sleep` or an unmanaged detached process.
 
-**Durability:** the in-session watch dies with the session. Re-invoking the skill resumes from disk, because `/tmp` persists across ticks. For an unattended multi-day watch, escalate to a durable scheduler: Grok's `scheduler_create --durable`, or cron running `<cli> exec '<host-rendered resume invocation>'`. A fresh headless run has no memory of this conversation, so persist consequential decisions to disk. **Shell env vars do not persist between separate tool calls** on any harness — re-set `SKILL_DIR`/`STATE_DIR` inline in every command.
+**Durability:** the in-session watch dies with the session. Re-invoking resumes from the workspace-local `.tmp/rocketclaw` journal. Use an explicitly authorized durable scheduler for a multi-day watch; do not dispatch another harness or create an unmanaged detached process as a fallback. A fresh headless run has no conversation memory, so persist consequential decisions. **Shell env vars do not persist between separate tool calls** — re-set absolute workspace cwd, `GIT_DIR`, `SKILL_DIR`, and `STATE_DIR` in every command.
 
 ## Cadence (the watch interval)
 

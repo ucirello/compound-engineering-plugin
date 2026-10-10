@@ -16,13 +16,13 @@ Two waves, one agent per unit each way.
 
 1. The project's own documented learnings and solution docs.
 2. The test suite. Grep a distinctive substring of the target text.
-3. Version history. Run `git log -S '<substring>'` for the commit that introduced the line, then read that commit message and the PR it belongs to.
+3. Version history. Native JJ can inspect revisions and descriptions; for pickaxe history, which JJ does not provide, use the read-only backend: `(cd "$workspace_root" && GIT_DIR=$(jj git root) git log -S '<substring>' --format=fuller -- '<repo-relative-path>')` from the target absolute root. Read the introducing change's message and associated PR; repository-scoped PR reads use `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh pr view <verified-pr>)`.
 
 Source 3 is unavailable in a corpus checkout with no history, which is the normal shape of an installed or vendored copy. A defender working without history must say so in `sources_searched` and cannot return `cut` on the strength of the other two alone. That combination is "no provenance found in two of three sources", which is a verification task, not a cut. Point defenders at a checkout that has history, or record the whole audit's provenance basis as partial.
 
 **Pipeline the waves.** Start a unit's defense as soon as its proposal set returns. Do not wait for wave 1 to finish; the two waves share no state across units. It is 2N dispatches on N units, so plan the wave count against the host's concurrency cap (`references/workflow-shapes.md`).
 
-Keep defenders on a capable model tier. A defender that cannot read a test suite and reconstruct intent from a commit message returns "no provenance found" for everything, which silently converts the audit into a demolition.
+Keep defenders on a capable model tier through the native permission/model/capacity routing in `references/workflow-shapes.md`. A configured tier alone does not authorize an optional model override. A defender that cannot read a test suite and reconstruct intent from a commit message returns "no provenance found" for everything, which silently converts the audit into a demolition.
 
 ## Finding schema
 

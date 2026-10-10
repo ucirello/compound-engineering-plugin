@@ -11,25 +11,27 @@ When `<root>/solutions/` holds at least one markdown file, read `references/agen
 Check if `optimize/<spec-name>` branch already exists:
 
 ```bash
-git rev-parse --verify "optimize/<spec-name>" 2>/dev/null
+(cd "$workspace_root" && jj bookmark list "optimize/<spec-name>")
 ```
 
-**If branch exists**, check for an existing experiment log at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`.
+**If branch exists**, check for an existing experiment log at `.context/ce-optimize/<spec-name>/experiment-log.yaml`.
 
 Present the user with a choice via the platform question tool:
 - **Resume**: read ALL state from the experiment log on disk (do not rely on any in-memory context from a prior session). Recover any measured-but-unlogged experiments by scanning worktree directories for `result.yaml` markers. Then apply the SKILL.md body's resume rule to decide what is skipped and which approval checks run again.
-- **Fresh start**: archive the old branch to `optimize-archive/<spec-name>/archived-<timestamp>`, clear the experiment log, start from scratch
+- **Fresh start**: preserve the old revision with a collision-checked `optimize-archive/<spec-name>/archived-<timestamp>` JJ bookmark and copy/read back the old experiment log before creating a fresh log. Preserve existing workspaces and recovery state.
 
 ### 0.5 Create Optimization Branch and Scratch Space
 
 ```bash
-git checkout -b "optimize/<spec-name>"  # or switch to existing if resuming
+(cd "$workspace_root" && jj bookmark create "optimize/<spec-name>" -r @)
 ```
 
 Create scratch directory:
 ```bash
-mkdir -p .context/compound-engineering/ce-optimize/<spec-name>/
+mkdir -p .context/ce-optimize/<spec-name>/
 ```
+
+Here and throughout this skill, “optimization branch” means the JJ bookmark `optimize/<spec-name>`. Resolve and persist the absolute source `workspace_root` before commands. Detect existing isolation first and follow `loop.md`'s native workspace creation/adoption rules before experimenting. The creation command above is for a fresh bookmark only; on resume verify the recorded revision and preserve local changes, then use a new change based on that revision if safe, never checkout/reset. Run shell source operations from the absolute target root and keep returned paths repo-relative. Use workspace-local `.tmp/` for all temporary storage and ensure it is ignored. Repository-scoped `gh` requires `GIT_DIR` obtained there via `jj git root`. All subagent calls use `loop.md`'s independent delegation/model/depth checks, including baseline judges and prior-learnings research.
 
 ---
 
@@ -37,7 +39,7 @@ mkdir -p .context/compound-engineering/ce-optimize/<spec-name>/
 
 **This phase stops the run until the user approves the baseline and parallel readiness. Phase 2 does not start before that.**
 
-**Bundled scripts.** Phases 1 and 3 call helper scripts that ship in this skill's `scripts/` directory (`measure.sh`, `decide.mjs`, `parallel-probe.sh`, `experiment-worktree.sh`). The Bash tool's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve. Invoke each by the skill's own absolute path. Every runnable block below already sets `SKILL_DIR` inline (shell state does not persist between Bash tool calls, so each block must carry it). Replace the `<absolute path …>` placeholder with the directory you loaded this `ce-optimize` SKILL.md from before running. The shape:
+**Bundled scripts.** Phases 1 and 3 call support scripts that ship in this skill's `scripts/` directory (`measure.sh`, `decide.mjs`, `parallel-probe.sh`). Workspace lifecycle is native JJ as specified in `loop.md`. The shell's working directory is the user's project, not the skill directory, so a bare `scripts/<name>` path will not resolve. Invoke each by the skill's own absolute path. Every runnable block below sets `SKILL_DIR` inline. Replace the placeholder with the directory you loaded this skill from. The shape:
 
 ```bash
 SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
@@ -46,7 +48,7 @@ bash "$SKILL_DIR/scripts/<name>"
 
 ### 1.1 Clean-Tree Gate
 
-The SKILL.md body states this gate. Run `git status --porcelain`, filter the output against `scope.mutable` and `scope.immutable`, and apply the body's rule to the result. Name the dirty in-scope files, ask the user to commit or stash them, and do not continue until they are clean.
+The SKILL.md body states this gate. From the absolute target root run `(cd "$workspace_root" && jj status)` and `(cd "$workspace_root" && jj diff --name-only)`, filter repo-relative paths against `scope.mutable` and `scope.immutable`, and check conflicts. Name dirty in-scope files and ask the user to preserve them in a separate change or choose another verified clean base; never reset or discard them. Do not continue until the gate passes.
 
 ### 1.2 Build or Validate Measurement Harness
 
@@ -117,8 +119,7 @@ Read the JSON output. Present any blockers to the user with suggested mitigation
 
 Count existing worktrees:
 ```bash
-SKILL_DIR="<absolute path of the directory containing this SKILL.md>";
-bash "$SKILL_DIR/scripts/experiment-worktree.sh" count
+(cd "$workspace_root" && jj workspace list)
 ```
 
 If count + `execution.max_concurrent` would exceed 12:
@@ -130,7 +131,7 @@ If count + `execution.max_concurrent` would exceed 12:
 
 **MANDATORY CHECKPOINT.** Before presenting results to the user, write the initial experiment log with baseline metrics to disk:
 
-1. Create the experiment log file at `.context/compound-engineering/ce-optimize/<spec-name>/experiment-log.yaml`
+1. Create the experiment log file at `.context/ce-optimize/<spec-name>/experiment-log.yaml`
 2. Include all required top-level sections from `references/experiment-log-schema.yaml`: `spec`, `run_id`, `started_at`, `baseline`, `experiments`, and `best`
 3. Seed `experiments` as an empty array and seed `best` from the baseline snapshot (use `iteration: 0`, baseline metrics, and baseline judge scores if present) so later phases have a valid current-best state to compare against
 4. Optionally seed `hypothesis_backlog: []` here as well so the log shape is stable before Phase 2 populates it

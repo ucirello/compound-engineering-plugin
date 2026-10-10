@@ -29,6 +29,8 @@ If no access method is reachable, stop and return a message whose **first line i
 
 **Jira note:** Jira rides the same methodology and prose floor as GitHub and Linear, but has not been exercised against a live instance — treat a Jira run as lower-confidence and lean on the tracker's real status/field list rather than assumptions.
 
+For repository-scoped GitHub CLI operations, use the absolute target `$workspace_root` as cwd and obtain the backend there: `(cd "$workspace_root" && GIT_DIR=$(jj git root) gh <arguments>)`. Discover remote URLs with `(cd "$workspace_root" && jj git remote list)` and explicitly select verified upstream/origin as above. Keep returned file paths repo-relative. See https://docs.jj-vcs.dev/latest/cli-reference/ .
+
 ## Two-axis state model (both modes)
 
 Trackers expose two different axes; keep them distinct.

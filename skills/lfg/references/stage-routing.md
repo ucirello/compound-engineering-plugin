@@ -8,8 +8,14 @@ LFG is otherwise hands-off and never stops to ask. The single question it may as
 
 Interpret whether the invoking conversation expresses **semantic intent to assign a pipeline stage** — planning or implementation — to a specific model or harness. This is judgment, not keyword or prompt-token matching: an explicit instruction such as "plan with fable" or "use Codex for implementation" creates an assignment, while a plain mention of Codex, Composer, Fable, or another model/harness in feature content, quoted material, comparison text, or a filename does not. Two pipeline stages are routable, each with its own carrier:
 
-- **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier. This names the **model** that authors the plan (model elevation) and nothing else. Example aliases: `fable`, `opus`. LFG has no way to pass a harness assignment to planning: an assignment that scopes a *harness* to planning ("plan with codex", "plan on cursor") is **not supported**. Stop and report it as a routing-carrier blocker (a stage assignment LFG cannot pass on) rather than encoding a harness name as `plan_model:<harness>`, which `ce-plan` cannot serve and would silently fall back to the session model. Only the implementation stage routes to a different harness.
-- **Implementation** routes to `ce-work` as an `implementation_engine` object (grammar below). This names the harness and model that write the code.
+- **Planning** routes to `ce-plan` as a `plan_model:<alias>` carrier. This names the **model** that authors the plan (native model elevation) and nothing else. Example aliases: `fable`, `opus`. LFG has no carrier for a planning harness assignment ("plan with codex", "plan on cursor"). Stop with a routing-carrier blocker rather than encoding a harness name as `plan_model:<harness>` or silently falling back. Implementation can retain harness intent in its compatibility carrier, but neither stage launches another harness.
+- **Implementation** routes to `ce-work` as an `implementation_engine` object (grammar below). This preserves requested route and model intent; execution uses native OpenCode model discovery and subagents, never another harness's dispatcher.
+
+## Native execution of route intent
+
+All carriers below are compatibility data, not authorization to launch Codex, Claude, Cursor, Composer, Grok, or other harness CLIs. Preserve configured choices and tiers as authoritative intent. Discover exact available provider/model IDs with `opencode.models`, then use permitted native subagents (and shell only for ordinary repository work). Planning model elevation likewise runs natively. A requirement that depends on an unavailable harness capability is blocked; a permitted preference fallback is disclosed, never silently relabeled as the requested route. Preserve ordered candidates, durable run/unit receipts, bounded evidence reconciliation, verification and integration coverage, and requested-versus-actual route/model reporting.
+
+Delegation permission, model override permission, and remaining depth are separate. Explicit child-skill reviewer dispatch satisfies a user-or-loaded-skill exception, not an unconditional prohibition. Honor actual denials and missing tools. If an optional model override needs explicit user selection, configuration tiers alone do not permit it; use suitable inherited-model reviewers only when allowed, disclosing unmet fixed/cross-model requirements. Discover effective `experimental.subagent_depth` via runtime configuration sources and precedence; package defaults do not guarantee capacity. Classify real dispatch failures as capacity/depth, permission, model argument, or missing tool. No denied-operation retries or shell/other-harness bypass. Inline/parent fallback is only contract-permitted with independence and coverage retained; same-model reviewers are not cross-model verification.
 
 ## Resolve each directive by scope
 
@@ -24,7 +30,7 @@ Requirement strength is inferred from the whole instruction, not one word: "use 
 When implementation resolves to one candidate, retain one transient `implementation_engine` object with exactly these four fields:
 
 - `mode`: `prefer` or `require`
-- `target`: exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, or `opencode` — a **harness** name, never a model name
+- `target`: exactly one of `codex`, `claude`, `grok`, `cursor`, `composer`, or `opencode` — the requested compatibility **harness** name, never a model name; it records intent rather than selecting an external dispatcher
 - `model`: the explicit model pin, otherwise `null`
 - `source`: a caller-visible string saying where the binding came from, identifying the current LFG instruction
 

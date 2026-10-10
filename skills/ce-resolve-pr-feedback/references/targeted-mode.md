@@ -2,6 +2,8 @@
 
 Read this reference when Mode Detection (in SKILL.md) routes to **Targeted Mode** — a specific comment or thread URL was provided. Targeted mode addresses only that thread.
 
+Each independent shell block runs from the absolute `workspace_root` and exports `GIT_DIR=$(jj git root)` there, as SKILL.md prescribes. Fixer dispatch and adjudication obey its separate delegation, optional-model and effective-depth rules; use only native OpenCode dispatch or the permitted inline implementation fallback.
+
 ## 1. Extract Thread Context
 
 Parse the URL to extract HOST, OWNER, REPO, PR number, and comment REST ID:
@@ -37,7 +39,7 @@ If this prints anything, stop. Tell the user they have an unsubmitted review on 
 
 Apply Full Mode step 7 (Reply and Resolve)'s completion check before judgment: check separately whether the thread already has a visible submitted reply and whether it is already resolved. When the thread is already `resolution-pending`, step 7 defines the only remaining work: skip judgment, fixing, validation, and commit, then complete the missing resolution without posting again.
 
-**Judge first.** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The rubric's cross-item reasoning does nothing for a single thread, but its read-depth and divert rules apply in full (how deeply to read before judging, and when to stop with a reply, a decline, or a human decision instead of fixing): deep-read (callers, invariants, `git blame`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This judgment is what decides whether the finding is valid; don't fix on the reviewer's authority alone.
+**Judge first.** Apply the rubric in `references/evaluation-rubric.md` to this one thread, in your own context. Account for `isOutdated` and the location fields (`line`, `originalLine`, `startLine`, `originalStartLine`) -- targeted threads can be outdated too and need the same relocation handling. The rubric's cross-item reasoning does nothing for a single thread, but its read-depth and divert rules apply in full (how deeply to read before judging, and when to stop with a reply, a decline, or a human decision instead of fixing): deep-read (callers, invariants, `jj file annotate`/PR rationale for author intent) before accepting a contestable finding or overriding code that looks deliberate. This judgment is what decides whether the finding is valid; don't fix on the reviewer's authority alone.
 
 **Then act on the verdict:**
 

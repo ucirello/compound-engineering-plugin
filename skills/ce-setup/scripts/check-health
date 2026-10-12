@@ -19,7 +19,7 @@ deps=(
 
 # Optional compatibility cache support only. Active peers use opencode.models
 # and native subagents/shell, not acpx or another harness dispatcher.
-ACPX_VERSION="0.19.4"
+ACPX_VERSION="0.19.5"
 ACPX_ADAPTER_SPECS="@agentclientprotocol/codex-acp@^1.1.5 @agentclientprotocol/claude-agent-acp@^0.81.2"
 
 # =====================================================
